@@ -18,15 +18,17 @@ import networkx as nx
 from trilogy.core.enums import Derivation
 
 from .concept_graph import _scope_and_phase
-from .constants import EDGE_KIND_EXISTENCE, EDGE_KIND_LINEAGE
+from .constants import DepthLabel, EdgeKind
+from .edges import EdgeMap, edge_kind
 from .models import ConceptAttrs, GroupBucket
 
 NodeItem = tuple[str, ConceptAttrs]
-EnsureAssignedFn = Callable[[str], None]
+EnsureAssignedFn = Callable[[Derivation], None]
 PartitionFn = Callable[
     [
         list[NodeItem],
         nx.DiGraph,
+        EdgeMap,
         dict[str, ConceptAttrs],
         dict[str, str],
         EnsureAssignedFn,
@@ -37,8 +39,8 @@ PartitionFn = Callable[
 
 
 def _bucket_for(
-    depth_label: str,
-    derivation: str,
+    depth_label: DepthLabel,
+    derivation: Derivation,
     grain: frozenset[str],
     label: str = "",
 ) -> GroupBucket:
@@ -70,6 +72,7 @@ def _add_member(bucket: GroupBucket, node: str, data: ConceptAttrs) -> None:
 def partition_by_depth_and_grain(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -86,7 +89,7 @@ def partition_by_depth_and_grain(
     aggregate concepts and harmlessly collapses to a single value
     there."""
     by_key: dict[
-        tuple[str, str, frozenset[str], str | None],
+        tuple[str, DepthLabel, frozenset[str], str | None],
         GroupBucket,
     ] = {}
     for node, data in items:
@@ -112,6 +115,7 @@ def partition_by_depth_and_grain(
 def partition_aggregates(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -128,7 +132,7 @@ def partition_aggregates(
     by_key: dict[
         tuple[
             str,
-            str,
+            DepthLabel,
             frozenset[str],
             str | None,
             frozenset[str],
@@ -146,8 +150,9 @@ def partition_aggregates(
         source_sig = (
             _stop_signature(
                 node,
-                Derivation.AGGREGATE.value,
+                Derivation.AGGREGATE,
                 concept_graph,
+                concept_edges,
                 concept_attrs,
                 primary_group,
                 ensure_assigned,
@@ -194,6 +199,7 @@ def partition_aggregates(
 def partition_roots(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -239,9 +245,8 @@ def partition_roots(
         existence_only_nodes = [(n, d) for n, d in sub_items if d.existence_only]
         main_items = [(n, d) for n, d in sub_items if not d.existence_only]
 
-        # Forward lineage reach per root. d1→d0 constraint edges are
-        # carried as is_constraint=True flags on lineage edges, so the
-        # single-kind filter still picks them up.
+        # Forward lineage reach per root, following only LINEAGE edges (a
+        # d1→d0 ordering rides its own CONSTRAINT edge and is excluded here).
         reaches: list[set[str]] = []
         for node, _ in main_items:
             seen: set[str] = set()
@@ -251,7 +256,7 @@ def partition_roots(
                 for nxt in concept_graph.successors(cur):
                     if nxt in seen:
                         continue
-                    if concept_graph.edges[cur, nxt].get("kind") != EDGE_KIND_LINEAGE:
+                    if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
                         continue
                     seen.add(nxt)
                     stack.append(nxt)
@@ -305,8 +310,8 @@ def partition_roots(
         multi = len(components) > 1
         for members in components.values():
             bucket = _bucket_for(
-                depth_label="root",
-                derivation=Derivation.ROOT.value,
+                depth_label=DepthLabel.ROOT,
+                derivation=Derivation.ROOT,
                 grain=frozenset(),
                 label=label_value,
             )
@@ -319,8 +324,8 @@ def partition_roots(
 
         for node, data in existence_only_nodes:
             solo = _bucket_for(
-                depth_label="root",
-                derivation=Derivation.ROOT.value,
+                depth_label=DepthLabel.ROOT,
+                derivation=Derivation.ROOT,
                 grain=frozenset(),
                 label=label_value,
             )
@@ -332,8 +337,9 @@ def partition_roots(
 
 def _stop_signature(
     node: str,
-    recurse_through: str,
+    recurse_through: Derivation,
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -353,8 +359,8 @@ def _stop_signature(
     stack: list[str] = [node]
     while stack:
         current = stack.pop()
-        for pred, _, ed in concept_graph.in_edges(current, data=True):
-            if ed.get("kind") != EDGE_KIND_LINEAGE:
+        for pred, _ in concept_graph.in_edges(current):
+            if edge_kind(concept_edges, pred, current) != EdgeKind.LINEAGE:
                 continue
             if pred in visited:
                 continue
@@ -372,8 +378,9 @@ def _stop_signature(
 
 def _partition_by_signature_and_grain(
     items: list[NodeItem],
-    own_derivation: str,
+    own_derivation: Derivation,
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -403,6 +410,7 @@ def _partition_by_signature_and_grain(
                     node,
                     own_derivation,
                     concept_graph,
+                    concept_edges,
                     concept_attrs,
                     primary_group,
                     ensure_assigned,
@@ -441,7 +449,9 @@ def _partition_by_signature_and_grain(
                 *(grains[i] for i in member_indices)
             )
             depths = {sub_items[i][1].depth_label for i in member_indices}
-            group_depth = "d1" if "d1" in depths else next(iter(depths))
+            group_depth = (
+                DepthLabel.D1 if DepthLabel.D1 in depths else next(iter(depths))
+            )
             shared_sig = sigs[member_indices[0]]
             # Stable signature representation: hash the sorted stop-set so
             # two component-equal sigs produce the same discriminator and
@@ -467,6 +477,7 @@ def _partition_by_signature_and_grain(
 def partition_basics_by_signature(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -477,8 +488,9 @@ def partition_basics_by_signature(
     stop walks through other BASICs and stops at any non-BASIC."""
     return _partition_by_signature_and_grain(
         items,
-        Derivation.BASIC.value,
+        Derivation.BASIC,
         concept_graph,
+        concept_edges,
         concept_attrs,
         primary_group,
         ensure_assigned,
@@ -488,6 +500,7 @@ def partition_basics_by_signature(
 def partition_filters_by_signature(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -503,14 +516,15 @@ def partition_filters_by_signature(
     def existence_signature(node: str) -> frozenset[str]:
         return frozenset(
             f"exist:{concept_attrs[pred].address}"
-            for pred, _, ed in concept_graph.in_edges(node, data=True)
-            if ed.get("kind") == EDGE_KIND_EXISTENCE
+            for pred, _ in concept_graph.in_edges(node)
+            if edge_kind(concept_edges, pred, node) == EdgeKind.EXISTENCE
         )
 
     return _partition_by_signature_and_grain(
         items,
-        Derivation.FILTER.value,
+        Derivation.FILTER,
         concept_graph,
+        concept_edges,
         concept_attrs,
         primary_group,
         ensure_assigned,
@@ -521,6 +535,7 @@ def partition_filters_by_signature(
 def partition_rowsets(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
@@ -552,10 +567,12 @@ def partition_rowsets(
         scope = _scope_and_phase(data.label)[0]
         members_by_key[(scope, data.rowset_name)].append((node, data))
     for (scope, rowset_name), members in members_by_key.items():
-        depth_label = "d1" if all(d.depth_label == "d1" for _, d in members) else "d0"
-        bucket = _bucket_for(
-            depth_label, Derivation.ROWSET.value, frozenset(), label=scope
+        depth_label = (
+            DepthLabel.D1
+            if all(d.depth_label == DepthLabel.D1 for _, d in members)
+            else DepthLabel.D0
         )
+        bucket = _bucket_for(depth_label, Derivation.ROWSET, frozenset(), label=scope)
         bucket.discriminator = f"rowset:{rowset_name}"
         for node, data in members:
             bucket.grain_components |= data.grain_components
@@ -565,12 +582,12 @@ def partition_rowsets(
 
 
 # Per-derivation registry. Any derivation not in here uses the default rule.
-GROUPING_RULES: dict[str, PartitionFn] = {
-    Derivation.ROOT.value: partition_roots,
-    Derivation.BASIC.value: partition_basics_by_signature,
-    Derivation.FILTER.value: partition_filters_by_signature,
-    Derivation.ROWSET.value: partition_rowsets,
-    Derivation.AGGREGATE.value: partition_aggregates,
+GROUPING_RULES: dict[Derivation, PartitionFn] = {
+    Derivation.ROOT: partition_roots,
+    Derivation.BASIC: partition_basics_by_signature,
+    Derivation.FILTER: partition_filters_by_signature,
+    Derivation.ROWSET: partition_rowsets,
+    Derivation.AGGREGATE: partition_aggregates,
 }
 
 DEFAULT_RULE: PartitionFn = partition_by_depth_and_grain

@@ -542,7 +542,7 @@ class TestDispatchGuard:
         env, benv = _build(UNNEST_MODEL)
         with pytest.raises(ValueError, match="No v4 node generator"):
             build_node(
-                derivation="not_a_real_derivation",
+                derivation=Derivation.MULTISELECT,
                 outputs=[benv.concepts["local.id"]],
                 parents=[],
                 environment=benv,

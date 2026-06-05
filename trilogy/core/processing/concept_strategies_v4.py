@@ -520,15 +520,22 @@ def _search_concepts(
         return _resolve_multiselect(
             ms_concept, mandatory_list, environment, depth, g, history, conditions
         )
-    concept_graph, concept_attrs = build_concept_graph(
+    concept_graph, concept_attrs, concept_edges = build_concept_graph(
         mandatory_list, environment, conditions
     )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
     ]
-    group_graph, group_attrs, merged_group_graph = build_group_graph(
+    (
+        group_graph,
+        group_edges,
+        group_attrs,
+        merged_group_graph,
+        merged_group_edges,
+    ) = build_group_graph(
         concept_graph,
+        concept_edges,
         concept_attrs,
         conditions,
         mandatory_list,
@@ -536,7 +543,7 @@ def _search_concepts(
         return_merged_graph=True,
     )
     strategy_node = build_strategy_node(
-        group_graph, group_attrs, mandatory_list, environment, g, history
+        group_graph, group_edges, group_attrs, mandatory_list, environment, g, history
     )
     return BuildInfo(
         concept_graph=concept_graph,
@@ -544,6 +551,9 @@ def _search_concepts(
         group_graph=group_graph,
         group_attrs=group_attrs,
         concept_attrs=concept_attrs,
+        concept_edges=concept_edges,
+        merged_group_edges=merged_group_edges,
+        group_edges=group_edges,
         strategy_node=strategy_node,
     )
 

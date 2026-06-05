@@ -30,17 +30,18 @@ import networkx as nx
 
 from trilogy.core.enums import Derivation
 
-from .constants import EDGE_KIND_LINEAGE
+from .constants import EdgeKind
+from .edges import EdgeMap, edge_kind
 from .models import ConceptAttrs, GroupBucket
 
 # Behaviors read node state from `concept_attrs` (the typed side dict keyed by
-# concept-graph node id) and walk lineage edges via `concept_graph` — the graph
-# itself carries only topology + edge metadata.
+# concept-graph node id) and walk lineage edges via `concept_graph` + its typed
+# `concept_edges` side map — the graph itself carries only topology.
 NativeGrainFn = Callable[
-    [GroupBucket, nx.DiGraph, dict[str, ConceptAttrs]], frozenset[str]
+    [GroupBucket, nx.DiGraph, EdgeMap, dict[str, ConceptAttrs]], frozenset[str]
 ]
 CanPreserveFn = Callable[
-    [nx.DiGraph, dict[str, ConceptAttrs], frozenset[str], str], bool
+    [nx.DiGraph, EdgeMap, dict[str, ConceptAttrs], frozenset[str], str], bool
 ]
 
 
@@ -48,18 +49,20 @@ CanPreserveFn = Callable[
 class Behavior:
     """The IO contract for one derivation. See module docstring."""
 
-    derivation: str
+    derivation: Derivation | None
     native_grain: NativeGrainFn
     can_preserve: CanPreserveFn
 
 
-def _lineage_parents(concept_graph: nx.DiGraph, address: str) -> frozenset[str]:
+def _lineage_parents(
+    concept_graph: nx.DiGraph, concept_edges: EdgeMap, address: str
+) -> frozenset[str]:
     if address not in concept_graph.nodes:
         return frozenset()
     return frozenset(
         u
-        for u, _, d in concept_graph.in_edges(address, data=True)
-        if d.get("kind") == EDGE_KIND_LINEAGE
+        for u, _ in concept_graph.in_edges(address)
+        if edge_kind(concept_edges, u, address) == EdgeKind.LINEAGE
     )
 
 
@@ -69,6 +72,7 @@ def _lineage_parents(concept_graph: nx.DiGraph, address: str) -> frozenset[str]:
 def native_grain_root(
     bucket: GroupBucket,
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
 ) -> frozenset[str]:
     """ROOT is the scan. There's no row-shape change to defend against, so
@@ -79,6 +83,7 @@ def native_grain_root(
 def native_grain_declared(
     bucket: GroupBucket,
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
 ) -> frozenset[str]:
     """For groups whose row identity matches their declared
@@ -90,6 +95,7 @@ def native_grain_declared(
 def native_grain_filter_inputs(
     bucket: GroupBucket,
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
 ) -> frozenset[str]:
     """FILTER rows live at the grain of the row expression being filtered.
@@ -101,7 +107,7 @@ def native_grain_filter_inputs(
     """
     inherited: set[str] = set()
     for primary in bucket.primary_members:
-        for parent in _lineage_parents(concept_graph, primary):
+        for parent in _lineage_parents(concept_graph, concept_edges, primary):
             inherited.update(concept_attrs[parent].grain_components)
             inherited.update(concept_attrs[parent].keys)
     if inherited:
@@ -112,6 +118,7 @@ def native_grain_filter_inputs(
 def native_grain_basic_inherited(
     bucket: GroupBucket,
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
 ) -> frozenset[str]:
     """BASIC's effective grain is the union of its primaries' lineage
@@ -136,7 +143,7 @@ def native_grain_basic_inherited(
     (e.g. a constant-folded BASIC)."""
     inherited: set[str] = set()
     for primary in bucket.primary_members:
-        for parent in _lineage_parents(concept_graph, primary):
+        for parent in _lineage_parents(concept_graph, concept_edges, primary):
             inherited.update(concept_attrs[parent].grain_components)
     if inherited:
         return frozenset(inherited)
@@ -148,6 +155,7 @@ def native_grain_basic_inherited(
 
 def can_preserve_root(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     native_grain: frozenset[str],
     address: str,
@@ -161,6 +169,7 @@ def can_preserve_root(
 
 def can_preserve_grain_subset(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     native_grain: frozenset[str],
     address: str,
@@ -191,19 +200,23 @@ def can_preserve_grain_subset(
 
 
 def _lineage_parent_addrs(
-    concept_graph: nx.DiGraph, concept_attrs: dict[str, ConceptAttrs], address: str
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    address: str,
 ) -> set[str]:
     if address not in concept_graph.nodes:
         return set()
     return {
         concept_attrs[u].address
-        for u, _, d in concept_graph.in_edges(address, data=True)
-        if d.get("kind") == EDGE_KIND_LINEAGE
+        for u, _ in concept_graph.in_edges(address)
+        if edge_kind(concept_edges, u, address) == EdgeKind.LINEAGE
     }
 
 
 def can_preserve_grouping(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     native_grain: frozenset[str],
     address: str,
@@ -229,11 +242,13 @@ def can_preserve_grouping(
         return True
     if node.keys and node.keys <= native_grain:
         return True
-    parents = _lineage_parent_addrs(concept_graph, concept_attrs, address)
+    parents = _lineage_parent_addrs(
+        concept_graph, concept_edges, concept_attrs, address
+    )
     if parents and parents <= native_grain:
         return True
     if not col_grain:
-        return node.derivation == Derivation.CONSTANT.value
+        return node.derivation == Derivation.CONSTANT
     return False
 
 
@@ -243,51 +258,53 @@ def can_preserve_grouping(
 # derivation we haven't enumerated below (RECURSIVE/UNION/ROWSET edge
 # cases) — safe because subset preservation is the conservative answer.
 _DEFAULT_BEHAVIOR = Behavior(
-    derivation="",
+    derivation=None,
     native_grain=native_grain_declared,
     can_preserve=can_preserve_grain_subset,
 )
 
-GROUP_BEHAVIORS: dict[str, Behavior] = {
-    Derivation.ROOT.value: Behavior(
-        derivation=Derivation.ROOT.value,
+GROUP_BEHAVIORS: dict[Derivation, Behavior] = {
+    Derivation.ROOT: Behavior(
+        derivation=Derivation.ROOT,
         native_grain=native_grain_root,
         can_preserve=can_preserve_root,
     ),
-    Derivation.BASIC.value: Behavior(
-        derivation=Derivation.BASIC.value,
+    Derivation.BASIC: Behavior(
+        derivation=Derivation.BASIC,
         native_grain=native_grain_basic_inherited,
         can_preserve=can_preserve_grain_subset,
     ),
-    Derivation.AGGREGATE.value: Behavior(
-        derivation=Derivation.AGGREGATE.value,
+    Derivation.AGGREGATE: Behavior(
+        derivation=Derivation.AGGREGATE,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grouping,
     ),
-    Derivation.GROUP_TO.value: Behavior(
-        derivation=Derivation.GROUP_TO.value,
+    Derivation.GROUP_TO: Behavior(
+        derivation=Derivation.GROUP_TO,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grouping,
     ),
-    Derivation.WINDOW.value: Behavior(
-        derivation=Derivation.WINDOW.value,
+    Derivation.WINDOW: Behavior(
+        derivation=Derivation.WINDOW,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grouping,
     ),
-    Derivation.FILTER.value: Behavior(
-        derivation=Derivation.FILTER.value,
+    Derivation.FILTER: Behavior(
+        derivation=Derivation.FILTER,
         native_grain=native_grain_filter_inputs,
         can_preserve=can_preserve_grain_subset,
     ),
-    Derivation.SUBSELECT.value: Behavior(
-        derivation=Derivation.SUBSELECT.value,
+    Derivation.SUBSELECT: Behavior(
+        derivation=Derivation.SUBSELECT,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grain_subset,
     ),
 }
 
 
-def behavior_for(derivation: str) -> Behavior:
+def behavior_for(derivation: Derivation | None) -> Behavior:
     """Return the behavior for ``derivation``, falling back to the
     conservative default for derivations we haven't enumerated."""
+    if derivation is None:
+        return _DEFAULT_BEHAVIOR
     return GROUP_BEHAVIORS.get(derivation, _DEFAULT_BEHAVIOR)

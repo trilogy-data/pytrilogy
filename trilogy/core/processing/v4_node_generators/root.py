@@ -41,7 +41,7 @@ def gen_root(
     if existence_conditions is not None:
         seen = {c.address for c in inner_outputs}
         for atom in decompose_condition(existence_conditions.conditional):
-            for arg in getattr(atom, "row_arguments", ()) or ():
+            for arg in atom.row_arguments:
                 if arg.address not in seen:
                     inner_outputs.append(arg)
                     seen.add(arg.address)

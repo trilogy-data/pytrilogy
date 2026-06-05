@@ -26,6 +26,8 @@ from trilogy.core.processing.v4_helper.concept_graph import (
     _upstream_window,
     build_concept_graph,
 )
+from trilogy.core.processing.v4_helper.constants import EdgeKind
+from trilogy.core.processing.v4_helper.edges import edges_of_kind
 
 
 def _build(text: str) -> tuple[Environment, BuildEnvironment]:
@@ -154,7 +156,7 @@ class TestAggregateInputGrain:
         env, benv = _build(COUNT_MODEL)
         info = _search(env, benv, ["local.customers_per_store", "local.store_id"])
         assert info.strategy_node is not None
-        _, cattrs = build_concept_graph(
+        _, cattrs, _ = build_concept_graph(
             [
                 benv.concepts["local.customers_per_store"],
                 benv.concepts["local.store_id"],
@@ -211,10 +213,8 @@ class TestFilterExistenceOnly:
 
     def test_existence_edge_wired_into_concept_graph(self):
         _, benv = _build(EXISTENCE_MODEL)
-        graph, _ = build_concept_graph([benv.concepts["local.filtered"]], benv, [])
-        existence_edges = [
-            (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == "existence"
-        ]
+        _, _, edges = build_concept_graph([benv.concepts["local.filtered"]], benv, [])
+        existence_edges = edges_of_kind(edges, EdgeKind.EXISTENCE)
         assert any(v == "local.filtered" for _, v in existence_edges)
 
     def test_semijoin_filter_resolves_end_to_end(self):
@@ -232,13 +232,13 @@ class TestRowsetTagging:
         grouping rule can bucket them together (q59)."""
         _, benv = _build(ROWSET_MODEL)
         rowset_concept = benv.concepts["high_value.store_id"]
-        _, cattrs = build_concept_graph([rowset_concept], benv, [])
+        _, cattrs, _ = build_concept_graph([rowset_concept], benv, [])
         nid = next(n for n, a in cattrs.items() if a.address == "high_value.store_id")
         assert cattrs[nid].rowset_name == "high_value"
 
     def test_non_rowset_concept_has_no_rowset_name(self):
         _, benv = _build(ROWSET_MODEL)
-        _, cattrs = build_concept_graph([benv.concepts["local.store_id"]], benv, [])
+        _, cattrs, _ = build_concept_graph([benv.concepts["local.store_id"]], benv, [])
         assert cattrs["local.store_id"].rowset_name is None
 
 

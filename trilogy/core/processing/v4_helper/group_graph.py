@@ -17,7 +17,7 @@ lives next to its rule.
 """
 
 from collections import defaultdict
-from typing import Literal, cast, overload
+from typing import Literal, overload
 
 import networkx as nx
 
@@ -28,22 +28,32 @@ from trilogy.core.processing.condition_utility import decompose_condition
 
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
-    EDGE_KIND_CONSTRAINT,
-    EDGE_KIND_EXISTENCE,
-    EDGE_KIND_LINEAGE,
-    EDGE_KIND_MERGE,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    DepthLabel,
     EdgeKind,
+    EdgePhase,
+)
+from .edges import (
+    EdgeMap,
+    add_edge,
+    copy_edges,
+    dependency_subgraph,
+    edge_kind,
+    edges_of_kind,
+    lineage_edges,
+    lineage_subgraph,
+    remove_edge,
+    subgraph_of_kinds,
 )
 from .group_behaviors import behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import ConceptAttrs, GroupAttrs, GroupBucket
 
 # depth_label used for the secondary root bucket dedicated to feeding d1
-# (in-WHERE) aggregate calculations. Distinct from "root" so the bucket
+# (in-WHERE) aggregate calculations. Distinct from ``root`` so the bucket
 # gets its own group id and doesn't collide with the main root bucket.
-ROOT_D1_DEPTH = "root_d1"
+ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 
 # Row-shape barriers whose own output can NOT be filtered in place: a window
 # `rank() < 10` needs QUALIFY and an unnest `not value` needs a wrapping
@@ -53,23 +63,23 @@ ROOT_D1_DEPTH = "root_d1"
 # these as candidate hosts. Aggregate/group_to self-host via HAVING, and
 # rowset/union/recursive are CTE-like (their output is filterable in a
 # wrapping select that the planner already builds) — none are excluded.
-_CANNOT_HOST_OWN_OUTPUT: set[str] = {
-    Derivation.WINDOW.value,
-    Derivation.UNNEST.value,
+_CANNOT_HOST_OWN_OUTPUT: set[Derivation] = {
+    Derivation.WINDOW,
+    Derivation.UNNEST,
 }
 
 # Derivations that emit a GROUP BY, so any column referenced in a HAVING there
 # must itself be grouped (a key) or aggregated. A cross-joined aggregate from a
 # *different* producer is neither, so such a group cannot host a HAVING that
 # references it. Window PARTITIONs rather than GROUP BYs, so it is excluded.
-_EMITS_GROUP_BY: set[str] = {
-    Derivation.AGGREGATE.value,
-    Derivation.GROUP_TO.value,
+_EMITS_GROUP_BY: set[Derivation] = {
+    Derivation.AGGREGATE,
+    Derivation.GROUP_TO,
 }
 
-_REGRAFTABLE_DERIVATIONS: set[str] = {
-    Derivation.BASIC.value,
-    Derivation.WINDOW.value,
+_REGRAFTABLE_DERIVATIONS: set[Derivation] = {
+    Derivation.BASIC,
+    Derivation.WINDOW,
 }
 
 
@@ -113,13 +123,15 @@ def _group_id_for(bucket: GroupBucket) -> str:
     label_prefix = f"[{bucket.label}]" if bucket.label else ""
     suffix = f":{bucket.discriminator}" if bucket.discriminator else ""
     return (
-        f"grp:{label_prefix}{bucket.derivation}:{bucket.depth_label}:"
+        f"grp:{label_prefix}{bucket.derivation.value}:{bucket.depth_label.value}:"
         f"{grain_key}{suffix}"
     )
 
 
 def _d1_calc_subgraph(
-    concept_graph: nx.DiGraph, concept_attrs: dict[str, ConceptAttrs]
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
 ) -> tuple[set[str], set[str]]:
     """Identify (d1_calc_roots, d1_subgraph_nodes).
 
@@ -135,17 +147,17 @@ def _d1_calc_subgraph(
     - d1_subgraph_nodes: every condition-phase node. Edge routing uses
       this as the destination side of the predicate."""
     d1_subgraph: set[str] = {
-        n for n in concept_graph.nodes if concept_attrs[n].depth_label == "d1"
+        n for n in concept_graph.nodes if concept_attrs[n].depth_label == DepthLabel.D1
     }
     if not d1_subgraph:
         return set(), set()
     d1_calc_roots: set[str] = set()
     for n in d1_subgraph:
-        for pred, _, ed in concept_graph.in_edges(n, data=True):
-            if ed.get("kind") != EDGE_KIND_LINEAGE:
+        for pred, _ in concept_graph.in_edges(n):
+            if edge_kind(concept_edges, pred, n) != EdgeKind.LINEAGE:
                 continue
             pa = concept_attrs[pred]
-            if pa.derivation == Derivation.ROOT.value and pa.depth_label != "d1":
+            if pa.derivation == Derivation.ROOT and pa.depth_label != DepthLabel.D1:
                 d1_calc_roots.add(pred)
     return d1_calc_roots, d1_subgraph
 
@@ -161,7 +173,7 @@ def _add_d1_root_bucket(
         return None
     bucket = GroupBucket(
         depth_label=ROOT_D1_DEPTH,
-        derivation=Derivation.ROOT.value,
+        derivation=Derivation.ROOT,
         grain_components=frozenset(),
     )
     for node in sorted(d1_calc_roots):
@@ -176,6 +188,7 @@ def _add_d1_root_bucket(
 
 def _assign_groups(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     output_addresses: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, str], dict[str, GroupBucket]]:
@@ -188,16 +201,16 @@ def _assign_groups(
     we run the rule for that derivation on-demand. This avoids any
     privileging in the call order — every derivation looks the same from
     the orchestrator's view; BASIC just happens to use the callback."""
-    by_derivation: dict[str, list[tuple[str, ConceptAttrs]]] = defaultdict(list)
+    by_derivation: dict[Derivation, list[tuple[str, ConceptAttrs]]] = defaultdict(list)
     for node in concept_graph.nodes:
         a = concept_attrs[node]
         by_derivation[a.derivation].append((node, a))
 
     primary_group: dict[str, str] = {}
     buckets: dict[str, GroupBucket] = {}
-    assigned: set[str] = set()
+    assigned: set[Derivation] = set()
 
-    def ensure_assigned(derivation: str) -> None:
+    def ensure_assigned(derivation: Derivation) -> None:
         if derivation in assigned:
             return
         assigned.add(derivation)
@@ -206,6 +219,7 @@ def _assign_groups(
         for bucket in rule(
             items,
             concept_graph,
+            concept_edges,
             concept_attrs,
             primary_group,
             ensure_assigned,
@@ -255,17 +269,20 @@ def _attach_secondary_members(
 
 def _materialize_group_graph(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     primary_group: dict[str, str],
     buckets: dict[str, GroupBucket],
     d1_root_gid: str | None = None,
     d1_calc_roots: set[str] | None = None,
     d1_subgraph: set[str] | None = None,
-) -> tuple[nx.DiGraph, dict[str, GroupAttrs]]:
+) -> tuple[nx.DiGraph, dict[str, GroupAttrs], EdgeMap]:
     """Realize the in-flight `GroupBucket` map as an nx.DiGraph plus a
-    side-table of typed `GroupAttrs` keyed by group id. The graph holds
-    topology + edge metadata only; downstream consumers read per-group state
-    via `attrs[gid]` and get attribute access + type checking."""
+    side-table of typed `GroupAttrs` keyed by group id and the typed
+    `group_edges` metadata map. The graph holds topology only; downstream
+    consumers read per-group state via `attrs[gid]` and edge kinds via
+    `group_edges`, getting attribute access + type checking."""
     group_graph: nx.DiGraph = nx.DiGraph()
+    group_edges: EdgeMap = {}
     attrs: dict[str, GroupAttrs] = {}
     for gid, bucket in buckets.items():
         members = tuple(bucket.primary_members) + tuple(bucket.secondary_members)
@@ -301,11 +318,23 @@ def _materialize_group_graph(
     # WHEREs. Without the split, sibling filters pollute the avg's input.
     d1_calc_roots = d1_calc_roots or set()
     d1_subgraph = d1_subgraph or set()
-    for u, v, edata in concept_graph.edges(data=True):
-        raw_edge_kind = edata.get("kind")
-        if raw_edge_kind not in DEPENDENCY_EDGE_KINDS:
+    # The group-edge `kind` records the strongest concept-level edge that maps
+    # to it: lineage > constraint > existence. Lineage means the row stream
+    # flows along this edge — JOIN partners, demand propagation, sibling-grain
+    # projection. Constraint means topo ordering for filter pushdown with
+    # implied JOIN. Existence means side-channel only (subselect) — the source
+    # must be built and ordered before the consumer, but never JOINed in or
+    # projected for sibling JOIN keys. When edges collapse, the stronger
+    # guarantee wins.
+    priority: dict[EdgeKind, int] = {
+        EdgeKind.EXISTENCE: 0,
+        EdgeKind.CONSTRAINT: 1,
+        EdgeKind.LINEAGE: 2,
+    }
+    for (u, v), ed in concept_edges.items():
+        kind = ed.kind
+        if kind not in DEPENDENCY_EDGE_KINDS:
             continue
-        edge_kind = cast(EdgeKind, raw_edge_kind)
         if d1_root_gid is not None and u in d1_calc_roots and v in d1_subgraph:
             gu = d1_root_gid
         else:
@@ -313,33 +342,19 @@ def _materialize_group_graph(
         gv = primary_group[v]
         if gu == gv:
             continue
-        # The group-edge `kind` records the strongest concept-level edge
-        # that maps to it: lineage > constraint > existence. Lineage means
-        # the row stream flows along this edge — JOIN partners, demand
-        # propagation, sibling-grain projection. Constraint means topo
-        # ordering for filter pushdown with implied JOIN. Existence means
-        # side-channel only (subselect) — the source must be built and
-        # ordered before the consumer, but never JOINed in or projected
-        # for sibling JOIN keys. When edges collapse, the stronger
-        # guarantee wins.
-        priority: dict[EdgeKind, int] = {
-            EDGE_KIND_EXISTENCE: 0,
-            EDGE_KIND_CONSTRAINT: 1,
-            EDGE_KIND_LINEAGE: 2,
-        }
-        existing = group_graph.get_edge_data(gu, gv)
-        if existing is not None:
-            current = cast(EdgeKind, existing.get("kind", edge_kind))
-            if priority[edge_kind] > priority.get(current, 0):
-                group_graph[gu][gv]["kind"] = edge_kind
+        current = edge_kind(group_edges, gu, gv)
+        if current is not None:
+            if priority[kind] > priority[current]:
+                group_edges[(gu, gv)].kind = kind
         else:
-            group_graph.add_edge(gu, gv, kind=edge_kind)
+            add_edge(group_graph, group_edges, gu, gv, kind)
 
-    return group_graph, attrs
+    return group_graph, attrs, group_edges
 
 
 def _main_lineage_groups(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
 ) -> set[str]:
@@ -355,15 +370,7 @@ def _main_lineage_groups(
     }
     if not seeds:
         return set(buckets.keys())
-    lineage_only = group_graph.edge_subgraph(
-        [
-            (u, v)
-            for u, v, d in group_graph.edges(data=True)
-            if d.get("kind") == EDGE_KIND_LINEAGE
-        ]
-    ).copy()
-    for gid in buckets:
-        lineage_only.add_node(gid)
+    lineage_only = lineage_subgraph(group_graph, group_edges)
     main: set[str] = set(seeds)
     for seed in seeds:
         main |= nx.ancestors(lineage_only, seed)
@@ -372,6 +379,7 @@ def _main_lineage_groups(
 
 def _inject_conditions(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
@@ -388,7 +396,7 @@ def _inject_conditions(
     Errors out if a chosen group sits downstream of a d0 barrier (a filter
     cannot be pushed past a row-shape change). Returns the set of groups
     that received at least one atom."""
-    d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == "d0"}
+    d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == DepthLabel.D0}
     # The d1-feeding root bucket exists exactly so its scan stays unfiltered
     # — sibling WHERE atoms would corrupt the avg-in-where. Conditions whose
     # row inputs only fit in R_d1 still have to land somewhere, so we exclude
@@ -396,7 +404,7 @@ def _inject_conditions(
     # filter (R_other, or a basic/aggregate below it).
     d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
     main_lineage = (
-        _main_lineage_groups(group_graph, buckets, mandatory_list)
+        _main_lineage_groups(group_graph, group_edges, buckets, mandatory_list)
         if mandatory_list
         else set(buckets.keys())
     )
@@ -404,15 +412,9 @@ def _inject_conditions(
     # edges go from a side-channel filter back to its consumer (e.g. d1 filter
     # → main root), which would falsely make root a *descendant* of the d1
     # filter and disqualify it from the upstream tiebreak.
-    lineage_ancestors_graph = group_graph.edge_subgraph(
-        [
-            (u, v)
-            for u, v, d in group_graph.edges(data=True)
-            if d.get("kind") in (EDGE_KIND_LINEAGE, EDGE_KIND_CONSTRAINT)
-        ]
-    ).copy()
-    for gid in buckets:
-        lineage_ancestors_graph.add_node(gid)
+    lineage_ancestors_graph = subgraph_of_kinds(
+        group_graph, group_edges, EdgeKind.LINEAGE, EdgeKind.CONSTRAINT
+    )
     group_members: dict[str, set[str]] = {
         gid: set(b.primary_members) | set(b.secondary_members)
         for gid, b in buckets.items()
@@ -440,7 +442,7 @@ def _inject_conditions(
     # constraint-edge ancestor (a d1 aggregate feeding a HAVING-style filter)
     # that would otherwise flip it out of the "no ancestors" branch and hide
     # its own columns (q02 / q20).
-    root_derivations = {Derivation.ROOT.value}
+    root_derivations = {Derivation.ROOT}
 
     def _reachable_input(gid: str) -> set[str]:
         own = (
@@ -510,7 +512,7 @@ def _inject_conditions(
                 producers = [
                     gid
                     for gid, b in buckets.items()
-                    if b.depth_label == "d0" and addr in set(b.primary_members)
+                    if b.depth_label == DepthLabel.D0 and addr in set(b.primary_members)
                 ]
                 if producers:
                     reach: set[str] = set(producers)
@@ -528,7 +530,7 @@ def _inject_conditions(
                 main_producers = [
                     gid
                     for gid in producers
-                    if buckets[gid].depth_label not in ("d1", ROOT_D1_DEPTH)
+                    if buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
                 ]
                 producer_groups.update(main_producers or producers)
             restricted = [
@@ -633,6 +635,7 @@ def _virtual_filter_scoped_columns(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     d1_gid: str,
 ) -> set[str]:
@@ -648,21 +651,22 @@ def _virtual_filter_scoped_columns(
         addr_to_nodes.setdefault(ca.address, []).append(nid)
     scoped: set[str] = set()
     for desc in nx.descendants(group_graph, d1_gid):
-        if attrs[desc].derivation != Derivation.FILTER.value:
+        if attrs[desc].derivation != Derivation.FILTER:
             continue
         for addr in attrs[desc].primary_members:
             for nid in addr_to_nodes.get(addr, []):
                 for parent in concept_graph.predecessors(nid):
-                    ed = concept_graph.edges[parent, nid]
-                    if ed.get("kind") == EDGE_KIND_LINEAGE:
+                    if edge_kind(concept_edges, parent, nid) == EdgeKind.LINEAGE:
                         scoped.add(concept_attrs[parent].address)
     return scoped
 
 
 def _propagate_raw_filters_to_d1_roots(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     datasource_columns: list[frozenset[str]],
 ) -> set[str]:
@@ -686,11 +690,7 @@ def _propagate_raw_filters_to_d1_roots(
     single datasource carries BOTH the atom's columns and all of root_d1's scan
     columns — i.e. the filter and the aggregate genuinely share one table.
     Returns the root_d1 gids that gained atoms."""
-    existence_sources = {
-        u
-        for u, _, d in group_graph.edges(data=True)
-        if d.get("kind") == EDGE_KIND_EXISTENCE
-    }
+    existence_sources = {u for u, _ in edges_of_kind(group_edges, EdgeKind.EXISTENCE)}
     d1_roots = [
         gid
         for gid in group_graph.nodes
@@ -700,8 +700,8 @@ def _propagate_raw_filters_to_d1_roots(
         gid
         for gid in group_graph.nodes
         if gid in attrs
-        and attrs[gid].derivation == Derivation.ROOT.value
-        and attrs[gid].depth_label == "root"
+        and attrs[gid].derivation == Derivation.ROOT
+        and attrs[gid].depth_label == DepthLabel.ROOT
         and attrs[gid].condition_atoms
     ]
     touched: set[str] = set()
@@ -729,7 +729,7 @@ def _propagate_raw_filters_to_d1_roots(
         if not scan_cols:
             continue
         filter_scoped = _virtual_filter_scoped_columns(
-            group_graph, attrs, concept_graph, concept_attrs, d1_gid
+            group_graph, attrs, concept_graph, concept_edges, concept_attrs, d1_gid
         )
         for m_gid in main_roots:
             for atom in attrs[m_gid].condition_atoms:
@@ -750,6 +750,7 @@ def _propagate_raw_filters_to_d1_roots(
 
 def _color_phases(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     condition_group_ids: set[str],
 ) -> set[str]:
     """Mark each edge as `pre_condition` or `post_condition`. Any edge from a
@@ -759,15 +760,16 @@ def _color_phases(
     downstream: set[str] = set(condition_group_ids)
     for cgid in condition_group_ids:
         downstream |= nx.descendants(group_graph, cgid)
-    for u, v in list(group_graph.edges()):
-        group_graph.edges[u, v]["phase"] = (
-            "post_condition" if u in downstream else "pre_condition"
+    for (u, v), attrs in group_edges.items():
+        attrs.phase = (
+            EdgePhase.POST_CONDITION if u in downstream else EdgePhase.PRE_CONDITION
         )
     return downstream
 
 
 def _add_final_node(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
     concept_attrs: dict[str, ConceptAttrs],
@@ -779,23 +781,24 @@ def _add_final_node(
     cross-arm post-merge filter (which no pre-final group can host) can land on
     it; `_color_phases` colors the merge edges afterward like the rest."""
     non_condition_members = tuple(
-        n for n in concept_graph.nodes if concept_attrs[n].depth_label != "d1"
+        n for n in concept_graph.nodes if concept_attrs[n].depth_label != DepthLabel.D1
     )
     group_graph.add_node(FINAL_NODE_ID)
     attrs[FINAL_NODE_ID] = GroupAttrs(
-        depth_label="final",
-        derivation="final",
+        depth_label=DepthLabel.FINAL,
         members=non_condition_members,
         conditions=[str(c) for c in conditions],
     )
     for gid in buckets:
-        group_graph.add_edge(gid, FINAL_NODE_ID, kind=EDGE_KIND_MERGE)
+        add_edge(group_graph, group_edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
 
 
 def _compute_concept_sets(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
@@ -836,16 +839,14 @@ def _compute_concept_sets(
     # Pre-phase-split this happened to work because outer-blank node_id ==
     # address; with the @condition phase, [@condition]X != X.
     lineage_parents: dict[str, set[str]] = {}
-    for u, v, ed in concept_graph.edges(data=True):
-        if ed.get("kind") != EDGE_KIND_LINEAGE:
-            continue
+    for u, v in lineage_edges(concept_edges):
         u_addr = concept_attrs[u].address
         v_addr = concept_attrs[v].address
         lineage_parents.setdefault(v_addr, set()).add(u_addr)
 
     primary_of: dict[str, set[str]] = {}
     grain_of: dict[str, frozenset[str]] = {}
-    derivation_of: dict[str, str] = {}
+    derivation_of: dict[str, Derivation | None] = {}
     native_grain_of: dict[str, frozenset[str]] = {}
     behavior_of = {}
     for gid in group_graph.nodes:
@@ -854,9 +855,11 @@ def _compute_concept_sets(
         grain_of[gid] = frozenset(a.grain_components)
         derivation_of[gid] = a.derivation
     for gid, bucket in buckets.items():
-        beh = behavior_for(derivation_of[gid])
+        beh = behavior_for(bucket.derivation)
         behavior_of[gid] = beh
-        native_grain_of[gid] = beh.native_grain(bucket, concept_graph, concept_attrs)
+        native_grain_of[gid] = beh.native_grain(
+            bucket, concept_graph, concept_edges, concept_attrs
+        )
 
     # Natural row-grain of each concept (the keys it functionally depends on).
     # Used when an aggregating group demands lineage args from a row-level
@@ -885,7 +888,7 @@ def _compute_concept_sets(
         if gid == FINAL_NODE_ID:
             continue
         d = derivation_of[gid]
-        if d == Derivation.ROOT.value or d in GROUPING_DERIVATIONS:
+        if d == Derivation.ROOT or d in GROUPING_DERIVATIONS:
             continue
         leaves = _leaf_inputs(primary_of[gid], lineage_parents)
         if not leaves:
@@ -893,7 +896,7 @@ def _compute_concept_sets(
         grouping_preds = [
             p
             for p in group_graph.predecessors(gid)
-            if group_graph.edges[p, gid].get("kind") == EDGE_KIND_LINEAGE
+            if edge_kind(group_edges, p, gid) == EdgeKind.LINEAGE
             and derivation_of[p] in GROUPING_DERIVATIONS
         ]
         # Same-grain grouping parents (e.g. q59's ratio reads both an aggregate
@@ -923,15 +926,7 @@ def _compute_concept_sets(
     # Topo includes all dependency edges (lineage / constraint / existence)
     # so a side-channel source builds before its consumer. The JOIN-key
     # and demand passes below treat each edge kind differently.
-    dep_edges = [
-        (u, v)
-        for u, v, ed in group_graph.edges(data=True)
-        if ed.get("kind") in DEPENDENCY_EDGE_KINDS
-    ]
-    dep_graph = group_graph.edge_subgraph(dep_edges).copy()
-    for n in group_graph.nodes:
-        if n not in dep_graph:
-            dep_graph.add_node(n)
+    dep_graph = dependency_subgraph(group_graph, group_edges)
     try:
         topo = list(nx.topological_sort(dep_graph))
     except nx.NetworkXUnfeasible:
@@ -958,7 +953,7 @@ def _compute_concept_sets(
             continue
         cap: set[str] = set(primary_of[gid])
         behavior = behavior_of.get(gid)
-        if behavior is None or derivation_of[gid] == Derivation.ROOT.value:
+        if behavior is None or derivation_of[gid] == Derivation.ROOT:
             # Root scans can also project the grain keys of their primaries —
             # `store_sales.ticket_number` is reachable from a store_sales scan
             # even if no consumer asked for it. Exposing it in capability lets
@@ -973,7 +968,9 @@ def _compute_concept_sets(
             if pgid == FINAL_NODE_ID:
                 continue
             for addr in capability.get(pgid, set()):
-                if behavior.can_preserve(concept_graph, concept_attrs, native, addr):
+                if behavior.can_preserve(
+                    concept_graph, concept_edges, concept_attrs, native, addr
+                ):
                     cap.add(addr)
         capability[gid] = cap
 
@@ -986,15 +983,7 @@ def _compute_concept_sets(
     # produce this concept?" A mandatory concept produced by a grouping
     # descendant must be contributed by that barrier, not by a pre-barrier
     # group (whose pre-aggregation rows can't merge with the aggregated ones).
-    lineage_edges_only = [
-        (u, v)
-        for u, v, ed in group_graph.edges(data=True)
-        if ed.get("kind") == EDGE_KIND_LINEAGE
-    ]
-    lineage_sub = group_graph.edge_subgraph(lineage_edges_only).copy()
-    for n in group_graph.nodes:
-        if n not in lineage_sub:
-            lineage_sub.add_node(n)
+    lineage_sub = lineage_subgraph(group_graph, group_edges)
 
     # Row-args of a filter deferred onto FINAL (q11: a per-id aggregate vs a
     # global one) aren't user outputs, so they aren't in mandatory — but they
@@ -1036,9 +1025,8 @@ def _compute_concept_sets(
     # its source via an `existence` group edge rather than a condition atom.
     # The source is a dedicated side-channel group; demand its own outputs so
     # it gets built and can back the `... IN (SELECT src FROM cte)` subselect.
-    for src_gid, _, edata in group_graph.edges(data=True):
-        if edata.get("kind") == EDGE_KIND_EXISTENCE:
-            existence_demand[src_gid].update(attrs[src_gid].primary_members)
+    for src_gid, _ in edges_of_kind(group_edges, EdgeKind.EXISTENCE):
+        existence_demand[src_gid].update(attrs[src_gid].primary_members)
 
     for gid in reversed(topo):
         if gid == FINAL_NODE_ID:
@@ -1086,12 +1074,11 @@ def _compute_concept_sets(
                             outs |= my_grain & cap_gid
                             break
                 continue
-            edge_kind = group_graph.edges[gid, succ].get("kind", EDGE_KIND_LINEAGE)
             # Existence siblings flow via subselect, not the row stream.
             # The source still needs to be built and ordered (topo above
             # handles that), but we don't pull row-stream demand from the
             # consumer or expose JOIN keys for sibling predecessors.
-            if edge_kind == EDGE_KIND_EXISTENCE:
+            if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
                 continue
             demanded = input_concepts.get(succ, set()) & cap_gid
             # A GROUPING group must not pass through a non-grain, non-aggregate
@@ -1122,10 +1109,7 @@ def _compute_concept_sets(
             for sibling in group_graph.predecessors(succ):
                 if sibling == gid or sibling == FINAL_NODE_ID:
                     continue
-                sibling_kind = group_graph.edges[sibling, succ].get(
-                    "kind", EDGE_KIND_LINEAGE
-                )
-                if sibling_kind == EDGE_KIND_EXISTENCE:
+                if edge_kind(group_edges, sibling, succ) == EdgeKind.EXISTENCE:
                     continue
                 outs |= grain_of.get(sibling, frozenset()) & cap_gid
         # Grouping derivations: own grain components must be in the SELECT
@@ -1198,29 +1182,32 @@ def _compute_concept_sets(
 @overload
 def build_group_graph(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
     *,
     return_merged_graph: Literal[False] = False,
-) -> tuple[nx.DiGraph, dict[str, GroupAttrs]]: ...
+) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]: ...
 
 
 @overload
 def build_group_graph(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
     *,
     return_merged_graph: Literal[True],
-) -> tuple[nx.DiGraph, dict[str, GroupAttrs], nx.DiGraph]: ...
+) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]: ...
 
 
 def build_group_graph(
     concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
@@ -1228,13 +1215,14 @@ def build_group_graph(
     *,
     return_merged_graph: bool = False,
 ) -> (
-    tuple[nx.DiGraph, dict[str, GroupAttrs]]
-    | tuple[nx.DiGraph, dict[str, GroupAttrs], nx.DiGraph]
+    tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]
+    | tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]
 ):
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
-    Returns the graph (topology + edge metadata) and a side-table of typed
-    per-group attributes keyed by group id.
+    Returns the topology graph, its typed `group_edges` metadata map, and a
+    side-table of typed per-group attributes keyed by group id (plus the merged
+    graph + its edge map when ``return_merged_graph``).
 
     Grouping is delegated to per-derivation rules in `group_rules.py`:
     most derivations group by equality on `(depth_label, grain)`; ROOT
@@ -1242,13 +1230,16 @@ def build_group_graph(
     """
     output_addresses = frozenset(c.address for c in mandatory_list or [])
     primary_group, buckets = _assign_groups(
-        concept_graph, concept_attrs, output_addresses
+        concept_graph, concept_edges, concept_attrs, output_addresses
     )
-    d1_calc_roots, d1_subgraph = _d1_calc_subgraph(concept_graph, concept_attrs)
+    d1_calc_roots, d1_subgraph = _d1_calc_subgraph(
+        concept_graph, concept_edges, concept_attrs
+    )
     d1_root_gid = _add_d1_root_bucket(concept_attrs, buckets, d1_calc_roots)
     _attach_secondary_members(concept_graph, concept_attrs, buckets)
-    group_graph, attrs = _materialize_group_graph(
+    group_graph, attrs, group_edges = _materialize_group_graph(
         concept_graph,
+        concept_edges,
         primary_group,
         buckets,
         d1_root_gid=d1_root_gid,
@@ -1259,44 +1250,77 @@ def build_group_graph(
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
     _add_final_node(
-        group_graph, attrs, concept_graph, concept_attrs, buckets, conditions
+        group_graph,
+        group_edges,
+        attrs,
+        concept_graph,
+        concept_attrs,
+        buckets,
+        conditions,
     )
     merged_group_graph = group_graph.copy()
+    merged_group_edges = copy_edges(group_edges)
     if mandatory_list is not None:
         _compute_concept_sets(
-            group_graph, attrs, concept_graph, concept_attrs, buckets, mandatory_list
+            group_graph,
+            group_edges,
+            attrs,
+            concept_graph,
+            concept_edges,
+            concept_attrs,
+            buckets,
+            mandatory_list,
         )
-        changed = _regraft_group_sources(group_graph, attrs, buckets, concept_attrs)
+        changed = _regraft_group_sources(
+            group_graph, group_edges, attrs, buckets, concept_attrs
+        )
         if changed:
             _compute_concept_sets(
                 group_graph,
+                group_edges,
                 attrs,
                 concept_graph,
+                concept_edges,
                 concept_attrs,
                 buckets,
                 mandatory_list,
             )
     condition_group_ids = _inject_conditions(
-        group_graph, attrs, buckets, conditions, mandatory_list
+        group_graph, group_edges, attrs, buckets, conditions, mandatory_list
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
-        group_graph, attrs, concept_graph, concept_attrs, datasource_columns or []
+        group_graph,
+        group_edges,
+        attrs,
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        datasource_columns or [],
     )
-    _color_phases(group_graph, condition_group_ids)
+    _color_phases(group_graph, group_edges, condition_group_ids)
     if mandatory_list is not None:
         _compute_concept_sets(
-            group_graph, attrs, concept_graph, concept_attrs, buckets, mandatory_list
+            group_graph,
+            group_edges,
+            attrs,
+            concept_graph,
+            concept_edges,
+            concept_attrs,
+            buckets,
+            mandatory_list,
         )
     if return_merged_graph:
-        return group_graph, attrs, merged_group_graph
-    return group_graph, attrs
+        return group_graph, group_edges, attrs, merged_group_graph, merged_group_edges
+    return group_graph, group_edges, attrs
 
 
-def _lineage_predecessors(group_graph: nx.DiGraph, gid: str) -> list[str]:
+def _lineage_predecessors(
+    group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str
+) -> list[str]:
     return [
         pred
         for pred in group_graph.predecessors(gid)
-        if group_graph.edges[pred, gid].get("kind") == EDGE_KIND_LINEAGE
+        if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
     ]
 
 
@@ -1316,7 +1340,7 @@ def _best_existing_regraft_parent(
         if candidate in (gid, FINAL_NODE_ID):
             continue
         cattrs = attrs[candidate]
-        if cattrs.derivation in {Derivation.ROOT.value, Derivation.BASIC.value}:
+        if cattrs.derivation in {Derivation.ROOT, Derivation.BASIC}:
             continue
         if cattrs.label != current.label:
             continue
@@ -1340,22 +1364,21 @@ def _best_existing_regraft_parent(
 
 def _synthetic_dimension_regraft_parent(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     gid: str,
 ) -> str | None:
     current = attrs[gid]
-    if current.derivation != Derivation.BASIC.value:
+    if current.derivation != Derivation.BASIC:
         return None
     key = set(current.grain_components)
     if not key:
         return None
-    lineage_preds = _lineage_predecessors(group_graph, gid)
+    lineage_preds = _lineage_predecessors(group_graph, group_edges, gid)
     root_preds = [
-        pred
-        for pred in lineage_preds
-        if attrs[pred].derivation == Derivation.ROOT.value
+        pred for pred in lineage_preds if attrs[pred].derivation == Derivation.ROOT
     ]
     if not root_preds or len(root_preds) != len(lineage_preds):
         return None
@@ -1376,27 +1399,28 @@ def _synthetic_dimension_regraft_parent(
     if root_gid not in group_graph:
         group_graph.add_node(root_gid)
         attrs[root_gid] = GroupAttrs(
-            depth_label="root",
-            derivation=Derivation.ROOT.value,
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
             grain_components=frozenset(),
             primary_members=tuple(inputs),
             members=tuple(inputs),
         )
         bucket = GroupBucket(
-            depth_label="root",
-            derivation=Derivation.ROOT.value,
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
             grain_components=frozenset(),
         )
         bucket.primary_members = list(inputs)
         buckets[root_gid] = bucket
     for pred in root_preds:
         if group_graph.has_edge(pred, gid):
-            group_graph.remove_edge(pred, gid)
+            remove_edge(group_graph, group_edges, pred, gid)
     return root_gid
 
 
 def _regraft_group_sources(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
@@ -1410,10 +1434,10 @@ def _regraft_group_sources(
         parent_gid = _best_existing_regraft_parent(group_graph, attrs, gid)
         if parent_gid is None:
             parent_gid = _synthetic_dimension_regraft_parent(
-                group_graph, attrs, buckets, concept_attrs, gid
+                group_graph, group_edges, attrs, buckets, concept_attrs, gid
             )
         if parent_gid is None or group_graph.has_edge(parent_gid, gid):
             continue
-        group_graph.add_edge(parent_gid, gid, kind=EDGE_KIND_LINEAGE)
+        add_edge(group_graph, group_edges, parent_gid, gid, EdgeKind.LINEAGE)
         changed = True
     return changed

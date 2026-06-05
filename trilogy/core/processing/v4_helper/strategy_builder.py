@@ -38,11 +38,12 @@ from .condition_injection import (
     inject_condition_at_node,
 )
 from .constants import (
-    DEPENDENCY_EDGE_KINDS,
-    EDGE_KIND_EXISTENCE,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    DepthLabel,
+    EdgeKind,
 )
+from .edges import EdgeMap, dependency_subgraph, edge_kind
 from .models import GroupAttrs
 from .projection import (
     concept_satisfiable,
@@ -53,8 +54,8 @@ from .projection import (
 )
 
 _AGGREGATING_DERIVATIONS = {
-    Derivation.AGGREGATE.value,
-    Derivation.GROUP_TO.value,
+    Derivation.AGGREGATE,
+    Derivation.GROUP_TO,
 }
 
 _MERGE_JOIN_PURPOSES = {
@@ -173,6 +174,7 @@ def _accumulated_atoms_above(
 
 def _parent_nodes_for(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     gid: str,
@@ -195,19 +197,19 @@ def _parent_nodes_for(
     for pgid in group_graph.predecessors(gid):
         if pgid == FINAL_NODE_ID:
             continue
-        if attrs[pgid].depth_label == "d1" and (
+        if attrs[pgid].depth_label == DepthLabel.D1 and (
             (
-                attrs[gid].derivation == Derivation.UNNEST.value
+                attrs[gid].derivation == Derivation.UNNEST
                 and attrs[pgid].derivation
                 in (
-                    Derivation.BASIC.value,
-                    Derivation.FILTER.value,
-                    Derivation.WINDOW.value,
+                    Derivation.BASIC,
+                    Derivation.FILTER,
+                    Derivation.WINDOW,
                 )
             )
             or (
-                attrs[gid].derivation == Derivation.WINDOW.value
-                and attrs[pgid].derivation == Derivation.WINDOW.value
+                attrs[gid].derivation == Derivation.WINDOW
+                and attrs[pgid].derivation == Derivation.WINDOW
             )
         ):
             continue
@@ -215,7 +217,7 @@ def _parent_nodes_for(
         # `_existence_for_group` wires them as side-channel parents post-
         # build. Including them here would put them in JOIN dedup and
         # mistakenly merge their row stream into this group's FROM.
-        if group_graph.edges[pgid, gid].get("kind") == EDGE_KIND_EXISTENCE:
+        if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE:
             continue
         node = built.get(pgid)
         if node is not None:
@@ -553,7 +555,7 @@ def _satisfiable_outputs(
     return satisfiable_outputs(outputs, parents)
 
 
-def _topological_order(group_graph: nx.DiGraph) -> list[str]:
+def _topological_order(group_graph: nx.DiGraph, group_edges: EdgeMap) -> list[str]:
     """Topological order across all dependency edge kinds (lineage /
     constraint / existence). Each kind expresses a different dataflow
     relationship downstream, but all of them require the source group to
@@ -561,14 +563,7 @@ def _topological_order(group_graph: nx.DiGraph) -> list[str]:
     JOIN-ready, an existence source has to be subselect-ready. Returns
     an empty list on cycle so callers bail rather than build a partial
     plan."""
-    dep_edges = [
-        (u, v)
-        for u, v, d in group_graph.edges(data=True)
-        if d.get("kind") in DEPENDENCY_EDGE_KINDS
-    ]
-    dep_graph = group_graph.edge_subgraph(dep_edges).copy()
-    for n in group_graph.nodes:
-        dep_graph.add_node(n)
+    dep_graph = dependency_subgraph(group_graph, group_edges)
     try:
         return list(nx.topological_sort(dep_graph))
     except nx.NetworkXUnfeasible:
@@ -636,7 +631,7 @@ def _fold_descendant_contributors(
     (which would recompute S's aggregates from their source columns). The
     `available` guard ensures the columns actually come off B's own parents."""
     for b_gid in list(per_group.keys()):
-        if b_gid not in per_group or attrs[b_gid].derivation != Derivation.BASIC.value:
+        if b_gid not in per_group or attrs[b_gid].derivation != Derivation.BASIC:
             continue
         b_node = built[b_gid]
         b_ancestors = nx.ancestors(group_graph, b_gid)
@@ -902,7 +897,7 @@ def _assemble_final_node(
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
-        is_root = attrs[gid].derivation == "root"
+        is_root = attrs[gid].derivation == Derivation.ROOT
         if is_root:
             parents.extend(
                 _wrap_for_grain(
@@ -965,6 +960,7 @@ def _assemble_final_node(
 
 def build_strategy_node(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -976,10 +972,12 @@ def build_strategy_node(
     None if nothing built."""
     built: dict[str, StrategyNode] = {}
 
-    for gid in _topological_order(group_graph):
+    for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
             continue
         a = attrs[gid]
+        # Only the FINAL sink carries a None derivation, and it is skipped above.
+        assert a.derivation is not None
         derivation = a.derivation
         # Prefer the per-group output/hidden sets computed by the backward
         # pass in `_compute_concept_sets`. The SELECT needs to project the
@@ -1023,7 +1021,9 @@ def build_strategy_node(
         if injected is not None:
             for arg in injected.concept_arguments:
                 needed.add(arg.address)
-        parents = _parent_nodes_for(group_graph, attrs, built, gid, needed=needed)
+        parents = _parent_nodes_for(
+            group_graph, group_edges, attrs, built, gid, needed=needed
+        )
         parents = _project_dimension_parents_to_group_grain(
             parents,
             needed,
@@ -1040,9 +1040,9 @@ def build_strategy_node(
         # leaving the consumer with `INVALID_REFERENCE_BUG` against the
         # missing concepts (q11).
         if derivation not in (
-            Derivation.ROOT.value,
-            Derivation.UNION.value,
-            Derivation.UNNEST.value,
+            Derivation.ROOT,
+            Derivation.UNION,
+            Derivation.UNNEST,
         ):
             outputs = satisfiable_outputs(outputs, parents)
             if not outputs:
@@ -1085,7 +1085,7 @@ def build_strategy_node(
         # functions: the normalization preserves both the input-grain keys and
         # the argument columns the aggregate will read.
         if (
-            derivation == Derivation.AGGREGATE.value
+            derivation == Derivation.AGGREGATE
             and a.aggregate_input_grain
             and a.aggregate_input_grain != a.grain_components
             and parents
