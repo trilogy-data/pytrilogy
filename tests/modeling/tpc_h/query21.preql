@@ -11,7 +11,7 @@ where
     and late_suppliers_per_order = 1
 select
     part.supplier.name,
-    sum(row_counter) -> numwait
+    sum(line_item) -> numwait
 order by
     numwait desc,
     part.supplier.name asc

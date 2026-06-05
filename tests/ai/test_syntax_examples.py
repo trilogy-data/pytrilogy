@@ -48,6 +48,8 @@ property id.student_id int;
 property id.course string;
 property id.year int;
 property id.completed bool;
+property id.credits int;
+property id.department string;
 
 datasource enrollments_data (
     id: id,
@@ -55,17 +57,19 @@ datasource enrollments_data (
     course: course,
     year: year,
     completed: completed,
+    credits: credits,
+    department: department,
 )
 grain (id)
 query '''
-select 1 as id, 101 as student_id, 'Biology 101' as course, 2015 as year, true as completed
-union all select 2, 102, 'Biology 101', 2016, false
-union all select 3, 103, 'Chemistry 101', 2017, true
-union all select 4, 101, 'Chemistry 101', 2018, true
-union all select 5, 104, 'Biology 101', 2019, false
-union all select 6, 105, 'Physics 101', 2020, true
-union all select 7, 106, 'Biology 101', 2020, false
-union all select 8, 107, 'Physics 101', 2021, true
+select 1 as id, 101 as student_id, 'Biology 101' as course, 2015 as year, true as completed, 3 as credits, 'Biology' as department
+union all select 2, 102, 'Biology 101', 2016, false, 4, 'Biology'
+union all select 3, 103, 'Chemistry 101', 2017, true, 3, 'Chemistry'
+union all select 4, 101, 'Chemistry 101', 2018, true, 4, 'Chemistry'
+union all select 5, 104, 'Biology 101', 2019, false, 3, 'Biology'
+union all select 6, 105, 'Physics 101', 2020, true, 5, 'Physics'
+union all select 7, 106, 'Biology 101', 2020, false, 3, 'Biology'
+union all select 8, 107, 'Physics 101', 2021, true, 4, 'Physics'
 ''';
 """
 

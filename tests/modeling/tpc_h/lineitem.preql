@@ -4,7 +4,7 @@ import order as order;
 import part as part;
 
 
-key line_no int; #id for a lineitem within an order. When combined with order_id, uniquely identifies an order + item.
+key line_no int; #id for each part within an order. When combined with order_id, uniquely identifies an order + item.
 
 property <line_no,order.id>.row_key string; # a unique key for each row, a concatentation of order_id and line number
 property <line_no,order.id>.quantity float; #quantity of an part within an order
@@ -18,8 +18,8 @@ property <line_no,order.id>.commit_date date;
 property <line_no,order.id>.receipt_date date;
 property <line_no,order.id>.ship_instruct string; # one of DELIVER IN PERSON | COLLECT COD | NONE | TAKE BACK RETURN
 property <line_no,order.id>.ship_mode string; # capitalized; one of TRUCK | MAIL | AIR | REG AIR | FOB | RAIL | SHIP
-property <line_no,order.id>.comment string;
-property <line_no,order.id>.row_counter int; # a simple counter to give us a unique id for each row, useful for testing and debugging
+--property <line_no,order.id>.comment string;
+property <line_no,order.id>.line_item int; # a count of total line numbers (unique order/part combinations)
 
 property <line_no,order.id>.revenue <- extended_price* (1 - discount); # revenue is our price, with discount applied
 
@@ -29,7 +29,7 @@ auto total_revenue <- sum(revenue); # total revenue is an aggregated revenue sui
 
 # upper some fileds to fix stats issue
 datasource lineitem(
-    raw('''1'''): row_counter,
+    raw('''1'''): line_item,
     l_linenumber:line_no,
     l_orderkey: order.id,
     l_partkey: ~part.id,

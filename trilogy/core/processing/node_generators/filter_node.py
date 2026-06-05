@@ -198,6 +198,14 @@ def _optional_cosourced_with_content(
     any aggregate over that optional concept. Two measures on two key-joined
     sources (sales + filtered returns) hit exactly this. Require co-sourcing so
     the pushed WHERE can never reach across a join.
+
+    The co-sourcing datasource must cover every optional concept *non-partially*
+    (``full_concepts``). A partial FK column (``orders.customer.id`` for a
+    no-order customer) means the complete value set lives on a different,
+    OUTER-joined dimension; filtering the content's rows and grouping by that
+    partial key drops the zero-match dimension entities (TPC-H q13: customers
+    with no orders vanish). Falling back to the CASE-WHEN aggregate form
+    preserves them.
     """
     if not isinstance(concept.lineage, FILTER_TYPES):
         return False
@@ -207,7 +215,11 @@ def _optional_cosourced_with_content(
     optional_addresses = _concept_addresses(local_optional)
     for datasource in environment.datasources.values():
         ds_addresses = {c.address for c in datasource.output_concepts}
-        if content.address in ds_addresses and optional_addresses <= ds_addresses:
+        if (
+            content.address in ds_addresses
+            and optional_addresses <= ds_addresses
+            and optional_addresses <= datasource.full_concepts
+        ):
             return True
     return False
 
