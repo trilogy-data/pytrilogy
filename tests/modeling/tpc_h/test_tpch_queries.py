@@ -10,6 +10,7 @@ from pytest import raises
 
 from tests.modeling.tpc_h.query_size import query_size
 from trilogy import Executor, parse
+from trilogy.constants import CONFIG
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
 
@@ -110,6 +111,7 @@ def run_query(
             tomli_w.dumps(
                 {
                     "query_id": query_label,
+                    "generator": "v4" if CONFIG.use_v4_discovery else "v3",
                     "gen_length": query_size(query, "sql"),
                     "preql_size": preql_size,
                     "comp_size": comp_size,
