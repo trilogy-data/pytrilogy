@@ -140,6 +140,23 @@ class _ProofState:
         return True
 
 
+def _partial_addresses(
+    source: CTE | UnionCTE | BuildDatasource | QueryDatasource,
+) -> set[str]:
+    """Addresses a source covers only PARTIALLY — it doesn't hold the full set
+    of that concept's values.
+
+    A filter on a partial concept can't promote an OUTER join to a stricter
+    one: the right side's unmatched rows are meaningful (their value simply
+    isn't in this partial source), and the predicate is rendered from the
+    complete side anyway — so requiring the value non-null doesn't reject the
+    NULL-padded rows. This is the difference between ``customer LEFT JOIN
+    orders`` (orders is partial for ``customer.id`` — promoting would drop
+    no-order customers) and ``customer LEFT JOIN customer_address`` (the
+    address PK is complete, so a non-null filter legitimately forces INNER)."""
+    return {c.address for c in (getattr(source, "partial_concepts", None) or [])}
+
+
 def _pair_can_match_nulls(
     pair: CTEConceptPair | ConceptPair,
     join_modifiers: list[Modifier],
@@ -398,6 +415,25 @@ def _downgrade(
     right_all = _cte_addresses(join.right_cte)
     left_only, right_only = _side_addresses(cte, idx, join)
 
+    # A filter on a concept the right side only PARTIALLY covers can't force
+    # that side present — the missing rows are meaningful and the predicate
+    # renders from the complete side. Drop partials from the forcing checks
+    # (require a side-specific cte_keys proof instead). Mirror for the left.
+    right_partial = _partial_addresses(join.right_cte)
+    left_partial = {a for lc in left_ctes for a in _partial_addresses(lc)}
+    right_only = right_only - right_partial
+    left_only = left_only - left_partial
+
+    def proves_left_key(c: CTE | UnionCTE, address: str) -> bool:
+        if address in left_partial:
+            return (c.name, address) in proofs.cte_keys
+        return proofs.proves_cte_key(c, address)
+
+    def proves_right_key(address: str) -> bool:
+        if address in right_partial:
+            return (join.right_cte.name, address) in proofs.cte_keys
+        return proofs.proves_cte_key(join.right_cte, address)
+
     # The left side is "forced present" when the WHERE references a concept
     # that only exists on the left, OR when every left join key is proven
     # non-null for the specific CTE that supplies it. Either case rules out
@@ -410,21 +446,13 @@ def _downgrade(
             proofs.proves_cte_present(left_cte, _cte_addresses(left_cte))
             for left_cte in left_ctes
         )
-        or (
-            bool(pairs)
-            and all(proofs.proves_cte_key(p.cte, p.left.address) for p in pairs)
-        )
+        or (bool(pairs) and all(proves_left_key(p.cte, p.left.address) for p in pairs))
     )
     right_forced = (
         proofs.direct_intersects(right_only)
         or proofs.side_forced_by_or(right_only)
         or proofs.proves_cte_present(join.right_cte, right_all)
-        or (
-            bool(pairs)
-            and all(
-                proofs.proves_cte_key(join.right_cte, p.right.address) for p in pairs
-            )
-        )
+        or (bool(pairs) and all(proves_right_key(p.right.address) for p in pairs))
     )
 
     if current == JoinType.FULL:
@@ -489,6 +517,17 @@ def _downgrade_base_join(
     right_only = right_all - left_all
 
     pairs = base_join.concept_pairs or []
+    # A filter on a concept the right datasource only PARTIALLY covers can't
+    # force it present (see _partial_addresses); require a side-specific proof.
+    right_partial = _partial_addresses(right_ds)
+    if right_base is not None:
+        right_partial |= _partial_addresses(right_base)
+    right_only = right_only - right_partial
+
+    def proves_key(address: str) -> bool:
+        if address in right_partial:
+            return (right_ds.identifier, address) in proofs.datasource_keys
+        return proofs.proves_datasource_key(right_ds, address)
 
     right_forced = (
         proofs.direct_intersects(right_only)
@@ -498,12 +537,7 @@ def _downgrade_base_join(
             right_base is not None
             and proofs.proves_datasource_present(right_base, right_all)
         )
-        or (
-            bool(pairs)
-            and all(
-                proofs.proves_datasource_key(right_ds, p.right.address) for p in pairs
-            )
-        )
+        or (bool(pairs) and all(proves_key(p.right.address) for p in pairs))
     )
     # NULL-padding lives on the right side; right_forced removes the padded
     # rows, leaving only matched rows → INNER.
