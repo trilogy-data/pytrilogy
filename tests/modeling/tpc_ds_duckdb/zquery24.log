@@ -41,7 +41,7 @@ GROUP BY
     1,
     2,
     3),
-vacuous as (
+concerned as (
 SELECT
     avg(\"yummy\".\"_virt_agg_sum_5757395975543459\") as \"avg_store_customer_sales\"
 FROM
@@ -53,7 +53,17 @@ SELECT
     \"questionable\".\"peach_sales\" as \"peach_sales\"
 FROM
     \"vacuous\"
-    INNER JOIN \"questionable\" on 1=1
+    FULL JOIN \"juicy\" on 1=1
+GROUP BY
+    \"vacuous\".\"__preql_internal_all_rows\")
+SELECT
+    \"uneven\".\"physical_sales_billing_customer_last_name\" as \"physical_sales_billing_customer_last_name\",
+    \"uneven\".\"physical_sales_billing_customer_first_name\" as \"physical_sales_billing_customer_first_name\",
+    \"uneven\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
+    \"uneven\".\"peach_sales\" as \"peach_sales\"
+FROM
+    \"concerned\"
+    INNER JOIN \"uneven\" on 1=1
 WHERE
-    \"questionable\".\"peach_sales\" > 0.05 * \"vacuous\".\"avg_store_customer_sales\"
+    \"uneven\".\"peach_sales\" > 0.05 * \"concerned\".\"avg_store_customer_sales\"
 """

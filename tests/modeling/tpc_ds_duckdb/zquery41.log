@@ -1,5 +1,5 @@
 query_id = "41"
-gen_length = 2108
+gen_length = 2095
 preql_size = 1268
 comp_size = 1166
 generated_sql = """
@@ -7,18 +7,16 @@ generated_sql = """
 WITH 
 highfalutin as (
 SELECT
-    \"item_items\".\"I_MANUFACT\" as \"item_manufact\"
+    \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
+    count(CASE WHEN ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'tan' and \"item_items\".\"I_UNITS\" = 'Oz' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'purple' and \"item_items\".\"I_UNITS\" = 'Ton' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" = 'misty' and \"item_items\".\"I_UNITS\" = 'Box' and \"item_items\".\"I_SIZE\" = 'medium' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'medium' and \"item_items\".\"I_UNITS\" = 'Tsp' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'midnight' and \"item_items\".\"I_UNITS\" = 'Gram' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'pale' and \"item_items\".\"I_UNITS\" = 'Pound' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'khaki' and \"item_items\".\"I_UNITS\" = 'Pallet' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'mint' and \"item_items\".\"I_UNITS\" = 'Gross' and \"item_items\".\"I_SIZE\" = 'N/A' ) THEN \"item_items\".\"I_ITEM_SK\" ELSE NULL END) as \"manufact_matches\"
 FROM
     \"memory\".\"item\" as \"item_items\"
-WHERE
-    ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'tan' and \"item_items\".\"I_UNITS\" = 'Oz' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'purple' and \"item_items\".\"I_UNITS\" = 'Ton' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" = 'misty' and \"item_items\".\"I_UNITS\" = 'Box' and \"item_items\".\"I_SIZE\" = 'medium' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'medium' and \"item_items\".\"I_UNITS\" = 'Tsp' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'midnight' and \"item_items\".\"I_UNITS\" = 'Gram' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'pale' and \"item_items\".\"I_UNITS\" = 'Pound' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'khaki' and \"item_items\".\"I_UNITS\" = 'Pallet' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'mint' and \"item_items\".\"I_UNITS\" = 'Gross' and \"item_items\".\"I_SIZE\" = 'N/A' )
-
 GROUP BY
     1
 HAVING
-    count(\"item_items\".\"I_ITEM_SK\") > 0
+    \"manufact_matches\" > 0
 ),
-cheerful as (
+thoughtful as (
 SELECT
     \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
     \"item_items\".\"I_PRODUCT_NAME\" as \"filtered_product_name\"
@@ -26,23 +24,18 @@ FROM
     \"memory\".\"item\" as \"item_items\"
 WHERE
     \"item_items\".\"I_MANUFACT_ID\" BETWEEN 1 AND 500
+)
+SELECT
+    \"thoughtful\".\"filtered_product_name\" as \"filtered_product_name\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"highfalutin\" on \"thoughtful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
+WHERE
+    \"thoughtful\".\"filtered_product_name\" is not null
 
 GROUP BY
     1,
-    2),
-cooperative as (
-SELECT
-    \"cheerful\".\"filtered_product_name\" as \"filtered_product_name\"
-FROM
-    \"cheerful\"
-    INNER JOIN \"highfalutin\" on \"cheerful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
-WHERE
-    \"cheerful\".\"filtered_product_name\" is not null
-)
-SELECT
-    \"cooperative\".\"filtered_product_name\" as \"filtered_product_name\"
-FROM
-    \"cooperative\"
+    \"highfalutin\".\"manufact_matches\"
 ORDER BY 
-    \"cooperative\".\"filtered_product_name\" asc
+    \"thoughtful\".\"filtered_product_name\" asc
 LIMIT (100)"""

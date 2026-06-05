@@ -9,11 +9,12 @@ cooperative as (
 SELECT
     \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_customer_id\",
     \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
-    sum(1) as \"cnt\"
+    1 as \"physical_sales_row_counter\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"physical_sales_billing_customer_customers\" on \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"physical_sales_household_demographic_household_demographics\" on \"physical_sales_store_sales\".\"SS_HDEMO_SK\" = \"physical_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
     ( \"physical_sales_date_date\".\"D_DOM\" BETWEEN 1 AND 3 or \"physical_sales_date_date\".\"D_DOM\" BETWEEN 25 AND 28 ) and ( \"physical_sales_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' or \"physical_sales_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = 'Unknown' ) and \"physical_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 0 and ( CASE
@@ -23,7 +24,24 @@ WHERE
 
 GROUP BY
     1,
-    2
+    2,
+    3,
+    4,
+    5),
+questionable as (
+SELECT
+    \"cooperative\".\"physical_sales_billing_customer_id\" as \"physical_sales_billing_customer_id\",
+    \"cooperative\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\",
+    sum(\"cooperative\".\"physical_sales_row_counter\") as \"cnt\"
+FROM
+    \"cooperative\"
+GROUP BY
+    1,
+    2,
+    \"cooperative\".\"physical_sales_billing_customer_first_name\",
+    \"cooperative\".\"physical_sales_billing_customer_last_name\",
+    \"cooperative\".\"physical_sales_billing_customer_preferred_cust_flag\",
+    \"cooperative\".\"physical_sales_billing_customer_salutation\"
 HAVING
     \"cnt\" BETWEEN 15 AND 20
 )

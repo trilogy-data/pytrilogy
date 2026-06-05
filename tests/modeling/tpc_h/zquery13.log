@@ -12,13 +12,10 @@ SELECT
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
     LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
-WHERE
-    coalesce(\"orders_orders\".\"o_comment\" like '%special%requests%',False) = False
-
 GROUP BY
     1)
 SELECT
-    \"wakeful\".\"c_count\" as \"c_count\",
+    coalesce(\"wakeful\".\"orders_per_customer\",0) as \"c_count\",
     count(\"wakeful\".\"orders_customer_id\") as \"custdist\"
 FROM
     \"wakeful\"
@@ -26,4 +23,4 @@ GROUP BY
     1
 ORDER BY 
     \"custdist\" desc,
-    \"wakeful\".\"c_count\" desc"""
+    \"c_count\" desc"""

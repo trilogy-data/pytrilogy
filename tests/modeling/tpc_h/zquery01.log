@@ -1,27 +1,64 @@
 query_id = "01"
-gen_length = 792
+gen_length = 1986
 preql_size = 482
 comp_size = 544
 generated_sql = """
+
+WITH 
+quizzical as (
 SELECT
-    \"lineitem\".\"l_returnflag\" as \"return_flag\",
+    \"lineitem\".\"l_discount\" as \"discount\",
+    \"lineitem\".\"l_extendedprice\" as \"extended_price\",
     \"lineitem\".\"l_linestatus\" as \"line_status\",
-    sum(\"lineitem\".\"l_quantity\") as \"sum_qty\",
-    sum(\"lineitem\".\"l_extendedprice\") as \"sum_base_price\",
-    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"sum_disc_price\",
-    sum(( \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ) * (1 + \"lineitem\".\"l_tax\")) as \"sum_charge\",
-    avg(\"lineitem\".\"l_quantity\") as \"avg_qty\",
-    avg(\"lineitem\".\"l_extendedprice\") as \"avg_price\",
-    avg(\"lineitem\".\"l_discount\") as \"avg_disc\",
-    sum(1) as \"count_order\"
+    \"lineitem\".\"l_quantity\" as \"quantity\",
+    \"lineitem\".\"l_returnflag\" as \"return_flag\",
+    \"lineitem\".\"l_tax\" as \"tax\",
+    1 as \"row_counter\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 WHERE
     \"lineitem\".\"l_shipdate\" <= date '1998-09-02'
-
+),
+cheerful as (
+SELECT
+    \"quizzical\".\"line_status\" as \"line_status\",
+    \"quizzical\".\"return_flag\" as \"return_flag\",
+    sum(\"quizzical\".\"extended_price\" * (1 - \"quizzical\".\"discount\")) as \"sum_disc_price\",
+    sum(( \"quizzical\".\"extended_price\" * (1 - \"quizzical\".\"discount\") ) * (1 + \"quizzical\".\"tax\")) as \"sum_charge\"
+FROM
+    \"quizzical\"
 GROUP BY
     1,
-    2
+    2),
+highfalutin as (
+SELECT
+    \"quizzical\".\"line_status\" as \"line_status\",
+    \"quizzical\".\"return_flag\" as \"return_flag\",
+    avg(\"quizzical\".\"discount\") as \"avg_disc\",
+    avg(\"quizzical\".\"extended_price\") as \"avg_price\",
+    avg(\"quizzical\".\"quantity\") as \"avg_qty\",
+    sum(\"quizzical\".\"extended_price\") as \"sum_base_price\",
+    sum(\"quizzical\".\"quantity\") as \"sum_qty\",
+    sum(\"quizzical\".\"row_counter\") as \"count_order\"
+FROM
+    \"quizzical\"
+GROUP BY
+    1,
+    2)
+SELECT
+    \"highfalutin\".\"return_flag\" as \"return_flag\",
+    \"highfalutin\".\"line_status\" as \"line_status\",
+    \"highfalutin\".\"sum_qty\" as \"sum_qty\",
+    \"highfalutin\".\"sum_base_price\" as \"sum_base_price\",
+    \"cheerful\".\"sum_disc_price\" as \"sum_disc_price\",
+    \"cheerful\".\"sum_charge\" as \"sum_charge\",
+    \"highfalutin\".\"avg_qty\" as \"avg_qty\",
+    \"highfalutin\".\"avg_price\" as \"avg_price\",
+    \"highfalutin\".\"avg_disc\" as \"avg_disc\",
+    \"highfalutin\".\"count_order\" as \"count_order\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"highfalutin\" on \"cheerful\".\"line_status\" = \"highfalutin\".\"line_status\" AND \"cheerful\".\"return_flag\" = \"highfalutin\".\"return_flag\"
 ORDER BY 
-    \"lineitem\".\"l_returnflag\" asc,
-    \"lineitem\".\"l_linestatus\" asc"""
+    \"highfalutin\".\"return_flag\" asc,
+    \"highfalutin\".\"line_status\" asc"""

@@ -51,6 +51,8 @@ structure: it stops using the precomputed cache table).
 - `cross_grain_aggregate_filter` — per-key vs global aggregate compared in a WHERE (q11 shrink): v4 used to emit an ungrouped HAVING (BinderError); now matches v3 (post-aggregate WHERE over a cross-join). PASSES.
 - `filter_past_unnest` — filter over an unnested-const value: now matches (filter no longer dropped past the unnest barrier). PASSES.
 - `global_aggregate_filter` — `max(date) by *` filter + global aggregate in output: v4 emits ambiguous-alias SQL (BinderError). STILL FAILING (root cause E).
+- `window_having_conditional_count` — windowed `rank` filtered by HAVING, selected beside `count(x ? case_dim is not null)`: v4 drops the `?` predicate in the window-HAVING context and counts every row. STILL FAILING (row mismatch). Distilled from ncaa `adhoc08`.
+- `namespaced_property_without_key_datasource` — datasource binds a namespaced property (`device.category`) but not its key (`device.id`); v4 demands a datasource for the bare key and raises NoDatasourceException. STILL FAILING. Distilled from google_analytics `all_sites.device.id`.
 
 q21's fix has no generic case: a flat single-table shrink makes v3 push the
 filter too (its correctness depends on the multi-table structure), so v3 isn't
