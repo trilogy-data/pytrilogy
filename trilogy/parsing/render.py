@@ -91,7 +91,8 @@ from trilogy.parsing.pretty import render as pretty_render
 
 QUERY_TEMPLATE = Template("""{% if where %}where
 {{ where }}
-{% endif %}select{%- for select in select_columns %}
+{% endif %}{% for join in joins %}{{ join }}
+{% endfor %}select{%- for select in select_columns %}
 {{ select }},{% endfor %}{% if having %}
 having
 {{ having }}
@@ -913,12 +914,19 @@ class Renderer:
                 order_by = [
                     self.indent_lines(self.to_string(c)) for c in arg.order_by.items
                 ]
+        join_keyword = {"INNER": "inner", "LEFT_OUTER": "left"}
+        joins = [
+            f"{join_keyword[j.join_type.name]} join {j.namespace}"
+            f" on {j.source_address} = {j.target_address}"
+            for j in arg.join_clauses
+        ]
 
         return QUERY_TEMPLATE.render(
             select_columns=select_columns,
             where=where_clause,
             having=having_clause,
             order_by=order_by,
+            joins=joins,
             limit=arg.limit,
         )
 

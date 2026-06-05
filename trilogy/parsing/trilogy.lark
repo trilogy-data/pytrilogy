@@ -124,7 +124,11 @@
     // select statement
     from_clause: "from"i IDENTIFIER ("," IDENTIFIER)* ","?
 
-    select_statement: from_clause? where? "select"i select_list where?  having?  order_by?  limit? 
+    select_statement: from_clause? where? join_clause* "select"i select_list where?  having?  order_by?  limit?
+
+    // query-scoped join: blends an otherwise-disjoint model on a shared key for
+    // this select only (a query-local merge). left -> partial, inner -> full.
+    join_clause: JOIN_TYPE "join"i IDENTIFIER "on"i IDENTIFIER "=" IDENTIFIER
 
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  where? order_by?  limit? 
@@ -674,6 +678,7 @@
     MODIFIER: /OPTIONAL|PARTIAL|NULLABLE/i
 
     SHORTHAND_MODIFIER: /~|\?/
+    JOIN_TYPE: "left"i | "inner"i | "full"i | "right"i | "cross"i
     struct_component: IDENTIFIER ":" data_type concept_nullable_modifier? metadata?
     struct_type: "struct"i "<" (struct_component | IDENTIFIER) ("," (struct_component | IDENTIFIER))* ","? ">"
 

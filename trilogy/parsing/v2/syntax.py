@@ -222,6 +222,7 @@ class SyntaxNodeKind(str, Enum):
     # Phase 6: rowset + multi-select + align
     ROWSET_DERIVATION_STATEMENT = "rowset_derivation_statement"
     MULTI_SELECT_STATEMENT = "multi_select_statement"
+    JOIN_CLAUSE = "join_clause"
     ALIGN_CLAUSE = "align_clause"
     ALIGN_ITEM = "align_item"
     DERIVE_CLAUSE = "derive_clause"
@@ -317,6 +318,7 @@ class SyntaxTokenKind(str, Enum):
     CURRENT_DATETIME = "current_datetime"
     CURRENT_TIMESTAMP = "current_timestamp"
     SHORTHAND_MODIFIER = "shorthand_modifier"
+    JOIN_TYPE = "join_type"
     WILDCARD_IDENTIFIER = "wildcard_identifier"
     DATASOURCE_PARTIAL = "datasource_partial"
     PERSIST_MODE = "persist_mode"
@@ -547,6 +549,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     # Phase 6: rowset + multi-select
     "rowset_derivation_statement": SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT,
     "multi_select_statement": SyntaxNodeKind.MULTI_SELECT_STATEMENT,
+    "join_clause": SyntaxNodeKind.JOIN_CLAUSE,
     "align_clause": SyntaxNodeKind.ALIGN_CLAUSE,
     "align_item": SyntaxNodeKind.ALIGN_ITEM,
     "derive_clause": SyntaxNodeKind.DERIVE_CLAUSE,
@@ -641,6 +644,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "CURRENT_DATETIME": SyntaxTokenKind.CURRENT_DATETIME,
     "CURRENT_TIMESTAMP": SyntaxTokenKind.CURRENT_TIMESTAMP,
     "SHORTHAND_MODIFIER": SyntaxTokenKind.SHORTHAND_MODIFIER,
+    "JOIN_TYPE": SyntaxTokenKind.JOIN_TYPE,
     "WILDCARD_IDENTIFIER": SyntaxTokenKind.WILDCARD_IDENTIFIER,
     "DATASOURCE_PARTIAL": SyntaxTokenKind.DATASOURCE_PARTIAL,
     "PERSIST_MODE": SyntaxTokenKind.PERSIST_MODE,

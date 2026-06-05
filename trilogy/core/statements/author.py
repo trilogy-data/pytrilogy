@@ -11,6 +11,7 @@ from trilogy.core.enums import (
     CreateMode,
     FunctionClass,
     IOType,
+    JoinType,
     Modifier,
     PersistMode,
     PublishAction,
@@ -109,6 +110,22 @@ class FromClause:
 
 
 @dataclass
+class SelectJoin:
+    """A query-scoped join: a local merge of `source` (a key on the joined-in
+    model) into `target` (the anchor key kept in this select). Applied only to
+    the per-query environment, never the global one."""
+
+    join_type: JoinType
+    source_address: str
+    target_address: str
+    namespace: str
+
+    @property
+    def modifiers(self) -> List[Modifier]:
+        return self.join_type.merge_modifiers
+
+
+@dataclass
 class SelectStatement(HasUUID, SelectTypeMixin):
     selection: List[SelectItem]
     where_clause: Optional[WhereClause] = None
@@ -116,6 +133,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     eligible_datasources: Optional[list[str]] = None
+    join_clauses: List[SelectJoin] = field(default_factory=list)
     meta: Metadata = field(default_factory=Metadata)
     local_concepts: EnvironmentConceptDict = field(
         default_factory=EnvironmentConceptDict

@@ -142,6 +142,12 @@ class JoinType(Enum):
     RIGHT_OUTER = "right outer"
     CROSS = "cross"
 
+    @property
+    def merge_modifiers(self) -> list[Modifier]:
+        # As a query-scoped join: left outer -> the joined key is partial
+        # against the anchor; inner -> full merge, both keys required.
+        return [Modifier.PARTIAL] if self is JoinType.LEFT_OUTER else []
+
 
 class Ordering(Enum):
     ASCENDING = "asc"

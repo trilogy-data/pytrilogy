@@ -629,11 +629,32 @@ def get_query_node(
     return ds
 
 
+def apply_scoped_joins(
+    environment: Environment,
+    statement: SelectStatement | MultiSelectStatement,
+) -> Environment:
+    """Apply a select's JOIN clauses as merges on a throwaway copy of the
+    environment, so the blend is local to this query's resolution and never
+    touches the global (possibly frozen) environment."""
+    join_clauses = getattr(statement, "join_clauses", None)
+    if not join_clauses:
+        return environment
+    scoped = environment.duplicate()
+    for join in join_clauses:
+        scoped.merge_concept(
+            scoped.concepts[join.source_address],
+            scoped.concepts[join.target_address],
+            modifiers=join.modifiers,
+        )
+    return scoped
+
+
 def get_query_datasources(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
+    environment = apply_scoped_joins(environment, statement)
     ds = get_query_node(environment, statement.as_lineage(environment))
 
     final_qds = ds.resolve()

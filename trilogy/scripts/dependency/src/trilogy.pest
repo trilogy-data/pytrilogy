@@ -164,8 +164,12 @@ full_persist = {
 from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 
 select_statement = {
-    from_clause? ~ where? ~ ^"select" ~ select_list ~ where? ~ having? ~ order_by? ~ limit?
+    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ where? ~ having? ~ order_by? ~ limit?
 }
+
+// query-scoped join: blends an otherwise-disjoint model on a shared key for
+// this select only (a query-local merge). left -> partial, inner -> full.
+join_clause = { JOIN_TYPE ~ ^"join" ~ IDENTIFIER ~ ^"on" ~ IDENTIFIER ~ "=" ~ IDENTIFIER }
 
 multi_select_statement = {
     select_statement
@@ -804,6 +808,7 @@ FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT 
 F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
 
 SHORTHAND_MODIFIER = @{ "~" | "?" }
+JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" }
 
 // =============================================================================
 // PURPOSE / KEYWORDS (order matters: priority-like)
