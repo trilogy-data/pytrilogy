@@ -49,11 +49,11 @@ from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     search_concepts,
 )
-from trilogy.core.processing.v4_helper.constants import (
-    EDGE_KIND_CONSTRAINT,
-    EDGE_KIND_EXISTENCE,
-    EDGE_KIND_LINEAGE,
-    EDGE_KIND_MERGE,
+from trilogy.core.processing.v4_helper.constants import EdgeKind, EdgePhase
+from trilogy.core.processing.v4_helper.edges import (
+    EdgeAttrs,
+    EdgeMap,
+    edges_of_kind,
 )
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 

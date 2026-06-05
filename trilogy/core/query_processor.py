@@ -53,6 +53,10 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.processing.concept_strategies_v4 import V4History
+from trilogy.core.processing.concept_strategies_v4 import (
+    search_concepts as search_concepts_v4,
+)
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.core.statements.author import (
     ChartLayer,
@@ -559,6 +563,15 @@ def get_query_node(
     )
 
     graph = generate_graph(build_environment)
+
+    if CONFIG.use_v4_discovery:
+        return _get_query_node_v4(
+            build_statement=build_statement,
+            build_environment=build_environment,
+            graph=graph,
+            conditions=build_statement.where_clause,
+            history=history,
+        )
 
     logger.info(
         f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
