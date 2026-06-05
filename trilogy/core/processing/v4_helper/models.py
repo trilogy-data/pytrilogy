@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 
-import networkx as nx
-
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BoolExpr
 from trilogy.core.processing.nodes import StrategyNode

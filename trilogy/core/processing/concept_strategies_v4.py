@@ -17,9 +17,8 @@ API and the History cache wiring.
 
 from dataclasses import dataclass, field
 
-import networkx as nx
-
 from trilogy.constants import logger
+from trilogy.core import graph as nx
 from trilogy.core.enums import BooleanOperator
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph

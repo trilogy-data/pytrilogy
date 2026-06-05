@@ -7,9 +7,8 @@ style fall back inside `v4_node_generators.dispatch.build_node`."""
 
 from collections import defaultdict
 
-import networkx as nx
-
 from trilogy.constants import logger
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (

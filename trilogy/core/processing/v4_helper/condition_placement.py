@@ -8,8 +8,7 @@ responsible for mutating ``GroupAttrs.condition_atoms``.
 from dataclasses import dataclass
 from enum import Enum
 
-import networkx as nx
-
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition

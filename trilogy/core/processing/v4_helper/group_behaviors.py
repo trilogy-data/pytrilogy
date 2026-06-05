@@ -26,8 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-import networkx as nx
-
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 
 from .constants import EdgeKind

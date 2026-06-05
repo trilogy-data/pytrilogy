@@ -9,9 +9,9 @@ concept-graph node id, mirroring production; the graph itself carries only
 topology + lineage edges. ``_cg`` builds both from a compact spec.
 """
 
-import networkx as nx
 import pytest
 
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildConcept, BuildGrain
 from trilogy.core.models.build_environment import BuildEnvironment

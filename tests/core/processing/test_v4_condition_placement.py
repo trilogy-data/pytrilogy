@@ -1,5 +1,4 @@
-import networkx as nx
-
+from trilogy.core import graph as nx
 from trilogy.core.enums import ComparisonOperator, Derivation, Purpose
 from trilogy.core.models.build import (
     BuildComparison,

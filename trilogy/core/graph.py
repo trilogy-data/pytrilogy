@@ -28,11 +28,16 @@ class NodeNotFound(NetworkXError):
     pass
 
 
+class NetworkXNoCycle(NetworkXError):
+    pass
+
+
 exception = SimpleNamespace(
     NetworkXError=NetworkXError,
     NetworkXNoPath=NetworkXNoPath,
     NetworkXUnfeasible=NetworkXUnfeasible,
     NodeNotFound=NodeNotFound,
+    NetworkXNoCycle=NetworkXNoCycle,
 )
 
 
@@ -344,6 +349,27 @@ class _GraphBase:
     def has_edge(self, left: str, right: str) -> bool:
         return self._core.has_edge(left, right)
 
+    def in_edges(self, node: str | None = None) -> list[tuple[str, str]]:
+        if node is None:
+            return self._ordered_edges()
+        if node not in self:
+            _raise_missing(node)
+        return [(pred, node) for pred in self._core.predecessors(node)]
+
+    def out_edges(self, node: str | None = None) -> list[tuple[str, str]]:
+        if node is None:
+            return self._ordered_edges()
+        if node not in self:
+            _raise_missing(node)
+        return [(node, succ) for succ in self._core.successors(node)]
+
+    def remove_edge(self, u: str, v: str) -> None:
+        if not self._core.has_edge(u, v):
+            raise NetworkXError(f"The edge {u}-{v} is not in the graph.")
+        self._core.remove_edges([(u, v)])
+        self._invalidate_structure_cache()
+        self._edge_attrs.pop(_edge_key(self, u, v), None)
+
     def copy(self) -> Self:
         new = self.__class__()
         new._copy_from(self)
@@ -545,6 +571,55 @@ def descendants(graph: _GraphBase, source: str) -> set[str]:
         stack.extend(graph._core.successors(node))
     seen.discard(source)
     return seen
+
+
+def ancestors(graph: _GraphBase, source: str) -> set[str]:
+    if source not in graph:
+        _raise_missing(source)
+    seen: set[str] = set()
+    stack = list(graph._core.predecessors(source))
+    while stack:
+        node = stack.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        stack.extend(graph._core.predecessors(node))
+    seen.discard(source)
+    return seen
+
+
+def find_cycle(graph: _GraphBase, source: str | None = None) -> list[tuple[str, str]]:
+    """First directed cycle as a list of edges (NetworkX semantics); raises
+    NetworkXNoCycle if the graph is acyclic. DFS that stops at the first back
+    edge — only reached on the error path after topological_sort fails."""
+    GRAY, BLACK = 1, 2
+    color: dict[str, int] = {}
+    roots = [source] if source is not None else graph._ordered_nodes()
+    for root in roots:
+        if color.get(root):
+            continue
+        stack: list[tuple[str, Iterator[str]]] = [
+            (root, iter(graph._core.successors(root)))
+        ]
+        color[root] = GRAY
+        path = [root]
+        while stack:
+            node, successors = stack[-1]
+            nxt = next(successors, None)
+            if nxt is None:
+                color[node] = BLACK
+                stack.pop()
+                path.pop()
+                continue
+            state = color.get(nxt)
+            if state == GRAY:
+                cycle = path[path.index(nxt) :] + [nxt]
+                return [(cycle[i], cycle[i + 1]) for i in range(len(cycle) - 1)]
+            if state is None:
+                color[nxt] = GRAY
+                stack.append((nxt, iter(graph._core.successors(nxt))))
+                path.append(nxt)
+    raise NetworkXNoCycle("No cycle found.")
 
 
 def _collect_cycles_from(

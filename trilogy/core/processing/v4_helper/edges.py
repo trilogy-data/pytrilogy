@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import networkx as nx
+from trilogy.core import graph as nx
 
 from .constants import DEPENDENCY_EDGE_KINDS, EdgeKind, EdgePhase
 

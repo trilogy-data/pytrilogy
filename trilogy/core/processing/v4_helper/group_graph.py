@@ -20,9 +20,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Literal, overload
 
-import networkx as nx
-
 from trilogy.constants import logger
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 

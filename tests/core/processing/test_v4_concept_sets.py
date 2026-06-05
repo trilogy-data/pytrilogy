@@ -10,8 +10,7 @@ by node id, mirroring production; the concept graph carries only topology +
 lineage edges.
 """
 
-import networkx as nx
-
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.processing.v4_helper.constants import (
     FINAL_NODE_ID,

@@ -18,8 +18,7 @@ by the v3 generators (`gen_group_node`, `gen_filter_node`,
 
 from typing import Callable
 
-import networkx as nx
-
+from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,

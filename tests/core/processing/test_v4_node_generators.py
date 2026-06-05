@@ -7,10 +7,10 @@ generator bodies all run on a genuine plan — synthetic StrategyNodes wouldn't
 exercise the lineage/grain branches the generators isinstance-check.
 """
 
-import networkx as nx
 import pytest
 
 from trilogy import Environment
+from trilogy.core import graph as nx
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.build import (
