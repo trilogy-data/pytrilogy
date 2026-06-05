@@ -31,6 +31,13 @@ from trilogy.parsing.v2.rules_context import (
 )
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
+_LIKE_OPERATORS = {
+    "like": ComparisonOperator.LIKE,
+    "ilike": ComparisonOperator.ILIKE,
+    "not like": ComparisonOperator.NOT_LIKE,
+    "not ilike": ComparisonOperator.NOT_ILIKE,
+}
+
 
 def int_lit(
     node: SyntaxNode,
@@ -155,24 +162,12 @@ def sum_operator(
     for i in range(1, len(values), 2):
         op = " ".join(str(values[i]).lower().split())
         right = values[i + 1]
-        # LIKE / ILIKE are binary boolean predicates — emit them as
-        # ``Comparison`` so they slot into the proof and pushdown machinery
-        # the same way other null-propagating comparisons do. ``not (i)like``
-        # negates that comparison identically to the explicit ``not (...)`` form.
-        if op in ("like", "ilike", "not like", "not ilike"):
-            like_op = (
-                ComparisonOperator.ILIKE if "ilike" in op else ComparisonOperator.LIKE
-            )
-            comparison = Comparison(left=result, right=right, operator=like_op)
-            if op.startswith("not"):
-                comparison = Comparison(
-                    left=context.function_factory.create_function(
-                        [comparison, False], FunctionType.COALESCE
-                    ),
-                    operator=ComparisonOperator.EQ,
-                    right=False,
-                )
-            result = comparison
+        # LIKE / ILIKE (and their negations) are binary boolean predicates —
+        # emit them as ``Comparison`` so they slot into the proof and pushdown
+        # machinery the same way other null-propagating comparisons do.
+        like_op = _LIKE_OPERATORS.get(op)
+        if like_op is not None:
+            result = Comparison(left=result, right=right, operator=like_op)
             continue
         operator = {
             "+": FunctionType.ADD,

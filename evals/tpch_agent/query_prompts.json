@@ -107,6 +107,6 @@
   {
     "id": 22,
     "grade": "hard",
-    "prompt": "Among customers with positive account balance whose phone area code (first two characters) is one of (13, 31, 23, 29, 30, 18, 17), keep only those whose account balance exceeds the average positive-balance account balance across that same area-code set, and who have no orders at all. For each area code (cntrycode = first two characters of phone), report customer count and total account balance. Sort by area code."
+    "prompt": "Among customers with positive account balance whose phone area code (first two characters) is one of (13, 31, 23, 29, 30, 18, 17), keep only those whose account balance exceeds the average positive-balance account balance across that same area-code set and who have no orders at all. For each area code (cntrycode = first two characters of phone), report customer count and total account balance. Sort by area code."
   }
 ]

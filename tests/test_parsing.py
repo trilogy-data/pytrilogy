@@ -215,17 +215,21 @@ auto not_starts_with_a <- not (name like 'a%');
 
 
 def test_not_like_infix():
-    """SQL-style ``x not like 'y'`` / ``x not ilike 'y'`` must parse to the same
-    negated-comparison shape as the prefix ``not x like 'y'`` form."""
+    """SQL-style ``x not like 'y'`` / ``x not ilike 'y'`` parse to first-class
+    NOT_LIKE / NOT_ILIKE comparisons that round-trip back to the same syntax."""
+    from trilogy.parsing.render import Renderer
+
     env, _ = parse_text("""
 const x <- 'hello';
 auto a <- x not like 'h%';
-auto a_ref <- not x like 'h%';
 auto b <- x not ilike 'H%';
-auto b_ref <- not x ilike 'H%';
 """)
-    assert env.concepts["a"].lineage == env.concepts["a_ref"].lineage
-    assert env.concepts["b"].lineage == env.concepts["b_ref"].lineage
+    a = env.concepts["a"].lineage
+    b = env.concepts["b"].lineage
+    assert isinstance(a, Comparison) and a.operator == ComparisonOperator.NOT_LIKE
+    assert isinstance(b, Comparison) and b.operator == ComparisonOperator.NOT_ILIKE
+    assert Renderer().to_string(a) == "x not like 'h%'"
+    assert Renderer().to_string(b) == "x not ilike 'H%'"
 
 
 def test_show(test_environment):

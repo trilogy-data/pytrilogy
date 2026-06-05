@@ -419,6 +419,8 @@ class ComparisonOperator(Enum):
     # TODO: deprecate for contains?
     LIKE = "like"
     ILIKE = "ilike"
+    NOT_LIKE = "not like"
+    NOT_ILIKE = "not ilike"
     CONTAINS = "contains"
     ELSE = "else"
 
@@ -437,6 +439,10 @@ class ComparisonOperator(Enum):
             processed = [str(v).lower() for v in value]
             if processed == ["not", "in"]:
                 return ComparisonOperator.NOT_IN
+            if processed == ["not", "like"]:
+                return ComparisonOperator.NOT_LIKE
+            if processed == ["not", "ilike"]:
+                return ComparisonOperator.NOT_ILIKE
             if processed == ["is", "not"]:
                 return ComparisonOperator.IS_NOT
             if value == ["in"]:

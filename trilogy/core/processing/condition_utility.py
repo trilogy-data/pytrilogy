@@ -76,6 +76,8 @@ NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
     ComparisonOperator.GTE,
     ComparisonOperator.LIKE,
     ComparisonOperator.ILIKE,
+    ComparisonOperator.NOT_LIKE,
+    ComparisonOperator.NOT_ILIKE,
     ComparisonOperator.IN,
     ComparisonOperator.NOT_IN,
     ComparisonOperator.CONTAINS,

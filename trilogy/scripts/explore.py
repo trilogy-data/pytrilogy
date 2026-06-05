@@ -386,8 +386,9 @@ def _grouped_decls(
       * one ``properties`` object per grain key-set (``grain`` labels it),
         with the redundant ``<grain>.`` prefix stripped from single-key
         properties since the object already names the grain;
-      * one ``metrics`` object per aggregation key-set (``aggregation``
-        labels it), with grain-free responsive metrics under ``<responsive>``.
+      * one ``metrics`` object per aggregation key-set — the same ``grain``
+        label, since a metric's aggregation keys are conceptually its grain —
+        with grain-free responsive metrics under ``<responsive>``.
 
     Anything that isn't a key/property/metric lands in a trailing ``ungrouped``
     object so nothing is dropped. The local namespace surfaces under the
@@ -443,9 +444,7 @@ def _grouped_decls(
             by_agg[tuple(sorted(c.keys or []))].append(c)
         for agg in sorted(by_agg, key=lambda g: (g == (), len(g), g)):
             label = "<responsive>" if agg == () else _keyset_label(agg)
-            groups.append(
-                {"aggregation": label, "metrics": [decl(c) for c in by_agg[agg]]}
-            )
+            groups.append({"grain": label, "metrics": [decl(c) for c in by_agg[agg]]})
 
         if others:
             groups.append({"ungrouped": [decl(c) for c in others]})

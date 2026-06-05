@@ -38,6 +38,10 @@ SELECT RULES:
   * HAVING can ONLY reference fields that appear in the SELECT projection — aggregates OR plain dimensions. Select what you filter on; hide it with a leading `--` when you don't want it in the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering one year AFTER a `lead/lag` over the full series:
       select customer.state, --sum(sales.amount) as total_sales, --store.id
       having total_sales > 1000 and store.id = 5
+  * HAVING evaluates in the post-aggregation OUTPUT context, so an aggregate referenced there inherits the SELECT's output grain — a bare `sum(x)`/`avg(x)` in HAVING is the CURRENT group's value, NOT a global total. To compare against a total at a DIFFERENT grain, PIN the grain explicitly: `by *` keeps it global (one value over all rows); `by <dims>` fixes a coarser grain. e.g. "part total exceeds 0.0001 of the global total":
+      auto grand_total <- sum(value) by *;
+      select part.id, --sum(value) as part_total
+      having part_total > 0.0001 * grand_total
   * To filter rows by an aggregate condition based on inputs before filtering, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
       Use an inline condition if you need to filter inside those. 
       where store=1 and item.price > 1.2 * avg(item.price ? explicit_other_condition) by item.category

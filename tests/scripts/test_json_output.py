@@ -181,9 +181,13 @@ def test_explore_json_groups_metrics_by_aggregation(runner, tmp_path):
     )
     assert result.exit_code == 0, result.output
     groups = events_of(parse_events(result.output), "concepts")[0]["namespaces"][""]
-    responsive = next(g for g in groups if g.get("aggregation") == "<responsive>")
+    responsive = next(
+        g for g in groups if "metrics" in g and g.get("grain") == "<responsive>"
+    )
     assert any("total" in d for d in responsive["metrics"])
-    by_region = next(g for g in groups if g.get("aggregation") == "region_id")
+    by_region = next(
+        g for g in groups if "metrics" in g and g.get("grain") == "region_id"
+    )
     assert any("by_region" in d for d in by_region["metrics"])
 
 
