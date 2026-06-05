@@ -1,6 +1,6 @@
 query_id = "13"
-gen_length = 646
-preql_size = 318
+gen_length = 645
+preql_size = 286
 comp_size = 365
 generated_sql = """
 
@@ -8,13 +8,10 @@ WITH
 wakeful as (
 SELECT
     \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
-    coalesce(count(\"orders_orders\".\"o_orderkey\"),0) as \"c_count\"
+    coalesce(count(CASE WHEN \"orders_orders\".\"o_comment\" not like '%special%requests%' THEN \"orders_orders\".\"o_orderkey\" ELSE NULL END),0) as \"c_count\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
     LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
-WHERE
-    coalesce(\"orders_orders\".\"o_comment\" like '%special%requests%',False) = False
-
 GROUP BY
     1)
 SELECT

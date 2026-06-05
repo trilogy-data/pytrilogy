@@ -173,15 +173,20 @@ def properties_declaration(
 
     concepts: list[Concept] = []
     for prop_args in inline_props:
-        name = str(prop_args[0])
-        datatype = prop_args[1]
+        # A leading `--` hide modifier shifts the positional args; pull it out
+        # and route it to metadata.hidden rather than the query modifier list.
+        hidden = Modifier.HIDDEN in prop_args
+        core = [a for a in prop_args if a is not Modifier.HIDDEN]
+        name = str(core[0])
+        datatype = core[1]
         metadata = Metadata()
         modifiers: list[Modifier] = []
-        for extra in prop_args[2:]:
+        for extra in core[2:]:
             if isinstance(extra, Metadata):
                 metadata = extra
             elif isinstance(extra, Modifier):
                 modifiers.append(extra)
+        metadata.hidden = hidden
         concept = Concept(
             name=name,
             datatype=datatype,

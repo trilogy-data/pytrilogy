@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import agent_runner, analyze_run, db, prompts, scoring
+from .categories import CATEGORIES, FUNNEL_ORDER, get_category
 from .report import build_report, load_env, render_markdown
 from .spec import BenchmarkSpec
 
@@ -143,12 +144,26 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "'auto' (default) to pick the latest other run, or 'none' to disable.",
     )
     parser.add_argument(
+        "--category",
+        choices=sorted(CATEGORIES),
+        default=None,
+        help="which eval category this run is: sql_bare (db only), sql_schema "
+        "(db+schema.md), ingest (auto Trilogy model), enriched (curated model). "
+        "Defaults to 'enriched' if --enriched-model-dir is set, else 'ingest'.",
+    )
+    parser.add_argument(
+        "--categories",
+        type=str,
+        default=None,
+        help="comma-separated categories to run in parallel, then render the "
+        "cross-category funnel + matrix (e.g. sql_bare,sql_schema,ingest,enriched). "
+        "Each leg writes its own results subdir (<ts>_<category>).",
+    )
+    parser.add_argument(
         "--both-modes",
         action="store_true",
-        help="run BOTH the base (ingest-only) and enriched legs in parallel, "
-        "then render dashboard_compare.png. Each leg writes its own results "
-        "subdir (<ts>_base, <ts>_enriched). Requires either --enriched-model-dir "
-        "or a `default_enriched_dir` configured on the BenchmarkSpec.",
+        help="alias for --categories ingest,enriched (the legacy base-vs-enriched "
+        "comparison).",
     )
     parser.add_argument(
         "--force-tool-choice",
@@ -156,6 +171,13 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         help="force tool_choice=required every turn (no plain-text reasoning). "
         "Default is tool_choice: auto, which lets the model deliberate before "
         "acting; pass this to A/B the old forced-tool behavior.",
+    )
+    parser.add_argument(
+        "--enable-todo",
+        action="store_true",
+        help="re-enable the todo tool for the Trilogy agent. The eval defaults "
+        "todo OFF (fewer tools/less context for short single-query tasks; no "
+        "effect on the SQL toolset, which has no todo). Pass this to A/B it.",
     )
     return parser
 
@@ -232,7 +254,8 @@ def _splice_prior_results(
 
 _BOTH_MODES_DROP_FLAGS = {"--both-modes"}
 _BOTH_MODES_DROP_FLAGS_WITH_VALUE = {
-    "--enriched-model-dir",
+    "--categories",
+    "--category",
     "--output-dir",
     "--monitor",
 }
@@ -267,17 +290,6 @@ def _filter_both_modes_argv(argv: list[str]) -> list[str]:
     return result
 
 
-def _extract_enriched_dir_from_argv(argv: list[str]) -> str | None:
-    """Pick up an explicit ``--enriched-model-dir`` value the user passed on
-    the same CLI invocation that requested ``--both-modes``."""
-    for i, a in enumerate(argv):
-        if a == "--enriched-model-dir" and i + 1 < len(argv):
-            return argv[i + 1]
-        if a.startswith("--enriched-model-dir="):
-            return a.split("=", 1)[1]
-    return None
-
-
 def _pump_with_prefix(stream, label: str) -> None:
     prefix = f"[{label}] "
     for line in stream:
@@ -286,76 +298,57 @@ def _pump_with_prefix(stream, label: str) -> None:
     stream.close()
 
 
-def _run_both_modes(spec: BenchmarkSpec, raw_argv: list[str]) -> int:
-    """Spawn the base (ingest-only) and enriched legs as parallel subprocesses
-    of the same ``run_eval.py``. Each leg gets its own ``--output-dir`` and
-    forced ``--monitor quiet`` so the streamed output stays legible. After both
-    finish, render ``dashboard_compare.png`` from their respective reports."""
+def _run_categories(
+    spec: BenchmarkSpec, raw_argv: list[str], category_keys: list[str]
+) -> int:
+    """Spawn one parallel leg per category (each a subprocess of this
+    ``run_eval.py`` with its own ``--category``, ``--output-dir`` and forced
+    ``--monitor quiet``). After all finish, render the cross-category funnel +
+    per-query matrix from their reports."""
     import subprocess
 
-    user_enriched = _extract_enriched_dir_from_argv(raw_argv)
-    enriched_path = user_enriched or (
-        str(spec.default_enriched_dir) if spec.default_enriched_dir else None
-    )
-    if enriched_path is None:
-        print(
-            "ERROR: --both-modes requires --enriched-model-dir on the command "
-            "line, or `default_enriched_dir` configured on the BenchmarkSpec.",
-            file=sys.stderr,
-        )
-        return 2
+    for key in category_keys:
+        get_category(key)  # validate early
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    base_out = spec.results_dir / f"{timestamp}_base"
-    enriched_out = spec.results_dir / f"{timestamp}_enriched"
-
     script = Path(sys.argv[0]).resolve()
     common_argv = _filter_both_modes_argv(raw_argv)
 
-    # When the user didn't explicitly set --concurrency, halve the default for
-    # each leg so the parallel legs together don't exceed the single-leg
-    # default (limits OpenRouter rate-limit pressure). If the user passed
-    # --concurrency explicitly, respect it verbatim for both legs.
+    # Split the single-leg default concurrency across the parallel legs so they
+    # don't together exceed it (rate-limit pressure). Respect an explicit
+    # --concurrency verbatim for every leg.
     per_leg_concurrency: list[str] = []
     if not _argv_has_flag(raw_argv, "--concurrency"):
         default_concurrency = _build_argparser(spec).get_default("concurrency")
-        halved = max(1, default_concurrency // 2)
-        if halved != default_concurrency:
+        split = max(1, default_concurrency // len(category_keys))
+        if split != default_concurrency:
             print(
-                f"[both-modes] auto-halving concurrency: "
-                f"{default_concurrency} → {halved} per leg "
+                f"[categories] splitting concurrency: {default_concurrency} → "
+                f"{split} per leg across {len(category_keys)} legs "
                 "(pass --concurrency explicitly to override)."
             )
-        per_leg_concurrency = ["--concurrency", str(halved)]
+        per_leg_concurrency = ["--concurrency", str(split)]
 
-    base_argv = [
-        *common_argv,
-        *per_leg_concurrency,
-        "--output-dir",
-        str(base_out),
-        "--monitor",
-        "quiet",
-    ]
-    enriched_argv = [
-        *common_argv,
-        *per_leg_concurrency,
-        "--output-dir",
-        str(enriched_out),
-        "--monitor",
-        "quiet",
-        "--enriched-model-dir",
-        enriched_path,
-    ]
-
-    print(
-        f"[both-modes] spawning two parallel runs:\n"
-        f"   base     → {base_out}\n"
-        f"   enriched → {enriched_out}  (model dir: {enriched_path})"
-    )
+    outs: dict[str, Path] = {
+        key: spec.results_dir / f"{timestamp}_{key}" for key in category_keys
+    }
+    print("[categories] spawning parallel runs:")
+    for key, out in outs.items():
+        print(f"   {key:<10} → {out}")
 
     procs: list[tuple[str, subprocess.Popen]] = []
     pumps: list[threading.Thread] = []
-    for label, leg_argv in (("base", base_argv), ("enriched", enriched_argv)):
+    for key in category_keys:
+        leg_argv = [
+            *common_argv,
+            *per_leg_concurrency,
+            "--category",
+            key,
+            "--output-dir",
+            str(outs[key]),
+            "--monitor",
+            "quiet",
+        ]
         proc = subprocess.Popen(
             [sys.executable, str(script), *leg_argv],
             stdout=subprocess.PIPE,
@@ -365,40 +358,36 @@ def _run_both_modes(spec: BenchmarkSpec, raw_argv: list[str]) -> int:
             errors="replace",
             bufsize=1,
         )
-        procs.append((label, proc))
+        procs.append((key, proc))
         t = threading.Thread(
-            target=_pump_with_prefix, args=(proc.stdout, label), daemon=True
+            target=_pump_with_prefix, args=(proc.stdout, key), daemon=True
         )
         t.start()
         pumps.append(t)
 
-    exit_codes = [(label, proc.wait()) for label, proc in procs]
+    exit_codes = [(key, proc.wait()) for key, proc in procs]
     for t in pumps:
         t.join(timeout=5)
+    for key, rc in exit_codes:
+        print(f"[categories] {key} leg exit={rc}")
 
-    for label, rc in exit_codes:
-        print(f"[both-modes] {label} leg exit={rc}")
+    reports_by_key: dict[str, dict] = {}
+    for key in category_keys:
+        if (outs[key] / "report.json").exists():
+            report, _ = analyze_run.load_run(outs[key])
+            reports_by_key[key] = report
+        else:
+            print(f"[categories] {key} leg produced no report.json", file=sys.stderr)
 
-    base_report = base_out / "report.json"
-    enriched_report = enriched_out / "report.json"
-    if base_report.exists() and enriched_report.exists():
-        report_a, events_a = analyze_run.load_run(base_out)
-        report_b, events_b = analyze_run.load_run(enriched_out)
-        out = analyze_run.render_comparison(
-            report_a,
-            events_a,
-            report_b,
-            events_b,
-            spec.charts_dir / "dashboard_compare.png",
-            label_a="base",
-            label_b="enriched",
-        )
-        print(f"[both-modes] wrote {out}")
+    if len(reports_by_key) >= 2:
+        ordered = {k: reports_by_key[k] for k in FUNNEL_ORDER if k in reports_by_key}
+        png = analyze_run.render_funnel(ordered, spec.charts_dir / "funnel_v2.png")
+        md = analyze_run.write_funnel_report(ordered, spec.charts_dir / "funnel.md")
+        print(f"[categories] wrote {png} and {md}")
     else:
         print(
-            "[both-modes] skipping comparison render: "
-            f"base report present={base_report.exists()}, "
-            f"enriched report present={enriched_report.exists()}",
+            "[categories] skipping funnel render: need >=2 reports, "
+            f"got {sorted(reports_by_key)}",
             file=sys.stderr,
         )
 
@@ -409,8 +398,19 @@ def run(spec: BenchmarkSpec) -> int:
     args = _build_argparser(spec).parse_args()
     _force_utf8_stdio()
 
-    if args.both_modes:
-        return _run_both_modes(spec, sys.argv[1:])
+    if args.both_modes or args.categories:
+        if args.categories:
+            keys = [k.strip() for k in args.categories.split(",") if k.strip()]
+        else:
+            keys = ["ingest", "enriched"]
+        return _run_categories(spec, sys.argv[1:], keys)
+
+    # Resolve this run's category: explicit --category wins; else enriched when
+    # an enriched dir was given (back-compat), else ingest.
+    category_key = args.category or (
+        "enriched" if args.enriched_model_dir else "ingest"
+    )
+    category = get_category(category_key)
 
     load_env(args.env_file)
     if args.provider == "openrouter":
@@ -450,6 +450,11 @@ def run(spec: BenchmarkSpec) -> int:
         args.model,
         args.max_iterations,
         force_tool_choice=args.force_tool_choice,
+        # Per-query generation runs against a pre-populated raw/ model — the
+        # agent should explore the model, not list raw DB tables. (No effect on
+        # the SQL legs, which don't use the trilogy tool.)
+        allow_database_introspection=False,
+        disable_todo=not args.enable_todo,
     )
     if args.query_ids:
         wanted = {int(x.strip()) for x in args.query_ids.split(",") if x.strip()}
@@ -465,16 +470,10 @@ def run(spec: BenchmarkSpec) -> int:
         active = prompts.active_prompts(spec)[: args.num_queries]
     query_ids = [p["id"] for p in active]
 
-    if args.enriched_model_dir:
-        print(
-            f"[2/5] Seeding raw/ from enriched model dir {args.enriched_model_dir} ..."
-        )
-        ingest = agent_runner.install_enriched_model(
-            workspace, args.enriched_model_dir, spec.enriched_skip_prefixes
-        )
-    else:
-        print("[2/5] Pre-ingesting model with `trilogy ingest --all` ...")
-        ingest = agent_runner.run_pre_ingest(workspace)
+    print(f"[2/5] Category '{category.key}': setting up workspace ...")
+    ingest = category.setup(
+        workspace, spec, db_path=workspace_db, enriched_dir=args.enriched_model_dir
+    )
     (run_dir / "ingest_output.txt").write_text(
         f"exit={ingest['exit_code']}  duration={ingest['duration']:.1f}s\n"
         f"--- stdout ---\n{ingest['stdout']}\n--- stderr ---\n{ingest['stderr']}\n",
@@ -482,11 +481,11 @@ def run(spec: BenchmarkSpec) -> int:
     )
     if ingest["exit_code"] != 0:
         print(
-            f"  ingest failed (exit {ingest['exit_code']}); see ingest_output.txt",
+            f"  setup failed (exit {ingest['exit_code']}); see ingest_output.txt",
             file=sys.stderr,
         )
-        # Per-query tasks tell the agent raw/ is already populated; without it
-        # every query starts from a broken premise. Abort instead of grading 0/N.
+        # Trilogy per-query tasks tell the agent raw/ is already populated;
+        # without it every query starts from a broken premise. Abort.
         return 2
 
     concurrency = max(1, args.concurrency)
@@ -525,9 +524,9 @@ def run(spec: BenchmarkSpec) -> int:
         with pool_lock:
             worker_pool.append(worker)
 
-    # Enriched runs share charts/ with base runs; suffix keeps the in-flight
-    # and final dashboards from clobbering the base baseline.
-    suffix = "_enriched" if args.enriched_model_dir else ""
+    # All categories share charts/; the per-category suffix keeps each leg's
+    # in-flight and final dashboard from clobbering the others.
+    suffix = f"_{category.key}"
 
     # --- live dashboard machinery ---------------------------------------
     # Build the scoring engine ONCE and reuse per query — avoids paying
@@ -588,7 +587,7 @@ def run(spec: BenchmarkSpec) -> int:
                 analyze_run.render(
                     partial_report,
                     events,
-                    spec.charts_dir / f"dashboard{suffix}.png",
+                    spec.charts_dir / f"dashboard{suffix}_v2.png",
                 )
             except Exception as exc:
                 print(
@@ -601,7 +600,7 @@ def run(spec: BenchmarkSpec) -> int:
         worker = acquire_worker()
         try:
             log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
-            task = prompts.build_single_query_task(spec, entry)
+            task = category.build_task(spec, entry)
             (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
             print(f"  [q{qid:02d}] starting (worker {worker.name})", flush=True)
             result = agent_runner.run_agent(
@@ -612,12 +611,13 @@ def run(spec: BenchmarkSpec) -> int:
                 task,
                 args.timeout,
                 monitor_mode,
+                toolset=category.harness,
             )
             result["id"] = qid
             if worker != workspace:
-                produced = worker / f"query{qid:02d}.preql"
+                produced = worker / f"query{qid:02d}{category.candidate_ext}"
                 if produced.exists():
-                    shutil.copy2(produced, workspace / f"query{qid:02d}.preql")
+                    shutil.copy2(produced, workspace / produced.name)
                     produced.unlink()
             per_query_runs[index] = result
             per_query_metrics[index] = scoring.parse_agent_log(log_path)
@@ -789,6 +789,8 @@ def run(spec: BenchmarkSpec) -> int:
         ]
 
     report = build_report(spec, args, timestamp, agent_run, metrics, query_results)
+    report["meta"]["category"] = category.key
+    report["meta"]["category_label"] = category.label
     report["per_query"] = [
         {
             "id": r["id"],
@@ -838,7 +840,7 @@ def run(spec: BenchmarkSpec) -> int:
         dashboard = analyze_run.render(
             report,
             events,
-            spec.charts_dir / f"dashboard{suffix}.png",
+            spec.charts_dir / f"dashboard{suffix}_v2.png",
         )
         failures = analyze_run.collect_failures(events)
         failures_md = analyze_run.write_failures_report(

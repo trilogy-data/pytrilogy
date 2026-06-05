@@ -7,6 +7,7 @@ from .join_upgrade import UpgradeJoinOnGuards
 from .merge_irrelevant_group_by import MergeIrrelevantGroupBy
 from .null_safe_join import SimplifyNullSafeJoins
 from .predicate_pushdown import PredicatePushdown, PredicatePushdownRemove
+from .strip_redundant_not_null import StripRedundantNotNull
 from .union_dim_pushdown import UnionDimPushdown
 from .value_set_join_upgrade import UpgradeOuterFromKeySetEquivalence
 
@@ -25,4 +26,5 @@ __all__ = [
     "SimplifyNullSafeJoins",
     "HideUnusedConcepts",
     "UnionDimPushdown",
+    "StripRedundantNotNull",
 ]

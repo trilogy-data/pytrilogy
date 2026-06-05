@@ -14,6 +14,7 @@ from trilogy.core.optimizations import (
     PredicatePushdown,
     PredicatePushdownRemove,
     SimplifyNullSafeJoins,
+    StripRedundantNotNull,
     UnionDimPushdown,
     UpgradeJoinOnGuards,
     UpgradeOuterFromKeySetEquivalence,
@@ -600,6 +601,22 @@ def build_optimization_rule_plan(
                 reason=(
                     "join types and CTE nullability are settled, so redundant "
                     "null-safe join keys can be downgraded to ="
+                ),
+            )
+        )
+    if opts.strip_redundant_not_null:
+        plan.append(
+            OptimizationRulePlan(
+                name="strip_redundant_not_null",
+                rule_factory=StripRedundantNotNull,
+                depends_on=_enabled_dependencies(
+                    ("simplify_null_safe_joins", opts.simplify_null_safe_joins),
+                ),
+                reason=(
+                    "join types and CTE nullability are settled, so an IS NOT "
+                    "NULL on a column that no outer join can pad is tautological; "
+                    "runs after null-safe-join simplification, which consumes "
+                    "those predicates as non-null proofs"
                 ),
             )
         )

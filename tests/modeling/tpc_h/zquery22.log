@@ -1,52 +1,51 @@
 query_id = "22"
-gen_length = 1533
+gen_length = 1711
 preql_size = 589
 comp_size = 806
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"customers\".\"c_custkey\" as \"id\",
-    count(\"orders_orders\".\"o_orderkey\") as \"order_count_per_customer\"
-FROM
-    \"memory\".\"customer\" as \"customers\"
-    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
-WHERE
-    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
-
-GROUP BY
-    1),
 highfalutin as (
 SELECT
-    avg(CASE WHEN \"customers\".\"c_acctbal\" > 0 and SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
+    avg(CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
 FROM
-    \"memory\".\"customer\" as \"customers\"
+    \"memory\".\"customer\" as \"orders_customer_customers\"
 WHERE
-    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
+    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
 ),
-questionable as (
+thoughtful as (
 SELECT
-    \"customers\".\"c_acctbal\" as \"account_balance\",
-    \"customers\".\"c_custkey\" as \"id\",
-    \"customers\".\"c_phone\" as \"phone\"
+    \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
+    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
+    \"orders_customer_customers\".\"c_phone\" as \"orders_customer_phone\"
 FROM
-    \"memory\".\"customer\" as \"customers\"
-    LEFT OUTER JOIN \"thoughtful\" on \"customers\".\"c_custkey\" = \"thoughtful\".\"id\"
+    \"memory\".\"customer\" as \"orders_customer_customers\"
+    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
 WHERE
-    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') and coalesce(coalesce(\"thoughtful\".\"order_count_per_customer\",0),0) = 0
-)
+    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') and \"orders_orders\".\"o_orderkey\" is null
+),
+cooperative as (
 SELECT
-    SUBSTRING(\"questionable\".\"phone\",1,2) as \"cntrycode\",
-    count(\"questionable\".\"id\") as \"numcust\",
-    sum(\"questionable\".\"account_balance\") as \"totacctbal\"
+    \"thoughtful\".\"orders_customer_account_balance\" as \"orders_customer_account_balance\",
+    \"thoughtful\".\"orders_customer_id\" as \"orders_customer_id\",
+    SUBSTRING(\"thoughtful\".\"orders_customer_phone\",1,2) as \"cntrycode\"
 FROM
-    \"questionable\"
-    INNER JOIN \"highfalutin\" on 1=1
+    \"highfalutin\"
+    INNER JOIN \"thoughtful\" on 1=1
 WHERE
-    \"questionable\".\"account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
+    \"thoughtful\".\"orders_customer_account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
 
+GROUP BY
+    1,
+    2,
+    3)
+SELECT
+    \"cooperative\".\"cntrycode\" as \"cntrycode\",
+    count(\"cooperative\".\"orders_customer_id\") as \"numcust\",
+    sum(\"cooperative\".\"orders_customer_account_balance\") as \"totacctbal\"
+FROM
+    \"cooperative\"
 GROUP BY
     1
 ORDER BY 
-    \"cntrycode\" asc"""
+    \"cooperative\".\"cntrycode\" asc"""

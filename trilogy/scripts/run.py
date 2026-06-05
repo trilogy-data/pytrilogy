@@ -110,7 +110,7 @@ def _format_import(value: str) -> str:
     "--displayed-rows",
     "displayed_rows",
     type=int,
-    default=10,
+    default=30,
     show_default=True,
     help=(
         "Cap on result rows displayed per statement. The query still runs in "

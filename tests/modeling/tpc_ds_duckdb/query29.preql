@@ -23,7 +23,7 @@ rowset correlated <- where
     and catalog_sales.date.year in (1999, 2000, 2001)
     and catalog_sales.quantity > 0
     and physical_sales.is_returned
-    and physical_sales.billing_customer.id = physical_sales.return_customer.id
+    and physical_sales.customer.id = physical_sales.return_customer.id
 select
     physical_sales.ticket_number,
     physical_sales.item.id,

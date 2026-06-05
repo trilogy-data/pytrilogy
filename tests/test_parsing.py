@@ -214,6 +214,24 @@ auto not_starts_with_a <- not (name like 'a%');
     )
 
 
+def test_not_like_infix():
+    """SQL-style ``x not like 'y'`` / ``x not ilike 'y'`` parse to first-class
+    NOT_LIKE / NOT_ILIKE comparisons that round-trip back to the same syntax."""
+    from trilogy.parsing.render import Renderer
+
+    env, _ = parse_text("""
+const x <- 'hello';
+auto a <- x not like 'h%';
+auto b <- x not ilike 'H%';
+""")
+    a = env.concepts["a"].lineage
+    b = env.concepts["b"].lineage
+    assert isinstance(a, Comparison) and a.operator == ComparisonOperator.NOT_LIKE
+    assert isinstance(b, Comparison) and b.operator == ComparisonOperator.NOT_ILIKE
+    assert Renderer().to_string(a) == "x not like 'h%'"
+    assert Renderer().to_string(b) == "x not ilike 'H%'"
+
+
 def test_show(test_environment):
     _, parsed = parse_text(
         "const order_id <- 4; SHOW SELECT order_id  WHERE order_id is not null;"

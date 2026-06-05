@@ -1,0 +1,331 @@
+[categories] spawning parallel runs:
+   sql_bare   → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_sql_bare
+   sql_schema → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_sql_schema
+   ingest     → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_ingest
+   enriched   → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_enriched
+[sql_bare] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[sql_bare] [2/5] Category 'sql_bare': setting up workspace ...
+[sql_bare] [3/5] Running agent per query (10 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[sql_bare]   [q01] starting (worker _worker_1)
+[sql_bare]   [q02] starting (worker _worker_0)
+[enriched] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[enriched] [2/5] Category 'enriched': setting up workspace ...
+[enriched] [3/5] Running agent per query (10 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[enriched]   [q01] starting (worker _worker_1)
+[enriched]   [q02] starting (worker _worker_0)
+[sql_schema] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[sql_schema] [2/5] Category 'sql_schema': setting up workspace ...
+[sql_schema] [3/5] Running agent per query (10 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[sql_schema]   [q01] starting (worker _worker_1)
+[sql_schema]   [q02] starting (worker _worker_0)
+[ingest] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[ingest] [2/5] Category 'ingest': setting up workspace ...
+[ingest] [3/5] Running agent per query (10 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[ingest]   [q01] starting (worker _worker_1)
+[ingest]   [q02] starting (worker _worker_0)
+[enriched]   [q01] done in 31s (exit 0, score=pass)
+[enriched]   [q03] starting (worker _worker_1)
+[sql_schema]   [q01] done in 33s (exit 0, score=pass)
+[sql_schema]   [q03] starting (worker _worker_1)
+[sql_bare]   [q01] done in 42s (exit 0, score=fail)
+[sql_bare]   [q03] starting (worker _worker_1)
+[ingest]   [q01] done in 31s (exit 0, score=fail)
+[ingest]   [q03] starting (worker _worker_1)
+[sql_bare]   [q03] done in 13s (exit 0, score=pass)
+[sql_bare]   [q04] starting (worker _worker_1)
+[sql_schema]   [q03] done in 21s (exit 0, score=pass)
+[sql_schema]   [q04] starting (worker _worker_1)
+[enriched]   [q03] done in 27s (exit 0, score=pass)
+[enriched]   [q04] starting (worker _worker_1)
+[ingest]   [q03] done in 24s (exit 0, score=pass)
+[ingest]   [q04] starting (worker _worker_1)
+[sql_schema]   [q02] done in 96s (exit 0, score=fail)
+[sql_schema]   [q05] starting (worker _worker_0)
+[sql_bare]   [q02] done in 111s (exit 0, score=fail)
+[sql_bare]   [q05] starting (worker _worker_0)
+[sql_schema]   [q04] done in 65s (exit 0, score=pass)
+[sql_schema]   [q06] starting (worker _worker_1)
+[sql_schema]   [q06] done in 41s (exit 0, score=pass)
+[sql_schema]   [q07] starting (worker _worker_1)
+[sql_bare]   [q04] done in 118s (exit 0, score=fail)
+[sql_bare]   [q06] starting (worker _worker_1)
+[sql_bare]   [q05] done in 80s (exit 0, score=fail)
+[sql_bare]   [q07] starting (worker _worker_0)
+[sql_schema]   [q07] done in 35s (exit 0, score=pass)
+[sql_schema]   [q08] starting (worker _worker_1)
+[enriched]   [q04] done in 148s (exit 0, score=pass)
+[enriched]   [q05] starting (worker _worker_1)
+[sql_bare]   [q06] done in 43s (exit 0, score=pass)
+[sql_bare]   [q08] starting (worker _worker_1)
+[sql_bare]   [q07] done in 22s (exit 0, score=pass)
+[sql_bare]   [q09] starting (worker _worker_0)
+[sql_bare]   [q09] done in 20s (exit 0, score=pass)
+[sql_bare]   [q10] starting (worker _worker_0)
+[ingest]   [q02] done in 225s (exit 0, score=fail)
+[ingest]   [q05] starting (worker _worker_0)
+[enriched]   [q02] done in 252s (exit 0, score=fail)
+[enriched]   [q06] starting (worker _worker_0)
+[sql_bare]   [q10] done in 46s (exit 0, score=pass)
+[sql_bare]   [q08] done in 75s (exit 0, score=pass)
+[sql_bare] [4/5] Finalising scores for 10 queries ...
+[sql_bare]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_sql_bare.png  (0 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_sql_bare.md)
+[sql_bare] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_sql_bare
+[sql_bare] 
+[sql_bare] # TPC-DS Agent Eval — 20260602-123624
+[sql_bare] 
+[sql_bare] - Model: `deepseek/deepseek-chat`
+[sql_bare] - Scale factor: 1  |  Queries: 10  |  Trilogy: 0.3.275
+[sql_bare] 
+[sql_bare] ## Result
+[sql_bare] 
+[sql_bare] - **Pass rate: 6/10** (60%)
+[sql_bare] - Status breakdown: {'fail': 4, 'pass': 6}
+[sql_bare] - Wall time: 301.8s  |  Agent time: 570.4s  |  Avg/query: 57.0s
+[sql_bare] - Agent exit code: 0
+[sql_bare] 
+[sql_bare] ## Agent harness metrics
+[sql_bare] 
+[sql_bare] - LLM iterations: 160
+[sql_bare] - Tool calls: 243  →  {'list_files': 6, 'run_query': 201, 'write_file': 11, 'run_file': 13, 'return_control_to_user': 10, 'read_file': 2}
+[sql_bare] - `trilogy` subcommands: {}
+[sql_bare] - Tool success rate: 99% (241/243 ok)
+[sql_bare] - Tokens: 1686000 total (1633060 prompt + 52940 completion)
+[sql_bare] 
+[sql_bare] ## Tool-output sizes
+[sql_bare] 
+[sql_bare] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[sql_bare] |---|---:|---:|---:|---:|---:|
+[sql_bare] | `run_query` | 201 | 804 | 8331 | 0 | 0% |
+[sql_bare] | `run_file` | 13 | 1863 | 8289 | 0 | 0% |
+[sql_bare] | `write_file` | 11 | 45 | 45 | 0 | 0% |
+[sql_bare] | `return_control_to_user` | 10 | 26 | 26 | 0 | 0% |
+[sql_bare] | `list_files` | 6 | 37 | 48 | 0 | 0% |
+[sql_bare] | `read_file` | 2 | 534 | 1027 | 0 | 0% |
+[sql_bare] 
+[sql_bare] - Repeated calls (same args seen earlier in same query): {'run_query': 5, 'run_file': 3} — total 8
+[sql_bare] 
+[sql_bare] ## Per-query
+[sql_bare] 
+[sql_bare] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[sql_bare] |------:|:-------|---------:|----------:|--------:|:-------|
+[sql_bare] | 01 | fail | 100 | 100 | 764 | result set differs from reference |
+[sql_bare] | 02 | fail | 53 | 53 | 2477 | result set differs from reference |
+[sql_bare] | 03 | pass | 89 | 89 | 428 |  |
+[sql_bare] | 04 | fail | 6 | 61 | 2333 | result set differs from reference |
+[sql_bare] | 05 | fail | 100 | 28 | 3831 | result set differs from reference |
+[sql_bare] | 06 | pass | 46 | 46 | 882 |  |
+[sql_bare] | 07 | pass | 100 | 100 | 652 |  |
+[sql_bare] | 08 | pass | 5 | 5 | 3398 |  |
+[sql_bare] | 09 | pass | 1 | 1 | 1165 |  |
+[sql_bare] | 10 | pass | 6 | 6 | 2517 |  |
+[sql_bare] 
+[sql_bare] ## Agent final message
+[sql_bare] 
+[sql_bare] > Answer saved to query10.sql and validated successfully. The query returns 6 rows with the requested breakdown grouped by gender, marital status, education status, purchase estimate, credit rating, dependent count, dependent-employed count, and dependent-college count, with customer count repeated six times as specified.
+[sql_bare] 
+[sql_schema]   [q05] done in 205s (exit 0, score=fail)
+[sql_schema]   [q09] starting (worker _worker_0)
+[sql_schema]   [q08] done in 108s (exit 0, score=pass)
+[sql_schema]   [q10] starting (worker _worker_1)
+[enriched]   [q06] done in 78s (exit 0, score=pass)
+[enriched]   [q07] starting (worker _worker_0)
+[sql_schema]   [q09] done in 32s (exit 0, score=pass)
+[sql_schema]   [q10] done in 45s (exit 0, score=pass)
+[sql_schema] [4/5] Finalising scores for 10 queries ...
+[sql_schema]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_sql_schema.png  (0 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_sql_schema.md)
+[sql_schema] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_sql_schema
+[sql_schema] 
+[sql_schema] # TPC-DS Agent Eval — 20260602-123631
+[sql_schema] 
+[sql_schema] - Model: `deepseek/deepseek-chat`
+[sql_schema] - Scale factor: 1  |  Queries: 10  |  Trilogy: 0.3.275
+[sql_schema] 
+[sql_schema] ## Result
+[sql_schema] 
+[sql_schema] - **Pass rate: 8/10** (80%)
+[sql_schema] - Status breakdown: {'pass': 8, 'fail': 2}
+[sql_schema] - Wall time: 355.2s  |  Agent time: 682.0s  |  Avg/query: 68.2s
+[sql_schema] - Agent exit code: 0
+[sql_schema] 
+[sql_schema] ## Agent harness metrics
+[sql_schema] 
+[sql_schema] - LLM iterations: 175
+[sql_schema] - Tool calls: 208  →  {'read_file': 10, 'run_query': 167, 'write_file': 11, 'run_file': 10, 'return_control_to_user': 10}
+[sql_schema] - `trilogy` subcommands: {}
+[sql_schema] - Tool success rate: 98% (204/208 ok)
+[sql_schema] - Tokens: 2589713 total (2525517 prompt + 64196 completion)
+[sql_schema] 
+[sql_schema] ## Tool-output sizes
+[sql_schema] 
+[sql_schema] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[sql_schema] |---|---:|---:|---:|---:|---:|
+[sql_schema] | `run_query` | 167 | 480 | 3707 | 0 | 0% |
+[sql_schema] | `write_file` | 11 | 44 | 45 | 0 | 0% |
+[sql_schema] | `read_file` | 10 | 13848 | 13848 | 0 | 0% |
+[sql_schema] | `run_file` | 10 | 1252 | 2815 | 0 | 0% |
+[sql_schema] | `return_control_to_user` | 10 | 26 | 26 | 0 | 0% |
+[sql_schema] 
+[sql_schema] - Repeated calls (same args seen earlier in same query): {'run_query': 1} — total 1
+[sql_schema] 
+[sql_schema] ## Per-query
+[sql_schema] 
+[sql_schema] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[sql_schema] |------:|:-------|---------:|----------:|--------:|:-------|
+[sql_schema] | 01 | pass | 100 | 100 | 754 |  |
+[sql_schema] | 02 | fail | 53 | 53 | 2635 | result set differs from reference |
+[sql_schema] | 03 | pass | 89 | 89 | 403 |  |
+[sql_schema] | 04 | pass | 6 | 6 | 2755 |  |
+[sql_schema] | 05 | fail | 100 | 37 | 4730 | result set differs from reference |
+[sql_schema] | 06 | pass | 46 | 46 | 971 |  |
+[sql_schema] | 07 | pass | 100 | 100 | 665 |  |
+[sql_schema] | 08 | pass | 5 | 5 | 3304 |  |
+[sql_schema] | 09 | pass | 1 | 1 | 1379 |  |
+[sql_schema] | 10 | pass | 6 | 6 | 2088 |  |
+[sql_schema] 
+[sql_schema] ## Agent final message
+[sql_schema] 
+[sql_schema] > Query10 is complete and validated. The SQL in query10.sql identifies customers in the specified 5 counties with store sales in Jan-Apr 2002, plus at least one web or catalog sale in the same period, with a current customer_demographics record. Groups by gender, marital status, education status, purchase estimate, credit rating, dependent count, dependent-employed count, and dependent-college count. Returns 6 rows, ordered as specified with LIMIT 100.
+[sql_schema] 
+[enriched]   [q07] done in 62s (exit 0, score=fail)
+[enriched]   [q08] starting (worker _worker_0)
+[enriched]   [q08] done in 152s (exit 0, score=pass)
+[enriched]   [q09] starting (worker _worker_0)
+[enriched]   [q09] done in 74s (exit 0, score=pass)
+[enriched]   [q10] starting (worker _worker_0)
+[enriched]   [q10] done in 187s (exit 0, score=pass)
+[enriched]   [q05] done in 609s (exit 0, score=fail)
+[enriched] [4/5] Finalising scores for 10 queries ...
+[enriched]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched.png  (23 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[enriched] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_enriched
+[enriched] 
+[enriched] # TPC-DS Agent Eval — 20260602-123631
+[enriched] 
+[enriched] - Model: `deepseek/deepseek-chat`
+[enriched] - Scale factor: 1  |  Queries: 10  |  Trilogy: 0.3.275
+[enriched] 
+[enriched] ## Result
+[enriched] 
+[enriched] - **Pass rate: 7/10** (70%)
+[enriched] - Status breakdown: {'pass': 7, 'fail': 3}
+[enriched] - Wall time: 820.6s  |  Agent time: 1620.6s  |  Avg/query: 162.1s
+[enriched] - Agent exit code: 0
+[enriched] 
+[enriched] ## Agent harness metrics
+[enriched] 
+[enriched] - LLM iterations: 196
+[enriched] - Tool calls: 225  →  {'trilogy': 202, 'list_files': 12, 'return_control_to_user': 11}
+[enriched] - `trilogy` subcommands: {'agent-info': 11, 'explore': 48, 'file': 63, 'run': 80}
+[enriched] - Tool success rate: 90% (202/225 ok)
+[enriched] - Tokens: 9074836 total (9001606 prompt + 73230 completion)
+[enriched] 
+[enriched] ## Tool-output sizes
+[enriched] 
+[enriched] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[enriched] |---|---:|---:|---:|---:|---:|
+[enriched] | `trilogy` | 202 | 4257 | 32079 | 11 | 5% |
+[enriched] | `list_files` | 12 | 4727 | 5697 | 0 | 0% |
+[enriched] | `return_control_to_user` | 11 | 26 | 26 | 0 | 0% |
+[enriched] 
+[enriched] - Repeated calls (same args seen earlier in same query): {'trilogy': 46} — total 46
+[enriched] 
+[enriched] ## Per-query
+[enriched] 
+[enriched] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[enriched] |------:|:-------|---------:|----------:|--------:|:-------|
+[enriched] | 01 | pass | 100 | 100 | 2076 |  |
+[enriched] | 02 | fail | 53 | 52 | 10841 | result set differs from reference |
+[enriched] | 03 | pass | 89 | 89 | 800 |  |
+[enriched] | 04 | pass | 6 | 6 | 6576 |  |
+[enriched] | 05 | fail | 100 | 100 | 6732 | result set differs from reference |
+[enriched] | 06 | pass | 46 | 46 | 2599 |  |
+[enriched] | 07 | fail | 100 | 100 | 1713 | result set differs from reference |
+[enriched] | 08 | pass | 5 | 5 | 2494 |  |
+[enriched] | 09 | pass | 1 | 1 | 4806 |  |
+[enriched] | 10 | pass | 6 | 6 | 5409 |  |
+[enriched] 
+[enriched] ## Agent final message
+[enriched] 
+[enriched] > query10.preql has been written and validated. It runs successfully against the DuckDB TPC-DS database, returning 6 rows of the requested demographic breakdown for customers whose current home address is in one of the five specified counties, who made at least one store sale in Jan–Apr 2002 AND (at least one web sale or catalog sale) in the same window, and who have a current customer-demographics record. The output has exactly 14 columns in the specified order with 6 identical customer-count columns.
+[enriched] 
+[ingest]   [q04] done in 782s (exit 0, score=pass)
+[ingest]   [q06] starting (worker _worker_1)
+[ingest]   [q06] done in 102s (exit 0, score=fail)
+[ingest]   [q07] starting (worker _worker_1)
+[ingest]   [q07] done in 45s (exit 0, score=pass)
+[ingest]   [q08] starting (worker _worker_1)
+[ingest]   [q08] done in 108s (exit 0, score=pass)
+[ingest]   [q09] starting (worker _worker_1)
+[ingest]   [q09] done in 22s (exit 0, score=pass)
+[ingest]   [q10] starting (worker _worker_1)
+[ingest]   [q05] done in 900s (exit -1, score=timeout)
+[ingest]   [q10] done in 138s (exit 0, score=pass)
+[ingest] [4/5] Finalising scores for 10 queries ...
+[ingest]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_ingest.png  (21 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_ingest.md)
+[ingest] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260602-123621_ingest
+[ingest] 
+[ingest] # TPC-DS Agent Eval — 20260602-123631
+[ingest] 
+[ingest] - Model: `deepseek/deepseek-chat`
+[ingest] - Scale factor: 1  |  Queries: 10  |  Trilogy: 0.3.275
+[ingest] 
+[ingest] ## Result
+[ingest] 
+[ingest] - **Pass rate: 6/10** (60%)
+[ingest] - Status breakdown: {'fail': 3, 'pass': 6, 'timeout': 1}
+[ingest] - Wall time: 1266.7s  (TIMED OUT)  |  Agent time: 2376.8s  |  Avg/query: 237.7s
+[ingest] - Agent exit code: 1
+[ingest] 
+[ingest] ## Agent harness metrics
+[ingest] 
+[ingest] - LLM iterations: 147
+[ingest] - Tool calls: 208  →  {'trilogy': 189, 'list_files': 10, 'return_control_to_user': 9}
+[ingest] - `trilogy` subcommands: {'agent-info': 12, 'explore': 79, 'file': 50, 'run': 47}
+[ingest] - Tool success rate: 90% (187/208 ok)
+[ingest] - Tokens: 4803204 total (4739305 prompt + 63899 completion)
+[ingest] 
+[ingest] ## Tool-output sizes
+[ingest] 
+[ingest] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[ingest] |---|---:|---:|---:|---:|---:|
+[ingest] | `trilogy` | 189 | 4255 | 32079 | 11 | 6% |
+[ingest] | `list_files` | 10 | 1565 | 1576 | 0 | 0% |
+[ingest] | `return_control_to_user` | 9 | 26 | 26 | 0 | 0% |
+[ingest] 
+[ingest] - Repeated calls (same args seen earlier in same query): {'trilogy': 27} — total 27
+[ingest] 
+[ingest] ## Per-query
+[ingest] 
+[ingest] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[ingest] |------:|:-------|---------:|----------:|--------:|:-------|
+[ingest] | 01 | fail | 100 | 100 | 4203 | result set differs from reference |
+[ingest] | 02 | fail | 53 | 53 | 33755 | result set differs from reference |
+[ingest] | 03 | pass | 89 | 89 | 927 |  |
+[ingest] | 04 | pass | 6 | 6 | 9944 |  |
+[ingest] | 05 | timeout | 100 | 100 | 7893 | agent timed out (was: fail) — result set differs from reference |
+[ingest] | 06 | fail | 46 | 45 | 2777 | result set differs from reference |
+[ingest] | 07 | pass | 100 | 100 | 1595 |  |
+[ingest] | 08 | pass | 5 | 5 | 2981 |  |
+[ingest] | 09 | pass | 1 | 1 | 6738 |  |
+[ingest] | 10 | pass | 6 | 6 | 6411 |  |
+[ingest] 
+[ingest] ## Agent final message
+[ingest] 
+[ingest] > Query written to `query10.preql` and validated successfully. The query:
+[ingest] > 
+[ingest] > 1. Imports `customer`, `store_sales`, `web_sales`, and `catalog_sales` models
+[ingest] > 2. Merges customer keys from all three fact tables into the customer model to enable join resolution
+[ingest] > 3. Filters customers by:
+[ingest] >    - Home address county in the 5 specified counties
+[ingest] >    - Having a current customer-demographics record (`demo_sk is not null`)
+[ingest] >    - At least one store sale in Jan-Apr 2002 (semi-join via `in` with filtered condition)
+[ingest] >    - At least one web sale (via bill_customer) OR catalog sale (via ship_customer) in the same period
+[ingest] > 4. Groups by demographics attributes and outputs the 14-column interleaved result (demographic attribute followed by customer count, repeated 6 times)
+[ingest] > 5. Orders by all 7 grouping attributes and limits to 100 rows
+[ingest] > 
+[ingest] > Result: 6 rows returned successfully.
+[ingest] 
+[categories] sql_bare leg exit=0
+[categories] sql_schema leg exit=0
+[categories] ingest leg exit=0
+[categories] enriched leg exit=0
+[categories] wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\funnel.png and C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\funnel.md

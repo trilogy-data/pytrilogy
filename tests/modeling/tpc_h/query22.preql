@@ -1,18 +1,16 @@
-import customer;
+
 import order as orders;
 
-merge orders.customer.id into ~id;
 
-auto avg_bal_in_target <- avg(account_balance ? account_balance > 0 and substring(phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17'));
-auto order_count_per_customer <- count(orders.id) by id;
+auto avg_bal_in_target <- avg(orders.customer.account_balance ? orders.customer.account_balance > 0 and substring(orders.customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) by *;
 
 where
-    substring(phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')
-    and account_balance > avg_bal_in_target
-    and coalesce(order_count_per_customer, 0) = 0
+    substring(orders.customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')
+    and orders.customer.account_balance > avg_bal_in_target
+    and orders.id is null
 select
-    substring(phone, 1, 2) -> cntrycode,
-    count(id) -> numcust,
-    sum(account_balance) -> totacctbal
+    substring(orders.customer.phone, 1, 2) -> cntrycode,
+    count(orders.customer.id) -> numcust,
+    sum(orders.customer.account_balance) -> totacctbal
 order by
     cntrycode asc;

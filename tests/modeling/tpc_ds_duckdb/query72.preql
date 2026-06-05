@@ -8,7 +8,7 @@ where
     and cs.bill_household_demographic.buy_potential = '>10000'
     and cs.bill_customer_demographic.marital_status = 'D'
     and inv.date.week_seq = cs.sold_date.week_seq
-    and date_diff(cs.sold_date.date, cs.ship_date.date, day) > 5
+    and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
 select
     cs.item.desc as item_desc,

@@ -30,20 +30,24 @@
     // property display_name string
     parameter_default: "default"i literal
     parameter_declaration: ("parameter"i | "param"i) IDENTIFIER data_type concept_nullable_modifier? parameter_default? metadata?
-    concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
+    concept_declaration: select_hide_modifier? PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
     UNIQUE: "UNIQUE"i
-    concept_property_declaration: UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) data_type concept_nullable_modifier? metadata?
+    concept_property_declaration: select_hide_modifier? UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" expr
+    // body is `conditional` (not `expr`) so a derived concept can name a full
+    // boolean predicate (`and`/`or`, `between`, `is null`) — the same grammar
+    // `?`/`where` accept. `conditional` collapses to a bare `expr` for the
+    // single-comparison/arithmetic cases, so prior derivations are unaffected.
+    concept_derivation:  select_hide_modifier? (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" conditional
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
     concept_nullable_modifier: "?"
 
     // properties <key> (...) or properties <key1, key2> (...)
-    inline_property: IDENTIFIER data_type concept_nullable_modifier? metadata?
+    inline_property: select_hide_modifier? IDENTIFIER data_type concept_nullable_modifier? metadata?
     inline_property_list: inline_property ("," PARSE_COMMENT? inline_property)* ("," PARSE_COMMENT?)?
     properties_declaration: _PROPERTIES (prop_ident_list | IDENTIFIER) "(" inline_property_list ")"
     prop_ident_list: "<" IDENTIFIER ("," IDENTIFIER)* ","? ">"
@@ -350,7 +354,7 @@
     ?comparison_root: sum_chain (COMPARISON_OPERATOR sum_chain)? -> comparison
     ?between_root: sum_chain "between"i sum_chain "and"i sum_chain -> between_comparison
 
-    PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | "like"i | "ilike"i ) 
+    PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | /not\s+ilike/i | /not\s+like/i | "ilike"i | "like"i )
 
     ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
     
@@ -683,7 +687,7 @@
 
     !data_type:  ("string"i | "bytes"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     
-    PURPOSE:  "key"i | "metric"i | CONST
+    PURPOSE.2:  "key"i | "metric"i | CONST
     _PROPERTIES: "properties"i
     PROPERTY: "property"i
     CONST: "const"i | "constant"i

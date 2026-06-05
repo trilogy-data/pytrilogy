@@ -19,7 +19,13 @@ from trilogy.scripts.dependency import (
     ScriptNode,
     normalize_path_variants,
 )
-from trilogy.scripts.display import print_error, print_info, show_execution_plan
+from trilogy.scripts.display import (
+    emit_event,
+    is_json_mode,
+    print_error,
+    print_info,
+    show_execution_plan,
+)
 from trilogy.scripts.parallel_execution import ParallelExecutor
 
 
@@ -187,6 +193,8 @@ def plan(ctx, input: str, output: str | None, json_format: bool, config: str | N
                 output_path = PathlibPath(output)
                 output_path.write_text(json_output)
                 print_info(f"Plan written to {output_path}")
+            elif is_json_mode():
+                emit_event("plan", **plan_data)
             else:
                 print(json_output)
         else:

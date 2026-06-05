@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 2474
+gen_length = 2502
 preql_size = 7493
 comp_size = 19155
 generated_sql = """
@@ -8,20 +8,17 @@ WITH
 cheerful as (
 SELECT
     \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\",
-    count(\"customer_customers\".\"C_CUSTOMER_SK\") as \"zip_p_count\"
+    count(CASE WHEN \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN \"customer_customers\".\"C_CUSTOMER_SK\" ELSE NULL END) as \"zip_p_count\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" = 'Y'
-
 GROUP BY
     1),
 quizzical as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
-cooperative as (
+questionable as (
 SELECT
     SUBSTRING(CASE WHEN \"cheerful\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
@@ -29,17 +26,17 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"
 GROUP BY
     1),
-yummy as (
+juicy as (
 SELECT
     SUBSTRING(SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
     \"quizzical\"
 WHERE
-    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) in (select cooperative.\"_virt_func_substring_4293448550966409\" from cooperative where cooperative.\"_virt_func_substring_4293448550966409\" is not null)
+    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) in (select questionable.\"_virt_func_substring_4293448550966409\" from questionable where questionable.\"_virt_func_substring_4293448550966409\" is not null)
 
 GROUP BY
     1),
-abhorrent as (
+sweltering as (
 SELECT
     \"physical_sales_store_sales\".\"SS_NET_PROFIT\" as \"physical_sales_net_profit\",
     \"physical_sales_store_store\".\"S_STORE_NAME\" as \"physical_sales_store_name\"
@@ -48,7 +45,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_QOY\" = 2 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,2) in (select yummy.\"final_zips\" from yummy where yummy.\"final_zips\" is not null)
+    \"physical_sales_date_date\".\"D_QOY\" = 2 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,2) in (select juicy.\"final_zips\" from juicy where juicy.\"final_zips\" is not null)
 
 GROUP BY
     1,
@@ -56,12 +53,12 @@ GROUP BY
     \"physical_sales_store_sales\".\"SS_ITEM_SK\",
     \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\")
 SELECT
-    \"abhorrent\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
-    sum(\"abhorrent\".\"physical_sales_net_profit\") as \"store_net_profit\"
+    \"sweltering\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
+    sum(\"sweltering\".\"physical_sales_net_profit\") as \"store_net_profit\"
 FROM
-    \"abhorrent\"
+    \"sweltering\"
 GROUP BY
     1
 ORDER BY 
-    \"abhorrent\".\"physical_sales_store_name\" asc
+    \"sweltering\".\"physical_sales_store_name\" asc
 LIMIT (100)"""

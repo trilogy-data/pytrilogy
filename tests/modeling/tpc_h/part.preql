@@ -28,7 +28,7 @@ address memory.part;
 
 property <id,supplier.id>.available_quantity float;
 property <id,supplier.id>.supply_cost float::usd;
-property <id,supplier.id>.supplier_comment string;
+property <id,supplier.id>.supplier_comment string; # the partsupp relationship comment (ps_comment) for this part+supplier pair — NOT the supplier's own comment; for that use supplier.comment
 
 datasource partsupp (
     ps_partkey:id,

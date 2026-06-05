@@ -59,13 +59,17 @@ concept = {
 
 parameter_default      = { ^"default" ~ literal }
 parameter_declaration  = { (^"parameter" | ^"param") ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ parameter_default? ~ metadata? }
-concept_declaration    = { PURPOSE ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
-concept_property_declaration = { UNIQUE? ~ PROPERTY ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ data_type ~ concept_nullable_modifier? ~ metadata? }
-concept_derivation     = { (PURPOSE | AUTO | PROPERTY) ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ "<-" ~ expr }
+concept_declaration    = { select_hide_modifier? ~ PURPOSE ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+concept_property_declaration = { select_hide_modifier? ~ UNIQUE? ~ PROPERTY ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+// body is `conditional` (not `expr`) so a derived concept can name a full
+// boolean predicate (`and`/`or`, `between`, `is null`) — the same grammar
+// `?`/`where` accept. `conditional` collapses to a bare `expr` for the
+// single-comparison/arithmetic cases, so prior derivations are unaffected.
+concept_derivation     = { select_hide_modifier? ~ (PURPOSE | AUTO | PROPERTY) ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ "<-" ~ conditional }
 
 concept_nullable_modifier = { "?" }
 
-inline_property        = { IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+inline_property        = { select_hide_modifier? ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
 inline_property_list   = { inline_property ~ ("," ~ inline_property)* ~ ","? }
 properties_declaration = { ^"properties" ~ (prop_ident_list | IDENTIFIER) ~ "(" ~ inline_property_list ~ ")" }
 prop_ident_list        = { "<" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? ~ ">" }
@@ -316,9 +320,12 @@ condition_parenthetical_not = { CONDITION_NOT ~ "(" ~ conditional ~ ")" }
 // parenthesized condition — defer to the `expr` alternative when seen.
 // BETWEEN_LA is atomic so the keyword-boundary check is applied immediately
 // after the word (a non-atomic sequence would skip whitespace before it).
+// `?` is the filter operator: `(x + y) ? cond` is a filter_item whose head is a
+// parenthesized expr, not a parenthesized condition. Defer to `expr` so the
+// filter parses (matters now that a derived-concept body is a `conditional`).
 _EXPR_CONTINUATION = _{
       COMPARISON_OPERATOR | PLUS_OR_MINUS | MULTIPLY_DIVIDE_PERCENT
-    | "." | "[" | "::" | BETWEEN_LA
+    | "." | "[" | "::" | BETWEEN_LA | "?"
 }
 BETWEEN_LA = @{ ^"between" ~ !(ASCII_ALPHANUMERIC | "_") }
 
@@ -412,7 +419,7 @@ COMPARISON_OPERATOR = @{
     | "<"
 }
 
-PLUS_OR_MINUS = @{ "+" | ("-" ~ !">") | "||" | ^"like" | ^"ilike" }
+PLUS_OR_MINUS = @{ "+" | ("-" ~ !">") | "||" | (^"not" ~ WHITESPACE+ ~ ^"ilike") | (^"not" ~ WHITESPACE+ ~ ^"like") | ^"ilike" | ^"like" }
 MULTIPLY_DIVIDE_PERCENT = @{ "**" | "*" | "/" | "%" }
 
 // subselect comparison support

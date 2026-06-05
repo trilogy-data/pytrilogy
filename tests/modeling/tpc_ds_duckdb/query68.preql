@@ -9,10 +9,10 @@ rowset dn <- where
     )
     and physical_sales.date.year in (1999, 2000, 2001)
     and physical_sales.store.city in ('Fairview', 'Midway')
-    and physical_sales.billing_customer.id is not null
+    and physical_sales.customer.id is not null
 select
     physical_sales.ticket_number,
-    physical_sales.billing_customer.id,
+    physical_sales.customer.id,
     physical_sales.sale_address.city,
     sum(physical_sales.ext_sales_price) as extended_price,
     sum(physical_sales.ext_tax) as extended_tax,
@@ -24,7 +24,7 @@ select
     customer.first_name,
     customer.address.city,
 align
-    customer_id: physical_sales.billing_customer.id, customer.id
+    customer_id: physical_sales.customer.id, customer.id
 where
 customer.address.city != physical_sales.sale_address.city
 ;

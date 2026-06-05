@@ -64,6 +64,18 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     help="Show version and exit.",
 )
 @click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["rich", "json"]),
+    default=None,
+    help=(
+        "Output format. 'rich' (default) renders human-friendly tables and "
+        "panels; 'json' emits a stream of newline-delimited JSON events with "
+        "no formatting (parity on information, for agents/pipelines). Overrides "
+        "the TRILOGY_OUTPUT_FORMAT env var."
+    ),
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -76,11 +88,23 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     help="Write SQL debug output to the specified file path",
 )
 @click.pass_context
-def cli(ctx: click.Context, debug: bool, debug_file: str | None):
+def cli(
+    ctx: click.Context,
+    output_format: str | None,
+    debug: bool,
+    debug_file: str | None,
+):
     """Trilogy CLI - A beautiful data productivity tool."""
+    from trilogy.scripts.display import is_json_mode, set_output_format
+
+    # The flag overrides the env-derived default; when absent the env value
+    # (set transparently by the agent subprocess) stands.
+    set_output_format(output_format)
+
     ctx.ensure_object(dict)
     ctx.obj["DEBUG"] = debug or bool(debug_file)
     ctx.obj["DEBUG_FILE"] = debug_file
+    ctx.obj["OUTPUT_FORMAT"] = "json" if is_json_mode() else "rich"
 
     if ctx.obj["DEBUG"]:
         from trilogy.scripts.display import show_debug_mode

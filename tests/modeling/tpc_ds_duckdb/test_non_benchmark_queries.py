@@ -26,15 +26,15 @@ def test_demo(engine):
 import physical_sales as physical_sales;
 with ranked_states as
 select 
-    physical_sales.billing_customer.first_name,
-    physical_sales.billing_customer.address.state,
-    rank physical_sales.billing_customer.first_name 
-        over physical_sales.billing_customer.address.state 
-        order by  sum(physical_sales.sales_price) by physical_sales.billing_customer.first_name, physical_sales.billing_customer.address.state desc 
+    physical_sales.customer.first_name,
+    physical_sales.customer.address.state,
+    rank physical_sales.customer.first_name 
+        over physical_sales.customer.address.state 
+        order by  sum(physical_sales.sales_price) by physical_sales.customer.first_name, physical_sales.customer.address.state desc 
     -> sales_rank;
 
 select 
-    ranked_states.physical_sales.billing_customer.first_name,
+    ranked_states.physical_sales.customer.first_name,
     avg(cast(ranked_states.sales_rank as int))-> avg_sales_rank
 order by 
     avg_sales_rank desc
@@ -219,8 +219,8 @@ ORDER BY
 def test_website_demo(engine):
     query = """import physical_sales as physical_sales;
 select 
-    physical_sales.billing_customer.id, 
-    physical_sales.billing_customer.full_name,
+    physical_sales.customer.id, 
+    physical_sales.customer.full_name,
     physical_sales.ticket_number, 
 limit 5;    
 """
@@ -231,7 +231,7 @@ def test_where_clause_inputs(engine):
     y = """import physical_sales as physical_sales;
 import catalog_sales as catalog_sales;
 
-merge catalog_sales.bill_customer.id into physical_sales.billing_customer.id;
+merge catalog_sales.bill_customer.id into physical_sales.customer.id;
 merge catalog_sales.item.id into physical_sales.item.id;
 
 SELECT 
@@ -246,7 +246,7 @@ WHERE
     physical_sales.is_returned and physical_sales.date.year=2001 and physical_sales.date.month_of_year=4
     and physical_sales.return_date.year=2001 and physical_sales.return_date.month_of_year between 4 and 10
     and catalog_sales.date.year=2001 and catalog_sales.date.month_of_year between 4 and 10
-    and physical_sales.return_customer.id = physical_sales.billing_customer.id
+    and physical_sales.return_customer.id = physical_sales.customer.id
 ORDER BY 
     physical_sales.item.product_name asc,
     physical_sales.item.desc asc,
@@ -269,7 +269,7 @@ def test_constant_extra(engine):
 
 where physical_sales.date.year = 2001
 select 
-    count(physical_sales.billing_customer.id)->ccount, 
+    count(physical_sales.customer.id)->ccount, 
     1 as test,
 limit 5;    
 """

@@ -37,6 +37,26 @@ def test_handle_execution_exception():
         handle_execution_exception(ValueError("test error"))
 
 
+def test_handle_execution_exception_labels_syntax_errors(capsys):
+    """Syntax/validation errors are labelled `Syntax error:`; everything else
+    stays `Unexpected error:`."""
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    for exc in (SyntaxError("bad having"), InvalidSyntaxException("Syntax [104]: …")):
+        with raises(Exit):
+            handle_execution_exception(exc)
+        out = capsys.readouterr()
+        combined = out.out + out.err
+        assert "Syntax error:" in combined, combined
+        assert "Unexpected error:" not in combined, combined
+
+    with raises(Exit):
+        handle_execution_exception(ValueError("boom"))
+    combined = "".join(capsys.readouterr())
+    assert "Unexpected error:" in combined, combined
+    assert "Syntax error:" not in combined, combined
+
+
 def test_config_bootstrap():
     path = Path(__file__).parent / "config_directory"
     runner = CliRunner()

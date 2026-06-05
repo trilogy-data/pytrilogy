@@ -243,9 +243,9 @@ class TestRowset:
         out = {c.address for c in info.strategy_node.output_concepts}
         assert "high_value.store_id" in out
 
-    def test_rowset_order_by_protects_addresses(self):
-        """An inner ORDER BY contributes its concepts to the protected set so
-        `strip_tautological_not_null` doesn't drop a needed NOT NULL."""
+    def test_rowset_order_by_resolves_end_to_end(self):
+        """A rowset with an inner ORDER BY (including a NOT NULL guard in its
+        WHERE) resolves end to end."""
         env, benv = _build(ROWSET_ORDER_MODEL)
         info = _search(env, benv, ["high_value.store_id"])
         assert info.strategy_node is not None

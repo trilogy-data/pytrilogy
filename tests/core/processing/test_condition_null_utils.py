@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
     BooleanOperator,
@@ -8,27 +6,22 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.models.build import (
-    BuildColumnAssignment,
     BuildComparison,
     BuildConcept,
     BuildConditional,
-    BuildDatasource,
     BuildFunction,
     BuildGrain,
     BuildParenthetical,
-    BuildWhereClause,
 )
 from trilogy.core.models.core import DataType, ListWrapper, TupleWrapper
 from trilogy.core.processing.condition_utility import (
     _atom_proves_non_null,
     _coalesce_primary_proves_non_null,
-    _concept_globally_non_null,
     _eval_literal_comparison,
     _flip_op,
     _literal_value,
     _not_null_concept,
     conditions_cover_domain,
-    strip_tautological_not_null,
 )
 
 
@@ -90,77 +83,6 @@ class TestNotNullConcept:
             left=_is_not_null(x), right=_is_not_null(y), operator=BooleanOperator.AND
         )
         assert _not_null_concept(cond) is None
-
-
-def _env_with_columns(datasources: dict) -> SimpleNamespace:
-    return SimpleNamespace(datasources=datasources)
-
-
-def _datasource(name: str, columns) -> BuildDatasource:
-    return BuildDatasource(
-        name=name,
-        columns=[BuildColumnAssignment(alias=c.name, concept=c) for c in columns],
-        address=name,
-        namespace="test",
-        grain=BuildGrain(),
-    )
-
-
-class TestConceptGloballyNonNull:
-    def test_non_nullable_complete_column_is_proven(self):
-        env = _env_with_columns({"d": _datasource("d", [x, y])})
-        assert _concept_globally_non_null(x, env) is True
-
-    def test_concept_absent_from_all_datasources(self):
-        env = _env_with_columns({"d": _datasource("d", [y])})
-        assert _concept_globally_non_null(x, env) is False
-
-    def test_non_datasource_values_are_skipped(self):
-        # A non-BuildDatasource entry must be skipped, not crash.
-        env = _env_with_columns({"weird": object(), "d": _datasource("d", [x])})
-        assert _concept_globally_non_null(x, env) is True
-
-    def test_only_non_datasource_values_yields_false(self):
-        env = _env_with_columns({"weird": object()})
-        assert _concept_globally_non_null(x, env) is False
-
-
-class TestStripTautologicalNotNull:
-    def test_none_where_returns_none(self):
-        env = _env_with_columns({"d": _datasource("d", [x])})
-        assert strip_tautological_not_null(None, env) is None
-
-    def test_tautological_atom_dropped_others_kept(self):
-        env = _env_with_columns({"d": _datasource("d", [x, y])})
-        keep = BuildComparison(left=y, right=5, operator=ComparisonOperator.EQ)
-        where = BuildWhereClause(
-            conditional=BuildConditional(
-                left=_is_not_null(x), right=keep, operator=BooleanOperator.AND
-            )
-        )
-        result = strip_tautological_not_null(where, env)
-        assert result is not None
-        assert result.conditional == keep
-
-    def test_all_atoms_stripped_returns_none(self):
-        env = _env_with_columns({"d": _datasource("d", [x])})
-        where = BuildWhereClause(conditional=_is_not_null(x))
-        assert strip_tautological_not_null(where, env) is None
-
-    def test_protected_concept_not_stripped(self):
-        env = _env_with_columns({"d": _datasource("d", [x])})
-        where = BuildWhereClause(conditional=_is_not_null(x))
-        result = strip_tautological_not_null(
-            where, env, protected_addresses={x.address}
-        )
-        assert result is where
-
-    def test_nothing_to_strip_returns_input(self):
-        env = _env_with_columns({"d": _datasource("d", [x])})
-        where = BuildWhereClause(
-            conditional=BuildComparison(left=x, right=5, operator=ComparisonOperator.EQ)
-        )
-        assert strip_tautological_not_null(where, env) is where
 
 
 class TestFlipOp:

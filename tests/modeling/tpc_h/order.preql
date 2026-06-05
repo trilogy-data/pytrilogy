@@ -5,7 +5,7 @@ import customer as customer;
 key id int; #order key
 property id.status string;
 property id.total_price float::usd;
-property id.date date;
+property id.date date; # date the order was placed.
 property id.priority string;  #enum, one of: 1-URGENT, 2-HIGH, 3-MEDIUM, 4-NOT SPECIFIED
 property id.clerk string;
 property id.ship_priority string;  #enum, one of: 1-URGENT, 2-HIGH, 3-MEDIUM, 4-NOT SPECIFIED

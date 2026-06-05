@@ -1,6 +1,6 @@
 query_id = "97.2"
-gen_length = 2360
-preql_size = 1642
+gen_length = 2328
+preql_size = 1602
 comp_size = 1159
 generated_sql = """
 
@@ -23,7 +23,7 @@ GROUP BY
 cooperative as (
 SELECT
     \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
-    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_billing_customer_id\",
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_customer_id\",
     \"physical_sales_store_sales\".\"SS_ITEM_SK\" as \"item_id\",
     \"physical_sales_store_sales\".\"SS_ITEM_SK\" as \"physical_sales_item_id\"
 FROM
@@ -37,15 +37,15 @@ GROUP BY
     4)
 SELECT
     sum(CASE
-	WHEN \"cooperative\".\"physical_sales_billing_customer_id\" is not null and \"cooperative\".\"physical_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is null and \"quizzical\".\"catalog_sales_item_id\" is null THEN 1
+	WHEN \"cooperative\".\"physical_sales_customer_id\" is not null and \"cooperative\".\"physical_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is null and \"quizzical\".\"catalog_sales_item_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"cooperative\".\"physical_sales_billing_customer_id\" is null and \"cooperative\".\"physical_sales_item_id\" is null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
+	WHEN \"cooperative\".\"physical_sales_customer_id\" is null and \"cooperative\".\"physical_sales_item_id\" is null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"cooperative\".\"physical_sales_billing_customer_id\" is not null and \"cooperative\".\"physical_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
+	WHEN \"cooperative\".\"physical_sales_customer_id\" is not null and \"cooperative\".\"physical_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM

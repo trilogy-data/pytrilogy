@@ -11,7 +11,7 @@ def bucket_count(low, high) -> sum(
 where
     physical_sales.return_date.year = 2001
     and physical_sales.return_date.month_of_year = 8
-    and physical_sales.billing_customer.id = physical_sales.return_customer.id
+    and physical_sales.customer.id = physical_sales.return_customer.id
     and physical_sales.store.id is not null
 select
     --physical_sales.store.id,

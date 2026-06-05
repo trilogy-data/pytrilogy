@@ -165,6 +165,41 @@ def test_main_agent_info_does_not_inline_extracted_sections():
     assert 'trilogy = ["setup.preql"]' not in result.output
 
 
+def test_agent_info_syntax_lists_examples():
+    """`agent-info syntax` with no subcommand lists the available examples."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "syntax"])
+    assert result.exit_code == 0
+    assert "Available Trilogy syntax examples" in result.output
+    assert "trilogy agent-info syntax example" in result.output
+
+
+def test_agent_info_syntax_example_no_name_lists():
+    """`agent-info syntax example` with no NAME also prints the index."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "syntax", "example"])
+    assert result.exit_code == 0
+    assert "Available Trilogy syntax examples" in result.output
+
+
+def test_agent_info_syntax_example_renders_named_body():
+    from trilogy.ai.syntax_examples import available_names
+
+    name = available_names()[0]
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "syntax", "example", name])
+    assert result.exit_code == 0
+    assert result.output.startswith("# ")
+
+
+def test_agent_info_syntax_example_unknown_name_errors():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "syntax", "example", "no-such-example"])
+    assert result.exit_code == 2
+    assert "Unknown syntax example" in result.output
+    assert "Available Trilogy syntax examples" in result.output
+
+
 def test_cli_help_contains_agent_notice():
     """Test that CLI help contains notice for AI agents."""
     runner = CliRunner()

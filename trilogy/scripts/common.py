@@ -26,6 +26,7 @@ from trilogy.scripts.display import (
     print_error,
     print_info,
     print_success,
+    print_warning,
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
 from trilogy.utility import safe_open
@@ -296,8 +297,8 @@ def validate_required_connection_params(
             f"Missing required {dialect_name} connection parameters: {', '.join(missing)}"
         )
     if extra:
-        print(
-            f"Warning: Extra {dialect_name} connection parameters provided: {', '.join(extra)}"
+        print_warning(
+            f"Extra {dialect_name} connection parameters provided: {', '.join(extra)}"
         )
     return {
         k: v for k, v in conn_dict.items() if k in required_keys or k in optional_keys
@@ -615,7 +616,15 @@ def datetime_now_seconds() -> float:
 def handle_execution_exception(e: Exception, debug: bool = False) -> None:
     if isinstance(e, Exit):
         raise e
-    print_error(f"Unexpected error: {e}")
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    # Syntax/validation errors carry actionable, user-facing guidance; label them
+    # as such instead of "Unexpected error:" so the reader (or agent) treats them
+    # as a fixable mistake rather than an internal crash.
+    if isinstance(e, (SyntaxError, InvalidSyntaxException)):
+        print_error(f"Syntax error: {e}")
+    else:
+        print_error(f"Unexpected error: {e}")
     if debug:
         print_error(f"Full traceback:\n{traceback.format_exc()}")
     raise Exit(1) from e

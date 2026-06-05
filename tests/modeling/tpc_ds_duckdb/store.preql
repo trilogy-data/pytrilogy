@@ -14,12 +14,12 @@ unique property id.text_id string; # The store's business "store code" (s_store_
 properties id (
     name string, # Store display name.
     employees int, # Number of employees working at the store.
-    floor_space int, # Total floor space of the store in square feet.
-    hours string, # Operating-hours descriptor (free-form, e.g. '8AM-12AM').
-    store_manager string, # Name of the store manager.
-    geography_class string, # Geographic classification (free-form category).
-    market_manager string, # Name of the manager responsible for the store's market.
-    tax_percentage float, # Local sales-tax rate applied at the store (decimal fraction, e.g. 0.06 = 6%).
+    --floor_space int, # Total floor space of the store in square feet.
+    --hours string, # Operating-hours descriptor (free-form, e.g. '8AM-12AM').
+    --store_manager string, # Name of the store manager.
+    --geography_class string, # Geographic classification (free-form category).
+    --market_manager string, # Name of the manager responsible for the store's market.
+    --tax_percentage float, # Local sales-tax rate applied at the store (decimal fraction, e.g. 0.06 = 6%).
     county string, # County the store is located in.
     state string::us_state_short, # Two-letter US state code where the store is located.
     city string, # City where the store is located.

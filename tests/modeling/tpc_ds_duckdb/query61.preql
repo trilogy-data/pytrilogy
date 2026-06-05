@@ -11,7 +11,7 @@ where
     ss.date.year = 1998
     and ss.date.month_of_year = 11
     and ss.item.category = 'Jewelry'
-    and ss.billing_customer.address.gmt_offset = -5
+    and ss.customer.address.gmt_offset = -5
     and ss.store.gmt_offset = -5
 select
     promotional_sales as promotions,

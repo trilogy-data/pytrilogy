@@ -1,118 +1,205 @@
-# Trilogy failure analysis — 20260601-025819
+# Trilogy failure analysis — 20260603-144033
 
-- Run `20260601-025817_enriched` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 132 | failed: 10 (8%)
+- Run `20260603-144030_enriched` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 227 | failed: 23 (10%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 4 | 40% |
-| `undefined-concept` | 3 | 30% |
-| `syntax-parse` | 2 | 20% |
-| `syntax-missing-alias` | 1 | 10% |
+| `syntax-parse` | 9 | 39% |
+| `other` | 7 | 30% |
+| `undefined-concept` | 3 | 13% |
+| `syntax-missing-alias` | 2 | 9% |
+| `join-resolution` | 1 | 4% |
+| `cli-misuse` | 1 | 4% |
 
 ## Detail
 
+### `syntax-parse`
+
+- `trilogy run --import raw/all_sales:all_sales select all_sales.date.year, count(all_sales.order_id) as cnt group by all_sales.date.year order by all_sales.date.year;`
+
+  ```text
+
+  ```
+- `trilogy file write query02.preql --content import raw.all_sales as all_sales;
+
+# Restrict to WEB and CATALOG channels only
+where all_sales.sales_channel in (…    fri_ratio as friday,
+    sat_ratio as saturday
+where
+    all_sales.date.week_seq in wk_2001
+order by
+    all_sales.date.week_seq asc nulls first;`
+
+  ```text
+
+  ```
+- `trilogy file write query05.preql --content import raw/all_sales as a;
+
+# Sales side: gross sales (ext_sales_price) and net profit
+# filtered by sales date an…end;
+
+select
+    channel_label,
+    entity_id,
+    gross_sales,
+    total_returns,
+    net_profit_value
+order by channel_label, entity_id
+limit 100;
+`
+
+  ```text
+
+  ```
+- `trilogy file write query05.preql --content import raw.all_sales as a;
+
+# --- Sales-side aggregates (by sales_channel + channel_dim_id) ---
+auto sales_gross <…es_profit - return_loss_val as net_profit_value
+where sales_gross is not null or return_amt is not null
+order by channel_label, entity_id
+limit 100;
+`
+
+  ```text
+
+  ```
+- `trilogy run --import raw/all_sales:a select a.sales_channel, a.channel_dim_id, a.channel_dim_id.channel_dim_text_id, count(a.row_one) as cnt where a.channel_dim_id is not null group by a.sales_channel, a.channel_dim_id, a.channel_dim_id.channel_dim_text_id limit 10;`
+
+  ```text
+
+  ```
+- `trilogy file write query05.preql --content import raw.all_sales as a;
+
+# Sales side: group by channel and sales entity
+where a.date.date between '2000-08-23'…esce(r_returns, 0) as total_returns,
+    coalesce(s_profit, 0) - coalesce(r_loss, 0) as net_profit_value
+order by channel asc, dim_id asc
+limit 100;
+`
+
+  ```text
+
+  ```
+- `trilogy file write query05.preql --content import raw.all_sales as a;
+
+# Sales side: group by channel and sales entity
+where a.date.date between '2000-08-23'…esce(r_returns, 0) as total_returns,
+    coalesce(s_profit, 0) - coalesce(r_loss, 0) as net_profit_value
+order by channel asc, dim_id asc
+limit 100;
+`
+
+  ```text
+
+  ```
+- `trilogy file write query05.preql --content import raw.all_sales as a;
+
+# Combined entity ID using coalesce
+# For rows with a sale (date is not null, channel_…ing gross_sales > 0 or total_returns > 0
+order by g_channel asc, a.sales_channel asc nulls first, g_entity asc, entity_id asc nulls first
+limit 100;
+`
+
+  ```text
+
+  ```
+- `trilogy file write query10.preql --content import raw.physical_sales as store_sales;
+import raw.web_sales as web;
+import raw.catalog_sales as catalog;
+
+# Mer…ndent_count,
+    store_sales.customer.demographics.employed_dependent_count,
+    store_sales.customer.demographics.college_dependent_count
+limit 100;`
+
+  ```text
+
+  ```
+
 ### `other`
 
-- `trilogy run query23.preql duckdb`
+- `trilogy run query02.preql`
 
   ```text
-  Have
-  {'MergeNode<all_sales.sales_channel,local._virt_func_substring_2877672313873438
-  ,store_sales.item.text_id...10 more>': None} and need
-  BuildSubselectComparison(left=all_sales.sales_channel@Grain<all_sales.sales_cha
-  nnel>, right=('CATALOG', 'WEB'), operator=<ComparisonOperator.IN: 'in'>) and
-  all_sales.date.year = 2000 and all_sales.date.month_of_year = 2 and
-  local.frequent_item_count > 4 and local.cust_total >
-  multiply(0.5,local.max_cust@Grain<Abstract>)
+
   ```
-- `trilogy run query24.preql`
+- `trilogy run query02.preql`
 
   ```text
-  HAVING references 'local.avg_stage1_total', which is not in
-  the SELECT projection (line 20). Add it to SELECT, each prefixed with `--` so
-  it stays out of the output rows — keep your HAVING as-is:
-      select <your existing columns>, --local.avg_stage1_total
-  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
-  non-output grain, write `agg(x) by grain` inline in WHERE.
+
   ```
-- `trilogy run query24.preql`
+- `trilogy run query02.preql`
 
   ```text
-  HAVING references 'local.avg_stage1_total', which is not in
-  the SELECT projection (line 26). Add it to SELECT, each prefixed with `--` so
-  it stays out of the output rows — keep your HAVING as-is:
-      select <your existing columns>, --local.avg_stage1_total
-  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
-  non-output grain, write `agg(x) by grain` inline in WHERE.
+
   ```
-- `trilogy run query27.preql`
+- `trilogy run query02.preql`
 
   ```text
-  Unable to import '.\physical_sales.preql': [Errno 2] No such
-  file or directory: '.\\physical_sales.preql'. Did you mean: raw.physical_sales?
+
+  ```
+- `trilogy run query05.preql`
+
+  ```text
+
+  ```
+- `trilogy run query05.preql`
+
+  ```text
+
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 51 column 12 (char 2235). Re-issue the call with valid JSON arguments.
   ```
 
 ### `undefined-concept`
 
-- `trilogy run query23.preql duckdb`
+- `trilogy run query02.preql`
 
   ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  last_name.')
+
   ```
-- `trilogy run query23.preql duckdb`
+- `trilogy run query02.preql`
 
   ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  last_name.')
+
   ```
-- `trilogy run query23.preql duckdb`
+- `trilogy run query05.preql`
 
   ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  last_name.')
-  ```
 
-### `syntax-parse`
-
-- `trilogy run --import raw.all_sales:all_sales select all_sales.billing_customer.id, count(all_sales.order_id) as cnt where all_sales.date.year=2000 and all_sa….month_of_year=2 and all_sales.sales_channel in ('CATALOG','WEB') and all_sales.billing_customer.id is not null group by 1 order by cnt desc limit 5;`
-
-  ```text
-  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP
-  BY — remove it. Grouping is automatic by the non-aggregated fields in your
-  SELECT. To aggregate at a different grain than the select, write `agg(x) by
-  dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...lling_customer.id is not null ??? group by 1 order by cnt desc l...
-  ```
-- `trilogy file write query23.preql`
-
-  ```text
-  refused to write 'query23.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY — remove it.
-  Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate
-  at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g.
-  `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...em.text_id ? fr_item_cnt > 4 ??? group by all_sales.billing_cus...
-
-  Write stats: received 1406 chars / 1406 bytes; tail: …'c, first_name asc,
-  total_sales asc nulls first\r\\nlimit 100;\r\\n'.
   ```
 
 ### `syntax-missing-alias`
 
-- `trilogy run --import raw.physical_sales:store_sales select count(store_sales.ticket_number) where store_sales.date.year between 2000 and 2003;`
+- `trilogy run --import raw/all_sales:all_sales select distinct all_sales.date.day_of_week, all_sales.date.day_name where all_sales.date.year = 2001 order by all_sales.date.day_of_week;`
 
   ```text
-  Syntax [201]: Missing alias? Alias must be specified with
-  "AS" - e.g. `SELECT x+1 AS y` Here: `count(store_sales.ticket_number) as
-  ticket_number_count`
-  Location:
-  ...nt(store_sales.ticket_number) ??? where store_sales.date.year be...
+
+  ```
+- `trilogy run --import raw/all_sales:a select a.sales_channel, count(a.row_one) limit 10;`
+
+  ```text
+
+  ```
+
+### `join-resolution`
+
+- `trilogy run --import raw/all_sales:a --import raw/store:s --import raw/catalog_page:cp --import raw/web_site:ws select a.sales_channel, a.channel_dim_id, a.channel_dim_id.channel_dim_text_id, s.id.text_id, s.id.name limit 10;`
+
+  ```text
+
+  ```
+
+### `cli-misuse`
+
+- `trilogy explore raw/store_sales.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
   ```

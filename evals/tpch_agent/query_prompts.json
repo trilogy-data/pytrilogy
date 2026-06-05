@@ -42,7 +42,7 @@
   {
     "id": 9,
     "grade": "hard",
-    "prompt": "Restricted to parts whose name contains green, report profit by supplier nation and order-date year. Profit is the sum of (extended price * (1 - discount) - partsupp supplycost * quantity) where each lineitem's supplycost comes from the partsupp entry matching that lineitem's (part, supplier). Sort by nation ascending then year descending."
+    "prompt": "Restricted to parts whose name contains green, report profit by supplier nation and order-date year. Profit is the sum of (extended price * (1 - discount) - partsupp supplycost * quantity) where each lineitem's supplycost comes from the partsupp entry matching that lineitem's (part, supplier). Sort by nation ascending then year descending. Return every nation/year combination — do not limit the result set."
   },
   {
     "id": 10,
@@ -52,12 +52,12 @@
   {
     "id": 11,
     "grade": "medium",
-    "prompt": "Looking only at partsupp rows whose supplier is in GERMANY, report total value (sum of supplycost * availqty) by part key. Include only parts whose total value exceeds 0.0001% of the grand total across all GERMANY partsupp rows. Sort by total value descending."
+    "prompt": "Looking only at partsupp rows whose supplier is in GERMANY, report total value (sum of supplycost * availqty) by part key. Include only parts whose total value exceeds a fraction 0.0001 (i.e. one hundredth of one percent) of the grand total across all GERMANY partsupp rows. Sort by total value descending. Include all parts; no limit."
   },
   {
     "id": 12,
     "grade": "medium",
-    "prompt": "For lineitems shipped by MAIL or SHIP, with commit date before receipt date, ship date before commit date, and receipt date between 1994-01-01 (inclusive) and 1995-01-01 (exclusive), report two counts per ship mode: high-line count (orders with priority 1-URGENT or 2-HIGH) and low-line count (orders with any other priority). Sort by ship mode."
+    "prompt": "For order/line_no pairs shipped by MAIL or SHIP, with commit date before receipt date, ship date before commit date, and receipt date between 1994-01-01 (inclusive) and 1995-01-01 (exclusive), report two totals per ship mode: high-line total (line-item pairs with priority 1-URGENT or 2-HIGH) and low-line total (line-item pairs with any other priority). Sort by ship mode."
   },
   {
     "id": 13,
@@ -77,7 +77,7 @@
   {
     "id": 16,
     "grade": "medium",
-    "prompt": "Looking only at parts whose brand is not Brand#45, whose type does not start with MEDIUM POLISHED, and whose size is one of (49, 14, 23, 45, 19, 3, 36, 9), and excluding any supplier whose comment matches LIKE %Customer%Complaints%, report — for each combination of part brand, type, and size — the count of distinct suppliers offering those parts in partsupp. Sort by supplier count descending, then brand, type, size."
+    "prompt": "Looking only at parts whose brand is not Brand#45, whose type does not start with MEDIUM POLISHED, and whose size is one of (49, 14, 23, 45, 19, 3, 36, 9), and excluding any supplier whose comment matches LIKE %Customer%Complaints%, report — for each combination of part brand, type, and size — the count of distinct suppliers offering those parts in partsupp. Sort by supplier count descending, then brand, type, size. Return every qualifying brand/type/size combination — do not limit the result set."
   },
   {
     "id": 17,
@@ -92,7 +92,7 @@
   {
     "id": 19,
     "grade": "hard",
-    "prompt": "Report revenue as the sum of lineitem extended price * (1 - discount) across lineitems that match any of three part-specific buckets. Bucket (a): part brand Brand#12, container in (SM CASE, SM BOX, SM PACK, SM PKG), quantity in [1, 11], size in [1, 5], ship mode in (AIR, AIR REG), and ship instruct DELIVER IN PERSON. Bucket (b): brand Brand#23, container in (MED BAG, MED BOX, MED PKG, MED PACK), quantity in [10, 20], size in [1, 10], same ship mode and ship instruct. Bucket (c): brand Brand#34, container in (LG CASE, LG BOX, LG PACK, LG PKG), quantity in [20, 30], size in [1, 15], same ship mode and ship instruct."
+    "prompt": "Report revenue as the sum of lineitem extended price * (1 - discount) across lineitems that match any of three part-specific buckets. Bucket (a): part brand Brand#12, container in (SM CASE, SM BOX, SM PACK, SM PKG), quantity in [1, 11], size in [1, 5], ship mode in (AIR, AIR REG), and ship instruct DELIVER IN PERSON. Bucket (b): brand Brand#23, container in (MED BAG, MED BOX, MED PKG, MED PACK), quantity in [10, 20], size in [1, 10], same ship mode and ship instruct. Bucket (c): brand Brand#34, container in (LG CASE, LG BOX, LG PACK, LG PKG), quantity in [20, 30], size in [1, 15], same ship mode and ship instruct. Use the ship modes exactly as provided."
   },
   {
     "id": 20,
@@ -107,6 +107,6 @@
   {
     "id": 22,
     "grade": "hard",
-    "prompt": "Among customers with positive account balance whose phone area code (first two characters) is one of (13, 31, 23, 29, 30, 18, 17), keep only those whose account balance exceeds the average positive-balance account balance across that same area-code set, and who have no orders at all. For each area code (cntrycode = first two characters of phone), report customer count and total account balance. Sort by area code."
+    "prompt": "Among customers with positive account balance whose phone area code (first two characters) is one of (13, 31, 23, 29, 30, 18, 17), keep only those whose account balance exceeds the average positive-balance account balance across that same area-code set and who have no orders at all. For each area code (cntrycode = first two characters of phone), report customer count and total account balance. Sort by area code."
   }
 ]

@@ -76,6 +76,8 @@ NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
     ComparisonOperator.GTE,
     ComparisonOperator.LIKE,
     ComparisonOperator.ILIKE,
+    ComparisonOperator.NOT_LIKE,
+    ComparisonOperator.NOT_ILIKE,
     ComparisonOperator.IN,
     ComparisonOperator.NOT_IN,
     ComparisonOperator.CONTAINS,
@@ -730,75 +732,6 @@ def _not_null_concept(
     return None
 
 
-def _concept_globally_non_null(
-    concept: BuildConcept, environment: "BuildEnvironment"
-) -> bool:
-    """True when at least one datasource outputs ``concept`` and *every*
-    datasource that has it as a column exposes it complete and non-nullable.
-
-    Such a column can only ever be NULL via outer-join padding, never from a
-    base scan, so an ``IS NOT NULL`` predicate on it is tautological pre-join.
-    Model nullability is treated as a trusted invariant.
-    """
-    addrs = {concept.address, concept.canonical_address}
-    found = False
-    for ds in environment.datasources.values():
-        if not isinstance(ds, BuildDatasource):
-            continue
-        for col in ds.columns:
-            if addrs & {col.concept.address, col.concept.canonical_address}:
-                if col.is_nullable or not col.is_complete:
-                    return False
-                found = True
-    return found
-
-
-def strip_tautological_not_null(
-    where: BuildWhereClause | None,
-    environment: "BuildEnvironment",
-    protected_addresses: set[str] | None = None,
-) -> BuildWhereClause | None:
-    """Drop top-level ``X IS NOT NULL`` atoms that are provably always true
-    (X non-nullable & complete on every datasource that can source it).
-
-    Keeping such an atom otherwise pins X into the query's required concepts
-    and any dedup grain it lands in, for no semantic effect.
-
-    ``protected_addresses`` are concepts the query directly selects, groups, or
-    orders by. An ``X IS NOT NULL`` on such a concept is an author-intended
-    guard (e.g. q10 ``customer.demographics.gender is not null`` expressing the
-    reference's INNER equi-join over a nullable FK), not redundant noise — even
-    when X is non-null in its *own* table, it can be NULL-padded by a join, so
-    we never strip it. Only WHERE-only / aggregate-input concepts (e.g. q29
-    ``catalog_sales.quantity``, summed in a different branch) are eligible.
-    Returns the reduced clause, or ``None`` when every atom was stripped.
-    """
-    if where is None:
-        return None
-    protected = protected_addresses or set()
-    atoms = decompose_condition(where.conditional)
-    survivors: list[BuildSubselectComparison | BoolExpr] = []
-    dropped = False
-    for atom in atoms:
-        concept = _not_null_concept(atom)
-        if (
-            concept is not None
-            and concept.address not in protected
-            and concept.canonical_address not in protected
-            and is_scalar_condition(atom)
-            and _concept_globally_non_null(concept, environment)
-        ):
-            dropped = True
-            continue
-        survivors.append(atom)
-    if not dropped:
-        return where
-    combined = combine_condition_atoms(survivors)  # type: ignore[arg-type]
-    if combined is None:
-        return None
-    return BuildWhereClause(conditional=combined)
-
-
 def concepts_implied_non_null(value: object) -> set[str]:
     """Concepts whose individual non-nullness is implied when ``value`` evaluates non-null.
 
@@ -942,6 +875,45 @@ def _coalesce_primary_proves_non_null(
     return concepts_implied_non_null(expr.arguments[0])
 
 
+def comparison_proves_non_null(
+    atom: BuildComparison,
+) -> set[str]:
+    """Concept addresses a single comparison forces non-null in surviving rows.
+
+    Shared leaf logic for both null-proof walkers (this module's
+    ``condition_proves_non_null`` and ``join_upgrade._proves_non_null``); the
+    walkers differ only in their handling of nested conditionals/``BETWEEN``.
+    """
+    left, right, op = atom.left, atom.right, atom.operator
+    if op == ComparisonOperator.IS_NOT:
+        # `<expr> IS NOT NULL` — every concept inside the expression is non-null.
+        if is_null_literal(right):
+            return concepts_implied_non_null(left)
+        if is_null_literal(left):
+            return concepts_implied_non_null(right)
+        return set()
+    if op == ComparisonOperator.IS:
+        # `<expr> IS NULL` wants NULLs and proves nothing; `X IS True`/`IS False`
+        # (any non-null literal) forces the operands non-null, like an equality.
+        if is_null_literal(right) or is_null_literal(left):
+            return set()
+        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+    if op in NULL_PROPAGATING_OPS:
+        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
+        # default statically fails the comparison — surviving rows can only
+        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
+        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
+        # the "count-of-empty is 0, not NULL" convention; predicates like
+        # ``> 0`` over the wrapped column otherwise become opaque to us.
+        proofs |= _coalesce_primary_proves_non_null(left, op, right)
+        flipped = _flip_op(op)
+        if flipped is not None:
+            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
+        return proofs
+    return set()
+
+
 def _atom_proves_non_null(
     atom: BoolExpr,
 ) -> set[str]:
@@ -961,31 +933,7 @@ def _atom_proves_non_null(
         return _atom_proves_non_null(atom.left) | _atom_proves_non_null(atom.right)  # type: ignore[arg-type]
     if not isinstance(atom, BuildComparison):
         return set()
-    left, right, op = atom.left, atom.right, atom.operator
-    if op == ComparisonOperator.IS_NOT:
-        # `<expr> IS NOT NULL` — every concept inside the expression is non-null.
-        if is_null_literal(right):
-            return concepts_implied_non_null(left)
-        if is_null_literal(left):
-            return concepts_implied_non_null(right)
-        return set()
-    if op == ComparisonOperator.IS:
-        # `<expr> IS NULL` specifically wants NULLs — never proves non-null.
-        return set()
-    if op in NULL_PROPAGATING_OPS:
-        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
-        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
-        # default statically fails the comparison — surviving rows can only
-        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
-        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
-        # the "count-of-empty is 0, not NULL" convention; predicates like
-        # ``> 0`` over the wrapped column otherwise become opaque to us.
-        proofs |= _coalesce_primary_proves_non_null(left, op, right)
-        flipped = _flip_op(op)
-        if flipped is not None:
-            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
-        return proofs
-    return set()
+    return comparison_proves_non_null(atom)
 
 
 def condition_proves_non_null(

@@ -19,16 +19,16 @@ and (case
 and physical_sales.date.year in (1999, 2000, 2001)
 and physical_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')
 )
-    by physical_sales.ticket_number, physical_sales.billing_customer.id;
+    by physical_sales.ticket_number, physical_sales.customer.id;
 
 where
-    physical_sales.billing_customer.id is not null
+    physical_sales.customer.id is not null
 select
-    --physical_sales.billing_customer.id,
-    physical_sales.billing_customer.last_name,
-    physical_sales.billing_customer.first_name,
-    physical_sales.billing_customer.salutation,
-    physical_sales.billing_customer.preferred_cust_flag,
+    --physical_sales.customer.id,
+    physical_sales.customer.last_name,
+    physical_sales.customer.first_name,
+    physical_sales.customer.salutation,
+    physical_sales.customer.preferred_cust_flag,
     physical_sales.ticket_number,
     ticket_cnt,
 having
@@ -36,7 +36,7 @@ having
 
 order by
     ticket_cnt desc,
-    physical_sales.billing_customer.last_name asc,
+    physical_sales.customer.last_name asc,
     physical_sales.ticket_number asc,
-    physical_sales.billing_customer.id asc
+    physical_sales.customer.id asc
 ;

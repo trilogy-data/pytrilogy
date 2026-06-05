@@ -8,13 +8,13 @@ key id int; # Surrogate key uniquely identifying a promotion.
 properties id (
     text_id string, # Stable business identifier for the promotion (16-char alphanumeric).
     channel_email enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the email channel, else 'N'.
-    channel_catalog enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the printed-catalog channel, else 'N'.
+    --channel_catalog enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the printed-catalog channel, else 'N'.
     channel_event enum<string>['Y', 'N']?, # 'Y' if the promotion ran via in-person events, else 'N'.
     channel_dmail enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the direct-mail channel, else 'N'.
     channel_tv enum<string>['Y', 'N']?, # 'Y' if the promotion ran on TV, else 'N'.
-    channel_radio enum<string>['Y', 'N']?, # 'Y' if the promotion ran on radio, else 'N'.
-    channel_press enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the press channel, else 'N'.
-    cost numeric::usd, # Total cost of running the promotion in USD.
+    --channel_radio enum<string>['Y', 'N']?, # 'Y' if the promotion ran on radio, else 'N'.
+    --channel_press enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the press channel, else 'N'.
+    --cost numeric::usd, # Total cost of running the promotion in USD.
 );
 
 datasource promotion (

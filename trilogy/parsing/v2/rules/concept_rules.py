@@ -18,9 +18,11 @@ from trilogy.core.exceptions import MissingParameterException
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     AggregateWrapper,
+    Between,
     Comparison,
     Concept,
     ConceptRef,
+    Conditional,
     FilterItem,
     Function,
     FunctionCallWrapper,
@@ -178,6 +180,7 @@ def concept_declaration(
 ) -> ConceptDeclarationStatement:
     syntax = ConceptDeclarationSyntax.from_node(node)
     metadata = hydrate(syntax.metadata) if syntax.metadata else Metadata()
+    metadata.hidden = syntax.hidden
     modifiers = [hydrate(syntax.nullable)] if syntax.nullable else []
     purpose = hydrate(syntax.purpose)
     name = hydrate(syntax.name)
@@ -208,6 +211,7 @@ def concept_property_declaration(
     syntax = ConceptPropertyDeclarationSyntax.from_node(node)
     unique = syntax.unique is not None
     metadata = hydrate(syntax.metadata) if syntax.metadata else Metadata()
+    metadata.hidden = syntax.hidden
     modifiers = [hydrate(syntax.nullable)] if syntax.nullable else []
     declaration = hydrate(syntax.declaration)
     datatype = hydrate(syntax.datatype)
@@ -251,6 +255,9 @@ def concept_derivation(
 ) -> ConceptDerivationStatement:
     syntax = ConceptDerivationSyntax.from_node(node)
     metadata = hydrate(syntax.metadata) if syntax.metadata else None
+    if syntax.hidden:
+        metadata = metadata or Metadata()
+        metadata.hidden = True
     purpose = hydrate(syntax.purpose)
     raw_name = hydrate(syntax.name)
     if isinstance(raw_name, str):
@@ -283,6 +290,8 @@ def concept_derivation(
             Function,
             FunctionCallWrapper,
             Comparison,
+            Conditional,
+            Between,
             SubselectItem,
         ),
     ):

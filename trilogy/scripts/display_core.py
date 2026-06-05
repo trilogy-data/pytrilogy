@@ -1,6 +1,7 @@
 """Core display infrastructure: Rich mode, console, shared constants and print helpers."""
 
 import io
+import json
 import os
 import sys
 import threading
@@ -95,6 +96,104 @@ COL_CYAN = "cyan"
 COL_WHITE = "white"
 COL_DIM = "dim"
 COL_GREEN = "green"
+
+
+# --- Output format ----------------------------------------------------------
+# Two modes: "rich" (the default human-facing rendering) and "json" (a stream
+# of pretty-printed JSON event objects, newline-separated, emitted to stdout).
+# JSON mode strips all decorative formatting (panels, tables, progress bars,
+# colors) so an agent consuming the CLI as a subprocess gets the same
+# information with no token-wasting chrome. The env var lets the agent
+# subprocess opt in transparently; the CLI ``--format`` flag overrides it.
+_ENV_OUTPUT_FORMAT = "TRILOGY_OUTPUT_FORMAT"
+_VALID_OUTPUT_FORMATS = ("rich", "json")
+
+
+def _initial_output_format() -> str:
+    raw = (os.environ.get(_ENV_OUTPUT_FORMAT) or "rich").strip().lower()
+    return raw if raw in _VALID_OUTPUT_FORMATS else "rich"
+
+
+OUTPUT_FORMAT = _initial_output_format()
+
+
+def set_output_format(fmt: "str | None") -> None:
+    """Set the active output format. ``None`` re-resolves from the
+    ``TRILOGY_OUTPUT_FORMAT`` env var (the default when no CLI flag is passed),
+    so each CLI invocation establishes the format fresh rather than inheriting
+    whatever a prior in-process invocation left behind."""
+    global OUTPUT_FORMAT
+    if fmt is None:
+        OUTPUT_FORMAT = _initial_output_format()
+        return
+    fmt = fmt.strip().lower()
+    OUTPUT_FORMAT = fmt if fmt in _VALID_OUTPUT_FORMATS else "rich"
+
+
+def is_json_mode() -> bool:
+    return OUTPUT_FORMAT == "json"
+
+
+def _is_scalar(value: Any) -> bool:
+    return not isinstance(value, (list, dict))
+
+
+def _is_row_table(value: Any) -> bool:
+    """A 2-D table: a non-empty list whose every element is a flat list of
+    scalars (a result row). These are rendered one compact row per line rather
+    than exploded cell-by-cell, so a 50-row result stays readable instead of
+    ballooning to hundreds of lines."""
+    return (
+        isinstance(value, list)
+        and len(value) > 0
+        and all(isinstance(e, list) and all(_is_scalar(c) for c in e) for e in value)
+    )
+
+
+def _pretty(obj: Any, level: int = 0) -> str:
+    """Pretty-print JSON for agent consumption: objects and 1-D lists expand
+    one item per line; 2-D row tables stay compact (one row per line). Falls
+    back to ``str`` for non-JSON scalars (datetimes, Decimals, paths) so an
+    event never fails to serialize."""
+    pad, pad2 = "  " * level, "  " * (level + 1)
+    if isinstance(obj, dict):
+        if not obj:
+            return "{}"
+        items = [
+            f"{pad2}{json.dumps(k)}: {_pretty(v, level + 1)}" for k, v in obj.items()
+        ]
+        return "{\n" + ",\n".join(items) + f"\n{pad}}}"
+    if isinstance(obj, list):
+        if not obj:
+            return "[]"
+        if _is_row_table(obj):
+            # Compact separators inside each row — they're already one-per-line,
+            # so dropping the ", "/": " padding trims the heaviest response
+            # (result rows) with no readability cost.
+            rows = [
+                f"{pad2}{json.dumps(r, default=str, separators=(',', ':'))}"
+                for r in obj
+            ]
+            return "[\n" + ",\n".join(rows) + f"\n{pad}]"
+        items = [f"{pad2}{_pretty(e, level + 1)}" for e in obj]
+        return "[\n" + ",\n".join(items) + f"\n{pad}]"
+    return json.dumps(obj, default=str)
+
+
+def emit_event(event: str, **fields: Any) -> None:
+    """Write one pretty-printed JSON event object to stdout in JSON mode;
+    no-op otherwise. Successive events are newline-separated, so a consumer
+    reads them with a streaming decoder (``json.JSONDecoder().raw_decode`` in
+    a loop), not by splitting on lines.
+
+    ``None``-valued fields are dropped to keep the stream compact."""
+    if not is_json_mode():
+        return
+    payload: dict[str, Any] = {"event": event}
+    for key, value in fields.items():
+        if value is not None:
+            payload[key] = value
+    echo(_pretty(payload))
 
 
 class SetRichMode:
@@ -194,24 +293,36 @@ def _print_styled(
         echo(safe, err=err)
 
 
+def _emit_or_style(
+    level: str, message: str, rich_style: str, click_fg: str, err: bool = False
+) -> None:
+    """In JSON mode emit the message as a ``{event: level, message}`` line;
+    otherwise fall back to the styled rich/click rendering. Leading/trailing
+    blank lines used for rich spacing are stripped from the JSON message."""
+    if is_json_mode():
+        emit_event(level, message=message.strip())
+        return
+    _print_styled(message, rich_style, click_fg, err=err)
+
+
 def print_success(message: str) -> None:
-    _print_styled(message, STYLE_SUCCESS, "green")
+    _emit_or_style("success", message, STYLE_SUCCESS, "green")
 
 
 def print_info(message: str) -> None:
-    _print_styled(message, STYLE_INFO, "blue")
+    _emit_or_style("info", message, STYLE_INFO, "blue")
 
 
 def print_warning(message: str) -> None:
-    _print_styled(message, STYLE_WARNING, "yellow", err=True)
+    _emit_or_style("warning", message, STYLE_WARNING, "yellow", err=True)
 
 
 def print_error(message: str) -> None:
-    _print_styled(message, STYLE_ERROR, "red", err=True)
+    _emit_or_style("error", message, STYLE_ERROR, "red", err=True)
 
 
 def print_header(message: str) -> None:
-    _print_styled(message, STYLE_HEADER, "magenta")
+    _emit_or_style("header", message, STYLE_HEADER, "magenta")
 
 
 def format_duration(duration: Any) -> str:
@@ -229,6 +340,9 @@ def format_duration(duration: Any) -> str:
 
 def with_status(message: str) -> Any:
     """Context manager for showing status."""
+    if is_json_mode():
+        # Transient status spinners are pure chrome — drop them in JSON mode.
+        return _DummyContext()
     if RICH_AVAILABLE and console is not None:
         return console.status(f"[bold green]{message}...")
     else:

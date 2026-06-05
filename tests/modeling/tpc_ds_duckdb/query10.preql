@@ -6,9 +6,9 @@ import catalog_sales as catalog_sales;
 #Count the customers with the same gender, marital status, education status, purchase estimate, credit rating,
 #dependent count, employed dependent count and college dependent count who live in certain counties and who
 # have purchased from both stores and another sales channel during a three month time period of a given year.
-merge catalog_sales.billing_customer.id into ~customer.id;
+merge catalog_sales.ship_customer.id into ~customer.id;
 merge web_sales.billing_customer.id into ~customer.id;
-merge physical_sales.billing_customer.id into ~customer.id;
+merge physical_sales.customer.id into ~customer.id;
 
 auto relevant_customers <- customer.id
     ? physical_sales.date.year = 2002

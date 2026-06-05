@@ -27,24 +27,25 @@ import household_demographic as ship_household_demographic; # household demograp
 import household_demographic as bill_household_demographic; # household demographics recorded on the sale at point of sale (bill-to)
 
 key order_number int; # Web order number identifying a single web sales transaction.
-key return_order_number int; # Web order number on the returns side, for return-only queries.
+--key return_order_number int; # Web order number on the returns side, for return-only queries.
 
 properties <order_number, item.id> (
     quantity int, # Number of units of the item ordered on this line.
     sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit (USD). The whole-line total is ext_sales_price (the "total price").
-    list_price numeric::usd, # Per-unit list price before discounts (USD).
+    --list_price numeric::usd, # Per-unit list price before discounts (USD).
     net_profit numeric::usd, # Net profit reported for the line (USD).
     net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping (USD).
     ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity (USD), the extended line amount. The per-unit price is sales_price (the "unit price").
     ext_ship_cost numeric::usd, # Extended shipping cost charged on the line (USD).
     ext_discount_amount numeric::usd?, # Extended discount amount applied to the line (USD).
     return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
-    return_quantity int?, # Units returned for this line (joined from web_returns).
+    --return_quantity int?, # Units returned for this line (joined from web_returns).
     is_returned bool, # Flag indicating whether a return row exists for this line.
     row_counter int, # Constant 1, one per web line item (a unique order_number + item.id combination).
 );
 
-auto line_item_count <- sum(row_counter); # Count of web-sale line items (unique order_number + item.id combinations); use this to count lines, not count(order_number).
+auto line_item <- concat(order_number::string, '-', item.id::string); # Unique line-item identifier (one web order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
+auto line_item_count <- sum(row_counter); # Number of web-sale line items (= count(line_item)); kept for queries that reference it.
 auto days_to_ship <- date_diff(date.date, ship_date.date, day); # Shipping lag in days (ship date minus sold date); positive when shipped after sold.
 
 datasource web_sales (

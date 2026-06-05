@@ -65,7 +65,11 @@ PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
 }
 
 
-def get_agent_instructions(include_show: bool = True, include_todo: bool = True) -> str:
+def get_agent_instructions(
+    include_show: bool = True,
+    include_todo: bool = True,
+    include_database: bool = True,
+) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
 Available tools:
@@ -76,9 +80,12 @@ Available tools:
     * ["agent-info"] — prints the full CLI docs AND the Trilogy language
       syntax reference. CALL THIS FIRST on every task before writing any
       .preql file. Trilogy is not SQL; the language section names the rules
-      you cannot afford to guess. Do not skip it.
+      you cannot afford to guess. Do not skip it."""
+    if include_database:
+        base += """
     * ["database", "list"] — list the tables in the configured database.
-      ["database", "describe", "<table>"] — show a table's columns and types.
+      ["database", "describe", "<table>"] — show a table's columns and types."""
+    base += """
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
       under raw/) for every table in the database, in one step.
     * Run a Trilogy script: ["run", "<path.preql>"].
@@ -167,8 +174,12 @@ REVIEWER_SYSTEM_PROMPT = (
     "must not judge whether the query is correct, complete, returns the right "
     "rows, or implements every clause. If the agent states it finished and the "
     "query ran, that is DONE — even if you suspect the output is wrong or a clause "
-    "looks missing. Trust the agent's self-report of completion; catch only "
-    "explicit 'still working' signals."
+    "looks missing. Console/display truncation of result rows (e.g. 'N of M rows "
+    "shown — middle omitted', '--all-rows', '--displayed-rows') is a cosmetic CLI "
+    "artifact, NOT incompleteness — never reply NOT_DONE because the agent "
+    "inspected, explained, or tried to widen truncated row display; a query that "
+    "ran and reported a row count is DONE. Trust the agent's self-report of "
+    "completion; catch only explicit 'still working' signals."
 )
 
 REVIEWER_TRANSCRIPT_MSG_LIMIT = 1200
@@ -226,12 +237,14 @@ def _read_context_files(paths: tuple[str, ...]) -> str:
     return "\n".join(chunks)
 
 
-def _dispatch(state: AgentState, call: LLMToolCall) -> str:
-    handler = TOOL_HANDLERS.get(call.name)
+def _dispatch(
+    state: AgentState, call: LLMToolCall, handlers: dict | None = None
+) -> str:
+    handlers = handlers if handlers is not None else TOOL_HANDLERS
+    handler = handlers.get(call.name)
     if handler is None:
         return (
-            f"Unknown tool '{call.name}'. Available: "
-            f"{', '.join(TOOL_HANDLERS.keys())}."
+            f"Unknown tool '{call.name}'. Available: " f"{', '.join(handlers.keys())}."
         )
     try:
         return handler(state, call.arguments or {})
@@ -464,6 +477,7 @@ def _run_turn(
     original_task: str = "",
     validate_completion: bool = True,
     require_tool: bool = False,
+    handlers: dict | None = None,
 ) -> None:
     options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=require_tool)
     for _ in range(max_iterations):
@@ -505,7 +519,7 @@ def _run_turn(
                 )
             else:
                 with with_status(_status_message(call)):
-                    result = _dispatch(state, call)
+                    result = _dispatch(state, call, handlers)
             result = _maybe_flag_loop(state, call, result)
             _log_event(
                 log_path,
@@ -514,6 +528,16 @@ def _run_turn(
             payload = json.dumps({"tool": call.name, "result": result})
             conv.add_message(payload, role="user")
             if state.done:
+                if state.force_return:
+                    # The agent asserts completion and bypasses the reviewer —
+                    # it has context the reviewer lacks. Logged so forced exits
+                    # are auditable.
+                    _log_event(
+                        log_path,
+                        {"type": "reviewer_bypassed", "reason": "force=true"},
+                    )
+                    print_info("[reviewer] bypassed (force=true)")
+                    return
                 if (
                     validate_completion
                     and provider is not None
@@ -543,7 +567,11 @@ def _run_turn(
                         conv.add_message(
                             "A reviewer determined you might not actually be "
                             "done; keep working and submit again when you are "
-                            f"truly finished. Reviewer note: {note}",
+                            "truly finished. If this kickback is mistaken (e.g. "
+                            "it cites a cosmetic display/row-truncation note, or "
+                            "you have context it lacks) and you ARE done, call "
+                            "return_control_to_user again with force=true and one "
+                            f"line saying why. Reviewer note: {note}",
                             role="user",
                         )
                         continue
@@ -596,6 +624,13 @@ def _run_turn(
     help="Drop the show_message tool from the agent's toolbox to cut "
     "conversation churn (overrides [agent].quiet in trilogy.toml).",
 )
+@option(
+    "--toolset",
+    type=click.Choice(["trilogy", "sql"]),
+    default="trilogy",
+    help="Tool surface. 'trilogy' (default) uses the Trilogy CLI; 'sql' is the "
+    "no-Trilogy baseline (write/read/list file + run_file/run_query plain SQL).",
+)
 @pass_context
 def agent(
     ctx: click.Context,
@@ -607,6 +642,7 @@ def agent(
     log_file: str | None,
     interactive: bool,
     quiet: bool | None,
+    toolset: str,
 ) -> None:
     """Pass off a multi-step orchestration task to an AI agent.
 
@@ -628,20 +664,42 @@ def agent(
     cfg = runtime.agent
     actual_quiet = cfg.quiet if quiet is None else quiet
     llm_provider = _build_provider(cfg, model, provider)
-    excluded_tool_names: set[str] = set()
-    if actual_quiet:
-        excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
-    if cfg.disable_todo:
-        excluded_tool_names.add(TODO_TOOL.name)
-    tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
-    if actual_quiet and cfg.disable_todo:
-        system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
-    elif actual_quiet:
-        system_prompt = QUIET_SYSTEM_PROMPT
-    elif cfg.disable_todo:
-        system_prompt = NO_TODO_SYSTEM_PROMPT
+    handlers: dict | None = None
+    if toolset == "sql":
+        from trilogy.scripts.agent_sql_tools import (
+            SQL_TOOL_HANDLERS,
+            SQL_TOOLS,
+            sql_system_prompt,
+        )
+
+        tools = list(SQL_TOOLS)
+        handlers = SQL_TOOL_HANDLERS
+        system_prompt = sql_system_prompt(
+            has_schema_md=(Path.cwd() / "schema.md").exists()
+        )
     else:
-        system_prompt = SYSTEM_PROMPT
+        excluded_tool_names: set[str] = set()
+        if actual_quiet:
+            excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
+        if cfg.disable_todo:
+            excluded_tool_names.add(TODO_TOOL.name)
+        tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
+        if cfg.allow_database_introspection:
+            if actual_quiet and cfg.disable_todo:
+                system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
+            elif actual_quiet:
+                system_prompt = QUIET_SYSTEM_PROMPT
+            elif cfg.disable_todo:
+                system_prompt = NO_TODO_SYSTEM_PROMPT
+            else:
+                system_prompt = SYSTEM_PROMPT
+        else:
+            # Drop the database bullet too when introspection is disabled.
+            system_prompt = get_agent_instructions(
+                include_show=not actual_quiet,
+                include_todo=not cfg.disable_todo,
+                include_database=False,
+            )
 
     log_path: Path | None = None
     if log_file:
@@ -659,7 +717,10 @@ def agent(
         )
 
     conv = Conversation.create(llm_provider, model_prompt=system_prompt)
-    state = AgentState(tool_output_limit=cfg.tool_output_limit)
+    state = AgentState(
+        tool_output_limit=cfg.tool_output_limit,
+        allow_db_introspection=cfg.allow_database_introspection,
+    )
 
     context_block = _read_context_files(context)
     initial = f"{context_block}\n\n{command}" if context_block else command
@@ -675,6 +736,7 @@ def agent(
             provider=llm_provider,
             original_task=command,
             require_tool=cfg.force_tool_choice,
+            handlers=handlers,
         )
     finally:
         if log_path:
@@ -698,6 +760,7 @@ def agent(
         state.farewell = ""
         state.todos = []
         state.submit_kickbacks = 0
+        state.force_return = False
         conv.add_message(next_command, role="user")
         try:
             _run_turn(
@@ -709,6 +772,7 @@ def agent(
                 provider=llm_provider,
                 original_task=next_command,
                 require_tool=cfg.force_tool_choice,
+                handlers=handlers,
             )
         finally:
             if log_path:

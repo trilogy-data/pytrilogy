@@ -3,8 +3,9 @@
 import click
 
 from trilogy.ai.prompts import get_trilogy_prompt
+from trilogy.ai.syntax_examples import example_index, render_example
 
-AGENT_INFO_OUTPUT = """# Trilogy CLI - AI Agent Usage Guide
+AGENT_INFO_OUTPUT = r"""# Trilogy CLI - AI Agent Usage Guide
 
 ## Overview
 
@@ -54,10 +55,7 @@ Execute a Trilogy script or all scripts in a directory.
 - `--env KEY=VALUE`, `-e KEY=VALUE`: Set env vars (or pass an env file path)
 - `--import MODULE[:ALIAS]`: Prepend an `import` to an inline query. Repeatable.
   Use the SAME dotted form as in-file imports — `--import raw.item:item` becomes
-  `import raw.item as item;` and lets you write `item.current_price`. Slash and
-  `.preql` path forms (`raw/item.preql`) also work and convert to dotted; prefer
-  dots so CLI and file syntax stay identical (the file ALWAYS uses dots — never
-  slashes — `import raw.item as item;`, NEVER `import raw/item as item;`).
+  `import raw.item as item;`
 
 **Examples:**
 ```bash
@@ -79,34 +77,15 @@ echo "select item.id limit 5;" | trilogy run --import raw.item:item -
 
 ### trilogy explore <path>
 
-The canonical schema-discovery tool. Parses a `.preql` file and prints every
-information needed for a query.
-
-**Imports included** — exploring a fact file lists the dimensions it imports
-in the same output. If my_fact imports customer and dates,
-the output for an explor `my_fact.preql` ALSO contains every concept under
-`my_fact.customer.*`, `my_fact.date_dim.*`, `my_fact.item.*`, etc.
-You do NOT need to explore those to work with my_fact data; reading
-my_fact contains the upserset of all information.
-
-Fetch facts first; avoid fetching dimensions to avoid duplicate outputs.
-
-Fetch facts first; avoid fetching dimensions to avoid duplicate outputs.
+The canonical schema-discovery tool. Parses a `.preql` file and prints
+structured information.
 
 **Trilogy auto-resolves joins.** Trilogy automatically resolves
-joins from the model's declared key/property relationships — there is no
-manual `JOIN` clause in this language. If `my_fact.date_dim.year` shows
-up in explore, you write `select my_fact.date_dim.year, ...;` and the
-engine does the join planning. When using an existing model, you can 
-typically query all fields safely.
-
-AVOID merging in a model that is already accessible as a subpath of a 
-an existing model; merges are best reserved for adhoc combinations of
-otherwise disjoint datasets.
+joins from the model's imports automatically. An explore call
+will show all imported join models that are accessible as well.
 
 Prefer this over reading the raw model file (`trilogy file read`); richer and
-more compact output. Datatype is rendered using the `value::trait` authoring syntax
-(`string::us_state`, `enum<'TN'>::us_state`).
+more compact output.
 
 **Arguments:**
 - `path` (required): Path to a `.preql` file.
@@ -117,12 +96,9 @@ more compact output. Datatype is rendered using the `value::trait` authoring syn
   gives the flat table; `all` adds datasources + imports.
 - `--purpose NAME`: Filter concepts by purpose (`key`, `property`, `metric`,
   `constant`, `rowset`). Repeatable: `--purpose key --purpose property`.
-- `--regex PATTERN`: Case-insensitive Python regex (re.search) over concept
-  addresses. Repeatable — a concept is kept if ANY supplied pattern matches
-  (OR semantics). Bare words match as substrings (`customer`); metacharacters
-  work (`date\.(year|week_seq)`). Uses the Python `re` flavor (like `grep -E`
-  with full Python syntax — `(?:...)`, lookahead, etc.). A malformed pattern
-  aborts with exit 2.
+- `--regex PATTERN`: Case-insensitive Python regex (re.search) over targets
+  addresses. Repeatable — a match is kept if ANY supplied pattern matches. 
+  metacharacters work (`date\.(year|week_seq)`). Uses the Python `re` flavor
 - `--include-hidden`: Include concepts normally hidden from public view.
 - `--include-builtins`: Include internal/builtin concepts (hidden by default).
 
@@ -212,8 +188,9 @@ trilogy file list . --recursive --long
 
 ### trilogy database <subcommand> [options]
 
-Inspect the database configured in `trilogy.toml` — the introspection you need
-before `ingest` to know what tables exist and what columns they have.
+Direct database object inspection. Use primarily in bootstrapping
+and ingest. When working with a pre-curated model consume
+that directly. 
 
 **Subcommands:**
 - `database list`: List all tables and views (one `name<TAB>type` per line).
@@ -271,6 +248,13 @@ for the full schema and API-key conventions. before making edits.
 - **ETL / directory runs**: `trilogy run jobs/ <dialect> -p N`.
 - **Test before deploy**: `trilogy unit .` (mocked) and `trilogy integration . <dialect> <conn>` (real connection).
 
+## Output Format
+
+Commands emit human formatting (rich if installed, plain text otherwise) by default.
+Use the --format flag to control; agentic access will default to --format json
+which will be JSON event objects.
+. Pass `--format rich` for explicit human formatting.
+
 ## Debug Mode
 
 Add `--debug` flag to any command for verbose output:
@@ -280,9 +264,8 @@ trilogy --debug run query.preql duckdb
 
 ## Extended References (on demand)
 
-Reference sections live behind `trilogy agent-info <topic>` subcommands so the
-main dump stays small. Call one only when its topic is actually relevant to
-the current task:
+Reference sections live behind `trilogy agent-info <topic>` subcommands. 
+Call for more info if the tool is relevant to the current task.
 
 - `trilogy agent-info report` — `trilogy render` command flags AND the
   markdown report format (```trilogy blocks, `chart` statements, `:::row`
@@ -1318,7 +1301,7 @@ Render: `trilogy render quarterly.md --to png`
 def get_agent_info_output() -> str:
     """Build the complete agent info output with CLI docs and syntax reference."""
     syntax_section = get_trilogy_prompt(
-        intro="## Trilogy Language Syntax\n\nTrilogy is a SQL-inspired language with a built-in semantic layer. Use the following syntax reference when writing .preql files.",
+        intro="## Trilogy Language Reference\nTrilogy is a SQL-inspired language with a built-in semantic layer, written as .preql files.",
     )
     return AGENT_INFO_OUTPUT + "\n" + syntax_section
 
@@ -1363,3 +1346,30 @@ def agent_info_config() -> None:
 def agent_info_serve() -> None:
     """Print the distribution/hosting reference (`trilogy public`, `trilogy serve`)."""
     print(SERVE_DOC)
+
+
+@agent_info.group("syntax", invoke_without_command=True)
+@click.pass_context
+def agent_info_syntax(ctx: click.Context) -> None:
+    """Trilogy syntax examples for common patterns.
+
+    With no subcommand, lists the available examples; fetch one with
+    `trilogy agent-info syntax example <name>`.
+    """
+    if ctx.invoked_subcommand is None:
+        print(example_index())
+
+
+@agent_info_syntax.command("example")
+@click.argument("name", required=False)
+def agent_info_syntax_example(name: str | None) -> None:
+    """Print a complete syntax example (omit NAME to list the available ones)."""
+    if name is None:
+        print(example_index())
+        return
+    body = render_example(name)
+    if body is None:
+        print(f"Unknown syntax example: {name!r}\n")
+        print(example_index())
+        raise SystemExit(2)
+    print(body)

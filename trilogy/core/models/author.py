@@ -1105,6 +1105,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             SubselectItem,
             MultiSelectLineage,
             Comparison,
+            Conditional,
+            Between,
             "FunctionCallWrapper",
         ]
     ] = None
@@ -1115,7 +1117,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     pseudonyms: set[str] = dc_field(default_factory=set)
     address: str = dc_field(init=False, repr=False, compare=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.namespace = self.namespace or DEFAULT_NAMESPACE
         self.address = f"{self.namespace}.{self.name}"
         self.metadata = self.metadata or Metadata()
@@ -1454,6 +1456,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
                     SubselectItem,
                     MultiSelectLineage,
                     Comparison,
+                    Conditional,
+                    Between,
                     "FunctionCallWrapper",
                 ],
                 output: List[ConceptRef],
@@ -1481,7 +1485,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     def calculate_derivation(self, lineage, purpose: Purpose) -> Derivation:
         from trilogy.core.models.build import (
             BuildAggregateWrapper,
+            BuildBetween,
             BuildComparison,
+            BuildConditional,
             BuildFilterItem,
             BuildFunction,
             BuildMultiSelectLineage,
@@ -1506,7 +1512,21 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             return Derivation.ROWSET
         elif lineage and isinstance(lineage, (BuildSubselectItem, SubselectItem)):
             return Derivation.SUBSELECT
-        elif lineage and isinstance(lineage, BuildComparison):
+        # A boolean predicate (`a and b`, `between`) is a row-level basic
+        # derivation, just like a single comparison — its parents are sourced
+        # and the predicate is computed inline. Without this a Conditional/
+        # Between lineage falls through to ROOT and the planner can't source it.
+        elif lineage and isinstance(
+            lineage,
+            (
+                BuildComparison,
+                Comparison,
+                BuildConditional,
+                Conditional,
+                BuildBetween,
+                Between,
+            ),
+        ):
             return Derivation.BASIC
         elif lineage and isinstance(
             lineage, (BuildMultiSelectLineage, MultiSelectLineage)
@@ -3311,6 +3331,9 @@ class Metadata:
     end_line: Optional[int] = None
     end_column: Optional[int] = None
     concept_source: ConceptSource = dc_field(default=ConceptSource.MANUAL)
+    # Hidden concepts stay fully queryable but are omitted from explore/metadata
+    # listings (the `--` declaration prefix, mirroring select-output hiding).
+    hidden: bool = False
 
 
 @dataclass

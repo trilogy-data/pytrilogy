@@ -6,7 +6,12 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.constants import CONFIG, ParserBackend
-from trilogy.core.enums import AggregateGroupingMode, DatasourceState, WindowType
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    ComparisonOperator,
+    DatasourceState,
+    WindowType,
+)
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.models.author import (
     ConceptRef,
@@ -323,15 +328,19 @@ SELECT
     assert scaled_revenue.lineage is not None
 
 
-def test_parse_text_v2_select_transform_inline_shadowing() -> None:
-    env, _ = parse_text(
-        """
+def test_parse_text_v2_select_transform_self_reference_raises() -> None:
+    # A SELECT output aliased with a name its own expression references is a
+    # recursive binding (`revenue` would mean both the input and the output).
+    # The planner keys concepts by address and cannot represent both, so it
+    # must raise rather than silently emit the original.
+    with pytest.raises(InvalidSyntaxException, match="recursive self-reference"):
+        parse_text(
+            """
 key revenue float;
 SELECT revenue * 2 -> revenue;
 """,
-        Environment(),
-    )
-    assert env.concepts["local.revenue"].lineage is None
+            Environment(),
+        )
 
 
 def test_parse_text_v2_select_as_definition_new_alias_commits() -> None:
@@ -344,6 +353,110 @@ SELECT revenue * 2 -> doubled;
     )
     assert "local.doubled" in env.concepts
     assert env.concepts["local.doubled"].lineage is not None
+
+
+def test_parse_text_v2_select_self_referential_shadow_of_auto_raises() -> None:
+    # Regression for q09 (ingest eval): an `auto`-defined name reused as a
+    # self-referential SELECT alias silently emitted the original `count`.
+    with pytest.raises(InvalidSyntaxException, match="recursive self-reference"):
+        parse_text(
+            """
+key id int;
+property id.quantity int;
+property id.list_price float;
+auto b1 <- count(id ? quantity between 1 and 20);
+SELECT case when b1 > 5 then avg(list_price) else 0.0 end as b1;
+""",
+            Environment(),
+        )
+
+
+def test_parse_text_v2_select_non_self_referential_shadow_commits() -> None:
+    # A shadow that does NOT reference its own alias is unambiguous and allowed:
+    # the new expression replaces the prior definition for the output.
+    env, _ = parse_text(
+        """
+key id int;
+property id.quantity int;
+property id.list_price float;
+auto b1 <- count(id ? quantity between 1 and 20);
+SELECT avg(list_price) as b1;
+""",
+        Environment(),
+    )
+    assert env.concepts["local.b1"].lineage is not None
+
+
+_BOOLEAN_DERIVATION_PRELUDE = """
+key id int;
+property id.d date;
+property id.flag int;
+property id.v int;
+"""
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "auto x <- flag = 1 and id = 1;",
+        "auto x <- flag = 1 or id = 1;",
+        "auto x <- d between '2020-01-01'::date and '2020-12-31'::date;",
+        "auto x <- (d between '2020-01-01'::date and '2020-12-31'::date) and flag is not null;",
+    ],
+)
+def test_parse_text_v2_derived_concept_accepts_compound_boolean(
+    backend: ParserBackend, body: str
+) -> None:
+    # A derived concept body must admit the same boolean grammar (`and`/`or`,
+    # `between`, `is null`) that `?`/`where` already accept, so a row predicate
+    # can be named once and reused. Regression for
+    # bug_compound_boolean_in_derived_concept.md.
+    from trilogy.core.models.core import DataType
+
+    with _using_backend(backend):
+        env, _ = parse_text(_BOOLEAN_DERIVATION_PRELUDE + body, Environment())
+    x = env.concepts["local.x"]
+    assert x.lineage is not None
+    assert x.datatype == DataType.BOOL
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize(
+    "op,expected",
+    [
+        ("not like", ComparisonOperator.NOT_LIKE),
+        ("not  LIKE", ComparisonOperator.NOT_LIKE),
+        ("not ilike", ComparisonOperator.NOT_ILIKE),
+    ],
+)
+def test_parse_text_v2_not_like_infix(
+    backend: ParserBackend, op: str, expected: ComparisonOperator
+) -> None:
+    # SQL-style ``x not like 'y'`` parses to the same first-class operator on
+    # both backends, regardless of casing / interior whitespace.
+    from trilogy.core.models.author import Comparison
+
+    with _using_backend(backend):
+        env, _ = parse_text(
+            f"const x <- 'hi';\nauto a <- x {op} 'h%';",
+            Environment(),
+        )
+    lineage = env.concepts["local.a"].lineage
+    assert isinstance(lineage, Comparison) and lineage.operator == expected
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_named_predicate_usable_in_filter(backend: ParserBackend) -> None:
+    # The named predicate is reusable inside a `?` inline-aggregate filter.
+    with _using_backend(backend):
+        env, _ = parse_text(
+            _BOOLEAN_DERIVATION_PRELUDE + """
+auto in_window <- (d between '2020-01-01'::date and '2020-12-31'::date) and flag = 1;
+""",
+            Environment(),
+        )
+    assert env.concepts["local.in_window"].lineage is not None
 
 
 def test_parse_text_v2_duplicate_select_outputs_raise() -> None:
@@ -559,3 +672,38 @@ def test_lark_pest_corpus_parity() -> None:
             )
     assert compared > 0, "corpus parity compared zero files"
     assert not mismatches, "\n".join(mismatches)
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_hide_modifier(backend: ParserBackend) -> None:
+    text = """
+key id int;
+--key hidden_key int; # secret key
+properties id (
+    name string, # visible
+    --floor_space int, # hidden attribute
+);
+--auto hidden_calc <- id + 1; # hidden derived
+auto shown_calc <- id + 2;
+datasource s (
+    sk: id,
+    nm: name,
+    fs: floor_space,
+)
+grain (id)
+address memory.s;
+"""
+    with _using_backend(backend):
+        env, _ = parse_text(text, Environment())
+    hidden = {a.rsplit(".", 1)[-1] for a in env.concepts.hidden}
+    assert {"hidden_key", "floor_space", "hidden_calc"} <= hidden
+    assert "name" not in hidden and "shown_calc" not in hidden
+    # excluded from the public listing but still resolvable
+    public = dict(env.concepts.items())
+    assert "local.floor_space" not in public
+    assert "local.floor_space" in dict(env.concepts.all_items())
+    assert env.concepts["local.floor_space"].metadata.hidden is True
+    # hidden concepts remain queryable
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = engine.generate_sql("select id, floor_space order by id limit 1;")[-1]
+    assert "fs" in sql.lower()

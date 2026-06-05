@@ -40,6 +40,7 @@ def run_agent(
     task: str,
     timeout: int,
     monitor_mode: str,
+    toolset: str = "trilogy",
 ) -> dict:
     cmd = [
         sys.executable,
@@ -50,6 +51,8 @@ def run_agent(
         provider,
         "--model",
         model,
+        "--toolset",
+        toolset,
         "--log-file",
         str(log_path),
         task,
@@ -122,10 +125,15 @@ def prepare_worker_workspace(src: Path, worker_idx: int, db_filename: str) -> Pa
     worker_dir.mkdir(exist_ok=True)
     shutil.copy2(src / db_filename, worker_dir / db_filename)
     shutil.copy2(src / "trilogy.toml", worker_dir / "trilogy.toml")
-    worker_raw = worker_dir / "raw"
-    if worker_raw.exists():
-        shutil.rmtree(worker_raw)
-    shutil.copytree(src / "raw", worker_raw)
+    # raw/ (Trilogy categories) and schema.md (sql_schema) are copied only when
+    # present — SQL baselines have no raw/, sql_bare has neither.
+    if (src / "raw").exists():
+        worker_raw = worker_dir / "raw"
+        if worker_raw.exists():
+            shutil.rmtree(worker_raw)
+        shutil.copytree(src / "raw", worker_raw)
+    if (src / "schema.md").exists():
+        shutil.copy2(src / "schema.md", worker_dir / "schema.md")
     return worker_dir
 
 
@@ -213,6 +221,8 @@ def write_trilogy_toml(
     model: str,
     max_iterations: int,
     force_tool_choice: bool = False,
+    allow_database_introspection: bool = True,
+    disable_todo: bool = False,
 ) -> None:
     """Configure the agent subprocess: DuckDB pointing at the benchmark file,
     provider/model, and the per-query iteration budget. ``quiet = true`` drops
@@ -253,9 +263,15 @@ tool_output_limit = 32768
 # Narration messages compound quadratically through history replays in long
 # unattended runs; the eval drops show_message entirely.
 quiet = true
+# Drop the todo tool (and its prompt mention) — A/B knob for short single-query
+# tasks where the scratch list tends to invite over-planning.
+disable_todo = {str(disable_todo).lower()}
 # When false, the model may reason in plain text before calling a tool
 # (tool_choice: auto) instead of being forced to act every turn.
 force_tool_choice = {str(force_tool_choice).lower()}
+# When false, the trilogy tool refuses `database list/describe` and the prompt
+# omits them — raw-table introspection is for ingest, not query generation.
+allow_database_introspection = {str(allow_database_introspection).lower()}
 """,
         encoding="utf-8",
     )

@@ -4,9 +4,9 @@
 import std.date;
 import std.geography;
 
-import customer_demographic as demographics;
-import household_demographic as household_demographic;
-import address as address;
+import customer_demographic as demographics; # the customer's current demographic profile (C_CURRENT_CDEMO_SK)
+import household_demographic as household_demographic; # the customer's current household demographic profile (C_CURRENT_HDEMO_SK)
+import address as address; # the customer's current home address (C_CURRENT_ADDR_SK)
 import date as first_sales_date;
 import date as first_shipto_date;
 

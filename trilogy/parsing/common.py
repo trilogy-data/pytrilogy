@@ -19,6 +19,7 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
+    Between,
     CaseElse,
     CaseSimpleWhen,
     CaseWhen,
@@ -117,6 +118,15 @@ def unwrap_transformation(
         return input
     elif isinstance(input, SubselectItem):
         return input
+    elif isinstance(input, Comparison):
+        # A comparison / membership (`x > 5`, `x in other`) references real
+        # concepts, so it must not fall through to the CONSTANT wrapper below —
+        # that mislabels the derived column as a literal, and a downstream
+        # `flag = true` then constant-folds to `1 = 0`. Route it through the
+        # parenthetical path (the form a user would write with explicit
+        # parens), which the build pipeline handles correctly. Covers
+        # SubselectComparison (a Comparison subclass).
+        return Parenthetical(content=input)
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -710,10 +720,18 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return [x.reference for x in arg.by], True
     elif isinstance(arg, FunctionCallWrapper):
         return get_relevant_parent_concepts(arg.content)
-    elif isinstance(arg, Comparison):
+    elif isinstance(arg, (Comparison, Conditional)):
         left, lflag = get_relevant_parent_concepts(arg.left)
         right, rflag = get_relevant_parent_concepts(arg.right)
         return left + right, lflag or rflag
+    elif isinstance(arg, Between):
+        all = []
+        flag = False
+        for y in (arg.left, arg.low, arg.high):
+            refs, local_flag = get_relevant_parent_concepts(y)
+            all += refs
+            flag = flag or local_flag
+        return all, flag
     return get_concept_arguments(arg), False
 
 
@@ -1350,7 +1368,7 @@ def parenthetical_to_concept(
 
 
 def comparison_to_concept(
-    parent: Comparison,
+    parent: Comparison | Conditional | Between,
     name: str,
     namespace: str,
     environment: Environment,
@@ -1372,7 +1390,12 @@ def comparison_to_concept(
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
-    if parent.operator in FunctionClass.ONE_TO_MANY.value:
+    # Conditional/Between have no comparison operator; only a Comparison can
+    # carry a row-expanding one.
+    if (
+        isinstance(parent, Comparison)
+        and parent.operator in FunctionClass.ONE_TO_MANY.value
+    ):
         # if the function will create more rows, we don't know what grain this is at
         grain = None
     modifiers = get_lineage_modifiers(parent, environment)
@@ -1498,7 +1521,7 @@ def arbitrary_to_concept(
         return constant_to_concept(parent, name, namespace, metadata)
     elif isinstance(parent, Parenthetical):
         return parenthetical_to_concept(parent, name, namespace, environment, metadata)
-    elif isinstance(parent, Comparison):
+    elif isinstance(parent, (Comparison, Conditional, Between)):
         return comparison_to_concept(parent, name, namespace, environment, metadata)
     else:
         return constant_to_concept(parent, name, namespace, metadata)

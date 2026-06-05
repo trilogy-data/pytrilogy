@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 import click
 
 from trilogy.scripts.display import (
+    emit_event,
+    is_json_mode,
     print_error,
     print_info,
     print_success,
@@ -114,6 +116,23 @@ def list_cmd(engine: str | None, tag: str | None) -> None:
     if tag:
         entries = [e for e in entries if tag in e.tags]
 
+    if is_json_mode():
+        emit_event(
+            "models",
+            count=len(entries),
+            models=[
+                {
+                    "name": e.name,
+                    "filename": e.filename,
+                    "engine": e.engine,
+                    "description": e.description or None,
+                    "tags": list(e.tags),
+                }
+                for e in entries
+            ],
+        )
+        return
+
     if not entries:
         print_warning("No models matched the filters.")
         return
@@ -206,7 +225,8 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
         dest.write_bytes(payload)
         written.append(dest)
         rel = dest.relative_to(target_root)
-        click.echo(f"  wrote {rel}")
+        if not is_json_mode():
+            click.echo(f"  wrote {rel}")
 
     readme_path = target_root / "README.md"
     if not readme_path.exists() and manifest.get("description"):
@@ -230,7 +250,19 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
             ]
         toml_path.write_text("\n".join(lines), encoding="utf-8")
         written.append(toml_path)
-        click.echo("  wrote trilogy.toml")
+        if not is_json_mode():
+            click.echo("  wrote trilogy.toml")
+
+    if is_json_mode():
+        emit_event(
+            "fetched",
+            model=entry.name,
+            engine=entry.engine,
+            target=str(target_root),
+            count=len(written),
+            files=[str(p.relative_to(target_root)) for p in written],
+        )
+        return
 
     print_success(f"Fetched {len(written)} file(s) for {entry.name}.")
     click.echo("\nNext steps:")

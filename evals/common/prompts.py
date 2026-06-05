@@ -32,6 +32,22 @@ Parameters (the harness injects these via `--param NAME=VALUE` at evaluation
 time; declare each in your .preql with `parameter NAME TYPE;` and reference
 them as regular fields):"""
 
+_SQL_SINGLE_QUERY_TEMPLATE = """\
+DuckDB database (`{db}`) loaded with {bench} data, configured in this directory.
+Answer the ONE business question below with plain DuckDB SQL.
+
+Write your answer as a SINGLE self-contained SELECT to `query{{nn}}.sql` in the
+working directory, and validate it with the run_file tool before finishing.
+Return control once it runs cleanly.
+
+Question {{id}}:
+{{prompt}}{{params_block}}
+"""
+
+_SQL_PARAMS_HEADER = """
+
+Use these exact constant values in your SQL (inline them as literals):"""
+
 _TASK_TEMPLATE = """\
 Trilogy project in this directory. `trilogy.toml` configures a DuckDB database
 (`{db}`) already loaded with the {bench} benchmark schema and data.
@@ -108,6 +124,29 @@ def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
         prompt=entry["prompt"],
         params_block=params_block,
         validate_params=validate_params,
+    )
+
+
+def _render_sql_params_block(params: dict) -> str:
+    if not params:
+        return ""
+    lines: list[str] = [_SQL_PARAMS_HEADER]
+    for name, spec in params.items():
+        desc = spec.get("description", "")
+        desc_tail = f" — {desc}" if desc else ""
+        lines.append(f"  - {name} = {spec.get('value', '')}{desc_tail}")
+    return "\n".join(lines)
+
+
+def build_single_query_task_sql(spec: BenchmarkSpec, entry: dict) -> str:
+    """SQL-baseline variant of ``build_single_query_task``: the agent writes
+    plain DuckDB SQL to ``query{nn}.sql`` (no Trilogy)."""
+    template = _SQL_SINGLE_QUERY_TEMPLATE.format(db=spec.db_filename, bench=spec.name)
+    return template.format(
+        id=entry["id"],
+        nn=f"{entry['id']:02d}",
+        prompt=entry["prompt"],
+        params_block=_render_sql_params_block(entry.get("params") or {}),
     )
 
 

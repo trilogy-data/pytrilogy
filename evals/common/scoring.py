@@ -241,11 +241,29 @@ def _multiset(rows: list) -> Counter[str]:
 
 
 def _find_query_file(workspace: Path, idx: int) -> Path | None:
-    for name in (f"query{idx:02d}.preql", f"query{idx}.preql"):
+    # `.preql` (Trilogy categories) is checked before `.sql` (no-Trilogy SQL
+    # baselines); a given run only produces one of them, so order is moot in
+    # practice and just makes a stray file deterministic.
+    for name in (
+        f"query{idx:02d}.preql",
+        f"query{idx}.preql",
+        f"query{idx:02d}.sql",
+        f"query{idx}.sql",
+    ):
         candidate = workspace / name
         if candidate.exists():
             return candidate
     return None
+
+
+def _last_sql_statement(text: str) -> str:
+    """Last non-empty ``;``-delimited statement. Agent SQL answers are a single
+    statement; this mirrors ``generate_sql``'s ``statements[-1]`` for the rare
+    multi-statement file. Naive split (no string-literal awareness) is fine for
+    benchmark answers, which don't embed ``;`` in literals."""
+    parts = [s.strip() for s in text.split(";")]
+    nonempty = [s for s in parts if s]
+    return nonempty[-1] if nonempty else ""
 
 
 def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
@@ -393,24 +411,33 @@ def _score_one(
         return QueryResult(id=idx, status="missing", detail="no query file produced")
 
     text = query_file.read_text(encoding="utf-8")
-    try:
-        engine.environment = Environment(working_path=workspace)
-        if params:
-            engine.environment.set_parameters(
-                **{name: spec.get("value") for name, spec in params.items()}
+    if query_file.suffix == ".sql":
+        # No-Trilogy baseline: the candidate IS SQL — execute it directly,
+        # skipping the Trilogy transpile step.
+        sql = _last_sql_statement(text)
+        if not sql:
+            return QueryResult(id=idx, status="error", detail="query file is empty")
+    else:
+        try:
+            engine.environment = Environment(working_path=workspace)
+            if params:
+                engine.environment.set_parameters(
+                    **{name: spec.get("value") for name, spec in params.items()}
+                )
+            statements = engine.generate_sql(text)
+        except Exception as exc:
+            return QueryResult(
+                id=idx,
+                status="error",
+                detail=f"generate_sql: {type(exc).__name__}: {exc}",
             )
-        statements = engine.generate_sql(text)
-    except Exception as exc:
-        return QueryResult(
-            id=idx, status="error", detail=f"generate_sql: {type(exc).__name__}: {exc}"
-        )
-    if not statements:
-        return QueryResult(
-            id=idx,
-            status="error",
-            detail="query file produced no executable statement (empty?)",
-        )
-    sql = statements[-1]
+        if not statements:
+            return QueryResult(
+                id=idx,
+                status="error",
+                detail="query file produced no executable statement (empty?)",
+            )
+        sql = statements[-1]
 
     try:
         candidate = list(engine.execute_raw_sql(sql).fetchall())

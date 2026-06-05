@@ -8,8 +8,10 @@ from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
+    BuildBetween,
     BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
@@ -180,7 +182,14 @@ def resolve_function_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> List[BuildConcept]:
     if not isinstance(
-        concept.lineage, (*FUNCTION_TYPES, *AGGREGATE_TYPES, BuildComparison)
+        concept.lineage,
+        (
+            *FUNCTION_TYPES,
+            *AGGREGATE_TYPES,
+            BuildComparison,
+            BuildConditional,
+            BuildBetween,
+        ),
     ):
         raise ValueError(
             f"Concept {concept} lineage is not function or aggregate, is {type(concept.lineage)}"

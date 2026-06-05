@@ -47,6 +47,7 @@ class Optimizations:
     upgrade_condition_joins: bool = True
     upgrade_outer_key_set_equivalence: bool = True
     simplify_null_safe_joins: bool = True
+    strip_redundant_not_null: bool = True
     join_hoist: bool = True
     union_dim_pushdown: bool = True
 

@@ -182,6 +182,48 @@ def _filter_content_has_unfiltered_aggregate(
     return False
 
 
+def _optional_cosourced_with_content(
+    concept: BuildConcept,
+    local_optional: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """True if a single datasource provides the filter content *and* every
+    local_optional concept.
+
+    The disjoint pushdown lifts the predicate into the parent relation's
+    WHERE. That parent is a per-row source for both the filtered concept and
+    every local_optional concept. If an optional concept lives only on a
+    *different* datasource (joined to the content's source by a key), filtering
+    the content's rows drops the join partner's unmatched rows — undercounting
+    any aggregate over that optional concept. Two measures on two key-joined
+    sources (sales + filtered returns) hit exactly this. Require co-sourcing so
+    the pushed WHERE can never reach across a join.
+
+    The co-sourcing datasource must cover every optional concept *non-partially*
+    (``full_concepts``). A partial FK column (``orders.customer.id`` for a
+    no-order customer) means the complete value set lives on a different,
+    OUTER-joined dimension; filtering the content's rows and grouping by that
+    partial key drops the zero-match dimension entities (TPC-H q13: customers
+    with no orders vanish). Falling back to the CASE-WHEN aggregate form
+    preserves them.
+    """
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        return False
+    content = concept.lineage.content
+    if not isinstance(content, BuildConcept):
+        return False
+    optional_addresses = _concept_addresses(local_optional)
+    for datasource in environment.datasources.values():
+        ds_addresses = {c.address for c in datasource.output_concepts}
+        if (
+            content.address in ds_addresses
+            and optional_addresses <= ds_addresses
+            and optional_addresses <= datasource.full_concepts
+        ):
+            return True
+    return False
+
+
 def pushdown_filter_to_parent(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -239,6 +281,7 @@ def pushdown_filter_to_parent(
             filter_concept_addrs
             and filter_concept_addrs.isdisjoint(local_optional_addrs)
             and not has_spine_local
+            and _optional_cosourced_with_content(concept, local_optional, environment)
             and not _filter_content_has_sibling_filters(concept, environment)
             and not _filter_content_has_unfiltered_aggregate(concept, environment)
         ):
@@ -521,6 +564,10 @@ def gen_filter_node(
                 parents=[row_parent],
                 depth=row_parent.depth,
                 partial_concepts=row_parent.partial_concepts,
+                # Inherit the global query condition row_parent already applied
+                # so it stays visible as preexisting after the filter's where is
+                # appended below; otherwise condition validation can't prove it.
+                preexisting_conditions=row_parent.preexisting_conditions,
                 force_group=False,
             )
         else:

@@ -1,6 +1,6 @@
 query_id = "72"
-gen_length = 6269
-preql_size = 991
+gen_length = 6279
+preql_size = 954
 comp_size = 1360
 generated_sql = """
 
@@ -36,7 +36,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_catalog_sales\".\"CS_ITEM_SK\"
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sold_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"cs_bill_household_demographic_household_demographics\" on \"cs_catalog_sales\".\"CS_BILL_HDEMO_SK\" = \"cs_bill_household_demographic_household_demographics\".\"HD_DEMO_SK\"
@@ -60,7 +60,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
     INNER JOIN \"cheerful\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cheerful\".\"cs_item_id\"
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cheerful\".\"cs_item_id\" = \"cs_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cheerful\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cheerful\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cheerful\".\"cs_sold_date_id\" = \"cs_sold_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"cheerful\".\"cs_bill_customer_demographic_id\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"cs_bill_household_demographic_household_demographics\" on \"cheerful\".\"cs_bill_household_demographic_id\" = \"cs_bill_household_demographic_household_demographics\".\"HD_DEMO_SK\"

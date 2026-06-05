@@ -20,7 +20,7 @@ from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Concept
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse_text
-from trilogy.scripts.display import print_error, print_info
+from trilogy.scripts.display import emit_event, is_json_mode, print_error, print_info
 
 _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
 
@@ -294,9 +294,13 @@ def _emit_imported_summary(
         # reconstruction is mechanical from the header + the bare leaf.
         prefix = f"{ns}."
         leaves = sorted(
-            addr[len(prefix) :] if addr.startswith(prefix) else addr
+            leaf
             for addr in by_ns[ns]
+            for leaf in [addr[len(prefix) :] if addr.startswith(prefix) else addr]
+            if not leaf.startswith("_")  # hide internal/intermediate concepts
         )
+        if not leaves:
+            continue
         click.echo()
         header = f"# {ns}.* ({len(leaves)} concepts) — reach as {ns}.<leaf>"
         desc = (import_descriptions or {}).get(ns)
@@ -356,6 +360,162 @@ def _emit_namespace(ns: str, items: list[tuple[str, Concept]]) -> None:
         _emit_flat_line("metric", fmt(leaf), concept)
     for leaf, concept in sorted(others, key=lambda lc: lc[0]):
         _emit_flat_line(concept.purpose.value, fmt(leaf), concept)
+
+
+# Within a namespace, render keys first, then properties, then metrics, then
+# everything else — keys anchor the grain the rest hang off, so leading with
+# them reads the way the model is authored.
+_PURPOSE_ORDER = {"key": 0, "property": 1, "metric": 2}
+
+
+def _keyset_label(key_addrs: tuple[str, ...]) -> str:
+    """Human/agent-facing label for a grain or aggregation key-set: the bare
+    key for a single key, ``<a, b>`` for a compound one (the ``local.`` prefix
+    stripped throughout so it reads the way it's authored)."""
+    if len(key_addrs) == 1:
+        return _grain_display(key_addrs[0])
+    return "<" + ", ".join(_grain_display(a) for a in key_addrs) + ">"
+
+
+def _grouped_decls(
+    env: Environment, items: list[tuple[str, Concept]]
+) -> dict[str, list[dict]]:
+    """Group concepts by namespace and, within each, by role + grain:
+
+      * one ``keys`` object listing the namespace's key declarations;
+      * one ``properties`` object per grain key-set (``grain`` labels it),
+        with the redundant ``<grain>.`` prefix stripped from single-key
+        properties since the object already names the grain;
+      * one ``metrics`` object per aggregation key-set — the same ``grain``
+        label, since a metric's aggregation keys are conceptually its grain —
+        with grain-free responsive metrics under ``<responsive>``.
+
+    Anything that isn't a key/property/metric lands in a trailing ``ungrouped``
+    object so nothing is dropped. The local namespace surfaces under the
+    empty-string key because bare references are what the agent writes."""
+    from trilogy.core.statements.author import ConceptDeclarationStatement
+    from trilogy.parsing.render import Renderer
+
+    renderer = Renderer(environment=env)
+
+    def decl(concept: Concept) -> str:
+        return renderer.to_string(ConceptDeclarationStatement(concept=concept))
+
+    by_ns: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
+    for addr, concept in items:
+        by_ns[concept.namespace].append((addr, concept))
+
+    out: dict[str, list[dict]] = {}
+    for ns in sorted(by_ns):
+        keys, props, metrics, others = [], [], [], []
+        for addr, c in sorted(by_ns[ns], key=lambda ac: ac[0]):
+            purpose = c.purpose.value
+            if purpose == "key":
+                keys.append(c)
+            elif purpose == "property":
+                props.append(c)
+            elif purpose == "metric":
+                metrics.append(c)
+            else:
+                others.append(c)
+
+        groups: list[dict] = []
+        if keys:
+            groups.append({"keys": [decl(c) for c in keys]})
+
+        # Properties grouped by grain key-set; single-key props shed the
+        # ``property <grain>.`` prefix the group label already carries.
+        by_grain: dict[tuple[str, ...], list[Concept]] = defaultdict(list)
+        for c in props:
+            by_grain[tuple(sorted(c.keys or []))].append(c)
+        for grain in sorted(by_grain, key=lambda g: (len(g), g)):
+            label = _keyset_label(grain)
+            prefix = f"property {label}." if len(grain) == 1 else None
+            decls = []
+            for c in by_grain[grain]:
+                d = decl(c)
+                decls.append(d[len(prefix) :] if prefix and d.startswith(prefix) else d)
+            groups.append({"grain": label, "properties": decls})
+
+        # Metrics grouped by aggregation key-set; grain-free ones are
+        # query-responsive and bucket under "<responsive>".
+        by_agg: dict[tuple[str, ...], list[Concept]] = defaultdict(list)
+        for c in metrics:
+            by_agg[tuple(sorted(c.keys or []))].append(c)
+        for agg in sorted(by_agg, key=lambda g: (g == (), len(g), g)):
+            label = "<responsive>" if agg == () else _keyset_label(agg)
+            groups.append({"grain": label, "metrics": [decl(c) for c in by_agg[agg]]})
+
+        if others:
+            groups.append({"ungrouped": [decl(c) for c in others]})
+        out["" if ns == DEFAULT_NAMESPACE else ns] = groups
+    return out
+
+
+def _emit_explore_json(
+    env: Environment,
+    concept_items: list[tuple[str, Concept]],
+    show: str,
+    import_descriptions: dict[str, str],
+    expand_imports: bool,
+) -> None:
+    """Emit the explore results as a stream of pretty-printed JSON events,
+    honoring ``--show``. Concepts are grouped by namespace; the local ones are
+    rendered in full Trilogy declaration syntax, imported namespaces collapse
+    to a name-only list (unless ``--expand-imports``/``--regex``) so a fact
+    file's dozens of inherited dimensions don't drown the local declarations."""
+    if show in ("all", "groups", "concepts"):
+        if expand_imports:
+            local_items, imported_items = concept_items, []
+        else:
+            local_items = [
+                (a, c) for a, c in concept_items if c.namespace == DEFAULT_NAMESPACE
+            ]
+            imported_items = [
+                (a, c) for a, c in concept_items if c.namespace != DEFAULT_NAMESPACE
+            ]
+        # Imported namespaces collapse to ONE comma-joined line of bare leaf
+        # names (the `<ns>.` prefix is in the key, so repeating it per leaf —
+        # let alone one leaf per pretty-printed line — just burns tokens). The
+        # agent reaches a concept as `<ns>.<leaf>`; drill in with --regex.
+        imported: dict[str, list[str]] = defaultdict(list)
+        for addr, c in sorted(imported_items, key=lambda kc: kc[0]):
+            disp = _display_address(addr)
+            prefix = f"{c.namespace}."
+            leaf = disp[len(prefix) :] if disp.startswith(prefix) else disp
+            if leaf.startswith("_"):  # internal/intermediate concept — hide
+                continue
+            imported[c.namespace].append(leaf)
+        imported_joined = {
+            ns: ", ".join(imported[ns]) for ns in sorted(imported) if imported[ns]
+        }
+        emit_event(
+            "concepts",
+            count=len(concept_items),
+            namespaces=_grouped_decls(env, local_items) or None,
+            imported=imported_joined or None,
+            import_descriptions=import_descriptions or None,
+        )
+    if show in ("all", "datasources"):
+        datasources = [
+            {
+                "address": name,
+                "grain": sorted(ds.grain.components),
+            }
+            for name, ds in sorted(env.datasources.items())
+        ]
+        emit_event("datasources", count=len(datasources), datasources=datasources)
+    if show in ("all", "imports"):
+        imports = [
+            {
+                "alias": alias,
+                "path": str(stmt.path),
+                "description": (stmt.description or "").strip() or None,
+            }
+            for alias, stmts in sorted(env.imports.items())
+            for stmt in stmts
+        ]
+        emit_event("imports", count=len(imports), imports=imports)
 
 
 @click.command("explore")
@@ -480,10 +640,15 @@ def explore(
         if imp.description
     }
 
+    # `--regex` is a deliberate filter — show matches in full even if imported,
+    # so the agent doesn't have to re-issue with --expand-imports.
+    expand = expand_imports or bool(regex_patterns)
+
+    if is_json_mode():
+        _emit_explore_json(env, concept_items, show, import_descriptions, expand)
+        return
+
     if show in ("all", "groups"):
-        # `--regex` is a deliberate filter — show matches in full even if
-        # imported, so the agent doesn't have to re-issue with --expand-imports.
-        expand = expand_imports or bool(regex_patterns)
         _emit_groups(
             concept_items,
             expand_imports=expand,

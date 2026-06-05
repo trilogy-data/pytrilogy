@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Sequence
 
 import trilogy.scripts.display_core as _core
-from trilogy.scripts.display_core import print_info, print_success
+from trilogy.scripts.display_core import (
+    emit_event,
+    is_json_mode,
+    print_info,
+    print_success,
+)
 
 if TYPE_CHECKING:
     from trilogy.scripts.ingest import IngestSummaryRow
@@ -36,6 +41,16 @@ def show_ingest_header(
     config_path: str | None = None,
 ) -> None:
     """Show a startup panel summarizing the ingest job."""
+    if is_json_mode():
+        emit_event(
+            "ingest_start",
+            sources=list(sources),
+            count=len(sources),
+            dialect=dialect,
+            output=output_dir,
+            config_path=config_path,
+        )
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         body = (
             f"Sources: [cyan]{len(sources)}[/cyan]\n"
@@ -61,6 +76,11 @@ def ingest_progress(total: int) -> "Iterator[_IngestProgress]":
 
     Falls back to plain prints when Rich is unavailable.
     """
+    if is_json_mode():
+        # No progress chatter in JSON mode — the per-source outcome arrives in
+        # the final ``ingest_summary`` event.
+        yield _IngestProgress()
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         progress = Progress(
             SpinnerColumn(),
@@ -133,6 +153,24 @@ def show_ingest_summary(rows: list["IngestSummaryRow"]) -> None:
     if not rows:
         return
     successes = sum(1 for r in rows if r.ok)
+    if is_json_mode():
+        emit_event(
+            "ingest_summary",
+            total=len(rows),
+            successful=successes,
+            sources=[
+                {
+                    "source": r.source,
+                    "output": r.output,
+                    "columns": r.columns,
+                    "grain": r.grain,
+                    "status": r.status,
+                    "ok": r.ok,
+                }
+                for r in rows
+            ],
+        )
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         table = Table(
             title=f"Ingest Summary ({successes}/{len(rows)} ok)",
@@ -202,6 +240,22 @@ def show_fk_summary(
                 )
             )
     if not rows:
+        return
+    if is_json_mode():
+        emit_event(
+            "foreign_keys",
+            count=len(rows),
+            foreign_keys=[
+                {
+                    "column": column,
+                    "references": ref,
+                    "origin": origin,
+                    "overlap": overlap,
+                    "coverage": coverage,
+                }
+                for column, ref, origin, overlap, coverage in rows
+            ],
+        )
         return
     if _core.RICH_AVAILABLE and _core.console is not None:
         table_view = Table(title="Foreign Keys", box=box.SIMPLE_HEAVY, show_lines=False)

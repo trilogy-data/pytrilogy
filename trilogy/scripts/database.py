@@ -13,7 +13,7 @@ from trilogy.scripts.common import (
     get_runtime_config,
     handle_execution_exception,
 )
-from trilogy.scripts.display import print_error, print_info
+from trilogy.scripts.display import emit_event, is_json_mode, print_error, print_info
 
 
 def _connect(ctx: click.Context) -> Executor:
@@ -57,6 +57,13 @@ def list_cmd(ctx: click.Context, schema: str | None) -> None:
         tables = executor.generator.list_tables(executor, schema)
     except Exception as e:
         handle_execution_exception(e, debug=ctx.obj["DEBUG"])
+    if is_json_mode():
+        emit_event(
+            "tables",
+            count=len(tables),
+            tables=[{"name": name, "type": table_type} for name, table_type in tables],
+        )
+        return
     if not tables:
         print_info("No tables found.")
         return
@@ -78,6 +85,21 @@ def describe_cmd(ctx: click.Context, table: str, schema: str | None) -> None:
     if not columns:
         print_error(f"Table '{table}' not found, or it has no columns.")
         raise click.exceptions.Exit(1)
+    if is_json_mode():
+        emit_event(
+            "columns",
+            table=table,
+            schema=schema,
+            columns=[
+                {
+                    "name": str(col.column_name),
+                    "type": str(col.raw_db_type),
+                    "nullable": bool(col.is_nullable),
+                }
+                for col in columns
+            ],
+        )
+        return
     for col in columns:
         name = str(col.column_name)
         dtype = str(col.raw_db_type)

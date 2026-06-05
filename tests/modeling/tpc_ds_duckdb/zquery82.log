@@ -1,5 +1,5 @@
 query_id = "82"
-gen_length = 1600
+gen_length = 1538
 preql_size = 567
 comp_size = 590
 generated_sql = """
@@ -13,7 +13,7 @@ SELECT
 FROM
     \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
 WHERE
-    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500 and \"inventory_warehouse_inventory\".\"inv_item_sk\" is not null
+    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500
 
 GROUP BY
     1,

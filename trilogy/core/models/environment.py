@@ -802,6 +802,10 @@ class Environment:
                 concept = existing
 
         self.concepts[concept.address] = concept
+        # `--`-prefixed declarations stay queryable but are omitted from public
+        # listings (explore/agent metadata); route into the existing hidden set.
+        if concept.metadata and concept.metadata.hidden:
+            self.concepts.hidden.add(concept.address)
 
         from trilogy.core.environment_helpers import generate_related_concepts
 

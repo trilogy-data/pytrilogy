@@ -2,11 +2,67 @@
 
 Goal: improve our CLI + tooling for general use cases by evaluating on curated datasets.
 
-Oure eval harness uses a deepseek agent to answer questions.
+Our eval harness uses a deepseek agent to answer questions.
 
+### The four eval cases
+
+The same business question is asked four ways, in increasing order of scaffolding
+(defined in `evals/common/categories.py`; the funnel report reads them in this order
+to show the marginal lift each layer adds):
+
+| Category | What the agent gets | Toolset | Candidate file |
+|---|---|---|---|
+| `sql_bare`   | a DuckDB database only; discovers the schema itself | plain SQL | `queryNN.sql` |
+| `sql_schema` | same, **plus** a generated `schema.md` table/column map | plain SQL | `queryNN.sql` |
+| `ingest`     | an auto-ingested Trilogy model (`trilogy ingest --all` → `raw/*.preql`) | trilogy | `queryNN.preql` |
+| `enriched`   | the hand-curated Trilogy model (`tests/modeling/tpc_ds_duckdb`) | trilogy | `queryNN.preql` |
+
+`sql_bare`/`sql_schema` are the **no-Trilogy baselines** (added so the funnel shows
+what Trilogy buys over raw SQL). `ingest`/`enriched` are the Trilogy legs. When
+diagnosing, remember the SQL legs write `queryNN.sql`, not `.preql`.
+
+### Running the eval cases
+
+Needs `DEEPSEEK_API_KEY` (provider/model default to `deepseek`/`deepseek-chat`,
+read from repo `.env.secrets`). Defaults: `--scale-factor 1`, `--num-queries 20`.
+
+```bash
+# All four legs in parallel, then render the cross-category funnel + matrix.
+# Each leg writes results/<ts>_<category>/. Pass --concurrency 2 (≈8 concurrent
+# across 4 legs); the default (1) is auto-split to 1/leg, and 3/leg = 12 is too
+# much DeepSeek pressure.
+python evals/tpcds_agent/run_eval.py \
+  --categories sql_bare,sql_schema,ingest,enriched --concurrency 2
+
+# One leg only:
+python evals/tpcds_agent/run_eval.py --category sql_schema --num-queries 10
+
+# Legacy two-way (alias for --categories ingest,enriched):
+python evals/tpcds_agent/run_eval.py --both-modes
+
+# Specific queries (overrides --num-queries; splices the rest from the latest run):
+python evals/tpcds_agent/run_eval.py --category enriched --query-ids 5,13,18
+```
+
+**Outputs** (under `evals/tpcds_agent/`):
+- `results/<ts>_<category>/` per leg — `report.{md,json}`, `agent_log.qNN.jsonl`,
+  `task.qNN.txt`, `workspace/` (the agent's `.sql`/`.preql` files + DB copy).
+- `charts/dashboard_<category>.png` — per-leg dashboard.
+- `charts/funnel.{png,md}` — cross-category lift (only when ≥2 legs ran).
+- `charts/trilogy_failures_<category>.md` — per-leg failure detail.
+
+### Validating a candidate change (10x harness)
+
+`repeat_query.py` repeats ONE query N times in ONE category (default `enriched`).
+Pass `--category` to validate a fix in the SQL legs too:
+
+```bash
+python evals/tpcds_agent/repeat_query.py \
+  --query-id 13 --repeats 10 --scale-factor 1 --category sql_schema
+```
 
 Loop:
-Run a target portion of the test set for enriched/unenriched. Typically pick ~10 questions.
+Run a target portion of the test set across the relevant categories. Typically pick ~10 questions.
 
 Identify the following, in order of priority:
 
@@ -37,14 +93,22 @@ Overall goals:
 - Token minimization
 
 
-## Strategies / Lessons (append as you learn)
+## Trilogy lessons (append as you learn)
+
+These were learned against the **Trilogy legs** (`ingest`/`enriched`) on TPC-DS.
+Scope when re-applying: **Method** and **Eval-harness fixes** are category-agnostic
+(they're about diagnosing and scoring any leg); the **question-wording** fixes also
+help the SQL legs (a clearer business question helps any agent); the **language
+idioms** (grain inheritance, `date_diff` arg order, anti-joins, `is null` semantics)
+are Trilogy-specific and do not apply to `sql_bare`/`sql_schema`.
 
 ### Method
 - **Single-shot `run_eval` is NOISY. Never conclude from one run.** Per-query pass/fail
   flips across identical re-runs (deepseek variance). Validate every before/after with
   `repeat_query.py --query-id N --repeats 10 --scale-factor 1` and compare `pass_rate`.
 - **Diagnose from artifacts, not theory.** Read the agent's generated query
-  (`results/<run>/workspace/queryNN.preql`), its run output, and the reference
+  (`results/<run>/workspace/queryNN.preql`, or `.sql` for the `sql_bare`/`sql_schema`
+  legs), its run output, and the reference
   (`tests/modeling/tpc_ds_duckdb/queryNN.sql` AND `.preql` — the `.preql` is the
   hand-authored canonical Trilogy answer; the scorer prefers `.sql`). I misdiagnosed q96
   as a count bug off one trace; the passing vs failing reps revealed it was the demographic
@@ -85,13 +149,6 @@ Overall goals:
   the line's amount null; the customer's sum is null and sorts first). Agents `coalesce(...,0)`
   defensively → mismatch. Reframe the population so the agent writes the clean formula and
   doesn't coalesce (e.g. "where we have a recorded return quantity"). (q93.)
-- **Spurious LIMIT.** The agent system prompt says "Always use a reasonable LIMIT", so it caps
-  full-report queries (e.g. at 1000). For exhaustive outputs, state it in the QUESTION: "return
-  every qualifying row; do not cap or limit the number of rows". (q98.)
-- **Stale `impossible` grade = scale-factor artifact.** `impossible`-graded queries were
-  ungradeable at sf=0.01 (filter literals not sampled); at the current default **sf=1** they
-  work. Check the entry's `comment`, then re-grade (they're filtered out by `active_prompts`
-  until you do). (q94/q95/q96/q88 were all this.)
 - **Multi-branch formula — describe EVERY branch.** A "(qty - return_qty)*price, otherwise
   qty*price" formula has a LIVE else branch (there are reason-28 lines with null return_quantity).
   Don't let the question collapse it to one branch — the agent then coalesces or filters and the
@@ -150,12 +207,6 @@ Overall goals:
 - **Identity = surrogate id, not name (q39; also q77/q80 outlet, q58 item).** When the reference groups/
   reports by `w_warehouse_sk`/`i_item_sk` etc., say "(identified by its surrogate id / internal row key)".
   Agents default to the name, which both mislabels and changes grain (distinct sks share a name).
-- **item/store CODE = `text_id`, not surrogate `id` — SYSTEMIC fix applied (q20/q21/q29; also q58/q39).**
-  Agents GROUP BY `item.id` (surrogate) when the reference groups by `i_item_id` (business code = `text_id`).
-  Item is an SCD: several `id`s share one `text_id`, so `by item.id` SPLITS an item across versions and
-  under-counts. Fix applied: sharpened `item.preql`/`store.preql` id-vs-text_id descriptions ("id = SCD
-  version key, do NOT group per-item by it; text_id = THE per-item code, GROUP BY this"). Questions saying
-  "item code"/"store code" then resolve to text_id. (Parallel to the per-unit systemic fix.)
 - **Returning vs refunded customer/address — add model descriptions (q30, q81).** web_returns &
   catalog_returns name the RETURNING customer `billing_customer` (confusing) vs `refunded_customer`, and
   `return_address` vs `refunded_address`. Added trailing-comment descriptions to the imports so explore

@@ -1,5 +1,5 @@
 query_id = "15"
-gen_length = 1411
+gen_length = 1430
 preql_size = 396
 comp_size = 560
 generated_sql = """
@@ -8,12 +8,9 @@ WITH
 quizzical as (
 SELECT
     \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
-    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"supplier_rev\"
+    sum(CASE WHEN \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) as \"supplier_rev\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
-WHERE
-    \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01'
-
 GROUP BY
     1),
 cheerful as (

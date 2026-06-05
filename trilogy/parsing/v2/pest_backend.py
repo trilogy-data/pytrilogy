@@ -7,6 +7,7 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.parsing.v2.errors import (
     create_generic_syntax_error,
     create_syntax_error,
+    detect_definition_after_clause,
     detect_group_by,
     detect_subselect,
 )
@@ -272,6 +273,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     gb_pos = detect_group_by(text, pos)
     if gb_pos is not None:
         return create_syntax_error(103, gb_pos, text)
+
+    # 104: a top-level definition/statement (`auto NAME`, `import ...`) placed
+    # inside an already-opened query (after `where`/`select`).
+    def_pos = detect_definition_after_clause(text, pos)
+    if def_pos is not None:
+        return create_syntax_error(104, def_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position
     # is at or past the last non-whitespace character — otherwise we'd mask
