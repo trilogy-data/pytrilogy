@@ -4,9 +4,6 @@ gen_length = 8996
 preql_size = 1618
 comp_size = 1089
 generated_sql = """
-
-WITH 
-uneven as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
     \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" as \"catalog_sales_quantity\",

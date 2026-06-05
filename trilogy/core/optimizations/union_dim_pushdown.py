@@ -13,6 +13,21 @@ Safety constraints:
   - The dim's grain must be a subset of the join keys (no fan-out).
   - All ``internal_ctes`` must be plain CTEs (nested UnionCTE not yet handled).
 
+Two entry points (``optimize`` dispatches on CTE kind):
+
+  - ``_optimize_union``: the case above — push the shared dim into the union's
+    branches and strip it from the direct consumers.
+
+  - ``_optimize_plain``: when a dedup / pure-projection pass-through sits between
+    the union and the dim-joining consumers (so they aren't *direct* union
+    consumers — e.g. q10's distinct-customer dedup), first MOVE the shared dim
+    down into that pass-through. It then becomes a direct dim-joining consumer
+    of the union, and the union step pushes it the rest of the way. The plain
+    step taints its union parent(s) (resets ``complete``) so the union step
+    re-fires on the next driver loop. MOVE-only: requires ``strip_safe`` plus a
+    real filter, otherwise the dim would stay on the consumers and chain
+    nowhere.
+
 Runs after ``PredicatePushdown`` so consumer WHEREs have settled at the
 consumer level, and before any rule that flattens / inlines the UnionCTE.
 """
@@ -20,12 +35,13 @@ consumer level, and before any rule that flattens / inlines the UnionCTE.
 from dataclasses import dataclass
 from typing import cast
 
-from trilogy.core.enums import JoinType, SourceType
+from trilogy.core.enums import Derivation, JoinType, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildConceptArgs,
     BuildDatasource,
+    BuildGrain,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -325,8 +341,55 @@ class UnionDimPushdown(OptimizationRule):
     ) -> tuple[bool, MergedCTEMap | None]:
         if self.complete.get(cte.name):
             return False, None
-        if not isinstance(cte, UnionCTE):
+        if isinstance(cte, UnionCTE):
+            return self._optimize_union(cte, inverse_map)
+        return self._optimize_plain(cte, inverse_map)
+
+    def _optimize_plain(
+        self, cte: CTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> tuple[bool, MergedCTEMap | None]:
+        """Push a dim join shared by all of ``cte``'s consumers down *into*
+        ``cte`` (the shared parent), stripping it from each consumer.
+
+        Scoped to the case that unblocks the union push: ``cte`` is a
+        pass-through (dedup / pure projection) of a ``UnionCTE``. After the dim
+        lands on ``cte`` it becomes a *direct* dim-joining consumer of that
+        union, so the next loop's ``_optimize_union`` can push it the rest of
+        the way into the branches. We taint the union parent(s) so that re-fire
+        actually happens (``optimize`` short-circuits on ``complete``).
+        """
+        self.complete[cte.name] = True
+        if not self._is_pass_through(cte):
             return False, None
+        union_parents = [p for p in cte.dependency_nodes() if isinstance(p, UnionCTE)]
+        if not union_parents:
+            return False, None
+        consumers_raw = inverse_map.get(cte.name, [])
+        consumers = [c for c in consumers_raw if isinstance(c, CTE)]
+        if not consumers or len(consumers) != len(consumers_raw):
+            return False, None
+        descriptors = self._find_shared_dims(cte, consumers)
+        if not descriptors:
+            return False, None
+        actions = False
+        for d in descriptors:
+            if self._apply_plain(cte, consumers, d):
+                actions = True
+                # Taint the union parent(s): they were (or will be) marked
+                # complete with no pushable consumer; now `cte` carries the dim
+                # join, so let the union push reconsider them.
+                for up in union_parents:
+                    self.complete[up.name] = False
+                self.log(
+                    f"Pushed dim {d.dim_qds.identifier} into shared parent "
+                    f"{cte.name}; stripped from {len(consumers)} consumer(s); "
+                    f"tainted union parent(s) {[u.name for u in union_parents]}"
+                )
+        return actions, None
+
+    def _optimize_union(
+        self, cte: UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> tuple[bool, MergedCTEMap | None]:
         if not all(isinstance(b, CTE) for b in cte.internal_ctes):
             self.complete[cte.name] = True
             return False, None
@@ -486,9 +549,9 @@ class UnionDimPushdown(OptimizationRule):
         return result
 
     def _find_shared_dims(
-        self, union: UnionCTE, consumers: list[CTE]
+        self, container: CTE | UnionCTE, consumers: list[CTE]
     ) -> list[_DimDescriptor]:
-        union_outputs = {x.address for x in union.output_columns}
+        union_outputs = {x.address for x in container.output_columns}
         per_consumer = [self._consumer_dim_map(c, union_outputs) for c in consumers]
         if not per_consumer or any(not m for m in per_consumer):
             return []
@@ -614,6 +677,121 @@ class UnionDimPushdown(OptimizationRule):
                 ],
                 "name",
             )
+        return True
+
+    def _apply_plain(
+        self, target: CTE, consumers: list[CTE], d: _DimDescriptor
+    ) -> bool:
+        """Push the shared dim down into ``target`` (the consumers' common
+        parent) and strip it from each consumer. MOVE-only: we require
+        ``strip_safe`` (no consumer projects a dim column outside the pushed
+        WHERE) and an actual filter — a filter-less or non-strippable dim would
+        leave the join on the consumers, which neither prunes nor chains into
+        the union below ``target``.
+        """
+        if not d.strip_safe or not d.where_atoms:
+            return False
+        context = self._resolve_push_context(consumers, d)
+        if context is None:
+            return False
+        if not self._can_push_into_branch(target, d):
+            return False
+        if not self._push_into_branch(
+            target, context.dim_cte, d, context.source_consumer
+        ):
+            return False
+        existing = {col.address for col in target.output_columns}
+        for concept in d.dim_concepts:
+            if concept.address not in existing:
+                target.output_columns.append(concept)
+                existing.add(concept.address)
+        for consumer in consumers:
+            self._strip_from_consumer(consumer, context.dim_cte, d, target)
+        self._coarsen_dead_fk_grain(target, d, consumers)
+        return True
+
+    @staticmethod
+    def _rendered_addrs(cte: CTE) -> set[str]:
+        """Addresses ``cte`` actually emits/references: visible outputs, grain
+        (GROUP BY) keys, condition concepts, and join keys. Hidden output
+        columns that aren't grain keys are *not* rendered."""
+        addrs = {
+            x.address
+            for x in cte.output_columns
+            if x.address not in cte.hidden_concepts
+        }
+        addrs |= set(cte.grain.components)
+        if cte.condition is not None:
+            addrs |= {x.address for x in cte.condition.concept_arguments}
+        for j in cte.joins or []:
+            for pair in getattr(j, "joinkey_pairs", None) or []:
+                addrs |= {pair.left.address, pair.right.address}
+        return addrs
+
+    def _coarsen_dead_fk_grain(
+        self, target: CTE, d: _DimDescriptor, consumers: list[CTE]
+    ) -> bool:
+        """After moving a dim into a pure-dedup ``target``, drop the FK from its
+        grain when the FK is now dead.
+
+        Once the dim join lives on ``target``, its FK (e.g. ``date.id``) was only
+        there to reach the dim; the coarser dim attribute we exposed (e.g.
+        ``date.year``) is what flows downstream. Deduping at the finer FK grain
+        then emits redundant duplicate rows (q04: one per sale-date instead of
+        one per year). Drop the FK from ``target``'s grain/output when:
+
+          - ``target`` is a pure dedup (group-to-grain, no aggregate outputs),
+          - a coarser dim attr we exposed (FK-functionally-determined) remains
+            on ``target``, and
+          - every consumer is itself a pure dedup that never renders the FK.
+
+        Those constraints make the coarsening sound: the consumers collapse the
+        removed multiplicity, and nothing reads the dropped key. (The FK is
+        usually still a *visible* output here — ``HideUnusedConcepts`` runs after
+        this rule — so we gate on downstream use, not on the hidden flag.)
+        """
+        if not target.group_to_grain:
+            return False
+        if any(c.derivation == Derivation.AGGREGATE for c in target.output_columns):
+            return False
+        fk_addrs = set(d.fk_left_addrs)
+        droppable = fk_addrs & set(target.grain.components)
+        if not droppable:
+            return False
+        target_out = {c.address for c in target.output_columns}
+        exposed = ({c.address for c in d.dim_concepts} - fk_addrs) & target_out
+        if not exposed:
+            return False
+        for consumer in consumers:
+            if not (
+                consumer.group_to_grain
+                or consumer.source.source_type == SourceType.GROUP
+            ):
+                return False
+            if any(
+                c.derivation == Derivation.AGGREGATE for c in consumer.output_columns
+            ):
+                return False
+            if droppable & self._rendered_addrs(consumer):
+                return False
+
+        target.output_columns = [
+            x for x in target.output_columns if x.address not in droppable
+        ]
+        target.grain = BuildGrain(
+            components={x.address for x in target.output_columns},
+            where_clause=target.grain.where_clause,
+        )
+        for addr in droppable:
+            target.source_map.pop(addr, None)
+            target.hidden_concepts.discard(addr)
+            for consumer in consumers:
+                consumer.source_map.pop(addr, None)
+                consumer.existence_source_map.pop(addr, None)
+        self.log(
+            f"Coarsened dead FK {sorted(droppable)} out of dedup {target.name}'s "
+            f"grain after pushing {d.dim_qds.identifier}"
+        )
         return True
 
     def _push_into_branch(
@@ -775,7 +953,7 @@ class UnionDimPushdown(OptimizationRule):
         consumer: CTE,
         dim_cte: CTE | UnionCTE,
         d: _DimDescriptor,
-        union: UnionCTE,
+        union: CTE | UnionCTE,
     ) -> None:
         # Source-map entries can carry the dim identifier in several forms:
         # the dim CTE name, the dim BD's safe_identifier, the QDS wrapper's

@@ -43,8 +43,6 @@ select
     sum(ss.return_net_loss) as sr_loss,
 ;
 
-merge sr_grouped.sr_store_id into ss_grouped.ss_store_id;
-
 # Web-side per-web_page_sk aggregations.
 rowset ws_grouped <- where
     ws.date.date between period_start and period_end
@@ -61,8 +59,6 @@ select
     sum(wr.return_amount) as wr_returns,
     sum(wr.net_loss) as wr_loss,
 ;
-
-merge wr_grouped.wr_wp_id into ws_grouped.ws_wp_id;
 
 # UNION the 3 branches via multi-select with align. The catalog branch is
 # inlined (rather than wrapped in its own rowset) to keep the force_group
@@ -100,6 +96,8 @@ align
 ;
 
 # Final ROLLUP(channel, id) over the unioned L0.
+left join sr_grouped.sr_store_id = ss_grouped.ss_store_id
+left join wr_grouped.wr_wp_id = ws_grouped.ws_wp_id
 select
     l0_union.u_channel as channel,
     l0_union.u_id as id,

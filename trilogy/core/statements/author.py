@@ -111,14 +111,13 @@ class FromClause:
 
 @dataclass
 class SelectJoin:
-    """A query-scoped join: a local merge of `source` (a key on the joined-in
-    model) into `target` (the anchor key kept in this select). Applied only to
-    the per-query environment, never the global one."""
+    """A query-scoped join: a local merge of `source` (the brought-in key) into
+    `target` (the anchor key kept in this select). Applied only to the per-query
+    environment, never the global one."""
 
     join_type: JoinType
     source_address: str
     target_address: str
-    namespace: str
 
     @property
     def modifiers(self) -> List[Modifier]:

@@ -37,9 +37,6 @@ rowset stores_cs <- select
     count(store.id) as scs_count,
 ;
 
-merge cust_ss.ss_cust_county into stores_cs.scs_county;
-merge cust_ss.ss_cust_state into stores_cs.scs_state;
-
 # Materialize per-customer revenue at the (cust, county, state, count) grain
 # so the downstream count is over the post-join row set.
 rowset my_revenue <- select
@@ -49,6 +46,8 @@ rowset my_revenue <- select
 
 auto segment <- round(my_revenue.revenue / 50, 0)::int;
 
+inner join cust_ss.ss_cust_county = stores_cs.scs_county
+inner join cust_ss.ss_cust_state = stores_cs.scs_state
 select
     segment,
     count(my_revenue.rev_cust_id) as num_customers,

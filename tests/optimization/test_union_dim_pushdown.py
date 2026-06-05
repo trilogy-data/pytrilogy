@@ -204,6 +204,158 @@ def test_union_dim_pushdown_strips_direct_consumer_when_safe(test_environment):
     assert consumer.joins == []
 
 
+def test_union_dim_pushdown_plain_target_moves_dim_and_strips(test_environment):
+    """_apply_plain pushes a shared dim into the consumers' common parent CTE
+    (the dedup) and strips it from each consumer, so the parent becomes a
+    direct dim-joining consumer of the union below it."""
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    target = _branch_cte("dedup", products, [product_id, category_id])
+    dim = CTE.from_datasource(category)
+    dim.name = "category_dim"
+    atom = BuildComparison(
+        left=category_name,
+        right="special",
+        operator=ComparisonOperator.EQ,
+    )
+    consumer = _dim_consumer(target, dim, category_id, category_id, category_name, atom)
+    descriptor = _DimDescriptor(
+        dim_qds=dim.source,
+        join_qds_id=dim.source.identifier,
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=target.source,
+            )
+        ],
+        dim_concepts=[category_id, category_name],
+        where_atoms=[atom],
+        strip_safe=True,
+    )
+
+    assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is True
+    assert target.source.joins
+    assert target.condition == atom
+    assert category_name.address in {c.address for c in target.output_columns}
+    assert consumer.source.joins == []
+    assert consumer.joins == []
+    assert consumer.condition is None
+
+
+def test_union_dim_pushdown_plain_target_requires_strippable_filter(test_environment):
+    """_apply_plain is MOVE-only: without a filter (or when not strip-safe) it
+    declines, leaving the dim join on the consumers."""
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    target = _branch_cte("dedup", products, [product_id, category_id])
+    dim = CTE.from_datasource(category)
+    dim.name = "category_dim"
+    consumer = _dim_consumer(target, dim, category_id, category_id, category_name)
+    descriptor = _DimDescriptor(
+        dim_qds=dim.source,
+        join_qds_id=dim.source.identifier,
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=target.source,
+            )
+        ],
+        dim_concepts=[category_id, category_name],
+        where_atoms=[],
+        strip_safe=True,
+    )
+
+    assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
+    assert target.source.joins == []
+
+
+def test_union_dim_pushdown_coarsens_dead_fk_grain(test_environment):
+    """After a dim is moved into a pure dedup, its FK (no longer read by the
+    pure-dedup consumer) is dropped from the dedup's grain/output."""
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    # target: pure dedup grained on (product_id, category_id), with the coarser
+    # category_name (the exposed dim attr) also output.
+    target = _branch_cte("dedup", products, [product_id, category_id, category_name])
+    target.group_to_grain = True
+    target.grain = BuildGrain(components={product_id.address, category_id.address})
+    # consumer: pure dedup that reads only product_id (never the FK category_id)
+    consumer = _branch_cte("consumer", products, [product_id])
+    consumer.group_to_grain = True
+    consumer.grain = BuildGrain(components={product_id.address})
+    consumer.source_map[category_id.address] = ["dedup"]
+    descriptor = _DimDescriptor(
+        dim_qds=category.source if hasattr(category, "source") else category,
+        join_qds_id="category",
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=target.source,
+            )
+        ],
+        dim_concepts=[category_id, category_name],
+        where_atoms=[],
+        strip_safe=True,
+    )
+
+    assert UnionDimPushdown()._coarsen_dead_fk_grain(target, descriptor, [consumer])
+    assert category_id.address not in target.grain.components
+    assert category_id.address not in {c.address for c in target.output_columns}
+    assert category_id.address not in consumer.source_map
+
+
+def test_union_dim_pushdown_coarsen_keeps_fk_when_consumer_reads_it(test_environment):
+    """The FK stays when a consumer still renders it (would change results)."""
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    target = _branch_cte("dedup", products, [product_id, category_id, category_name])
+    target.group_to_grain = True
+    target.grain = BuildGrain(components={product_id.address, category_id.address})
+    # consumer groups on the FK -> it is rendered, must not be dropped
+    consumer = _branch_cte("consumer", products, [product_id, category_id])
+    consumer.group_to_grain = True
+    consumer.grain = BuildGrain(components={product_id.address, category_id.address})
+    descriptor = _DimDescriptor(
+        dim_qds=products,
+        join_qds_id="category",
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=target.source,
+            )
+        ],
+        dim_concepts=[category_id, category_name],
+        where_atoms=[],
+        strip_safe=True,
+    )
+
+    assert not UnionDimPushdown()._coarsen_dead_fk_grain(target, descriptor, [consumer])
+    assert category_id.address in target.grain.components
+
+
 def test_union_dim_pushdown_filter_only_requires_a_filter(test_environment):
     env = test_environment.materialize_for_select()
     products = env.datasources["products"]

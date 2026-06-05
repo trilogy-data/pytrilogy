@@ -96,28 +96,20 @@ def join_clause(
             f"`{join_type.value}` join is not yet supported in query-scoped joins;"
             " use INNER or LEFT",
         )
-    idents = [a for a in args if isinstance(a, str)]
-    model, left_key, right_key = idents[0], idents[1], idents[2]
-    resolved: dict[str, Concept] = {}
-    for key in (left_key, right_key):
+    # Positional direction: left key is the brought-in (source) concept, right
+    # key is the anchor. Both are fully-addressed concepts, so no model token is
+    # needed to disambiguate.
+    source_key, target_key = [a for a in args if isinstance(a, str)]
+    resolved: list[Concept] = []
+    for key in (source_key, target_key):
         concept = context.concepts.require(key)
         if isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
             raise fail(node, f"Join key `{key}` does not exist")
-        resolved[key] = concept
-    model_keys = [k for k, c in resolved.items() if c.namespace == model]
-    if len(model_keys) != 1:
-        raise fail(
-            node,
-            f"Join `on` must reference exactly one key from joined model `{model}`"
-            " and one anchor key from the surrounding query",
-        )
-    source = model_keys[0]
-    target = right_key if source == left_key else left_key
+        resolved.append(concept)
     return SelectJoin(
         join_type=join_type,
-        source_address=resolved[source].address,
-        target_address=resolved[target].address,
-        namespace=model,
+        source_address=resolved[0].address,
+        target_address=resolved[1].address,
     )
 
 

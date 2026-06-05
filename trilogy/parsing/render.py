@@ -916,8 +916,8 @@ class Renderer:
                 ]
         join_keyword = {"INNER": "inner", "LEFT_OUTER": "left"}
         joins = [
-            f"{join_keyword[j.join_type.name]} join {j.namespace}"
-            f" on {j.source_address} = {j.target_address}"
+            f"{join_keyword[j.join_type.name]} join"
+            f" {j.source_address} = {j.target_address}"
             for j in arg.join_clauses
         ]
 

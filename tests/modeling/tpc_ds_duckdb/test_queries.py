@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 import time
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -230,7 +231,11 @@ def test_three(engine):
 
 
 def test_four(engine):
-    run_query(engine, 4)
+    query = run_query(engine, 4)
+    # Once date_dim is pushed into the union, the customer-attribute dedup only
+    # needs (customer, year); UnionDimPushdown coarsens the now-dead sale-date
+    # FK out of its grain, so no GROUP BY should key on date_id.
+    assert not re.search(r"GROUP BY[^)]*sales_date_id", query), query
 
 
 def test_five(engine):
@@ -259,7 +264,13 @@ def test_nine(engine):
 
 def test_ten(engine):
     query = run_query(engine, 10)
-    assert len(query) < 6500, query
+    # Bound is a touch higher than the un-pushed plan: UnionDimPushdown joins
+    # date_dim in each of the 3 union branches (vs one shared join downstream),
+    # trading a little SQL text for pruning every channel's scan to 2002 Q1.
+    assert len(query) < 7000, query
+    # date_dim must be joined *before* the first UNION ALL (one join per branch).
+    before_first_union = query.split("UNION ALL")[0]
+    assert "date_dim" in before_first_union, query
 
 
 def test_eleven(engine):

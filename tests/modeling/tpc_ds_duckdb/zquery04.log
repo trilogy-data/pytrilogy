@@ -62,6 +62,9 @@ SELECT
     sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"web_second_year\"
 FROM
     \"thoughtful\"
+WHERE
+    \"thoughtful\".\"sales_date_year\" in (2001,2002)
+
 GROUP BY
     1
 HAVING

@@ -126,9 +126,10 @@
 
     select_statement: from_clause? where? join_clause* "select"i select_list where?  having?  order_by?  limit?
 
-    // query-scoped join: blends an otherwise-disjoint model on a shared key for
-    // this select only (a query-local merge). left -> partial, inner -> full.
-    join_clause: JOIN_TYPE "join"i IDENTIFIER "on"i IDENTIFIER "=" IDENTIFIER
+    // query-scoped join: blends two otherwise-disjoint concepts on a shared key
+    // for this select only (a query-local merge). The left key is the brought-in
+    // (source) concept, the right key is the anchor. left -> partial, inner -> full.
+    join_clause: JOIN_TYPE "join"i IDENTIFIER "=" IDENTIFIER
 
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  where? order_by?  limit? 
