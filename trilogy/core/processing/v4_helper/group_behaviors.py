@@ -87,6 +87,28 @@ def native_grain_declared(
     return frozenset(bucket.grain_components)
 
 
+def native_grain_filter_inputs(
+    bucket: GroupBucket,
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
+) -> frozenset[str]:
+    """FILTER rows live at the grain of the row expression being filtered.
+
+    A virtual-filter concept may be assigned the grain of a downstream
+    aggregate that consumes it (`count(x ? predicate) by rank`), but the filter
+    CTE itself is still a row-preserving/subsetting stream over `x`. Use the
+    lineage input grains so join keys from that row stream can ride through.
+    """
+    inherited: set[str] = set()
+    for primary in bucket.primary_members:
+        for parent in _lineage_parents(concept_graph, primary):
+            inherited.update(concept_attrs[parent].grain_components)
+            inherited.update(concept_attrs[parent].keys)
+    if inherited:
+        return frozenset(inherited)
+    return frozenset(bucket.grain_components)
+
+
 def native_grain_basic_inherited(
     bucket: GroupBucket,
     concept_graph: nx.DiGraph,
@@ -162,6 +184,9 @@ def can_preserve_grain_subset(
     col_grain = concept_attrs[address].grain_components
     if not col_grain:
         return True
+    keys = concept_attrs[address].keys
+    if keys and keys <= native_grain:
+        return True
     return col_grain <= native_grain
 
 
@@ -201,6 +226,8 @@ def can_preserve_grouping(
     node = concept_attrs[address]
     col_grain = node.grain_components
     if col_grain and col_grain <= native_grain:
+        return True
+    if node.keys and node.keys <= native_grain:
         return True
     parents = _lineage_parent_addrs(concept_graph, concept_attrs, address)
     if parents and parents <= native_grain:
@@ -249,7 +276,7 @@ GROUP_BEHAVIORS: dict[str, Behavior] = {
     ),
     Derivation.FILTER.value: Behavior(
         derivation=Derivation.FILTER.value,
-        native_grain=native_grain_declared,
+        native_grain=native_grain_filter_inputs,
         can_preserve=can_preserve_grain_subset,
     ),
     Derivation.SUBSELECT.value: Behavior(

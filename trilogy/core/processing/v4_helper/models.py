@@ -61,6 +61,7 @@ class ConceptAttrs:
     grouping_mode: str | None = None
     rowset_name: str | None = None
     aggregate_input_grain: frozenset[str] = frozenset()
+    keys: frozenset[str] = frozenset()
     # Tagged post-build for a concept that appears ONLY as an existence arg
     # (semijoin RHS) and never as a row arg — `partition_roots` places such a
     # node in its own scan bucket (side-channel subselect source).
@@ -124,6 +125,7 @@ def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
         grouping_mode=a.grouping_mode,
         rowset_name=a.rowset_name,
         aggregate_input_grain=a.aggregate_input_grain,
+        keys=a.keys,
         existence_only=a.existence_only,
     )
 

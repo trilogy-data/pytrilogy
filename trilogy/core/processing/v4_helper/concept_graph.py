@@ -334,6 +334,7 @@ def _add_concept(
         grouping_mode=grouping_mode,
         rowset_name=rowset_name,
         aggregate_input_grain=_aggregate_input_grain(concept, environment, out_grain),
+        keys=frozenset(concept.keys or set()),
     )
 
     # Rowset boundary: a ROWSET concept is the outer's "handle" on a

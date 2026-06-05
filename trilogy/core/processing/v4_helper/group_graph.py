@@ -1166,7 +1166,7 @@ def _compute_concept_sets(
                     # would project only the requested value columns and v3
                     # inserts an implicit GROUP BY to dedupe (q09: AVG/SUM
                     # over deduped tuples).
-                    if is_grouping:
+                    if is_grouping and p not in grain_of[gid]:
                         for gc in source_grain_of.get(p, frozenset()):
                             if gc not in primaries:
                                 ins.add(gc)
