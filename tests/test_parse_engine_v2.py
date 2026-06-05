@@ -417,6 +417,20 @@ def test_parse_text_v2_derived_concept_accepts_compound_boolean(
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize("op", ["not like", "not  LIKE", "not ilike"])
+def test_parse_text_v2_not_like_infix(backend: ParserBackend, op: str) -> None:
+    # SQL-style ``x not like 'y'`` parses identically on both backends and
+    # negates the like-comparison the same way the prefix ``not x like 'y'`` does.
+    like = "ilike" if "ilike" in op.lower() else "like"
+    with _using_backend(backend):
+        env, _ = parse_text(
+            f"const x <- 'hi';\nauto a <- x {op} 'h%';\nauto a_ref <- not x {like} 'h%';",
+            Environment(),
+        )
+    assert env.concepts["local.a"].lineage == env.concepts["local.a_ref"].lineage
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
 def test_parse_text_v2_named_predicate_usable_in_filter(backend: ParserBackend) -> None:
     # The named predicate is reusable inside a `?` inline-aggregate filter.
     with _using_backend(backend):

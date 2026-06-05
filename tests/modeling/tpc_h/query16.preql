@@ -4,7 +4,7 @@ auto bad_supplier_set <- supplier.comment like '%Customer%Complaints%';
 
 where
     brand != 'Brand#45'
-    and not type like 'MEDIUM POLISHED%'
+    and type not like 'MEDIUM POLISHED%'
     and size in (49, 14, 23, 45, 19, 3, 36, 9)
     and not bad_supplier_set
 select

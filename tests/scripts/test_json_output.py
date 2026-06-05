@@ -58,6 +58,19 @@ def events_of(events: list[dict], name: str) -> list[dict]:
     return [e for e in events if e["event"] == name]
 
 
+def all_decls(concepts: dict) -> list[str]:
+    """Flatten the role/grain-grouped ``namespaces`` payload back to a flat
+    list of declaration strings (keys, properties, metrics, ungrouped) so
+    tests can assert on individual concepts regardless of which bucket they
+    landed in."""
+    out: list[str] = []
+    for groups in concepts["namespaces"].values():
+        for g in groups:
+            for field in ("keys", "properties", "metrics", "ungrouped"):
+                out.extend(g.get(field, []))
+    return out
+
+
 def _db_workspace(tmp_path: Path) -> None:
     con = duckdb.connect(str(tmp_path / "test.duckdb"))
     con.execute("CREATE TABLE users (id INTEGER, name VARCHAR)")
@@ -144,10 +157,34 @@ def test_explore_emits_concepts(runner, tmp_path):
     assert result.exit_code == 0, result.output
     events = parse_events(result.output)
     concepts = events_of(events, "concepts")[0]
-    decls = [d for ns in concepts["namespaces"].values() for d in ns]
-    assert any("id int" in d for d in decls)
-    assert any("carrier" in d for d in decls)
+    # Local namespace surfaces under the empty-string key; keys lead, then the
+    # property nests under its grain with the redundant `id.` prefix stripped.
+    assert "" in concepts["namespaces"]
+    groups = concepts["namespaces"][""]
+    assert groups[0]["keys"] == ["key id int;"]
+    prop_group = next(g for g in groups if g.get("grain") == "id")
+    assert prop_group["properties"] == ["carrier string;"]
     assert events_of(events, "datasources")[0]["count"] == 1
+
+
+def test_explore_json_groups_metrics_by_aggregation(runner, tmp_path):
+    f = tmp_path / "agg.preql"
+    f.write_text(
+        "key id int;\nkey region_id int;\n"
+        "property id.bal float;\n"
+        "metric total <- sum(bal);\n"
+        "metric by_region <- sum(bal) by region_id;\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(f), "--show", "concepts"]
+    )
+    assert result.exit_code == 0, result.output
+    groups = events_of(parse_events(result.output), "concepts")[0]["namespaces"][""]
+    responsive = next(g for g in groups if g.get("aggregation") == "<responsive>")
+    assert any("total" in d for d in responsive["metrics"])
+    by_region = next(g for g in groups if g.get("aggregation") == "region_id")
+    assert any("by_region" in d for d in by_region["metrics"])
 
 
 def _import_workspace(tmp_path):
@@ -174,6 +211,26 @@ def test_explore_json_collapses_imported_namespaces(runner, tmp_path):
     assert "edu" in concepts["imported"]["dem"]
 
 
+def test_explore_json_hides_underscore_imports(runner, tmp_path):
+    (tmp_path / "dem.preql").write_text(
+        "key cd_id int;\nproperty cd_id.edu string;\n"
+        "property cd_id._raw_edu string;\n"
+        "datasource cd (cd_id, edu, _raw_edu) grain(cd_id) "
+        "query '''select 1 as cd_id, 'College' as edu, 'c' as _raw_edu''';\n",
+        encoding="utf-8",
+    )
+    parent = tmp_path / "sales.preql"
+    parent.write_text("import dem as dem;\nkey ticket int;\n", encoding="utf-8")
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(parent), "--show", "all"]
+    )
+    assert result.exit_code == 0, result.output
+    concepts = events_of(parse_events(result.output), "concepts")[0]
+    leaves = concepts["imported"]["dem"]
+    assert "edu" in leaves
+    assert "_raw_edu" not in leaves
+
+
 def test_explore_json_expand_imports_renders_everything_local(runner, tmp_path):
     parent = _import_workspace(tmp_path)
     result = runner.invoke(
@@ -193,8 +250,7 @@ def test_explore_json_expand_imports_renders_everything_local(runner, tmp_path):
     # With --expand-imports there is no collapsed `imported` block; the imported
     # concepts render in full alongside the local declarations.
     assert concepts.get("imported") is None
-    decls = [d for ns in concepts["namespaces"].values() for d in ns]
-    assert any("edu" in d for d in decls)
+    assert any("edu" in d for d in all_decls(concepts))
 
 
 def test_file_roundtrip_events(runner, tmp_path):

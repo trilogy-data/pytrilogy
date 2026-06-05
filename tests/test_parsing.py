@@ -214,6 +214,20 @@ auto not_starts_with_a <- not (name like 'a%');
     )
 
 
+def test_not_like_infix():
+    """SQL-style ``x not like 'y'`` / ``x not ilike 'y'`` must parse to the same
+    negated-comparison shape as the prefix ``not x like 'y'`` form."""
+    env, _ = parse_text("""
+const x <- 'hello';
+auto a <- x not like 'h%';
+auto a_ref <- not x like 'h%';
+auto b <- x not ilike 'H%';
+auto b_ref <- not x ilike 'H%';
+""")
+    assert env.concepts["a"].lineage == env.concepts["a_ref"].lineage
+    assert env.concepts["b"].lineage == env.concepts["b_ref"].lineage
+
+
 def test_show(test_environment):
     _, parsed = parse_text(
         "const order_id <- 4; SHOW SELECT order_id  WHERE order_id is not null;"

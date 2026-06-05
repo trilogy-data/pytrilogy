@@ -419,7 +419,7 @@ COMPARISON_OPERATOR = @{
     | "<"
 }
 
-PLUS_OR_MINUS = @{ "+" | ("-" ~ !">") | "||" | ^"like" | ^"ilike" }
+PLUS_OR_MINUS = @{ "+" | ("-" ~ !">") | "||" | (^"not" ~ WHITESPACE+ ~ ^"ilike") | (^"not" ~ WHITESPACE+ ~ ^"like") | ^"ilike" | ^"like" }
 MULTIPLY_DIVIDE_PERCENT = @{ "**" | "*" | "/" | "%" }
 
 // subselect comparison support

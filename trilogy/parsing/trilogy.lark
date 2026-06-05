@@ -354,7 +354,7 @@
     ?comparison_root: sum_chain (COMPARISON_OPERATOR sum_chain)? -> comparison
     ?between_root: sum_chain "between"i sum_chain "and"i sum_chain -> between_comparison
 
-    PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | "like"i | "ilike"i ) 
+    PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | /not\s+ilike/i | /not\s+like/i | "ilike"i | "like"i )
 
     ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
     

@@ -47,7 +47,7 @@ SELECT RULES:
   2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
   3. Multiplicative: `*`, `/`, `%`.
   4. Additive / string concat: `+`, `-`, `||`.
-  5. Comparison`=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `between … and …`, `in (…)`, `not in (…)`, `is null`.
+  5. Comparison`=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `not like`, `not ilike`, `between … and …`, `in (…)`, `not in (…)`, `is null`.
   6. Logical `and`.
   7. Logical `or`.
 - Always use a reasonable `LIMIT` for final queries if unspecified and the request is not for a time series or line chart.
