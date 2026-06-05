@@ -423,6 +423,7 @@ class Environment:
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, List[Modifier]]] | None = None,
     ) -> "BuildEnvironment":
         """helper method"""
         from trilogy.core.models.build import Factory
@@ -435,6 +436,7 @@ class Environment:
             grain_build_cache=grain_build_cache,
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
+            scoped_joins=scoped_joins,
         )
         return factory.build(self)
 

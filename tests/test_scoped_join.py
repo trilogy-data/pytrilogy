@@ -32,10 +32,30 @@ address customers_tbl;
 """
 
 
+SHIPMENTS = """key customer_id int;
+property customer_id.ship_count int;
+
+datasource shipments (
+    cid: customer_id,
+    sc: ship_count
+)
+grain (customer_id)
+address shipments_tbl;
+"""
+
+
 @pytest.fixture
 def models(tmp_path: Path) -> Path:
     (tmp_path / "orders.preql").write_text(ORDERS)
     (tmp_path / "customers.preql").write_text(CUSTOMERS)
+    return tmp_path
+
+
+@pytest.fixture
+def multi_models(tmp_path: Path) -> Path:
+    (tmp_path / "orders.preql").write_text(ORDERS)
+    (tmp_path / "customers.preql").write_text(CUSTOMERS)
+    (tmp_path / "shipments.preql").write_text(SHIPMENTS)
     return tmp_path
 
 
@@ -96,6 +116,29 @@ def test_scoped_join_does_not_mutate_global_environment(models: Path):
     assert "orders.customer_id" not in env.concepts["customers.customer_id"].pseudonyms
 
 
+def test_scoped_join_leaves_global_objects_untouched(models: Path):
+    # the build-level merge never replaces or adds concept/datasource objects on
+    # the author env, and registers no scoped alias.
+    env, parsed = parse_text(_select("INNER"), root=models)
+    concepts_before = {k: id(v) for k, v in env.concepts.items()}
+    datasources_before = {k: id(v) for k, v in env.datasources.items()}
+    alias_before = set(env.alias_origin_lookup)
+    process_query(env, parsed[-1])
+    assert {k: id(v) for k, v in env.concepts.items()} == concepts_before
+    assert {k: id(v) for k, v in env.datasources.items()} == datasources_before
+    assert set(env.alias_origin_lookup) == alias_before
+
+
+def test_scoped_join_not_visible_in_global_pseudonyms(models: Path):
+    from trilogy.core.models.build import get_canonical_pseudonyms
+
+    env, parsed = parse_text(_select("INNER"), root=models)
+    process_query(env, parsed[-1])
+    pseudonyms = get_canonical_pseudonyms(env)
+    assert "customers.customer_id" not in pseudonyms.get("orders.customer_id", set())
+    assert "orders.customer_id" not in pseudonyms.get("customers.customer_id", set())
+
+
 def test_scoped_join_round_trips_through_render(models: Path):
     from trilogy.parsing.render import render_query
 
@@ -113,9 +156,26 @@ import customers as customers;
     assert join.source_address == "orders.customer_id"
 
 
-def test_full_join_not_yet_supported(models: Path):
+@pytest.mark.parametrize("jointype", ["FULL", "RIGHT", "CROSS"])
+def test_unsupported_join_types_rejected(models: Path, jointype: str):
     with pytest.raises(ParseError, match="not yet supported"):
-        parse_text(_select("FULL"), root=models)
+        parse_text(_select(jointype), root=models)
+
+
+def test_augment_pseudonyms_for_scoped_joins():
+    from trilogy.core.models.build import augment_pseudonyms_for_scoped_joins
+
+    pm: dict[str, set[str]] = {"a": {"a"}, "b": {"b"}, "c": {"c", "x"}}
+    augment_pseudonyms_for_scoped_joins(pm, [("a", "b", [])])
+    assert pm["a"] == {"a", "b"} and pm["b"] == {"a", "b"}
+    # transitive: a<->b then b<->c collapses {a,b,c,x} into one group
+    augment_pseudonyms_for_scoped_joins(pm, [("b", "c", [])])
+    group = {"a", "b", "c", "x"}
+    assert all(pm[k] == group for k in group)
+    # idempotent
+    snapshot = {k: set(v) for k, v in pm.items()}
+    augment_pseudonyms_for_scoped_joins(pm, [("a", "b", []), ("b", "c", [])])
+    assert {k: set(v) for k, v in pm.items()} == snapshot
 
 
 DIM_ITEM = """key item_id int;
@@ -182,3 +242,45 @@ SELECT customers.region;
 """
     with pytest.raises(UndefinedConceptException, match="orders.nonexistent"):
         parse_text(text, root=models)
+
+
+def test_multiple_join_clauses_blend_three_models(multi_models: Path):
+    text = """
+import orders as orders;
+import customers as customers;
+import shipments as shipments;
+
+INNER JOIN orders.customer_id = customers.customer_id
+LEFT JOIN shipments.customer_id = customers.customer_id
+SELECT
+    customers.region,
+    sum(orders.order_amount) -> amt,
+    sum(shipments.ship_count) -> ships;
+"""
+    env, parsed = parse_text(text, root=multi_models)
+    assert len(parsed[-1].join_clauses) == 2
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    assert "orders_tbl" in sql
+    assert "customers_tbl" in sql
+    assert "shipments_tbl" in sql
+
+
+def test_aggregate_grouped_by_merged_key(models: Path):
+    # the output grain IS the merged key. The build canonicalizes
+    # customers.customer_id and orders.customer_id into one (pure pseudonym
+    # substitution, no with_merge cascade), so the anchor key is satisfied
+    # straight from the orders source.
+    text = """
+import orders as orders;
+import customers as customers;
+
+INNER JOIN orders.customer_id = customers.customer_id
+SELECT
+    customers.customer_id,
+    sum(orders.order_amount) -> amt;
+"""
+    env, parsed = parse_text(text, root=models)
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    # the merged anchor key resolves (sourced via the orders datasource)
+    assert "customers_customer_id" in sql
+    assert "orders_tbl" in sql

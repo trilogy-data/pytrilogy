@@ -2157,6 +2157,22 @@ def get_canonical_pseudonyms(environment: Environment) -> dict[str, set[str]]:
     return roots
 
 
+def augment_pseudonyms_for_scoped_joins(
+    pseudonym_map: dict[str, set[str]],
+    joins: list[tuple[str, str, List[Modifier]]],
+) -> None:
+    """Fold query-scoped merges into the pseudonym map in place: source and
+    target (and anything already equivalent to either) become one mutually
+    pseudonymous group. This is all the concept side of an in-query JOIN needs —
+    BuildConcept.pseudonyms are read straight off this map. Idempotent."""
+    for source_addr, target_addr, _ in joins:
+        group: set[str] = {source_addr, target_addr}
+        group |= pseudonym_map.get(source_addr, set())
+        group |= pseudonym_map.get(target_addr, set())
+        for addr in group:
+            pseudonym_map.setdefault(addr, set()).update(group)
+
+
 def requires_concept_nesting(
     expr,
 ) -> AggregateWrapper | WindowItem | FilterItem | Function | None:
@@ -2197,9 +2213,14 @@ class Factory:
         grain_build_cache: dict[tuple, "BuildGrain"] | None = None,
         canonical_build_cache: dict[str, BuildConcept] | None = None,
         datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
+        scoped_joins: list[tuple[str, str, List[Modifier]]] | None = None,
     ):
         self.grain = grain or Grain()
         self.environment = environment
+        # Query-scoped merges applied during the build (in-query JOINs). The
+        # concept side is folded into pseudonym_map by the caller; here we only
+        # need them to remap the affected datasources in _build_datasource.
+        self.scoped_joins: list[tuple[str, str, List[Modifier]]] = scoped_joins or []
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
@@ -3420,6 +3441,19 @@ class Factory:
 
     def _build_datasource(self, base: Datasource):
         from trilogy.constants import CONFIG
+
+        if self.scoped_joins:
+            affected = [
+                (s, t, m) for (s, t, m) in self.scoped_joins if s in base.output_lcl
+            ]
+            if affected:
+                base = base.duplicate()
+                for s_addr, t_addr, mods in affected:
+                    base.merge_concept(
+                        self.environment.concepts[s_addr],
+                        self.environment.concepts[t_addr],
+                        mods,
+                    )
 
         use_cache = CONFIG.generation.datasource_build_cache
         ds_key = f"{base.namespace}.{base.name}"

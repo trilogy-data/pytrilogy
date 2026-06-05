@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
     FunctionType,
+    Modifier,
     SourceType,
 )
 from trilogy.core.env_processor import generate_graph
@@ -33,6 +34,7 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
+    augment_pseudonyms_for_scoped_joins,
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -528,6 +530,7 @@ def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
+    scoped_joins: list[tuple[str, str, list[Modifier]]] | None = None,
 ) -> StrategyNode:
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
@@ -538,8 +541,16 @@ def get_query_node(
     # Caches live on History so every sub-select (rowsets, multiselect arms)
     # in this resolution reuses the base environment's materialized concepts.
     caches = history.build_caches
+    # Query-scoped JOINs are applied during the build, not by cloning the author
+    # env: the concept equivalence folds into the (shared) pseudonym_map and the
+    # datasource remap happens in Factory._build_datasource. Stored on caches so
+    # nested sub-selects inherit the same merges.
+    if scoped_joins:
+        caches.scoped_joins = scoped_joins
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(environment)
+    if caches.scoped_joins:
+        augment_pseudonyms_for_scoped_joins(caches.pseudonym_map, caches.scoped_joins)
     build_cache: dict[str, BuildConcept] = caches.build_cache
     canonical_build_cache: dict[str, BuildConcept] = caches.canonical_build_cache
     base_factory = Factory(
@@ -548,6 +559,7 @@ def get_query_node(
         canonical_build_cache=canonical_build_cache,
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
+        scoped_joins=caches.scoped_joins,
     )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
         statement
@@ -560,6 +572,7 @@ def get_query_node(
         grain_build_cache=base_factory.grain_build_cache,
         canonical_build_cache=canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
+        scoped_joins=caches.scoped_joins,
     )
 
     graph = generate_graph(build_environment)
@@ -629,33 +642,18 @@ def get_query_node(
     return ds
 
 
-def apply_scoped_joins(
-    environment: Environment,
-    statement: SelectStatement | MultiSelectStatement,
-) -> Environment:
-    """Apply a select's JOIN clauses as merges on a throwaway copy of the
-    environment, so the blend is local to this query's resolution and never
-    touches the global (possibly frozen) environment."""
-    join_clauses = getattr(statement, "join_clauses", None)
-    if not join_clauses:
-        return environment
-    scoped = environment.duplicate()
-    for join in join_clauses:
-        scoped.merge_concept(
-            scoped.concepts[join.source_address],
-            scoped.concepts[join.target_address],
-            modifiers=join.modifiers,
-        )
-    return scoped
-
-
 def get_query_datasources(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-    environment = apply_scoped_joins(environment, statement)
-    ds = get_query_node(environment, statement.as_lineage(environment))
+    join_clauses = getattr(statement, "join_clauses", None) or []
+    scoped_joins = [
+        (j.source_address, j.target_address, j.modifiers) for j in join_clauses
+    ]
+    ds = get_query_node(
+        environment, statement.as_lineage(environment), scoped_joins=scoped_joins
+    )
 
     final_qds = ds.resolve()
 
