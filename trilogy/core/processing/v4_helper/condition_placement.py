@@ -14,7 +14,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
 
-from .constants import DepthLabel, EdgeKind, FINAL_NODE_ID
+from .constants import FINAL_NODE_ID, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
 from .models import GroupBucket
 
@@ -90,6 +90,7 @@ def _reachable_input(
 
 
 def _candidate_groups(
+    atom: BoolExpr,
     row_inputs: set[str],
     group_members: dict[str, set[str]],
     d1_root_ids: set[str],
@@ -105,7 +106,7 @@ def _candidate_groups(
     ]
     if not candidates:
         raise ValueError(
-            f"Could not place condition atom: row inputs "
+            f"Could not place condition atom {atom}: row inputs "
             f"{sorted(row_inputs)} not reachable from any group."
         )
     return [
@@ -260,6 +261,7 @@ def plan_condition_placements(
         for atom in decompose_condition(clause.conditional):
             row_inputs = {c.address for c in atom.row_arguments}
             candidates = _candidate_groups(
+                atom,
                 row_inputs,
                 group_members,
                 d1_root_ids,

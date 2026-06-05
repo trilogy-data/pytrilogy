@@ -25,6 +25,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 
+from .condition_placement import plan_condition_placements
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
@@ -41,9 +42,9 @@ from .edges import (
     edge_kind,
     edges_of_kind,
     lineage_edges,
+    lineage_subgraph,
     remove_edge,
 )
-from .condition_placement import plan_condition_placements
 from .group_behaviors import behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import ConceptAttrs, GroupAttrs, GroupBucket
@@ -53,18 +54,6 @@ from .models import ConceptAttrs, GroupAttrs, GroupBucket
 # gets its own group id and doesn't collide with the main root bucket.
 ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 
-# Row-shape barriers whose own output can NOT be filtered in place: a window
-# `rank() < 10` needs QUALIFY and an unnest `not value` needs a wrapping
-# select, so a WHERE on their output must live at a downstream consumer (or
-# FINAL). Such an output can also look spuriously "reachable" at the barrier
-# via a back-edge constraint from its condition-phase duplicate, so we drop
-# these as candidate hosts. Aggregate/group_to self-host via HAVING, and
-# rowset/union/recursive are CTE-like (their output is filterable in a
-# wrapping select that the planner already builds) — none are excluded.
-# Derivations that emit a GROUP BY, so any column referenced in a HAVING there
-# must itself be grouped (a key) or aggregated. A cross-joined aggregate from a
-# *different* producer is neither, so such a group cannot host a HAVING that
-# references it. Window PARTITIONs rather than GROUP BYs, so it is excluded.
 _REGRAFTABLE_DERIVATIONS: set[Derivation] = {
     Derivation.BASIC,
     Derivation.WINDOW,
@@ -340,31 +329,6 @@ def _materialize_group_graph(
     return group_graph, attrs, group_edges
 
 
-def _main_lineage_groups(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    buckets: dict[str, GroupBucket],
-    mandatory_list: list[BuildConcept],
-) -> set[str]:
-    """Groups in the user-facing pipeline: those whose primary members produce
-    a mandatory concept, plus all their lineage-edge ancestors. Used to bias
-    condition placement away from existence-only side channels (a d1 filter
-    group that produces an `IN`-RHS feeder is reachable via row args but
-    hosting the atom there self-references the existence concept and leaves
-    the main row stream unfiltered)."""
-    mandatory_addrs = {c.address for c in mandatory_list}
-    seeds = {
-        gid for gid, b in buckets.items() if mandatory_addrs & set(b.primary_members)
-    }
-    if not seeds:
-        return set(buckets.keys())
-    lineage_only = lineage_subgraph(group_graph, group_edges)
-    main: set[str] = set(seeds)
-    for seed in seeds:
-        main |= nx.ancestors(lineage_only, seed)
-    return main
-
-
 def _inject_conditions(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -373,249 +337,17 @@ def _inject_conditions(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
 ) -> set[str]:
-    """Decompose each clause into AND-atoms (via `decompose_condition`) and
-    place each atom *independently* at every furthest-upstream group that can
-    serve its inputs. An atom like `state='TN'` can fly all the way up to
-    ROOT even if its sibling atom needs a downstream group — the two no
-    longer share fate. When the row stream has split into sibling sources that
-    later reconverge, every upstream-most sibling gets the atom so all
-    downstream consumers see the same filtered population.
-
-    Errors out if a chosen group sits downstream of a d0 barrier (a filter
-    cannot be pushed past a row-shape change). Returns the set of groups
-    that received at least one atom."""
-    d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == DepthLabel.D0}
-    # The d1-feeding root bucket exists exactly so its scan stays unfiltered
-    # — sibling WHERE atoms would corrupt the avg-in-where. Conditions whose
-    # row inputs only fit in R_d1 still have to land somewhere, so we exclude
-    # R_d1 from the candidate set and let the d1's downstream paths host the
-    # filter (R_other, or a basic/aggregate below it).
-    d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
-    main_lineage = (
-        _main_lineage_groups(group_graph, group_edges, buckets, mandatory_list)
-        if mandatory_list
-        else set(buckets.keys())
-    )
-    # Ancestor checks for "upstream-most" must follow lineage only — existence
-    # edges go from a side-channel filter back to its consumer (e.g. d1 filter
-    # → main root), which would falsely make root a *descendant* of the d1
-    # filter and disqualify it from the upstream tiebreak.
-    lineage_ancestors_graph = subgraph_of_kinds(
-        group_graph, group_edges, EdgeKind.LINEAGE, EdgeKind.CONSTRAINT
-    )
-    group_members: dict[str, set[str]] = {
-        gid: set(b.primary_members) | set(b.secondary_members)
-        for gid, b in buckets.items()
-    }
+    """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
-
-    # A group can host an atom iff every row-arg is in its INPUT row
-    # stream — i.e. what its FROM clause provides. That's:
-    #   - for a source group (no lineage ancestors): its own members (the
-    #     datasource scan IS its input)
-    #   - for any other group: the union of its ancestors' members (its
-    #     parents' CTEs feed its FROM)
-    # NOT including its own primaries (for a *derived* group) — those are the
-    # *outputs* of this group's derivation. You can't WHERE on `avg(price)`
-    # inside the same SELECT that computes it; that filter must live
-    # downstream where `avg(price)` is an input column. The "ancestors-only"
-    # rule below forces those atoms to land on a consumer. Existence edges are
-    # excluded — they're side-channel (the d1 filter back-edges into its
-    # main-graph consumer); counting them as ancestry falsely demotes a true
-    # source group like root and excludes its own scan columns from candidacy.
-    #
-    # A ROOT scan is the exception: its primaries are raw columns the FROM
-    # supplies, so they're inputs, not derived outputs. A WHERE on a raw column
-    # (`size = 15`) belongs on the scan even when the root also has a
-    # constraint-edge ancestor (a d1 aggregate feeding a HAVING-style filter)
-    # that would otherwise flip it out of the "no ancestors" branch and hide
-    # its own columns (q02 / q20).
-    root_derivations = {Derivation.ROOT}
-
-    def _reachable_input(gid: str) -> set[str]:
-        own = (
-            set(group_members.get(gid, set()))
-            if buckets.get(gid) and buckets[gid].derivation in root_derivations
-            else set()
-        )
-        ancestors = nx.ancestors(lineage_ancestors_graph, gid)
-        if not ancestors:
-            return own | set(group_members.get(gid, set()))
-        reachable: set[str] = set(own)
-        for anc in ancestors:
-            reachable |= group_members.get(anc, set())
-        return reachable
-
-    for clause in conditions:
-        for atom in decompose_condition(clause.conditional):
-            # Only the row arguments need to live in the host group's row
-            # stream. Existence arguments (the right-hand side of an IN
-            # subquery) are reached via a side-channel subselect — they
-            # don't constrain placement and are threaded into the host
-            # node as `existence_concepts` later. Without this distinction,
-            # an atom like `week_seq IN relevent_week_seq` finds no group
-            # that contains both inputs and drops on the floor.
-            row_inputs = {c.address for c in atom.row_arguments}
-            candidates = [
-                gid
-                for gid in group_members
-                if gid not in d1_root_ids and row_inputs <= _reachable_input(gid)
-            ]
-            if not candidates:
-                # Fail fast — silently dropping an atom changes query
-                # semantics. If you hit this, the atom needs either a
-                # synthetic merge group to land on or a richer
-                # row-args/existence-args split.
-                raise ValueError(
-                    f"Could not place condition atom {atom}: row inputs "
-                    f"{sorted(row_inputs)} not reachable from any group."
-                )
-            # A window/unnest barrier can NOT host a row WHERE on its own output
-            # in place (a `rank() < 10` / `not value` needs QUALIFY or a
-            # wrapping select), and a back-edge constraint from a condition-phase
-            # duplicate can make such an output look "reachable" at the barrier
-            # (`prime_cubed_plus_one` at the unnest). Drop those barriers as
-            # hosts — the filter belongs at a downstream consumer (or FINAL).
-            # Aggregates stay eligible (they self-host a HAVING); rowset/union/
-            # recursive are CTE-like and filterable in a wrapping select. If
-            # this empties the set the atom defers to FINAL below.
-            candidates = [
-                gid
-                for gid in candidates
-                if buckets.get(gid) is None
-                or buckets[gid].derivation not in _CANNOT_HOST_OWN_OUTPUT
-            ]
-            # An input that is the primary OUTPUT of a d0 group (an aggregate /
-            # row-shape barrier produces it) only exists as a column at that
-            # group and below. Keep only candidates at-or-downstream of every
-            # such producer (the producer itself hosts a plain HAVING against
-            # its own aggregate; consumers host post-aggregate filters). When
-            # the atom's inputs come from *separate* producers that never
-            # re-converge before the sink (a cross-arm HAVING like
-            # `cnt_00 <= cnt_99`, whose two counts are computed in distinct
-            # multiselect arms), this empties the candidate set — the atom is a
-            # post-merge filter and lands on FINAL, where both columns coexist.
-            producer_closures: list[set[str]] = []
-            for addr in row_inputs:
-                producers = [
-                    gid
-                    for gid, b in buckets.items()
-                    if b.depth_label == DepthLabel.D0 and addr in set(b.primary_members)
-                ]
-                if producers:
-                    reach: set[str] = set(producers)
-                    for p in producers:
-                        reach |= nx.descendants(group_graph, p)
-                    producer_closures.append(reach)
-            # Main-pipeline producers of the atom's inputs (any derivation) —
-            # used only to tell, below, which d0 barriers the atom legitimately
-            # consumes from (so they aren't flagged as an illegal push-past).
-            producer_groups: set[str] = set()
-            for addr in row_inputs:
-                producers = [
-                    gid for gid, b in buckets.items() if addr in set(b.primary_members)
-                ]
-                main_producers = [
-                    gid
-                    for gid in producers
-                    if buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
-                ]
-                producer_groups.update(main_producers or producers)
-            restricted = [
-                gid
-                for gid in candidates
-                if all(gid in reach for reach in producer_closures)
-            ]
-            # An aggregate group self-hosts a HAVING only against its OWN
-            # aggregate outputs. If the atom also references an aggregate
-            # produced by a DIFFERENT group (q11: per-id `part_total_value` vs
-            # global `germany_total_value`), that column reaches this group only
-            # as a cross-joined, ungrouped value — illegal in a HAVING. Drop any
-            # grouping candidate that doesn't itself produce every aggregate
-            # output in the atom, so it defers to a shared non-grouping consumer
-            # (FINAL) where both aggregates are plain input columns. Pure
-            # consumers and single-producer self-HAVINGs are unaffected.
-            agg_outputs = {
-                addr
-                for addr in row_inputs
-                if any(
-                    b.derivation in _EMITS_GROUP_BY and addr in set(b.primary_members)
-                    for b in buckets.values()
-                )
-            }
-            # An atom comparing grouped aggregates of DIFFERENT grains (q11:
-            # per-id `part_total_value` at grain `id` vs global
-            # `germany_total_value` at grain ∅) has no single group whose row
-            # stream carries both: the finer aggregate only cross-joins the
-            # coarser one as an ungrouped value, which a HAVING there can't
-            # reference. They re-converge only at the FINAL merge — where both
-            # are plain input columns — so route the atom there (matching v3's
-            # post-aggregate WHERE). Same-grain comparisons (a self-HAVING, or a
-            # cross-arm HAVING whose counts share a grain) are unaffected and
-            # fall through to the producer-closure logic below.
-            if agg_outputs:
-                agg_grains = {
-                    frozenset(a.grain_components)
-                    for gid, a in attrs.items()
-                    if a.derivation in _EMITS_GROUP_BY
-                    and set(a.primary_members) & agg_outputs
-                }
-                if len(agg_grains) > 1:
-                    attrs[FINAL_NODE_ID].condition_atoms.append(atom)
-                    attrs[FINAL_NODE_ID].conditions.append(str(atom))
-                    condition_group_ids.add(FINAL_NODE_ID)
-                    continue
-            if not restricted:
-                attrs[FINAL_NODE_ID].condition_atoms.append(atom)
-                attrs[FINAL_NODE_ID].conditions.append(str(atom))
-                condition_group_ids.add(FINAL_NODE_ID)
-                continue
-            candidates = restricted
-            cand_set = set(candidates)
-            upstream_most = [
-                gid
-                for gid in candidates
-                if not (cand_set & nx.ancestors(lineage_ancestors_graph, gid))
-            ]
-            # Prefer candidates on the main lineage pipeline. A side-channel
-            # d1 filter group that produces this atom's existence arg can
-            # show up here (`relevent_week_seq` is reachable through its own
-            # row stream) — hosting the WHERE there self-references and
-            # leaves the user-facing row stream unfiltered.
-            main_upstream = [gid for gid in upstream_most if gid in main_lineage]
-            main_cands = [gid for gid in candidates if gid in main_lineage]
-            if main_upstream:
-                chosen_groups = main_upstream
-            elif upstream_most:
-                chosen_groups = upstream_most
-            elif main_cands:
-                chosen_groups = main_cands
-            else:
-                chosen_groups = candidates
-            # A barrier that PRODUCES (or transitively derives) this atom's own
-            # inputs is legitimately consumed below it — `rank() < 10`,
-            # `unnest(...)→f(x) % 7 = 0`, `cumulative_a > cumulative_b` all read
-            # a barrier's output and must live downstream of it. That is not
-            # "pushing past" the barrier. Only barriers the atom is independent
-            # of represent an illegal push-past, so exclude the consumed ones
-            # (producers + their upstream lineage) from the guard.
-            consumed_barriers: set[str] = set(producer_groups)
-            for p in producer_groups:
-                consumed_barriers |= nx.ancestors(group_graph, p)
-            for chosen in chosen_groups:
-                chosen_ancestors = nx.ancestors(group_graph, chosen)
-                offending = (d0_group_ids & chosen_ancestors) - consumed_barriers
-                if offending:
-                    raise ValueError(
-                        f"Atom {atom} would be injected at {chosen}, which is "
-                        f"downstream of d0 barrier(s) {sorted(offending)}; "
-                        f"conditions cannot be pushed past row-shape changes."
-                    )
-                if atom not in attrs[chosen].condition_atoms:
-                    attrs[chosen].condition_atoms.append(atom)
-                    attrs[chosen].conditions.append(str(atom))
-                condition_group_ids.add(chosen)
-
+    placements = plan_condition_placements(
+        group_graph, group_edges, buckets, conditions, mandatory_list
+    )
+    for placement in placements:
+        for gid in placement.group_ids:
+            if placement.atom not in attrs[gid].condition_atoms:
+                attrs[gid].condition_atoms.append(placement.atom)
+                attrs[gid].conditions.append(str(placement.atom))
+            condition_group_ids.add(gid)
     return condition_group_ids
 
 
