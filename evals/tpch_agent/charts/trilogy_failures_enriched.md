@@ -1,90 +1,127 @@
-# Trilogy failure analysis — 20260605-005207
+# Trilogy failure analysis — 20260605-033154
 
-- Run `20260605-005205_enriched` | `deepseek/deepseek-chat` | sf=0.01
-- `trilogy` calls: 200 | failed: 16 (8%)
+- Run `20260605-033153_enriched` | `deepseek/deepseek-chat` | sf=0.01
+- `trilogy` calls: 282 | failed: 24 (9%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 6 | 38% |
-| `syntax-parse` | 5 | 31% |
-| `syntax-missing-alias` | 3 | 19% |
-| `cli-misuse` | 1 | 6% |
-| `join-resolution` | 1 | 6% |
+| `syntax-parse` | 8 | 33% |
+| `other` | 5 | 21% |
+| `undefined-concept` | 4 | 17% |
+| `syntax-missing-alias` | 4 | 17% |
+| `cli-misuse` | 2 | 8% |
+| `join-resolution` | 1 | 4% |
 
 ## Detail
 
-### `other`
+### `syntax-parse`
 
-- `trilogy run query09.preql`
+- `trilogy run --import raw.lineitem:li select year(li.order.date) as year, count(li.line_no) as cnt where li.part.type = 'ECONOMY ANODIZED STEEL' and li.order.date between '1995-01-01'::date and '1996-12-31'::date group by year order by year;`
 
   ```text
 
   ```
-- `trilogy database list`
+- `trilogy run --import raw.lineitem:li select year(li.order.date) as year, count(li.line_no) as cnt where li.order.customer.nation.region.name = 'AMERICA' and li.part.type = 'ECONOMY ANODIZED STEEL' and li.order.date between '1995-01-01'::date and '1996-12-31'::date group by year order by year;`
 
   ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+
+  ```
+- `trilogy file write query13.preql --content import raw.order as order;
+
+# Count orders per customer where comment does NOT match %special%requests%
+auto order…  orders_not_matching as bucket,
+    count(order.customer.id) as customer_count
+order by
+    customer_count desc,
+    bucket desc
+limit 31
+offset 30;`
+
+  ```text
+
+  ```
+- `trilogy file write query14.preql --content import raw.lineitem as lineitem;
+
+# Lineitems shipped between 1995-09-01 (inclusive) and 1995-10-01 (exclusive)
+wh…-10-01'::date
+
+select
+  100.0 * sum(lineitem.revenue ? starts_with(lineitem.part.type, 'PROMO'))
+  / sum(lineitem.revenue) as promo_revenue
+limit 10;`
+
+  ```text
+
+  ```
+- `trilogy file write query21.preql`
+
+  ```text
+
+  ```
+- `trilogy file write query21.preql`
+
+  ```text
+
+  ```
+- `trilogy file write debug10.preql`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.customer:customer select substring(customer.phone, 1, 2) as area, count(customer.id) as cnt, avg(customer.account_balance) as avg_bal where customer.account_balance > 0 group by area order by area limit 20;`
+
+  ```text
+
+  ```
+
+### `other`
+
+- `trilogy run query01.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
   ```
 - `trilogy run query11.preql`
 
   ```text
 
   ```
-- `trilogy run query15.preql`
+- `trilogy run debug6.preql`
 
   ```text
 
   ```
-- `trilogy run query20.preql`
+- `trilogy database describe customer`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+
+### `undefined-concept`
+
+- `trilogy run query03.preql`
 
   ```text
 
   ```
-- `trilogy run --import raw.customer:customer --import raw.order:order select customer.id, count(order.id) as order_count where customer.id in ('13','23','5') and customer.id in order.customer.id order by customer.id;`
+- `trilogy run query05.preql`
 
   ```text
 
   ```
-
-### `syntax-parse`
-
-- `trilogy file write query16.preql`
+- `trilogy run query07.preql`
 
   ```text
 
   ```
-- `trilogy file write query16.preql`
-
-  ```text
-
-  ```
-- `trilogy file write query18.preql --content import raw.lineitem as lineitem;
-
-# Sum of quantity per order
-auto total_qty_by_order <- sum(lineitem.quantity) by…order.total_price as total_order_price,
-    sum(lineitem.quantity) as sum_quantity
-order by
-    total_order_price desc,
-    order_date asc
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query22_check.preql --content import raw.customer as customer;
-select 
-    substring(customer.phone, 1, 2) as cntrycode,
-    count(custome…omer.account_balance > 0
-    and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')
-group by cntrycode
-order by cntrycode;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.customer:customer --import raw.order:order select customer.id, count(order.id) as order_count where customer.id in ('13','23','5') and customer.id in order.customer.id group by customer.id;`
+- `trilogy run query22.preql`
 
   ```text
 
@@ -92,17 +129,22 @@ order by cntrycode;`
 
 ### `syntax-missing-alias`
 
-- `trilogy run --import raw.lineitem:lineitem select distinct lineitem.part.supplier.nation.name limit 10;`
+- `trilogy run --import raw.lineitem:li select count(li.line_no) where li.order.customer.nation.region.name = 'AMERICA' and li.part.type = 'ECONOMY ANODIZED STEEL' and li.order.date between '1995-01-01'::date and '1996-12-31'::date;`
 
   ```text
 
   ```
-- `trilogy run --import raw.lineitem:lineitem select distinct lineitem.part.supplier.nation.name as sn_name where sn_name = 'BRAZIL' limit 5;`
+- `trilogy run --import raw.lineitem:li select distinct li.part.supplier.nation.name as nation_name where li.order.customer.nation.region.name = 'AMERICA' and li.part.type = 'ECONOMY ANODIZED STEEL' and li.order.date between '1995-01-01'::date and '1996-12-31'::date order by nation_name;`
 
   ```text
 
   ```
-- `trilogy run --import raw.part:part select part.brand, part.container, count(part.id) limit 20;`
+- `trilogy run --import raw.lineitem:li select distinct li.order.customer.nation.name as cust_nation, sum(li.revenue) as rev where li.order.customer.nation.regi…ame = 'AMERICA' and li.part.type = 'ECONOMY ANODIZED STEEL' and li.order.date between '1995-01-01'::date and '1996-12-31'::date order by cust_nation;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.lineitem:lineitem select lineitem.part.brand, lineitem.part.container, count(lineitem.line_no) where lineitem.part.brand like '%23%' limit 20;`
 
   ```text
 
@@ -110,15 +152,20 @@ order by cntrycode;`
 
 ### `cli-misuse`
 
-- `trilogy explore raw/partsupp.preql`
+- `trilogy explore raw/orders.preql`
 
   ```text
-  Invalid value for 'PATH': File 'raw/partsupp.preql' does not exist.
+  Invalid value for 'PATH': File 'raw/orders.preql' does not exist.
+  ```
+- `trilogy explore raw/orders.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/orders.preql' does not exist.
   ```
 
 ### `join-resolution`
 
-- `trilogy run --import raw.customer:customer --import raw.order:order select customer.id, count(order.id) as order_count where customer.id in (13, 23, 5) and customer.id in order.customer.id order by customer.id;`
+- `trilogy run query17.preql`
 
   ```text
 
