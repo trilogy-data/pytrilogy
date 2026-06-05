@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9563 | 176 | 177.16 ms |
-| reference | 9563 | 176 | 157.37 ms |
-| v4 / ref | 1.00x | 1.00x | 1.13x |
+| v4 | 10675 | 184 | 105.80 ms |
+| reference | 9563 | 176 | 128.67 ms |
+| v4 / ref | 1.12x | 1.05x | 0.82x |
 
 ## Preql
 
@@ -82,6 +82,21 @@ limit 100
 
 ```sql
 WITH 
+uneven as (
+SELECT
+    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id",
+    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state",
+    sum(CASE WHEN "cr_date_date"."D_YEAR" = 2000 and "cr_return_address_customer_address"."CA_STATE" is not null THEN "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "customer_state"
+FROM
+    "memory"."catalog_returns" as "cr_catalog_returns"
+    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "cr_catalog_returns"."CR_RETURNING_ADDR_SK" = "cr_return_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "cr_return_address_customer_address"."CA_STATE" is not null
+
+GROUP BY
+    1,
+    2),
 cooperative as (
 SELECT
     "cr_billing_customer_address_customer_address"."CA_CITY" as "cr_billing_customer_address_city",
@@ -110,45 +125,6 @@ FROM
 WHERE
     "cr_billing_customer_address_customer_address"."CA_STATE" = 'GA' and "cr_return_address_customer_address"."CA_STATE" is not null
 ),
-uneven as (
-SELECT
-    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id",
-    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state",
-    sum(CASE WHEN "cr_date_date"."D_YEAR" = 2000 and "cr_return_address_customer_address"."CA_STATE" is not null THEN "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "customer_state"
-FROM
-    "memory"."catalog_returns" as "cr_catalog_returns"
-    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "cr_catalog_returns"."CR_RETURNING_ADDR_SK" = "cr_return_address_customer_address"."CA_ADDRESS_SK"
-WHERE
-    "cr_return_address_customer_address"."CA_STATE" is not null
-
-GROUP BY
-    1,
-    2),
-scrawny as (
-SELECT
-    "cooperative"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "cooperative"."cr_billing_customer_text_id" as "cr_billing_customer_text_id"
-FROM
-    "cooperative"
-GROUP BY
-    1,
-    2,
-    "cooperative"."cr_billing_customer_first_name",
-    "cooperative"."cr_billing_customer_last_name",
-    "cooperative"."cr_billing_customer_salutation"),
-questionable as (
-SELECT
-    "cooperative"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "cooperative"."cr_billing_customer_text_id" as "cr_billing_customer_text_id"
-FROM
-    "cooperative"
-GROUP BY
-    1,
-    2,
-    "cooperative"."cr_billing_customer_first_name",
-    "cooperative"."cr_billing_customer_last_name",
-    "cooperative"."cr_billing_customer_salutation"),
 concerned as (
 SELECT
     "uneven"."cr_return_address_state" as "cr_return_address_state",
@@ -157,21 +133,54 @@ FROM
     "uneven"
 GROUP BY
     1),
+questionable as (
+SELECT
+    "cooperative"."cr_billing_customer_address_city" as "cr_billing_customer_address_city",
+    "cooperative"."cr_billing_customer_address_country" as "cr_billing_customer_address_country",
+    "cooperative"."cr_billing_customer_address_county" as "cr_billing_customer_address_county",
+    "cooperative"."cr_billing_customer_address_gmt_offset" as "cr_billing_customer_address_gmt_offset",
+    "cooperative"."cr_billing_customer_address_location_type" as "cr_billing_customer_address_location_type",
+    "cooperative"."cr_billing_customer_address_state" as "cr_billing_customer_address_state",
+    "cooperative"."cr_billing_customer_address_street_name" as "cr_billing_customer_address_street_name",
+    "cooperative"."cr_billing_customer_address_street_number" as "cr_billing_customer_address_street_number",
+    "cooperative"."cr_billing_customer_address_street_type" as "cr_billing_customer_address_street_type",
+    "cooperative"."cr_billing_customer_address_suite_number" as "cr_billing_customer_address_suite_number",
+    "cooperative"."cr_billing_customer_address_zip" as "cr_billing_customer_address_zip",
+    "cooperative"."cr_billing_customer_first_name" as "cr_billing_customer_first_name",
+    "cooperative"."cr_billing_customer_id" as "cr_billing_customer_id",
+    "cooperative"."cr_billing_customer_last_name" as "cr_billing_customer_last_name",
+    "cooperative"."cr_billing_customer_salutation" as "cr_billing_customer_salutation",
+    "cooperative"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
+    "cooperative"."cr_return_address_state" as "cr_return_address_state"
+FROM
+    "cooperative"),
 sparkling as (
 SELECT
     "concerned"."cr_return_address_state" as "cr_return_address_state",
     1.2 * "concerned"."_virt_agg_avg_7052944147524274" as "scaled_state"
 FROM
     "concerned"),
-abhorrent as (
+abundant as (
 SELECT
     "questionable"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
+    "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id"
+FROM
+    "questionable"
+GROUP BY
+    1,
+    2,
+    "questionable"."cr_billing_customer_first_name",
+    "questionable"."cr_billing_customer_last_name",
+    "questionable"."cr_billing_customer_salutation"),
+abhorrent as (
+SELECT
+    "abundant"."cr_billing_customer_id" as "cr_billing_customer_id",
+    "abundant"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
     "uneven"."customer_state" as "customer_state",
     coalesce("sparkling"."cr_return_address_state","uneven"."cr_return_address_state") as "cr_return_address_state"
 FROM
     "uneven"
-    INNER JOIN "questionable" on "uneven"."cr_billing_customer_id" = "questionable"."cr_billing_customer_id"
+    INNER JOIN "abundant" on "uneven"."cr_billing_customer_id" = "abundant"."cr_billing_customer_id"
     INNER JOIN "sparkling" on "uneven"."cr_return_address_state" is not distinct from "sparkling"."cr_return_address_state"
 WHERE
     "uneven"."customer_state" > "sparkling"."scaled_state"
@@ -201,26 +210,25 @@ SELECT
 FROM
     "late")
 SELECT
-    "cooperative"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
-    "cooperative"."cr_billing_customer_salutation" as "cr_billing_customer_salutation",
-    "cooperative"."cr_billing_customer_first_name" as "cr_billing_customer_first_name",
-    "cooperative"."cr_billing_customer_last_name" as "cr_billing_customer_last_name",
-    "cooperative"."cr_billing_customer_address_street_number" as "cr_billing_customer_address_street_number",
-    "cooperative"."cr_billing_customer_address_street_name" as "cr_billing_customer_address_street_name",
-    "cooperative"."cr_billing_customer_address_street_type" as "cr_billing_customer_address_street_type",
-    "cooperative"."cr_billing_customer_address_suite_number" as "cr_billing_customer_address_suite_number",
-    "cooperative"."cr_billing_customer_address_city" as "cr_billing_customer_address_city",
-    "cooperative"."cr_billing_customer_address_county" as "cr_billing_customer_address_county",
-    "cooperative"."cr_billing_customer_address_state" as "cr_billing_customer_address_state",
-    "cooperative"."cr_billing_customer_address_zip" as "cr_billing_customer_address_zip",
-    "cooperative"."cr_billing_customer_address_country" as "cr_billing_customer_address_country",
-    "cooperative"."cr_billing_customer_address_gmt_offset" as "cr_billing_customer_address_gmt_offset",
-    "cooperative"."cr_billing_customer_address_location_type" as "cr_billing_customer_address_location_type",
+    "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
+    "questionable"."cr_billing_customer_salutation" as "cr_billing_customer_salutation",
+    "questionable"."cr_billing_customer_first_name" as "cr_billing_customer_first_name",
+    "questionable"."cr_billing_customer_last_name" as "cr_billing_customer_last_name",
+    "questionable"."cr_billing_customer_address_street_number" as "cr_billing_customer_address_street_number",
+    "questionable"."cr_billing_customer_address_street_name" as "cr_billing_customer_address_street_name",
+    "questionable"."cr_billing_customer_address_street_type" as "cr_billing_customer_address_street_type",
+    "questionable"."cr_billing_customer_address_suite_number" as "cr_billing_customer_address_suite_number",
+    "questionable"."cr_billing_customer_address_city" as "cr_billing_customer_address_city",
+    "questionable"."cr_billing_customer_address_county" as "cr_billing_customer_address_county",
+    "questionable"."cr_billing_customer_address_state" as "cr_billing_customer_address_state",
+    "questionable"."cr_billing_customer_address_zip" as "cr_billing_customer_address_zip",
+    "questionable"."cr_billing_customer_address_country" as "cr_billing_customer_address_country",
+    "questionable"."cr_billing_customer_address_gmt_offset" as "cr_billing_customer_address_gmt_offset",
+    "questionable"."cr_billing_customer_address_location_type" as "cr_billing_customer_address_location_type",
     "macho"."customer_state" as "customer_state"
 FROM
-    "macho"
-    INNER JOIN "cooperative" on "macho"."cr_billing_customer_id" = "cooperative"."cr_billing_customer_id" AND "macho"."cr_billing_customer_text_id" = "cooperative"."cr_billing_customer_text_id" AND "macho"."cr_return_address_state" is not distinct from "cooperative"."cr_return_address_state"
-    LEFT OUTER JOIN "scrawny" on "macho"."cr_billing_customer_id" = "scrawny"."cr_billing_customer_id" AND "macho"."cr_billing_customer_text_id" = "scrawny"."cr_billing_customer_text_id"
+    "questionable"
+    INNER JOIN "macho" on "questionable"."cr_billing_customer_id" = "macho"."cr_billing_customer_id" AND "questionable"."cr_billing_customer_text_id" = "macho"."cr_billing_customer_text_id" AND "questionable"."cr_return_address_state" is not distinct from "macho"."cr_return_address_state"
 GROUP BY
     1,
     2,
@@ -238,23 +246,23 @@ GROUP BY
     14,
     15,
     16,
-    "cooperative"."cr_billing_customer_id"
+    "questionable"."cr_billing_customer_id"
 ORDER BY 
-    "cooperative"."cr_billing_customer_text_id" asc nulls first,
-    "cooperative"."cr_billing_customer_salutation" asc nulls first,
-    "cooperative"."cr_billing_customer_first_name" asc nulls first,
-    "cooperative"."cr_billing_customer_last_name" asc nulls first,
-    "cooperative"."cr_billing_customer_address_street_number" asc nulls first,
-    "cooperative"."cr_billing_customer_address_street_name" asc nulls first,
-    "cooperative"."cr_billing_customer_address_street_type" asc nulls first,
-    "cooperative"."cr_billing_customer_address_suite_number" asc nulls first,
-    "cooperative"."cr_billing_customer_address_city" asc nulls first,
-    "cooperative"."cr_billing_customer_address_county" asc nulls first,
-    "cooperative"."cr_billing_customer_address_state" asc nulls first,
-    "cooperative"."cr_billing_customer_address_zip" asc nulls first,
-    "cooperative"."cr_billing_customer_address_country" asc nulls first,
-    "cooperative"."cr_billing_customer_address_gmt_offset" asc nulls first,
-    "cooperative"."cr_billing_customer_address_location_type" asc nulls first,
+    "questionable"."cr_billing_customer_text_id" asc nulls first,
+    "questionable"."cr_billing_customer_salutation" asc nulls first,
+    "questionable"."cr_billing_customer_first_name" asc nulls first,
+    "questionable"."cr_billing_customer_last_name" asc nulls first,
+    "questionable"."cr_billing_customer_address_street_number" asc nulls first,
+    "questionable"."cr_billing_customer_address_street_name" asc nulls first,
+    "questionable"."cr_billing_customer_address_street_type" asc nulls first,
+    "questionable"."cr_billing_customer_address_suite_number" asc nulls first,
+    "questionable"."cr_billing_customer_address_city" asc nulls first,
+    "questionable"."cr_billing_customer_address_county" asc nulls first,
+    "questionable"."cr_billing_customer_address_state" asc nulls first,
+    "questionable"."cr_billing_customer_address_zip" asc nulls first,
+    "questionable"."cr_billing_customer_address_country" asc nulls first,
+    "questionable"."cr_billing_customer_address_gmt_offset" asc nulls first,
+    "questionable"."cr_billing_customer_address_location_type" asc nulls first,
     "macho"."customer_state" asc nulls first
 LIMIT (100)
 ```

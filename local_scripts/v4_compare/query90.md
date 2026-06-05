@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1168 | 23 | 4.84 ms |
-| reference | 1110 | 16 | 4.63 ms |
-| v4 / ref | 1.05x | 1.44x | 1.05x |
+| v4 | 1168 | 23 | 4.00 ms |
+| reference | 1168 | 23 | 4.25 ms |
+| v4 / ref | 1.00x | 1.00x | 0.94x |
 
 ## Preql
 
@@ -76,11 +76,11 @@ LIMIT (100)
 ## Reference SQL (zquery log)
 
 ```sql
+WITH 
+thoughtful as (
 SELECT
-    CASE
-	WHEN sum(CASE WHEN "ws_time_time"."T_HOUR" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) = 0 THEN null
-	ELSE cast(sum(CASE WHEN "ws_time_time"."T_HOUR" BETWEEN 8 AND 9 THEN 1 ELSE NULL END) as numeric(15,4)) / cast(sum(CASE WHEN "ws_time_time"."T_HOUR" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) as numeric(15,4))
-	END as "am_pm_ratio"
+    sum(CASE WHEN "ws_time_time"."T_HOUR" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) as "pmc",
+    sum(CASE WHEN "ws_time_time"."T_HOUR" BETWEEN 8 AND 9 THEN 1 ELSE NULL END) as "amc"
 FROM
     "memory"."web_sales" as "ws_web_sales"
     INNER JOIN "memory"."time_dim" as "ws_time_time" on "ws_web_sales"."WS_SOLD_TIME_SK" = "ws_time_time"."T_TIME_SK"
@@ -88,7 +88,14 @@ FROM
     INNER JOIN "memory"."household_demographics" as "ws_ship_household_demographic_household_demographics" on "ws_web_sales"."WS_SHIP_HDEMO_SK" = "ws_ship_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
     "ws_ship_household_demographic_household_demographics"."HD_DEP_COUNT" = 6 and "ws_web_page_web_page"."WP_CHAR_COUNT" BETWEEN 5000 AND 5200 and "ws_time_time"."T_HOUR" in (8,9,19,20)
-
+)
+SELECT
+    CASE
+	WHEN "thoughtful"."pmc" = 0 THEN null
+	ELSE cast("thoughtful"."amc" as numeric(15,4)) / cast("thoughtful"."pmc" as numeric(15,4))
+	END as "am_pm_ratio"
+FROM
+    "thoughtful"
 ORDER BY 
     "am_pm_ratio" asc nulls first
 LIMIT (100)

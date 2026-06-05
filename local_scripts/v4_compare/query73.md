@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2744 | 34 | 105.61 ms |
-| reference | 2938 | 38 | 24.38 ms |
-| v4 / ref | 0.93x | 0.89x | 4.33x |
+| v4 | 2744 | 34 | 100.23 ms |
+| reference | 5366 | 75 | 249.66 ms |
+| v4 / ref | 0.51x | 0.45x | 0.40x |
 
 ## Preql
 
@@ -114,39 +114,76 @@ ORDER BY
 WITH 
 cooperative as (
 SELECT
+    "physical_sales_billing_customer_customers"."C_FIRST_NAME" as "physical_sales_billing_customer_first_name",
+    "physical_sales_billing_customer_customers"."C_LAST_NAME" as "physical_sales_billing_customer_last_name",
+    "physical_sales_billing_customer_customers"."C_PREFERRED_CUST_FLAG" as "physical_sales_billing_customer_preferred_cust_flag",
+    "physical_sales_billing_customer_customers"."C_SALUTATION" as "physical_sales_billing_customer_salutation",
+    "physical_sales_date_date"."D_DOM" as "physical_sales_date_day_of_month",
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
+    "physical_sales_household_demographic_household_demographics"."HD_BUY_POTENTIAL" as "physical_sales_household_demographic_buy_potential",
+    "physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" as "physical_sales_household_demographic_dependent_count",
+    "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" as "physical_sales_household_demographic_vehicle_count",
     "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_billing_customer_id",
+    "physical_sales_store_sales"."SS_ITEM_SK" as "physical_sales_item_id",
     "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
-    count("physical_sales_store_sales"."SS_ITEM_SK") as "ticket_cnt"
+    "physical_sales_store_store"."S_COUNTY" as "physical_sales_store_county"
 FROM
     "memory"."store_sales" as "physical_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
+    LEFT OUTER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
-    "physical_sales_store_sales"."SS_CUSTOMER_SK" is not null and "physical_sales_date_date"."D_DOM" >= 1 and "physical_sales_date_date"."D_DOM" <= 2 and ( "physical_sales_household_demographic_household_demographics"."HD_BUY_POTENTIAL" = '>10000' or "physical_sales_household_demographic_household_demographics"."HD_BUY_POTENTIAL" = 'Unknown' ) and "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 0 and ( CASE
-	WHEN "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 0 THEN ("physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" * 1.0) / "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT"
-	ELSE null
-	END ) > 1 and "physical_sales_date_date"."D_YEAR" in (1999,2000,2001) and "physical_sales_store_store"."S_COUNTY" in ('Orange County','Bronx County','Franklin Parish','Williamson County')
-
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" is not null
+),
+yummy as (
+SELECT
+    "cooperative"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
+    "cooperative"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
+    "cooperative"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
+    "cooperative"."physical_sales_billing_customer_preferred_cust_flag" as "physical_sales_billing_customer_preferred_cust_flag",
+    "cooperative"."physical_sales_billing_customer_salutation" as "physical_sales_billing_customer_salutation"
+FROM
+    "cooperative"
 GROUP BY
     1,
-    2
+    2,
+    3,
+    4,
+    5),
+questionable as (
+SELECT
+    "cooperative"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
+    "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    count(CASE WHEN "cooperative"."physical_sales_date_day_of_month" >= 1 and "cooperative"."physical_sales_date_day_of_month" <= 2 and ( "cooperative"."physical_sales_household_demographic_buy_potential" = '>10000' or "cooperative"."physical_sales_household_demographic_buy_potential" = 'Unknown' ) and "cooperative"."physical_sales_household_demographic_vehicle_count" > 0 and ( CASE
+	WHEN "cooperative"."physical_sales_household_demographic_vehicle_count" > 0 THEN ("cooperative"."physical_sales_household_demographic_dependent_count" * 1.0) / "cooperative"."physical_sales_household_demographic_vehicle_count"
+	ELSE null
+	END ) > 1 and "cooperative"."physical_sales_date_year" in (1999,2000,2001) and "cooperative"."physical_sales_store_county" in ('Orange County','Bronx County','Franklin Parish','Williamson County') THEN "cooperative"."physical_sales_item_id" ELSE NULL END) as "ticket_cnt"
+FROM
+    "cooperative"
+GROUP BY
+    1,
+    2,
+    "cooperative"."physical_sales_billing_customer_first_name",
+    "cooperative"."physical_sales_billing_customer_last_name",
+    "cooperative"."physical_sales_billing_customer_preferred_cust_flag",
+    "cooperative"."physical_sales_billing_customer_salutation"
 HAVING
     "ticket_cnt" >= 1 and "ticket_cnt" <= 5
 )
 SELECT
-    "physical_sales_billing_customer_customers"."C_LAST_NAME" as "physical_sales_billing_customer_last_name",
-    "physical_sales_billing_customer_customers"."C_FIRST_NAME" as "physical_sales_billing_customer_first_name",
-    "physical_sales_billing_customer_customers"."C_SALUTATION" as "physical_sales_billing_customer_salutation",
-    "physical_sales_billing_customer_customers"."C_PREFERRED_CUST_FLAG" as "physical_sales_billing_customer_preferred_cust_flag",
-    "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    "cooperative"."ticket_cnt" as "ticket_cnt"
+    "yummy"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
+    "yummy"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
+    "yummy"."physical_sales_billing_customer_salutation" as "physical_sales_billing_customer_salutation",
+    "yummy"."physical_sales_billing_customer_preferred_cust_flag" as "physical_sales_billing_customer_preferred_cust_flag",
+    "questionable"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    coalesce("questionable"."ticket_cnt",0) as "ticket_cnt"
 FROM
-    "cooperative"
-    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "cooperative"."physical_sales_billing_customer_id" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
+    "yummy"
+    INNER JOIN "questionable" on "yummy"."physical_sales_billing_customer_id" = "questionable"."physical_sales_billing_customer_id"
 ORDER BY 
-    "cooperative"."ticket_cnt" desc,
-    "physical_sales_billing_customer_customers"."C_LAST_NAME" asc,
-    "cooperative"."physical_sales_ticket_number" asc,
-    "physical_sales_billing_customer_customers"."C_CUSTOMER_SK" asc
+    coalesce("questionable"."ticket_cnt",0) desc,
+    "yummy"."physical_sales_billing_customer_last_name" asc,
+    "questionable"."physical_sales_ticket_number" asc,
+    "yummy"."physical_sales_billing_customer_id" asc
 ```

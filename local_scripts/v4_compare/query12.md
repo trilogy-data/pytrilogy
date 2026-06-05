@@ -18,8 +18,8 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2033 | 48 | 29.74 ms |
-| reference | 2029 | 48 | 30.58 ms |
+| v4 | 2033 | 48 | 27.92 ms |
+| reference | 2033 | 48 | 28.68 ms |
 | v4 / ref | 1.00x | 1.00x | 0.97x |
 
 ## Preql
@@ -127,7 +127,7 @@ GROUP BY
     3,
     4,
     5),
-cooperative as (
+questionable as (
 SELECT
     "cheerful"."web_sales_item_class" as "web_sales_item_class",
     sum("cheerful"."itemrevenue") as "itemclassrevenue"
@@ -142,10 +142,10 @@ SELECT
     "cheerful"."web_sales_item_class" as "web_sales_item_class",
     "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
     "cheerful"."itemrevenue" as "itemrevenue",
-    ("cheerful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio"
+    ("cheerful"."itemrevenue" * 100.0) / "questionable"."itemclassrevenue" as "revenueratio"
 FROM
     "cheerful"
-    INNER JOIN "cooperative" on "cheerful"."web_sales_item_class" is not distinct from "cooperative"."web_sales_item_class"
+    INNER JOIN "questionable" on "cheerful"."web_sales_item_class" is not distinct from "questionable"."web_sales_item_class"
 ORDER BY 
     "cheerful"."web_sales_item_category" asc,
     "cheerful"."web_sales_item_class" asc,

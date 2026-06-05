@@ -18,9 +18,9 @@ ref rows: 92 (92 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3239 | 69 | 48.04 ms |
-| reference | 3573 | 71 | 70.92 ms |
-| v4 / ref | 0.91x | 0.97x | 0.68x |
+| v4 | 6352 | 133 | 547.84 ms |
+| reference | 6352 | 133 | 539.35 ms |
+| v4 / ref | 1.00x | 1.00x | 1.02x |
 
 ## Preql
 
@@ -69,9 +69,24 @@ limit 100
 WITH 
 thoughtful as (
 SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+WHERE
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null
+
+UNION ALL
+SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
      'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
@@ -82,7 +97,9 @@ UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
@@ -91,44 +108,91 @@ WHERE
 ),
 questionable as (
 SELECT
+    "sales_date_date"."D_YEAR" as "sales_date_year",
     "thoughtful"."sales_billing_customer_id" as "sales_billing_customer_id",
-    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END) as "store_first_year",
-    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_net_paid" ELSE NULL END) as "store_second_year",
-    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END) as "web_first_year",
-    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_net_paid" ELSE NULL END) as "web_second_year"
+    "thoughtful"."sales_item_id" as "sales_item_id",
+    "thoughtful"."sales_net_paid" as "sales_net_paid",
+    "thoughtful"."sales_order_id" as "sales_order_id",
+    "thoughtful"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "thoughtful"
     LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "thoughtful"."sales_billing_customer_id" is not null
+),
+abundant as (
+SELECT
+    "questionable"."sales_billing_customer_id" as "sales_billing_customer_id",
+    "questionable"."sales_item_id" as "sales_item_id",
+    "questionable"."sales_order_id" as "sales_order_id",
+    "questionable"."sales_sales_channel" as "sales_sales_channel",
+    CASE WHEN "questionable"."sales_sales_channel" = 'STORE' and "questionable"."sales_date_year" = 2001 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_8931261601532283",
+    CASE WHEN "questionable"."sales_sales_channel" = 'STORE' and "questionable"."sales_date_year" = 2002 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_7283285738060558",
+    CASE WHEN "questionable"."sales_sales_channel" = 'WEB' and "questionable"."sales_date_year" = 2001 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_1417284312679536",
+    CASE WHEN "questionable"."sales_sales_channel" = 'WEB' and "questionable"."sales_date_year" = 2002 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_2204116219608499"
+FROM
+    "questionable"
+WHERE
+    "questionable"."sales_sales_channel" in ('STORE','WEB')
+),
+uneven as (
+SELECT
+    "abundant"."_virt_filter_net_paid_1417284312679536" as "_virt_filter_net_paid_1417284312679536",
+    "abundant"."_virt_filter_net_paid_2204116219608499" as "_virt_filter_net_paid_2204116219608499",
+    "abundant"."_virt_filter_net_paid_7283285738060558" as "_virt_filter_net_paid_7283285738060558",
+    "abundant"."_virt_filter_net_paid_8931261601532283" as "_virt_filter_net_paid_8931261601532283",
+    "abundant"."sales_billing_customer_id" as "sales_billing_customer_id"
+FROM
+    "abundant"
+    FULL JOIN "questionable" on "abundant"."sales_item_id" = "questionable"."sales_item_id" AND "abundant"."sales_order_id" = "questionable"."sales_order_id" AND "abundant"."sales_sales_channel" = "questionable"."sales_sales_channel"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    coalesce("abundant"."sales_item_id","questionable"."sales_item_id"),
+    coalesce("abundant"."sales_order_id","questionable"."sales_order_id"),
+    coalesce("abundant"."sales_sales_channel","questionable"."sales_sales_channel")),
+juicy as (
+SELECT
+    "uneven"."sales_billing_customer_id" as "sales_billing_customer_id",
+    sum("uneven"."_virt_filter_net_paid_1417284312679536") as "web_first_year",
+    sum("uneven"."_virt_filter_net_paid_2204116219608499") as "web_second_year",
+    sum("uneven"."_virt_filter_net_paid_7283285738060558") as "store_second_year",
+    sum("uneven"."_virt_filter_net_paid_8931261601532283") as "store_first_year"
+FROM
+    "uneven"
 GROUP BY
     1
 HAVING
     "store_first_year" > 0
 ),
-juicy as (
+vacuous as (
 SELECT
-    "questionable"."store_first_year" as "store_first_year",
-    "questionable"."store_second_year" as "store_second_year",
-    "questionable"."web_first_year" as "web_first_year",
-    "questionable"."web_second_year" as "web_second_year",
+    "juicy"."store_first_year" as "store_first_year",
+    "juicy"."store_second_year" as "store_second_year",
+    "juicy"."web_first_year" as "web_first_year",
+    "juicy"."web_second_year" as "web_second_year",
     "sales_billing_customer_customers"."C_CUSTOMER_ID" as "sales_billing_customer_text_id",
     "sales_billing_customer_customers"."C_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_billing_customer_customers"."C_FIRST_NAME" as "sales_billing_customer_first_name",
     "sales_billing_customer_customers"."C_LAST_NAME" as "sales_billing_customer_last_name"
 FROM
-    "questionable"
-    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "questionable"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK")
-SELECT
-    "juicy"."sales_billing_customer_text_id" as "customer_id",
-    "juicy"."sales_billing_customer_first_name" as "customer_first_name",
-    "juicy"."sales_billing_customer_last_name" as "customer_last_name"
-FROM
     "juicy"
+    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "juicy"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK")
+SELECT
+    "vacuous"."sales_billing_customer_text_id" as "customer_id",
+    "vacuous"."sales_billing_customer_first_name" as "customer_first_name",
+    "vacuous"."sales_billing_customer_last_name" as "customer_last_name"
+FROM
+    "vacuous"
 WHERE
-    "juicy"."store_first_year" > 0 and "juicy"."web_first_year" > 0 and ( CASE
-	WHEN "juicy"."web_first_year" > 0 THEN "juicy"."web_second_year" / "juicy"."web_first_year"
+    "vacuous"."store_first_year" > 0 and "vacuous"."web_first_year" > 0 and ( CASE
+	WHEN "vacuous"."web_first_year" > 0 THEN "vacuous"."web_second_year" / "vacuous"."web_first_year"
 	ELSE null
 	END ) > ( CASE
-	WHEN "juicy"."store_first_year" > 0 THEN "juicy"."store_second_year" / "juicy"."store_first_year"
+	WHEN "vacuous"."store_first_year" > 0 THEN "vacuous"."store_second_year" / "vacuous"."store_first_year"
 	ELSE null
 	END )
 
@@ -143,9 +207,24 @@ LIMIT (100)
 WITH 
 thoughtful as (
 SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+WHERE
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null
+
+UNION ALL
+SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
      'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
@@ -156,58 +235,105 @@ UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
 WHERE
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null
 ),
-cooperative as (
+questionable as (
 SELECT
-    "thoughtful"."sales_billing_customer_id" as "sales_billing_customer_id"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    "thoughtful"."sales_sales_channel"),
-uneven as (
-SELECT
-    "thoughtful"."sales_billing_customer_id" as "sales_billing_customer_id"
+    "sales_date_date"."D_YEAR" as "sales_date_year",
+    "thoughtful"."sales_billing_customer_id" as "sales_billing_customer_id",
+    "thoughtful"."sales_item_id" as "sales_item_id",
+    "thoughtful"."sales_net_paid" as "sales_net_paid",
+    "thoughtful"."sales_order_id" as "sales_order_id",
+    "thoughtful"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "thoughtful"
     LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-GROUP BY
-    1
-HAVING
-    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END) > 0 and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END) > 0 and ( CASE
-	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_net_paid" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END)
-	ELSE null
-	END ) > ( CASE
-	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_net_paid" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_net_paid" ELSE NULL END)
-	ELSE null
-	END )
+WHERE
+    "thoughtful"."sales_billing_customer_id" is not null
 ),
-questionable as (
+abundant as (
 SELECT
-    "cooperative"."sales_billing_customer_id" as "sales_billing_customer_id",
-    "sales_billing_customer_customers"."C_CUSTOMER_ID" as "sales_billing_customer_text_id",
-    "sales_billing_customer_customers"."C_FIRST_NAME" as "sales_billing_customer_first_name",
-    "sales_billing_customer_customers"."C_LAST_NAME" as "sales_billing_customer_last_name"
-FROM
-    "cooperative"
-    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "cooperative"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK")
-SELECT
-    "questionable"."sales_billing_customer_text_id" as "customer_id",
-    "questionable"."sales_billing_customer_first_name" as "customer_first_name",
-    "questionable"."sales_billing_customer_last_name" as "customer_last_name"
+    "questionable"."sales_billing_customer_id" as "sales_billing_customer_id",
+    "questionable"."sales_item_id" as "sales_item_id",
+    "questionable"."sales_order_id" as "sales_order_id",
+    "questionable"."sales_sales_channel" as "sales_sales_channel",
+    CASE WHEN "questionable"."sales_sales_channel" = 'STORE' and "questionable"."sales_date_year" = 2001 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_8931261601532283",
+    CASE WHEN "questionable"."sales_sales_channel" = 'STORE' and "questionable"."sales_date_year" = 2002 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_7283285738060558",
+    CASE WHEN "questionable"."sales_sales_channel" = 'WEB' and "questionable"."sales_date_year" = 2001 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_1417284312679536",
+    CASE WHEN "questionable"."sales_sales_channel" = 'WEB' and "questionable"."sales_date_year" = 2002 THEN "questionable"."sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_2204116219608499"
 FROM
     "questionable"
-    INNER JOIN "uneven" on "questionable"."sales_billing_customer_id" = "uneven"."sales_billing_customer_id"
+WHERE
+    "questionable"."sales_sales_channel" in ('STORE','WEB')
+),
+uneven as (
+SELECT
+    "abundant"."_virt_filter_net_paid_1417284312679536" as "_virt_filter_net_paid_1417284312679536",
+    "abundant"."_virt_filter_net_paid_2204116219608499" as "_virt_filter_net_paid_2204116219608499",
+    "abundant"."_virt_filter_net_paid_7283285738060558" as "_virt_filter_net_paid_7283285738060558",
+    "abundant"."_virt_filter_net_paid_8931261601532283" as "_virt_filter_net_paid_8931261601532283",
+    "abundant"."sales_billing_customer_id" as "sales_billing_customer_id"
+FROM
+    "abundant"
+    FULL JOIN "questionable" on "abundant"."sales_item_id" = "questionable"."sales_item_id" AND "abundant"."sales_order_id" = "questionable"."sales_order_id" AND "abundant"."sales_sales_channel" = "questionable"."sales_sales_channel"
 GROUP BY
     1,
     2,
-    3
+    3,
+    4,
+    5,
+    coalesce("abundant"."sales_item_id","questionable"."sales_item_id"),
+    coalesce("abundant"."sales_order_id","questionable"."sales_order_id"),
+    coalesce("abundant"."sales_sales_channel","questionable"."sales_sales_channel")),
+juicy as (
+SELECT
+    "uneven"."sales_billing_customer_id" as "sales_billing_customer_id",
+    sum("uneven"."_virt_filter_net_paid_1417284312679536") as "web_first_year",
+    sum("uneven"."_virt_filter_net_paid_2204116219608499") as "web_second_year",
+    sum("uneven"."_virt_filter_net_paid_7283285738060558") as "store_second_year",
+    sum("uneven"."_virt_filter_net_paid_8931261601532283") as "store_first_year"
+FROM
+    "uneven"
+GROUP BY
+    1
+HAVING
+    "store_first_year" > 0
+),
+vacuous as (
+SELECT
+    "juicy"."store_first_year" as "store_first_year",
+    "juicy"."store_second_year" as "store_second_year",
+    "juicy"."web_first_year" as "web_first_year",
+    "juicy"."web_second_year" as "web_second_year",
+    "sales_billing_customer_customers"."C_CUSTOMER_ID" as "sales_billing_customer_text_id",
+    "sales_billing_customer_customers"."C_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_billing_customer_customers"."C_FIRST_NAME" as "sales_billing_customer_first_name",
+    "sales_billing_customer_customers"."C_LAST_NAME" as "sales_billing_customer_last_name"
+FROM
+    "juicy"
+    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "juicy"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK")
+SELECT
+    "vacuous"."sales_billing_customer_text_id" as "customer_id",
+    "vacuous"."sales_billing_customer_first_name" as "customer_first_name",
+    "vacuous"."sales_billing_customer_last_name" as "customer_last_name"
+FROM
+    "vacuous"
+WHERE
+    "vacuous"."store_first_year" > 0 and "vacuous"."web_first_year" > 0 and ( CASE
+	WHEN "vacuous"."web_first_year" > 0 THEN "vacuous"."web_second_year" / "vacuous"."web_first_year"
+	ELSE null
+	END ) > ( CASE
+	WHEN "vacuous"."store_first_year" > 0 THEN "vacuous"."store_second_year" / "vacuous"."store_first_year"
+	ELSE null
+	END )
+
 ORDER BY 
     "customer_id" asc nulls first
 LIMIT (100)

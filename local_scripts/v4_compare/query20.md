@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2337 | 59 | 22.58 ms |
-| reference | 1916 | 48 | 22.80 ms |
-| v4 / ref | 1.22x | 1.23x | 0.99x |
+| v4 | 2337 | 59 | 17.29 ms |
+| reference | 2337 | 59 | 19.67 ms |
+| v4 / ref | 1.00x | 1.00x | 0.88x |
 
 ## Preql
 
@@ -140,30 +140,41 @@ GROUP BY
     3,
     4,
     5),
-cooperative as (
+questionable as (
 SELECT
     "cheerful"."cs_item_class" as "cs_item_class",
     sum("cheerful"."revenue") as "_virt_agg_sum_9832457364876792"
 FROM
     "cheerful"
 GROUP BY
-    1)
+    1),
+uneven as (
 SELECT
-    "cheerful"."cs_item_text_id" as "cs_item_text_id",
-    "cheerful"."cs_item_desc" as "cs_item_desc",
     "cheerful"."cs_item_category" as "cs_item_category",
     "cheerful"."cs_item_class" as "cs_item_class",
     "cheerful"."cs_item_current_price" as "cs_item_current_price",
+    "cheerful"."cs_item_desc" as "cs_item_desc",
+    "cheerful"."cs_item_text_id" as "cs_item_text_id",
     "cheerful"."revenue" as "revenue",
-    ( "cheerful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+    "questionable"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
 FROM
     "cheerful"
-    INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class"
+    INNER JOIN "questionable" on "cheerful"."cs_item_class" is not distinct from "questionable"."cs_item_class")
+SELECT
+    "uneven"."cs_item_text_id" as "cs_item_text_id",
+    "uneven"."cs_item_desc" as "cs_item_desc",
+    "uneven"."cs_item_category" as "cs_item_category",
+    "uneven"."cs_item_class" as "cs_item_class",
+    "uneven"."cs_item_current_price" as "cs_item_current_price",
+    "uneven"."revenue" as "revenue",
+    ( "uneven"."revenue" * 100.0 ) / ("uneven"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+FROM
+    "uneven"
 ORDER BY 
-    "cheerful"."cs_item_category" asc nulls first,
-    "cheerful"."cs_item_class" asc nulls first,
-    "cheerful"."cs_item_text_id" asc nulls first,
-    "cheerful"."cs_item_desc" asc nulls first,
+    "uneven"."cs_item_category" asc nulls first,
+    "uneven"."cs_item_class" asc nulls first,
+    "uneven"."cs_item_text_id" asc nulls first,
+    "uneven"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first
 LIMIT (100)
 ```

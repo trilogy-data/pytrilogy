@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4975 | 92 | 20.21 ms |
-| reference | 4269 | 79 | 17.46 ms |
-| v4 / ref | 1.17x | 1.16x | 1.16x |
+| v4 | 4975 | 92 | 17.24 ms |
+| reference | 4975 | 92 | 18.43 ms |
+| v4 / ref | 1.00x | 1.00x | 0.94x |
 
 ## Preql
 
@@ -146,17 +146,15 @@ LIMIT (100)
 
 ```sql
 WITH 
-quizzical as (
+highfalutin as (
 SELECT
     "items_items"."I_MANUFACT_ID" as "electronics_manuf_ids"
 FROM
     "memory"."item" as "items_items"
 WHERE
     "items_items"."I_CATEGORY" = 'Electronics'
-
-GROUP BY
-    1),
-abundant as (
+),
+questionable as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
@@ -169,7 +167,7 @@ FROM
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
-    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select quizzical."electronics_manuf_ids" from quizzical where quizzical."electronics_manuf_ids" is not null)
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 
 UNION ALL
 SELECT
@@ -184,7 +182,7 @@ FROM
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
-    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select quizzical."electronics_manuf_ids" from quizzical where quizzical."electronics_manuf_ids" is not null)
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 
 UNION ALL
 SELECT
@@ -199,20 +197,35 @@ FROM
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
-    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select quizzical."electronics_manuf_ids" from quizzical where quizzical."electronics_manuf_ids" is not null)
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
+),
+yummy as (
+SELECT
+    "questionable"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "questionable"."sales_item_id" as "sales_item_id",
+    "questionable"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
+    "questionable"."sales_order_id" as "sales_order_id",
+    "questionable"."sales_sales_channel" as "sales_sales_channel"
+FROM
+    "questionable"
+WHERE
+    "questionable"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 ),
 juicy as (
 SELECT
-    "abundant"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "abundant"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+    "yummy"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "yummy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
 FROM
-    "abundant"
+    "yummy"
+WHERE
+    "yummy"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
+
 GROUP BY
     1,
     2,
-    "abundant"."sales_item_id",
-    "abundant"."sales_order_id",
-    "abundant"."sales_sales_channel")
+    "yummy"."sales_item_id",
+    "yummy"."sales_order_id",
+    "yummy"."sales_sales_channel")
 SELECT
     "juicy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
     sum("juicy"."sales_ext_sales_price") as "total_sales"

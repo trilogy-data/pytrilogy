@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1943 | 41 | 253.16 ms |
-| reference | 1512 | 32 | 250.03 ms |
-| v4 / ref | 1.29x | 1.28x | 1.01x |
+| v4 | 1943 | 41 | 264.52 ms |
+| reference | 1943 | 41 | 227.02 ms |
+| v4 / ref | 1.00x | 1.00x | 1.17x |
 
 ## Preql
 
@@ -109,22 +109,31 @@ FROM
     INNER JOIN "memory"."item" as "inventory_item_items" on "inventory_warehouse_inventory"."inv_item_sk" = "inventory_item_items"."I_ITEM_SK"
 WHERE
     "inventory_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
-)
+),
+thoughtful as (
 SELECT
-    "cheerful"."inventory_item_product_name" as "inventory_item_product_name",
     "cheerful"."inventory_item_brand_name" as "inventory_item_brand_name",
-    "cheerful"."inventory_item_class" as "inventory_item_class",
     "cheerful"."inventory_item_category" as "inventory_item_category",
-    avg("cheerful"."inventory_quantity_on_hand") as "qoh"
+    "cheerful"."inventory_item_class" as "inventory_item_class",
+    "cheerful"."inventory_item_product_name" as "inventory_item_product_name",
+    "cheerful"."inventory_quantity_on_hand" as "inventory_quantity_on_hand"
 FROM
-    "cheerful"
+    "cheerful")
+SELECT
+    "thoughtful"."inventory_item_product_name" as "inventory_item_product_name",
+    "thoughtful"."inventory_item_brand_name" as "inventory_item_brand_name",
+    "thoughtful"."inventory_item_class" as "inventory_item_class",
+    "thoughtful"."inventory_item_category" as "inventory_item_category",
+    avg("thoughtful"."inventory_quantity_on_hand") as "qoh"
+FROM
+    "thoughtful"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
 ORDER BY 
     "qoh" asc nulls first,
-    "cheerful"."inventory_item_product_name" asc nulls first,
-    "cheerful"."inventory_item_brand_name" asc nulls first,
-    "cheerful"."inventory_item_class" asc nulls first,
-    "cheerful"."inventory_item_category" asc nulls first
+    "thoughtful"."inventory_item_product_name" asc nulls first,
+    "thoughtful"."inventory_item_brand_name" asc nulls first,
+    "thoughtful"."inventory_item_class" asc nulls first,
+    "thoughtful"."inventory_item_category" asc nulls first
 LIMIT (100)
 ```

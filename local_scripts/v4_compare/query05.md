@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10689 | 230 | 101.21 ms |
-| reference | 10731 | 230 | 100.18 ms |
-| v4 / ref | 1.00x | 1.00x | 1.01x |
+| v4 | 10689 | 230 | 68.24 ms |
+| reference | 10689 | 230 | 70.44 ms |
+| v4 / ref | 1.00x | 1.00x | 0.97x |
 
 ## Preql
 
@@ -316,7 +316,7 @@ LIMIT (100)
 
 ```sql
 WITH 
-sweltering as (
+late as (
 SELECT
     "sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "sales_channel_dim_id",
     "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "sales_channel_dim_text_id",
@@ -346,7 +346,7 @@ FROM
 WHERE
     "sales_web_dim_unified"."web_site_id" is not null
 ),
-scrawny as (
+friendly as (
 SELECT
     "sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "sales_channel_dim_id",
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
@@ -466,27 +466,27 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"),
-kaput as (
+divergent as (
 SELECT
-    "scrawny"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "scrawny"."sales_net_profit" as "sales_net_profit",
+    "friendly"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "friendly"."sales_net_profit" as "sales_net_profit",
     CASE
-	WHEN "scrawny"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "scrawny"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "scrawny"."sales_sales_channel" = 'WEB' THEN 'web channel'
+	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN 'store channel'
+	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
+	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN 'web channel'
 	ELSE null
 	END as "channel_label",
     CASE
-	WHEN "scrawny"."sales_sales_channel" = 'STORE' THEN ('store' || "sweltering"."sales_channel_dim_text_id")
-	WHEN "scrawny"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "sweltering"."sales_channel_dim_text_id")
-	WHEN "scrawny"."sales_sales_channel" = 'WEB' THEN ('web_site' || "sweltering"."sales_channel_dim_text_id")
+	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN ('store' || "late"."sales_channel_dim_text_id")
+	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "late"."sales_channel_dim_text_id")
+	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN ('web_site' || "late"."sales_channel_dim_text_id")
 	ELSE null
 	END as "sales_id_label"
 FROM
-    "scrawny"
-    INNER JOIN "sweltering" on "scrawny"."sales_channel_dim_id" = "sweltering"."sales_channel_dim_id" AND "scrawny"."sales_sales_channel" = "sweltering"."sales_sales_channel"
+    "friendly"
+    INNER JOIN "late" on "friendly"."sales_channel_dim_id" = "late"."sales_channel_dim_id" AND "friendly"."sales_sales_channel" = "late"."sales_sales_channel"
 WHERE
-    "sweltering"."sales_channel_dim_text_id" is not null
+    "late"."sales_channel_dim_text_id" is not null
 ),
 vacuous as (
 SELECT
@@ -512,17 +512,17 @@ FROM
 WHERE
     "cheerful"."sales_return_channel_dim_text_id" is not null and cast("sales_return_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
 ),
-divergent as (
+protective as (
 SELECT
-    "kaput"."channel_label" as "channel",
-    "kaput"."sales_id_label" as "id",
-    sum("kaput"."sales_ext_sales_price") as "sales_total_a",
-    sum("kaput"."sales_net_profit") as "profit_only_a"
+    "divergent"."channel_label" as "channel",
+    "divergent"."sales_id_label" as "id",
+    sum("divergent"."sales_ext_sales_price") as "sales_total_a",
+    sum("divergent"."sales_net_profit") as "profit_only_a"
 FROM
-    "kaput"
+    "divergent"
 GROUP BY
     ROLLUP (1, 2)),
-concerned as (
+young as (
 SELECT
     "vacuous"."channel_label" as "channel",
     "vacuous"."return_id_label" as "id",
@@ -533,16 +533,16 @@ FROM
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    coalesce("concerned"."channel","divergent"."channel") as "channel",
-    coalesce("concerned"."id","divergent"."id") as "id",
-    coalesce("divergent"."sales_total_a",0.0) as "sales_metric",
-    coalesce("concerned"."returns_total_b",0.0) as "returns_metric",
-    coalesce("divergent"."profit_only_a",0.0) - coalesce("concerned"."loss_only_b",0.0) as "profit_metric"
+    coalesce("protective"."channel","young"."channel") as "channel",
+    coalesce("protective"."id","young"."id") as "id",
+    coalesce("protective"."sales_total_a",0.0) as "sales_metric",
+    coalesce("young"."returns_total_b",0.0) as "returns_metric",
+    coalesce("protective"."profit_only_a",0.0) - coalesce("young"."loss_only_b",0.0) as "profit_metric"
 FROM
-    "divergent"
-    FULL JOIN "concerned" on "divergent"."channel" is not distinct from "concerned"."channel" AND "divergent"."id" is not distinct from "concerned"."id"
+    "protective"
+    FULL JOIN "young" on "protective"."channel" is not distinct from "young"."channel" AND "protective"."id" is not distinct from "young"."id"
 ORDER BY 
-    coalesce("concerned"."channel","divergent"."channel") asc nulls first,
-    coalesce("concerned"."id","divergent"."id") asc nulls first
+    coalesce("protective"."channel","young"."channel") asc nulls first,
+    coalesce("protective"."id","young"."id") asc nulls first
 LIMIT (100)
 ```

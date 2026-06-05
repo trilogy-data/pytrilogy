@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2751 | 42 | 38.91 ms |
-| reference | 2520 | 38 | 25.36 ms |
-| v4 / ref | 1.09x | 1.11x | 1.53x |
+| v4 | 2751 | 42 | 37.74 ms |
+| reference | 2751 | 42 | 36.38 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -109,6 +109,8 @@ LIMIT (100)
 WITH 
 cooperative as (
 SELECT
+    "physical_sales_billing_customer_customers"."C_FIRST_NAME" as "physical_sales_billing_customer_first_name",
+    "physical_sales_billing_customer_customers"."C_LAST_NAME" as "physical_sales_billing_customer_last_name",
     "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_billing_customer_id",
     "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
     "physical_sales_store_store"."S_CITY" as "physical_sales_store_city",
@@ -118,6 +120,7 @@ FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
     ( "physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 6 or "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 2 ) and "physical_sales_date_date"."D_DOW" = 1 and "physical_sales_date_date"."D_YEAR" in (1999,2000,2001) and "physical_sales_store_store"."S_NUMBER_EMPLOYEES" BETWEEN 200 AND 295 and "physical_sales_store_sales"."SS_CUSTOMER_SK" is not null
@@ -126,20 +129,21 @@ GROUP BY
     1,
     2,
     3,
+    4,
+    5,
     "physical_sales_store_sales"."SS_ADDR_SK")
 SELECT
-    "physical_sales_billing_customer_customers"."C_LAST_NAME" as "physical_sales_billing_customer_last_name",
-    "physical_sales_billing_customer_customers"."C_FIRST_NAME" as "physical_sales_billing_customer_first_name",
+    "cooperative"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
+    "cooperative"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
     SUBSTRING("cooperative"."physical_sales_store_city",1,30) as "city_short",
     "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number",
     "cooperative"."amt" as "amt",
     "cooperative"."profit" as "profit"
 FROM
     "cooperative"
-    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "cooperative"."physical_sales_billing_customer_id" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
 ORDER BY 
-    "physical_sales_billing_customer_customers"."C_LAST_NAME" asc nulls first,
-    "physical_sales_billing_customer_customers"."C_FIRST_NAME" asc nulls first,
+    "cooperative"."physical_sales_billing_customer_last_name" asc nulls first,
+    "cooperative"."physical_sales_billing_customer_first_name" asc nulls first,
     "city_short" asc nulls first,
     "cooperative"."profit" asc nulls first,
     "cooperative"."physical_sales_ticket_number" asc

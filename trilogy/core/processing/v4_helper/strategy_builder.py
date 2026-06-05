@@ -597,9 +597,9 @@ def _cover_groups_for_mandatory(
             continue
         candidates.sort(
             key=lambda gid: (
+                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
                 addr in set(attrs[gid].primary_members)
                 or addr in set(attrs[gid].secondary_members),
-                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
             ),
             reverse=True,
         )

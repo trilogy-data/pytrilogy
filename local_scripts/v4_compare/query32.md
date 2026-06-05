@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1365 | 39 | 8.00 ms |
-| reference | 1241 | 33 | 8.55 ms |
-| v4 / ref | 1.10x | 1.18x | 0.94x |
+| v4 | 1388 | 36 | 15.73 ms |
+| reference | 1388 | 36 | 16.53 ms |
+| v4 / ref | 1.00x | 1.00x | 0.95x |
 
 ## Preql
 
@@ -49,13 +49,10 @@ WITH
 thoughtful as (
 SELECT
     "catalog_sales"."CS_ITEM_SK" as "item_id",
-    avg("catalog_sales"."CS_EXT_DISCOUNT_AMT") as "_virt_agg_avg_5510773609506287"
+    avg(CASE WHEN cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date THEN "catalog_sales"."CS_EXT_DISCOUNT_AMT" ELSE NULL END) as "_virt_agg_avg_5510773609506287"
 FROM
     "memory"."catalog_sales" as "catalog_sales"
-    INNER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
-WHERE
-    cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
-
+    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
 GROUP BY
     1),
 cheerful as (
@@ -90,6 +87,15 @@ LIMIT (100)
 
 ```sql
 WITH 
+thoughtful as (
+SELECT
+    "catalog_sales"."CS_ITEM_SK" as "item_id",
+    avg(CASE WHEN cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date THEN "catalog_sales"."CS_EXT_DISCOUNT_AMT" ELSE NULL END) as "_virt_agg_avg_5510773609506287"
+FROM
+    "memory"."catalog_sales" as "catalog_sales"
+    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
+GROUP BY
+    1),
 cheerful as (
 SELECT
     "catalog_sales"."CS_EXT_DISCOUNT_AMT" as "discount_amount",
@@ -101,25 +107,19 @@ FROM
 WHERE
     "item_items"."I_MANUFACT_ID" = 48 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
-thoughtful as (
+uneven as (
 SELECT
-    "catalog_sales"."CS_ITEM_SK" as "item_id",
-    avg("catalog_sales"."CS_EXT_DISCOUNT_AMT") as "_virt_agg_avg_5510773609506287"
+    "thoughtful"."item_id" as "item_id",
+    1.3 * "thoughtful"."_virt_agg_avg_5510773609506287" as "avg_item_disc"
 FROM
-    "memory"."catalog_sales" as "catalog_sales"
-    INNER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
-WHERE
-    cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
-
-GROUP BY
-    1)
+    "thoughtful")
 SELECT
     sum("cheerful"."discount_amount") as "total_discount"
 FROM
     "cheerful"
-    INNER JOIN "thoughtful" on "cheerful"."item_id" = "thoughtful"."item_id"
+    INNER JOIN "uneven" on "cheerful"."item_id" = "uneven"."item_id"
 WHERE
-    "cheerful"."discount_amount" > 1.3 * "thoughtful"."_virt_agg_avg_5510773609506287"
+    "cheerful"."discount_amount" > "uneven"."avg_item_disc"
 
 LIMIT (100)
 ```

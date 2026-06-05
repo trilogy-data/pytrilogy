@@ -517,6 +517,116 @@ def test_partition_basics_does_merge_within_label():
     }
 
 
+def test_partition_basics_merges_nested_nonempty_signatures():
+    from trilogy.core.processing.v4_helper.group_rules import (
+        partition_basics_by_signature,
+    )
+
+    items = [
+        _item("local.key_alias", derivation=Derivation.BASIC),
+        _item(
+            "local.metric",
+            derivation=Derivation.BASIC,
+            grain={"source.key", "lookup.key"},
+        ),
+    ]
+    cg, ce, ca = _cg(
+        {
+            "source.key": {"derivation": Derivation.ROWSET},
+            "source.value": {"derivation": Derivation.ROWSET},
+            "lookup.value": {"derivation": Derivation.ROWSET},
+            "local.key_alias": {
+                "derivation": Derivation.BASIC,
+                "parents": ["source.key"],
+            },
+            "local.metric": {
+                "derivation": Derivation.BASIC,
+                "grain": {"source.key", "lookup.key"},
+                "parents": ["source.value", "lookup.value"],
+            },
+        }
+    )
+    primary_group = {
+        "source.key": "grp:source",
+        "source.value": "grp:source",
+        "lookup.value": "grp:lookup",
+    }
+
+    buckets = partition_basics_by_signature(
+        items, cg, ce, ca, primary_group, _noop_ensure
+    )
+
+    assert len(buckets) == 1
+    assert set(buckets[0].primary_members) == {"local.key_alias", "local.metric"}
+
+
+def test_partition_basics_empty_signature_does_not_merge_into_sourced_basic():
+    from trilogy.core.processing.v4_helper.group_rules import (
+        partition_basics_by_signature,
+    )
+
+    items = [
+        _item("local.constant_label", derivation=Derivation.BASIC),
+        _item("local.metric", derivation=Derivation.BASIC),
+    ]
+    cg, ce, ca = _cg(
+        {
+            "source.value": {"derivation": Derivation.ROWSET},
+            "local.constant_label": {"derivation": Derivation.BASIC},
+            "local.metric": {
+                "derivation": Derivation.BASIC,
+                "parents": ["source.value"],
+            },
+        }
+    )
+
+    buckets = partition_basics_by_signature(
+        items,
+        cg,
+        ce,
+        ca,
+        {"source.value": "grp:source"},
+        _noop_ensure,
+    )
+
+    assert len(buckets) == 2
+
+
+def test_partition_basics_root_signature_subset_does_not_merge():
+    from trilogy.core.processing.v4_helper.group_rules import (
+        partition_basics_by_signature,
+    )
+
+    items = [
+        _item("local.root_rename", derivation=Derivation.BASIC),
+        _item("local.aggregate_derive", derivation=Derivation.BASIC),
+    ]
+    cg, ce, ca = _cg(
+        {
+            "root.week_seq": {"derivation": Derivation.ROOT},
+            "local.year_flag": {"derivation": Derivation.AGGREGATE},
+            "local.root_rename": {
+                "derivation": Derivation.BASIC,
+                "parents": ["root.week_seq"],
+            },
+            "local.aggregate_derive": {
+                "derivation": Derivation.BASIC,
+                "parents": ["root.week_seq", "local.year_flag"],
+            },
+        }
+    )
+    primary_group = {
+        "root.week_seq": "grp:root:root:empty",
+        "local.year_flag": "grp:aggregate:d0:root.week_seq",
+    }
+
+    buckets = partition_basics_by_signature(
+        items, cg, ce, ca, primary_group, _noop_ensure
+    )
+
+    assert len(buckets) == 2
+
+
 def test_partition_aggregates_uses_input_grain():
     from trilogy.core.processing.v4_helper.group_rules import partition_aggregates
 

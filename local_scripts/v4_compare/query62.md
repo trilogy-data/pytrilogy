@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2831 | 40 | 26.05 ms |
-| reference | 2162 | 27 | 25.26 ms |
-| v4 / ref | 1.31x | 1.48x | 1.03x |
+| v4 | 2831 | 40 | 25.19 ms |
+| reference | 2831 | 40 | 24.08 ms |
+| v4 / ref | 1.00x | 1.00x | 1.05x |
 
 ## Preql
 
@@ -94,15 +94,17 @@ LIMIT (100)
 ## Reference SQL (zquery log)
 
 ```sql
+WITH 
+cooperative as (
 SELECT
-    SUBSTRING("ws_warehouse_warehouse"."w_warehouse_name",1,20) as "w_substr",
     "ws_ship_mode_ship_mode"."SM_TYPE" as "ws_ship_mode_type",
     "ws_web_site_web_site"."web_name" as "ws_web_site_name",
-    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 30 THEN 1 ELSE NULL END),0) as "days_30",
-    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 30 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 60 THEN 1 ELSE NULL END),0) as "days_31_60",
-    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 60 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 90 THEN 1 ELSE NULL END),0) as "days_61_90",
-    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 90 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 120 THEN 1 ELSE NULL END),0) as "days_91_120",
-    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 120 THEN 1 ELSE NULL END),0) as "days_120_plus"
+    SUBSTRING("ws_warehouse_warehouse"."w_warehouse_name",1,20) as "w_substr",
+    sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 30 THEN 1 ELSE NULL END) as "_virt_agg_sum_532447299563042",
+    sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 120 THEN 1 ELSE NULL END) as "_virt_agg_sum_1591163926846168",
+    sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 30 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 60 THEN 1 ELSE NULL END) as "_virt_agg_sum_3972236993249717",
+    sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 60 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 90 THEN 1 ELSE NULL END) as "_virt_agg_sum_1757493792246964",
+    sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 90 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 120 THEN 1 ELSE NULL END) as "_virt_agg_sum_9896727465284234"
 FROM
     "memory"."web_sales" as "ws_web_sales"
     INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
@@ -115,10 +117,21 @@ WHERE
 GROUP BY
     1,
     2,
-    3
+    3)
+SELECT
+    "cooperative"."w_substr" as "w_substr",
+    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
+    "cooperative"."ws_web_site_name" as "ws_web_site_name",
+    coalesce("cooperative"."_virt_agg_sum_532447299563042",0) as "days_30",
+    coalesce("cooperative"."_virt_agg_sum_3972236993249717",0) as "days_31_60",
+    coalesce("cooperative"."_virt_agg_sum_1757493792246964",0) as "days_61_90",
+    coalesce("cooperative"."_virt_agg_sum_9896727465284234",0) as "days_91_120",
+    coalesce("cooperative"."_virt_agg_sum_1591163926846168",0) as "days_120_plus"
+FROM
+    "cooperative"
 ORDER BY 
-    "w_substr" asc nulls first,
-    "ws_ship_mode_ship_mode"."SM_TYPE" asc nulls first,
-    "ws_web_site_web_site"."web_name" asc nulls first
+    "cooperative"."w_substr" asc nulls first,
+    "cooperative"."ws_ship_mode_type" asc nulls first,
+    "cooperative"."ws_web_site_name" asc nulls first
 LIMIT (100)
 ```

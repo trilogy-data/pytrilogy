@@ -376,6 +376,18 @@ def _stop_signature(
     return frozenset(sig)
 
 
+def _can_merge_nested_signatures(left: frozenset[str], right: frozenset[str]) -> bool:
+    if not left or not right:
+        return False
+    if left <= right:
+        smaller = left
+    elif right <= left:
+        smaller = right
+    else:
+        return False
+    return not any(gid.startswith("grp:root") for gid in smaller)
+
+
 def _partition_by_signature_and_grain(
     items: list[NodeItem],
     own_derivation: Derivation,
@@ -385,6 +397,7 @@ def _partition_by_signature_and_grain(
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
     extra_signature: Callable[[str], frozenset[str]] | None = None,
+    allow_signature_subset: bool = False,
 ) -> list[GroupBucket]:
     """Generic signature+grain bucketing. Used for derivations whose
     upstream identity should split buckets even when row-shape (depth /
@@ -435,7 +448,12 @@ def _partition_by_signature_and_grain(
 
         for i in range(n):
             for j in range(i + 1, n):
-                if sigs[i] != sigs[j]:
+                signatures_match = sigs[i] == sigs[j]
+                signatures_nest = (
+                    allow_signature_subset
+                    and _can_merge_nested_signatures(sigs[i], sigs[j])
+                )
+                if not signatures_match and not signatures_nest:
                     continue
                 if grains[i] <= grains[j] or grains[j] <= grains[i]:
                     union(i, j)
@@ -494,6 +512,7 @@ def partition_basics_by_signature(
         concept_attrs,
         primary_group,
         ensure_assigned,
+        allow_signature_subset=True,
     )
 
 

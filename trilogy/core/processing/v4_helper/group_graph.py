@@ -17,6 +17,7 @@ lives next to its rule.
 """
 
 from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Literal, overload
 
 import networkx as nx
@@ -45,7 +46,7 @@ from .edges import (
     lineage_subgraph,
     remove_edge,
 )
-from .group_behaviors import behavior_for
+from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import ConceptAttrs, GroupAttrs, GroupBucket
 
@@ -513,6 +514,136 @@ def _add_final_node(
         add_edge(group_graph, group_edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
 
 
+@dataclass
+class GroupFacts:
+    primary: set[str]
+    grain: frozenset[str]
+    derivation: Derivation | None
+    native_grain: frozenset[str] = frozenset()
+    behavior: Behavior | None = None
+
+
+@dataclass
+class GroupIOPlan:
+    capability: dict[str, set[str]] = field(default_factory=dict)
+    outputs: dict[str, set[str]] = field(default_factory=dict)
+    inputs: dict[str, set[str]] = field(default_factory=dict)
+    hidden: dict[str, set[str]] = field(default_factory=dict)
+
+    @classmethod
+    def for_groups(cls, group_graph: nx.DiGraph) -> "GroupIOPlan":
+        return cls(
+            capability={gid: set() for gid in group_graph.nodes},
+            outputs={gid: set() for gid in group_graph.nodes},
+            inputs={gid: set() for gid in group_graph.nodes},
+            hidden={gid: set() for gid in group_graph.nodes},
+        )
+
+
+def _lineage_parents_by_address(
+    concept_edges: EdgeMap, concept_attrs: dict[str, ConceptAttrs]
+) -> dict[str, set[str]]:
+    lineage_parents: dict[str, set[str]] = {}
+    for u, v in lineage_edges(concept_edges):
+        u_addr = concept_attrs[u].address
+        v_addr = concept_attrs[v].address
+        lineage_parents.setdefault(v_addr, set()).add(u_addr)
+    return lineage_parents
+
+
+def _source_grain_by_address(
+    concept_graph: nx.DiGraph, concept_attrs: dict[str, ConceptAttrs]
+) -> dict[str, frozenset[str]]:
+    source_grain: dict[str, frozenset[str]] = {}
+    for node in concept_graph.nodes:
+        address = concept_attrs[node].address
+        grain = concept_attrs[node].grain_components
+        if grain:
+            source_grain[address] = frozenset(grain)
+    return source_grain
+
+
+def _build_group_facts(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    buckets: dict[str, GroupBucket],
+) -> dict[str, GroupFacts]:
+    facts: dict[str, GroupFacts] = {}
+    for gid in group_graph.nodes:
+        a = attrs[gid]
+        facts[gid] = GroupFacts(
+            primary=set(a.primary_members),
+            grain=frozenset(a.grain_components),
+            derivation=a.derivation,
+        )
+    for gid, bucket in buckets.items():
+        behavior = behavior_for(bucket.derivation)
+        facts[gid].behavior = behavior
+        facts[gid].native_grain = behavior.native_grain(
+            bucket, concept_graph, concept_edges, concept_attrs
+        )
+    return facts
+
+
+def _apply_grouping_parent_grain_overrides(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, GroupFacts],
+    lineage_parents: dict[str, set[str]],
+) -> None:
+    """Correct non-grouping groups that compute pointwise over grouping parents."""
+    for gid, fact in facts.items():
+        if gid == FINAL_NODE_ID:
+            continue
+        if (
+            fact.derivation == Derivation.ROOT
+            or fact.derivation in GROUPING_DERIVATIONS
+        ):
+            continue
+        leaves = _leaf_inputs(fact.primary, lineage_parents)
+        if not leaves:
+            continue
+        grouping_preds = [
+            pred
+            for pred in group_graph.predecessors(gid)
+            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+            and facts[pred].derivation in GROUPING_DERIVATIONS
+        ]
+        grains = {facts[pred].grain for pred in grouping_preds}
+        if len(grains) != 1:
+            continue
+        grouping_grain = next(iter(grains))
+        if fact.grain <= grouping_grain:
+            continue
+        covered = set(grouping_grain)
+        for pred in grouping_preds:
+            covered |= facts[pred].primary
+        if leaves <= covered:
+            fact.grain = grouping_grain
+            fact.native_grain = grouping_grain
+
+
+def _topological_dependency_order(
+    group_graph: nx.DiGraph, group_edges: EdgeMap
+) -> list[str] | None:
+    dep_graph = dependency_subgraph(group_graph, group_edges)
+    try:
+        return list(nx.topological_sort(dep_graph))
+    except nx.NetworkXUnfeasible:
+        try:
+            cycle = nx.find_cycle(dep_graph)
+        except nx.NetworkXNoCycle:
+            cycle = None
+        logger.warning(
+            "[v4] group-graph lineage cycle, skipping concept-set pass: %s",
+            cycle,
+        )
+        return None
+
+
 def _compute_concept_sets(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -523,213 +654,67 @@ def _compute_concept_sets(
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
 ) -> None:
-    """Per-group input/output/hidden concept sets, computed in two passes.
+    """Per-group input/output/hidden concept sets.
 
-    Pass 1 (forward topo) — `capability`: the upper bound of what each
-    group CAN expose. ROOT is its primaries (the scan provides them).
-    Every other group's capability = own primaries plus every column from
-    a parent's capability that's grain-compatible with this group's
-    native grain. The grain filter applies uniformly: a grouping
-    derivation (AGGREGATE/GROUP_TO/WINDOW) would change row shape if it
-    projected a finer-grain column; a BASIC would inflate its implicit
-    GROUP-BY for the same reason (this is what bit q04 when every root
-    was attached optimistically).
-
-    Pass 2 (reverse topo) — demand-driven `output_concepts`. For each
-    successor S, expose `S.input_concepts ∩ capability`. Add own grain
-    when this group is a grouping derivation (its SELECT must include
-    those columns anyway). Add sibling-grain join keys: when a successor
-    has multiple predecessors, any sibling-grain that we also carry
-    becomes the merge key downstream.
-
-    `input_concepts` = lineage parents of primary outputs (we compute
-    those columns and need their args) + non-primary outputs
-    (passthrough — must come from upstream) + condition row-args at
-    this group.
-
-    `hidden_concepts` stays empty at intermediate groups — hiding a
-    column there makes it invisible to downstream merges (their join
-    keys are read from non-hidden outputs only). The user-facing mask is
-    applied to the FINAL contributor in `_assemble_final_node`."""
+    The pass has three explicit pieces:
+    - stable graph facts (`GroupFacts`): primary members, grain, behavior
+    - forward capability: which columns each group can preserve
+    - reverse demand: which outputs/inputs each group must expose
+    """
     mandatory_addresses = {c.address for c in mandatory_list}
-
-    # Concept-level lineage parents indexed by child ADDRESS — addresses are
-    # what the rest of this pass works with (output_concepts / primary_of
-    # / capability are all address-keyed sets), so the lookup has to match.
-    # Pre-phase-split this happened to work because outer-blank node_id ==
-    # address; with the @condition phase, [@condition]X != X.
-    lineage_parents: dict[str, set[str]] = {}
-    for u, v in lineage_edges(concept_edges):
-        u_addr = concept_attrs[u].address
-        v_addr = concept_attrs[v].address
-        lineage_parents.setdefault(v_addr, set()).add(u_addr)
-
-    primary_of: dict[str, set[str]] = {}
-    grain_of: dict[str, frozenset[str]] = {}
-    derivation_of: dict[str, Derivation | None] = {}
-    native_grain_of: dict[str, frozenset[str]] = {}
-    behavior_of = {}
-    for gid in group_graph.nodes:
-        a = attrs[gid]
-        primary_of[gid] = set(a.primary_members)
-        grain_of[gid] = frozenset(a.grain_components)
-        derivation_of[gid] = a.derivation
-    for gid, bucket in buckets.items():
-        beh = behavior_for(bucket.derivation)
-        behavior_of[gid] = beh
-        native_grain_of[gid] = beh.native_grain(
-            bucket, concept_graph, concept_edges, concept_attrs
-        )
-
-    # Natural row-grain of each concept (the keys it functionally depends on).
-    # Used when an aggregating group demands lineage args from a row-level
-    # source — without also demanding the source grain, the root scan only
-    # projects the aggregate's input columns and v3 inserts an implicit
-    # GROUP BY to dedupe to that column shape, destroying the row population
-    # AVG/SUM need (q09).
-    source_grain_of: dict[str, frozenset[str]] = {}
-    for _n in concept_graph.nodes:
-        _addr = concept_attrs[_n].address
-        _gc = concept_attrs[_n].grain_components
-        if _gc:
-            source_grain_of[_addr] = frozenset(_gc)
-
-    # Effective-grain override for a basic that rides pointwise on a grouping
-    # sibling. `native_grain_basic_inherited` walks CONCEPT lineage, so a basic
-    # that renames a raw grain key (q66 `date.year as year_`) reports the raw
-    # source grain ({date.id}) even though, once routed onto the aggregate
-    # (group-level lineage edge), its rows live at the aggregate's grain. That
-    # stale grain blocks the grain key from riding through as a merge join key,
-    # so the FINAL merge re-joins on the value and fans out. When every leaf
-    # input of the basic is covered by a grouping lineage-parent's grain +
-    # outputs (i.e. it's genuinely computed pointwise over that parent), adopt
-    # that parent's grain as the basic's effective grain.
-    for gid in group_graph.nodes:
-        if gid == FINAL_NODE_ID:
-            continue
-        d = derivation_of[gid]
-        if d == Derivation.ROOT or d in GROUPING_DERIVATIONS:
-            continue
-        leaves = _leaf_inputs(primary_of[gid], lineage_parents)
-        if not leaves:
-            continue
-        grouping_preds = [
-            p
-            for p in group_graph.predecessors(gid)
-            if edge_kind(group_edges, p, gid) == EdgeKind.LINEAGE
-            and derivation_of[p] in GROUPING_DERIVATIONS
-        ]
-        # Same-grain grouping parents (e.g. q59's ratio reads both an aggregate
-        # `sun_sales` and a `lead(...)` window, both at (store, week_seq)) are
-        # considered collectively: the basic computes pointwise over their
-        # shared grain, but each leaf may be a primary of a *different* parent.
-        # Check coverage against the union of their primaries so a leaf supplied
-        # by the aggregate isn't rejected when matched against the window.
-        grains = {grain_of[p] for p in grouping_preds}
-        if len(grains) != 1:
-            continue
-        gp_grain = next(iter(grains))
-        # Only correct a grain that's actually stale: when the declared grain is
-        # already covered by the grouping parents' grain, the lineage-inherited
-        # grain is already right (rollup/window basics — q14/q36 — rely on it).
-        # The fix targets a rename/derive whose declared grain (the source row
-        # id) is finer than and disjoint from the parents' grain.
-        if grain_of[gid] <= gp_grain:
-            continue
-        covered = set(gp_grain)
-        for p in grouping_preds:
-            covered |= primary_of[p]
-        if leaves <= covered:
-            grain_of[gid] = gp_grain
-            native_grain_of[gid] = gp_grain
-
-    # Topo includes all dependency edges (lineage / constraint / existence)
-    # so a side-channel source builds before its consumer. The JOIN-key
-    # and demand passes below treat each edge kind differently.
-    dep_graph = dependency_subgraph(group_graph, group_edges)
-    try:
-        topo = list(nx.topological_sort(dep_graph))
-    except nx.NetworkXUnfeasible:
-        # The group-level lineage graph has a cycle — a genuine bug
-        # upstream (q05's rowset shape currently triggers this). Skip the
-        # capability/demand pass so callers that just want to render the
-        # graph (discovery_v4 visualizations) can still proceed; SQL
-        # generation will fail downstream where the cycle bites for real.
-        try:
-            cycle = nx.find_cycle(dep_graph)
-        except nx.NetworkXNoCycle:
-            cycle = None
-        logger.warning(
-            "[v4] group-graph lineage cycle, skipping concept-set pass: %s",
-            cycle,
-        )
+    lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
+    source_grain_of = _source_grain_by_address(concept_graph, concept_attrs)
+    facts = _build_group_facts(
+        group_graph, attrs, concept_graph, concept_edges, concept_attrs, buckets
+    )
+    _apply_grouping_parent_grain_overrides(
+        group_graph, group_edges, facts, lineage_parents
+    )
+    topo = _topological_dependency_order(group_graph, group_edges)
+    if topo is None:
         return
 
-    # Pass 1: forward capability propagation. Per-derivation `can_preserve`
-    # decides which upstream columns ride through each group.
-    capability: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
+    io = GroupIOPlan.for_groups(group_graph)
     for gid in topo:
         if gid == FINAL_NODE_ID:
             continue
-        cap: set[str] = set(primary_of[gid])
-        behavior = behavior_of.get(gid)
-        if behavior is None or derivation_of[gid] == Derivation.ROOT:
-            # Root scans can also project the grain keys of their primaries —
-            # `store_sales.ticket_number` is reachable from a store_sales scan
-            # even if no consumer asked for it. Exposing it in capability lets
-            # an aggregating successor demand it to keep the scan at row-level
-            # grain (see `source_grain_of` build above).
+        fact = facts[gid]
+        cap: set[str] = set(fact.primary)
+        if fact.behavior is None or fact.derivation == Derivation.ROOT:
             for addr in list(cap):
                 cap.update(source_grain_of.get(addr, frozenset()))
-            capability[gid] = cap
+            io.capability[gid] = cap
             continue
-        native = native_grain_of[gid]
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
-            for addr in capability.get(pgid, set()):
-                if behavior.can_preserve(
-                    concept_graph, concept_edges, concept_attrs, native, addr
+            for addr in io.capability.get(pgid, set()):
+                if fact.behavior.can_preserve(
+                    concept_graph,
+                    concept_edges,
+                    concept_attrs,
+                    fact.native_grain,
+                    addr,
                 ):
                     cap.add(addr)
-        capability[gid] = cap
+        io.capability[gid] = cap
 
-    # Pass 2: backward demand-driven outputs / inputs.
-    output_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
-    input_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
-    hidden_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
-
-    # Lineage-only reachability, for "does a row-shape-barrier below me already
-    # produce this concept?" A mandatory concept produced by a grouping
-    # descendant must be contributed by that barrier, not by a pre-barrier
-    # group (whose pre-aggregation rows can't merge with the aggregated ones).
     lineage_sub = lineage_subgraph(group_graph, group_edges)
 
-    # Row-args of a filter deferred onto FINAL (q11: a per-id aggregate vs a
-    # global one) aren't user outputs, so they aren't in mandatory — but they
-    # must still be demanded, or their producing group builds empty and the
-    # WHERE has nothing to reference. Demand them at FINAL and expose them from
-    # each contributing group below (hidden from the user projection).
     final_condition_args: set[str] = set()
     for atom in attrs[FINAL_NODE_ID].condition_atoms:
         final_condition_args |= {a.address for a in atom.row_arguments}
     final_condition_args -= mandatory_addresses
-    output_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
-    input_concepts[FINAL_NODE_ID] = set(mandatory_addresses) | final_condition_args
+    io.outputs[FINAL_NODE_ID] = set(mandatory_addresses)
+    io.inputs[FINAL_NODE_ID] = set(mandatory_addresses) | final_condition_args
 
-    # Pre-seed existence demand on each source bucket before the walk. An
-    # atom like `x IN <subselect>` puts demand on the existence-arg's
-    # source bucket, but the demand is side-channel — it doesn't flow
-    # through the host's input_concepts (which drives JOIN dedup). Seeding
-    # the source bucket directly means its lineage predecessors get
-    # demanded via the normal backward walk and the whole compute chain
-    # builds correctly without polluting JOIN logic.
     primary_to_gid: dict[str, str] = {}
-    for gid in group_graph.nodes:
+    for gid, fact in facts.items():
         if gid == FINAL_NODE_ID:
             continue
-        for addr in attrs[gid].primary_members:
+        for addr in fact.primary:
             primary_to_gid.setdefault(addr, gid)
+
     existence_demand: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID:
@@ -741,162 +726,92 @@ def _compute_concept_sets(
                     if source_gid is None or source_gid == gid:
                         continue
                     existence_demand[source_gid].add(arg.address)
-    # A filter-nested semijoin (q08 `zips in substring(p_cust_zip,1,5)`) wires
-    # its source via an `existence` group edge rather than a condition atom.
-    # The source is a dedicated side-channel group; demand its own outputs so
-    # it gets built and can back the `... IN (SELECT src FROM cte)` subselect.
     for src_gid, _ in edges_of_kind(group_edges, EdgeKind.EXISTENCE):
         existence_demand[src_gid].update(attrs[src_gid].primary_members)
 
     for gid in reversed(topo):
         if gid == FINAL_NODE_ID:
             continue
-        cap_gid = capability[gid]
+        fact = facts[gid]
+        cap_gid = io.capability[gid]
         outs: set[str] = existence_demand.get(gid, set()) & cap_gid
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
                 mand = cap_gid & mandatory_addresses
-                # Drop a mandatory concept that a grouping (row-shape barrier)
-                # lineage-descendant already produces — it's the barrier's to
-                # contribute. Exposing it here (pre-barrier) leaks a rename of
-                # a grain key into the aggregate's input as an ungrouped column
-                # (q05 `s_channel`/`s_id` over a ROLLUP). Descendants are earlier
-                # in reverse topo, so their outputs are already computed.
                 for desc in nx.descendants(lineage_sub, gid):
-                    if derivation_of.get(desc) in GROUPING_DERIVATIONS:
-                        mand -= output_concepts[desc]
+                    if facts[desc].derivation in GROUPING_DERIVATIONS:
+                        mand -= io.outputs[desc]
                 outs |= mand
-                # Expose a FINAL-deferred filter's row-args from whichever group
-                # produces them (the global aggregate exposes its sum to FINAL).
                 outs |= cap_gid & final_condition_args
-                # Same-grain FINAL contributors must expose their shared grain
-                # so the merge joins on the grain key, not on whatever columns
-                # happen to be shared (q39: a cov basic and the aggregate are
-                # both at (item, warehouse) but the cov group exposed only
-                # mean/cov, so the merge joined on `mean` values). Only our own
-                # grain, only what we can actually produce (capability), and
-                # only when a sibling contributor shares it — much narrower than
-                # pulling every sibling's grain, which over-exposes constraint-
-                # sibling keys (q08).
-                my_grain = grain_of.get(gid, frozenset())
-                if my_grain:
+                if fact.grain:
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
                             continue
-                        # Only an EQUAL-grain sibling is a real merge partner to
-                        # join on this key. A merely-overlapping (finer-grained)
-                        # sibling — e.g. a d1 filter feeder sharing one key —
-                        # isn't; exposing our grain there pins us to a key the
-                        # actual partner lacks and blocks routing onto it (q58:
-                        # item_id shares item.id with a filter, which kept it
-                        # off the item.name aggregate and fanned out).
-                        if grain_of.get(sibling, frozenset()) == my_grain:
-                            outs |= my_grain & cap_gid
+                        if facts[sibling].grain == fact.grain:
+                            outs |= fact.grain & cap_gid
                             break
                 continue
-            # Existence siblings flow via subselect, not the row stream.
-            # The source still needs to be built and ordered (topo above
-            # handles that), but we don't pull row-stream demand from the
-            # consumer or expose JOIN keys for sibling predecessors.
             if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
                 continue
-            demanded = input_concepts.get(succ, set()) & cap_gid
-            # A GROUPING group must not pass through a non-grain, non-aggregate
-            # column that a row-preserving sibling predecessor of `succ` also
-            # supplies — exposing it forces the column into this group's GROUP BY
-            # (q22: `account_balance` threaded through `count(orders) by id` →
-            # `GROUP BY id, account_balance`). Keep our own aggregate outputs and
-            # grain keys; let the row sibling carry the rest.
-            if derivation_of[gid] in GROUPING_DERIVATIONS:
+            demanded = io.inputs.get(succ, set()) & cap_gid
+            if fact.derivation in GROUPING_DERIVATIONS:
                 sibling_providable: set[str] = set()
                 for sib in group_graph.predecessors(succ):
                     if sib in (gid, FINAL_NODE_ID):
                         continue
-                    if derivation_of.get(sib) in GROUPING_DERIVATIONS:
+                    if facts[sib].derivation in GROUPING_DERIVATIONS:
                         continue
-                    sibling_providable |= capability.get(sib, set())
-                keep = primary_of[gid] | grain_of[gid]
+                    sibling_providable |= io.capability.get(sib, set())
+                keep = fact.primary | fact.grain
                 demanded -= sibling_providable - keep
             outs |= demanded
-            # Sibling-grain JOIN keys: when this successor has another
-            # predecessor whose grain we also expose, project that key
-            # so the downstream merge can JOIN us to the sibling on it.
-            # Existence-kind siblings are side-channel only — skip them
-            # to avoid pulling their grain columns into JOIN-irrelevant
-            # places (q08's blank_root being asked to provide
-            # customer.address.* because final_zips's bucket was a
-            # constraint sibling of the d0 aggregate).
             for sibling in group_graph.predecessors(succ):
                 if sibling == gid or sibling == FINAL_NODE_ID:
                     continue
                 if edge_kind(group_edges, sibling, succ) == EdgeKind.EXISTENCE:
                     continue
-                outs |= grain_of.get(sibling, frozenset()) & cap_gid
-        # Grouping derivations: own grain components must be in the SELECT
-        # (they're the GROUP-BY / PARTITION-BY keys). Non-grouping groups
-        # don't get this — their `grain_components` is the source row
-        # identity, projecting it unconditionally would be noise.
-        if derivation_of[gid] in GROUPING_DERIVATIONS:
-            outs |= grain_of[gid] & cap_gid
-        output_concepts[gid] = outs
+                outs |= facts[sibling].grain & cap_gid
+        if fact.derivation in GROUPING_DERIVATIONS:
+            outs |= fact.grain & cap_gid
+        io.outputs[gid] = outs
 
-        # Inputs: a primary's lineage args, a passthrough's own address,
-        # plus condition row-args we haven't computed locally.
-        primaries = primary_of[gid]
         ins: set[str] = set()
-        is_grouping = derivation_of[gid] in GROUPING_DERIVATIONS
-        for c in outs:
-            if c in primaries:
-                # Walk lineage through primaries computed *inside* this group,
-                # demanding the first non-primary ancestor of each chain. A
-                # primary whose lineage arg is itself another primary (q49:
-                # channel -> channel_label -> sales_channel) would otherwise
-                # stop at the intermediate and never demand the real input —
-                # the renderer then has no row value and constant-folds it.
-                stack = list(lineage_parents.get(c, set()))
+        is_grouping = fact.derivation in GROUPING_DERIVATIONS
+        for concept_addr in outs:
+            if concept_addr in fact.primary:
+                stack = list(lineage_parents.get(concept_addr, set()))
                 seen_chain: set[str] = set()
                 while stack:
-                    p = stack.pop()
-                    if p in seen_chain:
+                    parent_addr = stack.pop()
+                    if parent_addr in seen_chain:
                         continue
-                    seen_chain.add(p)
-                    if p in primaries:
-                        stack.extend(lineage_parents.get(p, set()))
+                    seen_chain.add(parent_addr)
+                    if parent_addr in fact.primary:
+                        stack.extend(lineage_parents.get(parent_addr, set()))
                         continue
-                    ins.add(p)
-                    # Aggregating derivations sit above a row-level source:
-                    # also demand the row-grain of each lineage arg so the
-                    # source scan stays at row grain. Without this the source
-                    # would project only the requested value columns and v3
-                    # inserts an implicit GROUP BY to dedupe (q09: AVG/SUM
-                    # over deduped tuples).
-                    if is_grouping and p not in grain_of[gid]:
-                        for gc in source_grain_of.get(p, frozenset()):
-                            if gc not in primaries:
+                    ins.add(parent_addr)
+                    if is_grouping and parent_addr not in fact.grain:
+                        for gc in source_grain_of.get(parent_addr, frozenset()):
+                            if gc not in fact.primary:
                                 ins.add(gc)
             else:
-                # A passthrough that's a pure rename of this grouping group's
-                # grain keys: demand the keys, not the rename, so the SELECT
-                # derives it from the (grouped) key rather than passing through a
-                # pre-materialized, ungrouped column — invalid under GROUP BY
-                # (q05 `s_channel`/`s_id` over a ROLLUP).
-                parents_c = lineage_parents.get(c, set())
-                if is_grouping and parents_c and parents_c <= grain_of[gid]:
-                    ins |= parents_c
+                parent_addrs = lineage_parents.get(concept_addr, set())
+                if is_grouping and parent_addrs and parent_addrs <= fact.grain:
+                    ins |= parent_addrs
                 else:
-                    ins.add(c)
+                    ins.add(concept_addr)
         for atom in attrs[gid].condition_atoms:
             for arg in atom.row_arguments:
-                if arg.address not in primaries:
+                if arg.address not in fact.primary:
                     ins.add(arg.address)
-        input_concepts[gid] = ins
+        io.inputs[gid] = ins
 
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID:
             continue
-        attrs[gid].output_concepts = tuple(sorted(output_concepts[gid]))
-        attrs[gid].hidden_concepts = tuple(sorted(hidden_concepts[gid]))
-        attrs[gid].input_concepts = tuple(sorted(input_concepts[gid]))
+        attrs[gid].output_concepts = tuple(sorted(io.outputs[gid]))
+        attrs[gid].hidden_concepts = tuple(sorted(io.hidden[gid]))
+        attrs[gid].input_concepts = tuple(sorted(io.inputs[gid]))
 
 
 @overload
