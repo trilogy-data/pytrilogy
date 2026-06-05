@@ -244,6 +244,23 @@ SELECT customers.region;
         parse_text(text, root=models)
 
 
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "inner join orders.customer_id = customers.customer_id\nand orders.order_amount > 0\nselect customers.region;",
+        "inner join orders.customer_id = customers.customer_id\nwhere orders.order_amount > 0\nselect customers.region;",
+    ],
+)
+def test_filter_after_join_gives_helpful_error(models: Path, tail: str):
+    # filters placed after a join clause must point the author back to WHERE,
+    # not surface the internal "expected JOIN_TYPE" token.
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    text = "import orders as orders;\nimport customers as customers;\n" + tail
+    with pytest.raises(InvalidSyntaxException, match="may only be followed"):
+        parse_text(text, root=models)
+
+
 def test_multiple_join_clauses_blend_three_models(multi_models: Path):
     text = """
 import orders as orders;

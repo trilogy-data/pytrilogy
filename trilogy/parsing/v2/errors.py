@@ -34,6 +34,12 @@ ERROR_CODES: dict[int, str] = {
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
     210: "Missing order direction? Order by must be explicit about direction - specify `asc` or `desc`.",
     211: "Expression in `by` clause must be wrapped in parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.",
+    220: (
+        "Filter condition after a `join` clause? A query-scoped join "
+        "`inner|left join <a> = <b>` may only be followed by another `join` or "
+        "`select`. Put every filter in ONE `where` clause BEFORE the join(s) — "
+        "e.g. `where a = 1 and b = 2 inner join x.id = y.id select ...`."
+    ),
 }
 
 
@@ -114,6 +120,28 @@ def detect_definition_after_clause(text: str, pos: int) -> int | None:
     if _QUERY_CLAUSE_RE.search(text, stmt_start, m.start()) is None:
         return None
     return m.start()
+
+
+_JOIN_CLAUSE_RE = re.compile(
+    r"\b(?:inner|left|right|full|cross)\s+join\b", re.IGNORECASE
+)
+_POST_JOIN_CONTINUATION_RE = re.compile(r"\b(?:and|or|where|having)\b", re.IGNORECASE)
+
+
+def detect_clause_after_join(text: str, pos: int) -> int | None:
+    """Locate a filter/WHERE continuation placed AFTER a query-scoped `join`
+    clause (e.g. `... inner join a = b and c > 0 select ...`). A join may only
+    be followed by another join or `select`; conditions belong in a single WHERE
+    clause before the join. Returns the offending join clause's position, or
+    None. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    joins = list(_JOIN_CLAUSE_RE.finditer(text, stmt_start, pos))
+    if not joins:
+        return None
+    window = text[max(stmt_start, pos - 2) : pos + 8]
+    if _POST_JOIN_CONTINUATION_RE.search(window) is None:
+        return None
+    return joins[-1].start()
 
 
 DEFAULT_ERROR_SPAN: int = 30
