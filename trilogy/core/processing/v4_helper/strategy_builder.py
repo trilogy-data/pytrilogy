@@ -173,6 +173,7 @@ def _accumulated_atoms_above(
 
 def _parent_nodes_for(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     gid: str,
     *,
@@ -204,19 +205,21 @@ def _parent_nodes_for(
         if node is not None:
             candidates.append((pgid, node))
 
-    def provides(node: StrategyNode) -> set[str]:
+    def provides(pgid: str, node: StrategyNode) -> set[str]:
+        if isinstance(node, FilterNode) and node.conditions is not None:
+            return set(attrs[pgid].primary_members) & needed
         return {o.address for o in node.output_concepts} & needed
 
     parents: list[StrategyNode] = []
     for pgid, node in candidates:
-        my_provides = provides(node)
+        my_provides = provides(pgid, node)
         covered_by_descendant = False
         for other_pgid, other_node in candidates:
             if other_pgid == pgid:
                 continue
             if pgid not in nx.ancestors(group_graph, other_pgid):
                 continue
-            if my_provides <= provides(other_node):
+            if my_provides <= provides(other_pgid, other_node):
                 covered_by_descendant = True
                 break
         if not covered_by_descendant:
@@ -367,6 +370,18 @@ def _widen_merge_join_keys(parents: list[StrategyNode]) -> None:
                 input_candidates=input_candidates,
                 available_addresses=available,
             )
+
+
+def _filter_intrinsic_pushdown_safe(group_graph: nx.DiGraph, gid: str) -> bool:
+    ancestors = nx.ancestors(group_graph, gid)
+    if not ancestors:
+        return True
+    for succ in group_graph.successors(gid):
+        if succ == FINAL_NODE_ID:
+            continue
+        if ancestors & set(group_graph.predecessors(succ)):
+            return False
+    return True
 
 
 def _pre_merge_parents(
@@ -971,7 +986,7 @@ def build_strategy_node(
         if injected is not None:
             for arg in injected.concept_arguments:
                 needed.add(arg.address)
-        parents = _parent_nodes_for(group_graph, built, gid, needed=needed)
+        parents = _parent_nodes_for(group_graph, attrs, built, gid, needed=needed)
         parents = _project_dimension_parents_to_group_grain(
             parents,
             needed,
@@ -1066,6 +1081,7 @@ def build_strategy_node(
             environment=environment,
             conditions=condition_for_generator,
             preexisting_conditions=preexisting,
+            intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(group_graph, gid),
             history=history,
             g=g,
         )

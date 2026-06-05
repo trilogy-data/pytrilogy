@@ -1,0 +1,54 @@
+key order_id int;
+key store_id int;
+key product_id int;
+
+property <order_id, product_id>.qty int;
+property store_id.store_name string;
+
+datasource order_products (
+    order_id: order_id,
+    product_id: product_id,
+    qty: qty,
+)
+grain (order_id, product_id)
+query '''
+select 1 order_id, 1 product_id, 1 qty
+union all select 1, 2, 1
+union all select 2, 2, 2
+union all select 3, 1, 2
+union all select 4, 2, 1
+''';
+
+datasource orders (
+    order_id: order_id,
+    store_id: ~store_id,
+)
+grain (order_id)
+query '''
+select 1 order_id, 1 store_id
+union all select 2, 1
+union all select 3, 2
+union all select 4, 2
+''';
+
+datasource stores (
+    store_id: store_id,
+    store_name: store_name,
+)
+grain (store_id)
+query '''
+select 1 store_id, 'store1' store_name
+union all select 2, 'store2'
+''';
+
+# `group <agg> by <dim>` (GROUP_TO derivation): re-aggregate the order-grain
+# sum up to store grain. v4 emits a GROUP BY containing the aggregate itself
+# (`GROUP BY clause cannot contain aggregates`). Expected: (4,'store1'),(3,'store2').
+auto total_qty <- sum(qty);
+
+SELECT
+    group total_qty by store_name -> total_qty_stores,
+    store_name
+ORDER BY
+    total_qty_stores desc
+;

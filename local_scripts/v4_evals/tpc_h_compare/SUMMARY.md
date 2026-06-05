@@ -4,4 +4,4 @@
 
 | Query | Status | v3 rows | v4 rows |
 | --- | --- | --- | --- |
-| adhoc01 | match | 100 | 100 |
+| 21 | match | 47 | 47 |

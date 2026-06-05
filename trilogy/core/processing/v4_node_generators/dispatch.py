@@ -55,6 +55,7 @@ def build_node(
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None,
     preexisting_conditions: BuildWhereClause | None = None,
+    intrinsic_filter_pushdown: bool = True,
     history: History,
     g: ReferenceGraph,
 ) -> StrategyNode | None:
@@ -72,6 +73,15 @@ def build_node(
         )
     if derivation in (Derivation.ROOT.value, Derivation.ROWSET.value):
         return fn(outputs, parents, environment, conditions, history=history, g=g)
+    if derivation == Derivation.FILTER.value:
+        return fn(
+            outputs,
+            parents,
+            environment,
+            conditions,
+            preexisting_conditions=preexisting_conditions,
+            intrinsic_filter_pushdown=intrinsic_filter_pushdown,
+        )
     return fn(
         outputs,
         parents,

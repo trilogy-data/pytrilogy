@@ -1,0 +1,15 @@
+# regexp_contains / regexp_extract (with and without capture group / explicit
+# index) over an unnested constant set, filtered on the boolean output. v4
+# fails to resolve the function. Expected one row: ('pple','pple','apple', True).
+const values <- unnest(['apple', 'banana', 'cherry', 'date']);
+
+select
+    regexp_contains(values, '^a.*') as starts_with_a,
+    regexp_extract(values, '^a(.*)') as after_a,
+    regexp_extract(values, '^a(.*)', 1) as after_a_explicit,
+    regexp_extract(values, '^a.*') as no_capture
+where
+    starts_with_a = true
+order by
+    starts_with_a asc
+;

@@ -1,0 +1,18 @@
+# nested filter: filtered_even_orders keeps orid_2 values that are in the
+# separately-filtered even_orders set. Pure constant/unnest sources. Selecting
+# it under a truthy WHERE should yield {2,4,6} (3 rows).
+const list <- [1,2,3,4,5,6];
+const list_2 <- [1,2,3,4,5,6,7,8,9,10];
+const orid <- unnest(list);
+const orid_2 <- unnest(list_2);
+
+auto even_orders <- filter orid where (orid % 2) = 0;
+auto filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
+
+select
+    filtered_even_orders
+where
+    filtered_even_orders
+order by
+    filtered_even_orders asc
+;

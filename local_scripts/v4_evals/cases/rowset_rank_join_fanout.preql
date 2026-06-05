@@ -1,0 +1,24 @@
+key x int;
+
+datasource x_data (
+    x:x,
+)
+query '''
+select unnest([1,2,2,3]) as x
+''';
+
+# a rowset projecting a per-x max(rank) joined back to the base rows must not
+# fan out: 3 distinct x values → 3 rows. v4 produces 9 (cross/duplicate join).
+const y <- 5;
+auto z <- rank x order by x desc;
+auto w <- rank x order by x asc;
+
+rowset my_rowset <- select x, max(z)->max_rank;
+
+select
+    x,
+    w,
+    my_rowset.max_rank
+order by
+    x asc
+;

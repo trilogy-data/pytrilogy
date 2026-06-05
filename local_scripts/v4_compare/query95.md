@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3944 | 91 | 67.44 ms |
-| reference | 4030 | 76 | 69.90 ms |
-| v4 / ref | 0.98x | 1.20x | 0.96x |
+| v4 | 3926 | 94 | 37.31 ms |
+| reference | 4030 | 76 | 33.43 ms |
+| v4 / ref | 0.97x | 1.24x | 1.12x |
 
 ## Preql
 
@@ -73,9 +73,12 @@ GROUP BY
     2),
 abundant as (
 SELECT
-    CASE WHEN "questionable"."web_sales_is_returned" is True THEN "questionable"."web_sales_order_number" ELSE NULL END as "returned_orders"
+    "questionable"."web_sales_order_number" as "returned_orders"
 FROM
-    "questionable"),
+    "questionable"
+WHERE
+    "questionable"."web_sales_is_returned" is True
+),
 yummy as (
 SELECT
     "uneven"."web_sales_order_number" as "web_sales_order_number",

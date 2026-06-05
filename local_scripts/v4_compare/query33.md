@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4993 | 89 | 31.77 ms |
-| reference | 4269 | 79 | 30.41 ms |
-| v4 / ref | 1.17x | 1.13x | 1.04x |
+| v4 | 4975 | 92 | 20.21 ms |
+| reference | 4269 | 79 | 17.46 ms |
+| v4 / ref | 1.17x | 1.16x | 1.16x |
 
 ## Preql
 
@@ -51,9 +51,12 @@ limit 100
 WITH 
 highfalutin as (
 SELECT
-    CASE WHEN "items_items"."I_CATEGORY" = 'Electronics' THEN "items_items"."I_MANUFACT_ID" ELSE NULL END as "electronics_manuf_ids"
+    "items_items"."I_MANUFACT_ID" as "electronics_manuf_ids"
 FROM
-    "memory"."item" as "items_items"),
+    "memory"."item" as "items_items"
+WHERE
+    "items_items"."I_CATEGORY" = 'Electronics'
+),
 questionable as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",

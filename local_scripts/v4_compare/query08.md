@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3372 | 85 | 75.77 ms |
-| reference | 2479 | 61 | 64.21 ms |
-| v4 / ref | 1.36x | 1.39x | 1.18x |
+| v4 | 3354 | 88 | 47.44 ms |
+| reference | 2479 | 61 | 43.53 ms |
+| v4 / ref | 1.35x | 1.44x | 1.09x |
 
 ## Preql
 
@@ -483,9 +483,12 @@ GROUP BY
 cooperative as (
 SELECT
     "thoughtful"."customer_address_zip" as "customer_address_zip",
-    count(CASE WHEN "thoughtful"."customer_preferred_cust_flag" = 'Y' THEN "thoughtful"."customer_id" ELSE NULL END) as "zip_p_count"
+    count("thoughtful"."customer_id") as "zip_p_count"
 FROM
     "thoughtful"
+WHERE
+    "thoughtful"."customer_preferred_cust_flag" = 'Y'
+
 GROUP BY
     1),
 yummy as (

@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1388 | 36 | 31.49 ms |
-| reference | 1241 | 33 | 12.66 ms |
-| v4 / ref | 1.12x | 1.09x | 2.49x |
+| v4 | 1365 | 39 | 8.00 ms |
+| reference | 1241 | 33 | 8.55 ms |
+| v4 / ref | 1.10x | 1.18x | 0.94x |
 
 ## Preql
 
@@ -49,10 +49,13 @@ WITH
 thoughtful as (
 SELECT
     "catalog_sales"."CS_ITEM_SK" as "item_id",
-    avg(CASE WHEN cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date THEN "catalog_sales"."CS_EXT_DISCOUNT_AMT" ELSE NULL END) as "_virt_agg_avg_5510773609506287"
+    avg("catalog_sales"."CS_EXT_DISCOUNT_AMT") as "_virt_agg_avg_5510773609506287"
 FROM
     "memory"."catalog_sales" as "catalog_sales"
-    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
+WHERE
+    cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
+
 GROUP BY
     1),
 cheerful as (

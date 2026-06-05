@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4275 | 81 | 73.59 ms |
-| reference | 5253 | 81 | 80.19 ms |
-| v4 / ref | 0.81x | 1.00x | 0.92x |
+| v4 | 4257 | 84 | 36.65 ms |
+| reference | 5253 | 81 | 38.40 ms |
+| v4 / ref | 0.81x | 1.04x | 0.95x |
 
 ## Preql
 
@@ -72,9 +72,12 @@ limit 100
 WITH 
 highfalutin as (
 SELECT
-    CASE WHEN "date_date"."D_DATE" = '2000-01-03' THEN "date_date"."D_WEEK_SEQ" ELSE NULL END as "target_week_seq"
+    "date_date"."D_WEEK_SEQ" as "target_week_seq"
 FROM
-    "memory"."date_dim" as "date_date"),
+    "memory"."date_dim" as "date_date"
+WHERE
+    "date_date"."D_DATE" = '2000-01-03'
+),
 cooperative as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",

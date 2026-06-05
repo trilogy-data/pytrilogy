@@ -16,7 +16,12 @@ from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import BuildConcept, BuildGrain
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
-from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    FilterNode,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
 from trilogy.core.processing.v4_helper.group_behaviors import (
     GROUP_BEHAVIORS,
     _lineage_parent_addrs,
@@ -674,6 +679,88 @@ def test_pre_merge_carries_sibling_join_keys_without_metrics():
     row_outputs = {concept.address for concept in row_projection.output_concepts}
     assert "local.part.name" in row_outputs
     assert "local.charge_percent" not in row_outputs
+
+
+def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
+    from trilogy.core.processing.v4_helper.strategy_builder import _parent_nodes_for
+
+    env = BuildEnvironment()
+    supplier_id = _build_concept("supplier.id", Purpose.KEY)
+    order_id = _build_concept("order.id", Purpose.KEY)
+    filtered_supplier = _build_concept("late_supplier_id", Purpose.KEY)
+    root_node = StrategyNode(
+        input_concepts=[],
+        output_concepts=[supplier_id, order_id],
+        environment=env,
+    )
+    filter_node = FilterNode(
+        input_concepts=[supplier_id, order_id],
+        output_concepts=[filtered_supplier, supplier_id, order_id],
+        parents=[root_node],
+        environment=env,
+    )
+    filter_node.conditions = object()
+    group_graph = nx.DiGraph()
+    group_graph.add_edge("root", "filter", kind="lineage")
+    group_graph.add_edge("root", "agg", kind="lineage")
+    group_graph.add_edge("filter", "agg", kind="lineage")
+    attrs = {
+        "root": GroupAttrs(
+            depth_label="root",
+            derivation=Derivation.ROOT.value,
+            primary_members=(supplier_id.address, order_id.address),
+        ),
+        "filter": GroupAttrs(
+            depth_label="d1",
+            derivation=Derivation.FILTER.value,
+            primary_members=(filtered_supplier.address,),
+        ),
+        "agg": GroupAttrs(
+            depth_label="d1",
+            derivation=Derivation.AGGREGATE.value,
+            primary_members=("local.supplier_counts",),
+        ),
+    }
+
+    parents = _parent_nodes_for(
+        group_graph,
+        attrs,
+        {"root": root_node, "filter": filter_node},
+        "agg",
+        needed={supplier_id.address, order_id.address, filtered_supplier.address},
+    )
+
+    assert {type(parent) for parent in parents} == {StrategyNode, FilterNode}
+
+
+def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
+    from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
+    from trilogy.core.processing.v4_helper.strategy_builder import (
+        _filter_intrinsic_pushdown_safe,
+    )
+
+    graph = nx.DiGraph()
+    graph.add_edge("root", "filter", kind="lineage")
+    graph.add_edge("root", "aggregate", kind="lineage")
+    graph.add_edge("filter", "aggregate", kind="lineage")
+    graph.add_edge("root", FINAL_NODE_ID, kind="merge")
+    graph.add_edge("filter", FINAL_NODE_ID, kind="merge")
+
+    assert _filter_intrinsic_pushdown_safe(graph, "filter") is False
+
+
+def test_filter_intrinsic_pushdown_ignores_final_sink():
+    from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
+    from trilogy.core.processing.v4_helper.strategy_builder import (
+        _filter_intrinsic_pushdown_safe,
+    )
+
+    graph = nx.DiGraph()
+    graph.add_edge("root", "filter", kind="lineage")
+    graph.add_edge("root", FINAL_NODE_ID, kind="merge")
+    graph.add_edge("filter", FINAL_NODE_ID, kind="merge")
+
+    assert _filter_intrinsic_pushdown_safe(graph, "filter") is True
 
 
 def test_partition_roots_buckets_per_label():

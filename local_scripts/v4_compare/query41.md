@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2184 | 33 | 19.28 ms |
-| reference | 2112 | 42 | 19.13 ms |
-| v4 / ref | 1.03x | 0.79x | 1.01x |
+| v4 | 2070 | 38 | 8.95 ms |
+| reference | 2112 | 42 | 9.13 ms |
+| v4 / ref | 0.98x | 0.90x | 0.98x |
 
 ## Preql
 
@@ -59,16 +59,21 @@ WITH
 highfalutin as (
 SELECT
     "item_items"."I_MANUFACT" as "item_manufact",
-    CASE WHEN "item_items"."I_MANUFACT_ID" BETWEEN 1 AND 500 THEN "item_items"."I_PRODUCT_NAME" ELSE NULL END as "filtered_product_name",
-    CASE WHEN ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'tan' and "item_items"."I_UNITS" = 'Oz' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'purple' and "item_items"."I_UNITS" = 'Ton' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" = 'misty' and "item_items"."I_UNITS" = 'Box' and "item_items"."I_SIZE" = 'medium' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'medium' and "item_items"."I_UNITS" = 'Tsp' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'midnight' and "item_items"."I_UNITS" = 'Gram' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'pale' and "item_items"."I_UNITS" = 'Pound' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'khaki' and "item_items"."I_UNITS" = 'Pallet' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'mint' and "item_items"."I_UNITS" = 'Gross' and "item_items"."I_SIZE" = 'N/A' ) THEN "item_items"."I_ITEM_SK" ELSE NULL END as "_virt_filter_id_7263619893092856"
+    "item_items"."I_PRODUCT_NAME" as "filtered_product_name"
 FROM
-    "memory"."item" as "item_items"),
+    "memory"."item" as "item_items"
+WHERE
+    "item_items"."I_MANUFACT_ID" BETWEEN 1 AND 500
+),
 wakeful as (
 SELECT
-    "highfalutin"."item_manufact" as "item_manufact",
-    count("highfalutin"."_virt_filter_id_7263619893092856") as "manufact_matches"
+    "item_items"."I_MANUFACT" as "item_manufact",
+    count("item_items"."I_ITEM_SK") as "manufact_matches"
 FROM
-    "highfalutin"
+    "memory"."item" as "item_items"
+WHERE
+    ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'tan' and "item_items"."I_UNITS" = 'Oz' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'purple' and "item_items"."I_UNITS" = 'Ton' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" = 'misty' and "item_items"."I_UNITS" = 'Box' and "item_items"."I_SIZE" = 'medium' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'medium' and "item_items"."I_UNITS" = 'Tsp' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'midnight' and "item_items"."I_UNITS" = 'Gram' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'pale' and "item_items"."I_UNITS" = 'Pound' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'khaki' and "item_items"."I_UNITS" = 'Pallet' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'mint' and "item_items"."I_UNITS" = 'Gross' and "item_items"."I_SIZE" = 'N/A' )
+
 GROUP BY
     1
 HAVING

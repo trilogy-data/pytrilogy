@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1865 | 52 | 524.70 ms |
-| reference | 1434 | 42 | 163.59 ms |
-| v4 / ref | 1.30x | 1.24x | 3.21x |
+| v4 | 2043 | 58 | 97.24 ms |
+| reference | 1434 | 42 | 97.82 ms |
+| v4 / ref | 1.42x | 1.38x | 0.99x |
 
 ## Preql
 
@@ -58,6 +58,9 @@ SELECT
     "inv_warehouse_inventory"."inv_quantity_on_hand" as "inv_quantity_on_hand"
 FROM
     "memory"."inventory" as "inv_warehouse_inventory"
+WHERE
+    "inv_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
+
 GROUP BY
     1,
     2,
@@ -70,6 +73,9 @@ SELECT
 FROM
     "highfalutin"
     INNER JOIN "memory"."date_dim" as "inv_date_date" on "highfalutin"."inv_date_id" = "inv_date_date"."D_DATE_SK"
+WHERE
+    cast("inv_date_date"."D_DATE" as date) BETWEEN date '2000-02-01' AND date '2000-04-01'
+
 GROUP BY
     1,
     2,

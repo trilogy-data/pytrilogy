@@ -1,0 +1,10 @@
+# row_number over an unnested constant set, then filtered on the window output.
+# v4 fails to generate (SyntaxError / missing). Expected a single row: (1,).
+auto nums <- unnest([1,2]);
+auto filtered <- row_number nums;
+
+SELECT
+    filtered
+WHERE
+    filtered = 1
+;

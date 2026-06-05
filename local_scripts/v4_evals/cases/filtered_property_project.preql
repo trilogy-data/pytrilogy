@@ -1,0 +1,21 @@
+key product_id int;
+property product_id.product_name string;
+
+datasource products (
+    product_id: product_id,
+    product_name: product_name,
+)
+grain (product_id)
+query '''
+select 1 product_id, 'product1' product_name
+union all select 2, 'product2'
+''';
+
+# a property-level filtered aggregate (`upper(name) ? predicate`) selected on
+# its own should return only the rows passing the predicate (one row,
+# 'PRODUCT2'). v4 leaks the filtered-out rows.
+auto even_product_name <- upper(product_name) ? (product_id % 2) = 0;
+
+SELECT
+    even_product_name
+;

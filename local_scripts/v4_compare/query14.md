@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9385 | 237 | 464.95 ms |
-| reference | 6203 | 160 | 352.60 ms |
-| v4 / ref | 1.51x | 1.48x | 1.32x |
+| v4 | 9562 | 238 | 279.34 ms |
+| reference | 6203 | 160 | 252.32 ms |
+| v4 / ref | 1.54x | 1.49x | 1.11x |
 
 ## Preql
 
@@ -198,16 +198,17 @@ FROM
 concerned as (
 SELECT
     "vacuous"."sales_item_id" as "sales_item_id",
+    "vacuous"."sales_sales_channel" as "sales_sales_channel",
     (cast("vacuous"."sales_item_brand_id" as string) || '|' || cast("vacuous"."sales_item_class_id" as string) || '|' || cast("vacuous"."sales_item_category_id" as string)) as "tuple_key"
 FROM
     "vacuous"),
 young as (
 SELECT
     "concerned"."tuple_key" as "tuple_key",
-    "vacuous"."sales_sales_channel" as "sales_sales_channel"
+    coalesce("concerned"."sales_sales_channel","vacuous"."sales_sales_channel") as "sales_sales_channel"
 FROM
-    "vacuous"
-    INNER JOIN "concerned" on "vacuous"."sales_item_id" = "concerned"."sales_item_id"
+    "concerned"
+    FULL JOIN "vacuous" on "concerned"."sales_item_id" = "vacuous"."sales_item_id" AND "concerned"."sales_sales_channel" = "vacuous"."sales_sales_channel"
 GROUP BY
     1,
     2),
