@@ -7,8 +7,10 @@ generated_sql = """
 WITH 
 abundant as (
 SELECT
-    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total\",
-    sum(CASE WHEN \"ss_promotion_promotion\".\"P_CHANNEL_DMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_TV\" = 'Y' THEN \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" ELSE NULL END) as \"promotional_sales\"
+    \"ss_promotion_promotion\".\"P_CHANNEL_DMAIL\" as \"ss_promotion_channel_dmail\",
+    \"ss_promotion_promotion\".\"P_CHANNEL_EMAIL\" as \"ss_promotion_channel_email\",
+    \"ss_promotion_promotion\".\"P_CHANNEL_TV\" as \"ss_promotion_channel_tv\",
+    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -22,9 +24,7 @@ WHERE
 ),
 vacuous as (
 SELECT
-    \"abundant\".\"promotional_sales\" as \"promotions\",
-    \"abundant\".\"total\" as \"total\",
-    ( cast(\"abundant\".\"promotional_sales\" as numeric(15,4)) / cast(\"abundant\".\"total\" as numeric(15,4)) ) * 100 as \"ratio\"
+    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -60,6 +60,6 @@ FROM
     FULL JOIN \"juicy\" on 1=1
     FULL JOIN \"vacuous\" on 1=1
 ORDER BY 
-    \"promotions\" asc nulls first,
-    \"abundant\".\"total\" asc nulls first
+    \"yummy\".\"promotions\" asc nulls first,
+    \"vacuous\".\"total\" asc nulls first
 LIMIT (100)"""

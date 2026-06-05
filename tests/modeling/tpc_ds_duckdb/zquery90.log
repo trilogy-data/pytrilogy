@@ -1,14 +1,13 @@
 query_id = "90"
-gen_length = 1166
+gen_length = 1108
 preql_size = 494
 comp_size = 982
 generated_sql = """
-
-WITH 
-thoughtful as (
 SELECT
-    sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) as \"pmc\",
-    sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" BETWEEN 8 AND 9 THEN 1 ELSE NULL END) as \"amc\"
+    CASE
+	WHEN sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) = 0 THEN null
+	ELSE cast(sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" BETWEEN 8 AND 9 THEN 1 ELSE NULL END) as numeric(15,4)) / cast(sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) as numeric(15,4))
+	END as \"am_pm_ratio\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"time_dim\" as \"ws_time_time\" on \"ws_web_sales\".\"WS_SOLD_TIME_SK\" = \"ws_time_time\".\"T_TIME_SK\"
@@ -16,14 +15,7 @@ FROM
     INNER JOIN \"memory\".\"household_demographics\" as \"ws_ship_household_demographic_household_demographics\" on \"ws_web_sales\".\"WS_SHIP_HDEMO_SK\" = \"ws_ship_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
     \"ws_ship_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 and \"ws_web_page_web_page\".\"WP_CHAR_COUNT\" BETWEEN 5000 AND 5200 and \"ws_time_time\".\"T_HOUR\" in (8,9,19,20)
-)
-SELECT
-    CASE
-	WHEN \"thoughtful\".\"pmc\" = 0 THEN null
-	ELSE cast(\"thoughtful\".\"amc\" as numeric(15,4)) / cast(\"thoughtful\".\"pmc\" as numeric(15,4))
-	END as \"am_pm_ratio\"
-FROM
-    \"thoughtful\"
+
 ORDER BY 
     \"am_pm_ratio\" asc nulls first
 LIMIT (100)"""

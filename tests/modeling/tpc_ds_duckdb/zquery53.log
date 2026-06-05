@@ -1,5 +1,5 @@
 query_id = "53"
-gen_length = 2558
+gen_length = 2599
 preql_size = 1446
 comp_size = 1808
 generated_sql = """
@@ -19,7 +19,7 @@ WHERE
 GROUP BY
     1,
     \"physical_sales_date_date\".\"D_QOY\"),
-questionable as (
+cooperative as (
 SELECT
     \"cheerful\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
     avg(\"cheerful\".\"sum_sales\") as \"avg_quarterly_sales\"
@@ -27,28 +27,28 @@ FROM
     \"cheerful\"
 GROUP BY
     1),
-uneven as (
+questionable as (
 SELECT
     \"cheerful\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
-    \"questionable\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
+    \"cooperative\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
     \"cheerful\"
-    INNER JOIN \"questionable\" on \"cheerful\".\"physical_sales_item_manufacturer_id\" = \"questionable\".\"physical_sales_item_manufacturer_id\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"physical_sales_item_manufacturer_id\" = \"cooperative\".\"physical_sales_item_manufacturer_id\"
 WHERE
     CASE
-	WHEN \"questionable\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"questionable\".\"avg_quarterly_sales\") / \"questionable\".\"avg_quarterly_sales\"
+	WHEN \"cooperative\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_quarterly_sales\") / \"cooperative\".\"avg_quarterly_sales\"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    \"uneven\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
-    \"uneven\".\"sum_sales\" as \"sum_sales\",
-    \"uneven\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
+    \"questionable\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
+    \"questionable\".\"sum_sales\" as \"sum_sales\",
+    \"questionable\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
-    \"uneven\"
+    \"questionable\"
 ORDER BY 
-    \"uneven\".\"avg_quarterly_sales\" asc,
-    \"uneven\".\"sum_sales\" asc,
-    \"uneven\".\"physical_sales_item_manufacturer_id\" asc
+    \"questionable\".\"avg_quarterly_sales\" asc,
+    \"questionable\".\"sum_sales\" asc,
+    \"questionable\".\"physical_sales_item_manufacturer_id\" asc
 LIMIT (100)"""

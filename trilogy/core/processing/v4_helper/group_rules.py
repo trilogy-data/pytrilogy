@@ -128,26 +128,79 @@ def partition_aggregates(
     `count(customer_id)` and `sum(account_balance)` both read customer-grain
     rows and can share; `count(order_id)` and `sum(line_amount)` split when the
     latter needs line-grain rows.
-    """
+
+    STANDARD aggregates split by ``input_grain`` (the row grain their arguments
+    need). ROLLUP/CUBE/GROUPING_SETS aggregates instead co-source by *upstream
+    population*: members at the same output grain and mode whose stop-signatures
+    are equal or nest assemble into one combined fact and roll up once. Equal
+    signatures cover differing argument sub-grains over a shared root (q70:
+    line-grain ``total_sum`` rides with store-grain dimensions); nesting covers a
+    shared root plus same-grain derived transforms (q18: agg1-5 read row measures
+    while agg6/7 read ``group(..) by order_number, item.id`` values at that same
+    row grain). Splitting them into one ROLLUP CTE per source — rejoined on the
+    grouping dims — is fragile (null-safety on rolled-up keys) and slower."""
+    standard = [
+        (n, d) for n, d in items if not d.grouping_mode or d.grouping_mode == "standard"
+    ]
+    grouped = [
+        (n, d) for n, d in items if d.grouping_mode and d.grouping_mode != "standard"
+    ]
+    buckets = _partition_standard_aggregates(standard)
+    buckets += _partition_grouped_aggregates(
+        grouped,
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        primary_group,
+        ensure_assigned,
+    )
+    return buckets
+
+
+def _partition_standard_aggregates(items: list[NodeItem]) -> list[GroupBucket]:
     by_key: dict[
-        tuple[
-            str,
-            DepthLabel,
-            frozenset[str],
-            str | None,
-            frozenset[str],
-            frozenset[str],
-        ],
-        GroupBucket,
+        tuple[str, DepthLabel, frozenset[str], frozenset[str]], GroupBucket
     ] = {}
     for node, data in items:
-        depth_label = data.depth_label
-        derivation = data.derivation
         grain = data.grain_components
-        label = data.label
-        grouping_mode = data.grouping_mode
         input_grain = data.aggregate_input_grain
-        source_sig = (
+        key = (data.label, data.depth_label, grain, input_grain)
+        bucket = by_key.get(key)
+        if bucket is None:
+            bucket = _bucket_for(
+                data.depth_label, data.derivation, grain, label=data.label
+            )
+            if input_grain and input_grain != grain:
+                bucket.discriminator = "input:" + "|".join(sorted(input_grain))
+            by_key[key] = bucket
+        if input_grain:
+            bucket.aggregate_input_grain = frozenset(
+                set(bucket.aggregate_input_grain) | set(input_grain)
+            )
+        _add_member(bucket, node, data)
+    return list(by_key.values())
+
+
+def _partition_grouped_aggregates(
+    items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    primary_group: dict[str, str],
+    ensure_assigned: EnsureAssignedFn,
+) -> list[GroupBucket]:
+    """ROLLUP/CUBE/GROUPING_SETS bucketing: union-find merge members at the same
+    (label, depth, grain, mode) whose stop-signatures are equal or nest."""
+    buckets: list[GroupBucket] = []
+    by_shape: dict[
+        tuple[str, DepthLabel, frozenset[str], str | None], list[NodeItem]
+    ] = defaultdict(list)
+    for node, data in items:
+        by_shape[
+            (data.label, data.depth_label, data.grain_components, data.grouping_mode)
+        ].append((node, data))
+    for (label, depth_label, grain, grouping_mode), members in by_shape.items():
+        sigs = [
             _stop_signature(
                 node,
                 Derivation.AGGREGATE,
@@ -157,43 +210,43 @@ def partition_aggregates(
                 primary_group,
                 ensure_assigned,
             )
-            if grouping_mode and grouping_mode != "standard"
-            else frozenset()
-        )
-        key_input_grain = (
-            input_grain if not grouping_mode or grouping_mode == "standard" else grain
-        )
-        key = (
-            label,
-            depth_label,
-            grain,
-            grouping_mode,
-            key_input_grain,
-            source_sig,
-        )
-        bucket = by_key.get(key)
-        if bucket is None:
-            bucket = _bucket_for(depth_label, derivation, grain, label=label)
-            disc: list[str] = []
-            if grouping_mode and grouping_mode != "standard":
-                disc.append(f"grp:{grouping_mode}")
-                sig_repr = "|".join(sorted(source_sig)) or "none"
-                disc.append(f"sig:{abs(hash(sig_repr)) % (16**6):06x}")
-            if (
-                (not grouping_mode or grouping_mode == "standard")
-                and input_grain
-                and input_grain != grain
-            ):
-                disc.append("input:" + "|".join(sorted(input_grain)))
-            if disc:
-                bucket.discriminator = ":".join(disc)
-            by_key[key] = bucket
-        if input_grain:
-            bucket.aggregate_input_grain = frozenset(
-                set(bucket.aggregate_input_grain) | set(input_grain)
+            for node, _ in members
+        ]
+        n = len(members)
+        uf = list(range(n))
+
+        def find(x: int, _uf=uf) -> int:
+            while _uf[x] != x:
+                _uf[x] = _uf[_uf[x]]
+                x = _uf[x]
+            return x
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                if sigs[i] <= sigs[j] or sigs[j] <= sigs[i]:
+                    uf[find(j)] = find(i)
+
+        components: dict[int, list[int]] = defaultdict(list)
+        for i in range(n):
+            components[find(i)].append(i)
+        for member_indices in components.values():
+            bucket = _bucket_for(depth_label, Derivation.AGGREGATE, grain, label=label)
+            shared_sig: frozenset[str] = frozenset().union(
+                *(sigs[i] for i in member_indices)
             )
-        _add_member(bucket, node, data)
-    return list(by_key.values())
+            sig_repr = "|".join(sorted(shared_sig)) or "none"
+            disc = [f"grp:{grouping_mode}", f"sig:{abs(hash(sig_repr)) % (16**6):06x}"]
+            bucket.discriminator = ":".join(disc)
+            for i in member_indices:
+                node, data = members[i]
+                if data.aggregate_input_grain:
+                    bucket.aggregate_input_grain = frozenset(
+                        set(bucket.aggregate_input_grain)
+                        | set(data.aggregate_input_grain)
+                    )
+                _add_member(bucket, node, data)
+            buckets.append(bucket)
+    return buckets
 
 
 def partition_roots(

@@ -10,8 +10,6 @@ SELECT
     \"physical_sales_customer_address_customer_address\".\"CA_STATE\" as \"physical_sales_customer_address_state\",
     \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
     \"physical_sales_item_items\".\"I_CURRENT_PRICE\" as \"physical_sales_item_current_price\",
-    \"physical_sales_item_items\".\"I_ITEM_SK\" as \"physical_sales_item_id\",
-    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
     1 as \"physical_sales_row_counter\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
@@ -32,8 +30,7 @@ WHERE
     \"physical_sales_item_items\".\"I_CATEGORY\" is not null
 
 GROUP BY
-    1),
-yummy as (
+    1)
 SELECT
     \"cooperative\".\"physical_sales_customer_address_state\" as \"physical_sales_customer_address_state\",
     sum(\"cooperative\".\"physical_sales_row_counter\") as \"physical_sales_line_item_count\"
@@ -43,31 +40,6 @@ FROM
 WHERE
     \"cooperative\".\"physical_sales_item_current_price\" > 1.2 * \"questionable\".\"_virt_agg_avg_8857095867163344\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    \"cooperative\".\"physical_sales_billing_customer_address_id\",
-    \"cooperative\".\"physical_sales_item_current_price\",
-    \"questionable\".\"_virt_agg_avg_8857095867163344\",
-    coalesce(\"cooperative\".\"physical_sales_item_category\",\"questionable\".\"physical_sales_item_category\")),
-juicy as (
-SELECT
-    \"yummy\".\"physical_sales_billing_customer_address_state\" as \"physical_sales_billing_customer_address_state\",
-    \"yummy\".\"physical_sales_row_counter\" as \"physical_sales_row_counter\"
-FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2,
-    \"yummy\".\"physical_sales_item_id\",
-    \"yummy\".\"physical_sales_ticket_number\")
-SELECT
-    \"juicy\".\"physical_sales_billing_customer_address_state\" as \"physical_sales_billing_customer_address_state\",
-    sum(\"juicy\".\"physical_sales_row_counter\") as \"physical_sales_line_item_count\"
-FROM
-    \"juicy\"
 GROUP BY
     1
 HAVING

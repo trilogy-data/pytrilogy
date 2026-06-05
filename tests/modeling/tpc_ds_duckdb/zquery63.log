@@ -1,5 +1,5 @@
 query_id = "63"
-gen_length = 2566
+gen_length = 2606
 preql_size = 1420
 comp_size = 1795
 generated_sql = """
@@ -19,7 +19,7 @@ WHERE
 GROUP BY
     1,
     \"physical_sales_date_date\".\"D_MOY\"),
-questionable as (
+cooperative as (
 SELECT
     \"cheerful\".\"physical_sales_item_manager_id\" as \"physical_sales_item_manager_id\",
     avg(\"cheerful\".\"sum_sales\") as \"avg_monthly_sales\"
@@ -27,28 +27,28 @@ FROM
     \"cheerful\"
 GROUP BY
     1),
-uneven as (
+questionable as (
 SELECT
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
-    \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
-    coalesce(\"cheerful\".\"physical_sales_item_manager_id\",\"questionable\".\"physical_sales_item_manager_id\") as \"physical_sales_item_manager_id\"
+    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
+    coalesce(\"cheerful\".\"physical_sales_item_manager_id\",\"cooperative\".\"physical_sales_item_manager_id\") as \"physical_sales_item_manager_id\"
 FROM
     \"cheerful\"
-    INNER JOIN \"questionable\" on \"cheerful\".\"physical_sales_item_manager_id\" is not distinct from \"questionable\".\"physical_sales_item_manager_id\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"physical_sales_item_manager_id\" is not distinct from \"cooperative\".\"physical_sales_item_manager_id\"
 WHERE
     CASE
-	WHEN \"questionable\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"
+	WHEN \"cooperative\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_monthly_sales\") / \"cooperative\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    \"uneven\".\"physical_sales_item_manager_id\" as \"physical_sales_item_manager_id\",
-    \"uneven\".\"sum_sales\" as \"sum_sales\",
-    \"uneven\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+    \"questionable\".\"physical_sales_item_manager_id\" as \"physical_sales_item_manager_id\",
+    \"questionable\".\"sum_sales\" as \"sum_sales\",
+    \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
-    \"uneven\"
+    \"questionable\"
 ORDER BY 
-    \"uneven\".\"physical_sales_item_manager_id\" asc,
-    \"uneven\".\"avg_monthly_sales\" asc,
-    \"uneven\".\"sum_sales\" asc
+    \"questionable\".\"physical_sales_item_manager_id\" asc,
+    \"questionable\".\"avg_monthly_sales\" asc,
+    \"questionable\".\"sum_sales\" asc
 LIMIT (100)"""

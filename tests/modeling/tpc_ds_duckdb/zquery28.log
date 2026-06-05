@@ -1,5 +1,5 @@
 query_id = "28"
-gen_length = 20776
+gen_length = 15860
 preql_size = 2793
 comp_size = 2056
 generated_sql = """
@@ -193,137 +193,26 @@ WHERE
     \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 30
 
 GROUP BY
-    1),
-thoughtful as (
+    1)
 SELECT
-    \"quizzical\".\"lp_avg\" as \"lp_avg\",
-    \"quizzical\".\"lp_cnt\" as \"lp_cnt\",
-    \"quizzical\".\"lp_cntd\" as \"lp_cntd\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"quizzical\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_9807684414024497\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_2224516900884374\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_5327557161933280\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"quizzical\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_2861588206160358\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_6858115141264011\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_7846943073851735\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"quizzical\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_2850673729313768\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_894357222675893\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_5736325163174944\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"quizzical\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_4880359626544039\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_3577078747089769\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_7690745280661633\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"quizzical\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_284549201004209\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_1394773238248231\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_3739216114026085\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"quizzical\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_9446332470240154\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_8966209673081292\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_3811294399709285\"
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"quizzical\".\"lp_avg\" ELSE NULL END) as \"B1_LP\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END) as \"B1_CNT\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END) as \"B1_CNTD\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"quizzical\".\"lp_avg\" ELSE NULL END) as \"B2_LP\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END) as \"B2_CNT\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END) as \"B2_CNTD\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"quizzical\".\"lp_avg\" ELSE NULL END) as \"B3_LP\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END) as \"B3_CNT\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END) as \"B3_CNTD\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"quizzical\".\"lp_avg\" ELSE NULL END) as \"B4_LP\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END) as \"B4_CNT\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END) as \"B4_CNTD\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"quizzical\".\"lp_avg\" ELSE NULL END) as \"B5_LP\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END) as \"B5_CNT\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END) as \"B5_CNTD\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"quizzical\".\"lp_avg\" ELSE NULL END) as \"B6_LP\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"quizzical\".\"lp_cnt\" ELSE NULL END) as \"B6_CNT\",
+    max(CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"quizzical\".\"lp_cntd\" ELSE NULL END) as \"B6_CNTD\"
 FROM
-    \"quizzical\"),
-yummy as (
-SELECT
-    \"thoughtful\".\"_virt_filter_lp_cntd_3739216114026085\" as \"_virt_filter_lp_cntd_3739216114026085\",
-    \"thoughtful\".\"_virt_filter_lp_cntd_3811294399709285\" as \"_virt_filter_lp_cntd_3811294399709285\",
-    \"thoughtful\".\"_virt_filter_lp_cntd_5327557161933280\" as \"_virt_filter_lp_cntd_5327557161933280\",
-    \"thoughtful\".\"_virt_filter_lp_cntd_5736325163174944\" as \"_virt_filter_lp_cntd_5736325163174944\",
-    \"thoughtful\".\"_virt_filter_lp_cntd_7690745280661633\" as \"_virt_filter_lp_cntd_7690745280661633\",
-    \"thoughtful\".\"_virt_filter_lp_cntd_7846943073851735\" as \"_virt_filter_lp_cntd_7846943073851735\"
-FROM
-    \"thoughtful\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"thoughtful\".\"lp_cntd\"),
-abundant as (
-SELECT
-    \"thoughtful\".\"_virt_filter_lp_cnt_1394773238248231\" as \"_virt_filter_lp_cnt_1394773238248231\",
-    \"thoughtful\".\"_virt_filter_lp_cnt_2224516900884374\" as \"_virt_filter_lp_cnt_2224516900884374\",
-    \"thoughtful\".\"_virt_filter_lp_cnt_3577078747089769\" as \"_virt_filter_lp_cnt_3577078747089769\",
-    \"thoughtful\".\"_virt_filter_lp_cnt_6858115141264011\" as \"_virt_filter_lp_cnt_6858115141264011\",
-    \"thoughtful\".\"_virt_filter_lp_cnt_894357222675893\" as \"_virt_filter_lp_cnt_894357222675893\",
-    \"thoughtful\".\"_virt_filter_lp_cnt_8966209673081292\" as \"_virt_filter_lp_cnt_8966209673081292\"
-FROM
-    \"thoughtful\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"thoughtful\".\"lp_cnt\"),
-cooperative as (
-SELECT
-    \"thoughtful\".\"_virt_filter_lp_avg_284549201004209\" as \"_virt_filter_lp_avg_284549201004209\",
-    \"thoughtful\".\"_virt_filter_lp_avg_2850673729313768\" as \"_virt_filter_lp_avg_2850673729313768\",
-    \"thoughtful\".\"_virt_filter_lp_avg_2861588206160358\" as \"_virt_filter_lp_avg_2861588206160358\",
-    \"thoughtful\".\"_virt_filter_lp_avg_4880359626544039\" as \"_virt_filter_lp_avg_4880359626544039\",
-    \"thoughtful\".\"_virt_filter_lp_avg_9446332470240154\" as \"_virt_filter_lp_avg_9446332470240154\",
-    \"thoughtful\".\"_virt_filter_lp_avg_9807684414024497\" as \"_virt_filter_lp_avg_9807684414024497\"
-FROM
-    \"thoughtful\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"thoughtful\".\"lp_avg\"),
-juicy as (
-SELECT
-    max(\"yummy\".\"_virt_filter_lp_cntd_3739216114026085\") as \"B5_CNTD\",
-    max(\"yummy\".\"_virt_filter_lp_cntd_3811294399709285\") as \"B6_CNTD\",
-    max(\"yummy\".\"_virt_filter_lp_cntd_5327557161933280\") as \"B1_CNTD\",
-    max(\"yummy\".\"_virt_filter_lp_cntd_5736325163174944\") as \"B3_CNTD\",
-    max(\"yummy\".\"_virt_filter_lp_cntd_7690745280661633\") as \"B4_CNTD\",
-    max(\"yummy\".\"_virt_filter_lp_cntd_7846943073851735\") as \"B2_CNTD\"
-FROM
-    \"yummy\"),
-uneven as (
-SELECT
-    max(\"abundant\".\"_virt_filter_lp_cnt_1394773238248231\") as \"B5_CNT\",
-    max(\"abundant\".\"_virt_filter_lp_cnt_2224516900884374\") as \"B1_CNT\",
-    max(\"abundant\".\"_virt_filter_lp_cnt_3577078747089769\") as \"B4_CNT\",
-    max(\"abundant\".\"_virt_filter_lp_cnt_6858115141264011\") as \"B2_CNT\",
-    max(\"abundant\".\"_virt_filter_lp_cnt_894357222675893\") as \"B3_CNT\",
-    max(\"abundant\".\"_virt_filter_lp_cnt_8966209673081292\") as \"B6_CNT\"
-FROM
-    \"abundant\"),
-questionable as (
-SELECT
-    max(\"cooperative\".\"_virt_filter_lp_avg_284549201004209\") as \"B5_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_2850673729313768\") as \"B3_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_2861588206160358\") as \"B2_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_4880359626544039\") as \"B4_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_9446332470240154\") as \"B6_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_9807684414024497\") as \"B1_LP\"
-FROM
-    \"cooperative\")
-SELECT
-    \"questionable\".\"B1_LP\" as \"B1_LP\",
-    \"uneven\".\"B1_CNT\" as \"B1_CNT\",
-    \"juicy\".\"B1_CNTD\" as \"B1_CNTD\",
-    \"questionable\".\"B2_LP\" as \"B2_LP\",
-    \"uneven\".\"B2_CNT\" as \"B2_CNT\",
-    \"juicy\".\"B2_CNTD\" as \"B2_CNTD\",
-    \"questionable\".\"B3_LP\" as \"B3_LP\",
-    \"uneven\".\"B3_CNT\" as \"B3_CNT\",
-    \"juicy\".\"B3_CNTD\" as \"B3_CNTD\",
-    \"questionable\".\"B4_LP\" as \"B4_LP\",
-    \"uneven\".\"B4_CNT\" as \"B4_CNT\",
-    \"juicy\".\"B4_CNTD\" as \"B4_CNTD\",
-    \"questionable\".\"B5_LP\" as \"B5_LP\",
-    \"uneven\".\"B5_CNT\" as \"B5_CNT\",
-    \"juicy\".\"B5_CNTD\" as \"B5_CNTD\",
-    \"questionable\".\"B6_LP\" as \"B6_LP\",
-    \"uneven\".\"B6_CNT\" as \"B6_CNT\",
-    \"juicy\".\"B6_CNTD\" as \"B6_CNTD\"
-FROM
-    \"questionable\"
-    FULL JOIN \"uneven\" on 1=1
-    FULL JOIN \"juicy\" on 1=1
+    \"quizzical\"
 LIMIT (100)"""

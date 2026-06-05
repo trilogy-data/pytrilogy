@@ -1,30 +1,26 @@
 # Query 18
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (53.5, 164.025, 0.0, 121.12, 2432.125, 1943.5, 4.5, None, None, None, 'AAAAAAAAAPHBAAAA')
-only in ref (showing up to 5 of 1):
-  1x  (49.18873668, 100.74353881, 299.94699391, 50.21814307, -351.58151446, 1957.52696456, 2.97792998, None, None, None, None)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8128 | 127 | 149.92 ms |
-| reference | 7254 | 111 | 60.40 ms |
-| v4 / ref | 1.12x | 1.14x | 2.48x |
+| v4 | 5426 | 89 | 83.15 ms |
+| reference | 7254 | 111 | 71.22 ms |
+| v4 / ref | 0.75x | 0.80x | 1.17x |
 
 ## Preql
 
@@ -98,18 +94,9 @@ FROM
 WHERE
     "cs_bill_customer_demographic_customer_demographics"."CD_GENDER" = 'F' and "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'Unknown' and "cs_bill_customer_customers"."C_CURRENT_CDEMO_SK" is not null and "cs_bill_customer_customers"."C_BIRTH_MONTH" in (1,6,8,9,12,2) and "cs_date_date"."D_YEAR" = 1998 and "cs_bill_customer_address_customer_address"."CA_STATE" in ('MS','IN','ND','OK','NM','VA')
 ),
-vacuous as (
-SELECT
-    "questionable"."cs_item_id" as "cs_item_id",
-    "questionable"."cs_order_number" as "cs_order_number"
-FROM
-    "questionable"
-GROUP BY
-    1,
-    2,
-    "questionable"."cs_bill_customer_demographic_dependent_count"),
 uneven as (
 SELECT
+    "questionable"."cs_bill_customer_demographic_dependent_count" as "cs_bill_customer_demographic_dependent_count",
     "questionable"."cs_item_id" as "cs_item_id",
     "questionable"."cs_order_number" as "cs_order_number"
 FROM
@@ -117,85 +104,56 @@ FROM
 GROUP BY
     1,
     2,
-    "questionable"."cs_bill_customer_birth_year"),
+    3),
 abundant as (
 SELECT
-    "questionable"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
-    "questionable"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
-    "questionable"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
-    "questionable"."cs_item_text_id" as "cs_item_text_id",
-    avg(cast("questionable"."cs_coupon_amt" as numeric(12,2))) as "agg3",
-    avg(cast("questionable"."cs_list_price" as numeric(12,2))) as "agg2",
-    avg(cast("questionable"."cs_net_profit" as numeric(12,2))) as "agg5",
-    avg(cast("questionable"."cs_quantity" as numeric(12,2))) as "agg1",
-    avg(cast("questionable"."cs_sales_price" as numeric(12,2))) as "agg4"
+    "questionable"."cs_bill_customer_birth_year" as "cs_bill_customer_birth_year",
+    "questionable"."cs_item_id" as "cs_item_id",
+    "questionable"."cs_order_number" as "cs_order_number"
 FROM
     "questionable"
 GROUP BY
-    ROLLUP (4, 1, 3, 2)),
-concerned as (
-SELECT
-    "questionable"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
-    "questionable"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
-    "questionable"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
-    "questionable"."cs_item_text_id" as "cs_item_text_id",
-    "questionable"."row_dep_count" as "row_dep_count"
-FROM
-    "vacuous"
-    RIGHT OUTER JOIN "questionable" on "vacuous"."cs_item_id" = "questionable"."cs_item_id" AND "vacuous"."cs_order_number" = "questionable"."cs_order_number"),
+    1,
+    2,
+    3),
 yummy as (
 SELECT
     "questionable"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
     "questionable"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
     "questionable"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "questionable"."cs_coupon_amt" as "cs_coupon_amt",
     "questionable"."cs_item_text_id" as "cs_item_text_id",
-    "questionable"."row_birth_year" as "row_birth_year"
+    "questionable"."cs_list_price" as "cs_list_price",
+    "questionable"."cs_net_profit" as "cs_net_profit",
+    "questionable"."cs_quantity" as "cs_quantity",
+    "questionable"."cs_sales_price" as "cs_sales_price",
+    "questionable"."row_birth_year" as "row_birth_year",
+    "questionable"."row_dep_count" as "row_dep_count"
 FROM
-    "uneven"
-    RIGHT OUTER JOIN "questionable" on "uneven"."cs_item_id" = "questionable"."cs_item_id" AND "uneven"."cs_order_number" = "questionable"."cs_order_number"),
-young as (
+    "questionable"
+    LEFT OUTER JOIN "uneven" on "questionable"."cs_bill_customer_demographic_dependent_count" is not distinct from "uneven"."cs_bill_customer_demographic_dependent_count" AND "questionable"."cs_item_id" = "uneven"."cs_item_id" AND "questionable"."cs_order_number" = "uneven"."cs_order_number"
+    LEFT OUTER JOIN "abundant" on "questionable"."cs_bill_customer_birth_year" is not distinct from "abundant"."cs_bill_customer_birth_year" AND "questionable"."cs_item_id" = "abundant"."cs_item_id" AND "questionable"."cs_order_number" = "abundant"."cs_order_number")
 SELECT
-    "concerned"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
-    "concerned"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
-    "concerned"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
-    "concerned"."cs_item_text_id" as "cs_item_text_id",
-    avg(cast("concerned"."row_dep_count" as numeric(12,2))) as "agg7"
-FROM
-    "concerned"
-GROUP BY
-    ROLLUP (4, 1, 3, 2)),
-juicy as (
-SELECT
-    "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
-    "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
-    "yummy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
     "yummy"."cs_item_text_id" as "cs_item_text_id",
-    avg(cast("yummy"."row_birth_year" as numeric(12,2))) as "agg6"
+    "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
+    "yummy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
+    avg(cast("yummy"."cs_quantity" as numeric(12,2))) as "agg1",
+    avg(cast("yummy"."cs_list_price" as numeric(12,2))) as "agg2",
+    avg(cast("yummy"."cs_coupon_amt" as numeric(12,2))) as "agg3",
+    avg(cast("yummy"."cs_sales_price" as numeric(12,2))) as "agg4",
+    avg(cast("yummy"."cs_net_profit" as numeric(12,2))) as "agg5",
+    avg(cast("yummy"."row_birth_year" as numeric(12,2))) as "agg6",
+    avg(cast("yummy"."row_dep_count" as numeric(12,2))) as "agg7"
 FROM
     "yummy"
 GROUP BY
-    ROLLUP (4, 1, 3, 2))
-SELECT
-    coalesce("abundant"."cs_item_text_id","juicy"."cs_item_text_id","young"."cs_item_text_id") as "cs_item_text_id",
-    coalesce("abundant"."cs_bill_customer_address_country","juicy"."cs_bill_customer_address_country","young"."cs_bill_customer_address_country") as "cs_bill_customer_address_country",
-    coalesce("abundant"."cs_bill_customer_address_state","juicy"."cs_bill_customer_address_state","young"."cs_bill_customer_address_state") as "cs_bill_customer_address_state",
-    coalesce("abundant"."cs_bill_customer_address_county","juicy"."cs_bill_customer_address_county","young"."cs_bill_customer_address_county") as "cs_bill_customer_address_county",
-    "abundant"."agg1" as "agg1",
-    "abundant"."agg2" as "agg2",
-    "abundant"."agg3" as "agg3",
-    "abundant"."agg4" as "agg4",
-    "abundant"."agg5" as "agg5",
-    "juicy"."agg6" as "agg6",
-    "young"."agg7" as "agg7"
-FROM
-    "young"
-    INNER JOIN "juicy" on "young"."cs_bill_customer_address_country" is not distinct from "juicy"."cs_bill_customer_address_country" AND "young"."cs_bill_customer_address_county" is not distinct from "juicy"."cs_bill_customer_address_county" AND "young"."cs_bill_customer_address_state" is not distinct from "juicy"."cs_bill_customer_address_state" AND "young"."cs_item_text_id" = "juicy"."cs_item_text_id"
-    INNER JOIN "abundant" on "young"."cs_bill_customer_address_country" is not distinct from "abundant"."cs_bill_customer_address_country" AND "young"."cs_bill_customer_address_county" is not distinct from "abundant"."cs_bill_customer_address_county" AND "young"."cs_bill_customer_address_state" is not distinct from "abundant"."cs_bill_customer_address_state" AND "young"."cs_item_text_id" = "abundant"."cs_item_text_id"
+    ROLLUP (1, 2, 3, 4)
 ORDER BY 
-    coalesce("abundant"."cs_bill_customer_address_country","juicy"."cs_bill_customer_address_country","young"."cs_bill_customer_address_country") asc nulls first,
-    coalesce("abundant"."cs_bill_customer_address_state","juicy"."cs_bill_customer_address_state","young"."cs_bill_customer_address_state") asc nulls first,
-    coalesce("abundant"."cs_bill_customer_address_county","juicy"."cs_bill_customer_address_county","young"."cs_bill_customer_address_county") asc nulls first,
-    coalesce("abundant"."cs_item_text_id","juicy"."cs_item_text_id","young"."cs_item_text_id") asc nulls first
+    "yummy"."cs_bill_customer_address_country" asc nulls first,
+    "yummy"."cs_bill_customer_address_state" asc nulls first,
+    "yummy"."cs_bill_customer_address_county" asc nulls first,
+    "yummy"."cs_item_text_id" asc nulls first
 LIMIT (100)
 ```
 

@@ -1,105 +1,107 @@
 query_id = "44"
-gen_length = 2938
+gen_length = 2856
 preql_size = 1005
 comp_size = 1462
 generated_sql = """
 
 WITH 
-questionable as (
+thoughtful as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
-    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\"
+    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"item_avg_profit\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" = 1
-),
-wakeful as (
+
+GROUP BY
+    1),
+cooperative as (
 SELECT
-    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"_addr_null_threshold_threshold\"
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" = 1
+
+GROUP BY
+    1,
+    \"ss_store_sales\".\"SS_STORE_SK\"),
+highfalutin as (
+SELECT
+    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"addr_null_threshold_threshold\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" = 1 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
 ),
-quizzical as (
+questionable as (
 SELECT
-    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_ascending_best_performing\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_descending_worst_performing\"
+    \"thoughtful\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"thoughtful\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"memory\".\"item\" as \"ss_item_items\"),
+    \"cooperative\"
+    INNER JOIN \"thoughtful\" on \"cooperative\".\"ss_item_id\" = \"thoughtful\".\"ss_item_id\"),
 abundant as (
 SELECT
-    \"questionable\".\"ss_item_id\" as \"ss_item_id\",
-    avg(\"questionable\".\"ss_net_profit\") as \"item_avg_profit\"
+    \"questionable\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"questionable\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"questionable\"
-GROUP BY
-    1),
-cooperative as (
-SELECT
-    \"wakeful\".\"_addr_null_threshold_threshold\" as \"addr_null_threshold_threshold\"
-FROM
-    \"wakeful\"),
-yummy as (
-SELECT
-    \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"abundant\".\"ss_item_id\" as \"ss_item_id\"
-FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
-    INNER JOIN \"cooperative\" on 1=1
+    \"highfalutin\"
+    INNER JOIN \"questionable\" on 1=1
 WHERE
-    \"abundant\".\"item_avg_profit\" > 0.9 * \"cooperative\".\"addr_null_threshold_threshold\"
+    \"questionable\".\"item_avg_profit\" > 0.9 * \"highfalutin\".\"addr_null_threshold_threshold\"
 
 GROUP BY
     1,
     2),
-young as (
+uneven as (
 SELECT
-    \"yummy\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"yummy\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
-    rank() over (order by \"yummy\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
+    \"abundant\".\"ss_item_id\" as \"ss_item_id\",
+    rank() over (order by \"abundant\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
+    rank() over (order by \"abundant\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
-    \"yummy\"),
-sparkling as (
+    \"abundant\"),
+juicy as (
 SELECT
-    \"quizzical\".\"_ascending_best_performing\" as \"_ascending_best_performing\",
-    \"quizzical\".\"_descending_worst_performing\" as \"_descending_worst_performing\",
-    \"young\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\",
-    \"young\".\"_descending_rnk_d\" as \"_descending_rnk_d\"
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"descending_worst_performing\",
+    \"uneven\".\"_descending_rnk_d\" as \"descending_rnk_d\",
+    \"uneven\".\"_descending_rnk_d\" as \"rnk\"
 FROM
-    \"young\"
-    INNER JOIN \"quizzical\" on \"young\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"),
-sweltering as (
-SELECT
-    \"sparkling\".\"_descending_rnk_d\" as \"rnk\",
-    \"sparkling\".\"_descending_worst_performing\" as \"descending_worst_performing\"
-FROM
-    \"sparkling\"),
-abhorrent as (
-SELECT
-    \"sparkling\".\"_ascending_best_performing\" as \"ascending_best_performing\",
-    \"sparkling\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
-FROM
-    \"sparkling\")
-SELECT
-    \"sweltering\".\"rnk\" as \"rnk\",
-    \"abhorrent\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"sweltering\".\"descending_worst_performing\" as \"descending_worst_performing\"
-FROM
-    \"sweltering\"
-    INNER JOIN \"abhorrent\" on \"sweltering\".\"rnk\" = \"abhorrent\".\"ascending_rnk_a\"
-WHERE
-    \"sweltering\".\"rnk\" < 11
-
+    \"uneven\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
-    2,
-    3
+    2),
+yummy as (
+SELECT
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ascending_best_performing\",
+    \"uneven\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
+FROM
+    \"uneven\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+GROUP BY
+    1,
+    2),
+vacuous as (
+SELECT
+    \"juicy\".\"descending_worst_performing\" as \"descending_worst_performing\",
+    \"juicy\".\"rnk\" as \"rnk\",
+    \"yummy\".\"ascending_best_performing\" as \"ascending_best_performing\"
+FROM
+    \"juicy\"
+    INNER JOIN \"yummy\" on \"juicy\".\"descending_rnk_d\" = \"yummy\".\"ascending_rnk_a\"
+WHERE
+    \"juicy\".\"rnk\" < 11
+)
+SELECT
+    \"vacuous\".\"rnk\" as \"rnk\",
+    \"vacuous\".\"ascending_best_performing\" as \"ascending_best_performing\",
+    \"vacuous\".\"descending_worst_performing\" as \"descending_worst_performing\"
+FROM
+    \"vacuous\"
 ORDER BY 
-    \"sweltering\".\"rnk\" asc nulls first,
-    \"abhorrent\".\"ascending_best_performing\" desc nulls first,
-    \"sweltering\".\"descending_worst_performing\" desc nulls first
+    \"vacuous\".\"rnk\" asc nulls first,
+    \"vacuous\".\"ascending_best_performing\" desc nulls first,
+    \"vacuous\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""

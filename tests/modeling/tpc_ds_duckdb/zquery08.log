@@ -20,15 +20,15 @@ SELECT
 ),
 questionable as (
 SELECT
-    \"thoughtful\".\"customer_address_zip\" as \"customer_address_zip\",
-    count(CASE WHEN \"thoughtful\".\"customer_preferred_cust_flag\" = 'Y' THEN \"thoughtful\".\"customer_id\" ELSE NULL END) as \"zip_p_count\"
+    SUBSTRING(CASE WHEN \"cheerful\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
-    \"thoughtful\"
+    \"cheerful\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"
 GROUP BY
     1),
 juicy as (
 SELECT
-    SUBSTRING(CASE WHEN \"cooperative\".\"zip_p_count\" > 10 THEN \"cooperative\".\"customer_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+    SUBSTRING(SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
     \"quizzical\"
 WHERE
@@ -38,19 +38,7 @@ GROUP BY
     1),
 sweltering as (
 SELECT
-    CASE WHEN \"highfalutin\".\"zips\" in (select yummy.\"_virt_func_substring_4293448550966409\" from yummy where yummy.\"_virt_func_substring_4293448550966409\" is not null) THEN \"highfalutin\".\"zips\" ELSE NULL END as \"_virt_filter_zips_2159288073185462\"
-FROM
-    \"highfalutin\"),
-young as (
-SELECT
-    SUBSTRING(\"concerned\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
-FROM
-    \"concerned\"),
-late as (
-SELECT
-    \"physical_sales_store_sales\".\"SS_ITEM_SK\" as \"physical_sales_item_id\",
     \"physical_sales_store_sales\".\"SS_NET_PROFIT\" as \"physical_sales_net_profit\",
-    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
     \"physical_sales_store_store\".\"S_STORE_NAME\" as \"physical_sales_store_name\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
@@ -62,8 +50,8 @@ WHERE
 GROUP BY
     1,
     2,
-    \"late\".\"physical_sales_item_id\",
-    \"late\".\"physical_sales_ticket_number\")
+    \"physical_sales_store_sales\".\"SS_ITEM_SK\",
+    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\")
 SELECT
     \"sweltering\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
     sum(\"sweltering\".\"physical_sales_net_profit\") as \"store_net_profit\"
