@@ -202,6 +202,26 @@ class GroupNode(StrategyNode):
         # inject an additional CTE
         if self.conditions and not is_scalar_condition(self.conditions):
             base.condition = None
+            # Existence feeders (membership ``in <derived>`` subselects) only
+            # feed the lifted condition, not the group itself. They sit as
+            # datasources on ``base``; relocate them onto this wrapper SELECT —
+            # the node that actually renders the condition — so the subselect
+            # can resolve them (tracked in ``existence_source_map``, separate
+            # from row source resolution).
+            existence_addrs = {c.address for c in self.existence_concepts}
+            existence_sources = [
+                ds
+                for ds in base.datasources
+                if isinstance(ds, QueryDatasource)
+                and ds.output_concepts
+                and all(c.address in existence_addrs for c in ds.output_concepts)
+            ]
+            if existence_sources:
+                base.datasources = [
+                    ds for ds in base.datasources if ds not in existence_sources
+                ]
+                for addr in existence_addrs:
+                    base.source_map.pop(addr, None)
             base.output_concepts = unique(
                 list(base.output_concepts) + list(self.conditions.row_arguments),
                 "address",
@@ -215,10 +235,15 @@ class GroupNode(StrategyNode):
                 targets=self.output_concepts,
                 inherited_inputs=base.output_concepts,
             )
+            existence_source_map: dict[str, set[BuildDatasource | QueryDatasource]] = {}
+            for src in existence_sources:
+                for c in src.output_concepts:
+                    if c.address in existence_addrs:
+                        existence_source_map.setdefault(c.address, set()).add(src)
             return QueryDatasource(
                 input_concepts=base.output_concepts,
                 output_concepts=self.output_concepts,
-                datasources=[base],
+                datasources=[base, *existence_sources],
                 source_type=SourceType.SELECT,
                 source_map=source_map,
                 existence_source_map=resolve_existence_map(

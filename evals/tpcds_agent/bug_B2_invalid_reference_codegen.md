@@ -1,13 +1,40 @@
 # Bug B2: "Invalid reference string" codegen crash — OR-combined membership shape
 
-**Status:** OPEN (found 2026-06-06). Same invariant as
-`bug_invalid_reference_codegen_having_membership.md`, **new + simpler trigger**.
+**Status:** FIXED 2026-06-06 (`trilogy/core/processing/nodes/group_node.py`). Regression test:
+`tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_or_membership_with_projected_aggregate`.
 **Severity:** medium-high — a valid-looking query renders SQL that references a CTE never
 emitted (the `cheerful`/`juicy`/random-word labels, or `INVALID_REFERENCE_BUG`). Top token
 outlier on ingest q54 and q49.
-**Area:** `trilogy/dialect/base.py` — the dangling-reference invariant at `base.py:1135` /
-`base.py:2316` (`compile_statement`). The real gap is upstream: membership/aggregate feeder
-CTEs are not materialized for this query shape.
+
+## Root cause / fix
+
+`base.py:2316` (`compile_statement`) only *detects* the dangling reference. The real gap was in
+`GroupNode._resolve`: when a group node carries a **non-scalar** condition (here, made
+non-scalar by the aggregate `cust_total is not null`), it lifts the condition onto a wrapper
+SELECT CTE and rebuilds that CTE's source map from `base.output_concepts` only. The membership
+feeder datasources (`cat_qual`/`web_qual`), which sit as datasources on `base` and supply the
+`in (select ...)` subselects, were dropped — so the lifted membership rendered against a CTE
+that was never emitted.
+
+Fix: in the non-scalar branch, **relocate the existence feeder datasources** (sources whose
+every output concept is an existence/membership arg) from `base` onto the wrapper SELECT and
+record them in `existence_source_map`, so the subselect resolves to a real, emitted CTE. A
+purely-scalar membership (no aggregate) never injects the wrapper and was unaffected.
+
+## Separate pre-existing bugs in the SAME shape (NOT B2 — do not conflate)
+
+When the membership feeder *shares a materialized union scan* with the aggregate AND its filter
+needs a join (e.g. `... and s.date.year = 1998`), two further bugs surface — both reproduce in
+the **scalar** single-membership case (`repro_simple`) against this model with the *original*
+code, so they are independent of B2:
+- **Feeder-CTE join self-reference** → DuckDB `BinderException: Referenced table "<feeder>" not
+  found`. The feeder's join ON renders `"<feeder>"."s_date_id"` (the CTE's own name) instead of
+  the inner union source. The join concept-pair `existing_datasource` resolves to the feeder QDS
+  itself. (Standalone `select cat_qual` renders fine — only the shared-union-scan path breaks.)
+- **Predicate-pushdown over-pruning**: the feeder's `channel = 'CATALOG'` filter is pushed into
+  the shared union scan, pruning it to one channel and breaking a co-sourced `STORE` aggregate.
+The B2 fix's regression test deliberately drops the `date.year` filter so it exercises B2 alone
+and executes cleanly. The two bugs above belong to the shared-scan filter-feeder area.
 
 ## Symptom
 

@@ -122,6 +122,39 @@ select
     assert avg_duration < 2.0, f"Average duration: {avg_duration:.4f}s"
 
 
+def test_or_membership_with_projected_aggregate(engine):
+    """Regression for bug B2: ``A in X or A in Y and <agg> is not null`` where
+    ``<agg>`` is also a projected output. The aggregate makes the condition
+    non-scalar, so the group node lifts it onto a wrapper SELECT — which used to
+    strip the membership feeder sources, leaving the rendered ``in (select ...)``
+    pointing at a CTE that was never emitted (INVALID_REFERENCE_BUG / dangling
+    reference). The feeders must travel with the lifted condition."""
+    query = """
+import all_sales as s;
+
+auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG';
+auto web_qual <- s.billing_customer.id ? s.sales_channel = 'WEB';
+auto cust_total <- sum(s.ext_sales_price ? s.sales_channel = 'STORE') by s.billing_customer.id;
+
+where s.billing_customer.id in cat_qual
+   or s.billing_customer.id in web_qual
+  and cust_total is not null
+select
+    round(cust_total / 50) as segment,
+    count(s.billing_customer.id) as customer_count
+limit 100;
+"""
+    sql = engine.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    # the membership feeders must resolve to real, declared CTEs
+    referenced = set(re.findall(r"in \(select (\w+)\.", sql))
+    declared = set(re.findall(r"(\w+) as \(", sql))
+    assert referenced, sql
+    assert referenced <= declared, f"dangling membership CTEs: {referenced - declared}"
+    # and the query executes end-to-end against real data
+    engine.execute_text(query)[0].fetchall()
+
+
 def test_merge_comparison(engine):
 
     x = """

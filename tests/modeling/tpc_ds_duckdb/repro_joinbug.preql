@@ -1,0 +1,5 @@
+import all_sales as s;
+auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG' and s.date.year = 1998;
+where s.billing_customer.id in cat_qual
+select s.billing_customer.id, count(s.order_id) as order_count
+limit 100;
