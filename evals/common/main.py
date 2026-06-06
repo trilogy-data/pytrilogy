@@ -454,6 +454,9 @@ def run(spec: BenchmarkSpec) -> int:
         # agent should explore the model, not list raw DB tables. (No effect on
         # the SQL legs, which don't use the trilogy tool.)
         allow_database_introspection=False,
+        # Schema discovery goes through `explore`; the agent should not read or
+        # list raw files (drops list_files + `trilogy file read/list`).
+        allow_file_read=False,
         disable_todo=not args.enable_todo,
     )
     if args.query_ids:

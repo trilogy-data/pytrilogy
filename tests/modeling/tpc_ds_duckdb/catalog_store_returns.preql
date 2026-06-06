@@ -1,5 +1,6 @@
-# Combined info for store-sales, store-returns, and catalog-sales line
-# items keyed by a single shared (customer, item) so the same customer's
+# Bespoke model for analyze catalog sales, store sales, and store returns as a unit.
+# As catalog sales are returned to stores, used for specific analysis
+# of patterns across these 3 datasets; unsuitable for other purposes.
 # activity across all three tables can be queried as one model. Exposes
 # store quantity / net_profit, store return quantity / amount / net_loss,
 # and catalog quantity / net_profit.
@@ -14,8 +15,22 @@ import date as store_return_date;
 import date as catalog_date;
 import time as time;
 
---key ticket_number int; # Store-sale ticket number identifying a single in-store transaction.
---key catalog_order_number int; # Catalog order number identifying a single catalog sales transaction.
+key ticket_number int; # Store-sale ticket number identifying a single in-store transaction.
+key catalog_order_number int; # Catalog order number identifying a single catalog sales transaction.
+
+properties <ticket_number, item.id> (
+    store_quantity int, # Units sold at the store on this ticket line.
+    store_net_profit numeric::usd, # Net profit reported on the store sale line (USD).
+    is_returned bool, # True if the store-sold line was later returned.
+    store_return_quantity int?, # Units returned for the store-sold line.
+    --store_return_amount numeric::usd?, # Refund amount for the store-sold line (USD).
+    store_return_net_loss numeric::usd?, # Net financial loss on the store return (USD).
+);
+properties <catalog_order_number, item.id> (
+    catalog_quantity int?, # Units purchased via catalog for the same (customer, item).
+    catalog_net_profit numeric::usd?, # Net profit reported on the catalog sale line (USD).
+);
+
 
 datasource store_sales (
     SS_SOLD_DATE_SK: ?store_sale_date.id, # FK to date the store sale occurred.
@@ -43,18 +58,6 @@ datasource store_returns (
 grain (item.id, ticket_number)
 address memory.store_returns;
 
-properties <ticket_number, item.id> (
-    store_quantity int, # Units sold at the store on this ticket line.
-    store_net_profit numeric::usd, # Net profit reported on the store sale line (USD).
-    is_returned bool, # True if the store-sold line was later returned.
-    store_return_quantity int?, # Units returned for the store-sold line.
-    --store_return_amount numeric::usd?, # Refund amount for the store-sold line (USD).
-    store_return_net_loss numeric::usd?, # Net financial loss on the store return (USD).
-);
-properties <catalog_order_number, item.id> (
-    catalog_quantity int?, # Units purchased via catalog for the same (customer, item).
-    catalog_net_profit numeric::usd?, # Net profit reported on the catalog sale line (USD).
-);
 
 datasource catalog_sales (
     CS_BILL_CUSTOMER_SK: customer.id, # FK to the billed customer (joined to store_sales customer).

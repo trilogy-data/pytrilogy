@@ -115,6 +115,10 @@ class AgentState:
     # raw-table introspection is for ingest, not query generation against an
     # already-built model. Mirrors AgentConfig.allow_database_introspection.
     allow_db_introspection: bool = True
+    # When False, the `trilogy` tool refuses `file read` and the `list_files`
+    # tool is dropped at assembly time. Mirrors AgentConfig.allow_file_read —
+    # query-gen evals force schema discovery through `explore`, not raw reads.
+    allow_file_read: bool = True
 
 
 SHOW_MESSAGE_TOOL = LLMToolDefinition(
@@ -134,7 +138,7 @@ TRILOGY_TOOL = LLMToolDefinition(
         "and exit code. stdout is a stream of pretty-printed JSON event objects "
         "(newline-separated, parse successively), e.g. "
         '{"event":"result","columns":[...],"rows":[...],"row_count":N} for query '
-        'output, {"event":"concepts","namespaces":{...}} for explore, '
+        'output, {"type":"concepts","namespaces":{...}} for explore, '
         '{"event":"error","message":...} for failures. Read the events; there is '
         "no decorative formatting. Oversized output is capped on event "
         "boundaries (a trailing output_truncated event flags it)."
@@ -463,6 +467,17 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
             "semantic model is already built under raw/ — use "
             "`explore <file.preql>` to see queryable concepts (it chains in "
             "imported dimensions too). Do not list raw database tables."
+        )
+    if (
+        not state.allow_file_read
+        and _first_non_flag_arg(raw_args) == "file"
+        and ("read" in raw_args or "list" in raw_args)
+    ):
+        return (
+            "trilogy file read/list is disabled for this task. Use "
+            "`explore <file.preql>` to inspect a model's queryable concepts "
+            "(it chains in imported dimensions too) instead of reading raw "
+            "file contents. `file write` is still available."
         )
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
     # Agents consume the CLI as structured NDJSON (one JSON event per line) —

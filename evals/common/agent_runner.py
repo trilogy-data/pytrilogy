@@ -223,6 +223,7 @@ def write_trilogy_toml(
     force_tool_choice: bool = False,
     allow_database_introspection: bool = True,
     disable_todo: bool = False,
+    allow_file_read: bool = True,
 ) -> None:
     """Configure the agent subprocess: DuckDB pointing at the benchmark file,
     provider/model, and the per-query iteration budget. ``quiet = true`` drops
@@ -272,6 +273,9 @@ force_tool_choice = {str(force_tool_choice).lower()}
 # When false, the trilogy tool refuses `database list/describe` and the prompt
 # omits them — raw-table introspection is for ingest, not query generation.
 allow_database_introspection = {str(allow_database_introspection).lower()}
+# When false, the list_files tool is dropped and `trilogy file read/list` is
+# refused — schema discovery must go through `explore`, not raw file reads.
+allow_file_read = {str(allow_file_read).lower()}
 """,
         encoding="utf-8",
     )

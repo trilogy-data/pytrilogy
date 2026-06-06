@@ -180,16 +180,18 @@ def _pretty(obj: Any, level: int = 0) -> str:
     return json.dumps(obj, default=str)
 
 
-def emit_event(event: str, **fields: Any) -> None:
+def emit_event(event: str, *, discriminator: str = "event", **fields: Any) -> None:
     """Write one pretty-printed JSON event object to stdout in JSON mode;
     no-op otherwise. Successive events are newline-separated, so a consumer
     reads them with a streaming decoder (``json.JSONDecoder().raw_decode`` in
     a loop), not by splitting on lines.
 
-    ``None``-valued fields are dropped to keep the stream compact."""
+    ``discriminator`` names the leading type-tag key (default ``"event"``); the
+    explore command passes ``"type"`` instead. ``None``-valued fields are
+    dropped to keep the stream compact."""
     if not is_json_mode():
         return
-    payload: dict[str, Any] = {"event": event}
+    payload: dict[str, Any] = {discriminator: event}
     for key, value in fields.items():
         if value is not None:
             payload[key] = value

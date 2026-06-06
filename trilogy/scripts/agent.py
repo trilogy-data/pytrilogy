@@ -34,6 +34,7 @@ from trilogy.ai.providers.openrouter import OpenRouterProvider
 from trilogy.execution.config import AgentConfig, apply_env_vars
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
+    LIST_FILES_TOOL,
     SHOW_MESSAGE_TOOL,
     TODO_TOOL,
     TOOL_HANDLERS,
@@ -69,6 +70,7 @@ def get_agent_instructions(
     include_show: bool = True,
     include_todo: bool = True,
     include_database: bool = True,
+    include_file_read: bool = True,
 ) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
@@ -98,9 +100,12 @@ Available tools:
       Trilogy auto-resolves joins from the model's declared relationships.
       Join discovery is not needed;
     write `select store_sales.date_dim.year, ...;` and Trilogy
-      handles the join. There is no manual JOIN clause in this language.
+      handles the join. There is no manual JOIN clause in this language."""
+    if include_file_read:
+        base += """
     * ["file", "read", "<path>"] — read a file's raw contents (rarely needed;
-      prefer explore for model files).
+      prefer explore for model files)."""
+    base += """
     * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
       `read_file`, etc. `trilogy agent-info` lists everything that exists.
 
@@ -108,7 +113,9 @@ To create or overwrite a file (every .preql query file you write), use
 `trilogy file write <path> --content <full body>`. Pass the complete file
 body as a single string in `--content`; embed literal newlines. Trilogy
 parses the body before it lands on disk — partial or broken .preql writes
-are rejected with the parse error. Re-issue the call with the COMPLETE body.
+are rejected with the parse error. Re-issue the call with the COMPLETE body."""
+    if include_file_read:
+        base += """
 - list_files(path=".", recursive=True): list files in the workspace.
   Call this when you are unsure what files exist (e.g. before guessing a
   path like `./store_sales.preql` — the model files live under `raw/`).
@@ -683,8 +690,10 @@ def agent(
             excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
         if cfg.disable_todo:
             excluded_tool_names.add(TODO_TOOL.name)
+        if not cfg.allow_file_read:
+            excluded_tool_names.add(LIST_FILES_TOOL.name)
         tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
-        if cfg.allow_database_introspection:
+        if cfg.allow_database_introspection and cfg.allow_file_read:
             if actual_quiet and cfg.disable_todo:
                 system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
             elif actual_quiet:
@@ -694,11 +703,12 @@ def agent(
             else:
                 system_prompt = SYSTEM_PROMPT
         else:
-            # Drop the database bullet too when introspection is disabled.
+            # Drop the database / file-read bullets when those surfaces are off.
             system_prompt = get_agent_instructions(
                 include_show=not actual_quiet,
                 include_todo=not cfg.disable_todo,
-                include_database=False,
+                include_database=cfg.allow_database_introspection,
+                include_file_read=cfg.allow_file_read,
             )
 
     log_path: Path | None = None
@@ -720,6 +730,7 @@ def agent(
     state = AgentState(
         tool_output_limit=cfg.tool_output_limit,
         allow_db_introspection=cfg.allow_database_introspection,
+        allow_file_read=cfg.allow_file_read,
     )
 
     context_block = _read_context_files(context)
