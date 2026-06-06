@@ -10,6 +10,7 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.processing.nodes import FilterNode, GroupNode, MergeNode
+from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
@@ -238,8 +239,6 @@ SELECT
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
     history = History(base_environment=test_environment)
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     test_environment = test_environment.materialize_for_select()
     cat = test_environment.concepts["category_id"]

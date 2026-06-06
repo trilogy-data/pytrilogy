@@ -3,6 +3,8 @@ from pathlib import Path
 import pytest
 
 from trilogy import Dialects, Environment
+from trilogy.core.models.build import Factory, generate_concept_name
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def setup_environment():
@@ -318,9 +320,6 @@ WHERE order_date > '2024-01-15'::date
 def test_cross_dimensional_aggregation():
     """Test aggregation across different dimensions"""
     env, exec = setup_environment()
-    from trilogy.core.models.build import Factory, generate_concept_name
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     _, statements = exec.environment.parse("""
 import aggregate_testing;
@@ -352,8 +351,6 @@ SELECT
 def test_cross_dimensional_aggregation_one_key_only():
     """Test aggregation across different dimensions"""
     env, exec = setup_environment()
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     generated = exec.generate_sql("""
 import aggregate_testing;

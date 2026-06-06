@@ -7,8 +7,11 @@ generator bodies all run on a genuine plan — synthetic StrategyNodes wouldn't
 exercise the lineage/grain branches the generators isinstance-check.
 """
 
+import types
+
 import pytest
 
+import trilogy.core.processing.concept_strategies_v4 as cs
 from trilogy import Dialects, Environment
 from trilogy.constants import CONFIG
 from trilogy.core import graph as nx
@@ -39,6 +42,8 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.v4_helper.strategy_builder import _add_needed_concept
 from trilogy.core.processing.v4_node_generators.dispatch import build_node
+from trilogy.core.processing.v4_node_generators.recursive import gen_recursive
+from trilogy.core.processing.v4_node_generators.rowset import gen_rowset
 
 
 def _build(text: str) -> tuple[Environment, BuildEnvironment]:
@@ -527,10 +532,6 @@ class TestConditionInjection:
         assert [c.address for c in sources.existence_concepts] == ["local.avg_value"]
 
     def test_unresolved_row_args_raise(self, monkeypatch):
-        import types
-
-        import trilogy.core.processing.concept_strategies_v4 as cs
-
         env, benv = _build(HAVING_EXTERNAL_MODEL)
         inner = self._inner(env, benv)
         having = BuildHavingClause(
@@ -960,14 +961,10 @@ class TestDispatchGuard:
 
 class TestGeneratorGuards:
     def test_gen_recursive_without_recursive_output_returns_none(self):
-        from trilogy.core.processing.v4_node_generators.recursive import gen_recursive
-
         env, benv = _build(UNNEST_MODEL)
         assert gen_recursive([benv.concepts["local.id"]], [], benv) is None
 
     def test_gen_rowset_empty_outputs_returns_none(self):
-        from trilogy.core.processing.v4_node_generators.rowset import gen_rowset
-
         env, benv = _build(UNNEST_MODEL)
         assert (
             gen_rowset(
