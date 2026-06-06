@@ -93,10 +93,10 @@ class AgentConfig:
     # exists under raw/, and listing tables just adds a confusing, unneeded
     # surface. The per-query eval turns this off; the ingest eval leaves it on.
     allow_database_introspection: bool = True
-    # When False, the agent loses the file-reading surface: the ``list_files``
-    # tool is dropped and the ``trilogy`` tool refuses ``file read``; the prompt
-    # drops both bullets. Query-generation evals turn this off — the model is
-    # meant to discover schema via ``explore``, not by reading raw files.
+    # When False, the ``trilogy`` tool refuses ``file read`` (a gentle deny that
+    # points the agent at ``explore``) and the prompt drops the read bullet.
+    # ``file list`` still works. Query-generation evals turn this off — the model
+    # is meant to discover schema via ``explore``, not by reading raw files.
     allow_file_read: bool = True
 
 

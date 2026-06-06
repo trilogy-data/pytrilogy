@@ -11,7 +11,6 @@ from trilogy.core.models.author import (
     HavingClause,
     MultiSelectLineage,
     OrderBy,
-    WhereClause,
     WindowItem,
 )
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
@@ -91,7 +90,6 @@ def multi_select_statement(
     select_nodes: list[SyntaxNode] = []
     align_node: SyntaxNode | None = None
     derive_node: SyntaxNode | None = None
-    where_node: SyntaxNode | None = None
     having_node: SyntaxNode | None = None
     order_by_node: SyntaxNode | None = None
     limit_node: SyntaxNode | None = None
@@ -103,8 +101,6 @@ def multi_select_statement(
             align_node = child
         elif kind == SyntaxNodeKind.DERIVE_CLAUSE:
             derive_node = child
-        elif kind == SyntaxNodeKind.WHERE:
-            where_node = child
         elif kind == SyntaxNodeKind.HAVING:
             having_node = child
         elif kind == SyntaxNodeKind.ORDER_BY:
@@ -123,9 +119,10 @@ def multi_select_statement(
     for sel in selects:
         finalize_select_statement(sel, context)
 
-    # WHERE/LIMIT do not reference align-derived outputs, so hydrate them
-    # up front and fold them into the align concepts' lineage.
-    where: WhereClause | None = hydrate(where_node) if where_node else None
+    # A multi-select has no top-level WHERE: a pre-combination filter would have
+    # to sit before the first arm (indistinguishable from that arm's own WHERE),
+    # so per-arm WHERE is the only input filter. Post-combination filtering of
+    # aligned/derived outputs is expressed with HAVING (below).
     limit_val: int | None = hydrate(limit_node).count if limit_node else None
 
     derived_concepts: list = []
@@ -134,7 +131,7 @@ def multi_select_statement(
             x,
             align_c,
             selects,
-            where=where,
+            where=None,
             having=None,
             limit=limit_val,
             context=context,
@@ -142,11 +139,10 @@ def multi_select_statement(
         derived_concepts.append(concept)
         context.add_multiselect_concept(concept, meta=core_meta(node.meta))
 
-    # These clauses may reference align-derived outputs (e.g. `report_date`),
-    # so hydrate them after the align concepts are registered.
-    having: HavingClause | None = hydrate(having_node) if having_node else None
+    # DERIVE only builds the clause (no concept refs needed yet); register its
+    # output concepts before hydrating HAVING / ORDER BY, which may reference
+    # those derived outputs (e.g. `cnt_2000 <= cnt_1999`).
     derive: DeriveClause | None = hydrate(derive_node) if derive_node else None
-    order_by_val: OrderBy | None = hydrate(order_by_node) if order_by_node else None
 
     new_selects = [x.as_lineage(context.environment) for x in selects]
     multi_hidden: set[str] = set(y for x in new_selects for y in x.hidden_components)
@@ -158,8 +154,7 @@ def multi_select_statement(
         align=align_c,
         derive=derive,
         namespace=context.environment.namespace,
-        where_clause=where,
-        having_clause=having,
+        having_clause=None,
         limit=limit_val,
         hidden_components=multi_hidden,
     )
@@ -177,11 +172,16 @@ def multi_select_statement(
             )
             derived_concepts.append(concept)
             context.add_multiselect_concept(concept, meta=core_meta(node.meta))
+
+    # Hydrate after align- AND derive-derived concepts are registered so these
+    # clauses can resolve them.
+    having: HavingClause | None = hydrate(having_node) if having_node else None
+    order_by_val: OrderBy | None = hydrate(order_by_node) if order_by_node else None
     return MultiSelectStatement(
         selects=selects,
         align=align_c,
         namespace=context.environment.namespace,
-        where_clause=where,
+        having_clause=having,
         order_by=order_by_val,
         limit=limit_val,
         meta=metadata_from_meta(node.meta),

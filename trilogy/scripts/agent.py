@@ -34,7 +34,6 @@ from trilogy.ai.providers.openrouter import OpenRouterProvider
 from trilogy.execution.config import AgentConfig, apply_env_vars
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
-    LIST_FILES_TOOL,
     SHOW_MESSAGE_TOOL,
     TODO_TOOL,
     TOOL_HANDLERS,
@@ -100,13 +99,17 @@ Available tools:
       Trilogy auto-resolves joins from the model's declared relationships.
       Join discovery is not needed;
     write `select store_sales.date_dim.year, ...;` and Trilogy
-      handles the join. There is no manual JOIN clause in this language."""
+      handles the join. There is no manual JOIN clause in this language.
+    * ["file", "list", "<dir>"] (add "--recursive") — list workspace files;
+      .preql entries carry their leading-comment description. Use this when
+      unsure what exists (e.g. before guessing `./store_sales.preql` — the
+      model files live under raw/)."""
     if include_file_read:
         base += """
     * ["file", "read", "<path>"] — read a file's raw contents (rarely needed;
       prefer explore for model files)."""
     base += """
-    * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
+    * Only documented subcommands work — do NOT invent `raw`, `shell`,
       `read_file`, etc. `trilogy agent-info` lists everything that exists.
 
 To create or overwrite a file (every .preql query file you write), use
@@ -114,12 +117,6 @@ To create or overwrite a file (every .preql query file you write), use
 body as a single string in `--content`; embed literal newlines. Trilogy
 parses the body before it lands on disk — partial or broken .preql writes
 are rejected with the parse error. Re-issue the call with the COMPLETE body."""
-    if include_file_read:
-        base += """
-- list_files(path=".", recursive=True): list files in the workspace.
-  Call this when you are unsure what files exist (e.g. before guessing a
-  path like `./store_sales.preql` — the model files live under `raw/`).
-  Skips noise (`__pycache__`, `.duckdb`, `_worker_*`)."""
     if include_todo:
         base += """
 - todo(action, id=None, description=None): scratch TODO list, for multi-step
@@ -690,8 +687,6 @@ def agent(
             excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
         if cfg.disable_todo:
             excluded_tool_names.add(TODO_TOOL.name)
-        if not cfg.allow_file_read:
-            excluded_tool_names.add(LIST_FILES_TOOL.name)
         tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
         if cfg.allow_database_introspection and cfg.allow_file_read:
             if actual_quiet and cfg.disable_todo:

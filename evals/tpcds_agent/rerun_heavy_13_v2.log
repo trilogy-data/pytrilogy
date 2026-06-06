@@ -1,0 +1,171 @@
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (13 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q02] starting (worker _worker_1)
+  [q06] starting (worker _worker_0)
+  [q06] done in 232s (exit 0, score=pass)
+  [q17] starting (worker _worker_0)
+  [q02] done in 347s (exit 0, score=fail)
+  [q44] starting (worker _worker_1)
+  [q17] done in 201s (exit 0, score=pass)
+  [q49] starting (worker _worker_0)
+  [q49] done in 186s (exit 0, score=pass)
+  [q50] starting (worker _worker_0)
+  [q50] done in 77s (exit 0, score=fail)
+  [q59] starting (worker _worker_0)
+  [q44] done in 512s (exit 2, score=exhausted)
+  [q64] starting (worker _worker_1)
+  [q59] done in 174s (exit 0, score=fail)
+  [q75] starting (worker _worker_0)
+  [q75] done in 278s (exit 0, score=fail)
+  [q76] starting (worker _worker_0)
+  [q64] done in 591s (exit 0, score=fail)
+  [q77] starting (worker _worker_1)
+  [q77] done in 272s (exit 0, score=fail)
+  [q78] starting (worker _worker_1)
+  [q76] done in 644s (exit 2, score=exhausted)
+  [q86] starting (worker _worker_0)
+  [q86] done in 48s (exit 0, score=pass)
+  [q78] done in 295s (exit 0, score=fail)
+[4/5] Finalising scores for 13 queries ...
+  spliced 86 prior results from 20260606-200808
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (91 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260606-222624
+
+# TPC-DS Agent Eval — 20260606-222624
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.282
+
+## Result
+
+- **Pass rate: 49/99** (50%)
+- Status breakdown: {'pass': 49, 'fail': 44, 'timeout': 1, 'exhausted': 5}
+- Wall time: 2021.4s  |  Agent time: 3856.1s  |  Avg/query: 296.6s
+- Agent exit code: 1
+
+## Agent harness metrics
+
+- LLM iterations: 438
+- Tool calls: 503  →  {'trilogy': 490, 'return_control_to_user': 13}
+- `trilogy` subcommands: {'agent-info': 28, 'file': 186, 'explore': 110, 'run': 162, 'database': 3}
+- Tool success rate: 82% (412/503 ok)
+- Tokens: 20403361 total (20230143 prompt + 173218 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 490 | 3509 | 40462 | 0 | 0% |
+| `return_control_to_user` | 13 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 108} — total 108
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 01 | pass | 100 | 100 | 1843 |  |
+| 02 | fail | 53 | 53 | 12482 | result set differs from reference |
+| 03 | pass | 89 | 89 | 827 |  |
+| 04 | pass | 6 | 6 | 6333 |  |
+| 05 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
+| 06 | pass | 46 | 46 | 3195 |  |
+| 07 | pass | 100 | 100 | 1600 |  |
+| 08 | pass | 5 | 5 | 2974 |  |
+| 09 | pass | 1 | 1 | 6137 |  |
+| 10 | pass | 6 | 6 | 5486 |  |
+| 11 | pass | 90 | 90 | 7416 |  |
+| 12 | pass | 100 | 100 | 4769 |  |
+| 13 | pass | 1 | 1 | 2826 |  |
+| 14 | fail | 100 | 100 | 13485 | result set differs from reference |
+| 15 | fail | 100 | 100 | 1171 | result set differs from reference |
+| 16 | pass | 1 | 1 | 3277 |  |
+| 17 | pass | 0 | 0 | 6955 |  |
+| 18 | fail | 100 | 100 | 3450 | result set differs from reference |
+| 19 | pass | 100 | 100 | 1683 |  |
+| 20 | pass | 100 | 100 | 2847 |  |
+| 21 | pass | 100 | 100 | 1294 |  |
+| 22 | pass | 100 | 100 | 1277 |  |
+| 23 | fail | 4 | 0 | 11704 | result set differs from reference |
+| 24 | fail | 1 | 1 | 5517 | result set differs from reference |
+| 25 | fail | 1 | 36 | 12010 | result set differs from reference |
+| 26 | pass | 100 | 100 | 1318 |  |
+| 27 | pass | 100 | 100 | 2261 |  |
+| 28 | pass | 1 | 1 | 5969 |  |
+| 29 | pass | 1 | 1 | 14278 |  |
+| 30 | fail | 100 | 100 | 9258 | result set differs from reference |
+| 31 | fail | 44 | 45 | 4721 | result set differs from reference |
+| 32 | pass | 1 | 1 | 1064 |  |
+| 33 | pass | 100 | 100 | 4131 |  |
+| 34 | pass | 455 | 455 | 1960 |  |
+| 35 | fail | 100 | 100 | 11736 | result set differs from reference |
+| 36 | fail | 100 | 100 | 3359 | result set differs from reference |
+| 37 | pass | 1 | 1 | 1537 |  |
+| 38 | exhausted | 1 | 1 | 867 | agent exhausted iterations (was: fail) — result set differs from reference |
+| 39 | pass | 243 | 243 | 2545 |  |
+| 40 | fail | 100 | 100 | 3266 | result set differs from reference |
+| 41 | fail | 100 | 100 | 1797 | result set differs from reference |
+| 42 | pass | 10 | 10 | 1047 |  |
+| 43 | pass | 6 | 6 | 1731 |  |
+| 44 | exhausted | 0 | 0 | 0 | agent exhausted iterations (was: error) — generate_sql: InvalidSyntaxException:  |
+| 45 | pass | 19 | 19 | 1881 |  |
+| 46 | fail | 100 | 100 | 2356 | result set differs from reference |
+| 47 | pass | 100 | 100 | 5678 |  |
+| 48 | pass | 1 | 1 | 2246 |  |
+| 49 | pass | 34 | 34 | 5091 |  |
+| 50 | fail | 6 | 7 | 3430 | result set differs from reference |
+| 51 | fail | 100 | 100 | 4648 | result set differs from reference |
+| 52 | pass | 100 | 100 | 871 |  |
+| 53 | pass | 100 | 100 | 2426 |  |
+| 54 | fail | 1 | 100 | 5436 | result set differs from reference |
+| 55 | pass | 100 | 100 | 853 |  |
+| 56 | fail | 100 | 100 | 4410 | result set differs from reference |
+| 57 | pass | 100 | 100 | 4426 |  |
+| 58 | fail | 5 | 0 | 13082 | result set differs from reference |
+| 59 | fail | 100 | 100 | 5289 | result set differs from reference |
+| 60 | fail | 100 | 100 | 4876 | result set differs from reference |
+| 61 | pass | 1 | 1 | 1842 |  |
+| 62 | fail | 100 | 100 | 3980 | result set differs from reference |
+| 63 | pass | 100 | 100 | 2350 |  |
+| 64 | fail | 2 | 2 | 20009 | result set differs from reference |
+| 65 | fail | 100 | 100 | 3237 | result set differs from reference |
+| 66 | fail | 5 | 60 | 5180 | result set differs from reference |
+| 67 | fail | 100 | 100 | 4468 | result set differs from reference |
+| 68 | fail | 100 | 100 | 2438 | result set differs from reference |
+| 69 | fail | 100 | 100 | 6159 | result set differs from reference |
+| 70 | fail | 3 | 5 | 3331 | result set differs from reference |
+| 71 | fail | 1031 | 586 | 6611 | result set differs from reference |
+| 72 | pass | 100 | 100 | 2919 |  |
+| 73 | fail | 1 | 82 | 2163 | result set differs from reference |
+| 74 | pass | 92 | 92 | 2897 |  |
+| 75 | fail | 100 | 100 | 5807 | result set differs from reference |
+| 76 | exhausted | 100 | 100 | 4316 | agent exhausted iterations (was: fail) — result set differs from reference |
+| 77 | fail | 44 | 100 | 6019 | result set differs from reference |
+| 78 | fail | 100 | 100 | 5331 | result set differs from reference |
+| 79 | fail | 100 | 100 | 1973 | result set differs from reference |
+| 80 | exhausted | 100 | 100 | 7214 | agent exhausted iterations (was: fail) — result set differs from reference |
+| 81 | fail | 100 | 100 | 9320 | result set differs from reference |
+| 82 | pass | 2 | 2 | 1145 |  |
+| 83 | fail | 24 | 24 | 12537 | result set differs from reference |
+| 84 | fail | 16 | 100 | 1960 | result set differs from reference |
+| 85 | pass | 1 | 1 | 9039 |  |
+| 86 | pass | 100 | 100 | 2002 |  |
+| 87 | fail | 1 | 1 | 3873 | result set differs from reference |
+| 88 | fail | 1 | 1 | 4694 | result set differs from reference |
+| 89 | pass | 100 | 100 | 4355 |  |
+| 90 | fail | 1 | 1 | 1705 | result set differs from reference |
+| 91 | pass | 2 | 2 | 3316 |  |
+| 92 | pass | 1 | 1 | 1072 |  |
+| 93 | fail | 100 | 100 | 1348 | result set differs from reference |
+| 94 | pass | 1 | 1 | 4483 |  |
+| 95 | pass | 1 | 1 | 4347 |  |
+| 96 | fail | 1 | 1 | 1687 | result set differs from reference |
+| 97 | exhausted | 1 | 1 | 2881 | agent exhausted iterations (was: fail) — result set differs from reference |
+| 98 | pass | 2521 | 2521 | 3451 |  |
+| 99 | fail | 90 | 90 | 3440 | result set differs from reference |
+
+## Agent final message
+
+> Query written to `query86.preql` and validated successfully. It uses `by rollup ws.item.category, ws.item.class` to get the three hierarchy levels (0=category+class detail, 1=category subtotal, 2=grand total), with `grouping()` to compute the level, and a single `rank() over (partition by level, parent order by total_net_paid desc)` window for the within-parent ranking. Filters to year 2000 via `year(ws.date.date) = 2000`. Returns 100 rows as specified.
+

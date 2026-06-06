@@ -115,9 +115,10 @@ class AgentState:
     # raw-table introspection is for ingest, not query generation against an
     # already-built model. Mirrors AgentConfig.allow_database_introspection.
     allow_db_introspection: bool = True
-    # When False, the `trilogy` tool refuses `file read` and the `list_files`
-    # tool is dropped at assembly time. Mirrors AgentConfig.allow_file_read —
-    # query-gen evals force schema discovery through `explore`, not raw reads.
+    # When False, the `trilogy` tool refuses `file read` (a gentle deny that
+    # points at `explore`). `file list` stays available. Mirrors
+    # AgentConfig.allow_file_read — query-gen evals push schema discovery
+    # through `explore` rather than reading raw file contents.
     allow_file_read: bool = True
 
 
@@ -252,10 +253,13 @@ RETURN_CONTROL_TOOL = LLMToolDefinition(
     },
 )
 
+# `list_files` is intentionally NOT in the Trilogy toolset — it duplicated
+# `trilogy file list` (which now surfaces the same .preql descriptions), so the
+# agent reaches listing through the `trilogy` tool. The definition + handler are
+# kept for the no-Trilogy SQL toolset (``agent_sql_tools``), which has no CLI.
 ALL_TOOLS: list[LLMToolDefinition] = [
     SHOW_MESSAGE_TOOL,
     TRILOGY_TOOL,
-    LIST_FILES_TOOL,
     TODO_TOOL,
     RETURN_CONTROL_TOOL,
 ]
@@ -471,13 +475,13 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     if (
         not state.allow_file_read
         and _first_non_flag_arg(raw_args) == "file"
-        and ("read" in raw_args or "list" in raw_args)
+        and "read" in raw_args
     ):
         return (
-            "trilogy file read/list is disabled for this task. Use "
+            "trilogy file read is disabled for this task. Use "
             "`explore <file.preql>` to inspect a model's queryable concepts "
             "(it chains in imported dimensions too) instead of reading raw "
-            "file contents. `file write` is still available."
+            "file contents. `file list` and `file write` are still available."
         )
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
     # Agents consume the CLI as structured NDJSON (one JSON event per line) —
@@ -603,7 +607,6 @@ def handle_return_control(state: AgentState, args: dict) -> str:
 TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
     SHOW_MESSAGE_TOOL.name: handle_show_message,
     TRILOGY_TOOL.name: handle_trilogy,
-    LIST_FILES_TOOL.name: handle_list_files,
     TODO_TOOL.name: handle_todo,
     RETURN_CONTROL_TOOL.name: handle_return_control,
 }

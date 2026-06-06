@@ -273,8 +273,8 @@ force_tool_choice = {str(force_tool_choice).lower()}
 # When false, the trilogy tool refuses `database list/describe` and the prompt
 # omits them — raw-table introspection is for ingest, not query generation.
 allow_database_introspection = {str(allow_database_introspection).lower()}
-# When false, the list_files tool is dropped and `trilogy file read/list` is
-# refused — schema discovery must go through `explore`, not raw file reads.
+# When false, `trilogy file read` is refused (gentle deny pointing at explore);
+# `file list` still works. Schema discovery should go through `explore`.
 allow_file_read = {str(allow_file_read).lower()}
 """,
         encoding="utf-8",

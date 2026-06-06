@@ -943,8 +943,8 @@ class Renderer:
         base += self.to_string(arg.align)
         if arg.derive:
             base += self.to_string(arg.derive)
-        if arg.where_clause:
-            base += f"\nwhere\n{self.to_string(arg.where_clause)}"
+        if arg.having_clause:
+            base += f"\nhaving\n{self.to_string(arg.having_clause)}"
         if arg.order_by:
             base += f"\norder by\n{self.to_string(arg.order_by)}"
         if arg.limit:
@@ -960,7 +960,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: DeriveItem):
-        return f"{self.to_string(arg.expr)} -> {self._unmangle_rowset_name(arg.name)}"
+        return f"{self.to_string(arg.expr)} as {self._unmangle_rowset_name(arg.name)}"
 
     @to_string.register
     def _(self, arg: CopyStatement):

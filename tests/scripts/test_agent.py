@@ -1394,11 +1394,12 @@ def test_env_flag_invalid_value_raises_click_exception(monkeypatch):
 
 
 def test_all_tools_registered():
+    # `list_files` is intentionally absent — it was consolidated into
+    # `trilogy file list`, reached through the `trilogy` tool.
     names = {t.name for t in ALL_TOOLS}
     assert names == {
         "show_message",
         "trilogy",
-        "list_files",
         "todo",
         "return_control_to_user",
     }

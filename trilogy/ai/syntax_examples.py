@@ -172,6 +172,10 @@ order by enroll.year asc nulls first;
 #  - `by rollup <dims>` adds subtotal + grand-total rows (the dim is NULL there).
 #  - `align <name>: <colA>, <colB>` ties one column from EACH arm together; chain
 #    more alignments with `and <name2>: <colA2>, <colB2>`.
+#  - `having <cond>` (after `derive`) filters on the COMBINED/derived outputs —
+#    this is the only way to compare one arm to another (e.g. `completed < enrolled`
+#    or "rows present in both periods"). There is no top-level `where` on a
+#    multi-select (a pre-combination filter lives inside each arm's own `where`).
 import enrollments as enroll;
 
 where enroll.year = 2020
@@ -186,24 +190,29 @@ select
 align
     course: a_course, b_course
 derive
-    coalesce(enrolled_a, 0) -> enrolled,
-    coalesce(completed_b, 0) -> completed,
-    round(coalesce(completed_b, 0) * 1.0 / coalesce(enrolled_a, 0), 2) -> completion_rate
+    coalesce(enrolled_a, 0) as enrolled,
+    coalesce(completed_b, 0) as completed,
+    round(coalesce(completed_b, 0) * 1.0 / coalesce(enrolled_a, 0), 2) as completion_rate
+having completed < enrolled
 order by course asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
 # GOTCHAS (each of these is a real, repeated agent failure):
-#  - `derive` takes only FUNCTIONS/CONDITIONALS (coalesce, round, case,
-#    arithmetic, +/-/*//). A bare column rename in derive (`derive amt -> x`) or a
-#    literal (`derive 2001 -> y`) errors with "Invalid derive expression … must be
+#  - `derive` names each output with `as` or `->` (`coalesce(a,0) as x` ==
+#    `coalesce(a,0) -> x`); it takes only FUNCTIONS/CONDITIONALS (coalesce, round,
+#    case, arithmetic, +/-/*//). A bare column rename (`derive amt as x`) or a
+#    literal (`derive 2001 as y`) errors with "Invalid derive expression … must be
 #    a function or conditional". To pass a value through unchanged, make it an
 #    `align` key (aligned keys are output directly), or wrap it (`coalesce(amt,amt)`).
+#  - `derive` outputs are referenceable in `having` and `order by` (e.g.
+#    `having completed < enrolled`, `order by completion_rate desc`).
 #  - Every arm must contribute ONE column per `align` name, and the arms' selects
 #    should have matching shape. Output columns are the align keys + derive results.
 #  - Each arm has its OWN leading `where` (that is how self-pairing filters each
-#    side differently). A standalone `where …;` with no following `select` is a
-#    parse error.
+#    side differently). There is NO top-level `where` after `derive` — to filter
+#    the combined result use `having`. A standalone `where …;` with no following
+#    `select` is a parse error.
 #  - To pair on a SHIFTED key (e.g. match a period to the next one), project the
 #    shifted value as a hidden `--<expr> as key_b` column in one arm and align it
 #    to the other arm's plain key. Do NOT rely on `lead/lag(N)` for this when the
@@ -289,6 +298,10 @@ select
 # row BEFORE aggregating (so duplicates don't double-count), materialize the
 # tuple in a `rowset <- select <cols>`: a rowset select groups at its own grain,
 # emitting one row per distinct tuple. Then aggregate over the rowset's columns.
+#  - ALIAS every rowset column you reference downstream with `as`. Without `as`,
+#    the column keeps its FULL source path under the rowset name — `select
+#    sales.item.brand_id` is reachable as `rs.sales.item.brand_id`, NOT
+#    `rs.brand_id`. `as brand_id` makes it `rs.brand_id`.
 import enrollments as enroll;
 
 # Collapse repeat (student, course) enrollments to one row each (a student who
