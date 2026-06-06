@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2317 | 55 | 25.01 ms |
-| reference | 2317 | 55 | 25.72 ms |
-| v4 / ref | 1.00x | 1.00x | 0.97x |
+| v4 | 2317 | 55 | 5.20 ms |
+| reference | 2309 | 55 | 5.12 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -166,11 +166,11 @@ SELECT
     max(CASE
 	WHEN "cheerful"."sales_sales_channel" = 'CATALOG' THEN "cheerful"."sales_order_id"
 	ELSE 0
-	END) as "_pair_presence_catalog_present",
+	END) as "pair_presence_catalog_present",
     max(CASE
 	WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN "cheerful"."sales_order_id"
 	ELSE 0
-	END) as "_pair_presence_store_present"
+	END) as "pair_presence_store_present"
 FROM
     "cheerful"
 GROUP BY
@@ -178,15 +178,15 @@ GROUP BY
     "cheerful"."sales_item_id")
 SELECT
     sum(CASE
-	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" = 0 THEN 1
+	WHEN "cooperative"."pair_presence_store_present" >= 1 and "cooperative"."pair_presence_catalog_present" = 0 THEN 1
 	ELSE 0
 	END) as "store_sale_count",
     sum(CASE
-	WHEN "cooperative"."_pair_presence_store_present" = 0 and "cooperative"."_pair_presence_catalog_present" >= 1 THEN 1
+	WHEN "cooperative"."pair_presence_store_present" = 0 and "cooperative"."pair_presence_catalog_present" >= 1 THEN 1
 	ELSE 0
 	END) as "catalog_sale_count",
     sum(CASE
-	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" >= 1 THEN 1
+	WHEN "cooperative"."pair_presence_store_present" >= 1 and "cooperative"."pair_presence_catalog_present" >= 1 THEN 1
 	ELSE 0
 	END) as "both_sale_count"
 FROM

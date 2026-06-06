@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 914 | 19 | 18.12 ms |
-| reference | 914 | 19 | 19.11 ms |
-| v4 / ref | 1.00x | 1.00x | 0.95x |
+| v4 | 914 | 19 | 1.40 ms |
+| reference | 914 | 19 | 1.38 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -35,8 +35,8 @@ end;
 where
     ss.return_reason.desc = 'reason 28'
 select
-    ss.billing_customer.id as customer_sk,
-    sum(act_sales) by ss.billing_customer.id as sumsales,
+    ss.customer.id as customer_sk,
+    sum(act_sales) by ss.customer.id as sumsales,
 order by
     sumsales asc nulls first,
     customer_sk asc nulls first

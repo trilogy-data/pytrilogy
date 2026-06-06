@@ -53,6 +53,12 @@ from trilogy.core.processing.v4_helper.condition_injection import (
     ConditionSources,
     inject_condition_at_node,
 )
+from trilogy.core.processing.v4_helper.source_policy import (
+    ROWSET_SOURCE_POLICY,
+    STRICT_SOURCE_POLICY,
+    SourcePolicy,
+    source_policy_from_legacy_accept_partial,
+)
 from trilogy.utility import unique
 
 __all__ = [
@@ -76,19 +82,19 @@ class V4History(History):
     def _v4_key(
         self,
         search: list[BuildConcept],
-        accept_partial: bool,
+        source_policy: SourcePolicy,
         conditions: list[BuildWhereClause],
     ) -> str:
-        base = "-".join(sorted(c.address for c in search)) + str(accept_partial)
+        base = "-".join(sorted(c.address for c in search)) + source_policy.cache_key
         return base + str(conditions) if conditions else base
 
     def get_build_history(
         self,
         search: list[BuildConcept],
-        accept_partial: bool,
+        source_policy: SourcePolicy,
         conditions: list[BuildWhereClause],
     ) -> BuildInfo | None | bool:
-        key = self._v4_key(search, accept_partial, conditions)
+        key = self._v4_key(search, source_policy, conditions)
         if key in self.build_history:
             node = self.build_history[key]
             return node.copy() if node else node
@@ -97,11 +103,11 @@ class V4History(History):
     def build_to_history(
         self,
         search: list[BuildConcept],
-        accept_partial: bool,
+        source_policy: SourcePolicy,
         output: BuildInfo | None,
         conditions: list[BuildWhereClause],
     ) -> None:
-        self.build_history[self._v4_key(search, accept_partial, conditions)] = output
+        self.build_history[self._v4_key(search, source_policy, conditions)] = output
 
 
 def _factory_for_history(history: "V4History") -> Factory:
@@ -374,6 +380,7 @@ def resolve_rowset(
         environment=inner_env,
         depth=depth + 1,
         g=inner_g,
+        source_policy=ROWSET_SOURCE_POLICY,
         conditions=[inner_where] if inner_where else [],
     )
     inner_node = inner_info.strategy_node
@@ -505,7 +512,7 @@ def _search_concepts(
     g: ReferenceGraph,
     history: "V4History",
     conditions: list[BuildWhereClause],
-    accept_partial: bool = False,
+    source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
 ) -> BuildInfo:
     # A top-level multiselect (merge/align) isn't a single source graph — its
     # arms are independent sub-plans joined on the alignment concept. Resolve
@@ -542,7 +549,14 @@ def _search_concepts(
         return_merged_graph=True,
     )
     strategy_node = build_strategy_node(
-        group_graph, group_edges, group_attrs, mandatory_list, environment, g, history
+        group_graph,
+        group_edges,
+        group_attrs,
+        mandatory_list,
+        environment,
+        g,
+        history,
+        source_policy=source_policy,
     )
     return BuildInfo(
         concept_graph=concept_graph,
@@ -564,19 +578,26 @@ def search_concepts(
     depth: int,
     g: ReferenceGraph,
     accept_partial: bool = False,
+    source_policy: SourcePolicy | None = None,
     conditions: list[BuildWhereClause] | None = None,
 ) -> BuildInfo:
     """Run the v4 planner against `mandatory_list` under `conditions`. Cached
-    per `(mandatory_list, accept_partial, conditions)` via `history`."""
+    per `(mandatory_list, source_policy, conditions)` via `history`."""
     conditions = conditions or []
+    active_policy = source_policy or source_policy_from_legacy_accept_partial(
+        accept_partial
+    )
     hist = history.get_build_history(
-        search=mandatory_list, accept_partial=accept_partial, conditions=conditions
+        search=mandatory_list,
+        source_policy=active_policy,
+        conditions=conditions,
     )
     if hist is not False:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from "
             f"history ({'exists' if hist is not None else 'does not exist'}) for "
-            f"{[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
+            f"{[c.address for c in mandatory_list]} with source_policy "
+            f"{active_policy.cache_key}"
         )
         assert isinstance(hist, BuildInfo)
         return hist
@@ -586,14 +607,14 @@ def search_concepts(
         environment,
         depth=depth,
         g=g,
-        accept_partial=accept_partial,
+        source_policy=active_policy,
         history=history,
         conditions=conditions,
     )
     # a node may be mutated after being cached; always store a copy
     history.build_to_history(
         mandatory_list,
-        accept_partial,
+        active_policy,
         result.copy(),
         conditions=conditions,
     )

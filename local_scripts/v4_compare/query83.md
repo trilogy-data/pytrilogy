@@ -1,26 +1,24 @@
 # Query 83
 
-**Status:** `match`
+**Status:** `ref_fail`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (24 rows) |
-| reference execution | OK (24 rows) |
-| results identical | YES |
+| v4 execution | OK (0 rows) |
+| reference execution | FAILED |
 
 ## Result comparison
 
-v4 rows: 24 (24 distinct)
-ref rows: 24 (24 distinct)
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7865 | 173 | 78.34 ms |
-| reference | 7865 | 173 | 89.34 ms |
-| v4 / ref | 1.00x | 1.00x | 0.88x |
+| v4 | 7171 | 163 | 33.90 ms |
+| reference | 6782 | 160 | — |
+| v4 / ref | 1.06x | 1.02x | — |
 
 ## Preql
 
@@ -75,62 +73,51 @@ limit 100
 
 ```sql
 WITH 
+cooperative as (
+SELECT
+    "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
+    "sales_catalog_returns_unified"."CR_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_returns_unified"."CR_RETURNED_DATE_SK" as "sales_return_date_id",
+    "sales_catalog_returns_unified"."CR_RETURN_QUANTITY" as "sales_return_quantity",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_returns" as "sales_catalog_returns_unified"
+UNION ALL
+SELECT
+    "sales_store_returns_unified"."SR_ITEM_SK" as "sales_item_id",
+    "sales_store_returns_unified"."SR_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_returns_unified"."SR_RETURNED_DATE_SK" as "sales_return_date_id",
+    "sales_store_returns_unified"."SR_RETURN_QUANTITY" as "sales_return_quantity",
+     'STORE'  as "sales_sales_channel"
+FROM
+    "memory"."store_returns" as "sales_store_returns_unified"
+UNION ALL
+SELECT
+    "sales_web_returns_unified"."WR_ITEM_SK" as "sales_item_id",
+    "sales_web_returns_unified"."WR_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_returns_unified"."WR_RETURNED_DATE_SK" as "sales_return_date_id",
+    "sales_web_returns_unified"."WR_RETURN_QUANTITY" as "sales_return_quantity",
+     'WEB'  as "sales_sales_channel"
+FROM
+    "memory"."web_returns" as "sales_web_returns_unified"),
 highfalutin as (
 SELECT
     CASE WHEN cast("date_date"."D_DATE" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17') THEN "date_date"."D_WEEK_SEQ" ELSE NULL END as "target_week_seqs"
 FROM
     "memory"."date_dim" as "date_date"),
-cooperative as (
-SELECT
-    "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
-    "sales_catalog_returns_unified"."CR_ORDER_NUMBER" as "sales_order_id",
-    "sales_catalog_returns_unified"."CR_RETURN_QUANTITY" as "sales_return_quantity",
-     'CATALOG'  as "sales_sales_channel",
-    "sales_return_date_date"."D_WEEK_SEQ" as "sales_return_date_week_seq"
-FROM
-    "memory"."catalog_returns" as "sales_catalog_returns_unified"
-    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "sales_catalog_returns_unified"."CR_RETURNED_DATE_SK" = "sales_return_date_date"."D_DATE_SK"
-WHERE
-    "sales_return_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-
-UNION ALL
-SELECT
-    "sales_store_returns_unified"."SR_ITEM_SK" as "sales_item_id",
-    "sales_store_returns_unified"."SR_TICKET_NUMBER" as "sales_order_id",
-    "sales_store_returns_unified"."SR_RETURN_QUANTITY" as "sales_return_quantity",
-     'STORE'  as "sales_sales_channel",
-    "sales_return_date_date"."D_WEEK_SEQ" as "sales_return_date_week_seq"
-FROM
-    "memory"."store_returns" as "sales_store_returns_unified"
-    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "sales_store_returns_unified"."SR_RETURNED_DATE_SK" = "sales_return_date_date"."D_DATE_SK"
-WHERE
-    "sales_return_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-
-UNION ALL
-SELECT
-    "sales_web_returns_unified"."WR_ITEM_SK" as "sales_item_id",
-    "sales_web_returns_unified"."WR_ORDER_NUMBER" as "sales_order_id",
-    "sales_web_returns_unified"."WR_RETURN_QUANTITY" as "sales_return_quantity",
-     'WEB'  as "sales_sales_channel",
-    "sales_return_date_date"."D_WEEK_SEQ" as "sales_return_date_week_seq"
-FROM
-    "memory"."web_returns" as "sales_web_returns_unified"
-    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "sales_web_returns_unified"."WR_RETURNED_DATE_SK" = "sales_return_date_date"."D_DATE_SK"
-WHERE
-    "sales_return_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-),
 uneven as (
 SELECT
     "cooperative"."sales_order_id" as "sales_order_id",
-    "cooperative"."sales_return_date_week_seq" as "sales_return_date_week_seq",
     "cooperative"."sales_return_quantity" as "sales_return_quantity",
     "cooperative"."sales_sales_channel" as "sales_sales_channel",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id",
+    "sales_return_date_date"."D_WEEK_SEQ" as "sales_return_date_week_seq"
 FROM
     "memory"."item" as "sales_item_items"
     INNER JOIN "cooperative" on "sales_item_items"."I_ITEM_SK" = "cooperative"."sales_item_id"
+    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "cooperative"."sales_return_date_id" = "sales_return_date_date"."D_DATE_SK"
 WHERE
-    "cooperative"."sales_return_date_week_seq" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
+    "sales_return_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
 
 GROUP BY
     1,
@@ -214,6 +201,7 @@ FROM
 sweltering as (
 SELECT
     "abhorrent"."cr_item_present" as "cr_item_present",
+    "abhorrent"."sr_item_present" as "sr_item_present",
     "abhorrent"."wr_item_present" as "wr_item_present",
     "young"."average" as "average",
     "young"."cr_dev" as "cr_dev",
@@ -241,7 +229,7 @@ SELECT
 FROM
     "sweltering"
 WHERE
-    "sweltering"."cr_item_present" > 0 and "sweltering"."wr_item_present" > 0
+    "sweltering"."sr_item_present" > 0 and "sweltering"."cr_item_present" > 0 and "sweltering"."wr_item_present" > 0
 
 ORDER BY 
     "sweltering"."item_id" asc nulls first,
@@ -253,69 +241,75 @@ LIMIT (100)
 
 ```sql
 WITH 
-highfalutin as (
+quizzical as (
 SELECT
-    CASE WHEN cast("date_date"."D_DATE" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17') THEN "date_date"."D_WEEK_SEQ" ELSE NULL END as "target_week_seqs"
+    "date_date"."D_WEEK_SEQ" as "target_week_seqs"
 FROM
-    "memory"."date_dim" as "date_date"),
-cooperative as (
+    "memory"."date_dim" as "date_date"
+WHERE
+    cast("date_date"."D_DATE" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17')
+
+GROUP BY
+    1),
+questionable as (
 SELECT
     "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
     "sales_catalog_returns_unified"."CR_ORDER_NUMBER" as "sales_order_id",
-    "sales_catalog_returns_unified"."CR_RETURN_QUANTITY" as "sales_return_quantity",
+    "sales_catalog_returns_unified"."CR_RETURNED_DATE_SK" as "sales_return_date_id",
      'CATALOG'  as "sales_sales_channel",
-    "sales_return_date_date"."D_WEEK_SEQ" as "sales_return_date_week_seq"
+    "sales_catalog_returns_unified"."CR_RETURN_QUANTITY" as "sales_return_quantity"
 FROM
     "memory"."catalog_returns" as "sales_catalog_returns_unified"
-    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "sales_catalog_returns_unified"."CR_RETURNED_DATE_SK" = "sales_return_date_date"."D_DATE_SK"
-WHERE
-    "sales_return_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-
 UNION ALL
 SELECT
     "sales_store_returns_unified"."SR_ITEM_SK" as "sales_item_id",
     "sales_store_returns_unified"."SR_TICKET_NUMBER" as "sales_order_id",
-    "sales_store_returns_unified"."SR_RETURN_QUANTITY" as "sales_return_quantity",
+    "sales_store_returns_unified"."SR_RETURNED_DATE_SK" as "sales_return_date_id",
      'STORE'  as "sales_sales_channel",
-    "sales_return_date_date"."D_WEEK_SEQ" as "sales_return_date_week_seq"
+    "sales_store_returns_unified"."SR_RETURN_QUANTITY" as "sales_return_quantity"
 FROM
     "memory"."store_returns" as "sales_store_returns_unified"
-    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "sales_store_returns_unified"."SR_RETURNED_DATE_SK" = "sales_return_date_date"."D_DATE_SK"
-WHERE
-    "sales_return_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-
 UNION ALL
 SELECT
     "sales_web_returns_unified"."WR_ITEM_SK" as "sales_item_id",
     "sales_web_returns_unified"."WR_ORDER_NUMBER" as "sales_order_id",
-    "sales_web_returns_unified"."WR_RETURN_QUANTITY" as "sales_return_quantity",
+    "sales_web_returns_unified"."WR_RETURNED_DATE_SK" as "sales_return_date_id",
      'WEB'  as "sales_sales_channel",
-    "sales_return_date_date"."D_WEEK_SEQ" as "sales_return_date_week_seq"
+    "sales_web_returns_unified"."WR_RETURN_QUANTITY" as "sales_return_quantity"
 FROM
-    "memory"."web_returns" as "sales_web_returns_unified"
-    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "sales_web_returns_unified"."WR_RETURNED_DATE_SK" = "sales_return_date_date"."D_DATE_SK"
-WHERE
-    "sales_return_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-),
-uneven as (
+    "memory"."web_returns" as "sales_web_returns_unified"),
+concerned as (
 SELECT
-    "cooperative"."sales_order_id" as "sales_order_id",
-    "cooperative"."sales_return_date_week_seq" as "sales_return_date_week_seq",
-    "cooperative"."sales_return_quantity" as "sales_return_quantity",
-    "cooperative"."sales_sales_channel" as "sales_sales_channel",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id",
+    CASE WHEN "questionable"."sales_sales_channel" = 'CATALOG' THEN "questionable"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_7518965045904948",
+    CASE WHEN "questionable"."sales_sales_channel" = 'STORE' THEN "questionable"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_5282889778133979",
+    CASE WHEN "questionable"."sales_sales_channel" = 'WEB' THEN "questionable"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_4128599423878258"
 FROM
     "memory"."item" as "sales_item_items"
-    INNER JOIN "cooperative" on "sales_item_items"."I_ITEM_SK" = "cooperative"."sales_item_id"
-WHERE
-    "cooperative"."sales_return_date_week_seq" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-
+    LEFT OUTER JOIN "questionable" on "sales_item_items"."I_ITEM_SK" = "questionable"."sales_item_id"
 GROUP BY
     1,
     2,
     3,
     4,
-    5,
+    "questionable"."sales_order_id"),
+yummy as (
+SELECT
+    "questionable"."sales_return_quantity" as "sales_return_quantity",
+    "questionable"."sales_sales_channel" as "sales_sales_channel",
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
+FROM
+    "memory"."item" as "sales_item_items"
+    INNER JOIN "questionable" on "sales_item_items"."I_ITEM_SK" = "questionable"."sales_item_id"
+    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "questionable"."sales_return_date_id" = "sales_return_date_date"."D_DATE_SK"
+WHERE
+    "sales_return_date_date"."D_WEEK_SEQ" in (select quizzical."target_week_seqs" from quizzical where quizzical."target_week_seqs" is not null)
+
+GROUP BY
+    1,
+    2,
+    3,
+    "questionable"."sales_order_id",
     "sales_item_items"."I_ITEM_SK"),
 yummy as (
 SELECT
@@ -324,30 +318,12 @@ SELECT
     "uneven"."sales_return_quantity" as "sales_return_quantity",
     "uneven"."sales_sales_channel" as "sales_sales_channel"
 FROM
-    "uneven"
+    "memory"."item" as "sales_item_items"
+    INNER JOIN "questionable" on "sales_item_items"."I_ITEM_SK" = "questionable"."sales_item_id"
+    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "questionable"."sales_return_date_id" = "sales_return_date_date"."D_DATE_SK"
 WHERE
-    "uneven"."sales_return_date_week_seq" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-),
-juicy as (
-SELECT
-    "yummy"."sales_item_text_id" as "sales_item_text_id",
-    "yummy"."sales_order_id" as "sales_order_id",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_7518965045904948",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_return_quantity" ELSE NULL END as "_virt_filter_return_quantity_1904161637839137",
-    CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_5282889778133979",
-    CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_return_quantity" ELSE NULL END as "_virt_filter_return_quantity_6293408465554798",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_4128599423878258",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_return_quantity" ELSE NULL END as "_virt_filter_return_quantity_6234128225083739"
-FROM
-    "yummy"),
-sparkling as (
-SELECT
-    "juicy"."_virt_filter_order_id_4128599423878258" as "_virt_filter_order_id_4128599423878258",
-    "juicy"."_virt_filter_order_id_5282889778133979" as "_virt_filter_order_id_5282889778133979",
-    "juicy"."_virt_filter_order_id_7518965045904948" as "_virt_filter_order_id_7518965045904948",
-    "juicy"."sales_item_text_id" as "sales_item_text_id"
-FROM
-    "juicy"
+    "sales_return_date_date"."D_WEEK_SEQ" in (select quizzical."target_week_seqs" from quizzical where quizzical."target_week_seqs" is not null)
+
 GROUP BY
     1,
     2,
@@ -366,44 +342,43 @@ GROUP BY
     1),
 abhorrent as (
 SELECT
-    "sparkling"."sales_item_text_id" as "sales_item_text_id",
-    count("sparkling"."_virt_filter_order_id_4128599423878258") as "wr_item_present",
-    count("sparkling"."_virt_filter_order_id_5282889778133979") as "sr_item_present",
-    count("sparkling"."_virt_filter_order_id_7518965045904948") as "cr_item_present"
+    "concerned"."sales_item_text_id" as "sales_item_text_id",
+    count("concerned"."_virt_filter_order_id_4128599423878258") as "wr_item_present",
+    count("concerned"."_virt_filter_order_id_5282889778133979") as "sr_item_present",
+    count("concerned"."_virt_filter_order_id_7518965045904948") as "cr_item_present"
 FROM
-    "sparkling"
+    "concerned"
 GROUP BY
     1
 HAVING
     "sr_item_present" > 0
 ),
-young as (
+juicy as (
 SELECT
-    "vacuous"."cr_item_qty" as "cr_item_qty",
-    "vacuous"."sales_item_text_id" as "item_id",
-    "vacuous"."sr_item_qty" as "sr_item_qty",
-    "vacuous"."wr_item_qty" as "wr_item_qty",
-    ( ( "vacuous"."sr_item_qty" + "vacuous"."cr_item_qty" ) + "vacuous"."wr_item_qty" ) / 3.0 as "average",
-    ( ( ("vacuous"."cr_item_qty" * 1.0) / ( ( "vacuous"."sr_item_qty" + "vacuous"."cr_item_qty" ) + "vacuous"."wr_item_qty" ) ) / 3.0 ) * 100 as "cr_dev",
-    ( ( ("vacuous"."sr_item_qty" * 1.0) / ( ( "vacuous"."sr_item_qty" + "vacuous"."cr_item_qty" ) + "vacuous"."wr_item_qty" ) ) / 3.0 ) * 100 as "sr_dev",
-    ( ( ("vacuous"."wr_item_qty" * 1.0) / ( ( "vacuous"."sr_item_qty" + "vacuous"."cr_item_qty" ) + "vacuous"."wr_item_qty" ) ) / 3.0 ) * 100 as "wr_dev"
+    "yummy"."sales_item_text_id" as "sales_item_text_id",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_return_quantity" ELSE NULL END) as "cr_item_qty",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_return_quantity" ELSE NULL END) as "sr_item_qty",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_return_quantity" ELSE NULL END) as "wr_item_qty"
 FROM
-    "vacuous"),
+    "yummy"
+GROUP BY
+    1),
 sweltering as (
 SELECT
     "abhorrent"."cr_item_present" as "cr_item_present",
+    "abhorrent"."sr_item_present" as "sr_item_present",
     "abhorrent"."wr_item_present" as "wr_item_present",
-    "young"."average" as "average",
-    "young"."cr_dev" as "cr_dev",
-    "young"."cr_item_qty" as "cr_item_qty",
-    "young"."item_id" as "item_id",
-    "young"."sr_dev" as "sr_dev",
-    "young"."sr_item_qty" as "sr_item_qty",
-    "young"."wr_dev" as "wr_dev",
-    "young"."wr_item_qty" as "wr_item_qty"
+    "juicy"."cr_item_qty" as "cr_item_qty",
+    "juicy"."sales_item_text_id" as "item_id",
+    "juicy"."sr_item_qty" as "sr_item_qty",
+    "juicy"."wr_item_qty" as "wr_item_qty",
+    ( ( "juicy"."sr_item_qty" + "juicy"."cr_item_qty" ) + "juicy"."wr_item_qty" ) / 3.0 as "average",
+    ( ( ("juicy"."cr_item_qty" * 1.0) / ( ( "juicy"."sr_item_qty" + "juicy"."cr_item_qty" ) + "juicy"."wr_item_qty" ) ) / 3.0 ) * 100 as "cr_dev",
+    ( ( ("juicy"."sr_item_qty" * 1.0) / ( ( "juicy"."sr_item_qty" + "juicy"."cr_item_qty" ) + "juicy"."wr_item_qty" ) ) / 3.0 ) * 100 as "sr_dev",
+    ( ( ("juicy"."wr_item_qty" * 1.0) / ( ( "juicy"."sr_item_qty" + "juicy"."cr_item_qty" ) + "juicy"."wr_item_qty" ) ) / 3.0 ) * 100 as "wr_dev"
 FROM
     "abhorrent"
-    INNER JOIN "young" on "abhorrent"."sales_item_text_id" = "young"."item_id"
+    INNER JOIN "juicy" on "abhorrent"."sales_item_text_id" = "juicy"."sales_item_text_id"
 WHERE
     "abhorrent"."sr_item_present" > 0
 )
@@ -419,10 +394,30 @@ SELECT
 FROM
     "sweltering"
 WHERE
-    "sweltering"."cr_item_present" > 0 and "sweltering"."wr_item_present" > 0
+    "sweltering"."sr_item_present" > 0 and "sweltering"."cr_item_present" > 0 and "sweltering"."wr_item_present" > 0
 
 ORDER BY 
     "sweltering"."item_id" asc nulls first,
     "sweltering"."sr_item_qty" asc nulls first
 LIMIT (100)
+```
+
+## reference execution error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in run_one
+    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
+                                               ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 54, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in <lambda>
+    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
+                                                             ~~~~~^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 315, in _exec
+    return execute(con, bound_sql, params or None)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 225, in execute
+    cursor = con.execute(sql, params) if params else con.execute(sql)
+                                                     ~~~~~~~~~~~^^^^^
+_duckdb.ParserException: Parser Error: Duplicate CTE name "yummy"
 ```

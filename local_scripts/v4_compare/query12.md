@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (14 rows) |
+| reference execution | OK (14 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 14 (14 distinct)
+ref rows: 14 (14 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2033 | 48 | 26.68 ms |
-| reference | 2033 | 48 | 28.74 ms |
-| v4 / ref | 1.00x | 1.00x | 0.93x |
+| v4 | 2033 | 48 | 6.28 ms |
+| reference | 2029 | 48 | 6.19 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -127,7 +127,7 @@ GROUP BY
     3,
     4,
     5),
-questionable as (
+cooperative as (
 SELECT
     "cheerful"."web_sales_item_class" as "web_sales_item_class",
     sum("cheerful"."itemrevenue") as "itemclassrevenue"
@@ -142,10 +142,10 @@ SELECT
     "cheerful"."web_sales_item_class" as "web_sales_item_class",
     "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
     "cheerful"."itemrevenue" as "itemrevenue",
-    ("cheerful"."itemrevenue" * 100.0) / "questionable"."itemclassrevenue" as "revenueratio"
+    ("cheerful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio"
 FROM
     "cheerful"
-    INNER JOIN "questionable" on "cheerful"."web_sales_item_class" is not distinct from "questionable"."web_sales_item_class"
+    INNER JOIN "cooperative" on "cheerful"."web_sales_item_class" is not distinct from "cooperative"."web_sales_item_class"
 ORDER BY 
     "cheerful"."web_sales_item_category" asc,
     "cheerful"."web_sales_item_class" asc,

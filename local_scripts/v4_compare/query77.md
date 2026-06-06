@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (44 rows) |
-| reference execution | OK (44 rows) |
+| v4 execution | OK (8 rows) |
+| reference execution | OK (8 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 44 (44 distinct)
-ref rows: 44 (44 distinct)
+v4 rows: 8 (8 distinct)
+ref rows: 8 (8 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10251 | 248 | 36.90 ms |
-| reference | 7495 | 166 | 31.34 ms |
-| v4 / ref | 1.37x | 1.49x | 1.18x |
+| v4 | 10046 | 247 | 21.10 ms |
+| reference | 7495 | 166 | 19.17 ms |
+| v4 / ref | 1.34x | 1.49x | 1.10x |
 
 ## Preql
 
@@ -177,8 +177,7 @@ SELECT
     sum("ss_store_returns"."SR_NET_LOSS") as "_sr_grouped_sr_loss",
     sum("ss_store_returns"."SR_RETURN_AMT") as "_sr_grouped_sr_returns"
 FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    "memory"."store_returns" as "ss_store_returns"
     INNER JOIN "memory"."date_dim" as "ss_return_date_date" on "ss_store_returns"."SR_RETURNED_DATE_SK" = "ss_return_date_date"."D_DATE_SK"
 WHERE
     cast("ss_return_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end

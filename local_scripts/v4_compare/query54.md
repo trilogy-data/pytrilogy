@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
-| reference execution | OK (1 rows) |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6560 | 164 | 31.39 ms |
-| reference | 4263 | 91 | 19.28 ms |
-| v4 / ref | 1.54x | 1.80x | 1.63x |
+| v4 | 6818 | 173 | 9.11 ms |
+| reference | 4207 | 91 | 6.76 ms |
+| v4 / ref | 1.62x | 1.90x | 1.35x |
 
 ## Preql
 
@@ -47,14 +47,14 @@ select
 # (count of stores in customer's county/state), via 2 rowsets keyed on
 # (county, state) and merged.
 rowset cust_ss <- where
-    ss.billing_customer.id in my_customers.my_cust_id
+    ss.customer.id in my_customers.my_cust_id
     and ss.date.month_seq >= 1188
     and ss.date.month_seq <= 1190
-    and ss.billing_customer.id is not null
+    and ss.customer.id is not null
 select
-    ss.billing_customer.id as ss_cust_id,
-    ss.billing_customer.address.county as ss_cust_county,
-    ss.billing_customer.address.state as ss_cust_state,
+    ss.customer.id as ss_cust_id,
+    ss.customer.address.county as ss_cust_county,
+    ss.customer.address.state as ss_cust_state,
     sum(ss.ext_sales_price) as ss_revenue,
 ;
 
@@ -104,7 +104,10 @@ GROUP BY
     2),
 cheerful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+     'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -114,7 +117,10 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+     'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -135,7 +141,10 @@ SELECT
 FROM
     "cheerful"
 GROUP BY
-    1),
+    1,
+    "cheerful"."sales_date_id",
+    "cheerful"."sales_item_id",
+    "cheerful"."sales_sales_channel"),
 charming as (
 SELECT
     "busy"."_stores_cs_scs_count" as "stores_cs_scs_count",
@@ -143,37 +152,37 @@ SELECT
     "busy"."_stores_cs_scs_state" as "stores_cs_scs_state"
 FROM
     "busy"),
-uneven as (
+abundant as (
 SELECT
     "thoughtful"."sales_billing_customer_id" as "_my_customers_my_cust_id"
 FROM
     "thoughtful"),
 yummy as (
 SELECT
-    "uneven"."_my_customers_my_cust_id" as "my_customers_my_cust_id"
+    "abundant"."_my_customers_my_cust_id" as "my_customers_my_cust_id"
 FROM
-    "uneven"),
+    "abundant"),
 sparkling as (
 SELECT
-    "ss_billing_customer_address_customer_address"."CA_COUNTY" as "ss_billing_customer_address_county",
-    "ss_billing_customer_address_customer_address"."CA_STATE" as "ss_billing_customer_address_state",
-    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_billing_customer_id",
+    "ss_customer_address_customer_address"."CA_COUNTY" as "ss_customer_address_county",
+    "ss_customer_address_customer_address"."CA_STATE" as "ss_customer_address_state",
+    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_id",
     "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
     "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
     "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "ss_date_date"."D_MONTH_SEQ" >= 1188 and "ss_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_CUSTOMER_SK" in (select yummy."my_customers_my_cust_id" from yummy where yummy."my_customers_my_cust_id" is not null)
 ),
 abhorrent as (
 SELECT
-    "sparkling"."ss_billing_customer_address_county" as "ss_billing_customer_address_county",
-    "sparkling"."ss_billing_customer_address_state" as "ss_billing_customer_address_state",
-    "sparkling"."ss_billing_customer_id" as "ss_billing_customer_id",
+    "sparkling"."ss_customer_address_county" as "ss_customer_address_county",
+    "sparkling"."ss_customer_address_state" as "ss_customer_address_state",
+    "sparkling"."ss_customer_id" as "ss_customer_id",
     "sparkling"."ss_ext_sales_price" as "ss_ext_sales_price"
 FROM
     "sparkling"
@@ -186,9 +195,9 @@ GROUP BY
     "sparkling"."ss_ticket_number"),
 late as (
 SELECT
-    "abhorrent"."ss_billing_customer_address_county" as "ss_billing_customer_address_county",
-    "abhorrent"."ss_billing_customer_address_state" as "ss_billing_customer_address_state",
-    "abhorrent"."ss_billing_customer_id" as "ss_billing_customer_id",
+    "abhorrent"."ss_customer_address_county" as "ss_customer_address_county",
+    "abhorrent"."ss_customer_address_state" as "ss_customer_address_state",
+    "abhorrent"."ss_customer_id" as "ss_customer_id",
     sum("abhorrent"."ss_ext_sales_price") as "_cust_ss_ss_revenue"
 FROM
     "abhorrent"
@@ -199,9 +208,9 @@ GROUP BY
 macho as (
 SELECT
     "late"."_cust_ss_ss_revenue" as "_cust_ss_ss_revenue",
-    "late"."ss_billing_customer_address_county" as "_cust_ss_ss_cust_county",
-    "late"."ss_billing_customer_address_state" as "_cust_ss_ss_cust_state",
-    "late"."ss_billing_customer_id" as "_cust_ss_ss_cust_id"
+    "late"."ss_customer_address_county" as "_cust_ss_ss_cust_county",
+    "late"."ss_customer_address_state" as "_cust_ss_ss_cust_state",
+    "late"."ss_customer_id" as "_cust_ss_ss_cust_id"
 FROM
     "late"),
 scrawny as (
@@ -300,15 +309,15 @@ GROUP BY
     1),
 concerned as (
 SELECT
-    "ss_billing_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
-    "ss_billing_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
+    "ss_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
+    "ss_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
     "ss_store_sales"."SS_CUSTOMER_SK" as "cust_ss_ss_cust_id",
     sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "cust_ss_ss_revenue"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "ss_store_sales"."SS_CUSTOMER_SK" in (select thoughtful."my_customers_my_cust_id" from thoughtful where thoughtful."my_customers_my_cust_id" is not null) and "ss_date_date"."D_MONTH_SEQ" >= 1188 and "ss_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_sales"."SS_CUSTOMER_SK" is not null
 

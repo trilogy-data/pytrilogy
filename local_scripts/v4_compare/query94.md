@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3507 | 97 | 47.24 ms |
-| reference | 3507 | 97 | 42.99 ms |
-| v4 / ref | 1.00x | 1.00x | 1.10x |
+| v4 | 3507 | 97 | 6.60 ms |
+| reference | 3548 | 83 | 5.19 ms |
+| v4 / ref | 0.99x | 1.17x | 1.27x |
 
 ## Preql
 
@@ -152,7 +152,7 @@ LIMIT (100)
 
 ```sql
 WITH 
-abundant as (
+questionable as (
 SELECT
     "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number",
     "ws_web_sales"."WS_WAREHOUSE_SK" as "ws_warehouse_id"
@@ -168,27 +168,23 @@ FROM
     "memory"."web_returns" as "wr_web_returns"
 GROUP BY
     1),
-uneven as (
+abundant as (
 SELECT
-    "abundant"."ws_order_number" as "ws_order_number",
-    count("abundant"."ws_warehouse_id") as "_virt_agg_count_9309405360138092"
+    "questionable"."ws_order_number" as "multi_warehouse_orders"
 FROM
-    "abundant"
+    "questionable"
 GROUP BY
     1
 HAVING
-    "_virt_agg_count_9309405360138092" > 1
+    count("questionable"."ws_warehouse_id") > 1
 ),
-juicy as (
+uneven as (
 SELECT
-    CASE WHEN "uneven"."_virt_agg_count_9309405360138092" > 1 THEN "uneven"."ws_order_number" ELSE NULL END as "multi_warehouse_orders"
+    "abundant"."multi_warehouse_orders" as "multi_warehouse_orders"
 FROM
-    "uneven"),
-questionable as (
+    "abundant"),
+cooperative as (
 SELECT
-    "ws_web_sales"."WS_EXT_SHIP_COST" as "ws_ext_ship_cost",
-    "ws_web_sales"."WS_ITEM_SK" as "ws_item_id",
-    "ws_web_sales"."WS_NET_PROFIT" as "ws_net_profit",
     "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number"
 FROM
     "memory"."web_sales" as "ws_web_sales"
@@ -196,42 +192,32 @@ FROM
     INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
     INNER JOIN "memory"."customer_address" as "ws_ship_address_customer_address" on "ws_web_sales"."WS_SHIP_ADDR_SK" = "ws_ship_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("ws_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_address_customer_address"."CA_STATE" = 'IL' and "ws_web_site_web_site"."web_company_name" = 'pri' and "ws_web_sales"."WS_ORDER_NUMBER" in (select juicy."multi_warehouse_orders" from juicy where juicy."multi_warehouse_orders" is not null) and "ws_web_sales"."WS_ORDER_NUMBER" not in (select quizzical."wr_web_sales_order_number" from quizzical where quizzical."wr_web_sales_order_number" is not null)
-),
-vacuous as (
-SELECT
-    "questionable"."ws_ext_ship_cost" as "ws_ext_ship_cost",
-    "questionable"."ws_item_id" as "ws_item_id",
-    "questionable"."ws_net_profit" as "ws_net_profit",
-    "questionable"."ws_order_number" as "ws_order_number"
-FROM
-    "questionable"
-WHERE
-    "questionable"."ws_order_number" in (select juicy."multi_warehouse_orders" from juicy where juicy."multi_warehouse_orders" is not null) and "questionable"."ws_order_number" not in (select quizzical."wr_web_sales_order_number" from quizzical where quizzical."wr_web_sales_order_number" is not null)
-),
-sparkling as (
-SELECT
-    "vacuous"."ws_order_number" as "ws_order_number"
-FROM
-    "vacuous"
+    "ws_web_site_web_site"."web_company_name" = 'pri' and cast("ws_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_address_customer_address"."CA_STATE" = 'IL' and "ws_web_sales"."WS_ORDER_NUMBER" in (select uneven."multi_warehouse_orders" from uneven where uneven."multi_warehouse_orders" is not null) and "ws_web_sales"."WS_ORDER_NUMBER" not in (select quizzical."wr_web_sales_order_number" from quizzical where quizzical."wr_web_sales_order_number" is not null)
+
 GROUP BY
     1),
 concerned as (
 SELECT
-    "vacuous"."ws_ext_ship_cost" as "ws_ext_ship_cost",
-    "vacuous"."ws_net_profit" as "ws_net_profit"
+    "ws_web_sales"."WS_EXT_SHIP_COST" as "ws_ext_ship_cost",
+    "ws_web_sales"."WS_NET_PROFIT" as "ws_net_profit"
 FROM
-    "vacuous"
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "ws_ship_address_customer_address" on "ws_web_sales"."WS_SHIP_ADDR_SK" = "ws_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("ws_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_address_customer_address"."CA_STATE" = 'IL' and "ws_web_site_web_site"."web_company_name" = 'pri' and "ws_web_sales"."WS_ORDER_NUMBER" in (select uneven."multi_warehouse_orders" from uneven where uneven."multi_warehouse_orders" is not null) and "ws_web_sales"."WS_ORDER_NUMBER" not in (select quizzical."wr_web_sales_order_number" from quizzical where quizzical."wr_web_sales_order_number" is not null)
+
 GROUP BY
     1,
     2,
-    "vacuous"."ws_item_id",
-    "vacuous"."ws_order_number"),
-abhorrent as (
+    "ws_web_sales"."WS_ITEM_SK",
+    "ws_web_sales"."WS_ORDER_NUMBER"),
+vacuous as (
 SELECT
-    count(distinct "sparkling"."ws_order_number") as "order_count"
+    count(distinct "cooperative"."ws_order_number") as "order_count"
 FROM
-    "sparkling"),
+    "cooperative"),
 young as (
 SELECT
     sum("concerned"."ws_ext_ship_cost") as "total_shipping_cost",
@@ -239,13 +225,13 @@ SELECT
 FROM
     "concerned")
 SELECT
-    "abhorrent"."order_count" as "order_count",
+    "vacuous"."order_count" as "order_count",
     "young"."total_shipping_cost" as "total_shipping_cost",
     "young"."total_net_profit" as "total_net_profit"
 FROM
-    "young"
-    FULL JOIN "abhorrent" on 1=1
+    "vacuous"
+    FULL JOIN "young" on 1=1
 ORDER BY 
-    "abhorrent"."order_count" asc
+    "vacuous"."order_count" asc
 LIMIT (100)
 ```

@@ -2,6 +2,10 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.v4_helper.source_policy import (
+    STRICT_SOURCE_POLICY,
+    SourcePolicy,
+)
 
 
 def gen_rowset(
@@ -13,6 +17,7 @@ def gen_rowset(
     *,
     history: History,
     g: ReferenceGraph,
+    source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
 ) -> StrategyNode | None:
     """Boundary node for a rowset reference. The rowset's inner select is a
     self-contained sub-query, so — like ROOT — this generator ignores the

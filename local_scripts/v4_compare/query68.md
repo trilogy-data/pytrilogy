@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (16 rows) |
+| reference execution | OK (16 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 16 (16 distinct)
+ref rows: 16 (16 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4731 | 80 | 38.79 ms |
-| reference | 4731 | 80 | 36.77 ms |
-| v4 / ref | 1.00x | 1.00x | 1.06x |
+| v4 | 4691 | 80 | 9.85 ms |
+| reference | 3158 | 50 | 8.96 ms |
+| v4 / ref | 1.49x | 1.60x | 1.10x |
 
 ## Preql
 
@@ -36,10 +36,10 @@ rowset dn <- where
     )
     and physical_sales.date.year in (1999, 2000, 2001)
     and physical_sales.store.city in ('Fairview', 'Midway')
-    and physical_sales.billing_customer.id is not null
+    and physical_sales.customer.id is not null
 select
     physical_sales.ticket_number,
-    physical_sales.billing_customer.id,
+    physical_sales.customer.id,
     physical_sales.sale_address.city,
     sum(physical_sales.ext_sales_price) as extended_price,
     sum(physical_sales.ext_tax) as extended_tax,
@@ -51,7 +51,7 @@ select
     customer.first_name,
     customer.address.city,
 align
-    customer_id: physical_sales.billing_customer.id, customer.id
+    customer_id: physical_sales.customer.id, customer.id
 where
 customer.address.city != physical_sales.sale_address.city
 ;
@@ -90,7 +90,7 @@ uneven as (
 SELECT
     "physical_sales_sale_address_customer_address"."CA_CITY" as "physical_sales_sale_address_city",
     "physical_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
-    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_billing_customer_id",
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_customer_id",
     "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
     sum("physical_sales_store_sales"."SS_EXT_LIST_PRICE") as "_dn_list_price",
     sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "_dn_extended_price",
@@ -113,7 +113,7 @@ SELECT
     "uneven"."_dn_extended_price" as "_dn_extended_price",
     "uneven"."_dn_extended_tax" as "_dn_extended_tax",
     "uneven"."_dn_list_price" as "_dn_list_price",
-    "uneven"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
+    "uneven"."physical_sales_customer_id" as "physical_sales_customer_id",
     "uneven"."physical_sales_sale_address_city" as "physical_sales_sale_address_city",
     "uneven"."physical_sales_ticket_number" as "physical_sales_ticket_number",
     "wakeful"."customer_address_city" as "customer_address_city",
@@ -135,7 +135,7 @@ SELECT
     "vacuous"."customer_first_name" as "customer_first_name",
     "vacuous"."customer_id" as "customer_id",
     "vacuous"."customer_last_name" as "customer_last_name",
-    "vacuous"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
+    "vacuous"."physical_sales_customer_id" as "physical_sales_customer_id",
     "vacuous"."physical_sales_sale_address_city" as "physical_sales_sale_address_city",
     "vacuous"."physical_sales_ticket_number" as "physical_sales_ticket_number"
 FROM
@@ -165,7 +165,6 @@ wakeful as (
 SELECT
     "customer_address_customer_address"."CA_CITY" as "customer_address_city",
     "customer_customers"."C_CUSTOMER_SK" as "customer_id",
-    "customer_customers"."C_CUSTOMER_SK" as "customer_id",
     "customer_customers"."C_FIRST_NAME" as "customer_first_name",
     "customer_customers"."C_LAST_NAME" as "customer_last_name"
 FROM
@@ -175,7 +174,6 @@ uneven as (
 SELECT
     "physical_sales_sale_address_customer_address"."CA_CITY" as "physical_sales_sale_address_city",
     "physical_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
-    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_billing_customer_id",
     "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
     sum("physical_sales_store_sales"."SS_EXT_LIST_PRICE") as "_dn_list_price",
     sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "_dn_extended_price",
@@ -191,51 +189,23 @@ WHERE
 
 GROUP BY
     1,
-    3,
-    4),
-vacuous as (
+    2,
+    3)
 SELECT
-    "uneven"."_dn_extended_price" as "_dn_extended_price",
-    "uneven"."_dn_extended_tax" as "_dn_extended_tax",
-    "uneven"."_dn_list_price" as "_dn_list_price",
-    "uneven"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
-    "uneven"."physical_sales_sale_address_city" as "physical_sales_sale_address_city",
-    "uneven"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    "wakeful"."customer_address_city" as "customer_address_city",
-    "wakeful"."customer_first_name" as "customer_first_name",
-    "wakeful"."customer_id" as "customer_id",
-    "wakeful"."customer_last_name" as "customer_last_name"
+    "wakeful"."customer_last_name" as "dn_customer_last_name",
+    "wakeful"."customer_first_name" as "dn_customer_first_name",
+    "wakeful"."customer_address_city" as "dn_customer_address_city",
+    "uneven"."physical_sales_sale_address_city" as "dn_physical_sales_sale_address_city",
+    "uneven"."physical_sales_ticket_number" as "dn_physical_sales_ticket_number",
+    "uneven"."_dn_extended_price" as "dn_extended_price",
+    "uneven"."_dn_extended_tax" as "dn_extended_tax",
+    "uneven"."_dn_list_price" as "dn_list_price"
 FROM
     "uneven"
     INNER JOIN "wakeful" on "uneven"."customer_id" = "wakeful"."customer_id"
 WHERE
     "wakeful"."customer_address_city" != "uneven"."physical_sales_sale_address_city"
-),
-concerned as (
-SELECT
-    "vacuous"."_dn_extended_price" as "_dn_extended_price",
-    "vacuous"."_dn_extended_tax" as "_dn_extended_tax",
-    "vacuous"."_dn_list_price" as "_dn_list_price",
-    "vacuous"."customer_address_city" as "customer_address_city",
-    "vacuous"."customer_first_name" as "customer_first_name",
-    "vacuous"."customer_id" as "customer_id",
-    "vacuous"."customer_last_name" as "customer_last_name",
-    "vacuous"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
-    "vacuous"."physical_sales_sale_address_city" as "physical_sales_sale_address_city",
-    "vacuous"."physical_sales_ticket_number" as "physical_sales_ticket_number"
-FROM
-    "vacuous")
-SELECT
-    "concerned"."customer_last_name" as "dn_customer_last_name",
-    "concerned"."customer_first_name" as "dn_customer_first_name",
-    "concerned"."customer_address_city" as "dn_customer_address_city",
-    "concerned"."physical_sales_sale_address_city" as "dn_physical_sales_sale_address_city",
-    "concerned"."physical_sales_ticket_number" as "dn_physical_sales_ticket_number",
-    "concerned"."_dn_extended_price" as "dn_extended_price",
-    "concerned"."_dn_extended_tax" as "dn_extended_tax",
-    "concerned"."_dn_list_price" as "dn_list_price"
-FROM
-    "concerned"
+
 ORDER BY 
     "dn_customer_last_name" asc nulls first,
     "dn_physical_sales_ticket_number" asc nulls first

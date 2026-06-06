@@ -18,9 +18,9 @@ ref rows: 2 (2 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2195 | 52 | 4.24 ms |
-| reference | 2174 | 58 | 4.37 ms |
-| v4 / ref | 1.01x | 0.90x | 0.97x |
+| v4 | 2524 | 65 | 3.51 ms |
+| reference | 2174 | 58 | 3.49 ms |
+| v4 / ref | 1.16x | 1.12x | 1.00x |
 
 ## Preql
 
@@ -78,7 +78,7 @@ WHERE
 
 GROUP BY
     1),
-juicy as (
+concerned as (
 SELECT
     "cs_catalog_sales"."CS_CALL_CENTER_SK" as "cs_call_center_id",
     sum("cs_catalog_sales"."CS_EXT_SALES_PRICE") as "_virt_agg_sum_6520591768854391",
@@ -91,31 +91,44 @@ WHERE
 
 GROUP BY
     1),
-cooperative as (
+late as (
+SELECT
+    :u_channel_c as "u_channel_c"
+),
+questionable as (
 SELECT
     count("wakeful"."_cr_grouped_cr_cc_key") as "_cr_totals_cr_n_groups",
     sum("wakeful"."_cr_grouped_cr_loss_per_cc") as "_cr_totals_cr_total_loss",
     sum("wakeful"."_cr_grouped_cr_returns_per_cc") as "_cr_totals_cr_total_returns"
 FROM
     "wakeful"),
-abundant as (
+yummy as (
 SELECT
-    "cooperative"."_cr_totals_cr_n_groups" as "cr_totals_cr_n_groups",
-    "cooperative"."_cr_totals_cr_total_loss" as "cr_totals_cr_total_loss",
-    "cooperative"."_cr_totals_cr_total_returns" as "cr_totals_cr_total_returns"
+    "questionable"."_cr_totals_cr_n_groups" as "cr_totals_cr_n_groups",
+    "questionable"."_cr_totals_cr_total_loss" as "cr_totals_cr_total_loss",
+    "questionable"."_cr_totals_cr_total_returns" as "cr_totals_cr_total_returns"
 FROM
-    "cooperative")
+    "questionable"),
+abhorrent as (
 SELECT
-    :u_channel_c as "u_channel_c",
-    "juicy"."cs_call_center_id" as "u_id_c",
-    "juicy"."_virt_agg_sum_6520591768854391" * cast("abundant"."cr_totals_cr_n_groups" as numeric(15,2)) as "u_sales_c",
-    cast("abundant"."cr_totals_cr_total_returns" as numeric(15,2)) as "u_returns_c",
-    ( "juicy"."_virt_agg_sum_6226990944561419" * "abundant"."cr_totals_cr_n_groups" ) - cast("abundant"."cr_totals_cr_total_loss" as numeric(15,2)) as "u_profit_c"
+    "concerned"."_virt_agg_sum_6520591768854391" * cast("yummy"."cr_totals_cr_n_groups" as numeric(15,2)) as "u_sales_c",
+    "concerned"."cs_call_center_id" as "u_id_c",
+    ( "concerned"."_virt_agg_sum_6226990944561419" * "yummy"."cr_totals_cr_n_groups" ) - cast("yummy"."cr_totals_cr_total_loss" as numeric(15,2)) as "u_profit_c",
+    cast("yummy"."cr_totals_cr_total_returns" as numeric(15,2)) as "u_returns_c"
 FROM
-    "abundant"
-    FULL JOIN "juicy" on 1=1
+    "yummy"
+    FULL JOIN "concerned" on 1=1)
+SELECT
+    "late"."u_channel_c" as "u_channel_c",
+    "abhorrent"."u_id_c" as "u_id_c",
+    "abhorrent"."u_sales_c" as "u_sales_c",
+    "abhorrent"."u_returns_c" as "u_returns_c",
+    "abhorrent"."u_profit_c" as "u_profit_c"
+FROM
+    "abhorrent"
+    FULL JOIN "late" on 1=1
 ORDER BY 
-    "u_id_c" asc nulls first
+    "abhorrent"."u_id_c" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

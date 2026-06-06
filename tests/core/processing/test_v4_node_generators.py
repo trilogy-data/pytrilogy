@@ -119,6 +119,58 @@ class TestUnion:
         assert _find(info.strategy_node, UnionNode)
 
 
+# ----- root source planning -------------------------------------------
+
+BRIDGED_ROOT_MODEL = """
+key passenger_id int;
+property passenger_id.name string;
+property passenger_id.passenger_last_name string;
+
+key rich_full_name string;
+property rich_full_name.rich_last_name string;
+property rich_full_name.net_worth int;
+
+merge passenger_last_name into rich_last_name;
+
+datasource passengers (
+    passenger_id: passenger_id,
+    name: name,
+    passenger_last_name: passenger_last_name,
+)
+grain (passenger_id)
+query '''select 1 as passenger_id, 'Ada' as name, 'Lovelace' as passenger_last_name''';
+
+datasource rich_info (
+    rich_full_name: rich_full_name,
+    rich_last_name: rich_last_name,
+    net_worth: net_worth,
+)
+grain (rich_full_name)
+query '''select 'Ada Lovelace' as rich_full_name, 'Lovelace' as rich_last_name, 10 as net_worth''';
+"""
+
+
+class TestRootSourcePlanning:
+    def test_root_source_planner_injects_bridge_keys(self):
+        env, benv = _build(BRIDGED_ROOT_MODEL)
+        info = _search(env, benv, ["local.name", "local.net_worth"])
+
+        assert info.strategy_node is not None
+        assert isinstance(info.strategy_node, MergeNode)
+        parent_outputs = [
+            {concept.address for concept in parent.output_concepts}
+            for parent in info.strategy_node.parents
+        ]
+        assert any(
+            {"local.name", "local.passenger_last_name"}.issubset(outputs)
+            for outputs in parent_outputs
+        )
+        assert any(
+            {"local.net_worth", "local.rich_last_name"}.issubset(outputs)
+            for outputs in parent_outputs
+        )
+
+
 # ----- unnest ----------------------------------------------------------
 
 UNNEST_MODEL = """

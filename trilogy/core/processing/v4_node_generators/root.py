@@ -1,11 +1,7 @@
-"""ROOT generator: pick (or join) the datasources that produce the requested
-concepts. Delegates to v3 because datasource search/join planning is the one
-piece the v4 prototype hasn't replaced yet — the per-node `add_output_concept`
-and datasource scoring lives there."""
+"""ROOT generator: pick or join datasources for requested concepts."""
 
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing import concept_strategies_v3 as v3
 from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import (
@@ -13,30 +9,31 @@ from trilogy.core.processing.v4_helper.condition_injection import (
     inject_condition_at_node,
     split_existence_atoms,
 )
+from trilogy.core.processing.v4_helper.source_planning import SourceRequest, plan_source
+from trilogy.core.processing.v4_helper.source_policy import (
+    STRICT_SOURCE_POLICY,
+    SourcePolicy,
+)
 
 
 def gen_root(
     outputs: list[BuildConcept],
-    parents: list[StrategyNode],  # always empty for ROOT; kept for uniform sig
+    parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     *,
     history: History,
     g,
+    source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
 ) -> StrategyNode | None:
-    """Try the History-cached single-datasource select first; if no single
-    datasource covers `outputs`, fall back to v3's cross-datasource search.
+    """Source ROOT concepts through the v4 source planner.
 
-    Existence-bearing atoms (`x IN <subselect>`) are peeled off and applied in
-    a SelectNode wrapper around the v3 result — without this, v3 walks the
-    existence arg's lineage and inlines the whole feeder chain, duplicating
-    work the d1 group already does."""
+    Existence-bearing atoms (`x IN <subselect>`) are applied in a wrapper so
+    the existence feeder remains a side-channel parent rather than being pulled
+    into the row stream.
+    """
     row_conditions, existence_conditions = split_existence_atoms(conditions)
-    # When we peel an existence atom off the condition, v3 doesn't see its
-    # row args either — but the wrapper still needs them in the row stream to
-    # apply the IN's LHS (e.g. `substring(store.zip) IN <feeder>` requires
-    # store.zip in the scan). Add them to the outputs going to v3 so the
-    # column is in the resolved scan.
+
     inner_outputs: list[BuildConcept] = list(outputs)
     if existence_conditions is not None:
         seen = {c.address for c in inner_outputs}
@@ -45,31 +42,20 @@ def gen_root(
                 if arg.address not in seen:
                     inner_outputs.append(arg)
                     seen.add(arg.address)
-    node = history.gen_select_node(
-        inner_outputs, environment, g, depth=0, conditions=row_conditions
-    )
-    if node is None:
-        node = v3.search_concepts(
-            mandatory_list=inner_outputs,
-            history=history,
+
+    node = plan_source(
+        SourceRequest(
+            outputs=inner_outputs,
             environment=environment,
-            depth=1,
-            g=g,
+            graph=g,
+            history=history,
             conditions=row_conditions,
+            source_policy=source_policy,
         )
+    )
     if node is None or existence_conditions is None:
         return node
-    # Wrap so strategy_builder's existence wiring attaches `existence_concepts`
-    # to the WHERE-emitting node (without this, the IN subselect's right-hand
-    # side has no source CTE and the renderer emits INVALID_REFERENCE_BUG).
-    # The wrapper projects only the originally-requested `outputs` — the
-    # extra row args we added for v3 stay in the inner CTE.
-    #
-    # `combine_existing=False`: the inner `node` ALREADY applied `row_conditions`
-    # (year/quarter etc.) and need not re-expose those filter-only columns. The
-    # wrapper must emit ONLY the existence atom — re-AND-ing the row conditions
-    # here references columns the inner CTE consumed and dropped (q45: a scalar
-    # `date.year = 2001` next to an `item IN <rowset>`, INVALID_REFERENCE_BUG).
+
     return inject_condition_at_node(
         node,
         existence_conditions,

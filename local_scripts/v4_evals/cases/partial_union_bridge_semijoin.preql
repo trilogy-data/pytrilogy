@@ -1,0 +1,57 @@
+key sales_channel enum<string>['WEB', 'CATALOG'];
+key order_id int;
+key item_id int;
+key date_id int;
+
+property date_id.week_seq int;
+property date_id.sale_year int;
+property <order_id, sales_channel, item_id>.ext_sales_price float?;
+
+datasource date_dim (
+    date_id: date_id,
+    week_seq: week_seq,
+    sale_year: sale_year,
+)
+grain (date_id)
+query '''
+select 1 date_id, 10 week_seq, 2001 sale_year
+union all select 2, 10, 2001
+''';
+
+partial datasource web_sales (
+    raw(''' 'WEB' '''): sales_channel,
+    order_id: order_id,
+    item_id: item_id,
+    sold_date_id: ?date_id,
+    ext_sales_price: ext_sales_price,
+)
+grain (order_id, sales_channel, item_id)
+complete where sales_channel = 'WEB'
+query '''
+select 100 order_id, 1 item_id, 1 sold_date_id, 20.0 ext_sales_price
+''';
+
+partial datasource catalog_sales (
+    raw(''' 'CATALOG' '''): sales_channel,
+    order_id: order_id,
+    item_id: item_id,
+    sold_date_id: ?date_id,
+    ext_sales_price: ext_sales_price,
+)
+grain (order_id, sales_channel, item_id)
+complete where sales_channel = 'CATALOG'
+query '''
+select 200 order_id, 1 item_id, 2 sold_date_id, 10.0 ext_sales_price
+''';
+
+auto relevant_week <- week_seq ? sale_year = 2001;
+
+where
+    sales_channel in ('WEB', 'CATALOG')
+    and week_seq in relevant_week
+select
+    week_seq,
+    sum(ext_sales_price) by week_seq -> total_sales
+order by
+    week_seq asc
+;

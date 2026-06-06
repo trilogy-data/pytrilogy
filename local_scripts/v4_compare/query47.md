@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7966 | 101 | 167.72 ms |
-| reference | 7966 | 101 | 159.04 ms |
-| v4 / ref | 1.00x | 1.00x | 1.05x |
+| v4 | 7966 | 101 | 42.05 ms |
+| reference | 6059 | 90 | 28.97 ms |
+| v4 / ref | 1.31x | 1.12x | 1.45x |
 
 ## Preql
 
@@ -224,78 +224,67 @@ GROUP BY
     6),
 abundant as (
 SELECT
-    "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
     "thoughtful"."physical_sales_date_year" as "physical_sales_date_year",
     "thoughtful"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
     "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
     "thoughtful"."physical_sales_store_company_name" as "physical_sales_store_company_name",
     "thoughtful"."physical_sales_store_name" as "physical_sales_store_name",
-    "thoughtful"."sum_sales" as "sum_sales"
+    avg("thoughtful"."sum_sales") as "avg_monthly_sales"
 FROM
-    "thoughtful"),
-uneven as (
-SELECT
-    "abundant"."physical_sales_date_year" as "physical_sales_date_year",
-    "abundant"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
-    "abundant"."physical_sales_item_category" as "physical_sales_item_category",
-    "abundant"."physical_sales_store_company_name" as "physical_sales_store_company_name",
-    "abundant"."physical_sales_store_name" as "physical_sales_store_name",
-    avg("abundant"."sum_sales") as "avg_monthly_sales"
-FROM
-    "abundant"
+    "thoughtful"
+WHERE
+    "thoughtful"."physical_sales_date_year" = 1999
+
 GROUP BY
     1,
     2,
     3,
     4,
     5),
-yummy as (
+questionable as (
 SELECT
     "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
-    "thoughtful"."sum_sales" - "uneven"."avg_monthly_sales" as "sum_minus_avg",
+    "thoughtful"."physical_sales_date_year" as "physical_sales_date_year",
+    "thoughtful"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
+    "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
+    "thoughtful"."physical_sales_store_company_name" as "physical_sales_store_company_name",
+    "thoughtful"."physical_sales_store_name" as "physical_sales_store_name",
     "thoughtful"."sum_sales" as "sum_sales",
-    "uneven"."avg_monthly_sales" as "avg_monthly_sales",
-    coalesce("thoughtful"."physical_sales_date_year","uneven"."physical_sales_date_year") as "physical_sales_date_year",
-    coalesce("thoughtful"."physical_sales_item_brand_name","uneven"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
-    coalesce("thoughtful"."physical_sales_item_category","uneven"."physical_sales_item_category") as "physical_sales_item_category",
-    coalesce("thoughtful"."physical_sales_store_company_name","uneven"."physical_sales_store_company_name") as "physical_sales_store_company_name",
-    coalesce("thoughtful"."physical_sales_store_name","uneven"."physical_sales_store_name") as "physical_sales_store_name",
-    lag("thoughtful"."sum_sales", 1) over (partition by coalesce("thoughtful"."physical_sales_item_category","uneven"."physical_sales_item_category"),coalesce("thoughtful"."physical_sales_item_brand_name","uneven"."physical_sales_item_brand_name"),coalesce("thoughtful"."physical_sales_store_name","uneven"."physical_sales_store_name"),coalesce("thoughtful"."physical_sales_store_company_name","uneven"."physical_sales_store_company_name") order by coalesce("thoughtful"."physical_sales_date_year","uneven"."physical_sales_date_year") asc,"thoughtful"."physical_sales_date_month_of_year" asc ) as "psum",
-    lead("thoughtful"."sum_sales", 1) over (partition by coalesce("thoughtful"."physical_sales_item_category","uneven"."physical_sales_item_category"),coalesce("thoughtful"."physical_sales_item_brand_name","uneven"."physical_sales_item_brand_name"),coalesce("thoughtful"."physical_sales_store_name","uneven"."physical_sales_store_name"),coalesce("thoughtful"."physical_sales_store_company_name","uneven"."physical_sales_store_company_name") order by coalesce("thoughtful"."physical_sales_date_year","uneven"."physical_sales_date_year") asc,"thoughtful"."physical_sales_date_month_of_year" asc ) as "nsum"
+    lag("thoughtful"."sum_sales", 1) over (partition by "thoughtful"."physical_sales_item_category","thoughtful"."physical_sales_item_brand_name","thoughtful"."physical_sales_store_name","thoughtful"."physical_sales_store_company_name" order by "thoughtful"."physical_sales_date_year" asc,"thoughtful"."physical_sales_date_month_of_year" asc ) as "psum",
+    lead("thoughtful"."sum_sales", 1) over (partition by "thoughtful"."physical_sales_item_category","thoughtful"."physical_sales_item_brand_name","thoughtful"."physical_sales_store_name","thoughtful"."physical_sales_store_company_name" order by "thoughtful"."physical_sales_date_year" asc,"thoughtful"."physical_sales_date_month_of_year" asc ) as "nsum"
 FROM
-    "thoughtful"
-    INNER JOIN "uneven" on "thoughtful"."physical_sales_date_year" = "uneven"."physical_sales_date_year" AND "thoughtful"."physical_sales_item_brand_name" = "uneven"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "uneven"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "uneven"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" is not distinct from "uneven"."physical_sales_store_name")
+    "thoughtful")
 SELECT
-    coalesce("abundant"."physical_sales_item_category","yummy"."physical_sales_item_category") as "physical_sales_item_category",
-    coalesce("abundant"."physical_sales_item_brand_name","yummy"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
-    coalesce("abundant"."physical_sales_store_name","yummy"."physical_sales_store_name") as "physical_sales_store_name",
-    coalesce("abundant"."physical_sales_store_company_name","yummy"."physical_sales_store_company_name") as "physical_sales_store_company_name",
-    coalesce("abundant"."physical_sales_date_year","yummy"."physical_sales_date_year") as "physical_sales_date_year",
-    coalesce("abundant"."physical_sales_date_month_of_year","yummy"."physical_sales_date_month_of_year") as "physical_sales_date_month_of_year",
-    "yummy"."avg_monthly_sales" as "avg_monthly_sales",
-    "yummy"."sum_sales" as "sum_sales",
-    "yummy"."psum" as "psum",
-    "yummy"."nsum" as "nsum"
+    coalesce("abundant"."physical_sales_item_category","questionable"."physical_sales_item_category") as "physical_sales_item_category",
+    coalesce("abundant"."physical_sales_item_brand_name","questionable"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
+    coalesce("abundant"."physical_sales_store_name","questionable"."physical_sales_store_name") as "physical_sales_store_name",
+    coalesce("abundant"."physical_sales_store_company_name","questionable"."physical_sales_store_company_name") as "physical_sales_store_company_name",
+    coalesce("abundant"."physical_sales_date_year","questionable"."physical_sales_date_year") as "physical_sales_date_year",
+    "questionable"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
+    "abundant"."avg_monthly_sales" as "avg_monthly_sales",
+    "questionable"."sum_sales" as "sum_sales",
+    "questionable"."psum" as "psum",
+    "questionable"."nsum" as "nsum"
 FROM
-    "yummy"
-    LEFT OUTER JOIN "abundant" on "yummy"."physical_sales_date_month_of_year" = "abundant"."physical_sales_date_month_of_year" AND "yummy"."physical_sales_date_year" = "abundant"."physical_sales_date_year" AND "yummy"."physical_sales_item_brand_name" = "abundant"."physical_sales_item_brand_name" AND "yummy"."physical_sales_item_category" is not distinct from "abundant"."physical_sales_item_category" AND "yummy"."physical_sales_store_company_name" is not distinct from "abundant"."physical_sales_store_company_name" AND "yummy"."physical_sales_store_name" = "abundant"."physical_sales_store_name"
+    "questionable"
+    RIGHT OUTER JOIN "abundant" on "questionable"."physical_sales_date_year" = "abundant"."physical_sales_date_year" AND "questionable"."physical_sales_item_brand_name" = "abundant"."physical_sales_item_brand_name" AND "questionable"."physical_sales_item_category" is not distinct from "abundant"."physical_sales_item_category" AND "questionable"."physical_sales_store_company_name" is not distinct from "abundant"."physical_sales_store_company_name" AND "questionable"."physical_sales_store_name" = "abundant"."physical_sales_store_name"
 WHERE
-    coalesce("abundant"."physical_sales_date_year","yummy"."physical_sales_date_year") = 1999 and "yummy"."avg_monthly_sales" > 0 and CASE
-	WHEN "yummy"."avg_monthly_sales" > 0 THEN abs("yummy"."sum_sales" - "yummy"."avg_monthly_sales") / "yummy"."avg_monthly_sales"
+    coalesce("abundant"."physical_sales_date_year","questionable"."physical_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0 and CASE
+	WHEN "abundant"."avg_monthly_sales" > 0 THEN abs("questionable"."sum_sales" - "abundant"."avg_monthly_sales") / "abundant"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    "yummy"."sum_minus_avg" asc,
-    coalesce("abundant"."physical_sales_item_category","yummy"."physical_sales_item_category") asc,
-    coalesce("abundant"."physical_sales_item_brand_name","yummy"."physical_sales_item_brand_name") asc,
-    coalesce("abundant"."physical_sales_store_name","yummy"."physical_sales_store_name") asc,
-    coalesce("abundant"."physical_sales_store_company_name","yummy"."physical_sales_store_company_name") asc,
-    coalesce("abundant"."physical_sales_date_year","yummy"."physical_sales_date_year") asc,
-    coalesce("abundant"."physical_sales_date_month_of_year","yummy"."physical_sales_date_month_of_year") asc,
-    "yummy"."avg_monthly_sales" asc,
-    "yummy"."sum_sales" asc,
-    "yummy"."psum" asc,
-    "yummy"."nsum" asc
+    "questionable"."sum_sales" - "abundant"."avg_monthly_sales" asc,
+    coalesce("abundant"."physical_sales_item_category","questionable"."physical_sales_item_category") asc,
+    coalesce("abundant"."physical_sales_item_brand_name","questionable"."physical_sales_item_brand_name") asc,
+    coalesce("abundant"."physical_sales_store_name","questionable"."physical_sales_store_name") asc,
+    coalesce("abundant"."physical_sales_store_company_name","questionable"."physical_sales_store_company_name") asc,
+    coalesce("abundant"."physical_sales_date_year","questionable"."physical_sales_date_year") asc,
+    "questionable"."physical_sales_date_month_of_year" asc,
+    "abundant"."avg_monthly_sales" asc,
+    "questionable"."sum_sales" asc,
+    "questionable"."psum" asc,
+    "questionable"."nsum" asc
 LIMIT (100)
 ```

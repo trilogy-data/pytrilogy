@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (24 rows) |
+| reference execution | OK (24 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 24 (24 distinct)
+ref rows: 24 (24 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2337 | 59 | 23.85 ms |
-| reference | 2337 | 59 | 26.31 ms |
-| v4 / ref | 1.00x | 1.00x | 0.91x |
+| v4 | 2293 | 59 | 7.85 ms |
+| reference | 1872 | 48 | 7.69 ms |
+| v4 / ref | 1.22x | 1.23x | 1.02x |
 
 ## Preql
 
@@ -68,7 +68,7 @@ FROM
     INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "cs_sold_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sold_date_date"."D_DATE_SK"
 WHERE
-    "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24' and "cs_item_items"."I_ITEM_ID" is not null
+    "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 
 GROUP BY
     1,
@@ -132,7 +132,7 @@ FROM
     INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "cs_sold_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sold_date_date"."D_DATE_SK"
 WHERE
-    "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24' and "cs_item_items"."I_ITEM_ID" is not null
+    "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 
 GROUP BY
     1,
@@ -140,41 +140,30 @@ GROUP BY
     3,
     4,
     5),
-questionable as (
+cooperative as (
 SELECT
     "cheerful"."cs_item_class" as "cs_item_class",
     sum("cheerful"."revenue") as "_virt_agg_sum_9832457364876792"
 FROM
     "cheerful"
 GROUP BY
-    1),
-uneven as (
+    1)
 SELECT
+    "cheerful"."cs_item_text_id" as "cs_item_text_id",
+    "cheerful"."cs_item_desc" as "cs_item_desc",
     "cheerful"."cs_item_category" as "cs_item_category",
     "cheerful"."cs_item_class" as "cs_item_class",
     "cheerful"."cs_item_current_price" as "cs_item_current_price",
-    "cheerful"."cs_item_desc" as "cs_item_desc",
-    "cheerful"."cs_item_text_id" as "cs_item_text_id",
     "cheerful"."revenue" as "revenue",
-    "questionable"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
+    ( "cheerful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
 FROM
     "cheerful"
-    INNER JOIN "questionable" on "cheerful"."cs_item_class" is not distinct from "questionable"."cs_item_class")
-SELECT
-    "uneven"."cs_item_text_id" as "cs_item_text_id",
-    "uneven"."cs_item_desc" as "cs_item_desc",
-    "uneven"."cs_item_category" as "cs_item_category",
-    "uneven"."cs_item_class" as "cs_item_class",
-    "uneven"."cs_item_current_price" as "cs_item_current_price",
-    "uneven"."revenue" as "revenue",
-    ( "uneven"."revenue" * 100.0 ) / ("uneven"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
-FROM
-    "uneven"
+    INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class"
 ORDER BY 
-    "uneven"."cs_item_category" asc nulls first,
-    "uneven"."cs_item_class" asc nulls first,
-    "uneven"."cs_item_text_id" asc nulls first,
-    "uneven"."cs_item_desc" asc nulls first,
+    "cheerful"."cs_item_category" asc nulls first,
+    "cheerful"."cs_item_class" asc nulls first,
+    "cheerful"."cs_item_text_id" asc nulls first,
+    "cheerful"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first
 LIMIT (100)
 ```

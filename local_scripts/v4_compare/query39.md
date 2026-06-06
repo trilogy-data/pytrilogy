@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (243 rows) |
-| reference execution | OK (243 rows) |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 243 (243 distinct)
-ref rows: 243 (243 distinct)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2821 | 82 | 19.26 ms |
-| reference | 2821 | 82 | 20.32 ms |
-| v4 / ref | 1.00x | 1.00x | 0.95x |
+| v4 | 2821 | 82 | 2.26 ms |
+| reference | 2041 | 36 | 2.18 ms |
+| v4 / ref | 1.38x | 2.28x | 1.04x |
 
 ## Preql
 
@@ -163,15 +163,23 @@ ORDER BY
 ## Reference SQL (zquery log)
 
 ```sql
-WITH 
-wakeful as (
 SELECT
-    "inventory_warehouse_inventory"."inv_item_sk" as "inventory_item_id",
-    "inventory_warehouse_inventory"."inv_warehouse_sk" as "inventory_warehouse_id",
+    "inventory_warehouse_inventory"."inv_warehouse_sk" as "wsk1",
+    "inventory_warehouse_inventory"."inv_item_sk" as "isk1",
+    1 as "dmoy1",
     avg(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) as "mean1",
+    CASE
+	WHEN avg(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) / avg(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END)
+	END as "cov1",
+    "inventory_warehouse_inventory"."inv_warehouse_sk" as "wsk2",
+    "inventory_warehouse_inventory"."inv_item_sk" as "isk2",
+    2 as "dmoy2",
     avg(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) as "mean2",
-    stddev_samp(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) as "stdev1",
-    stddev_samp(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) as "stdev2"
+    CASE
+	WHEN avg(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) / avg(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END)
+	END as "cov2"
 FROM
     "memory"."inventory" as "inventory_warehouse_inventory"
     INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
@@ -180,69 +188,15 @@ WHERE
 
 GROUP BY
     1,
-    2),
-abundant as (
-SELECT
-    1 as "dmoy1",
-    2 as "dmoy2"
-),
-questionable as (
-SELECT
-    "wakeful"."inventory_item_id" as "isk1",
-    "wakeful"."inventory_item_id" as "isk2",
-    "wakeful"."inventory_warehouse_id" as "wsk1",
-    "wakeful"."inventory_warehouse_id" as "wsk2",
-    "wakeful"."mean1" as "mean1",
-    "wakeful"."mean2" as "mean2",
-    CASE
-	WHEN "wakeful"."mean1" = 0 THEN null
-	ELSE "wakeful"."stdev1" / "wakeful"."mean1"
-	END as "cov1",
-    CASE
-	WHEN "wakeful"."mean2" = 0 THEN null
-	ELSE "wakeful"."stdev2" / "wakeful"."mean2"
-	END as "cov2"
-FROM
-    "wakeful"),
-uneven as (
-SELECT
-    "abundant"."dmoy1" as "dmoy1",
-    "abundant"."dmoy2" as "dmoy2",
-    "questionable"."cov1" as "cov1",
-    "questionable"."cov2" as "cov2",
-    "questionable"."isk1" as "isk1",
-    "questionable"."isk2" as "isk2",
-    "questionable"."mean1" as "mean1",
-    "questionable"."mean2" as "mean2",
-    "questionable"."wsk1" as "wsk1",
-    "questionable"."wsk2" as "wsk2"
-FROM
-    "questionable"
-    LEFT OUTER JOIN "abundant" on 1=1
-WHERE
-    "questionable"."cov1" > 1
-)
-SELECT
-    "uneven"."wsk1" as "wsk1",
-    "uneven"."isk1" as "isk1",
-    "uneven"."dmoy1" as "dmoy1",
-    "uneven"."mean1" as "mean1",
-    "uneven"."cov1" as "cov1",
-    "uneven"."wsk2" as "wsk2",
-    "uneven"."isk2" as "isk2",
-    "uneven"."dmoy2" as "dmoy2",
-    "uneven"."mean2" as "mean2",
-    "uneven"."cov2" as "cov2"
-FROM
-    "uneven"
-WHERE
-    "uneven"."cov2" > 1
+    2
+HAVING
+    "cov1" > 1 and "cov2" > 1
 
 ORDER BY 
-    "uneven"."wsk1" asc nulls first,
-    "uneven"."isk1" asc nulls first,
-    "uneven"."mean1" asc nulls first,
-    "uneven"."cov1" asc nulls first,
-    "uneven"."mean2" asc nulls first,
-    "uneven"."cov2" asc nulls first
+    "wsk1" asc nulls first,
+    "isk1" asc nulls first,
+    "mean1" asc nulls first,
+    "cov1" asc nulls first,
+    "mean2" asc nulls first,
+    "cov2" asc nulls first
 ```

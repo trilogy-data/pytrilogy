@@ -51,6 +51,7 @@ from .projection import (
     satisfiable_outputs,
     widen_projection,
 )
+from .source_policy import STRICT_SOURCE_POLICY, SourcePolicy
 
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE,
@@ -965,6 +966,7 @@ def build_strategy_node(
     environment: BuildEnvironment,
     g: ReferenceGraph,
     history: History,
+    source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
 ) -> StrategyNode | None:
     """Walk groups in topological order, dispatching each to its v4 generator
     with explicit parent nodes. Returns the most-downstream built node, or
@@ -1124,6 +1126,7 @@ def build_strategy_node(
             intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(group_graph, gid),
             history=history,
             g=g,
+            source_policy=source_policy,
         )
         logger.info(
             f"[v4] built {gid} derivation={derivation} "
