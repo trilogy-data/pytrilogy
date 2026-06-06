@@ -1,5 +1,51 @@
 # Bug B4: enum-typed numeric columns reject ordered comparisons (and the ingest heuristic that creates them)
 
+**Status:** LAYER 1 FIXED 2026-06-06 — reframed as an overall enum-comparison
+improvement. The parser now evaluates each comparison's satisfiability over the enum's
+value domain (plus NULL when the concept is nullable) and raises a new
+`InvalidComparison` with an actionable message whenever the result is constant:
+
+- **Discriminating** filters — a literal/range/list that some members satisfy and others
+  do not (`> 138504`, `between 100 and 300000`, `in (138504, 999)`, and `= 'USBOS'`
+  against a multi-city enum) — pass through to a normal `Comparison`/`Between`. There is
+  no special-casing of `=`/`in`; narrowing a wider enum to a subset is always valid.
+- **Unsatisfiable** (no member matches — always False): `= 0`, `> max`, `between` outside
+  the domain, `in` with no overlap → ``Comparison `w.sq_ft = 0` can never match enum
+  field 'w.sq_ft' … It is always false and should be removed.``
+- **Tautology on a non-nullable field** (every member matches): `> 0`, `between 0 and
+  9999999` → ``Comparison `… > 0` matches every value … It is always true and should be
+  removed.``
+- **Match-all on a nullable field** (every member matches; the predicate's only effect is
+  dropping NULLs): same predicates against a nullable enum → ``Comparison `… > 0` matches
+  every value of nullable enum field … It only excludes nulls; simplify it to `<field> is
+  not null`.``
+
+The error message leads with the rendered comparison (operator included) so `> 0` is not
+mistaken for matching `0`. Nullability is read from the concept's `Modifier.NULLABLE` via
+the parse `RuleContext`.
+
+**Operator coverage.** Validated: `=` `!=` `<` `>` `<=` `>=` (ordered/equality), `in` /
+`not in` (membership), `between`, and `like` / `ilike` / `not like` / `not ilike` (SQL
+pattern translated to a regex and run over a *string* enum's members; both the infix and
+`like(col, 'pat')` call sites go through the shared `validate_enum_like`). Intentionally
+skipped: `is` / `is not` (NULL checks — `is not null` is the canonical form we recommend),
+`contains` (array op), `else` (case branch). LIKE on a non-string enum is left alone.
+
+Implemented in `trilogy/parsing/v2/rules/expression_rules.py` (`comparison`,
+`between_comparison` + `_enum_*` helpers) and `trilogy/core/exceptions.py`
+(`InvalidComparison(InvalidSyntaxException)`). Tests in
+`tests/engine/test_enum_unions.py` (`test_enum_unsatisfiable_comparison`,
+`test_nullable_enum_match_all_suggests_is_not_null`,
+`test_non_nullable_enum_match_all_is_tautology`,
+`test_enum_discriminating_comparison_allowed`). The `boston_multi_enum.preql` fixture's
+single-value `city` enum was widened to `['USBOS', 'USNYC']` (it was a simplification of
+a real multi-city model), so its `complete where city = 'USBOS'` partitions discriminate.
+
+Layer 2 (ingest auto-typer over-eagerly enum-typing continuous numeric measures) is
+**still open** — see below.
+
+**Original report follows.**
+
 **Status:** OPEN (found 2026-06-06)
 **Severity:** medium — agents cannot write natural numeric predicates (`> 0`, `between 100 and
 500`) against a column the ingester typed as `enum<bigint>`. Burned ingest q66 (`warehouse_sq_ft`)
