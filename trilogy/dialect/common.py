@@ -112,14 +112,18 @@ def _render_left_concept(
     use_map: dict[str, set[str]],
 ) -> str:
     node = join.authoritative(consumer, pair.cte)
-    # A join key whose CTE resolves to the consumer itself is a local column —
-    # it comes from the consumer's own FROM, not a joined CTE. Emitting
-    # ``self_name.col`` is invalid SQL (the CTE can't reference itself); this
-    # arises when an optimization merges the inner source that supplied the key
-    # up into the consumer. Pin it to the consumer's FROM-base source (not the
-    # generic concept render, which could pick the join's own right side and
-    # produce a tautological ON).
-    if isinstance(consumer, CTE) and node.name == consumer.name:
+    # A join key whose CTE resolves to the consumer itself, while the consumer's
+    # FROM is a *different* source (``base_alias`` names another CTE), is a stale
+    # self-reference: an optimization merged the inner source that supplied the
+    # key up into the consumer, but the join key pair still points at the merged
+    # consumer. ``self_name.col`` is invalid SQL there — pin it to the FROM-base
+    # CTE instead. (When ``base_alias == name`` the CTE legitimately IS its own
+    # FROM and ``name.col`` is correct, so leave those alone.)
+    if (
+        isinstance(consumer, CTE)
+        and node.name == consumer.name
+        and consumer.base_alias != consumer.name
+    ):
         base = next(
             (p for p in consumer.dependency_nodes() if p.name == consumer.base_alias),
             None,
@@ -134,7 +138,6 @@ def _render_left_concept(
                 render_expr_func,
                 use_map=use_map,
             )
-        return render_expr_func(pair.left, consumer)
     if join.left_is_local:
         # LHS key is the rendering branch's own base column (no self-alias).
         # If the key also resolves through a hoisted dim, the generic concept

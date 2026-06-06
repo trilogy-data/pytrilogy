@@ -669,6 +669,14 @@ def concepts_to_grain_concepts_ordered(
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
+
+    def _lookup(addr: str) -> Concept | None:
+        if local_concepts and addr in local_concepts:
+            return local_concepts[addr]  # type: ignore
+        if environment:
+            return environment.concepts.get(addr)
+        return None
+
     preconcepts: list[Concept] = []
     for x in raw:
         if (
@@ -679,10 +687,18 @@ def concepts_to_grain_concepts_ordered(
         ):
             # alias is a renamed view of the source — use the source for grain
             source_addr = x.lineage.arguments[0].address  # type: ignore
-            if local_concepts and source_addr in local_concepts:
-                preconcepts.append(local_concepts[source_addr])
-            else:
-                preconcepts.append(environment.concepts[source_addr])
+            source = _lookup(source_addr)
+            preconcepts.append(source if source is not None else x)
+        elif x.derivation == Derivation.WINDOW and x.keys and environment:
+            # A window output (rank/row_number/…) is row-distinct, so it would
+            # otherwise enter the grain as itself. But its value is determined by
+            # its keys (partition + anchor), and its order_by may re-derive an
+            # aggregate that would then be grouped by this very output — a build
+            # recursion. Contribute the window's keys to the grain instead.
+            for kaddr in x.keys:
+                key_concept = _lookup(kaddr)
+                if key_concept is not None:
+                    preconcepts.append(key_concept)
         else:
             preconcepts.append(x)
     seen: set[str] = set()

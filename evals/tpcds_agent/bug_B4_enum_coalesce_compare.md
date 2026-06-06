@@ -56,11 +56,32 @@ trait-bearing/widened representative via `merge_datatypes`. Regression tests:
 `tests/test_hydration_phases.py::TestStagedParser::test_multiselect_align_compatible_datatypes`
 and `…_incompatible_datatypes_raise`.
 
-STILL OPEN (separate): `enum<string>` vs bare `string` align (q05 `st_id`) — `is_compatible_datatype`
-does not treat an `EnumType` as compatible with its base, so that align still raises. And a
-`month` trait cannot be hand-annotated onto the enriched `month_of_year` because it is an
-`enum<int>` (traits can't wrap enums); annotating `moy` would have to happen in the ingest
-date-part typer.
+## Enum/base compatibility + traits-over-enums + ingest date-part traits (FIXED 2026-06-06)
+
+Follow-on to the align fix, all in one pass:
+- **`enum<X>` ↔ base `X` compatibility.** `is_compatible_datatype`
+  (`trilogy/core/models/core.py`) now strips an `EnumType` to its base (mirroring the existing
+  trait stripping), so `enum<string>` aligns with bare `string` (q05 `st_id`) and `enum<int>`
+  with `int`/`bigint`. Genuinely different bases (enum<string> vs int) still raise. Unit test:
+  `tests/test_typing.py::test_is_compatible_datatype_enum_and_trait`.
+- **Traits can wrap enums with a compatible base.** Because the trait-validity check in
+  `concept_rules.py` routes through `is_compatible_datatype`, `enum<int>[…]::month` now validates
+  (and an incompatible base like `enum<string>::float-trait` still raises). Requires the trait to
+  be a declared type — the date-part traits live in `trilogy/std/date.preql` (added `quarter`,
+  which the `quarter()` function produced but the std lib was missing).
+- **Ingest now annotates date-part columns with std.date traits.** `detect_rich_type`
+  (`trilogy/scripts/ingest_helpers/typing.py`) gained a `date` category: `moy`/`month_of_year`,
+  `year`/`yr`, `dom`/`day_of_month`, `dow`/`day_of_week`, `qoy`/`quarter`, `woy`/`week` over an
+  integer base, **gated by an inclusive value range** (e.g. month ∈ 1..12) so `d_month_seq`
+  (~1200) is NOT misclassified. Emits `import std.date` + the trait. Tests:
+  `tests/scripts/test_ingest.py::TestRichTypeDetection::test_date_part_detection` and
+  `…_value_gate_rejects_out_of_range`; end-to-end via
+  `tests/scripts/test_cli_consistency.py::test_ingest_output_passes_integration`.
+
+STILL OPEN: Layer 2 proper — the ingest auto-typer still enum-types *continuous* numeric measures
+(`warehouse_sq_ft`, `floor_space`) purely on low cardinality. That is now far less harmful (the
+enum-comparison errors are actionable and enum/base aligns work), but it remains a separate
+heuristic to tighten.
 
 **Original report follows.**
 

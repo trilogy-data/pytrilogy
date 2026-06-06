@@ -483,3 +483,30 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
 
     assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
+
+
+def test_rank_over_projected_aggregate_ratio_no_recursion():
+    # Bug B1: a rank() whose order_by is the same sum(a)/sum(b) ratio that is
+    # also projected, with a partition key not in the projection, used to push
+    # the window output into the select grain. The abstract sums then resolved
+    # their `by` against that grain — grouping by the rank, whose order_by
+    # rebuilt the sums — a build-time RecursionError. The grain must instead use
+    # the window's keys (item, sales_channel).
+    query = """
+    import all_sales as s;
+    where s.return_amount > 10000
+    select
+        s.item.id as item,
+        sum(s.return_quantity) / sum(s.quantity) as return_quantity_ratio,
+        rank(s.item.id) over (
+            partition by s.sales_channel
+            order by sum(s.return_quantity) / sum(s.quantity) asc
+        ) as rank_a
+    limit 100;
+    """
+    env = Environment(working_path=working_path)
+    _, statements = parse_text(query, env)
+    select_grain = statements[-1].grain
+    assert select_grain.components == {"s.item.id", "s.sales_channel"}, select_grain
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    assert re.search(r"rank\(\) over \(partition by", sql), sql
