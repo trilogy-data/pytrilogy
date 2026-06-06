@@ -1,24 +1,26 @@
 # Query 64
 
-**Status:** `ref_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (0 rows) |
-| reference execution | FAILED |
+| v4 execution | OK (2 rows) |
+| reference execution | OK (2 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 2 (2 distinct)
+ref rows: 2 (2 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 24911 | 407 | 21.63 ms |
-| reference | 17289 | 256 | — |
-| v4 / ref | 1.44x | 1.59x | — |
+| v4 | 24911 | 407 | 332.10 ms |
+| reference | 15834 | 244 | 346.01 ms |
+| v4 / ref | 1.57x | 1.67x | 0.96x |
 
 ## Preql
 
@@ -638,27 +640,17 @@ WHERE
 
 GROUP BY
     1,
-    2),
-macho as (
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8),
+friendly as (
 SELECT
-    "ss_billing_customer_address_customer_address"."CA_CITY" as "ss_rows_99_ss_billing_customer_address_city",
-    "ss_billing_customer_address_customer_address"."CA_STREET_NAME" as "ss_rows_99_ss_billing_customer_address_street_name",
-    "ss_billing_customer_address_customer_address"."CA_STREET_NUMBER" as "ss_rows_99_ss_billing_customer_address_street_number",
-    "ss_billing_customer_address_customer_address"."CA_ZIP" as "ss_rows_99_ss_billing_customer_address_zip",
-    "ss_billing_customer_first_sales_date_date"."D_YEAR" as "ss_rows_99_ss_billing_customer_first_sales_date_year",
-    "ss_billing_customer_first_shipto_date_date"."D_YEAR" as "ss_rows_99_ss_billing_customer_first_shipto_date_year",
-    "ss_date_date"."D_YEAR" as "ss_rows_99_ss_date_year",
     "ss_item_items"."I_ITEM_SK" as "ss_rows_99_ss_item_id",
-    "ss_sale_address_customer_address"."CA_CITY" as "ss_rows_99_ss_sale_address_city",
-    "ss_sale_address_customer_address"."CA_STREET_NAME" as "ss_rows_99_ss_sale_address_street_name",
-    "ss_sale_address_customer_address"."CA_STREET_NUMBER" as "ss_rows_99_ss_sale_address_street_number",
-    "ss_sale_address_customer_address"."CA_ZIP" as "ss_rows_99_ss_sale_address_zip",
-    "ss_store_sales"."SS_COUPON_AMT" as "ss_rows_99_ss_coupon_amt",
-    "ss_store_sales"."SS_LIST_PRICE" as "ss_rows_99_ss_list_price",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_rows_99_ss_ticket_number",
-    "ss_store_sales"."SS_WHOLESALE_COST" as "ss_rows_99_ss_wholesale_cost",
-    "ss_store_store"."S_STORE_NAME" as "ss_rows_99_ss_store_name",
-    "ss_store_store"."S_ZIP" as "ss_rows_99_ss_store_zip"
+    "ss_item_items"."I_PRODUCT_NAME" as "ss_rows_99_ss_item_product_name"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
@@ -677,10 +669,8 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3,
-    4),
-protective as (
+    2),
+macho as (
 SELECT
     "ss_customer_address_customer_address"."CA_CITY" as "ss_rows_99_ss_customer_address_city",
     "ss_customer_address_customer_address"."CA_STREET_NAME" as "ss_rows_99_ss_customer_address_street_name",
@@ -843,28 +833,4 @@ ORDER BY
     "q64_results_cnt_00" asc nulls first,
     "q64_results_s1_99" asc nulls first,
     "q64_results_s1_00" asc nulls first
-```
-
-## reference execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in run_one
-    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
-                                               ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 54, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in <lambda>
-    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
-                                                             ~~~~~^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 315, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 225, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.BinderException: Binder Error: column "SS_COUPON_AMT" must appear in the GROUP BY clause or must be part of an aggregate function.
-Either add it to the GROUP BY list, or use "ANY_VALUE(SS_COUPON_AMT)" if the exact value of "SS_COUPON_AMT" is not important.
-
-LINE 32:     "ss_store_sales"."SS_COUPON_AMT" as "ss_rows_00_ss_coupon_amt...
-             ^
 ```

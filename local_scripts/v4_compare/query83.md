@@ -1,24 +1,26 @@
 # Query 83
 
-**Status:** `ref_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (0 rows) |
-| reference execution | FAILED |
+| v4 execution | OK (24 rows) |
+| reference execution | OK (24 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 24 (24 distinct)
+ref rows: 24 (24 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7260 | 164 | 35.50 ms |
-| reference | 6782 | 160 | — |
-| v4 / ref | 1.07x | 1.02x | — |
+| v4 | 7260 | 164 | 94.02 ms |
+| reference | 5952 | 135 | 85.13 ms |
+| v4 / ref | 1.22x | 1.21x | 1.10x |
 
 ## Preql
 
@@ -287,7 +289,11 @@ SELECT
     CASE WHEN "questionable"."sales_sales_channel" = 'WEB' THEN "questionable"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_4128599423878258"
 FROM
     "memory"."item" as "sales_item_items"
-    LEFT OUTER JOIN "questionable" on "sales_item_items"."I_ITEM_SK" = "questionable"."sales_item_id"
+    INNER JOIN "questionable" on "sales_item_items"."I_ITEM_SK" = "questionable"."sales_item_id"
+    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "questionable"."sales_return_date_id" = "sales_return_date_date"."D_DATE_SK"
+WHERE
+    "sales_return_date_date"."D_WEEK_SEQ" in (select quizzical."target_week_seqs" from quizzical where quizzical."target_week_seqs" is not null)
+
 GROUP BY
     1,
     2,
@@ -312,35 +318,6 @@ GROUP BY
     3,
     "questionable"."sales_order_id",
     "sales_item_items"."I_ITEM_SK"),
-yummy as (
-SELECT
-    "uneven"."sales_item_text_id" as "sales_item_text_id",
-    "uneven"."sales_order_id" as "sales_order_id",
-    "uneven"."sales_return_quantity" as "sales_return_quantity",
-    "uneven"."sales_sales_channel" as "sales_sales_channel"
-FROM
-    "memory"."item" as "sales_item_items"
-    INNER JOIN "questionable" on "sales_item_items"."I_ITEM_SK" = "questionable"."sales_item_id"
-    INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "questionable"."sales_return_date_id" = "sales_return_date_date"."D_DATE_SK"
-WHERE
-    "sales_return_date_date"."D_WEEK_SEQ" in (select quizzical."target_week_seqs" from quizzical where quizzical."target_week_seqs" is not null)
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    "juicy"."sales_order_id"),
-vacuous as (
-SELECT
-    "juicy"."sales_item_text_id" as "sales_item_text_id",
-    sum("juicy"."_virt_filter_return_quantity_1904161637839137") as "cr_item_qty",
-    sum("juicy"."_virt_filter_return_quantity_6234128225083739") as "wr_item_qty",
-    sum("juicy"."_virt_filter_return_quantity_6293408465554798") as "sr_item_qty"
-FROM
-    "juicy"
-GROUP BY
-    1),
 abhorrent as (
 SELECT
     "concerned"."sales_item_text_id" as "sales_item_text_id",
@@ -401,24 +378,4 @@ ORDER BY
     "sweltering"."item_id" asc nulls first,
     "sweltering"."sr_item_qty" asc nulls first
 LIMIT (100)
-```
-
-## reference execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in run_one
-    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
-                                               ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 54, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in <lambda>
-    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
-                                                             ~~~~~^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 315, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 225, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.ParserException: Parser Error: Duplicate CTE name "yummy"
 ```

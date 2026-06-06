@@ -11,16 +11,16 @@
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 100 (92 distinct)
+ref rows: 100 (92 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2425 | 66 | 7.89 ms |
-| reference | 1822 | 48 | 3.61 ms |
-| v4 / ref | 1.33x | 1.38x | 2.18x |
+| v4 | 2425 | 66 | 29.79 ms |
+| reference | 1822 | 48 | 22.06 ms |
+| v4 / ref | 1.33x | 1.38x | 1.35x |
 
 ## Preql
 

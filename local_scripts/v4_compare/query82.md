@@ -1,26 +1,29 @@
 # Query 82
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (0 rows) |
-| reference execution | OK (0 rows) |
-| results identical | YES |
+| v4 execution | OK (34 rows) |
+| reference execution | OK (2 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 0 (0 distinct)
-ref rows: 0 (0 distinct)
+v4 rows: 34 (2 distinct)
+ref rows: 2 (2 distinct)
+only in v4 (showing up to 5 of 2):
+  20x  (Decimal('67.28000000'), 'Arab, financial pol', 'AAAAAAAAECMCAAAA')
+  12x  (Decimal('86.90000000'), 'Clinical, labour aspects might sit enough like a problems. Remarkably mysterious experts shall learn to th', 'AAAAAAAALIHCAAAA')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 948 | 14 | 1.52 ms |
-| reference | 1542 | 34 | 4.17 ms |
-| v4 / ref | 0.61x | 0.41x | 0.36x |
+| v4 | 948 | 14 | 10.31 ms |
+| reference | 1542 | 34 | 112.83 ms |
+| v4 / ref | 0.61x | 0.41x | 0.09x |
 
 ## Preql
 

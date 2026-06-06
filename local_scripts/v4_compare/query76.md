@@ -1,24 +1,26 @@
 # Query 76
 
-**Status:** `ref_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
-| reference execution | FAILED |
+| reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 14411 | 353 | 48.31 ms |
-| reference | 8938 | 213 | — |
-| v4 / ref | 1.61x | 1.66x | — |
+| v4 | 14411 | 353 | 219.61 ms |
+| reference | 7314 | 176 | 131.51 ms |
+| v4 / ref | 1.97x | 2.01x | 1.67x |
 
 ## Preql
 
@@ -527,45 +529,8 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
     "ss_store_sales"."SS_SOLD_DATE_SK" is not null
-),
-quizzical as (
-SELECT
-    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
-    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
-    "cs_catalog_sales"."CS_SHIP_ADDR_SK" as "cs_customer_address_id"
-FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"
-WHERE
-    "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
-),
-macho as (
-SELECT
-    "ws_date_date"."D_QOY" as "ws_date_quarter",
-    "ws_date_date"."D_YEAR" as "ws_date_year",
-    "ws_web_sales"."WS_EXT_SALES_PRICE" as "ws_ext_sales_price",
-    "ws_web_sales"."WS_ITEM_SK" as "ws_item_id",
-    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number"
-FROM
-    "memory"."web_sales" as "ws_web_sales"
-    INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
-WHERE
-    "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
-),
-juicy as (
-SELECT
-    "ss_date_date"."D_QOY" as "ss_date_quarter",
-    "ss_date_date"."D_YEAR" as "ss_date_year",
-    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
-    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
-FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-WHERE
-    "ss_store_sales"."SS_TICKET_NUMBER" is not null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
 ),
 thoughtful as (
 SELECT
@@ -686,24 +651,4 @@ ORDER BY
     "q76_results_d_qoy" asc nulls first,
     "q76_results_i_category" asc nulls first
 LIMIT (100)
-```
-
-## reference execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in run_one
-    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
-                                               ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 54, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 325, in <lambda>
-    result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
-                                                             ~~~~~^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 315, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 225, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-             ~~~~~~~~~~~^^^^^^^^^^^^^
-_duckdb.ParserException: Parser Error: Duplicate CTE name "quizzical"
 ```

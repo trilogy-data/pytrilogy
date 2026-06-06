@@ -1,26 +1,38 @@
 # Query 75
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (8 rows) |
-| reference execution | OK (8 rows) |
-| results identical | YES |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 8 (8 distinct)
-ref rows: 8 (8 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 5):
+  1x  (3901, 2001, 5820, Decimal('-113006.60000000'), -1919, 2002, 2001001, 9, 7, 85)
+  1x  (4422, 2001, 6166, Decimal('-48970.54000000'), -1744, 2002, 9006010, 9, 6, 373)
+  1x  (4550, 2001, 5860, Decimal('-82309.91000000'), -1310, 2002, 9008008, 9, 8, 535)
+  1x  (4607, 2001, 5750, Decimal('-22015.07000000'), -1143, 2002, 2004001, 9, 4, 178)
+  1x  (4635, 2001, 5481, Decimal('-5085.95000000'), -846, 2002, 9006010, 9, 1, 190)
+only in ref (showing up to 5 of 5):
+  1x  (3901, 2001, 5804, Decimal('-113006.60000000'), -1903, 2002, 2001001, 9, 7, 85)
+  1x  (4361, 2001, 6166, Decimal('-49562.85000000'), -1805, 2002, 9006010, 9, 6, 373)
+  1x  (4550, 2001, 5856, Decimal('-82309.91000000'), -1306, 2002, 9008008, 9, 8, 535)
+  1x  (4607, 2001, 5664, Decimal('-22015.07000000'), -1057, 2002, 2004001, 9, 4, 178)
+  1x  (5030, 2001, 5826, Decimal('-87415.20000000'), -796, 2002, 9010002, 9, 10, 189)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9056 | 192 | 22.55 ms |
-| reference | 8613 | 184 | 28.86 ms |
-| v4 / ref | 1.05x | 1.04x | 0.78x |
+| v4 | 9056 | 192 | 94.30 ms |
+| reference | 8613 | 184 | 114.01 ms |
+| v4 / ref | 1.05x | 1.04x | 0.83x |
 
 ## Preql
 

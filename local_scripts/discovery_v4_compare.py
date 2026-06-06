@@ -123,10 +123,16 @@ def get_duckdb_connection() -> duckdb.DuckDBPyConnection:
 
 
 def load_reference_sql(query_id: str) -> Optional[str]:
+    """A zquery log is only a valid v3 reference if it was written by a v3 run
+    — the test harness overwrites these logs with whichever generator last ran,
+    so an untagged (pre-`generator`-field) or v4-tagged log is stale and may
+    carry buggy SQL. Reject those; the caller regenerates v3 live instead."""
     log_path = TPCDS_DIR / f"zquery{query_id}.log"
     if not log_path.exists():
         return None
     data = tomllib.loads(log_path.read_text())
+    if data.get("generator") != "v3":
+        return None
     sql = data.get("generated_sql")
     if not isinstance(sql, str):
         return None
