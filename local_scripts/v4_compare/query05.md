@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10974 | 197 | 301.92 ms |
-| reference | 10304 | 183 | 398.52 ms |
-| v4 / ref | 1.07x | 1.08x | 0.76x |
+| v4 | 10974 | 197 | 379.70 ms |
+| reference | 10574 | 188 | 441.39 ms |
+| v4 / ref | 1.04x | 1.05x | 0.86x |
 
 ## Preql
 
@@ -448,6 +448,11 @@ GROUP BY
     4,
     5,
     6,
+    "abundant"."s_channel_dim_text_id",
+    "cheerful"."s_return_channel_dim_text_id",
+    cast("s_date_date"."D_DATE" as date),
+    cast("s_return_date_date"."D_DATE" as date),
+    coalesce("abundant"."s_channel_dim_text_id","cheerful"."s_return_channel_dim_text_id"),
     coalesce("abundant"."s_sales_channel","cheerful"."s_sales_channel","sweltering"."s_sales_channel","vacuous"."s_sales_channel","young"."s_sales_channel"),
     coalesce("sweltering"."s_item_id","vacuous"."s_item_id","young"."s_item_id"),
     coalesce("sweltering"."s_order_id","vacuous"."s_order_id","young"."s_order_id"))

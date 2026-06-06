@@ -1,7 +1,7 @@
 # TPC-H v3-vs-v4 parity
 
-- match: 25
-- mismatch: 2
+- match: 26
+- mismatch: 1
 - v3_error: 1
 
 | Query | Status | v3 rows | v4 rows |
@@ -15,7 +15,7 @@
 | 07 | match | 4 | 4 |
 | 08 | match | 2 | 2 |
 | 09 | match | 175 | 175 |
-| 10 | mismatch | 20 | 20 |
+| 10 | match | 20 | 20 |
 | 11 | match | 2541 | 2541 |
 | 12 | match | 2 | 2 |
 | 13 | match | 37 | 37 |

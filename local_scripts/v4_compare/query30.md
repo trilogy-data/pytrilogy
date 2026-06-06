@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 12844 | 199 | 91.91 ms |
-| reference | 7151 | 99 | 51.42 ms |
-| v4 / ref | 1.80x | 2.01x | 1.79x |
+| v4 | 11609 | 178 | 98.27 ms |
+| reference | 7151 | 99 | 48.93 ms |
+| v4 / ref | 1.62x | 1.80x | 2.01x |
 
 ## Preql
 
@@ -103,11 +103,7 @@ SELECT
     "web_returns_billing_customer_customers"."C_LOGIN" as "web_returns_billing_customer_login",
     "web_returns_billing_customer_customers"."C_PREFERRED_CUST_FLAG" as "web_returns_billing_customer_preferred_cust_flag",
     "web_returns_billing_customer_customers"."C_SALUTATION" as "web_returns_billing_customer_salutation",
-    "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state",
-    "web_returns_return_date_date"."D_YEAR" as "web_returns_return_date_year",
-    "web_returns_web_returns"."WR_ITEM_SK" as "web_returns_web_sales_item_id",
-    "web_returns_web_returns"."WR_ORDER_NUMBER" as "web_returns_web_sales_order_number",
-    "web_returns_web_returns"."WR_RETURN_AMT" as "web_returns_return_amount"
+    "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state"
 FROM
     "memory"."web_returns" as "web_returns_web_returns"
     INNER JOIN "memory"."date_dim" as "web_returns_return_date_date" on "web_returns_web_returns"."WR_RETURNED_DATE_SK" = "web_returns_return_date_date"."D_DATE_SK"
@@ -154,10 +150,7 @@ SELECT
     "cooperative"."web_returns_billing_customer_preferred_cust_flag" as "web_returns_billing_customer_preferred_cust_flag",
     "cooperative"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
     "cooperative"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
-    "cooperative"."web_returns_return_address_state" as "web_returns_return_address_state",
-    "cooperative"."web_returns_web_sales_item_id" as "web_returns_web_sales_item_id",
-    "cooperative"."web_returns_web_sales_order_number" as "web_returns_web_sales_order_number",
-    CASE WHEN "cooperative"."web_returns_return_date_year" = 2002 and "cooperative"."web_returns_return_address_state" is not null THEN "cooperative"."web_returns_return_amount" ELSE NULL END as "_virt_filter_return_amount_7190501181391118"
+    "cooperative"."web_returns_return_address_state" as "web_returns_return_address_state"
 FROM
     "cooperative"),
 sparkling as (
@@ -219,7 +212,6 @@ FROM
 macho as (
 SELECT
     "questionable"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
-    "questionable"."web_returns_return_address_state" as "web_returns_return_address_state",
     "uneven"."customer_state_returns_2002" as "customer_state_returns_2002"
 FROM
     "questionable"
@@ -231,20 +223,7 @@ WHERE
 GROUP BY
     1,
     2,
-    3,
-    "questionable"."_virt_filter_return_amount_7190501181391118",
-    "questionable"."web_returns_web_sales_item_id",
-    "questionable"."web_returns_web_sales_order_number"),
-kaput as (
-SELECT
-    "macho"."customer_state_returns_2002" as "customer_state_returns_2002",
-    "macho"."web_returns_billing_customer_id" as "web_returns_billing_customer_id"
-FROM
-    "macho"
-GROUP BY
-    1,
-    2,
-    "macho"."web_returns_return_address_state")
+    "questionable"."web_returns_return_address_state")
 SELECT
     "abundant"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
     "abundant"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
@@ -258,10 +237,10 @@ SELECT
     "abundant"."web_returns_billing_customer_login" as "web_returns_billing_customer_login",
     "abundant"."web_returns_billing_customer_email_address" as "web_returns_billing_customer_email_address",
     "abundant"."web_returns_billing_customer_last_review_date" as "web_returns_billing_customer_last_review_date",
-    "kaput"."customer_state_returns_2002" as "customer_state_returns_2002"
+    "macho"."customer_state_returns_2002" as "customer_state_returns_2002"
 FROM
-    "kaput"
-    INNER JOIN "abundant" on "kaput"."web_returns_billing_customer_id" = "abundant"."web_returns_billing_customer_id"
+    "macho"
+    INNER JOIN "abundant" on "macho"."web_returns_billing_customer_id" = "abundant"."web_returns_billing_customer_id"
 ORDER BY 
     "abundant"."web_returns_billing_customer_text_id" asc nulls first,
     "abundant"."web_returns_billing_customer_salutation" asc nulls first,
@@ -275,7 +254,7 @@ ORDER BY
     "abundant"."web_returns_billing_customer_login" asc nulls first,
     "abundant"."web_returns_billing_customer_email_address" asc nulls first,
     "abundant"."web_returns_billing_customer_last_review_date" asc nulls first,
-    "kaput"."customer_state_returns_2002" asc nulls first
+    "macho"."customer_state_returns_2002" asc nulls first
 LIMIT (100)
 ```
 

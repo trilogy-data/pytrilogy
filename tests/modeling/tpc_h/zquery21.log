@@ -1,6 +1,7 @@
 query_id = "21"
-gen_length = 1627
-preql_size = 512
+generator = "v3"
+gen_length = 1623
+preql_size = 510
 comp_size = 802
 generated_sql = """
 
@@ -20,7 +21,7 @@ uneven as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
-    1 as \"row_counter\"
+    1 as \"line_item\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
@@ -41,7 +42,7 @@ HAVING
 )
 SELECT
     \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
-    sum(\"uneven\".\"row_counter\") as \"numwait\"
+    sum(\"uneven\".\"line_item\") as \"numwait\"
 FROM
     \"uneven\"
     INNER JOIN \"thoughtful\" on \"uneven\".\"order_id\" = \"thoughtful\".\"order_id\"

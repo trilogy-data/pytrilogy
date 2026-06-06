@@ -1,5 +1,6 @@
 query_id = "11"
-gen_length = 1917
+generator = "v3"
+gen_length = 1211
 preql_size = 355
 comp_size = 581
 generated_sql = """
@@ -7,60 +8,37 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"partsupp\".\"ps_availqty\" as \"available_quantity\",
+    \"partsupp\".\"ps_availqty\" as \"_virt_filter_available_quantity_5442867613516720\",
     \"partsupp\".\"ps_partkey\" as \"id\",
-    \"partsupp\".\"ps_supplycost\" as \"supply_cost\",
-    UPPER(\"supplier_nation_nation\".\"n_name\")  as \"supplier_nation_name\"
+    \"partsupp\".\"ps_supplycost\" as \"supply_cost\"
 FROM
     \"memory\".\"partsupp\" as \"partsupp\"
     INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
-    INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"),
-thoughtful as (
-SELECT
-    \"cheerful\".\"id\" as \"id\",
-    \"cheerful\".\"supply_cost\" as \"supply_cost\",
-    CASE WHEN \"cheerful\".\"supplier_nation_name\" = 'GERMANY' THEN \"cheerful\".\"available_quantity\" ELSE NULL END as \"_virt_filter_available_quantity_5442867613516720\"
-FROM
-    \"cheerful\"),
-questionable as (
-SELECT
-    \"thoughtful\".\"id\" as \"id\",
-    sum(\"thoughtful\".\"supply_cost\" * \"thoughtful\".\"_virt_filter_available_quantity_5442867613516720\") as \"part_total_value\"
-FROM
-    \"thoughtful\"
-GROUP BY
-    1),
+    INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
+WHERE
+    UPPER(\"supplier_nation_nation\".\"n_name\")  = 'GERMANY'
+),
 cooperative as (
 SELECT
-    sum(\"thoughtful\".\"supply_cost\" * \"thoughtful\".\"_virt_filter_available_quantity_5442867613516720\") as \"germany_total_value\"
+    \"cheerful\".\"id\" as \"id\",
+    sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"_virt_filter_available_quantity_5442867613516720\") as \"part_total_value\"
 FROM
-    \"thoughtful\"),
-abundant as (
+    \"cheerful\"
+GROUP BY
+    1),
+thoughtful as (
 SELECT
-    \"questionable\".\"id\" as \"id\",
-    \"questionable\".\"part_total_value\" as \"part_total_value\"
+    sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"_virt_filter_available_quantity_5442867613516720\") as \"germany_total_value\"
+FROM
+    \"cheerful\")
+SELECT
+    \"cooperative\".\"id\" as \"id\",
+    \"cooperative\".\"part_total_value\" as \"total_value\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"questionable\" on \"thoughtful\".\"id\" = \"questionable\".\"id\"
-    FULL JOIN \"cooperative\" on 1=1
-GROUP BY
-    1,
-    2),
-yummy as (
-SELECT
-    \"abundant\".\"id\" as \"id\",
-    \"abundant\".\"part_total_value\" as \"part_total_value\",
-    \"abundant\".\"part_total_value\" as \"total_value\"
-FROM
-    \"abundant\")
-SELECT
-    \"yummy\".\"id\" as \"id\",
-    \"yummy\".\"total_value\" as \"total_value\"
-FROM
-    \"cooperative\"
-    INNER JOIN \"yummy\" on 1=1
+    INNER JOIN \"cooperative\" on 1=1
 WHERE
-    \"yummy\".\"part_total_value\" > \"cooperative\".\"germany_total_value\" * 0.0001
+    \"cooperative\".\"part_total_value\" > \"thoughtful\".\"germany_total_value\" * 0.0001
 
 ORDER BY 
-    \"yummy\".\"total_value\" desc"""
+    \"total_value\" desc"""

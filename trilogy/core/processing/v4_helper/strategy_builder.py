@@ -965,13 +965,19 @@ def _wrap_for_grain(
         # selected next to `sum(...) by order.id`. Deduping it to its own
         # key-grain ({order.customer.id}) drops `order.id`, so the FINAL merge
         # loses its join key and degrades to `ON 1=1` (fan-out). Project it at
-        # the merge grain instead, keeping the join key.
+        # the merge grain instead, keeping the join key. `from_concepts` folds
+        # the FK key hierarchy, so reducing the concept grain together with the
+        # merge grain collapses to just the merge grain iff it's determined by
+        # it (transitively, e.g. nation.id -> customer.id).
         concept_keys = frozenset(concept.keys or set())
         if (
             merge_grain_components
             and grain_components.isdisjoint(merge_grain_components)
             and concept_keys
-            and concept_keys <= merge_grain_components
+            and BuildGrain.from_concepts(
+                grain_components | merge_grain_components, environment=environment
+            ).components
+            <= merge_grain_components
             and merge_grain_components <= parent_outputs
         ):
             grain_components = merge_grain_components

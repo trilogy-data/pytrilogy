@@ -1,16 +1,14 @@
 query_id = "07"
-gen_length = 1767
+generator = "v3"
+gen_length = 1450
 preql_size = 496
 comp_size = 953
 generated_sql = """
-
-WITH 
-questionable as (
 SELECT
-    UPPER(\"order_customer_nation_nation\".\"n_name\")  as \"order_customer_nation_name\",
-    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\",
-    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\",
-    year(\"lineitem\".\"l_shipdate\") as \"l_year\"
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"supp_nation\",
+    UPPER(\"order_customer_nation_nation\".\"n_name\")  as \"cust_nation\",
+    year(\"lineitem\".\"l_shipdate\") as \"l_year\",
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
@@ -24,15 +22,8 @@ WHERE
 GROUP BY
     1,
     2,
-    4)
-SELECT
-    \"questionable\".\"part_supplier_nation_name\" as \"supp_nation\",
-    \"questionable\".\"order_customer_nation_name\" as \"cust_nation\",
-    \"questionable\".\"l_year\" as \"l_year\",
-    \"questionable\".\"q_revenue\" as \"q_revenue\"
-FROM
-    \"questionable\"
+    3
 ORDER BY 
     \"supp_nation\" asc,
     \"cust_nation\" asc,
-    \"questionable\".\"l_year\" asc"""
+    \"l_year\" asc"""

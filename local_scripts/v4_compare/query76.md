@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 14411 | 353 | 219.61 ms |
-| reference | 7314 | 176 | 131.51 ms |
-| v4 / ref | 1.97x | 2.01x | 1.67x |
+| v4 | 16079 | 404 | 419.25 ms |
+| reference | 7314 | 176 | 192.26 ms |
+| v4 / ref | 2.20x | 2.30x | 2.18x |
 
 ## Preql
 
@@ -329,9 +329,9 @@ bewildered as (
 SELECT
     "dapper"."ws_date_quarter" as "ws_date_quarter",
     "dapper"."ws_date_year" as "ws_date_year",
+    "dapper"."ws_ext_sales_price" as "ws_ext_sales_price",
     "dapper"."ws_item_category" as "ws_item_category",
-    sum("dapper"."ws_ext_sales_price") as "_q76_results_amt_b",
-    sum("wary"."ws_row_flag") as "_q76_results_cnt_b"
+    "wary"."ws_row_flag" as "ws_row_flag"
 FROM
     "dapper"
     FULL JOIN "vast" on "dapper"."ws_item_id" = "vast"."ws_item_id"
@@ -340,14 +340,18 @@ FROM
 GROUP BY
     1,
     2,
-    3),
+    3,
+    4,
+    5,
+    coalesce("courageous"."ws_item_id","dapper"."ws_item_id","vast"."ws_item_id","wary"."ws_item_id"),
+    coalesce("courageous"."ws_order_number","dapper"."ws_order_number","wary"."ws_order_number")),
 premium as (
 SELECT
     "friendly"."ss_date_quarter" as "ss_date_quarter",
     "friendly"."ss_date_year" as "ss_date_year",
+    "friendly"."ss_ext_sales_price" as "ss_ext_sales_price",
     "friendly"."ss_item_category" as "ss_item_category",
-    sum("friendly"."ss_ext_sales_price") as "_q76_results_amt_a",
-    sum("protective"."ss_row_flag") as "_q76_results_cnt_a"
+    "protective"."ss_row_flag" as "ss_row_flag"
 FROM
     "friendly"
     FULL JOIN "divergent" on "friendly"."ss_item_id" = "divergent"."ss_item_id"
@@ -356,14 +360,18 @@ FROM
 GROUP BY
     1,
     2,
-    3),
+    3,
+    4,
+    5,
+    coalesce("divergent"."ss_item_id","friendly"."ss_item_id","kaput"."ss_item_id","protective"."ss_item_id"),
+    coalesce("friendly"."ss_ticket_number","kaput"."ss_ticket_number","protective"."ss_ticket_number")),
 juicy as (
 SELECT
     "abundant"."cs_date_quarter" as "cs_date_quarter",
     "abundant"."cs_date_year" as "cs_date_year",
+    "abundant"."cs_ext_sales_price" as "cs_ext_sales_price",
     "abundant"."cs_item_category" as "cs_item_category",
-    sum("abundant"."cs_ext_sales_price") as "_q76_results_amt_c",
-    sum("wakeful"."cs_row_flag") as "_q76_results_cnt_c"
+    "wakeful"."cs_row_flag" as "cs_row_flag"
 FROM
     "abundant"
     FULL JOIN "yummy" on "abundant"."cs_item_id" = "yummy"."cs_item_id"
@@ -372,34 +380,77 @@ FROM
 GROUP BY
     1,
     2,
+    3,
+    4,
+    5,
+    coalesce("abundant"."cs_item_id","uneven"."cs_item_id","wakeful"."cs_item_id","yummy"."cs_item_id"),
+    coalesce("abundant"."cs_order_number","uneven"."cs_order_number","wakeful"."cs_order_number")),
+wooden as (
+SELECT
+    "bewildered"."ws_date_quarter" as "ws_date_quarter",
+    "bewildered"."ws_date_year" as "ws_date_year",
+    "bewildered"."ws_item_category" as "ws_item_category",
+    sum("bewildered"."ws_ext_sales_price") as "_q76_results_amt_b",
+    sum("bewildered"."ws_row_flag") as "_q76_results_cnt_b"
+FROM
+    "bewildered"
+GROUP BY
+    1,
+    2,
+    3),
+waggish as (
+SELECT
+    "premium"."ss_date_quarter" as "ss_date_quarter",
+    "premium"."ss_date_year" as "ss_date_year",
+    "premium"."ss_item_category" as "ss_item_category",
+    sum("premium"."ss_ext_sales_price") as "_q76_results_amt_a",
+    sum("premium"."ss_row_flag") as "_q76_results_cnt_a"
+FROM
+    "premium"
+GROUP BY
+    1,
+    2,
+    3),
+concerned as (
+SELECT
+    "juicy"."cs_date_quarter" as "cs_date_quarter",
+    "juicy"."cs_date_year" as "cs_date_year",
+    "juicy"."cs_item_category" as "cs_item_category",
+    sum("juicy"."cs_ext_sales_price") as "_q76_results_amt_c",
+    sum("juicy"."cs_row_flag") as "_q76_results_cnt_c"
+FROM
+    "juicy"
+GROUP BY
+    1,
+    2,
     3),
 ceaseless as (
 SELECT
-    "bewildered"."_q76_results_amt_b" as "_q76_results_amt_b",
-    "bewildered"."_q76_results_cnt_b" as "_q76_results_cnt_b",
-    "bewildered"."ws_date_quarter" as "_q76_results_qoy_b",
-    "bewildered"."ws_date_year" as "_q76_results_year_b",
-    "bewildered"."ws_item_category" as "_q76_results_category_b"
+    "wooden"."_q76_results_amt_b" as "_q76_results_amt_b",
+    "wooden"."_q76_results_cnt_b" as "_q76_results_cnt_b",
+    "wooden"."ws_date_quarter" as "_q76_results_qoy_b",
+    "wooden"."ws_date_year" as "_q76_results_year_b",
+    "wooden"."ws_item_category" as "_q76_results_category_b"
 FROM
-    "bewildered"),
+    "wooden"),
 rambunctious as (
 SELECT
-    "premium"."_q76_results_amt_a" as "_q76_results_amt_a",
-    "premium"."_q76_results_cnt_a" as "_q76_results_cnt_a",
-    "premium"."ss_date_quarter" as "_q76_results_qoy_a",
-    "premium"."ss_date_year" as "_q76_results_year_a",
-    "premium"."ss_item_category" as "_q76_results_category_a"
+    "waggish"."_q76_results_amt_a" as "_q76_results_amt_a",
+    "waggish"."_q76_results_cnt_a" as "_q76_results_cnt_a",
+    "waggish"."ss_date_quarter" as "_q76_results_qoy_a",
+    "waggish"."ss_date_year" as "_q76_results_year_a",
+    "waggish"."ss_item_category" as "_q76_results_category_a"
 FROM
-    "premium"),
+    "waggish"),
 young as (
 SELECT
-    "juicy"."_q76_results_amt_c" as "_q76_results_amt_c",
-    "juicy"."_q76_results_cnt_c" as "_q76_results_cnt_c",
-    "juicy"."cs_date_quarter" as "_q76_results_qoy_c",
-    "juicy"."cs_date_year" as "_q76_results_year_c",
-    "juicy"."cs_item_category" as "_q76_results_category_c"
+    "concerned"."_q76_results_amt_c" as "_q76_results_amt_c",
+    "concerned"."_q76_results_cnt_c" as "_q76_results_cnt_c",
+    "concerned"."cs_date_quarter" as "_q76_results_qoy_c",
+    "concerned"."cs_date_year" as "_q76_results_year_c",
+    "concerned"."cs_item_category" as "_q76_results_category_c"
 FROM
-    "juicy"),
+    "concerned"),
 tearful as (
 SELECT
     "ceaseless"."_q76_results_amt_b" as "_q76_results_amt_b",

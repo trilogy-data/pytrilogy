@@ -1,15 +1,13 @@
 query_id = "09"
-gen_length = 1339
+generator = "v3"
+gen_length = 1101
 preql_size = 254
 comp_size = 677
 generated_sql = """
-
-WITH 
-questionable as (
 SELECT
-    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\",
-    sum(( \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ) - ( \"part_partsupp\".\"ps_supplycost\" * \"lineitem\".\"l_quantity\" )) as \"sum_profit\",
-    year(\"order_orders\".\"o_orderdate\") as \"o_year\"
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"nation\",
+    year(\"order_orders\".\"o_orderdate\") as \"o_year\",
+    sum(( \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ) - ( \"part_partsupp\".\"ps_supplycost\" * \"lineitem\".\"l_quantity\" )) as \"sum_profit\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
@@ -22,13 +20,7 @@ WHERE
 
 GROUP BY
     1,
-    3)
-SELECT
-    \"questionable\".\"part_supplier_nation_name\" as \"nation\",
-    \"questionable\".\"o_year\" as \"o_year\",
-    \"questionable\".\"sum_profit\" as \"sum_profit\"
-FROM
-    \"questionable\"
+    2
 ORDER BY 
     \"nation\" asc,
-    \"questionable\".\"o_year\" desc"""
+    \"o_year\" desc"""

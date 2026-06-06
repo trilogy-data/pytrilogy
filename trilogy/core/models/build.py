@@ -281,6 +281,38 @@ def resolve_concepts_with_equivalents(
     ]
 
 
+def _addr_keys(
+    addr: str,
+    environment: "BuildEnvironment",
+    pmap: dict[str, "BuildConcept"],
+) -> frozenset[str]:
+    concept = pmap.get(addr) or environment.concepts.get(addr)
+    return frozenset(concept.keys) if concept and concept.keys else frozenset()
+
+
+def _key_reduces_to(
+    components: frozenset[str],
+    target: set[str],
+    environment: "BuildEnvironment",
+    pmap: dict[str, "BuildConcept"],
+    _seen: frozenset[str] = frozenset(),
+) -> bool:
+    """Do `components` transitively reduce — via FK key bindings — to a subset
+    of `target`? A component is covered if it is already in `target` or every
+    key it binds to reduces to `target` (e.g. nation.id -> customer.id)."""
+    for comp in components:
+        if comp in target:
+            continue
+        if comp in _seen:
+            return False
+        keys = _addr_keys(comp, environment, pmap)
+        if not keys:
+            return False
+        if not _key_reduces_to(keys, target, environment, pmap, _seen | {comp}):
+            return False
+    return True
+
+
 def concepts_to_build_grain_concepts(
     concepts: Iterable[BuildConcept | str], environment: "BuildEnvironment" | None
 ) -> set[str]:
@@ -317,6 +349,20 @@ def concepts_to_build_grain_concepts(
         if final & sub.equivalent_addresses:
             continue
         final.add(sub.address)
+
+    # Key-hierarchy reduction: drop a component whose FK key chain transitively
+    # reduces to the other retained components. `concept_is_relevant` only drops
+    # a key one level away (its immediate `keys` are present); this folds the
+    # full chain (e.g. nation.id -> customer.id -> order.id), so a grain never
+    # carries a key that another retained key already determines.
+    if environment is not None:
+        pmap = {c.address: c for c in pconcepts}
+        reduced = set(final)
+        for addr in sorted(final):
+            keys = _addr_keys(addr, environment, pmap)
+            if keys and _key_reduces_to(keys, reduced - {addr}, environment, pmap):
+                reduced.discard(addr)
+        final = reduced
 
     return final
 

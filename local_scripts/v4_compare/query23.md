@@ -18,9 +18,9 @@ ref rows: 4 (4 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8357 | 213 | 390.22 ms |
-| reference | 7843 | 178 | 319.86 ms |
-| v4 / ref | 1.07x | 1.20x | 1.22x |
+| v4 | 8782 | 227 | 744.57 ms |
+| reference | 7843 | 178 | 483.78 ms |
+| v4 / ref | 1.12x | 1.28x | 1.54x |
 
 ## Preql
 
@@ -282,10 +282,24 @@ puffy as (
 SELECT
     "puzzled"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
     "puzzled"."sales_billing_customer_last_name" as "sales_billing_customer_last_name",
-    sum("waggish"."_virt_filter_7664750597049030") as "sales_total"
+    "waggish"."_virt_filter_7664750597049030" as "_virt_filter_7664750597049030"
 FROM
     "puzzled"
     INNER JOIN "waggish" on "puzzled"."sales_item_id" = "waggish"."sales_item_id" AND "puzzled"."sales_order_id" = "waggish"."sales_order_id" AND "puzzled"."sales_sales_channel" = "waggish"."sales_sales_channel"
+GROUP BY
+    1,
+    2,
+    3,
+    "puzzled"."sales_item_id",
+    "puzzled"."sales_order_id",
+    "puzzled"."sales_sales_channel"),
+sedate as (
+SELECT
+    "puffy"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
+    "puffy"."sales_billing_customer_last_name" as "sales_billing_customer_last_name",
+    sum("puffy"."_virt_filter_7664750597049030") as "sales_total"
+FROM
+    "puffy"
 GROUP BY
     1,
     2
@@ -293,15 +307,15 @@ HAVING
     "sales_total" > 0
 )
 SELECT
-    "puffy"."sales_billing_customer_last_name" as "c_last_name",
-    "puffy"."sales_billing_customer_first_name" as "c_first_name",
-    "puffy"."sales_total" as "sales_total"
+    "sedate"."sales_billing_customer_last_name" as "c_last_name",
+    "sedate"."sales_billing_customer_first_name" as "c_first_name",
+    "sedate"."sales_total" as "sales_total"
 FROM
-    "puffy"
+    "sedate"
 ORDER BY 
     "c_last_name" asc nulls first,
     "c_first_name" asc nulls first,
-    "puffy"."sales_total" asc nulls first
+    "sedate"."sales_total" asc nulls first
 LIMIT (100)
 ```
 

@@ -18,9 +18,9 @@ ref rows: 90 (90 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2597 | 28 | 51.67 ms |
-| reference | 2597 | 28 | 50.47 ms |
-| v4 / ref | 1.00x | 1.00x | 1.02x |
+| v4 | 3505 | 52 | 80.94 ms |
+| reference | 2597 | 28 | 46.21 ms |
+| v4 / ref | 1.35x | 1.86x | 1.75x |
 
 ## Preql
 
@@ -65,15 +65,17 @@ limit 100
 ## v4 generated SQL
 
 ```sql
+WITH 
+questionable as (
 SELECT
-    SUBSTRING("warehouse_warehouse"."w_warehouse_name",1,20) as "warehouse_short_name",
     "ship_mode_ship_mode"."SM_TYPE" as "ship_mode_type",
+    CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 30 THEN 1 ELSE NULL END as "_virt_filter_row_counter_5011928028596288",
+    CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 120 THEN 1 ELSE NULL END as "_virt_filter_row_counter_3600395140186427",
+    CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 30 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 60 THEN 1 ELSE NULL END as "_virt_filter_row_counter_3995177617069933",
+    CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 60 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 90 THEN 1 ELSE NULL END as "_virt_filter_row_counter_2542054096360490",
+    CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 90 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 120 THEN 1 ELSE NULL END as "_virt_filter_row_counter_8267453838305074",
     LOWER("call_center_call_center"."CC_NAME")  as "cc_name_lower",
-    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 30 THEN 1 ELSE NULL END) as "less_than_30_days",
-    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 30 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 60 THEN 1 ELSE NULL END) as "between_31_and_60_days",
-    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 60 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 90 THEN 1 ELSE NULL END) as "between_61_and_90_days",
-    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 90 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 120 THEN 1 ELSE NULL END) as "between_91_and_120_days",
-    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 120 THEN 1 ELSE NULL END) as "over_120_days"
+    SUBSTRING("warehouse_warehouse"."w_warehouse_name",1,20) as "warehouse_short_name"
 FROM
     "memory"."catalog_sales" as "catalog_sales"
     INNER JOIN "memory"."date_dim" as "ship_date_date" on "catalog_sales"."CS_SHIP_DATE_SK" = "ship_date_date"."D_DATE_SK"
@@ -82,16 +84,38 @@ FROM
     INNER JOIN "memory"."warehouse" as "warehouse_warehouse" on "catalog_sales"."CS_WAREHOUSE_SK" = "warehouse_warehouse"."w_warehouse_sk"
     INNER JOIN "memory"."call_center" as "call_center_call_center" on "catalog_sales"."CS_CALL_CENTER_SK" = "call_center_call_center"."CC_CALL_CENTER_SK"
 WHERE
-    "ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "catalog_sales"."CS_ORDER_NUMBER" is not null and "catalog_sales"."CS_CALL_CENTER_SK" is not null and "catalog_sales"."CS_WAREHOUSE_SK" is not null and "catalog_sales"."CS_SHIP_MODE_SK" is not null
+    "ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "catalog_sales"."CS_CALL_CENTER_SK" is not null and "catalog_sales"."CS_WAREHOUSE_SK" is not null and "catalog_sales"."CS_SHIP_MODE_SK" is not null
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    "catalog_sales"."CS_ITEM_SK",
+    "catalog_sales"."CS_ORDER_NUMBER")
+SELECT
+    "questionable"."warehouse_short_name" as "warehouse_short_name",
+    "questionable"."ship_mode_type" as "ship_mode_type",
+    "questionable"."cc_name_lower" as "cc_name_lower",
+    count("questionable"."_virt_filter_row_counter_5011928028596288") as "less_than_30_days",
+    count("questionable"."_virt_filter_row_counter_3995177617069933") as "between_31_and_60_days",
+    count("questionable"."_virt_filter_row_counter_2542054096360490") as "between_61_and_90_days",
+    count("questionable"."_virt_filter_row_counter_8267453838305074") as "between_91_and_120_days",
+    count("questionable"."_virt_filter_row_counter_3600395140186427") as "over_120_days"
+FROM
+    "questionable"
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    "warehouse_short_name" asc nulls first,
-    "ship_mode_ship_mode"."SM_TYPE" asc nulls first,
-    "cc_name_lower" asc nulls first
+    "questionable"."warehouse_short_name" asc nulls first,
+    "questionable"."ship_mode_type" asc nulls first,
+    "questionable"."cc_name_lower" asc nulls first
 LIMIT (100)
 ```
 

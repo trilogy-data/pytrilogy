@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 11380 | 199 | 180.43 ms |
-| reference | 7464 | 111 | 108.64 ms |
-| v4 / ref | 1.52x | 1.79x | 1.66x |
+| v4 | 10402 | 178 | 1.015 s |
+| reference | 7464 | 111 | 684.23 ms |
+| v4 / ref | 1.39x | 1.60x | 1.48x |
 
 ## Preql
 
@@ -109,10 +109,6 @@ SELECT
     "cr_billing_customer_customers"."C_FIRST_NAME" as "cr_billing_customer_first_name",
     "cr_billing_customer_customers"."C_LAST_NAME" as "cr_billing_customer_last_name",
     "cr_billing_customer_customers"."C_SALUTATION" as "cr_billing_customer_salutation",
-    "cr_catalog_returns"."CR_ITEM_SK" as "cr_item_id",
-    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number",
-    "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" as "cr_return_amt_inc_tax",
-    "cr_date_date"."D_YEAR" as "cr_date_year",
     "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state"
 FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
@@ -163,10 +159,7 @@ SELECT
     "cooperative"."cr_billing_customer_last_name" as "cr_billing_customer_last_name",
     "cooperative"."cr_billing_customer_salutation" as "cr_billing_customer_salutation",
     "cooperative"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
-    "cooperative"."cr_item_id" as "cr_item_id",
-    "cooperative"."cr_order_number" as "cr_order_number",
-    "cooperative"."cr_return_address_state" as "cr_return_address_state",
-    CASE WHEN "cooperative"."cr_date_year" = 2000 and "cooperative"."cr_return_address_state" is not null THEN "cooperative"."cr_return_amt_inc_tax" ELSE NULL END as "_virt_filter_return_amt_inc_tax_2184255153361204"
+    "cooperative"."cr_return_address_state" as "cr_return_address_state"
 FROM
     "cooperative"),
 young as (
@@ -209,20 +202,6 @@ WHERE
 GROUP BY
     1,
     2,
-    3,
-    "questionable"."_virt_filter_return_amt_inc_tax_2184255153361204",
-    "questionable"."cr_item_id",
-    "questionable"."cr_order_number"),
-friendly as (
-SELECT
-    "late"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "late"."cr_return_address_state" as "cr_return_address_state",
-    "late"."customer_state" as "customer_state"
-FROM
-    "late"
-GROUP BY
-    1,
-    2,
     3)
 SELECT
     "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
@@ -240,10 +219,10 @@ SELECT
     "questionable"."cr_billing_customer_address_country" as "cr_billing_customer_address_country",
     "questionable"."cr_billing_customer_address_gmt_offset" as "cr_billing_customer_address_gmt_offset",
     "questionable"."cr_billing_customer_address_location_type" as "cr_billing_customer_address_location_type",
-    "friendly"."customer_state" as "customer_state"
+    "late"."customer_state" as "customer_state"
 FROM
     "questionable"
-    INNER JOIN "friendly" on "questionable"."cr_billing_customer_id" = "friendly"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "friendly"."cr_return_address_state"
+    INNER JOIN "late" on "questionable"."cr_billing_customer_id" = "late"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "late"."cr_return_address_state"
 GROUP BY
     1,
     2,
@@ -278,7 +257,7 @@ ORDER BY
     "questionable"."cr_billing_customer_address_country" asc nulls first,
     "questionable"."cr_billing_customer_address_gmt_offset" asc nulls first,
     "questionable"."cr_billing_customer_address_location_type" asc nulls first,
-    "friendly"."customer_state" asc nulls first
+    "late"."customer_state" asc nulls first
 LIMIT (100)
 ```
 
