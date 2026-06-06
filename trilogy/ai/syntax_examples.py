@@ -153,20 +153,25 @@ order by enroll.year asc nulls first;
     ),
     SyntaxExample(
         name="aligned-multi-select",
-        title="Combine two aggregations over shared dimensions (multi-select)",
+        title="Combine / pair aggregations with a multi-select (merge … align … derive)",
         summary=(
-            "`merge … align … derive` joins two `select` blocks on shared dims; "
-            "`by rollup` adds subtotals; `--col` keeps a column out of the output"
+            "`merge … align … derive` stitches independent `select` blocks on a shared key — "
+            "use it to COMBINE two measures, SELF-PAIR one model across two periods/sets, or "
+            "STACK channels; `by rollup` adds subtotals. Read the GOTCHAS — agents misuse this a lot"
         ),
         body="""\
-# Two independent aggregations (here total enrollments vs completed
-# enrollments) over the same model, aligned on a shared dimension, then
-# combined in `derive`.
-#  - prefix a projection with `--` to keep it for alignment but OUT of the
-#    printed rows (the printed columns come from `align` + `derive`).
+# A multi-select runs several independent `select` blocks (arms) and stitches
+# them on a shared key. It is the tool for THREE shapes agents reach for:
+#   (1) COMBINE different measures over one population (total vs completed below);
+#   (2) SELF-PAIR one model against itself across two periods/sets — give each arm
+#       a different `where` over the SAME model and align on the (possibly shifted)
+#       key. This is how you compare "this period vs another period" of one fact;
+#   (3) STACK channels / sources — one arm per source, aligned on the common key.
+#  - prefix a projection with `--` to keep it for alignment but OUT of the printed
+#    rows (the printed columns come from `align` + `derive`).
 #  - `by rollup <dims>` adds subtotal + grand-total rows (the dim is NULL there).
-#  - `align <name>: <colA>, <colB>` ties one column from each block together;
-#    chain more with `and <name2>: ...`.
+#  - `align <name>: <colA>, <colB>` ties one column from EACH arm together; chain
+#    more alignments with `and <name2>: <colA2>, <colB2>`.
 import enrollments as enroll;
 
 where enroll.year = 2020
@@ -186,6 +191,31 @@ derive
     round(coalesce(completed_b, 0) * 1.0 / coalesce(enrolled_a, 0), 2) -> completion_rate
 order by course asc nulls first
 limit 100;
+
+# ---------------------------------------------------------------------------
+# GOTCHAS (each of these is a real, repeated agent failure):
+#  - `derive` takes only FUNCTIONS/CONDITIONALS (coalesce, round, case,
+#    arithmetic, +/-/*//). A bare column rename in derive (`derive amt -> x`) or a
+#    literal (`derive 2001 -> y`) errors with "Invalid derive expression … must be
+#    a function or conditional". To pass a value through unchanged, make it an
+#    `align` key (aligned keys are output directly), or wrap it (`coalesce(amt,amt)`).
+#  - Every arm must contribute ONE column per `align` name, and the arms' selects
+#    should have matching shape. Output columns are the align keys + derive results.
+#  - Each arm has its OWN leading `where` (that is how self-pairing filters each
+#    side differently). A standalone `where …;` with no following `select` is a
+#    parse error.
+#  - To pair on a SHIFTED key (e.g. match a period to the next one), project the
+#    shifted value as a hidden `--<expr> as key_b` column in one arm and align it
+#    to the other arm's plain key. Do NOT rely on `lead/lag(N)` for this when the
+#    ordering key is sparse/non-contiguous — an N-row offset is not an N-period
+#    offset; pair on the explicit key instead.
+#  - Window functions (`rank/lead/lag … over (…)`) cannot live in `derive` or in a
+#    top-level `where`. Compute a window in an arm's `select` (hidden with `--`) and
+#    reference it, or filter it via a hidden select column + `having`.
+#  - Don't reference an alias inside its own definition (`x as foo` then reading
+#    `foo` in the same expression) — that is a recursive self-reference and is
+#    rejected. Name the upstream pieces as distinct `auto`s instead.
+#  - Every projection needs an explicit `as` alias (`min(x) as x_min`, not `min(x)`).
 """,
     ),
     SyntaxExample(

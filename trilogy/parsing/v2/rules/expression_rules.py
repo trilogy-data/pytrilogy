@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+import operator as _operator
+from typing import Any, Callable
 
 from trilogy.constants import NULL_VALUE
 from trilogy.core.enums import ComparisonOperator, FunctionType
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import InvalidComparison
 from trilogy.core.models.author import (
     Between,
     Comparison,
@@ -184,6 +185,76 @@ def sum_operator(
     return result
 
 
+# Ordered/equality operators that treat an enum as its underlying scalar; each
+# maps to the python function used to evaluate a literal against the domain.
+# Keyed by the operator's symbol since ComparisonOperator is unhashable.
+_ENUM_COMPARE_FUNCS: dict[str, Callable[[Any, Any], bool]] = {
+    ComparisonOperator.EQ.value: _operator.eq,
+    ComparisonOperator.NE.value: _operator.ne,
+    ComparisonOperator.GT.value: _operator.gt,
+    ComparisonOperator.GTE.value: _operator.ge,
+    ComparisonOperator.LT.value: _operator.lt,
+    ComparisonOperator.LTE.value: _operator.le,
+}
+
+
+def _enum_concept(side: Any) -> EnumType | None:
+    if isinstance(side, ConceptRef) and isinstance(side.datatype, EnumType):
+        return side.datatype
+    return None
+
+
+def _enum_constant_result(
+    values: list[Any], predicate: Callable[[Any], Any]
+) -> bool | None:
+    """Classify a predicate over the enum domain: True if it holds for every member
+    (tautology), False if for none (unsatisfiable), None if it discriminates."""
+    try:
+        results = [bool(predicate(v)) for v in values]
+    except TypeError:
+        # Incomparable literal vs domain types; leave it to normal type checking.
+        return None
+    if all(results):
+        return True
+    if not any(results):
+        return False
+    return None
+
+
+def _literal_members(side: Any) -> list[Any] | None:
+    if isinstance(side, (TupleWrapper, ListWrapper, tuple, list)):
+        members = list(side)
+        if members and all(isinstance(m, (str, int, float)) for m in members):
+            return members
+    return None
+
+
+# Operators where a tautologically-true result is still a meaningful query: `=`
+# and `in` express positive selection of valid members (e.g. picking one source of
+# a single-member-enum union), so only flag them when they are *unsatisfiable*.
+_TAUTOLOGY_OK = (ComparisonOperator.EQ.value, ComparisonOperator.IN.value)
+
+
+def _enum_result_is_invalid(operator_value: str, result: bool | None) -> bool:
+    if result is None:
+        return False
+    if result is False:
+        return True  # unsatisfiable — can never match
+    return operator_value not in _TAUTOLOGY_OK  # tautology — redundant noise
+
+
+def _raise_enum_comparison(
+    address: str, values: list[Any], subject: str, result: bool
+) -> None:
+    allowed = ", ".join(repr(v) for v in values)
+    state = "True" if result else "False"
+    raise InvalidComparison(
+        f"{subject} is not valid for enum field '{address}'. This enum contains "
+        f"only these values: {allowed}. This comparison will always be {state} "
+        f"and should be removed."
+    )
+
+
 def comparison(
     node: SyntaxNode,
     context: RuleContext,
@@ -196,22 +267,46 @@ def comparison(
     operator = values[1]
     right = values[2]
     if operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
+        _validate_enum_membership(left, right, operator)
         return SubselectComparison(left=left, right=right, operator=operator)
-    for concept_side, value_side in ((left, right), (right, left)):
-        if isinstance(concept_side, ConceptRef) and isinstance(
-            concept_side.datatype,
-            EnumType,
-        ):
-            if (
-                isinstance(value_side, (str, int))
-                and value_side not in concept_side.datatype.values
-            ):
-                allowed = ", ".join(repr(v) for v in concept_side.datatype.values)
-                raise InvalidSyntaxException(
-                    f"Value {value_side!r} is not valid for enum field "
-                    f"'{concept_side.address}'. Allowed values: {allowed}."
-                )
+    _validate_enum_comparison(left, operator, right)
     return Comparison(left=left, right=right, operator=operator)
+
+
+def _validate_enum_comparison(left: Any, operator: Any, right: Any) -> None:
+    op_value = getattr(operator, "value", operator)
+    func = _ENUM_COMPARE_FUNCS.get(op_value)
+    if func is None:
+        return
+    for concept_side, value_side, concept_on_left in (
+        (left, right, True),
+        (right, left, False),
+    ):
+        enum = _enum_concept(concept_side)
+        if enum is None or not isinstance(value_side, (str, int, float)):
+            continue
+        result = _enum_constant_result(
+            enum.values,
+            lambda v: func(v, value_side) if concept_on_left else func(value_side, v),
+        )
+        if _enum_result_is_invalid(op_value, result):
+            _raise_enum_comparison(
+                concept_side.address, enum.values, f"Value {value_side!r}", result
+            )
+
+
+def _validate_enum_membership(left: Any, right: Any, operator: Any) -> None:
+    enum = _enum_concept(left)
+    members = _literal_members(right)
+    if enum is None or members is None:
+        return
+    if operator == ComparisonOperator.IN:
+        result = _enum_constant_result(enum.values, lambda v: v in members)
+    else:
+        result = _enum_constant_result(enum.values, lambda v: v not in members)
+    op_value = getattr(operator, "value", operator)
+    if _enum_result_is_invalid(op_value, result):
+        _raise_enum_comparison(left.address, enum.values, f"Set {members!r}", result)
 
 
 def between_comparison(
@@ -220,7 +315,19 @@ def between_comparison(
     hydrate: HydrateFunction,
 ) -> Between:
     values = hydrated_children(node, hydrate)
-    return Between(left=values[0], low=values[1], high=values[2])
+    left, low, high = values[0], values[1], values[2]
+    enum = _enum_concept(left)
+    if (
+        enum is not None
+        and isinstance(low, (str, int, float))
+        and isinstance(high, (str, int, float))
+    ):
+        result = _enum_constant_result(enum.values, lambda v: low <= v <= high)
+        if result is not None:
+            _raise_enum_comparison(
+                left.address, enum.values, f"Range {low!r} to {high!r}", result
+            )
+    return Between(left=left, low=low, high=high)
 
 
 def parenthetical(

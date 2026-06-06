@@ -1,0 +1,3 @@
+import wh as w;
+where w.sq_ft > 0
+select w.warehouse_sk, w.sq_ft;

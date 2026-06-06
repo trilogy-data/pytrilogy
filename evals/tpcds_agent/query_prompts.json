@@ -70,7 +70,7 @@
   {
     "id": 13,
     "grade": "medium",
-    "prompt": "For physical store sales in the year 2001, return the average ticket quantity, the average extended sales price, the average extended wholesale cost, and the total extended wholesale cost across all qualifying sales. A sale qualifies when it satisfies one demographic-and-price clause AND one address-and-profit clause. The demographic-and-price clause requires that the sale point customer-demographics and the sale point household-demographics jointly match one of three combinations: married with 'Advanced Degree' and per-line sales price between 100 and 150 and household dependent count of 3; single with 'College' and per-line sales price between 50 and 100 and household dependent count of 1; or widowed with '2 yr Degree' and per-line sales price between 150 and 200 and household dependent count of 1. The address-and-profit clause requires that the sale-address record have country 'United States' and match one of: states TX/OH with net profit between 100 and 200; states OR/NM/KY with net profit between 150 and 300; or states VA/TX/MS with net profit between 50 and 250."
+    "prompt": "For physical store sales in the year 2001, return the average ticket quantity, the average extended sales price, the average extended wholesale cost, and the total extended wholesale cost across all qualifying sales. A sale qualifies when it satisfies one demographic-and-price clause AND one address-and-profit clause. The demographic-and-price clause requires that the sale point customer-demographics and the sale point household-demographics jointly match one of three combinations: married with 'Advanced Degree' and per-unit sales price (the unit price, not the line-extended amount) between 100 and 150 and household dependent count of 3; single with 'College' and per-unit sales price between 50 and 100 and household dependent count of 1; or widowed with '2 yr Degree' and per-unit sales price between 150 and 200 and household dependent count of 1. The address-and-profit clause requires that the sale-address record have country 'United States' and match one of: states TX/OH with net profit between 100 and 200; states OR/NM/KY with net profit between 150 and 300; or states VA/TX/MS with net profit between 50 and 250."
   },
   {
     "id": 14,
@@ -306,7 +306,7 @@
   {
     "id": 60,
     "grade": "medium",
-    "prompt": "For sales across all channels in September 1998 to sales billing addresses with GMT offset -5, for items in the same item-id group as any item in the 'Music' category, sum the extended sales price. Report item code and the combined total. Order by item code then total, both with nulls first; limit 100 rows."
+    "prompt": "For sales across all channels in September 1998 to billing addresses with a GMT offset of -5, for items whose item code matches the item code of any item in the 'Music' category, sum the extended sales price. Report item code and the combined total. Order by item code then total, both with nulls first; limit 100 rows."
   },
   {
     "id": 61,
@@ -416,7 +416,7 @@
   {
     "id": 82,
     "grade": "easy",
-    "prompt": "List the item code, description, and current price of items whose current price is between 62 and 92, that are from manufacturers 129, 270, 821, or 423, that had between 100 and 500 units of inventory on hand during 2000-05-25 to 2000-07-24, and that appear in store sales. Order by item code; limit 100 rows."
+    "prompt": "List the item code, description, and current price of items whose current price is between 62 and 92, that are from manufacturers 129, 270, 821, or 423, that had at least one inventory snapshot recording between 100 and 500 units on hand (at any single warehouse on any snapshot date) during 2000-05-25 to 2000-07-24, and that appear in store sales. Order by item code; limit 100 rows."
   },
   {
     "id": 83,

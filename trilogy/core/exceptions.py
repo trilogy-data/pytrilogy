@@ -28,6 +28,13 @@ class MissingParameterException(InvalidSyntaxException):
     pass
 
 
+class InvalidComparison(InvalidSyntaxException):
+    """A comparison/filter that can never produce a meaningful result, e.g. a
+    predicate against an enum field that is tautologically true or false."""
+
+    pass
+
+
 class UnresolvableQueryException(Exception):
     pass
 
