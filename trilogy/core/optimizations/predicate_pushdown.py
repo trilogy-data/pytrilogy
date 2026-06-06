@@ -395,6 +395,17 @@ class PredicatePushdown(OptimizationRule):
         if not row_conditions.issubset(union_outputs):
             return False
 
+        # Dropping branches changes the rows EVERY consumer sees. Only safe when
+        # every consumer of the union already carries this filter — otherwise a
+        # co-sourcing consumer that needs the other branches (e.g. an unfiltered
+        # ``sum(... ? channel='STORE')`` reading the same union as a
+        # ``channel='CATALOG'`` membership feeder) silently loses its rows.
+        children = inverse_map.get(parent_cte.name, [])
+        if not children or not all(
+            is_child_of(candidate, child.condition) for child in children
+        ):
+            return False
+
         kept = []
         dropped = []
         for internal in parent_cte.internal_ctes:

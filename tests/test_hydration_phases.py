@@ -704,6 +704,56 @@ ALIGN one_key:one,other_one;
         multi = next(o for o in output if isinstance(o, MultiSelectStatement))
         assert multi is not None
 
+    def test_multiselect_align_compatible_datatypes(self):
+        # A bigint column aligns with month(date) (int with a `month` trait):
+        # all integer-family/trait-vs-base types are coercible, so align must not
+        # reject them. Regression for the q66 "Datatypes do not align" crash.
+        text = """
+key one int;
+property one.moy bigint;
+property one.dt date;
+key other_one int;
+property other_one.dt2 date;
+datasource num_one (
+    one:one, moy:moy, dt:dt
+) grain (one) address num_one;
+datasource num_other (
+    other_one:other_one, dt2:dt2
+) grain (other_one) address num_other;
+
+SELECT one, moy
+MERGE
+SELECT other_one, month(dt2) -> moy2
+ALIGN one_key:one,other_one and m:moy,moy2;
+"""
+        env, output = _parse_staged(text)
+        assert "local.m" in env.concepts.data
+        multi = next(o for o in output if isinstance(o, MultiSelectStatement))
+        assert multi is not None
+
+    def test_multiselect_align_incompatible_datatypes_raise(self):
+        from trilogy.core.exceptions import InvalidSyntaxException
+
+        text = """
+key one int;
+property one.dt date;
+key other_one int;
+property other_one.n int;
+datasource num_one (
+    one:one, dt:dt
+) grain (one) address num_one;
+datasource num_other (
+    other_one:other_one, n:n
+) grain (other_one) address num_other;
+
+SELECT one, dt
+MERGE
+SELECT other_one, n
+ALIGN one_key:one,other_one and m:dt,n;
+"""
+        with pytest.raises(InvalidSyntaxException, match="do not align"):
+            _parse_staged(text)
+
     def test_rowset_output(self):
         env, output = _parse_staged("key x int;\nrowset r <- select x;")
         assert "local.x" in env.concepts.data

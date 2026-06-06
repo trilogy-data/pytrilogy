@@ -44,6 +44,24 @@ a real multi-city model), so its `complete where city = 'USBOS'` partitions disc
 Layer 2 (ingest auto-typer over-eagerly enum-typing continuous numeric measures) is
 **still open** — see below.
 
+## Related: align trait/type-coherence (FIXED 2026-06-06)
+
+A cousin of this surfaced when validating the enum fix on q66: an `align` of two columns
+whose types differ only by a trait or within the integer/float/numeric family
+(`date_dim.moy` bigint vs `month(date)` int+`month`-trait) raised
+`Datatypes do not align for merged statements month, have {BIGINT, TraitDataType(int, [month])}`.
+`align_item_to_concept` (`trilogy/parsing/common.py`) grouped by exact inner type. Now it uses
+`is_compatible_datatype` (which strips traits and unifies the numeric family) and picks a
+trait-bearing/widened representative via `merge_datatypes`. Regression tests:
+`tests/test_hydration_phases.py::TestStagedParser::test_multiselect_align_compatible_datatypes`
+and `…_incompatible_datatypes_raise`.
+
+STILL OPEN (separate): `enum<string>` vs bare `string` align (q05 `st_id`) — `is_compatible_datatype`
+does not treat an `EnumType` as compatible with its base, so that align still raises. And a
+`month` trait cannot be hand-annotated onto the enriched `month_of_year` because it is an
+`enum<int>` (traits can't wrap enums); annotating `moy` would have to happen in the ingest
+date-part typer.
+
 **Original report follows.**
 
 **Status:** OPEN (found 2026-06-06)

@@ -21,20 +21,30 @@ every output concept is an existence/membership arg) from `base` onto the wrappe
 record them in `existence_source_map`, so the subselect resolves to a real, emitted CTE. A
 purely-scalar membership (no aggregate) never injects the wrapper and was unaffected.
 
-## Separate pre-existing bugs in the SAME shape (NOT B2 — do not conflate)
+## Two co-sourcing siblings in the SAME shape — also FIXED 2026-06-06
 
 When the membership feeder *shares a materialized union scan* with the aggregate AND its filter
-needs a join (e.g. `... and s.date.year = 1998`), two further bugs surface — both reproduce in
-the **scalar** single-membership case (`repro_simple`) against this model with the *original*
-code, so they are independent of B2:
+needs a join (e.g. `... and s.date.year = 1998`), two further bugs surfaced once B2 was fixed and
+the feeders actually rendered. Both also reproduced in the **scalar** single-membership case, so
+they were independent of B2:
+
 - **Feeder-CTE join self-reference** → DuckDB `BinderException: Referenced table "<feeder>" not
-  found`. The feeder's join ON renders `"<feeder>"."s_date_id"` (the CTE's own name) instead of
-  the inner union source. The join concept-pair `existing_datasource` resolves to the feeder QDS
-  itself. (Standalone `select cat_qual` renders fine — only the shared-union-scan path breaks.)
-- **Predicate-pushdown over-pruning**: the feeder's `channel = 'CATALOG'` filter is pushed into
-  the shared union scan, pruning it to one channel and breaking a co-sourced `STORE` aggregate.
-The B2 fix's regression test deliberately drops the `date.year` filter so it exercises B2 alone
-and executes cleanly. The two bugs above belong to the shared-scan filter-feeder area.
+  found`. The feeder's join ON rendered `"<feeder>"."s_date_id"` (the CTE's own name) instead of
+  the FROM source: an optimization (`UnionDimPushdown` + `UpgradeConditionJoins`) merged the
+  inner group that supplied the key up into the consumer, leaving the join key pair's `cte`
+  pointing at the now-merged consumer itself. **Fix** (`trilogy/dialect/common.py`,
+  `_render_left_concept`): when a join key's CTE resolves to the *enclosing* CTE, it's a local
+  column — pin it to the consumer's FROM-base source (`base_alias`) rather than self-aliasing or
+  letting the generic concept render pick the join's own right side (which produced a tautology).
+- **Predicate-pushdown over-pruning**: the feeder's `channel = 'CATALOG'` pruned the shared union
+  scan down to one channel, breaking a co-sourced unfiltered `STORE` aggregate. **Fix**
+  (`trilogy/core/optimizations/predicate_pushdown.py`, `_prune_union_parent`): gate branch
+  pruning on the same all-consumers guard `_push_into_union_branches` already uses — only prune
+  when *every* consumer of the union carries the filter (via `inverse_map`).
+
+The regression test `test_or_membership_with_projected_aggregate` now uses the full documented
+repro (with `date.year`) and asserts no dangling reference, no self-referential join, all three
+sales channels retained, and end-to-end execution.
 
 ## Symptom
 

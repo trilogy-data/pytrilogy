@@ -6,8 +6,71 @@ from trilogy.core.models.core import DataType, EnumType
 if TYPE_CHECKING:
     from trilogy.executor import Executor
 
+# Integer-family base types a numeric date-part trait may wrap (the ingester
+# resolves whole-number columns to either, depending on the source).
+_INT_TYPES = frozenset({DataType.INTEGER, DataType.BIGINT})
+
 # Rich type detection mappings
 RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
+    # Date-part columns (std.date traits). Gated by an inclusive value RANGE as
+    # well as the name so a same-named-but-unrelated column (e.g. d_month_seq,
+    # values ~1200) is not misclassified.
+    "date": {
+        "year": {
+            "patterns": [r"(?:^|_)year(?:$|_)", r"(?:^|_)yr(?:$|_)"],
+            "import": "std.date",
+            "type_name": "year",
+            "base_type": _INT_TYPES,
+            "value_range": (1000, 9999),
+        },
+        "month": {
+            "patterns": [
+                r"(?:^|_)month(?:$|_)",
+                r"(?:^|_)moy(?:$|_)",
+                r"month_of_year",
+            ],
+            "import": "std.date",
+            "type_name": "month",
+            "base_type": _INT_TYPES,
+            "value_range": (1, 12),
+        },
+        "day": {
+            "patterns": [r"(?:^|_)dom(?:$|_)", r"day_of_month"],
+            "import": "std.date",
+            "type_name": "day",
+            "base_type": _INT_TYPES,
+            "value_range": (1, 31),
+        },
+        "day_of_week": {
+            "patterns": [
+                r"(?:^|_)dow(?:$|_)",
+                r"day_of_week",
+                r"(?:^|_)weekday(?:$|_)",
+            ],
+            "import": "std.date",
+            "type_name": "day_of_week",
+            "base_type": _INT_TYPES,
+            "value_range": (0, 7),
+        },
+        "quarter": {
+            "patterns": [
+                r"(?:^|_)quarter(?:$|_)",
+                r"(?:^|_)qoy(?:$|_)",
+                r"(?:^|_)qtr(?:$|_)",
+            ],
+            "import": "std.date",
+            "type_name": "quarter",
+            "base_type": _INT_TYPES,
+            "value_range": (1, 4),
+        },
+        "week": {
+            "patterns": [r"(?:^|_)week(?:$|_)", r"(?:^|_)woy(?:$|_)", r"week_of_year"],
+            "import": "std.date",
+            "type_name": "week",
+            "base_type": _INT_TYPES,
+            "value_range": (1, 53),
+        },
+    },
     "geography": {
         "latitude": {
             "patterns": [r"(?:^|_)lat(?:$|_)", r"(?:^|_)latitude(?:$|_)"],
@@ -83,21 +146,32 @@ RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
 }
 
 
-def _values_match_gate(
-    value_pattern: str | None, sample_values: list[Any] | None
-) -> bool:
+def _values_match_gate(config: dict[str, Any], sample_values: list[Any] | None) -> bool:
     """Whether a value-gated rich type may apply.
 
-    An ungated config (no `value_pattern`) always passes. A gated one requires
-    non-empty sample values that all match the pattern, so a column merely
-    *named* like a rich type is not misclassified by name alone.
+    An ungated config always passes. A `value_pattern` (regex) or `value_range`
+    ((lo, hi) inclusive, for integer date parts) requires non-empty sample
+    values that all satisfy the gate, so a column merely *named* like a rich
+    type is not misclassified by name alone.
     """
-    if value_pattern is None:
+    value_pattern = config.get("value_pattern")
+    value_range = config.get("value_range")
+    if value_pattern is None and value_range is None:
         return True
     if not sample_values:
         return False
-    regex = re.compile(value_pattern)
-    return all(regex.search(str(v)) is not None for v in sample_values)
+    if value_pattern is not None:
+        regex = re.compile(value_pattern)
+        if not all(regex.search(str(v)) is not None for v in sample_values):
+            return False
+    if value_range is not None:
+        lo, hi = value_range
+        for v in sample_values:
+            if isinstance(v, bool) or not isinstance(v, int):
+                return False
+            if not lo <= v <= hi:
+                return False
+    return True
 
 
 def detect_rich_type(
@@ -120,9 +194,11 @@ def detect_rich_type(
     matches = []
     for _, types in RICH_TYPE_PATTERNS.items():
         for _, config in types.items():
-            if config["base_type"] != base_datatype:
+            allowed = config["base_type"]
+            allowed_set = allowed if isinstance(allowed, frozenset) else {allowed}
+            if base_datatype not in allowed_set:
                 continue
-            if not _values_match_gate(config.get("value_pattern"), sample_values):
+            if not _values_match_gate(config, sample_values):
                 continue
             for pattern in config["patterns"]:
                 match = re.search(pattern, column_lower)

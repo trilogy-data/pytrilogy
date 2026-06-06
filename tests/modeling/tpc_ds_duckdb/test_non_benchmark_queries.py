@@ -122,18 +122,40 @@ select
     assert avg_duration < 2.0, f"Average duration: {avg_duration:.4f}s"
 
 
+def _self_referential_joins(sql: str) -> list[str]:
+    """CTE names whose own join ON clause references the CTE itself — invalid
+    SQL (a CTE can't alias itself in its own body)."""
+    bad = []
+    for m in re.finditer(r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\Z)", sql, re.DOTALL):
+        name, body = m.group(1), m.group(2)
+        for jref in re.findall(
+            r'JOIN\s+"?[\w".]+"?\s+(?:as\s+"\w+"\s+)?on "(\w+)"', body
+        ):
+            if jref == name:
+                bad.append(name)
+    return bad
+
+
 def test_or_membership_with_projected_aggregate(engine):
-    """Regression for bug B2: ``A in X or A in Y and <agg> is not null`` where
-    ``<agg>`` is also a projected output. The aggregate makes the condition
-    non-scalar, so the group node lifts it onto a wrapper SELECT — which used to
-    strip the membership feeder sources, leaving the rendered ``in (select ...)``
-    pointing at a CTE that was never emitted (INVALID_REFERENCE_BUG / dangling
-    reference). The feeders must travel with the lifted condition."""
+    """Regression for bug B2 + its two co-sourcing siblings, using the full
+    documented repro (feeder filters include a ``date.year`` join):
+
+    * B2: ``A in X or A in Y and <agg> is not null`` where ``<agg>`` is also a
+      projected output. The aggregate makes the condition non-scalar, so the
+      group node lifts it onto a wrapper SELECT — which used to strip the
+      membership feeder sources, leaving ``in (select ...)`` pointing at a CTE
+      that was never emitted (INVALID_REFERENCE_BUG).
+    * Feeder-CTE join self-reference: the feeder's date join rendered its own
+      CTE name as the left alias (``on "feeder"."s_date_id"``) → BinderException.
+    * Predicate-pushdown over-pruning: the feeders' ``channel`` filters pruned
+      the union scan they share with the unfiltered STORE aggregate down to one
+      channel, so the STORE sum read no STORE rows.
+    """
     query = """
 import all_sales as s;
 
-auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG';
-auto web_qual <- s.billing_customer.id ? s.sales_channel = 'WEB';
+auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG' and s.date.year = 1998;
+auto web_qual <- s.billing_customer.id ? s.sales_channel = 'WEB'     and s.date.year = 1998;
 auto cust_total <- sum(s.ext_sales_price ? s.sales_channel = 'STORE') by s.billing_customer.id;
 
 where s.billing_customer.id in cat_qual
@@ -151,6 +173,10 @@ limit 100;
     declared = set(re.findall(r"(\w+) as \(", sql))
     assert referenced, sql
     assert referenced <= declared, f"dangling membership CTEs: {referenced - declared}"
+    # no feeder CTE may reference itself in its own join ON
+    assert not _self_referential_joins(sql), sql
+    # the STORE aggregate's union scan must keep all channels (not pruned to one)
+    assert "store_sales" in sql and "web_sales" in sql and "catalog_sales" in sql, sql
     # and the query executes end-to-end against real data
     engine.execute_text(query)[0].fetchall()
 

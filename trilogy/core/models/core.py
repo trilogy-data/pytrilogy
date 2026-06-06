@@ -461,6 +461,13 @@ def is_compatible_datatype(left, right):
         return is_compatible_datatype(left.type, right)
     if isinstance(right, TraitDataType):
         return is_compatible_datatype(left, right.type)
+    # An enum is a constrained set over a base type — compatible with that base
+    # (and with another enum over a compatible base): enum<string> matches a bare
+    # string, enum<int> matches int, etc.
+    if isinstance(left, EnumType):
+        return is_compatible_datatype(left.type, right)
+    if isinstance(right, EnumType):
+        return is_compatible_datatype(left, right.type)
     if left == DataType.ANY or right == DataType.ANY:
         return True
     if left == DataType.NULL or right == DataType.NULL:
