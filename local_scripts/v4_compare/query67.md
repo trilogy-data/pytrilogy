@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3634 | 78 | 72.35 ms |
-| reference | 3634 | 78 | 73.10 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 4195 | 92 | 73.50 ms |
+| reference | 3634 | 78 | 75.29 ms |
+| v4 / ref | 1.15x | 1.18x | 0.98x |
 
 ## Preql
 
@@ -91,12 +91,11 @@ SELECT
     "thoughtful"."ss_item_category" as "ss_item_category",
     "thoughtful"."ss_item_class" as "ss_item_class",
     "thoughtful"."ss_item_product_name" as "ss_item_product_name",
-    "thoughtful"."ss_store_text_id" as "ss_store_text_id",
-    sum(coalesce("thoughtful"."ss_sales_price" * "thoughtful"."ss_quantity",0)) as "sumsales"
+    "thoughtful"."ss_quantity" as "ss_quantity",
+    "thoughtful"."ss_sales_price" as "ss_sales_price",
+    "thoughtful"."ss_store_text_id" as "ss_store_text_id"
 FROM
-    "thoughtful"
-GROUP BY
-    ROLLUP (5, 6, 4, 7, 3, 2, 1, 8)),
+    "thoughtful"),
 questionable as (
 SELECT
     "cooperative"."ss_date_month_of_year" as "ss_date_month_of_year",
@@ -107,37 +106,52 @@ SELECT
     "cooperative"."ss_item_class" as "ss_item_class",
     "cooperative"."ss_item_product_name" as "ss_item_product_name",
     "cooperative"."ss_store_text_id" as "ss_store_text_id",
-    "cooperative"."sumsales" as "sumsales",
-    rank() over (partition by "cooperative"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
+    sum(coalesce("cooperative"."ss_sales_price" * "cooperative"."ss_quantity",0)) as "sumsales"
 FROM
-    "cooperative")
+    "cooperative"
+GROUP BY
+    ROLLUP (5, 6, 4, 7, 3, 2, 1, 8)),
+abundant as (
 SELECT
+    "questionable"."ss_date_month_of_year" as "ss_date_month_of_year",
+    "questionable"."ss_date_quarter" as "ss_date_quarter",
+    "questionable"."ss_date_year" as "ss_date_year",
+    "questionable"."ss_item_brand_name" as "ss_item_brand_name",
     "questionable"."ss_item_category" as "ss_item_category",
     "questionable"."ss_item_class" as "ss_item_class",
-    "questionable"."ss_item_brand_name" as "ss_item_brand_name",
     "questionable"."ss_item_product_name" as "ss_item_product_name",
-    "questionable"."ss_date_year" as "ss_date_year",
-    "questionable"."ss_date_quarter" as "ss_date_quarter",
-    "questionable"."ss_date_month_of_year" as "ss_date_month_of_year",
     "questionable"."ss_store_text_id" as "ss_store_text_id",
     "questionable"."sumsales" as "sumsales",
-    "questionable"."rk" as "rk"
+    rank() over (partition by "questionable"."ss_item_category" order by "questionable"."sumsales" desc ) as "rk"
 FROM
-    "questionable"
+    "questionable")
+SELECT
+    "abundant"."ss_item_category" as "ss_item_category",
+    "abundant"."ss_item_class" as "ss_item_class",
+    "abundant"."ss_item_brand_name" as "ss_item_brand_name",
+    "abundant"."ss_item_product_name" as "ss_item_product_name",
+    "abundant"."ss_date_year" as "ss_date_year",
+    "abundant"."ss_date_quarter" as "ss_date_quarter",
+    "abundant"."ss_date_month_of_year" as "ss_date_month_of_year",
+    "abundant"."ss_store_text_id" as "ss_store_text_id",
+    "abundant"."sumsales" as "sumsales",
+    "abundant"."rk" as "rk"
+FROM
+    "abundant"
 WHERE
-    "questionable"."rk" <= 100
+    "abundant"."rk" <= 100
 
 ORDER BY 
-    "questionable"."ss_item_category" asc nulls first,
-    "questionable"."ss_item_class" asc nulls first,
-    "questionable"."ss_item_brand_name" asc nulls first,
-    "questionable"."ss_item_product_name" asc nulls first,
-    "questionable"."ss_date_year" asc nulls first,
-    "questionable"."ss_date_quarter" asc nulls first,
-    "questionable"."ss_date_month_of_year" asc nulls first,
-    "questionable"."ss_store_text_id" asc nulls first,
-    "questionable"."sumsales" asc nulls first,
-    "questionable"."rk" asc nulls first
+    "abundant"."ss_item_category" asc nulls first,
+    "abundant"."ss_item_class" asc nulls first,
+    "abundant"."ss_item_brand_name" asc nulls first,
+    "abundant"."ss_item_product_name" asc nulls first,
+    "abundant"."ss_date_year" asc nulls first,
+    "abundant"."ss_date_quarter" asc nulls first,
+    "abundant"."ss_date_month_of_year" asc nulls first,
+    "abundant"."ss_store_text_id" asc nulls first,
+    "abundant"."sumsales" asc nulls first,
+    "abundant"."rk" asc nulls first
 LIMIT (100)
 ```
 

@@ -1,22 +1,26 @@
 # Query 38
 
-**Status:** `gen_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 2560 | 66 | 5.68 ms |
+| v4 | 2856 | 64 | 7.23 ms |
+| reference | 2560 | 66 | 7.60 ms |
+| v4 / ref | 1.12x | 0.97x | 0.95x |
 
 ## Preql
 
@@ -68,7 +72,72 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+thoughtful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11
+
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
+     'STORE'  as "sales_sales_channel"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+     'WEB'  as "sales_sales_channel"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11
+),
+questionable as (
+SELECT
+    sum(CASE
+	WHEN "thoughtful"."sales_sales_channel" = 'CATALOG' and "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "thoughtful"."sales_billing_customer_id" is not null THEN 1
+	ELSE 0
+	END) as "catalog_in_window",
+    sum(CASE
+	WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "thoughtful"."sales_billing_customer_id" is not null THEN 1
+	ELSE 0
+	END) as "store_in_window",
+    sum(CASE
+	WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "thoughtful"."sales_billing_customer_id" is not null THEN 1
+	ELSE 0
+	END) as "web_in_window"
+FROM
+    "thoughtful"
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "thoughtful"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+GROUP BY
+    "sales_billing_customer_customers"."C_FIRST_NAME",
+    "sales_billing_customer_customers"."C_LAST_NAME",
+    cast("sales_date_date"."D_DATE" as date))
+SELECT
+    sum(CASE
+	WHEN "questionable"."store_in_window" > 0 and "questionable"."catalog_in_window" > 0 and "questionable"."web_in_window" > 0 THEN 1
+	ELSE 0
+	END) as "cnt"
+FROM
+    "questionable"
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -139,48 +208,4 @@ SELECT
 FROM
     "abundant"
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 256, in generate_v4_sql
-    statements = eng.generate_sql(preql_path.read_text())
-  File "C:\Program Files\Python313\Lib\functools.py", line 983, in _method
-    return dispatch(args[0].__class__).__get__(obj, cls)(*args, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\executor.py", line 663, in _
-    compiled_sql = self.generator.compile_statement(statement)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\dialect\base.py", line 2315, in compile_statement
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: Invalid reference string found in query: 
-WITH 
-quizzical as (
-SELECT
-    sum(CASE
-	WHEN INVALID_REFERENCE_BUG = 'CATALOG' and INVALID_REFERENCE_BUG BETWEEN 1200 AND 1200 + 11 and INVALID_REFERENCE_BUG is not null THEN 1
-	ELSE 0
-	END) as "catalog_in_window",
-    sum(CASE
-	WHEN INVALID_REFERENCE_BUG = 'STORE' and INVALID_REFERENCE_BUG BETWEEN 1200 AND 1200 + 11 and INVALID_REFERENCE_BUG is not null THEN 1
-	ELSE 0
-	END) as "store_in_window",
-    sum(CASE
-	WHEN INVALID_REFERENCE_BUG = 'WEB' and INVALID_REFERENCE_BUG BETWEEN 1200 AND 1200 + 11 and INVALID_REFERENCE_BUG is not null THEN 1
-	ELSE 0
-	END) as "web_in_window"
-
-GROUP BY
-    INVALID_REFERENCE_BUG)
-SELECT
-    sum(CASE
-	WHEN "quizzical"."store_in_window" > 0 and "quizzical"."catalog_in_window" > 0 and "quizzical"."web_in_window" > 0 THEN 1
-	ELSE 0
-	END) as "cnt"
-FROM
-    "quizzical"
-LIMIT (100), this should never occur. Please create an issue to report this.
 ```

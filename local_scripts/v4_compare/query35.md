@@ -1,32 +1,26 @@
 # Query 35
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (0 rows) |
+| v4 execution | OK (12 rows) |
 | reference execution | OK (12 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 0 (0 distinct)
+v4 rows: 12 (12 distinct)
 ref rows: 12 (12 distinct)
-only in ref (showing up to 5 of 12):
-  1x  (2.0, 0.0, 0.0, 1, 1, 1, 'GA', 0, 2, 0, 'F', 'M', 2, 0, 0, 2, 0, 0)
-  1x  (0.0, 0.0, 0.0, 1, 1, 1, 'GA', 0, 0, 0, 'F', 'U', 0, 0, 0, 0, 0, 0)
-  1x  (0.0, 0.0, 0.0, 1, 1, 1, 'GA', 0, 0, 0, 'M', 'D', 0, 0, 0, 0, 0, 0)
-  1x  (3.0, 0.0, 0.0, 1, 1, 1, 'IN', 0, 3, 0, 'F', 'D', 3, 0, 0, 3, 0, 0)
-  1x  (2.0, 0.0, 0.0, 1, 1, 1, 'IN', 0, 2, 0, 'F', 'S', 2, 0, 0, 2, 0, 0)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10071 | 197 | 6.96 ms |
-| reference | 10103 | 157 | 13.07 ms |
-| v4 / ref | 1.00x | 1.25x | 0.53x |
+| v4 | 9908 | 184 | 16.37 ms |
+| reference | 10103 | 157 | 14.79 ms |
+| v4 / ref | 0.98x | 1.17x | 1.11x |
 
 ## Preql
 
@@ -105,77 +99,76 @@ limit 100
 WITH 
 abundant as (
 SELECT
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
      'CATALOG'  as "sales_sales_channel",
-    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "sales_ship_customer_id",
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
+    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "sales_ship_customer_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
     "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4
-),
-sweltering as (
-SELECT
-    "abundant"."sales_ship_customer_id" as "sales_ship_customer_id"
-FROM
-    "abundant"
-WHERE
-    "abundant"."sales_ship_customer_id" is not null
 
-GROUP BY
-    1,
-    "abundant"."sales_date_id",
-    "abundant"."sales_sales_channel"),
-uneven as (
+UNION ALL
 SELECT
-    "abundant"."sales_billing_customer_id" as "sales_billing_customer_id",
-    "abundant"."sales_sales_channel" as "sales_sales_channel"
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
+     'STORE'  as "sales_sales_channel",
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_ship_customer_id"
 FROM
-    "abundant"
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "abundant"."sales_billing_customer_id" is not null
+    "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4
 
-GROUP BY
-    1,
-    2,
-    "abundant"."sales_date_id"),
-late as (
+UNION ALL
 SELECT
-    "sweltering"."sales_ship_customer_id" as "_catalog_buyers_cat_cust_id"
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+     'WEB'  as "sales_sales_channel",
+    "sales_web_sales_unified"."WS_SHIP_CUSTOMER_SK" as "sales_ship_customer_id"
 FROM
-    "sweltering"),
-young as (
-SELECT
-    "uneven"."sales_billing_customer_id" as "_store_buyers_store_cust_id"
-FROM
-    "uneven"
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "uneven"."sales_sales_channel" = 'STORE'
+    "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4
 ),
-juicy as (
-SELECT
-    "uneven"."sales_billing_customer_id" as "_web_buyers_web_cust_id"
-FROM
-    "uneven"
-WHERE
-    "uneven"."sales_sales_channel" = 'WEB'
-),
-scrawny as (
-SELECT
-    "late"."_catalog_buyers_cat_cust_id" as "catalog_buyers_cat_cust_id"
-FROM
-    "late"),
 abhorrent as (
 SELECT
-    "young"."_store_buyers_store_cust_id" as "store_buyers_store_cust_id"
+    "abundant"."sales_billing_customer_id" as "_store_buyers_store_cust_id"
 FROM
-    "young"),
+    "abundant"
+WHERE
+    "abundant"."sales_sales_channel" = 'STORE' and "abundant"."sales_billing_customer_id" is not null
+),
 concerned as (
 SELECT
-    "juicy"."_web_buyers_web_cust_id" as "web_buyers_web_cust_id"
+    "abundant"."sales_billing_customer_id" as "_web_buyers_web_cust_id"
 FROM
-    "juicy"),
+    "abundant"
+WHERE
+    "abundant"."sales_sales_channel" = 'WEB' and "abundant"."sales_billing_customer_id" is not null
+),
+yummy as (
+SELECT
+    "abundant"."sales_ship_customer_id" as "_catalog_buyers_cat_cust_id"
+FROM
+    "abundant"
+WHERE
+    "abundant"."sales_sales_channel" = 'CATALOG' and "abundant"."sales_ship_customer_id" is not null
+),
+late as (
+SELECT
+    "abhorrent"."_store_buyers_store_cust_id" as "store_buyers_store_cust_id"
+FROM
+    "abhorrent"),
+sparkling as (
+SELECT
+    "concerned"."_web_buyers_web_cust_id" as "web_buyers_web_cust_id"
+FROM
+    "concerned"),
+vacuous as (
+SELECT
+    "yummy"."_catalog_buyers_cat_cust_id" as "catalog_buyers_cat_cust_id"
+FROM
+    "yummy"),
 cheerful as (
 SELECT
     "customer_address_customer_address"."CA_STATE" as "customer_address_state",
@@ -191,51 +184,21 @@ FROM
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "customer_customers"."C_CURRENT_CDEMO_SK" is not null and "customer_customers"."C_CUSTOMER_SK" in (select abhorrent."store_buyers_store_cust_id" from abhorrent where abhorrent."store_buyers_store_cust_id" is not null) and ( "customer_customers"."C_CUSTOMER_SK" in (select concerned."web_buyers_web_cust_id" from concerned where concerned."web_buyers_web_cust_id" is not null) or "customer_customers"."C_CUSTOMER_SK" in (select scrawny."catalog_buyers_cat_cust_id" from scrawny where scrawny."catalog_buyers_cat_cust_id" is not null) )
+    "customer_customers"."C_CURRENT_CDEMO_SK" is not null and "customer_customers"."C_CUSTOMER_SK" in (select late."store_buyers_store_cust_id" from late where late."store_buyers_store_cust_id" is not null) and ( "customer_customers"."C_CUSTOMER_SK" in (select sparkling."web_buyers_web_cust_id" from sparkling where sparkling."web_buyers_web_cust_id" is not null) or "customer_customers"."C_CUSTOMER_SK" in (select vacuous."catalog_buyers_cat_cust_id" from vacuous where vacuous."catalog_buyers_cat_cust_id" is not null) )
 ),
-friendly as (
+kaput as (
 SELECT
     "cheerful"."customer_address_state" as "customer_address_state",
     "cheerful"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
     "cheerful"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
     "cheerful"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
     "cheerful"."customer_demographics_gender" as "customer_demographics_gender",
-    "cheerful"."customer_demographics_id" as "customer_demographics_id",
     "cheerful"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    "cheerful"."customer_id" as "customer_id"
+    count("cheerful"."customer_id") as "cnt1",
+    count("cheerful"."customer_id") as "cnt2",
+    count("cheerful"."customer_id") as "cnt3"
 FROM
-    "cheerful"),
-busy as (
-SELECT
-    "friendly"."customer_address_state" as "customer_address_state",
-    "friendly"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    "friendly"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
-    "friendly"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
-    "friendly"."customer_demographics_gender" as "customer_demographics_gender",
-    "friendly"."customer_demographics_marital_status" as "customer_demographics_marital_status"
-FROM
-    "friendly"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    "friendly"."customer_demographics_id"),
-kaput as (
-SELECT
-    "friendly"."customer_address_state" as "customer_address_state",
-    "friendly"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    "friendly"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
-    "friendly"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
-    "friendly"."customer_demographics_gender" as "customer_demographics_gender",
-    "friendly"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    count("friendly"."customer_id") as "cnt1",
-    count("friendly"."customer_id") as "cnt2",
-    count("friendly"."customer_id") as "cnt3"
-FROM
-    "friendly"
+    "cheerful"
 GROUP BY
     1,
     2,
@@ -243,25 +206,43 @@ GROUP BY
     4,
     5,
     6),
-charming as (
+macho as (
 SELECT
-    "busy"."customer_address_state" as "customer_address_state",
-    "busy"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    "busy"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
-    "busy"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
-    "busy"."customer_demographics_gender" as "customer_demographics_gender",
-    "busy"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    avg("busy"."customer_demographics_college_dependent_count") as "avg3",
-    avg("busy"."customer_demographics_dependent_count") as "avg1",
-    avg("busy"."customer_demographics_employed_dependent_count") as "avg2",
-    max("busy"."customer_demographics_college_dependent_count") as "max3",
-    max("busy"."customer_demographics_dependent_count") as "max1",
-    max("busy"."customer_demographics_employed_dependent_count") as "max2",
-    min("busy"."customer_demographics_college_dependent_count") as "min3",
-    min("busy"."customer_demographics_dependent_count") as "min1",
-    min("busy"."customer_demographics_employed_dependent_count") as "min2"
+    "cheerful"."customer_address_state" as "customer_address_state",
+    "cheerful"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "cheerful"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "cheerful"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    "cheerful"."customer_demographics_gender" as "customer_demographics_gender",
+    "cheerful"."customer_demographics_marital_status" as "customer_demographics_marital_status"
 FROM
-    "busy"
+    "cheerful"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "cheerful"."customer_demographics_id"),
+friendly as (
+SELECT
+    "macho"."customer_address_state" as "customer_address_state",
+    "macho"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "macho"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "macho"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    "macho"."customer_demographics_gender" as "customer_demographics_gender",
+    "macho"."customer_demographics_marital_status" as "customer_demographics_marital_status",
+    avg("macho"."customer_demographics_college_dependent_count") as "avg3",
+    avg("macho"."customer_demographics_dependent_count") as "avg1",
+    avg("macho"."customer_demographics_employed_dependent_count") as "avg2",
+    max("macho"."customer_demographics_college_dependent_count") as "max3",
+    max("macho"."customer_demographics_dependent_count") as "max1",
+    max("macho"."customer_demographics_employed_dependent_count") as "max2",
+    min("macho"."customer_demographics_college_dependent_count") as "min3",
+    min("macho"."customer_demographics_dependent_count") as "min1",
+    min("macho"."customer_demographics_employed_dependent_count") as "min2"
+FROM
+    "macho"
 GROUP BY
     1,
     2,
@@ -270,34 +251,34 @@ GROUP BY
     5,
     6)
 SELECT
-    coalesce("charming"."customer_address_state","kaput"."customer_address_state") as "customer_address_state",
-    coalesce("charming"."customer_demographics_gender","kaput"."customer_demographics_gender") as "customer_demographics_gender",
-    coalesce("charming"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") as "customer_demographics_marital_status",
-    coalesce("charming"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") as "customer_demographics_dependent_count",
-    coalesce("kaput"."cnt1",0) as "cnt1",
-    "charming"."min1" as "min1",
-    "charming"."max1" as "max1",
-    "charming"."avg1" as "avg1",
-    coalesce("charming"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") as "customer_demographics_employed_dependent_count",
-    coalesce("kaput"."cnt2",0) as "cnt2",
-    "charming"."min2" as "min2",
-    "charming"."max2" as "max2",
-    "charming"."avg2" as "avg2",
-    coalesce("charming"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") as "customer_demographics_college_dependent_count",
-    coalesce("kaput"."cnt3",0) as "cnt3",
-    "charming"."min3" as "min3",
-    "charming"."max3" as "max3",
-    "charming"."avg3" as "avg3"
+    coalesce("friendly"."customer_address_state","kaput"."customer_address_state") as "customer_address_state",
+    coalesce("friendly"."customer_demographics_gender","kaput"."customer_demographics_gender") as "customer_demographics_gender",
+    coalesce("friendly"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") as "customer_demographics_marital_status",
+    coalesce("friendly"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") as "customer_demographics_dependent_count",
+    "kaput"."cnt1" as "cnt1",
+    "friendly"."min1" as "min1",
+    "friendly"."max1" as "max1",
+    "friendly"."avg1" as "avg1",
+    coalesce("friendly"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") as "customer_demographics_employed_dependent_count",
+    "kaput"."cnt2" as "cnt2",
+    "friendly"."min2" as "min2",
+    "friendly"."max2" as "max2",
+    "friendly"."avg2" as "avg2",
+    coalesce("friendly"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") as "customer_demographics_college_dependent_count",
+    "kaput"."cnt3" as "cnt3",
+    "friendly"."min3" as "min3",
+    "friendly"."max3" as "max3",
+    "friendly"."avg3" as "avg3"
 FROM
-    "charming"
-    INNER JOIN "kaput" on "charming"."customer_address_state" is not distinct from "kaput"."customer_address_state" AND "charming"."customer_demographics_college_dependent_count" = "kaput"."customer_demographics_college_dependent_count" AND "charming"."customer_demographics_dependent_count" = "kaput"."customer_demographics_dependent_count" AND "charming"."customer_demographics_employed_dependent_count" = "kaput"."customer_demographics_employed_dependent_count" AND "charming"."customer_demographics_gender" = "kaput"."customer_demographics_gender" AND "charming"."customer_demographics_marital_status" = "kaput"."customer_demographics_marital_status"
+    "kaput"
+    INNER JOIN "friendly" on "kaput"."customer_address_state" is not distinct from "friendly"."customer_address_state" AND "kaput"."customer_demographics_college_dependent_count" = "friendly"."customer_demographics_college_dependent_count" AND "kaput"."customer_demographics_dependent_count" = "friendly"."customer_demographics_dependent_count" AND "kaput"."customer_demographics_employed_dependent_count" = "friendly"."customer_demographics_employed_dependent_count" AND "kaput"."customer_demographics_gender" = "friendly"."customer_demographics_gender" AND "kaput"."customer_demographics_marital_status" = "friendly"."customer_demographics_marital_status"
 ORDER BY 
-    coalesce("charming"."customer_address_state","kaput"."customer_address_state") asc nulls first,
-    coalesce("charming"."customer_demographics_gender","kaput"."customer_demographics_gender") asc nulls first,
-    coalesce("charming"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") asc nulls first,
-    coalesce("charming"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") asc nulls first,
-    coalesce("charming"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") asc nulls first,
-    coalesce("charming"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") asc nulls first
+    coalesce("friendly"."customer_address_state","kaput"."customer_address_state") asc nulls first,
+    coalesce("friendly"."customer_demographics_gender","kaput"."customer_demographics_gender") asc nulls first,
+    coalesce("friendly"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") asc nulls first,
+    coalesce("friendly"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") asc nulls first,
+    coalesce("friendly"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") asc nulls first,
+    coalesce("friendly"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") asc nulls first
 LIMIT (100)
 ```
 

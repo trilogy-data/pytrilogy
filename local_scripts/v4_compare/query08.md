@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3372 | 85 | 5.62 ms |
-| reference | 2506 | 58 | 4.96 ms |
-| v4 / ref | 1.35x | 1.47x | 1.13x |
+| v4 | 3274 | 84 | 5.46 ms |
+| reference | 2506 | 58 | 6.16 ms |
+| v4 / ref | 1.31x | 1.45x | 0.89x |
 
 ## Preql
 
@@ -474,12 +474,11 @@ FROM
     "quizzical"),
 uneven as (
 SELECT
-    "thoughtful"."customer_address_zip" as "customer_address_zip"
+    "thoughtful"."customer_address_id" as "customer_address_id"
 FROM
     "thoughtful"
 GROUP BY
-    1,
-    "thoughtful"."customer_address_id"),
+    1),
 cooperative as (
 SELECT
     "thoughtful"."customer_address_zip" as "customer_address_zip",
@@ -490,10 +489,10 @@ GROUP BY
     1),
 yummy as (
 SELECT
-    SUBSTRING(CASE WHEN "cooperative"."zip_p_count" > 10 THEN "cooperative"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
+    SUBSTRING(CASE WHEN coalesce("cooperative"."zip_p_count",0) > 10 THEN "cooperative"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
 FROM
     "uneven"
-    INNER JOIN "cooperative" on "uneven"."customer_address_zip" = "cooperative"."customer_address_zip"),
+    FULL JOIN "cooperative" on 1=1),
 concerned as (
 SELECT
     CASE WHEN "highfalutin"."zips" in (select yummy."_virt_func_substring_4293448550966409" from yummy where yummy."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END as "_virt_filter_zips_2159288073185462"

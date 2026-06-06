@@ -69,6 +69,14 @@ def _concept_node_address(node: str) -> str:
     return node.split("~", maxsplit=1)[1].split("@", maxsplit=1)[0]
 
 
+def _concept_node_grain_addresses(node: str) -> set[str]:
+    marker = "@Grain<"
+    if marker not in node:
+        return set()
+    grain = node.split(marker, maxsplit=1)[1].rsplit(">", maxsplit=1)[0]
+    return {address for address in grain.split(",") if address}
+
+
 def _concepts_in_graph(
     graph: ReferenceGraph, environment: BuildEnvironment
 ) -> list[BuildConcept]:
@@ -87,11 +95,37 @@ def _condition_row_concepts(
     return unique(list(conditions.row_arguments), "address")
 
 
+def _requested_concepts(request: SourceRequest) -> list[BuildConcept]:
+    return unique(
+        request.outputs + _condition_row_concepts(request.conditions),
+        "address",
+    )
+
+
+def _concepts_with_grain_keys(
+    concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    expanded: list[BuildConcept] = []
+    for concept in concepts:
+        expanded.append(concept)
+        expanded.extend(
+            environment.concepts[address]
+            for address in concept.grain.components
+            if address in environment.concepts
+        )
+    return unique(expanded, "address")
+
+
 def _direct_source(
     request: SourceRequest, attempt: SourceAttempt
 ) -> StrategyNode | None:
-    return request.history.gen_select_node(
-        request.outputs,
+    outputs = unique(
+        request.outputs + _condition_row_concepts(request.conditions),
+        "address",
+    )
+    node = request.history.gen_select_node(
+        outputs,
         request.environment,
         request.graph,
         request.depth,
@@ -99,18 +133,25 @@ def _direct_source(
         conditions=request.conditions,
         accept_partial=attempt.accepts_partial,
     )
+    if node is None or {c.address for c in outputs} == {
+        c.address for c in request.outputs
+    }:
+        return node
+    return SelectNode(
+        output_concepts=request.outputs,
+        input_concepts=node.output_concepts,
+        environment=request.environment,
+        parents=[node],
+    )
 
 
 def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
-    return unique(
-        request.outputs + _condition_row_concepts(request.conditions),
-        "address",
-    )
+    return _concepts_with_grain_keys(_requested_concepts(request), request.environment)
 
 
 def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan | None:
     search_concepts = _search_concepts_for_bridge(request)
-    requested = {c.address for c in search_concepts}
+    requested = {c.address for c in _requested_concepts(request)}
     condition_options = (request.conditions, None) if request.conditions else (None,)
     for filter_downstream in (True, False):
         for search_conditions in condition_options:
@@ -124,9 +165,18 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             if graph is None:
                 continue
             bridged = unique(_concepts_in_graph(graph, request.environment), "address")
-            if {c.address for c in bridged} != requested:
+            if {c.address for c in bridged} != requested or _has_union_datasource(
+                graph
+            ):
                 return BridgePlan(concepts=bridged, graph=graph)
     return None
+
+
+def _has_union_datasource(graph: ReferenceGraph) -> bool:
+    return any(
+        node in graph and isinstance(datasource, BuildUnionDatasource)
+        for node, datasource in graph.datasources.items()
+    )
 
 
 def _resolve_bridge_graph(
@@ -251,6 +301,24 @@ def _datasource_nodes_for_bridge(
             bridge_addresses,
             request.environment,
         )
+        concept_nodes.extend(
+            _original_datasource_concept_nodes(
+                request.graph,
+                plan.graph,
+                ds_node,
+                bridge_addresses,
+                request.environment,
+            )
+        )
+        concept_nodes.extend(
+            _datasource_grain_concept_nodes(
+                plan.graph,
+                ds_node,
+                concept_nodes,
+                request.environment,
+            )
+        )
+        concept_nodes = sorted(set(concept_nodes))
         if not concept_nodes:
             continue
         candidate = create_select_node_candidate(
@@ -272,6 +340,81 @@ def _datasource_nodes_for_bridge(
     if not parents:
         return None
     return parents
+
+
+def _datasource_grain_concept_nodes(
+    graph: ReferenceGraph,
+    ds_node: str,
+    concept_nodes: list[str],
+    environment: BuildEnvironment,
+) -> list[str]:
+    selected_addresses = {
+        _concept_node_address(node) for node in concept_nodes if node.startswith("c~")
+    }
+    datasource = graph.datasources.get(ds_node)
+    if datasource is None:
+        return []
+    grain_addresses: set[str] = set()
+    for node in concept_nodes:
+        if node.startswith("c~") and isinstance(datasource, BuildUnionDatasource):
+            grain_addresses.update(_concept_node_grain_addresses(node))
+    for address in selected_addresses:
+        concept = environment.concepts.get(address)
+        if concept is not None:
+            grain_addresses.update(concept.grain.components)
+    if not grain_addresses or ds_node not in graph:
+        return []
+    nodes = [
+        neighbor
+        for neighbor in graph.neighbors(ds_node)
+        if neighbor.startswith("c~")
+        and _concept_node_address(neighbor) in grain_addresses
+    ]
+    node_addresses = {_concept_node_address(node) for node in nodes}
+    for address in sorted(grain_addresses - node_addresses):
+        concept = environment.concepts.get(address)
+        if concept is None or not _datasource_can_output(datasource, address):
+            continue
+        nodes.append(concept_to_node(concept))
+    return nodes
+
+
+def _datasource_can_output(
+    datasource: BuildDatasource | BuildUnionDatasource,
+    address: str,
+) -> bool:
+    if isinstance(datasource, BuildDatasource):
+        return any(concept.address == address for concept in datasource.output_concepts)
+    return all(
+        any(concept.address == address for concept in child.output_concepts)
+        for child in datasource.children
+    )
+
+
+def _original_datasource_concept_nodes(
+    source_graph: ReferenceGraph,
+    bridge_graph: ReferenceGraph,
+    ds_node: str,
+    bridge_addresses: set[str],
+    environment: BuildEnvironment,
+) -> list[str]:
+    concept_nodes: list[str] = []
+    if ds_node not in source_graph:
+        return concept_nodes
+    for neighbor in source_graph.neighbors(ds_node):
+        if not neighbor.startswith("c~"):
+            continue
+        address = _concept_node_address(neighbor)
+        if address not in bridge_addresses or address not in environment.concepts:
+            continue
+        if neighbor not in bridge_graph:
+            bridge_graph.add_node(neighbor)
+            if neighbor in source_graph.concepts:
+                bridge_graph.concepts[neighbor] = source_graph.concepts[neighbor]
+        if not bridge_graph.has_edge(ds_node, neighbor):
+            bridge_graph.add_edge(ds_node, neighbor)
+        concept_nodes.append(neighbor)
+    return concept_nodes
 
 
 def _local_concept_nodes_for_datasource(
@@ -304,10 +447,13 @@ def _local_concept_nodes_for_datasource(
 
 
 def _merge_component_sources(
-    request: SourceRequest, parents: list[StrategyNode]
+    request: SourceRequest,
+    parents: list[StrategyNode],
+    output_concepts: list[BuildConcept] | None = None,
 ) -> StrategyNode | None:
     if not parents:
         return None
+    outputs = output_concepts or request.outputs
     inputs = unique(
         [concept for parent in parents for concept in parent.usable_outputs],
         "address",
@@ -316,10 +462,10 @@ def _merge_component_sources(
         parent = parents[0]
         if request.conditions is None and {
             c.address for c in parent.output_concepts
-        } == {c.address for c in request.outputs}:
+        } == {c.address for c in outputs}:
             return parent
         return SelectNode(
-            output_concepts=request.outputs,
+            output_concepts=outputs,
             input_concepts=inputs,
             environment=request.environment,
             parents=[parent],
@@ -331,7 +477,7 @@ def _merge_component_sources(
         )
     return MergeNode(
         input_concepts=inputs,
-        output_concepts=request.outputs,
+        output_concepts=outputs,
         environment=request.environment,
         parents=parents,
         depth=request.depth,
@@ -349,16 +495,36 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     component directly and merge them under a v4 node.
     """
     for attempt in request.source_policy.attempts:
+        bridge_plan = _bridge_plan(request, attempt)
+        if bridge_plan is not None:
+            parents = _datasource_nodes_for_bridge(request, bridge_plan, attempt)
+            if parents is not None:
+                return _merge_component_sources(request, parents, bridge_plan.concepts)
         direct = _direct_source(request, attempt)
         if direct is not None:
             return direct
-
-    for attempt in request.source_policy.attempts:
-        bridge_plan = _bridge_plan(request, attempt)
-        if bridge_plan is None:
-            continue
-        parents = _datasource_nodes_for_bridge(request, bridge_plan, attempt)
-        if parents is None:
-            continue
-        return _merge_component_sources(request, parents)
+    if request.conditions is not None:
+        outputs = unique(
+            request.outputs + _condition_row_concepts(request.conditions),
+            "address",
+        )
+        unfiltered = plan_source(
+            SourceRequest(
+                outputs=outputs,
+                environment=request.environment,
+                graph=request.graph,
+                history=request.history,
+                conditions=None,
+                depth=request.depth,
+                source_policy=request.source_policy,
+            )
+        )
+        if unfiltered is not None:
+            return SelectNode(
+                output_concepts=request.outputs,
+                input_concepts=unfiltered.output_concepts,
+                environment=request.environment,
+                parents=[unfiltered],
+                conditions=request.conditions.conditional,
+            )
     return None

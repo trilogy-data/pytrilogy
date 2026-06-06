@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6918 | 93 | 56.99 ms |
-| reference | 5356 | 83 | 46.81 ms |
-| v4 / ref | 1.29x | 1.12x | 1.22x |
+| v4 | 9612 | 134 | 65.59 ms |
+| reference | 5356 | 83 | 45.67 ms |
+| v4 / ref | 1.79x | 1.61x | 1.44x |
 
 ## Preql
 
@@ -88,7 +88,17 @@ limit 100
 
 ```sql
 WITH 
-thoughtful as (
+highfalutin as (
+SELECT
+    "catalog_sales_catalog_sales"."CS_CALL_CENTER_SK" as "catalog_sales_call_center_id",
+    "catalog_sales_catalog_sales"."CS_ITEM_SK" as "catalog_sales_item_id",
+    "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" as "catalog_sales_date_id"
+FROM
+    "memory"."catalog_sales" as "catalog_sales_catalog_sales"
+WHERE
+    "catalog_sales_catalog_sales"."CS_CALL_CENTER_SK" is not null
+),
+questionable as (
 SELECT
     "catalog_sales_call_center_call_center"."CC_NAME" as "catalog_sales_call_center_name",
     "catalog_sales_date_date"."D_MOY" as "catalog_sales_date_month_of_year",
@@ -110,75 +120,106 @@ GROUP BY
     3,
     4,
     5),
-abundant as (
+thoughtful as (
 SELECT
-    "thoughtful"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
-    "thoughtful"."catalog_sales_date_month_of_year" as "catalog_sales_date_month_of_year",
-    "thoughtful"."catalog_sales_date_year" as "catalog_sales_date_year",
-    "thoughtful"."catalog_sales_item_brand_name" as "catalog_sales_item_brand_name",
-    "thoughtful"."catalog_sales_item_category" as "catalog_sales_item_category",
-    "thoughtful"."sum_sales" as "sum_sales"
+    "catalog_sales_call_center_call_center"."CC_NAME" as "catalog_sales_call_center_name",
+    "catalog_sales_date_date"."D_MOY" as "catalog_sales_date_month_of_year",
+    "catalog_sales_date_date"."D_YEAR" as "catalog_sales_date_year",
+    "catalog_sales_item_items"."I_BRAND" as "catalog_sales_item_brand_name",
+    "catalog_sales_item_items"."I_CATEGORY" as "catalog_sales_item_category"
 FROM
-    "thoughtful"),
-uneven as (
+    "highfalutin"
+    INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "highfalutin"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "catalog_sales_item_items" on "highfalutin"."catalog_sales_item_id" = "catalog_sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."call_center" as "catalog_sales_call_center_call_center" on "highfalutin"."catalog_sales_call_center_id" = "catalog_sales_call_center_call_center"."CC_CALL_CENTER_SK"
+WHERE
+    ( "catalog_sales_date_date"."D_YEAR" = 1999 or ( "catalog_sales_date_date"."D_YEAR" = 1998 and "catalog_sales_date_date"."D_MOY" = 12 ) or ( "catalog_sales_date_date"."D_YEAR" = 2000 and "catalog_sales_date_date"."D_MOY" = 1 ) )
+),
+sparkling as (
 SELECT
-    "abundant"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
-    "abundant"."catalog_sales_date_year" as "catalog_sales_date_year",
-    "abundant"."catalog_sales_item_brand_name" as "catalog_sales_item_brand_name",
-    "abundant"."catalog_sales_item_category" as "catalog_sales_item_category",
-    avg("abundant"."sum_sales") as "avg_monthly_sales"
+    "questionable"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
+    "questionable"."catalog_sales_date_month_of_year" as "catalog_sales_date_month_of_year",
+    "questionable"."catalog_sales_date_year" as "catalog_sales_date_year",
+    "questionable"."catalog_sales_item_brand_name" as "catalog_sales_item_brand_name",
+    "questionable"."catalog_sales_item_category" as "catalog_sales_item_category",
+    lag("questionable"."sum_sales", 1) over (partition by "questionable"."catalog_sales_item_category","questionable"."catalog_sales_item_brand_name","questionable"."catalog_sales_call_center_name" order by "questionable"."catalog_sales_date_year" asc,"questionable"."catalog_sales_date_month_of_year" asc ) as "psum",
+    lead("questionable"."sum_sales", 1) over (partition by "questionable"."catalog_sales_item_category","questionable"."catalog_sales_item_brand_name","questionable"."catalog_sales_call_center_name" order by "questionable"."catalog_sales_date_year" asc,"questionable"."catalog_sales_date_month_of_year" asc ) as "nsum"
 FROM
-    "abundant"
+    "questionable"),
+yummy as (
+SELECT
+    "questionable"."sum_sales" as "sum_sales",
+    coalesce("questionable"."catalog_sales_call_center_name","thoughtful"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
+    coalesce("questionable"."catalog_sales_date_year","thoughtful"."catalog_sales_date_year") as "catalog_sales_date_year",
+    coalesce("questionable"."catalog_sales_item_brand_name","thoughtful"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
+    coalesce("questionable"."catalog_sales_item_category","thoughtful"."catalog_sales_item_category") as "catalog_sales_item_category"
+FROM
+    "thoughtful"
+    FULL JOIN "questionable" on "thoughtful"."catalog_sales_call_center_name" is not distinct from "questionable"."catalog_sales_call_center_name" AND "thoughtful"."catalog_sales_date_month_of_year" is not distinct from "questionable"."catalog_sales_date_month_of_year" AND "thoughtful"."catalog_sales_date_year" = "questionable"."catalog_sales_date_year" AND "thoughtful"."catalog_sales_item_brand_name" = "questionable"."catalog_sales_item_brand_name" AND "thoughtful"."catalog_sales_item_category" is not distinct from "questionable"."catalog_sales_item_category"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    coalesce("questionable"."catalog_sales_date_month_of_year","thoughtful"."catalog_sales_date_month_of_year")),
+vacuous as (
+SELECT
+    "yummy"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
+    "yummy"."catalog_sales_date_year" as "catalog_sales_date_year",
+    "yummy"."catalog_sales_item_brand_name" as "catalog_sales_item_brand_name",
+    "yummy"."catalog_sales_item_category" as "catalog_sales_item_category",
+    avg("yummy"."sum_sales") as "avg_monthly_sales"
+FROM
+    "yummy"
 GROUP BY
     1,
     2,
     3,
     4),
-yummy as (
+concerned as (
 SELECT
-    "thoughtful"."catalog_sales_date_month_of_year" as "catalog_sales_date_month_of_year",
-    "thoughtful"."sum_sales" - "uneven"."avg_monthly_sales" as "sum_minus_avg",
-    "thoughtful"."sum_sales" as "sum_sales",
-    "uneven"."avg_monthly_sales" as "avg_monthly_sales",
-    coalesce("thoughtful"."catalog_sales_call_center_name","uneven"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
-    coalesce("thoughtful"."catalog_sales_date_year","uneven"."catalog_sales_date_year") as "catalog_sales_date_year",
-    coalesce("thoughtful"."catalog_sales_item_brand_name","uneven"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
-    coalesce("thoughtful"."catalog_sales_item_category","uneven"."catalog_sales_item_category") as "catalog_sales_item_category",
-    lag("thoughtful"."sum_sales", 1) over (partition by coalesce("thoughtful"."catalog_sales_item_category","uneven"."catalog_sales_item_category"),coalesce("thoughtful"."catalog_sales_item_brand_name","uneven"."catalog_sales_item_brand_name"),coalesce("thoughtful"."catalog_sales_call_center_name","uneven"."catalog_sales_call_center_name") order by coalesce("thoughtful"."catalog_sales_date_year","uneven"."catalog_sales_date_year") asc,"thoughtful"."catalog_sales_date_month_of_year" asc ) as "psum",
-    lead("thoughtful"."sum_sales", 1) over (partition by coalesce("thoughtful"."catalog_sales_item_category","uneven"."catalog_sales_item_category"),coalesce("thoughtful"."catalog_sales_item_brand_name","uneven"."catalog_sales_item_brand_name"),coalesce("thoughtful"."catalog_sales_call_center_name","uneven"."catalog_sales_call_center_name") order by coalesce("thoughtful"."catalog_sales_date_year","uneven"."catalog_sales_date_year") asc,"thoughtful"."catalog_sales_date_month_of_year" asc ) as "nsum"
+    "questionable"."catalog_sales_date_month_of_year" as "catalog_sales_date_month_of_year",
+    "questionable"."sum_sales" - "vacuous"."avg_monthly_sales" as "sum_minus_avg",
+    "questionable"."sum_sales" as "sum_sales",
+    "vacuous"."avg_monthly_sales" as "avg_monthly_sales",
+    coalesce("questionable"."catalog_sales_call_center_name","vacuous"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
+    coalesce("questionable"."catalog_sales_date_year","vacuous"."catalog_sales_date_year") as "catalog_sales_date_year",
+    coalesce("questionable"."catalog_sales_item_brand_name","vacuous"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
+    coalesce("questionable"."catalog_sales_item_category","vacuous"."catalog_sales_item_category") as "catalog_sales_item_category"
 FROM
-    "thoughtful"
-    INNER JOIN "uneven" on "thoughtful"."catalog_sales_call_center_name" is not distinct from "uneven"."catalog_sales_call_center_name" AND "thoughtful"."catalog_sales_date_year" = "uneven"."catalog_sales_date_year" AND "thoughtful"."catalog_sales_item_brand_name" = "uneven"."catalog_sales_item_brand_name" AND "thoughtful"."catalog_sales_item_category" is not distinct from "uneven"."catalog_sales_item_category")
+    "questionable"
+    INNER JOIN "vacuous" on "questionable"."catalog_sales_call_center_name" is not distinct from "vacuous"."catalog_sales_call_center_name" AND "questionable"."catalog_sales_date_year" = "vacuous"."catalog_sales_date_year" AND "questionable"."catalog_sales_item_brand_name" = "vacuous"."catalog_sales_item_brand_name" AND "questionable"."catalog_sales_item_category" is not distinct from "vacuous"."catalog_sales_item_category")
 SELECT
-    coalesce("abundant"."catalog_sales_item_category","yummy"."catalog_sales_item_category") as "catalog_sales_item_category",
-    coalesce("abundant"."catalog_sales_item_brand_name","yummy"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
-    coalesce("abundant"."catalog_sales_call_center_name","yummy"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
-    coalesce("abundant"."catalog_sales_date_year","yummy"."catalog_sales_date_year") as "catalog_sales_date_year",
-    coalesce("abundant"."catalog_sales_date_month_of_year","yummy"."catalog_sales_date_month_of_year") as "catalog_sales_date_month_of_year",
-    "yummy"."avg_monthly_sales" as "avg_monthly_sales",
-    "yummy"."sum_sales" as "sum_sales",
-    "yummy"."psum" as "psum",
-    "yummy"."nsum" as "nsum"
+    coalesce("concerned"."catalog_sales_item_category","sparkling"."catalog_sales_item_category") as "catalog_sales_item_category",
+    coalesce("concerned"."catalog_sales_item_brand_name","sparkling"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
+    coalesce("concerned"."catalog_sales_call_center_name","sparkling"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
+    coalesce("concerned"."catalog_sales_date_year","sparkling"."catalog_sales_date_year") as "catalog_sales_date_year",
+    coalesce("concerned"."catalog_sales_date_month_of_year","sparkling"."catalog_sales_date_month_of_year") as "catalog_sales_date_month_of_year",
+    "concerned"."avg_monthly_sales" as "avg_monthly_sales",
+    "concerned"."sum_sales" as "sum_sales",
+    "sparkling"."psum" as "psum",
+    "sparkling"."nsum" as "nsum"
 FROM
-    "yummy"
-    LEFT OUTER JOIN "abundant" on "yummy"."catalog_sales_call_center_name" = "abundant"."catalog_sales_call_center_name" AND "yummy"."catalog_sales_date_month_of_year" = "abundant"."catalog_sales_date_month_of_year" AND "yummy"."catalog_sales_date_year" = "abundant"."catalog_sales_date_year" AND "yummy"."catalog_sales_item_brand_name" = "abundant"."catalog_sales_item_brand_name" AND "yummy"."catalog_sales_item_category" is not distinct from "abundant"."catalog_sales_item_category"
+    "sparkling"
+    RIGHT OUTER JOIN "concerned" on "sparkling"."catalog_sales_call_center_name" = "concerned"."catalog_sales_call_center_name" AND "sparkling"."catalog_sales_date_month_of_year" = "concerned"."catalog_sales_date_month_of_year" AND "sparkling"."catalog_sales_date_year" = "concerned"."catalog_sales_date_year" AND "sparkling"."catalog_sales_item_brand_name" = "concerned"."catalog_sales_item_brand_name" AND "sparkling"."catalog_sales_item_category" is not distinct from "concerned"."catalog_sales_item_category"
 WHERE
-    coalesce("abundant"."catalog_sales_date_year","yummy"."catalog_sales_date_year") = 1999 and "yummy"."avg_monthly_sales" > 0 and CASE
-	WHEN "yummy"."avg_monthly_sales" > 0 THEN abs("yummy"."sum_sales" - "yummy"."avg_monthly_sales") / "yummy"."avg_monthly_sales"
+    coalesce("concerned"."catalog_sales_date_year","sparkling"."catalog_sales_date_year") = 1999 and "concerned"."avg_monthly_sales" > 0 and CASE
+	WHEN "concerned"."avg_monthly_sales" > 0 THEN abs("concerned"."sum_sales" - "concerned"."avg_monthly_sales") / "concerned"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    "yummy"."sum_minus_avg" asc nulls first,
-    coalesce("abundant"."catalog_sales_item_category","yummy"."catalog_sales_item_category") asc,
-    coalesce("abundant"."catalog_sales_item_brand_name","yummy"."catalog_sales_item_brand_name") asc,
-    coalesce("abundant"."catalog_sales_call_center_name","yummy"."catalog_sales_call_center_name") asc,
-    coalesce("abundant"."catalog_sales_date_year","yummy"."catalog_sales_date_year") asc,
-    coalesce("abundant"."catalog_sales_date_month_of_year","yummy"."catalog_sales_date_month_of_year") asc,
-    "yummy"."avg_monthly_sales" asc,
-    "yummy"."sum_sales" asc,
-    "yummy"."psum" asc,
-    "yummy"."nsum" asc
+    "concerned"."sum_minus_avg" asc nulls first,
+    coalesce("concerned"."catalog_sales_item_category","sparkling"."catalog_sales_item_category") asc,
+    coalesce("concerned"."catalog_sales_item_brand_name","sparkling"."catalog_sales_item_brand_name") asc,
+    coalesce("concerned"."catalog_sales_call_center_name","sparkling"."catalog_sales_call_center_name") asc,
+    coalesce("concerned"."catalog_sales_date_year","sparkling"."catalog_sales_date_year") asc,
+    coalesce("concerned"."catalog_sales_date_month_of_year","sparkling"."catalog_sales_date_month_of_year") asc,
+    "concerned"."avg_monthly_sales" asc,
+    "concerned"."sum_sales" asc,
+    "sparkling"."psum" asc,
+    "sparkling"."nsum" asc
 LIMIT (100)
 ```
 

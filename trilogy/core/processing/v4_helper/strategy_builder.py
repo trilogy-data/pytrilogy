@@ -9,10 +9,11 @@ from collections import defaultdict
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import AggregateGroupingMode, Derivation, Purpose
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildFilterItem,
     BuildGrain,
@@ -51,6 +52,7 @@ from .projection import (
     satisfiable_outputs,
     widen_projection,
 )
+from .source_planning import SourceRequest, plan_source
 from .source_policy import STRICT_SOURCE_POLICY, SourcePolicy
 
 _AGGREGATING_DERIVATIONS = {
@@ -153,6 +155,130 @@ def _existence_for_group(
     return existence_concepts, existence_parents
 
 
+def _existence_parents_for(
+    concepts: list[BuildConcept],
+    built: dict[str, StrategyNode],
+    skip: StrategyNode | None = None,
+) -> list[StrategyNode]:
+    existence_parents: list[StrategyNode] = []
+    seen_parents: set[int] = set()
+    for concept in concepts:
+        for source_node in built.values():
+            if skip is not None and source_node is skip:
+                continue
+            if any(o.address == concept.address for o in source_node.output_concepts):
+                if id(source_node) not in seen_parents:
+                    seen_parents.add(id(source_node))
+                    existence_parents.append(source_node.copy())
+                break
+    return existence_parents
+
+
+def _condition_existence_concepts(condition: BoolExpr | None) -> list[BuildConcept]:
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+    if condition is None:
+        return out
+    for arg_group in condition.existence_arguments:
+        for concept in arg_group:
+            if concept.address not in seen:
+                seen.add(concept.address)
+                out.append(concept)
+    return out
+
+
+def _filter_lineage_existence_concepts(
+    concepts: list[BuildConcept],
+) -> list[BuildConcept]:
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+    visited: set[str] = set()
+    stack = list(concepts)
+    while stack:
+        concept = stack.pop()
+        if concept.address in visited:
+            continue
+        visited.add(concept.address)
+        if isinstance(concept.lineage, BuildFilterItem):
+            for arg_group in concept.lineage.where.existence_arguments or ():
+                for arg in arg_group:
+                    if arg.address not in seen:
+                        seen.add(arg.address)
+                        out.append(arg)
+        if concept.lineage is not None:
+            stack.extend(concept.lineage.concept_arguments)
+    return out
+
+
+def _node_existence_concepts(node: StrategyNode) -> list[BuildConcept]:
+    concepts: list[BuildConcept] = []
+    seen: set[str] = set()
+    for concept in _condition_existence_concepts(
+        node.conditions
+    ) + _filter_lineage_existence_concepts(list(node.output_concepts)):
+        if concept.address not in seen:
+            seen.add(concept.address)
+            concepts.append(concept)
+    return concepts
+
+
+def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
+    seen: set[int] = set()
+    nodes: list[StrategyNode] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        nodes.append(node)
+        stack.extend(node.parents)
+    return nodes
+
+
+def _attach_existence_to_node(
+    node: StrategyNode,
+    concepts: list[BuildConcept],
+    built: dict[str, StrategyNode],
+) -> None:
+    if not concepts:
+        return
+    existing_concepts = {concept.address for concept in node.existence_concepts}
+    node.existence_concepts = list(node.existence_concepts) + [
+        concept for concept in concepts if concept.address not in existing_concepts
+    ]
+    existing_parent_outputs = {
+        output.address for parent in node.parents for output in parent.output_concepts
+    }
+    node.parents = list(node.parents) + [
+        parent
+        for parent in _existence_parents_for(concepts, built, skip=node)
+        if any(
+            output.address not in existing_parent_outputs
+            for output in parent.output_concepts
+        )
+    ]
+    node.rebuild_cache()
+
+
+def _attach_existence_sources(
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    condition_hosts: dict[str, StrategyNode],
+    environment: BuildEnvironment,
+) -> None:
+    for gid, host in condition_hosts.items():
+        ex_concepts, ex_parents = _existence_for_group(attrs, built, environment, gid)
+        if not ex_concepts:
+            continue
+        _attach_existence_to_node(host, ex_concepts, built)
+        if ex_parents:
+            host.rebuild_cache()
+    for root in built.values():
+        for node in _strategy_nodes(root):
+            _attach_existence_to_node(node, _node_existence_concepts(node), built)
+
+
 def _accumulated_atoms_above(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -178,6 +304,10 @@ def _parent_nodes_for(
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     gid: str,
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    history: History,
+    source_policy: SourcePolicy,
     *,
     needed: set[str],
 ) -> list[StrategyNode]:
@@ -228,6 +358,43 @@ def _parent_nodes_for(
             return set(attrs[pgid].primary_members) & needed
         return {o.address for o in node.output_concepts} & needed
 
+    def parent_for_consumer(pgid: str, node: StrategyNode) -> StrategyNode:
+        if attrs[pgid].derivation != Derivation.ROOT:
+            return node.copy()
+        if attrs[gid].derivation not in GROUPING_DERIVATIONS:
+            return node.copy()
+        parent_outputs = {concept.address for concept in node.output_concepts}
+        slice_addresses = needed & parent_outputs
+        if not slice_addresses or slice_addresses == parent_outputs:
+            return node.copy()
+        outputs = [
+            environment.concepts[address]
+            for address in sorted(slice_addresses)
+            if address in environment.concepts
+        ]
+        sliced = build_node(
+            derivation=Derivation.ROOT,
+            outputs=outputs,
+            parents=[],
+            environment=environment,
+            conditions=_wrap_atoms(attrs[pgid].condition_atoms),
+            history=history,
+            g=graph,
+            source_policy=source_policy,
+        )
+        if sliced is None:
+            sliced = plan_source(
+                SourceRequest(
+                    outputs=outputs,
+                    environment=environment,
+                    graph=graph,
+                    history=history,
+                    conditions=_wrap_atoms(attrs[pgid].condition_atoms),
+                    source_policy=source_policy,
+                )
+            )
+        return sliced if sliced is not None else node.copy()
+
     parents: list[StrategyNode] = []
     for pgid, node in candidates:
         my_provides = provides(pgid, node)
@@ -241,7 +408,7 @@ def _parent_nodes_for(
                 covered_by_descendant = True
                 break
         if not covered_by_descendant:
-            parents.append(node.copy())
+            parents.append(parent_for_consumer(pgid, node))
     return parents
 
 
@@ -631,7 +798,10 @@ def _fold_descendant_contributors(
     (which would recompute S's aggregates from their source columns). The
     `available` guard ensures the columns actually come off B's own parents."""
     for b_gid in list(per_group.keys()):
-        if b_gid not in per_group or attrs[b_gid].derivation != Derivation.BASIC:
+        if b_gid not in per_group or attrs[b_gid].derivation not in (
+            Derivation.BASIC,
+            Derivation.WINDOW,
+        ):
             continue
         b_node = built[b_gid]
         b_ancestors = nx.ancestors(group_graph, b_gid)
@@ -650,6 +820,106 @@ def _fold_descendant_contributors(
             )
             per_group[b_gid].extend(s_concepts)
             del per_group[s_gid]
+
+
+def _promote_final_aliases_to_grouping_contributors(
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    per_group: dict[str, list[BuildConcept]],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> None:
+    def has_rollup_output(gid: str) -> bool:
+        return any(
+            concept.derivation == Derivation.AGGREGATE
+            and isinstance(concept.lineage, BuildAggregateWrapper)
+            and concept.lineage.grouping == AggregateGroupingMode.ROLLUP
+            for concept in built[gid].output_concepts
+        )
+
+    for concept in mandatory_list:
+        current_gid = next(
+            (
+                gid
+                for gid, concepts in per_group.items()
+                if any(c.address == concept.address for c in concepts)
+            ),
+            None,
+        )
+        grouping_candidates = [
+            gid
+            for gid in per_group
+            if gid != current_gid
+            and attrs[gid].derivation in GROUPING_DERIVATIONS
+            and has_rollup_output(gid)
+        ]
+        for gid in grouping_candidates:
+            available = {output.address for output in built[gid].output_concepts}
+            if not concept_satisfiable(concept, available):
+                continue
+            base = built[gid]
+            projected = SelectNode(
+                output_concepts=list(base.output_concepts),
+                input_concepts=list(base.output_concepts),
+                environment=environment,
+                parents=[base],
+                partial_concepts=list(base.partial_concepts),
+            )
+            widen_projection(projected, [concept])
+            built[gid] = projected
+            for old_gid in list(per_group):
+                per_group[old_gid] = [
+                    c for c in per_group[old_gid] if c.address != concept.address
+                ]
+                if not per_group[old_gid]:
+                    del per_group[old_gid]
+            per_group[gid].append(concept)
+            break
+
+
+def _projection_root_concepts(
+    concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    addresses: set[str] = set()
+    for concept in concepts:
+        addresses.add(concept.address)
+        if concept.grain is not None:
+            addresses.update(concept.grain.components)
+        addresses.update(concept.keys or set())
+    return [
+        environment.concepts[address]
+        for address in sorted(addresses)
+        if address in environment.concepts
+    ]
+
+
+def _fresh_final_root_projection(
+    concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    history: History,
+    source_policy: SourcePolicy,
+) -> StrategyNode | None:
+    projected = _projection_root_concepts(concepts, environment)
+    if not projected:
+        return None
+    return plan_source(
+        SourceRequest(
+            outputs=projected,
+            environment=environment,
+            graph=graph,
+            history=history,
+            conditions=None,
+            source_policy=source_policy,
+        )
+    )
+
+
+def _add_needed_concept(needed: set[str], concept: BuildConcept) -> None:
+    needed.add(concept.address)
+    if concept.grain is not None:
+        needed.update(concept.grain.components)
 
 
 def _wrap_for_grain(
@@ -683,7 +953,7 @@ def _wrap_for_grain(
     # {customer.id}). `BuildGrain.from_concepts([c])` is the wrong helper
     # here — that asks "what grain do these concepts collectively require"
     # which can include the concept itself as a self-key.
-    parent_outputs = {o.address for o in parent_node.output_concepts}
+    parent_outputs = {o.address for o in parent_node.usable_outputs}
     by_grain: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
     for concept in needed_concepts:
         grain_components = (
@@ -723,6 +993,9 @@ def _wrap_for_grain(
         for c in concepts + grain_concepts:
             outputs_by_addr.setdefault(c.address, c)
         outputs = list(outputs_by_addr.values())
+        if any(output.address not in parent_outputs for output in outputs):
+            wraps.append(parent_node)
+            continue
         wraps.append(
             GroupNode(
                 output_concepts=outputs,
@@ -777,6 +1050,9 @@ def _assemble_final_node(
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    history: History,
+    source_policy: SourcePolicy,
 ) -> StrategyNode | None:
     """Build the FINAL output node: merge the minimum set of built groups
     that together cover `mandatory_list`. When a single group already covers
@@ -848,6 +1124,9 @@ def _assemble_final_node(
     if not per_group:
         return _apply_final_conditions(next(iter(built.values())))
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
+    _promote_final_aliases_to_grouping_contributors(
+        attrs, built, per_group, mandatory_list, environment
+    )
     contributing = list(per_group.keys())
     if len(contributing) == 1:
         gid = contributing[0]
@@ -893,16 +1172,37 @@ def _assemble_final_node(
     for gid in contributing:
         if attrs[gid].derivation in GROUPING_DERIVATIONS:
             grouping_grain_components |= set(attrs[gid].grain_components)
+            for concept in per_group[gid]:
+                if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
+                    grouping_grain_components |= set(concept.grain.components)
 
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
         is_root = attrs[gid].derivation == Derivation.ROOT
+        group_concepts = list(per_group[gid])
+        if is_root and grouping_grain_components:
+            seen_group_concepts = {concept.address for concept in group_concepts}
+            group_concepts.extend(
+                environment.concepts[address]
+                for address in sorted(grouping_grain_components)
+                if address in environment.concepts
+                and address not in seen_group_concepts
+            )
         if is_root:
+            fresh = _fresh_final_root_projection(
+                group_concepts,
+                environment,
+                graph,
+                history,
+                source_policy,
+            )
+            if fresh is not None:
+                node = fresh
             parents.extend(
                 _wrap_for_grain(
                     node,
-                    per_group[gid],
+                    group_concepts,
                     environment,
                     frozenset(grouping_grain_components),
                 )
@@ -918,6 +1218,13 @@ def _assemble_final_node(
     # row-preserving sibling already renders off its own parents, collapsing the
     # columns into one projection instead of joining (same passthrough logic the
     # per-group `_pre_merge_parents` uses).
+    final_needed = set(mandatory_addresses) | set(grouping_grain_components)
+    parents = _project_dimension_parents_to_group_grain(
+        parents,
+        final_needed,
+        frozenset(grouping_grain_components),
+        environment,
+    )
     parents = _fold_passthrough_parents(parents)
     _widen_merge_join_keys(parents)
 
@@ -972,6 +1279,7 @@ def build_strategy_node(
     with explicit parent nodes. Returns the most-downstream built node, or
     None if nothing built."""
     built: dict[str, StrategyNode] = {}
+    condition_hosts: dict[str, StrategyNode] = {}
 
     for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
@@ -1018,17 +1326,37 @@ def build_strategy_node(
             needed.add(c.address)
             if c.address in primary_addrs and c.lineage is not None:
                 for arg in c.lineage.concept_arguments:
-                    needed.add(arg.address)
+                    if derivation in _AGGREGATING_DERIVATIONS:
+                        _add_needed_concept(needed, arg)
+                    else:
+                        needed.add(arg.address)
         if injected is not None:
-            for arg in injected.concept_arguments:
-                needed.add(arg.address)
+            for arg in condition_row_args(injected):
+                _add_needed_concept(needed, arg)
         parents = _parent_nodes_for(
-            group_graph, group_edges, attrs, built, gid, needed=needed
+            group_graph,
+            group_edges,
+            attrs,
+            built,
+            gid,
+            environment,
+            g,
+            history,
+            source_policy,
+            needed=needed,
         )
+        projection_grain_components = set(a.grain_components)
+        if any(_contains_shape_barrier(parent) for parent in parents):
+            for parent in parents:
+                if not _contains_shape_barrier(parent):
+                    continue
+                for output in parent.output_concepts:
+                    if output.derivation in GROUPING_DERIVATIONS and output.grain:
+                        projection_grain_components |= set(output.grain.components)
         parents = _project_dimension_parents_to_group_grain(
             parents,
             needed,
-            a.grain_components,
+            frozenset(projection_grain_components),
             environment,
         )
         parents = _pre_merge_parents(parents, environment)
@@ -1146,18 +1474,25 @@ def build_strategy_node(
             # derivations we peeled the conditions off onto a SelectNode
             # wrapper (above); that wrapper is the condition host, not the
             # outer GroupNode whose `conditions=None`.
-            ex_concepts, ex_parents = _existence_for_group(
-                attrs, built, environment, gid
+            condition_hosts[gid] = (
+                condition_host_node if condition_host_node is not None else node
             )
-            if ex_concepts:
-                host = condition_host_node if condition_host_node is not None else node
-                host.parents = list(host.parents) + ex_parents
-                host.existence_concepts = list(host.existence_concepts) + ex_concepts
-                host.rebuild_cache()
-                if host is not node:
-                    node.rebuild_cache()
             built[gid] = node
 
     if not built:
         return None
-    return _assemble_final_node(group_graph, attrs, built, mandatory_list, environment)
+    _attach_existence_sources(attrs, built, condition_hosts, environment)
+    final = _assemble_final_node(
+        group_graph,
+        attrs,
+        built,
+        mandatory_list,
+        environment,
+        g,
+        history,
+        source_policy,
+    )
+    if final is not None:
+        for node in _strategy_nodes(final):
+            _attach_existence_to_node(node, _node_existence_concepts(node), built)
+    return final

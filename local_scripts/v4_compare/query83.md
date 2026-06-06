@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7171 | 163 | 33.90 ms |
+| v4 | 7260 | 164 | 35.50 ms |
 | reference | 6782 | 160 | — |
-| v4 / ref | 1.06x | 1.02x | — |
+| v4 / ref | 1.07x | 1.02x | — |
 
 ## Preql
 
@@ -125,7 +125,8 @@ GROUP BY
     3,
     4,
     5,
-    "sales_item_items"."I_ITEM_SK"),
+    "sales_item_items"."I_ITEM_SK",
+    coalesce("cooperative"."sales_return_date_id","sales_return_date_date"."D_DATE_SK")),
 yummy as (
 SELECT
     "uneven"."sales_item_text_id" as "sales_item_text_id",

@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2014 | 54 | 5.65 ms |
-| reference | 1434 | 42 | 4.70 ms |
-| v4 / ref | 1.40x | 1.29x | 1.20x |
+| v4 | 2124 | 51 | 4.68 ms |
+| reference | 1434 | 42 | 4.97 ms |
+| v4 / ref | 1.48x | 1.21x | 0.94x |
 
 ## Preql
 
@@ -51,37 +51,23 @@ limit 100
 
 ```sql
 WITH 
-highfalutin as (
+wakeful as (
 SELECT
-    "inv_warehouse_inventory"."inv_date_sk" as "inv_date_id",
     "inv_warehouse_inventory"."inv_item_sk" as "inv_item_id",
-    "inv_warehouse_inventory"."inv_quantity_on_hand" as "inv_quantity_on_hand"
-FROM
-    "memory"."inventory" as "inv_warehouse_inventory"
-WHERE
-    "inv_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
-
-GROUP BY
-    1,
-    2,
-    3),
-cheerful as (
-SELECT
-    "highfalutin"."inv_item_id" as "inv_item_id",
-    "highfalutin"."inv_quantity_on_hand" as "inv_quantity_on_hand",
+    "inv_warehouse_inventory"."inv_quantity_on_hand" as "inv_quantity_on_hand",
     cast("inv_date_date"."D_DATE" as date) as "inv_date_date"
 FROM
-    "highfalutin"
-    INNER JOIN "memory"."date_dim" as "inv_date_date" on "highfalutin"."inv_date_id" = "inv_date_date"."D_DATE_SK"
+    "memory"."inventory" as "inv_warehouse_inventory"
+    INNER JOIN "memory"."date_dim" as "inv_date_date" on "inv_warehouse_inventory"."inv_date_sk" = "inv_date_date"."D_DATE_SK"
 WHERE
-    cast("inv_date_date"."D_DATE" as date) BETWEEN date '2000-02-01' AND date '2000-04-01'
+    cast("inv_date_date"."D_DATE" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and "inv_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
 ),
-thoughtful as (
+cheerful as (
 SELECT
-    CASE WHEN "cheerful"."inv_date_date" BETWEEN date '2000-02-01' AND date '2000-04-01' and "cheerful"."inv_quantity_on_hand" BETWEEN 100 AND 500 THEN "cheerful"."inv_item_id" ELSE NULL END as "inv_item_ids"
+    CASE WHEN "wakeful"."inv_date_date" BETWEEN date '2000-02-01' AND date '2000-04-01' and "wakeful"."inv_quantity_on_hand" BETWEEN 100 AND 500 THEN "wakeful"."inv_item_id" ELSE NULL END as "inv_item_ids"
 FROM
-    "cheerful"),
-cooperative as (
+    "wakeful"),
+thoughtful as (
 SELECT
     "items_items"."I_CURRENT_PRICE" as "items_current_price",
     "items_items"."I_ITEM_DESC" as "items_desc",
@@ -90,7 +76,18 @@ SELECT
 FROM
     "memory"."item" as "items_items"
 WHERE
-    "items_items"."I_CURRENT_PRICE" BETWEEN 68 AND 98 and "items_items"."I_MANUFACT_ID" in (677,940,694,808) and "items_items"."I_ITEM_SK" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
+    "items_items"."I_CURRENT_PRICE" BETWEEN 68 AND 98 and "items_items"."I_MANUFACT_ID" in (677,940,694,808) and "items_items"."I_ITEM_SK" in (select cheerful."inv_item_ids" from cheerful where cheerful."inv_item_ids" is not null)
+),
+cooperative as (
+SELECT
+    "thoughtful"."items_current_price" as "items_current_price",
+    "thoughtful"."items_desc" as "items_desc",
+    "thoughtful"."items_id" as "items_id",
+    "thoughtful"."items_text_id" as "items_text_id"
+FROM
+    "thoughtful"
+WHERE
+    "thoughtful"."items_id" in (select cheerful."inv_item_ids" from cheerful where cheerful."inv_item_ids" is not null)
 )
 SELECT
     "cooperative"."items_text_id" as "items_text_id",
@@ -99,7 +96,7 @@ SELECT
 FROM
     "cooperative"
 WHERE
-    "cooperative"."items_id" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
+    "cooperative"."items_id" in (select cheerful."inv_item_ids" from cheerful where cheerful."inv_item_ids" is not null)
 
 ORDER BY 
     "cooperative"."items_text_id" asc nulls first

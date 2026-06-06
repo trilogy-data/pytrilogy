@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3095 | 72 | 11.43 ms |
-| reference | 2581 | 61 | 4.96 ms |
-| v4 / ref | 1.20x | 1.18x | 2.30x |
+| v4 | 3051 | 71 | 9.90 ms |
+| reference | 2581 | 61 | 4.88 ms |
+| v4 / ref | 1.18x | 1.16x | 2.03x |
 
 ## Preql
 
@@ -98,8 +98,7 @@ SELECT
 FROM
     "abundant"
 GROUP BY
-    1,
-    "abundant"."physical_sales_store_name")
+    1)
 SELECT
     "abundant"."physical_sales_store_name" as "physical_sales_store_name",
     "abundant"."physical_sales_item_desc" as "physical_sales_item_desc",

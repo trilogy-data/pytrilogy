@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4365 | 79 | 3.32 ms |
+| v4 | 4227 | 62 | 4.35 ms |
 | reference | 3925 | 52 | 3.95 ms |
-| v4 / ref | 1.11x | 1.52x | 0.84x |
+| v4 / ref | 1.08x | 1.19x | 1.10x |
 
 ## Preql
 
@@ -52,16 +52,35 @@ having
 
 ```sql
 WITH 
+juicy as (
+SELECT
+    sum("physical_sales_store_sales"."SS_NET_PAID") as "_virt_agg_sum_5757395975543459"
+FROM
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."store_returns" as "physical_sales_store_returns" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_store_returns"."SR_ITEM_SK" AND "physical_sales_store_sales"."SS_TICKET_NUMBER" = "physical_sales_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "physical_sales_customer_address_customer_address" on "physical_sales_customer_customers"."C_CURRENT_ADDR_SK" = "physical_sales_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "physical_sales_store_store"."S_MARKET_ID" = 8 and "physical_sales_customer_customers"."C_BIRTH_COUNTRY" != UPPER("physical_sales_customer_address_customer_address"."CA_COUNTRY")  and SR_RETURN_TIME_SK IS NOT NULL is True and "physical_sales_store_store"."S_ZIP" = "physical_sales_customer_address_customer_address"."CA_ZIP"
+
+GROUP BY
+    "physical_sales_customer_customers"."C_FIRST_NAME",
+    "physical_sales_customer_customers"."C_LAST_NAME",
+    "physical_sales_store_sales"."SS_CUSTOMER_SK",
+    "physical_sales_store_sales"."SS_ITEM_SK",
+    "physical_sales_store_sales"."SS_STORE_SK",
+    "physical_sales_store_store"."S_STORE_NAME"),
+young as (
+SELECT
+    1 as "__preql_internal_all_rows"
+),
 questionable as (
 SELECT
     "physical_sales_customer_customers"."C_FIRST_NAME" as "physical_sales_customer_first_name",
     "physical_sales_customer_customers"."C_LAST_NAME" as "physical_sales_customer_last_name",
-    "physical_sales_item_items"."I_COLOR" as "physical_sales_item_color",
-    "physical_sales_item_items"."I_ITEM_SK" as "physical_sales_item_id",
-    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_customer_id",
-    "physical_sales_store_sales"."SS_NET_PAID" as "physical_sales_net_paid",
-    "physical_sales_store_sales"."SS_STORE_SK" as "physical_sales_store_id",
-    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name"
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name",
+    sum(CASE WHEN "physical_sales_item_items"."I_COLOR" = 'peach' THEN "physical_sales_store_sales"."SS_NET_PAID" ELSE NULL END) as "peach_sales"
 FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
@@ -71,65 +90,29 @@ FROM
     INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
     "physical_sales_store_store"."S_MARKET_ID" = 8 and "physical_sales_customer_customers"."C_BIRTH_COUNTRY" != UPPER("physical_sales_customer_address_customer_address"."CA_COUNTRY")  and SR_RETURN_TIME_SK IS NOT NULL is True and "physical_sales_store_store"."S_ZIP" = "physical_sales_customer_address_customer_address"."CA_ZIP"
-),
-vacuous as (
-SELECT
-    1 as "__preql_internal_all_rows"
-),
-abundant as (
-SELECT
-    "questionable"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
-    "questionable"."physical_sales_customer_id" as "physical_sales_customer_id",
-    "questionable"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
-    "questionable"."physical_sales_item_id" as "physical_sales_item_id",
-    "questionable"."physical_sales_net_paid" as "physical_sales_net_paid",
-    "questionable"."physical_sales_store_id" as "physical_sales_store_id",
-    "questionable"."physical_sales_store_name" as "physical_sales_store_name",
-    CASE WHEN "questionable"."physical_sales_item_color" = 'peach' THEN "questionable"."physical_sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_6433461400918323"
-FROM
-    "questionable"),
-juicy as (
-SELECT
-    sum("abundant"."physical_sales_net_paid") as "_virt_agg_sum_5757395975543459"
-FROM
-    "abundant"
-GROUP BY
-    "abundant"."physical_sales_customer_first_name",
-    "abundant"."physical_sales_customer_id",
-    "abundant"."physical_sales_customer_last_name",
-    "abundant"."physical_sales_item_id",
-    "abundant"."physical_sales_store_id",
-    "abundant"."physical_sales_store_name"),
-uneven as (
-SELECT
-    "abundant"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
-    "abundant"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
-    "abundant"."physical_sales_store_name" as "physical_sales_store_name",
-    sum("abundant"."_virt_filter_net_paid_6433461400918323") as "peach_sales"
-FROM
-    "abundant"
+
 GROUP BY
     1,
     2,
     3),
-concerned as (
+sparkling as (
 SELECT
     avg("juicy"."_virt_agg_sum_5757395975543459") as "avg_store_customer_sales"
 FROM
-    "vacuous"
+    "young"
     FULL JOIN "juicy" on 1=1
 GROUP BY
-    "vacuous"."__preql_internal_all_rows")
+    "young"."__preql_internal_all_rows")
 SELECT
-    "uneven"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
-    "uneven"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
-    "uneven"."physical_sales_store_name" as "physical_sales_store_name",
-    "uneven"."peach_sales" as "peach_sales"
+    "questionable"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
+    "questionable"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
+    "questionable"."physical_sales_store_name" as "physical_sales_store_name",
+    "questionable"."peach_sales" as "peach_sales"
 FROM
-    "concerned"
-    INNER JOIN "uneven" on 1=1
+    "sparkling"
+    INNER JOIN "questionable" on 1=1
 WHERE
-    "uneven"."peach_sales" > 0.05 * "concerned"."avg_store_customer_sales"
+    "questionable"."peach_sales" > 0.05 * "sparkling"."avg_store_customer_sales"
 ```
 
 ## Reference SQL (zquery log)

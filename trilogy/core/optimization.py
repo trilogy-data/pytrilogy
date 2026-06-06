@@ -85,7 +85,7 @@ def canonicalize_graph(input: list[CTE]) -> None:
                 }
             )
 
-    def resolve(node):
+    def resolve(node: CTE | UnionCTE) -> CTE | UnionCTE:
         # Sync to the single live instance; never drop a reference (a missing
         # target means another rule must still resolve it — dropping it would
         # corrupt reachability).
@@ -131,6 +131,14 @@ def canonicalize_graph(input: list[CTE]) -> None:
                     live = branch
                 new_branches.append(live)
             cte.internal_ctes = new_branches
+            cte.parent_ctes = unique(
+                [
+                    parent
+                    for branch in cte.internal_ctes
+                    for parent in branch.dependency_nodes()
+                ],
+                "name",
+            )
             # UNION ALL arity invariant: every branch must project exactly the
             # union's columns. If a rule over-pruned one branch's
             # ``output_columns`` (its ``source_map`` still carries the data),

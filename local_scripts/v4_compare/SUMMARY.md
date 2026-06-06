@@ -1,18 +1,12 @@
 # v4 vs reference — TPC-DS comparison
 
-**Total:** 102 queries
-- match: 87
-- mismatch: 6
-- exec_fail: 1
-- gen_fail: 6
-- ref_fail: 2
+**Total:** 99 queries
+- match: 96
+- ref_fail: 3
 
 | Query | Status | v4 rows | ref rows |
 | --- | --- | --- | --- |
-| [-1](query-1.md) | match | 2 | 2 |
-| [-2](query-2.md) | match | 1 | 1 |
-| [-3](query-3.md) | match | 1 | 1 |
-| [01](query01.md) | mismatch | 100 | 100 |
+| [01](query01.md) | match | 100 | 100 |
 | [02](query02.md) | match | 16 | 16 |
 | [03](query03.md) | match | 0 | 0 |
 | [04](query04.md) | match | 0 | 0 |
@@ -22,21 +16,21 @@
 | [08](query08.md) | match | 0 | 0 |
 | [09](query09.md) | match | 1 | 1 |
 | [10](query10.md) | match | 0 | 0 |
-| [11](query11.md) | gen_fail | - | 0 |
+| [11](query11.md) | match | 0 | 0 |
 | [12](query12.md) | match | 14 | 14 |
 | [13](query13.md) | match | 1 | 1 |
 | [14](query14.md) | match | 100 | 100 |
 | [15](query15.md) | match | 7 | 7 |
 | [16](query16.md) | match | 1 | 1 |
-| [17](query17.md) | mismatch | 65 | 4 |
+| [17](query17.md) | match | 4 | 4 |
 | [18](query18.md) | match | 45 | 45 |
 | [19](query19.md) | match | 0 | 0 |
 | [20](query20.md) | match | 24 | 24 |
 | [21](query21.md) | match | 5 | 5 |
-| [22](query22.md) | gen_fail | - | 100 |
+| [22](query22.md) | match | 100 | 100 |
 | [23](query23.md) | match | 0 | 0 |
 | [24](query24.md) | match | 0 | 0 |
-| [25](query25.md) | mismatch | 15 | 0 |
+| [25](query25.md) | match | 0 | 0 |
 | [26](query26.md) | match | 30 | 30 |
 | [27](query27.md) | match | 100 | 100 |
 | [28](query28.md) | match | 1 | 1 |
@@ -46,10 +40,10 @@
 | [32](query32.md) | match | 1 | 1 |
 | [33](query33.md) | match | 12 | 12 |
 | [34](query34.md) | match | 4 | 4 |
-| [35](query35.md) | mismatch | 0 | 12 |
+| [35](query35.md) | match | 12 | 12 |
 | [36](query36.md) | match | 60 | 60 |
 | [37](query37.md) | match | 0 | 0 |
-| [38](query38.md) | gen_fail | - | 1 |
+| [38](query38.md) | match | 1 | 1 |
 | [39](query39.md) | match | 0 | 0 |
 | [40](query40.md) | match | 7 | 7 |
 | [41](query41.md) | match | 3 | 3 |
@@ -61,7 +55,7 @@
 | [47](query47.md) | match | 100 | 100 |
 | [48](query48.md) | match | 1 | 1 |
 | [49](query49.md) | match | 0 | 0 |
-| [50](query50.md) | gen_fail | - | 1 |
+| [50](query50.md) | match | 1 | 1 |
 | [51](query51.md) | match | 100 | 100 |
 | [52](query52.md) | match | 1 | 1 |
 | [53](query53.md) | match | 3 | 3 |
@@ -80,25 +74,25 @@
 | [66](query66.md) | match | 1 | 1 |
 | [67](query67.md) | match | 100 | 100 |
 | [68](query68.md) | match | 16 | 16 |
-| [69](query69.md) | mismatch | 0 | 8 |
+| [69](query69.md) | match | 8 | 8 |
 | [70](query70.md) | match | 3 | 3 |
 | [71](query71.md) | match | 8 | 8 |
-| [72](query72.md) | mismatch | 10 | 10 |
+| [72](query72.md) | match | 10 | 10 |
 | [73](query73.md) | match | 0 | 0 |
 | [74](query74.md) | match | 0 | 0 |
 | [75](query75.md) | match | 8 | 8 |
-| [76](query76.md) | gen_fail | - | - |
+| [76](query76.md) | ref_fail | 100 | - |
 | [77](query77.md) | match | 8 | 8 |
 | [78](query78.md) | match | 100 | 100 |
 | [79](query79.md) | match | 84 | 84 |
-| [80](query80.md) | exec_fail | - | 30 |
+| [80](query80.md) | match | 30 | 30 |
 | [81](query81.md) | match | 9 | 9 |
 | [82](query82.md) | match | 0 | 0 |
 | [83](query83.md) | ref_fail | 0 | - |
 | [84](query84.md) | match | 1 | 1 |
 | [85](query85.md) | match | 0 | 0 |
 | [86](query86.md) | match | 65 | 65 |
-| [87](query87.md) | gen_fail | - | 1 |
+| [87](query87.md) | match | 1 | 1 |
 | [88](query88.md) | match | 1 | 1 |
 | [89](query89.md) | match | 21 | 21 |
 | [90](query90.md) | match | 1 | 1 |

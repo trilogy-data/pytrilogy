@@ -737,6 +737,8 @@ def _compute_concept_sets(
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
                 mand = cap_gid & mandatory_addresses
+                if fact.derivation in GROUPING_DERIVATIONS:
+                    mand &= fact.primary | fact.grain
                 for desc in nx.descendants(lineage_sub, gid):
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]

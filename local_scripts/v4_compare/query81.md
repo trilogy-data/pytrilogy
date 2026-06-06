@@ -18,9 +18,9 @@ ref rows: 9 (9 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10675 | 184 | 60.33 ms |
-| reference | 7464 | 111 | 44.69 ms |
-| v4 / ref | 1.43x | 1.66x | 1.35x |
+| v4 | 11380 | 199 | 74.89 ms |
+| reference | 7464 | 111 | 53.92 ms |
+| v4 / ref | 1.52x | 1.79x | 1.39x |
 
 ## Preql
 
@@ -82,18 +82,12 @@ limit 100
 
 ```sql
 WITH 
-uneven as (
+abundant as (
 SELECT
-    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id",
-    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state",
-    sum(CASE WHEN "cr_date_date"."D_YEAR" = 2000 and "cr_return_address_customer_address"."CA_STATE" is not null THEN "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "customer_state"
+    "cr_catalog_returns"."CR_RETURNING_ADDR_SK" as "cr_return_address_id",
+    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id"
 FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
-    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "cr_catalog_returns"."CR_RETURNING_ADDR_SK" = "cr_return_address_customer_address"."CA_ADDRESS_SK"
-WHERE
-    "cr_return_address_customer_address"."CA_STATE" is not null
-
 GROUP BY
     1,
     2),
@@ -115,6 +109,10 @@ SELECT
     "cr_billing_customer_customers"."C_FIRST_NAME" as "cr_billing_customer_first_name",
     "cr_billing_customer_customers"."C_LAST_NAME" as "cr_billing_customer_last_name",
     "cr_billing_customer_customers"."C_SALUTATION" as "cr_billing_customer_salutation",
+    "cr_catalog_returns"."CR_ITEM_SK" as "cr_item_id",
+    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number",
+    "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" as "cr_return_amt_inc_tax",
+    "cr_date_date"."D_YEAR" as "cr_date_year",
     "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state"
 FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
@@ -125,14 +123,28 @@ FROM
 WHERE
     "cr_billing_customer_address_customer_address"."CA_STATE" = 'GA' and "cr_return_address_customer_address"."CA_STATE" is not null
 ),
-concerned as (
+yummy as (
 SELECT
-    "uneven"."cr_return_address_state" as "cr_return_address_state",
-    avg("uneven"."customer_state") as "_virt_agg_avg_7052944147524274"
+    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id",
+    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state",
+    sum(CASE WHEN "cr_date_date"."D_YEAR" = 2000 and "cr_return_address_customer_address"."CA_STATE" is not null THEN "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "customer_state"
 FROM
-    "uneven"
+    "memory"."catalog_returns" as "cr_catalog_returns"
+    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "cr_catalog_returns"."CR_RETURNING_ADDR_SK" = "cr_return_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "cr_return_address_customer_address"."CA_STATE" is not null
+
 GROUP BY
-    1),
+    1,
+    2),
+uneven as (
+SELECT
+    "abundant"."cr_billing_customer_id" as "cr_billing_customer_id",
+    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state"
+FROM
+    "abundant"
+    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "abundant"."cr_return_address_id" = "cr_return_address_customer_address"."CA_ADDRESS_SK"),
 questionable as (
 SELECT
     "cooperative"."cr_billing_customer_address_city" as "cr_billing_customer_address_city",
@@ -151,64 +163,67 @@ SELECT
     "cooperative"."cr_billing_customer_last_name" as "cr_billing_customer_last_name",
     "cooperative"."cr_billing_customer_salutation" as "cr_billing_customer_salutation",
     "cooperative"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
-    "cooperative"."cr_return_address_state" as "cr_return_address_state"
+    "cooperative"."cr_item_id" as "cr_item_id",
+    "cooperative"."cr_order_number" as "cr_order_number",
+    "cooperative"."cr_return_address_state" as "cr_return_address_state",
+    CASE WHEN "cooperative"."cr_date_year" = 2000 and "cooperative"."cr_return_address_state" is not null THEN "cooperative"."cr_return_amt_inc_tax" ELSE NULL END as "_virt_filter_return_amt_inc_tax_2184255153361204"
 FROM
     "cooperative"),
-sparkling as (
+young as (
 SELECT
-    "concerned"."cr_return_address_state" as "cr_return_address_state",
-    1.2 * "concerned"."_virt_agg_avg_7052944147524274" as "scaled_state"
+    "yummy"."customer_state" as "customer_state",
+    coalesce("uneven"."cr_return_address_state","yummy"."cr_return_address_state") as "cr_return_address_state"
 FROM
-    "concerned"),
-abundant as (
-SELECT
-    "questionable"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id"
-FROM
-    "questionable"
+    "yummy"
+    FULL JOIN "uneven" on "yummy"."cr_billing_customer_id" = "uneven"."cr_billing_customer_id" AND "yummy"."cr_return_address_state" is not distinct from "uneven"."cr_return_address_state"
 GROUP BY
     1,
     2,
-    "questionable"."cr_billing_customer_first_name",
-    "questionable"."cr_billing_customer_last_name",
-    "questionable"."cr_billing_customer_salutation"),
+    coalesce("uneven"."cr_billing_customer_id","yummy"."cr_billing_customer_id")),
 abhorrent as (
 SELECT
-    "abundant"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "abundant"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
-    "uneven"."customer_state" as "customer_state",
-    coalesce("sparkling"."cr_return_address_state","uneven"."cr_return_address_state") as "cr_return_address_state"
+    "young"."cr_return_address_state" as "cr_return_address_state",
+    avg("young"."customer_state") as "_virt_agg_avg_7052944147524274"
 FROM
-    "uneven"
-    INNER JOIN "abundant" on "uneven"."cr_billing_customer_id" = "abundant"."cr_billing_customer_id"
-    INNER JOIN "sparkling" on "uneven"."cr_return_address_state" is not distinct from "sparkling"."cr_return_address_state"
-WHERE
-    "uneven"."customer_state" > "sparkling"."scaled_state"
-),
+    "young"
+GROUP BY
+    1),
 sweltering as (
 SELECT
-    "abhorrent"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "abhorrent"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
     "abhorrent"."cr_return_address_state" as "cr_return_address_state",
-    "abhorrent"."customer_state" as "customer_state"
+    1.2 * "abhorrent"."_virt_agg_avg_7052944147524274" as "scaled_state"
 FROM
     "abhorrent"),
 late as (
 SELECT
-    "sweltering"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "sweltering"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
-    "sweltering"."cr_return_address_state" as "cr_return_address_state",
-    "sweltering"."customer_state" as "customer_state"
+    "questionable"."cr_billing_customer_id" as "cr_billing_customer_id",
+    "questionable"."cr_return_address_state" as "cr_return_address_state",
+    "yummy"."customer_state" as "customer_state"
 FROM
-    "sweltering"),
-macho as (
+    "questionable"
+    INNER JOIN "yummy" on "questionable"."cr_billing_customer_id" = "yummy"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "yummy"."cr_return_address_state"
+    INNER JOIN "sweltering" on "questionable"."cr_return_address_state" is not distinct from "sweltering"."cr_return_address_state"
+WHERE
+    "yummy"."customer_state" > "sweltering"."scaled_state"
+
+GROUP BY
+    1,
+    2,
+    3,
+    "questionable"."_virt_filter_return_amt_inc_tax_2184255153361204",
+    "questionable"."cr_item_id",
+    "questionable"."cr_order_number"),
+friendly as (
 SELECT
     "late"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "late"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
     "late"."cr_return_address_state" as "cr_return_address_state",
     "late"."customer_state" as "customer_state"
 FROM
-    "late")
+    "late"
+GROUP BY
+    1,
+    2,
+    3)
 SELECT
     "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
     "questionable"."cr_billing_customer_salutation" as "cr_billing_customer_salutation",
@@ -225,10 +240,10 @@ SELECT
     "questionable"."cr_billing_customer_address_country" as "cr_billing_customer_address_country",
     "questionable"."cr_billing_customer_address_gmt_offset" as "cr_billing_customer_address_gmt_offset",
     "questionable"."cr_billing_customer_address_location_type" as "cr_billing_customer_address_location_type",
-    "macho"."customer_state" as "customer_state"
+    "friendly"."customer_state" as "customer_state"
 FROM
     "questionable"
-    INNER JOIN "macho" on "questionable"."cr_billing_customer_id" = "macho"."cr_billing_customer_id" AND "questionable"."cr_billing_customer_text_id" = "macho"."cr_billing_customer_text_id" AND "questionable"."cr_return_address_state" is not distinct from "macho"."cr_return_address_state"
+    INNER JOIN "friendly" on "questionable"."cr_billing_customer_id" = "friendly"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "friendly"."cr_return_address_state"
 GROUP BY
     1,
     2,
@@ -263,7 +278,7 @@ ORDER BY
     "questionable"."cr_billing_customer_address_country" asc nulls first,
     "questionable"."cr_billing_customer_address_gmt_offset" asc nulls first,
     "questionable"."cr_billing_customer_address_location_type" asc nulls first,
-    "macho"."customer_state" asc nulls first
+    "friendly"."customer_state" asc nulls first
 LIMIT (100)
 ```
 

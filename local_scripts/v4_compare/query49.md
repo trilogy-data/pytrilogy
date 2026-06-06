@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5758 | 124 | 4.29 ms |
-| reference | 5628 | 128 | 4.29 ms |
-| v4 / ref | 1.02x | 0.97x | 1.00x |
+| v4 | 6050 | 133 | 5.04 ms |
+| reference | 5628 | 128 | 5.15 ms |
+| v4 / ref | 1.07x | 1.04x | 0.98x |
 
 ## Preql
 
@@ -175,28 +175,37 @@ SELECT
     rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_amt" as numeric(15,4)) / cast("yummy"."sale_paid" as numeric(15,4)) asc ) as "currency_rank",
     rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) asc ) as "return_rank"
 FROM
-    "yummy")
+    "yummy"),
+sparkling as (
 SELECT
+    "concerned"."currency_rank" as "currency_rank",
+    "concerned"."return_rank" as "return_rank",
+    "concerned"."return_ratio" as "return_ratio",
+    "concerned"."sales_item_id" as "item",
     CASE
 	WHEN "concerned"."sales_sales_channel" = 'WEB' THEN 'web'
 	WHEN "concerned"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
 	WHEN "concerned"."sales_sales_channel" = 'STORE' THEN 'store'
 	ELSE null
-	END as "channel",
-    "concerned"."sales_item_id" as "item",
-    "concerned"."return_ratio" as "return_ratio",
-    "concerned"."return_rank" as "return_rank",
-    "concerned"."currency_rank" as "currency_rank"
+	END as "channel"
 FROM
-    "concerned"
+    "concerned")
+SELECT
+    "sparkling"."channel" as "channel",
+    "sparkling"."item" as "item",
+    "sparkling"."return_ratio" as "return_ratio",
+    "sparkling"."return_rank" as "return_rank",
+    "sparkling"."currency_rank" as "currency_rank"
+FROM
+    "sparkling"
 WHERE
-    "concerned"."return_rank" <= 10 or "concerned"."currency_rank" <= 10
+    "sparkling"."return_rank" <= 10 or "sparkling"."currency_rank" <= 10
 
 ORDER BY 
-    "channel" asc nulls first,
-    "concerned"."return_rank" asc nulls first,
-    "concerned"."currency_rank" asc nulls first,
-    "item" asc nulls first
+    "sparkling"."channel" asc nulls first,
+    "sparkling"."return_rank" asc nulls first,
+    "sparkling"."currency_rank" asc nulls first,
+    "sparkling"."item" asc nulls first
 LIMIT (100)
 ```
 

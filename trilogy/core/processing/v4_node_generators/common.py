@@ -34,6 +34,30 @@ def parent_outputs_needed(
     return result
 
 
+def outputs_with_parent_grain_keys(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+) -> list[BuildConcept]:
+    """Expose a derived output's declared grain keys when parents provide them."""
+    parent_outputs: dict[str, BuildConcept] = {}
+    for parent in parents:
+        for concept in parent.output_concepts:
+            parent_outputs.setdefault(concept.address, concept)
+
+    result = list(outputs)
+    seen = {concept.address for concept in result}
+    for output in outputs:
+        if output.lineage is None or output.grain is None:
+            continue
+        for address in sorted(output.grain.components):
+            parent_concept = parent_outputs.get(address)
+            if parent_concept is None or address in seen:
+                continue
+            seen.add(address)
+            result.append(parent_concept)
+    return result
+
+
 def passthrough_if_materialized(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -55,13 +79,14 @@ def passthrough_if_materialized(
     provided = {o.address for p in parents for o in p.output_concepts}
     if not all(o.address in provided for o in outputs):
         return None
-    inputs = parent_outputs_needed(outputs, parents, conditions)
+    full_outputs = outputs_with_parent_grain_keys(outputs, parents)
+    inputs = parent_outputs_needed(full_outputs, parents, conditions)
     cond = conditions.conditional if conditions else None
     pre = preexisting_conditions.conditional if preexisting_conditions else None
     if len(parents) == 1:
         return SelectNode(
             input_concepts=inputs,
-            output_concepts=outputs,
+            output_concepts=full_outputs,
             environment=environment,
             parents=parents,
             conditions=cond,
@@ -69,7 +94,7 @@ def passthrough_if_materialized(
         )
     return MergeNode(
         input_concepts=inputs,
-        output_concepts=outputs,
+        output_concepts=full_outputs,
         environment=environment,
         parents=parents,
         conditions=cond,

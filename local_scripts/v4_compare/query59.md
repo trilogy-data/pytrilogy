@@ -18,9 +18,9 @@ ref rows: 21 (21 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6748 | 140 | 63.12 ms |
-| reference | 6380 | 130 | 69.59 ms |
-| v4 / ref | 1.06x | 1.08x | 0.91x |
+| v4 | 6914 | 144 | 70.10 ms |
+| reference | 6380 | 130 | 80.49 ms |
+| v4 / ref | 1.08x | 1.11x | 0.87x |
 
 ## Preql
 
@@ -86,144 +86,148 @@ limit 100
 
 ```sql
 WITH 
+questionable as (
+SELECT
+    "ss_store_sales"."SS_SOLD_DATE_SK" as "ss_date_id",
+    "ss_store_sales"."SS_STORE_SK" as "ss_store_id"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" is not null
+),
 wakeful as (
 SELECT
-    "ss_date_date"."D_DAY_NAME" as "ss_date_day_name",
-    "ss_date_date"."D_MONTH_SEQ" as "ss_date_month_seq",
     "ss_date_date"."D_WEEK_SEQ" as "ss_date_week_seq",
-    "ss_store_sales"."SS_SALES_PRICE" as "ss_sales_price",
-    "ss_store_sales"."SS_STORE_SK" as "ss_store_id"
+    "ss_store_sales"."SS_STORE_SK" as "ss_store_id",
+    sum(CASE WHEN "ss_date_date"."D_DAY_NAME" = 'Friday' THEN "ss_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "fri_sales",
+    sum(CASE WHEN "ss_date_date"."D_DAY_NAME" = 'Monday' THEN "ss_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "mon_sales",
+    sum(CASE WHEN "ss_date_date"."D_DAY_NAME" = 'Saturday' THEN "ss_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sat_sales",
+    sum(CASE WHEN "ss_date_date"."D_DAY_NAME" = 'Sunday' THEN "ss_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sun_sales",
+    sum(CASE WHEN "ss_date_date"."D_DAY_NAME" = 'Thursday' THEN "ss_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "thu_sales",
+    sum(CASE WHEN "ss_date_date"."D_DAY_NAME" = 'Tuesday' THEN "ss_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "tue_sales",
+    sum(CASE WHEN "ss_date_date"."D_DAY_NAME" = 'Wednesday' THEN "ss_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "wed_sales"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
 WHERE
     "ss_date_date"."D_MONTH_SEQ" BETWEEN 1212 AND 1235 and "ss_store_sales"."SS_STORE_SK" is not null and "ss_date_date"."D_WEEK_SEQ" is not null
-),
-vacuous as (
+
+GROUP BY
+    1,
+    2),
+young as (
 SELECT
     "ss_store_store"."S_STORE_ID" as "s_store_id1",
     "ss_store_store"."S_STORE_NAME" as "s_store_name1",
     "ss_store_store"."S_STORE_SK" as "ss_store_id"
 FROM
     "memory"."store" as "ss_store_store"),
-questionable as (
+abundant as (
 SELECT
-    "wakeful"."ss_date_week_seq" as "ss_date_week_seq",
-    "wakeful"."ss_store_id" as "ss_store_id",
+    "questionable"."ss_store_id" as "ss_store_id",
+    "ss_date_date"."D_WEEK_SEQ" as "ss_date_week_seq",
     max(CASE
-	WHEN "wakeful"."ss_date_month_seq" BETWEEN 1212 AND 1223 THEN 1
-	WHEN "wakeful"."ss_date_month_seq" BETWEEN 1224 AND 1235 THEN 2
+	WHEN "ss_date_date"."D_MONTH_SEQ" BETWEEN 1212 AND 1223 THEN 1
+	WHEN "ss_date_date"."D_MONTH_SEQ" BETWEEN 1224 AND 1235 THEN 2
 	ELSE 0
 	END) as "year_flag"
 FROM
-    "wakeful"
+    "questionable"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "questionable"."ss_date_id" = "ss_date_date"."D_DATE_SK"
+WHERE
+    "ss_date_date"."D_MONTH_SEQ" BETWEEN 1212 AND 1235 and "ss_date_date"."D_WEEK_SEQ" is not null
+
 GROUP BY
     1,
     2),
-cheerful as (
+yummy as (
 SELECT
-    "wakeful"."ss_date_week_seq" as "ss_date_week_seq",
-    "wakeful"."ss_store_id" as "ss_store_id",
-    sum(CASE WHEN "wakeful"."ss_date_day_name" = 'Friday' THEN "wakeful"."ss_sales_price" ELSE NULL END) as "fri_sales",
-    sum(CASE WHEN "wakeful"."ss_date_day_name" = 'Monday' THEN "wakeful"."ss_sales_price" ELSE NULL END) as "mon_sales",
-    sum(CASE WHEN "wakeful"."ss_date_day_name" = 'Saturday' THEN "wakeful"."ss_sales_price" ELSE NULL END) as "sat_sales",
-    sum(CASE WHEN "wakeful"."ss_date_day_name" = 'Sunday' THEN "wakeful"."ss_sales_price" ELSE NULL END) as "sun_sales",
-    sum(CASE WHEN "wakeful"."ss_date_day_name" = 'Thursday' THEN "wakeful"."ss_sales_price" ELSE NULL END) as "thu_sales",
-    sum(CASE WHEN "wakeful"."ss_date_day_name" = 'Tuesday' THEN "wakeful"."ss_sales_price" ELSE NULL END) as "tue_sales",
-    sum(CASE WHEN "wakeful"."ss_date_day_name" = 'Wednesday' THEN "wakeful"."ss_sales_price" ELSE NULL END) as "wed_sales"
-FROM
-    "wakeful"
-GROUP BY
-    1,
-    2),
-abundant as (
-SELECT
-    "questionable"."ss_date_week_seq" - (CASE
-	WHEN "questionable"."year_flag" = 2 THEN 52
+    "abundant"."ss_date_week_seq" - (CASE
+	WHEN "abundant"."year_flag" = 2 THEN 52
 	ELSE 0
 	END) as "normalized_week",
-    "questionable"."ss_date_week_seq" as "ss_date_week_seq",
-    "questionable"."ss_store_id" as "ss_store_id",
-    "questionable"."year_flag" as "year_flag"
+    "abundant"."ss_date_week_seq" as "ss_date_week_seq",
+    "abundant"."ss_store_id" as "ss_store_id",
+    "abundant"."year_flag" as "year_flag"
 FROM
-    "questionable"),
-uneven as (
-SELECT
-    "abundant"."year_flag" as "year_flag",
-    "cheerful"."fri_sales" as "fri_sales",
-    "cheerful"."mon_sales" as "mon_sales",
-    "cheerful"."sat_sales" as "sat_sales",
-    "cheerful"."ss_date_week_seq" as "ss_date_week_seq",
-    "cheerful"."ss_store_id" as "ss_store_id",
-    "cheerful"."sun_sales" as "sun_sales",
-    "cheerful"."thu_sales" as "thu_sales",
-    "cheerful"."tue_sales" as "tue_sales",
-    "cheerful"."wed_sales" as "wed_sales",
-    lead("cheerful"."fri_sales", 1) over (partition by "cheerful"."ss_store_id","abundant"."normalized_week" order by "abundant"."year_flag" asc ) as "_virt_window_lead_2781518767952423",
-    lead("cheerful"."mon_sales", 1) over (partition by "cheerful"."ss_store_id","abundant"."normalized_week" order by "abundant"."year_flag" asc ) as "_virt_window_lead_2528494396952318",
-    lead("cheerful"."sat_sales", 1) over (partition by "cheerful"."ss_store_id","abundant"."normalized_week" order by "abundant"."year_flag" asc ) as "_virt_window_lead_1424385664204750",
-    lead("cheerful"."sun_sales", 1) over (partition by "cheerful"."ss_store_id","abundant"."normalized_week" order by "abundant"."year_flag" asc ) as "_virt_window_lead_6227340597452426",
-    lead("cheerful"."thu_sales", 1) over (partition by "cheerful"."ss_store_id","abundant"."normalized_week" order by "abundant"."year_flag" asc ) as "_virt_window_lead_644735902284924",
-    lead("cheerful"."tue_sales", 1) over (partition by "cheerful"."ss_store_id","abundant"."normalized_week" order by "abundant"."year_flag" asc ) as "_virt_window_lead_1092584691553364",
-    lead("cheerful"."wed_sales", 1) over (partition by "cheerful"."ss_store_id","abundant"."normalized_week" order by "abundant"."year_flag" asc ) as "_virt_window_lead_8976818883664558"
-FROM
-    "abundant"
-    INNER JOIN "cheerful" on "abundant"."ss_date_week_seq" = "cheerful"."ss_date_week_seq" AND "abundant"."ss_store_id" = "cheerful"."ss_store_id"),
+    "abundant"),
 juicy as (
 SELECT
-    "uneven"."fri_sales" / "uneven"."_virt_window_lead_2781518767952423" as "fri_sales_ratio",
-    "uneven"."mon_sales" / "uneven"."_virt_window_lead_2528494396952318" as "mon_sales_ratio",
-    "uneven"."sat_sales" / "uneven"."_virt_window_lead_1424385664204750" as "sat_sales_ratio",
-    "uneven"."ss_date_week_seq" as "d_week_seq1",
-    "uneven"."ss_store_id" as "ss_store_id",
-    "uneven"."sun_sales" / "uneven"."_virt_window_lead_6227340597452426" as "sun_sales_ratio",
-    "uneven"."thu_sales" / "uneven"."_virt_window_lead_644735902284924" as "thu_sales_ratio",
-    "uneven"."tue_sales" / "uneven"."_virt_window_lead_1092584691553364" as "tue_sales_ratio",
-    "uneven"."wed_sales" / "uneven"."_virt_window_lead_8976818883664558" as "wed_sales_ratio",
-    "uneven"."year_flag" as "year_flag"
+    "wakeful"."fri_sales" as "fri_sales",
+    "wakeful"."mon_sales" as "mon_sales",
+    "wakeful"."sat_sales" as "sat_sales",
+    "wakeful"."ss_date_week_seq" as "ss_date_week_seq",
+    "wakeful"."ss_store_id" as "ss_store_id",
+    "wakeful"."sun_sales" as "sun_sales",
+    "wakeful"."thu_sales" as "thu_sales",
+    "wakeful"."tue_sales" as "tue_sales",
+    "wakeful"."wed_sales" as "wed_sales",
+    "yummy"."year_flag" as "year_flag",
+    lead("wakeful"."fri_sales", 1) over (partition by "wakeful"."ss_store_id","yummy"."normalized_week" order by "yummy"."year_flag" asc ) as "_virt_window_lead_2781518767952423",
+    lead("wakeful"."mon_sales", 1) over (partition by "wakeful"."ss_store_id","yummy"."normalized_week" order by "yummy"."year_flag" asc ) as "_virt_window_lead_2528494396952318",
+    lead("wakeful"."sat_sales", 1) over (partition by "wakeful"."ss_store_id","yummy"."normalized_week" order by "yummy"."year_flag" asc ) as "_virt_window_lead_1424385664204750",
+    lead("wakeful"."sun_sales", 1) over (partition by "wakeful"."ss_store_id","yummy"."normalized_week" order by "yummy"."year_flag" asc ) as "_virt_window_lead_6227340597452426",
+    lead("wakeful"."thu_sales", 1) over (partition by "wakeful"."ss_store_id","yummy"."normalized_week" order by "yummy"."year_flag" asc ) as "_virt_window_lead_644735902284924",
+    lead("wakeful"."tue_sales", 1) over (partition by "wakeful"."ss_store_id","yummy"."normalized_week" order by "yummy"."year_flag" asc ) as "_virt_window_lead_1092584691553364",
+    lead("wakeful"."wed_sales", 1) over (partition by "wakeful"."ss_store_id","yummy"."normalized_week" order by "yummy"."year_flag" asc ) as "_virt_window_lead_8976818883664558"
 FROM
-    "uneven"
-WHERE
-    "uneven"."year_flag" = 1
-),
-young as (
+    "yummy"
+    INNER JOIN "wakeful" on "yummy"."ss_date_week_seq" = "wakeful"."ss_date_week_seq" AND "yummy"."ss_store_id" = "wakeful"."ss_store_id"),
+concerned as (
 SELECT
-    "juicy"."d_week_seq1" as "d_week_seq1",
-    "juicy"."fri_sales_ratio" as "fri_sales_ratio",
-    "juicy"."mon_sales_ratio" as "mon_sales_ratio",
-    "juicy"."sat_sales_ratio" as "sat_sales_ratio",
-    "juicy"."sun_sales_ratio" as "sun_sales_ratio",
-    "juicy"."thu_sales_ratio" as "thu_sales_ratio",
-    "juicy"."tue_sales_ratio" as "tue_sales_ratio",
-    "juicy"."wed_sales_ratio" as "wed_sales_ratio",
-    "vacuous"."s_store_id1" as "s_store_id1",
-    "vacuous"."s_store_name1" as "s_store_name1"
+    "juicy"."fri_sales" / "juicy"."_virt_window_lead_2781518767952423" as "fri_sales_ratio",
+    "juicy"."mon_sales" / "juicy"."_virt_window_lead_2528494396952318" as "mon_sales_ratio",
+    "juicy"."sat_sales" / "juicy"."_virt_window_lead_1424385664204750" as "sat_sales_ratio",
+    "juicy"."ss_date_week_seq" as "d_week_seq1",
+    "juicy"."ss_store_id" as "ss_store_id",
+    "juicy"."sun_sales" / "juicy"."_virt_window_lead_6227340597452426" as "sun_sales_ratio",
+    "juicy"."thu_sales" / "juicy"."_virt_window_lead_644735902284924" as "thu_sales_ratio",
+    "juicy"."tue_sales" / "juicy"."_virt_window_lead_1092584691553364" as "tue_sales_ratio",
+    "juicy"."wed_sales" / "juicy"."_virt_window_lead_8976818883664558" as "wed_sales_ratio",
+    "juicy"."year_flag" as "year_flag"
 FROM
     "juicy"
-    INNER JOIN "vacuous" on "juicy"."ss_store_id" = "vacuous"."ss_store_id"
 WHERE
     "juicy"."year_flag" = 1
+),
+abhorrent as (
+SELECT
+    "concerned"."d_week_seq1" as "d_week_seq1",
+    "concerned"."fri_sales_ratio" as "fri_sales_ratio",
+    "concerned"."mon_sales_ratio" as "mon_sales_ratio",
+    "concerned"."sat_sales_ratio" as "sat_sales_ratio",
+    "concerned"."sun_sales_ratio" as "sun_sales_ratio",
+    "concerned"."thu_sales_ratio" as "thu_sales_ratio",
+    "concerned"."tue_sales_ratio" as "tue_sales_ratio",
+    "concerned"."wed_sales_ratio" as "wed_sales_ratio",
+    "young"."s_store_id1" as "s_store_id1",
+    "young"."s_store_name1" as "s_store_name1"
+FROM
+    "concerned"
+    INNER JOIN "young" on "concerned"."ss_store_id" = "young"."ss_store_id"
+WHERE
+    "concerned"."year_flag" = 1
 )
 SELECT
-    "young"."s_store_name1" as "s_store_name1",
-    "young"."s_store_id1" as "s_store_id1",
-    "young"."d_week_seq1" as "d_week_seq1",
-    "young"."sun_sales_ratio" as "sun_sales_ratio",
-    "young"."mon_sales_ratio" as "mon_sales_ratio",
-    "young"."tue_sales_ratio" as "tue_sales_ratio",
-    "young"."wed_sales_ratio" as "wed_sales_ratio",
-    "young"."thu_sales_ratio" as "thu_sales_ratio",
-    "young"."fri_sales_ratio" as "fri_sales_ratio",
-    "young"."sat_sales_ratio" as "sat_sales_ratio"
+    "abhorrent"."s_store_name1" as "s_store_name1",
+    "abhorrent"."s_store_id1" as "s_store_id1",
+    "abhorrent"."d_week_seq1" as "d_week_seq1",
+    "abhorrent"."sun_sales_ratio" as "sun_sales_ratio",
+    "abhorrent"."mon_sales_ratio" as "mon_sales_ratio",
+    "abhorrent"."tue_sales_ratio" as "tue_sales_ratio",
+    "abhorrent"."wed_sales_ratio" as "wed_sales_ratio",
+    "abhorrent"."thu_sales_ratio" as "thu_sales_ratio",
+    "abhorrent"."fri_sales_ratio" as "fri_sales_ratio",
+    "abhorrent"."sat_sales_ratio" as "sat_sales_ratio"
 FROM
-    "young"
+    "abhorrent"
 WHERE
-    "young"."sun_sales_ratio" is not null
+    "abhorrent"."sun_sales_ratio" is not null
 
 ORDER BY 
-    "young"."s_store_name1" asc nulls first,
-    "young"."s_store_id1" asc nulls first,
-    "young"."d_week_seq1" asc nulls first
+    "abhorrent"."s_store_name1" asc nulls first,
+    "abhorrent"."s_store_id1" asc nulls first,
+    "abhorrent"."d_week_seq1" asc nulls first
 LIMIT (100)
 ```
 

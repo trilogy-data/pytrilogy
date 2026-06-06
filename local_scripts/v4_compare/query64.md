@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 25502 | 427 | 30.91 ms |
+| v4 | 24911 | 407 | 21.63 ms |
 | reference | 17289 | 256 | — |
-| v4 / ref | 1.48x | 1.67x | — |
+| v4 / ref | 1.44x | 1.59x | — |
 
 ## Preql
 
@@ -178,49 +178,29 @@ order by
 WITH 
 wakeful as (
 SELECT
-    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_sales_order_number",
-    "cr_catalog_returns"."CR_REFUNDED_CASH" as "cr_refunded_cash",
-    "cr_catalog_returns"."CR_REVERSED_CHARGE" as "cr_reversed_charge",
-    "cr_catalog_returns"."CR_STORE_CREDIT" as "cr_store_credit",
-    "cr_sales_catalog_sales"."CS_EXT_LIST_PRICE" as "cr_sales_ext_list_price",
-    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id"
+    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
+    sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0)) as "cs_ui_refund"
 FROM
     "memory"."catalog_sales" as "cr_sales_catalog_sales"
-    INNER JOIN "memory"."catalog_returns" as "cr_catalog_returns" on "cr_sales_catalog_sales"."CS_ORDER_NUMBER" = "cr_catalog_returns"."CR_ORDER_NUMBER"),
-questionable as (
-SELECT
-    "wakeful"."cr_sales_ext_list_price" as "cr_sales_ext_list_price",
-    "wakeful"."cr_sales_item_id" as "cr_sales_item_id"
-FROM
-    "wakeful"
-GROUP BY
-    1,
-    2,
-    "wakeful"."cr_sales_order_number"),
-cheerful as (
-SELECT
-    "wakeful"."cr_sales_item_id" as "cr_sales_item_id",
-    sum(( coalesce("wakeful"."cr_refunded_cash",0) + coalesce("wakeful"."cr_reversed_charge",0) ) + coalesce("wakeful"."cr_store_credit",0)) as "cs_ui_refund"
-FROM
-    "wakeful"
+    INNER JOIN "memory"."catalog_returns" as "cr_catalog_returns" on "cr_sales_catalog_sales"."CS_ORDER_NUMBER" = "cr_catalog_returns"."CR_ORDER_NUMBER"
 GROUP BY
     1),
-abundant as (
+questionable as (
 SELECT
-    "questionable"."cr_sales_item_id" as "cr_sales_item_id",
-    sum("questionable"."cr_sales_ext_list_price") as "cs_ui_sale"
+    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
+    sum("cr_sales_catalog_sales"."CS_EXT_LIST_PRICE") as "cs_ui_sale"
 FROM
-    "questionable"
+    "memory"."catalog_sales" as "cr_sales_catalog_sales"
 GROUP BY
     1),
 uneven as (
 SELECT
-    "cheerful"."cr_sales_item_id" as "cr_sales_item_id"
+    "wakeful"."cr_sales_item_id" as "cr_sales_item_id"
 FROM
-    "abundant"
-    INNER JOIN "cheerful" on "abundant"."cr_sales_item_id" = "cheerful"."cr_sales_item_id"
+    "questionable"
+    INNER JOIN "wakeful" on "questionable"."cr_sales_item_id" = "wakeful"."cr_sales_item_id"
 WHERE
-    "abundant"."cs_ui_sale" > 2 * "cheerful"."cs_ui_refund"
+    "questionable"."cs_ui_sale" > 2 * "wakeful"."cs_ui_refund"
 ),
 yummy as (
 SELECT

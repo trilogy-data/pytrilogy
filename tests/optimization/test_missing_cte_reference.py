@@ -27,7 +27,7 @@ from trilogy import Dialects, Environment
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
-from trilogy.core.optimization import filter_irrelevant_ctes
+from trilogy.core.optimization import filter_irrelevant_ctes, reorder_ctes
 
 
 def _qds() -> QueryDatasource:
@@ -97,6 +97,19 @@ def test_filter_irrelevant_ctes_keeps_branch_that_is_also_a_parent():
     )
     assert "consumer" in kept_names
     assert "u" in kept_names
+
+
+def test_reorder_ctes_sees_union_branch_dependencies():
+    dependency = _cte("dependency")
+    branch = _cte("branch", parents=[dependency])
+    union = _union("u", branches=[branch])
+    root = _cte("root", parents=[union])
+
+    ordered = reorder_ctes([union, root, dependency])
+    ordered_names = [cte.name for cte in ordered]
+
+    assert "dependency" in [cte.name for cte in union.parent_ctes]
+    assert ordered_names.index("dependency") < ordered_names.index("u")
 
 
 # ----- integration: actually generate + execute the failing SQL -----

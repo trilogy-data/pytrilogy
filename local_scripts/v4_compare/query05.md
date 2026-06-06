@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10290 | 205 | 40.16 ms |
-| reference | 10304 | 183 | 29.84 ms |
-| v4 / ref | 1.00x | 1.12x | 1.35x |
+| v4 | 10974 | 197 | 20.58 ms |
+| reference | 10304 | 183 | 27.66 ms |
+| v4 / ref | 1.07x | 1.08x | 0.74x |
 
 ## Preql
 
@@ -81,43 +81,49 @@ limit 100
 
 ```sql
 WITH 
-uneven as (
-SELECT
-    "s_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "s_channel_dim_id",
-    "s_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "s_channel_dim_text_id"
-FROM
-    "memory"."catalog_page" as "s_catalog_dim_unified"
-UNION ALL
-SELECT
-    "s_store_dim_unified"."S_STORE_SK" as "s_channel_dim_id",
-    "s_store_dim_unified"."S_STORE_ID" as "s_channel_dim_text_id"
-FROM
-    "memory"."store" as "s_store_dim_unified"
-UNION ALL
-SELECT
-    "s_web_dim_unified"."web_site_sk" as "s_channel_dim_id",
-    "s_web_dim_unified"."web_site_id" as "s_channel_dim_text_id"
-FROM
-    "memory"."web_site" as "s_web_dim_unified"),
 cheerful as (
 SELECT
     "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_SK" as "s_return_channel_dim_id",
-    "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_ID" as "s_return_channel_dim_text_id"
+    "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_ID" as "s_return_channel_dim_text_id",
+     'CATALOG'  as "s_sales_channel"
 FROM
     "memory"."catalog_page" as "s_catalog_dim_return_unified"
 UNION ALL
 SELECT
     "s_store_dim_return_unified"."S_STORE_SK" as "s_return_channel_dim_id",
-    "s_store_dim_return_unified"."S_STORE_ID" as "s_return_channel_dim_text_id"
+    "s_store_dim_return_unified"."S_STORE_ID" as "s_return_channel_dim_text_id",
+     'STORE'  as "s_sales_channel"
 FROM
     "memory"."store" as "s_store_dim_return_unified"
 UNION ALL
 SELECT
     "s_web_dim_return_unified"."web_site_sk" as "s_return_channel_dim_id",
-    "s_web_dim_return_unified"."web_site_id" as "s_return_channel_dim_text_id"
+    "s_web_dim_return_unified"."web_site_id" as "s_return_channel_dim_text_id",
+     'WEB'  as "s_sales_channel"
 FROM
     "memory"."web_site" as "s_web_dim_return_unified"),
-young as (
+abundant as (
+SELECT
+    "s_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "s_channel_dim_id",
+    "s_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "s_channel_dim_text_id",
+     'CATALOG'  as "s_sales_channel"
+FROM
+    "memory"."catalog_page" as "s_catalog_dim_unified"
+UNION ALL
+SELECT
+    "s_store_dim_unified"."S_STORE_SK" as "s_channel_dim_id",
+    "s_store_dim_unified"."S_STORE_ID" as "s_channel_dim_text_id",
+     'STORE'  as "s_sales_channel"
+FROM
+    "memory"."store" as "s_store_dim_unified"
+UNION ALL
+SELECT
+    "s_web_dim_unified"."web_site_sk" as "s_channel_dim_id",
+    "s_web_dim_unified"."web_site_id" as "s_channel_dim_text_id",
+     'WEB'  as "s_sales_channel"
+FROM
+    "memory"."web_site" as "s_web_dim_unified"),
+vacuous as (
 SELECT
     "s_catalog_returns_unified"."CR_ITEM_SK" as "s_item_id",
     "s_catalog_returns_unified"."CR_ORDER_NUMBER" as "s_order_id",
@@ -147,7 +153,7 @@ SELECT
      'WEB'  as "s_sales_channel"
 FROM
     "memory"."web_returns" as "s_web_returns_unified"),
-abhorrent as (
+young as (
 SELECT
     "s_catalog_returns_unified"."CR_ITEM_SK" as "s_item_id",
     "s_catalog_returns_unified"."CR_ORDER_NUMBER" as "s_order_id",
@@ -171,7 +177,7 @@ SELECT
      'WEB'  as "s_sales_channel"
 FROM
     "memory"."web_sales" as "s_web_sales_unified"),
-macho as (
+sweltering as (
 SELECT
     "s_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "s_channel_dim_id",
     "s_catalog_sales_unified"."CS_SOLD_DATE_SK" as "s_date_id",
@@ -204,64 +210,50 @@ SELECT
      'WEB'  as "s_sales_channel"
 FROM
     "memory"."web_sales" as "s_web_sales_unified"),
-yummy as (
-SELECT
-    "uneven"."s_channel_dim_id" as "s_channel_dim_id",
-    "uneven"."s_channel_dim_text_id" as "s_channel_dim_text_id"
-FROM
-    "uneven"
-GROUP BY
-    1,
-    2),
-thoughtful as (
-SELECT
-    "cheerful"."s_return_channel_dim_id" as "s_return_channel_dim_id",
-    "cheerful"."s_return_channel_dim_text_id" as "s_return_channel_dim_text_id"
-FROM
-    "cheerful"
-GROUP BY
-    1,
-    2),
-kaput as (
+scrawny as (
 SELECT
     CASE
-	WHEN coalesce("abhorrent"."s_sales_channel","macho"."s_sales_channel","young"."s_sales_channel") = 'STORE' THEN 'store channel'
-	WHEN coalesce("abhorrent"."s_sales_channel","macho"."s_sales_channel","young"."s_sales_channel") = 'CATALOG' THEN 'catalog channel'
-	WHEN coalesce("abhorrent"."s_sales_channel","macho"."s_sales_channel","young"."s_sales_channel") = 'WEB' THEN 'web channel'
+	WHEN coalesce("abundant"."s_sales_channel","cheerful"."s_sales_channel","sweltering"."s_sales_channel","vacuous"."s_sales_channel","young"."s_sales_channel") = 'STORE' THEN 'store channel'
+	WHEN coalesce("abundant"."s_sales_channel","cheerful"."s_sales_channel","sweltering"."s_sales_channel","vacuous"."s_sales_channel","young"."s_sales_channel") = 'CATALOG' THEN 'catalog channel'
+	WHEN coalesce("abundant"."s_sales_channel","cheerful"."s_sales_channel","sweltering"."s_sales_channel","vacuous"."s_sales_channel","young"."s_sales_channel") = 'WEB' THEN 'web channel'
 	ELSE null
 	END as "channel_label",
     CASE
-	WHEN coalesce("abhorrent"."s_sales_channel","macho"."s_sales_channel","young"."s_sales_channel") = 'STORE' THEN ('store' || coalesce("yummy"."s_channel_dim_text_id","thoughtful"."s_return_channel_dim_text_id"))
-	WHEN coalesce("abhorrent"."s_sales_channel","macho"."s_sales_channel","young"."s_sales_channel") = 'CATALOG' THEN ('catalog_page' || coalesce("yummy"."s_channel_dim_text_id","thoughtful"."s_return_channel_dim_text_id"))
-	WHEN coalesce("abhorrent"."s_sales_channel","macho"."s_sales_channel","young"."s_sales_channel") = 'WEB' THEN ('web_site' || coalesce("yummy"."s_channel_dim_text_id","thoughtful"."s_return_channel_dim_text_id"))
+	WHEN coalesce("abundant"."s_sales_channel","cheerful"."s_sales_channel","sweltering"."s_sales_channel","vacuous"."s_sales_channel","young"."s_sales_channel") = 'STORE' THEN ('store' || coalesce("abundant"."s_channel_dim_text_id","cheerful"."s_return_channel_dim_text_id"))
+	WHEN coalesce("abundant"."s_sales_channel","cheerful"."s_sales_channel","sweltering"."s_sales_channel","vacuous"."s_sales_channel","young"."s_sales_channel") = 'CATALOG' THEN ('catalog_page' || coalesce("abundant"."s_channel_dim_text_id","cheerful"."s_return_channel_dim_text_id"))
+	WHEN coalesce("abundant"."s_sales_channel","cheerful"."s_sales_channel","sweltering"."s_sales_channel","vacuous"."s_sales_channel","young"."s_sales_channel") = 'WEB' THEN ('web_site' || coalesce("abundant"."s_channel_dim_text_id","cheerful"."s_return_channel_dim_text_id"))
 	ELSE null
 	END as "entity_id",
-    CASE WHEN cast("s_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "yummy"."s_channel_dim_text_id" is not null THEN "macho"."s_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_81501173194113",
-    CASE WHEN cast("s_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "yummy"."s_channel_dim_text_id" is not null THEN "macho"."s_net_profit" ELSE NULL END as "_virt_filter_net_profit_2654161333647466",
-    CASE WHEN cast("s_return_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "thoughtful"."s_return_channel_dim_text_id" is not null THEN "young"."s_return_amount" ELSE NULL END as "_virt_filter_return_amount_7146980734593598",
-    CASE WHEN cast("s_return_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "thoughtful"."s_return_channel_dim_text_id" is not null THEN "young"."s_return_net_loss" ELSE NULL END as "_virt_filter_return_net_loss_7776255813480323"
+    CASE WHEN cast("s_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "abundant"."s_channel_dim_text_id" is not null THEN "sweltering"."s_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_81501173194113",
+    CASE WHEN cast("s_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "abundant"."s_channel_dim_text_id" is not null THEN "sweltering"."s_net_profit" ELSE NULL END as "_virt_filter_net_profit_2654161333647466",
+    CASE WHEN cast("s_return_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "cheerful"."s_return_channel_dim_text_id" is not null THEN "vacuous"."s_return_amount" ELSE NULL END as "_virt_filter_return_amount_7146980734593598",
+    CASE WHEN cast("s_return_date_date"."D_DATE" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and "cheerful"."s_return_channel_dim_text_id" is not null THEN "vacuous"."s_return_net_loss" ELSE NULL END as "_virt_filter_return_net_loss_7776255813480323",
+    coalesce("abundant"."s_channel_dim_text_id","cheerful"."s_return_channel_dim_text_id") as "entity_text"
 FROM
-    "macho"
-    LEFT OUTER JOIN "memory"."date_dim" as "s_date_date" on "macho"."s_date_id" = "s_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "yummy" on "macho"."s_channel_dim_id" = "yummy"."s_channel_dim_id"
-    LEFT OUTER JOIN "abhorrent" on "macho"."s_item_id" = "abhorrent"."s_item_id" AND "macho"."s_order_id" = "abhorrent"."s_order_id" AND "macho"."s_sales_channel" = "abhorrent"."s_sales_channel"
-    FULL JOIN "young" on "abhorrent"."s_item_id" = "young"."s_item_id" AND "abhorrent"."s_order_id" = "young"."s_order_id" AND "abhorrent"."s_sales_channel" = "young"."s_sales_channel"
-    FULL JOIN "memory"."date_dim" as "s_return_date_date" on "young"."s_return_date_id" = "s_return_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "thoughtful" on "abhorrent"."s_return_channel_dim_id" = "thoughtful"."s_return_channel_dim_id"
+    "sweltering"
+    LEFT OUTER JOIN "memory"."date_dim" as "s_date_date" on "sweltering"."s_date_id" = "s_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "abundant" on "sweltering"."s_channel_dim_id" = "abundant"."s_channel_dim_id" AND "sweltering"."s_sales_channel" = "abundant"."s_sales_channel"
+    LEFT OUTER JOIN "young" on "sweltering"."s_item_id" = "young"."s_item_id" AND "sweltering"."s_order_id" = "young"."s_order_id" AND "sweltering"."s_sales_channel" = "young"."s_sales_channel"
+    FULL JOIN "vacuous" on "young"."s_item_id" = "vacuous"."s_item_id" AND "young"."s_order_id" = "vacuous"."s_order_id" AND coalesce("young"."s_sales_channel", "abundant"."s_sales_channel") = "vacuous"."s_sales_channel"
+    FULL JOIN "memory"."date_dim" as "s_return_date_date" on "vacuous"."s_return_date_id" = "s_return_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "cheerful" on "young"."s_return_channel_dim_id" = "cheerful"."s_return_channel_dim_id" AND coalesce("young"."s_sales_channel", "sweltering"."s_sales_channel") = "cheerful"."s_sales_channel"
 WHERE
-    ( cast("s_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' or cast("s_return_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' ) and coalesce("yummy"."s_channel_dim_text_id","thoughtful"."s_return_channel_dim_text_id") is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    coalesce("abhorrent"."s_item_id","macho"."s_item_id","young"."s_item_id"),
-    coalesce("abhorrent"."s_order_id","macho"."s_order_id","young"."s_order_id"),
-    coalesce("abhorrent"."s_sales_channel","macho"."s_sales_channel","young"."s_sales_channel")),
-protective as (
+    ( cast("s_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' or cast("s_return_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' )
+),
+kaput as (
+SELECT
+    "scrawny"."_virt_filter_ext_sales_price_81501173194113" as "_virt_filter_ext_sales_price_81501173194113",
+    "scrawny"."_virt_filter_net_profit_2654161333647466" as "_virt_filter_net_profit_2654161333647466",
+    "scrawny"."_virt_filter_return_amount_7146980734593598" as "_virt_filter_return_amount_7146980734593598",
+    "scrawny"."_virt_filter_return_net_loss_7776255813480323" as "_virt_filter_return_net_loss_7776255813480323",
+    "scrawny"."channel_label" as "channel_label",
+    "scrawny"."entity_id" as "entity_id"
+FROM
+    "scrawny"
+WHERE
+    "scrawny"."entity_text" is not null
+),
+busy as (
 SELECT
     "kaput"."channel_label" as "channel_label",
     "kaput"."entity_id" as "entity_id",
@@ -274,16 +266,16 @@ FROM
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    "protective"."channel_label" as "channel_label",
-    "protective"."entity_id" as "entity_id",
-    coalesce("protective"."_virt_agg_sum_1812620253456358",0.0) as "sales",
-    coalesce("protective"."_virt_agg_sum_8310510608508714",0.0) as "returns",
-    coalesce("protective"."_virt_agg_sum_9742232665516553",0.0) - coalesce("protective"."_virt_agg_sum_9823880010566988",0.0) as "profit"
+    "busy"."channel_label" as "channel_label",
+    "busy"."entity_id" as "entity_id",
+    coalesce("busy"."_virt_agg_sum_1812620253456358",0.0) as "sales",
+    coalesce("busy"."_virt_agg_sum_8310510608508714",0.0) as "returns",
+    coalesce("busy"."_virt_agg_sum_9742232665516553",0.0) - coalesce("busy"."_virt_agg_sum_9823880010566988",0.0) as "profit"
 FROM
-    "protective"
+    "busy"
 ORDER BY 
-    "protective"."channel_label" asc nulls first,
-    "protective"."entity_id" asc nulls first
+    "busy"."channel_label" asc nulls first,
+    "busy"."entity_id" asc nulls first
 LIMIT (100)
 ```
 

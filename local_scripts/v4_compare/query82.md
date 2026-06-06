@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1151 | 15 | 2.07 ms |
-| reference | 1542 | 34 | 5.25 ms |
-| v4 / ref | 0.75x | 0.44x | 0.39x |
+| v4 | 948 | 14 | 1.52 ms |
+| reference | 1542 | 34 | 4.17 ms |
+| v4 / ref | 0.61x | 0.41x | 0.36x |
 
 ## Preql
 
@@ -56,10 +56,9 @@ SELECT
 FROM
     "memory"."inventory" as "inventory_warehouse_inventory"
     INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "physical_sales_item_items" on "inventory_warehouse_inventory"."inv_item_sk" = "physical_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."item" as "inventory_item_items" on "physical_sales_item_items"."I_ITEM_SK" = "inventory_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."item" as "inventory_item_items" on "inventory_warehouse_inventory"."inv_item_sk" = "inventory_item_items"."I_ITEM_SK"
 WHERE
-    "inventory_item_items"."I_CURRENT_PRICE" BETWEEN 62 AND 92 and cast("inventory_date_date"."D_DATE" as date) BETWEEN date '2000-05-25' AND date '2000-07-24' and "inventory_item_items"."I_MANUFACT_ID" in (129,270,821,423) and "inventory_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500 and "physical_sales_item_items"."I_ITEM_SK" is not null
+    "inventory_item_items"."I_CURRENT_PRICE" BETWEEN 62 AND 92 and cast("inventory_date_date"."D_DATE" as date) BETWEEN date '2000-05-25' AND date '2000-07-24' and "inventory_item_items"."I_MANUFACT_ID" in (129,270,821,423) and "inventory_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
 
 ORDER BY 
     "inventory_item_items"."I_ITEM_ID" asc

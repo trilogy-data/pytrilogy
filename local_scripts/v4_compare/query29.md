@@ -18,9 +18,9 @@ ref rows: 3 (3 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8831 | 166 | 19.32 ms |
-| reference | 3863 | 63 | 12.13 ms |
-| v4 / ref | 2.29x | 2.63x | 1.59x |
+| v4 | 8999 | 155 | 18.84 ms |
+| reference | 3863 | 63 | 11.59 ms |
+| v4 / ref | 2.33x | 2.46x | 1.63x |
 
 ## Preql
 
@@ -90,7 +90,6 @@ limit 100
 WITH 
 uneven as (
 SELECT
-    "catalog_sales_catalog_sales"."CS_ITEM_SK" as "physical_sales_item_id",
     "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" as "catalog_sales_order_number",
     "catalog_sales_catalog_sales"."CS_QUANTITY" as "catalog_sales_quantity",
     "physical_sales_item_items"."I_ITEM_DESC" as "physical_sales_item_desc",
@@ -99,30 +98,20 @@ SELECT
     "physical_sales_store_sales"."SS_QUANTITY" as "physical_sales_quantity",
     "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
     "physical_sales_store_store"."S_STORE_ID" as "physical_sales_store_text_id",
-    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name"
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name",
+    coalesce("catalog_sales_catalog_sales"."CS_ITEM_SK","physical_sales_item_items"."I_ITEM_SK","physical_sales_store_returns"."SR_ITEM_SK","physical_sales_store_sales"."SS_ITEM_SK") as "physical_sales_item_id"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"
     INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store_sales" as "physical_sales_store_sales" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "physical_sales_store_sales"."SS_ITEM_SK"
-    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."store_returns" as "physical_sales_store_returns" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "physical_sales_store_returns"."SR_ITEM_SK" AND "physical_sales_store_sales"."SS_TICKET_NUMBER" = "physical_sales_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."store_returns" as "physical_sales_store_returns" on "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK" = "physical_sales_store_returns"."SR_CUSTOMER_SK" AND "catalog_sales_catalog_sales"."CS_ITEM_SK" = "physical_sales_store_returns"."SR_ITEM_SK"
+    INNER JOIN "memory"."store_sales" as "physical_sales_store_sales" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "physical_sales_store_sales"."SS_ITEM_SK" AND "physical_sales_store_returns"."SR_TICKET_NUMBER" = "physical_sales_store_sales"."SS_TICKET_NUMBER"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     LEFT OUTER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
     INNER JOIN "memory"."date_dim" as "physical_sales_return_date_date" on "physical_sales_store_returns"."SR_RETURNED_DATE_SK" = "physical_sales_return_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
     "physical_sales_date_date"."D_MOY" = 9 and "physical_sales_date_date"."D_YEAR" = 1999 and "physical_sales_return_date_date"."D_MOY" BETWEEN 9 AND 12 and "physical_sales_return_date_date"."D_YEAR" = 1999 and "catalog_sales_date_date"."D_YEAR" in (1999,2000,2001) and "catalog_sales_catalog_sales"."CS_QUANTITY" > 0 and SR_RETURN_TIME_SK IS NOT NULL and "physical_sales_store_sales"."SS_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK"
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10),
+),
 yummy as (
 SELECT
     "uneven"."catalog_sales_order_number" as "correlated_catalog_sales_order_number",
