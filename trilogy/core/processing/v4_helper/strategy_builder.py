@@ -1050,6 +1050,57 @@ def _filter_arg_parents(
     return nodes, concepts
 
 
+def _group_to_grain_if_required(
+    node: StrategyNode,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> StrategyNode:
+    """Dedup a non-grouping FINAL contributor to the requested output grain.
+
+    A row-preserving contributor (a ROOT scan or plain projection) whose source
+    grain is finer than the selected concepts' grain must be grouped down to
+    that grain — otherwise duplicate rows at the coarser grain survive into the
+    output (and inflate any downstream aggregate that reads them, e.g. q75's
+    `deduped` rowset feeding two `sum`s). Mirrors v3's `group_if_required_v2`,
+    which the v4 FINAL assembly otherwise skips for the single-contributor case.
+
+    The group-required decision is made against the user-requested concepts
+    only (matching v3's `group_if_required_v2`), but the GroupNode keeps any
+    hidden grain keys the node exposed for sibling joins — grouping by them
+    alongside the requested columns preserves those keys (and the join handle)
+    without changing the dedup grain. Aggregates/windows already sit at their
+    own grain and are left untouched; a MergeNode resolves its own grouping via
+    `force_group`."""
+    from trilogy.core.processing.discovery_utility import check_if_group_required
+
+    if isinstance(node, (GroupNode, WindowNode)) or node.force_group:
+        return node
+    if (
+        check_if_group_required(
+            downstream_concepts=mandatory_list,
+            parents=[node.resolve()],
+            environment=environment,
+        ).required
+        is not True
+    ):
+        return node
+    if isinstance(node, MergeNode):
+        node.force_group = True
+        node.rebuild_cache()
+        return node
+    mandatory_addrs = {c.address for c in mandatory_list}
+    targets = [o for o in node.output_concepts if o.address in mandatory_addrs]
+    return GroupNode(
+        output_concepts=targets,
+        input_concepts=targets,
+        environment=environment,
+        parents=[node],
+        partial_concepts=node.partial_concepts,
+        preexisting_conditions=node.preexisting_conditions,
+        hidden_concepts=set(node.hidden_concepts) if node.hidden_concepts else None,
+    )
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -1128,7 +1179,11 @@ def _assemble_final_node(
 
     per_group = _cover_groups_for_mandatory(group_graph, attrs, built, mandatory_list)
     if not per_group:
-        return _apply_final_conditions(next(iter(built.values())))
+        return _apply_final_conditions(
+            _group_to_grain_if_required(
+                next(iter(built.values())), mandatory_list, environment
+            )
+        )
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     _promote_final_aliases_to_grouping_contributors(
         attrs, built, per_group, mandatory_list, environment
@@ -1161,7 +1216,9 @@ def _assemble_final_node(
             existing = set(sole_node.hidden_concepts or set())
             sole_node.hidden_concepts = existing | hide
             sole_node.rebuild_cache()
-        return _apply_final_conditions(sole_node)
+        return _apply_final_conditions(
+            _group_to_grain_if_required(sole_node, mandatory_list, environment)
+        )
 
     # Only root scans get the grain projection: their grain is the row-level
     # source-table grain (often much wider than what a downstream merge

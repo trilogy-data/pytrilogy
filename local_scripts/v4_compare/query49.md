@@ -18,9 +18,9 @@ ref rows: 34 (34 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6050 | 133 | 23.28 ms |
-| reference | 5628 | 128 | 23.76 ms |
-| v4 / ref | 1.07x | 1.04x | 0.98x |
+| v4 | 6093 | 139 | 21.24 ms |
+| reference | 5628 | 128 | 19.96 ms |
+| v4 / ref | 1.08x | 1.09x | 1.06x |
 
 ## Preql
 
@@ -201,6 +201,12 @@ FROM
 WHERE
     "sparkling"."return_rank" <= 10 or "sparkling"."currency_rank" <= 10
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
 ORDER BY 
     "sparkling"."channel" asc nulls first,
     "sparkling"."return_rank" asc nulls first,

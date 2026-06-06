@@ -21,9 +21,9 @@ only in v4 (showing up to 5 of 2):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 948 | 14 | 13.54 ms |
-| reference | 1542 | 34 | 159.74 ms |
-| v4 / ref | 0.61x | 0.41x | 0.08x |
+| v4 | 1266 | 24 | 9.45 ms |
+| reference | 1542 | 34 | 76.75 ms |
+| v4 / ref | 0.82x | 0.71x | 0.12x |
 
 ## Preql
 
@@ -63,6 +63,16 @@ FROM
 WHERE
     "inventory_item_items"."I_CURRENT_PRICE" BETWEEN 62 AND 92 and cast("inventory_date_date"."D_DATE" as date) BETWEEN date '2000-05-25' AND date '2000-07-24' and "inventory_item_items"."I_MANUFACT_ID" in (129,270,821,423) and "inventory_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
 
+GROUP BY
+    1,
+    2,
+    3,
+    "inventory_date_date"."D_DATE_SK",
+    "inventory_item_items"."I_ITEM_SK",
+    "inventory_item_items"."I_MANUFACT_ID",
+    "inventory_warehouse_inventory"."inv_quantity_on_hand",
+    "inventory_warehouse_inventory"."inv_warehouse_sk",
+    cast("inventory_date_date"."D_DATE" as date)
 ORDER BY 
     "inventory_item_items"."I_ITEM_ID" asc
 LIMIT (100)

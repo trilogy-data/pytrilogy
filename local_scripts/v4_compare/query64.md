@@ -18,9 +18,9 @@ ref rows: 2 (2 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 24911 | 407 | 235.40 ms |
-| reference | 15834 | 244 | 250.43 ms |
-| v4 / ref | 1.57x | 1.67x | 0.94x |
+| v4 | 24764 | 399 | 225.08 ms |
+| reference | 15834 | 244 | 231.29 ms |
+| v4 / ref | 1.56x | 1.64x | 0.97x |
 
 ## Preql
 
@@ -197,24 +197,16 @@ GROUP BY
     1),
 uneven as (
 SELECT
-    "wakeful"."cr_sales_item_id" as "cr_sales_item_id"
+    "wakeful"."cr_sales_item_id" as "cs_ui_cs_ui_item_id"
 FROM
     "questionable"
     INNER JOIN "wakeful" on "questionable"."cr_sales_item_id" = "wakeful"."cr_sales_item_id"
 WHERE
     "questionable"."cs_ui_sale" > 2 * "wakeful"."cs_ui_refund"
-),
-yummy as (
-SELECT
-    "uneven"."cr_sales_item_id" as "_cs_ui_cs_ui_item_id"
-FROM
-    "uneven"),
-juicy as (
-SELECT
-    "yummy"."_cs_ui_cs_ui_item_id" as "cs_ui_cs_ui_item_id"
-FROM
-    "yummy"),
-hard as (
+
+GROUP BY
+    1),
+sedate as (
 SELECT
     "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" as "ss_customer_demographic_marital_status",
     "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "ss_customer_demographics_marital_status",
@@ -236,9 +228,9 @@ FROM
     LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
     INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
-    "ss_date_date"."D_YEAR" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_customers"."C_CURRENT_ADDR_SK" is not null and "ss_item_items"."I_ITEM_SK" in (select juicy."cs_ui_cs_ui_item_id" from juicy where juicy."cs_ui_cs_ui_item_id" is not null)
+    "ss_date_date"."D_YEAR" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_customers"."C_CURRENT_ADDR_SK" is not null and "ss_item_items"."I_ITEM_SK" in (select uneven."cs_ui_cs_ui_item_id" from uneven where uneven."cs_ui_cs_ui_item_id" is not null)
 ),
-busy as (
+charming as (
 SELECT
     "ss_customer_address_customer_address"."CA_CITY" as "ss_customer_address_city",
     "ss_customer_address_customer_address"."CA_STREET_NAME" as "ss_customer_address_street_name",
@@ -275,22 +267,22 @@ FROM
     LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_shipto_date_date" on "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" = "ss_customer_first_shipto_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
-    "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null and "ss_item_items"."I_ITEM_SK" in (select juicy."cs_ui_cs_ui_item_id" from juicy where juicy."cs_ui_cs_ui_item_id" is not null)
+    "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null and "ss_item_items"."I_ITEM_SK" in (select uneven."cs_ui_cs_ui_item_id" from uneven where uneven."cs_ui_cs_ui_item_id" is not null)
 ),
-sedate as (
+yellow as (
 SELECT
-    "hard"."ss_coupon_amt" as "ss_rows_00_ss_coupon_amt",
-    "hard"."ss_date_year" as "ss_rows_00_ss_date_year",
-    "hard"."ss_item_id" as "ss_rows_00_ss_item_id",
-    "hard"."ss_list_price" as "ss_rows_00_ss_list_price",
-    "hard"."ss_store_name" as "ss_rows_00_ss_store_name",
-    "hard"."ss_store_zip" as "ss_rows_00_ss_store_zip",
-    "hard"."ss_ticket_number" as "ss_rows_00_ss_ticket_number",
-    "hard"."ss_wholesale_cost" as "ss_rows_00_ss_wholesale_cost"
+    "sedate"."ss_coupon_amt" as "ss_rows_00_ss_coupon_amt",
+    "sedate"."ss_date_year" as "ss_rows_00_ss_date_year",
+    "sedate"."ss_item_id" as "ss_rows_00_ss_item_id",
+    "sedate"."ss_list_price" as "ss_rows_00_ss_list_price",
+    "sedate"."ss_store_name" as "ss_rows_00_ss_store_name",
+    "sedate"."ss_store_zip" as "ss_rows_00_ss_store_zip",
+    "sedate"."ss_ticket_number" as "ss_rows_00_ss_ticket_number",
+    "sedate"."ss_wholesale_cost" as "ss_rows_00_ss_wholesale_cost"
 FROM
-    "hard"
+    "sedate"
 WHERE
-    "hard"."ss_customer_demographic_marital_status" != "hard"."ss_customer_demographics_marital_status"
+    "sedate"."ss_customer_demographic_marital_status" != "sedate"."ss_customer_demographics_marital_status"
 
 GROUP BY
     1,
@@ -301,112 +293,86 @@ GROUP BY
     6,
     7,
     8),
-charming as (
+protective as (
 SELECT
-    "busy"."ss_coupon_amt" as "ss_coupon_amt",
-    "busy"."ss_customer_address_city" as "ss_customer_address_city",
-    "busy"."ss_customer_address_street_name" as "ss_customer_address_street_name",
-    "busy"."ss_customer_address_street_number" as "ss_customer_address_street_number",
-    "busy"."ss_customer_address_zip" as "ss_customer_address_zip",
-    "busy"."ss_customer_demographic_marital_status" as "ss_customer_demographic_marital_status",
-    "busy"."ss_customer_demographics_marital_status" as "ss_customer_demographics_marital_status",
-    "busy"."ss_customer_first_sales_date_year" as "ss_customer_first_sales_date_year",
-    "busy"."ss_customer_first_shipto_date_year" as "ss_customer_first_shipto_date_year",
-    "busy"."ss_date_year" as "ss_date_year",
-    "busy"."ss_item_id" as "ss_item_id",
-    "busy"."ss_item_product_name" as "ss_item_product_name",
-    "busy"."ss_list_price" as "ss_list_price",
-    "busy"."ss_sale_address_city" as "ss_sale_address_city",
-    "busy"."ss_sale_address_street_name" as "ss_sale_address_street_name",
-    "busy"."ss_sale_address_street_number" as "ss_sale_address_street_number",
-    "busy"."ss_sale_address_zip" as "ss_sale_address_zip",
-    "busy"."ss_store_name" as "ss_store_name",
-    "busy"."ss_store_zip" as "ss_store_zip",
-    "busy"."ss_ticket_number" as "ss_ticket_number",
-    "busy"."ss_wholesale_cost" as "ss_wholesale_cost"
+    "charming"."ss_coupon_amt" as "ss_coupon_amt",
+    "charming"."ss_customer_address_city" as "ss_customer_address_city",
+    "charming"."ss_customer_address_street_name" as "ss_customer_address_street_name",
+    "charming"."ss_customer_address_street_number" as "ss_customer_address_street_number",
+    "charming"."ss_customer_address_zip" as "ss_customer_address_zip",
+    "charming"."ss_customer_demographic_marital_status" as "ss_customer_demographic_marital_status",
+    "charming"."ss_customer_demographics_marital_status" as "ss_customer_demographics_marital_status",
+    "charming"."ss_customer_first_sales_date_year" as "ss_customer_first_sales_date_year",
+    "charming"."ss_customer_first_shipto_date_year" as "ss_customer_first_shipto_date_year",
+    "charming"."ss_date_year" as "ss_date_year",
+    "charming"."ss_item_id" as "ss_item_id",
+    "charming"."ss_item_product_name" as "ss_item_product_name",
+    "charming"."ss_list_price" as "ss_list_price",
+    "charming"."ss_sale_address_city" as "ss_sale_address_city",
+    "charming"."ss_sale_address_street_name" as "ss_sale_address_street_name",
+    "charming"."ss_sale_address_street_number" as "ss_sale_address_street_number",
+    "charming"."ss_sale_address_zip" as "ss_sale_address_zip",
+    "charming"."ss_store_name" as "ss_store_name",
+    "charming"."ss_store_zip" as "ss_store_zip",
+    "charming"."ss_ticket_number" as "ss_ticket_number",
+    "charming"."ss_wholesale_cost" as "ss_wholesale_cost"
 FROM
-    "busy"),
-courageous as (
+    "charming"),
+vast as (
 SELECT
-    "sedate"."ss_rows_00_ss_date_year" as "ss_rows_00_ss_date_year",
-    "sedate"."ss_rows_00_ss_item_id" as "ss_rows_00_ss_item_id",
-    "sedate"."ss_rows_00_ss_store_name" as "ss_rows_00_ss_store_name",
-    "sedate"."ss_rows_00_ss_store_zip" as "ss_rows_00_ss_store_zip",
-    count("sedate"."ss_rows_00_ss_ticket_number") as "_q64_results_cnt_00",
-    sum("sedate"."ss_rows_00_ss_coupon_amt") as "_q64_results_s3_00",
-    sum("sedate"."ss_rows_00_ss_list_price") as "_q64_results_s2_00",
-    sum("sedate"."ss_rows_00_ss_wholesale_cost") as "_q64_results_s1_00"
+    "yellow"."ss_rows_00_ss_date_year" as "ss_rows_00_ss_date_year",
+    "yellow"."ss_rows_00_ss_item_id" as "ss_rows_00_ss_item_id",
+    "yellow"."ss_rows_00_ss_store_name" as "ss_rows_00_ss_store_name",
+    "yellow"."ss_rows_00_ss_store_zip" as "ss_rows_00_ss_store_zip",
+    count("yellow"."ss_rows_00_ss_ticket_number") as "_q64_results_cnt_00",
+    sum("yellow"."ss_rows_00_ss_coupon_amt") as "_q64_results_s3_00",
+    sum("yellow"."ss_rows_00_ss_list_price") as "_q64_results_s2_00",
+    sum("yellow"."ss_rows_00_ss_wholesale_cost") as "_q64_results_s1_00"
 FROM
-    "sedate"
+    "yellow"
 GROUP BY
     1,
     2,
     3,
     4),
-protective as (
-SELECT
-    "charming"."ss_coupon_amt" as "ss_rows_99_ss_coupon_amt",
-    "charming"."ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
-    "charming"."ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
-    "charming"."ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
-    "charming"."ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
-    "charming"."ss_customer_demographic_marital_status" as "ss_rows_99_ss_customer_demographic_marital_status",
-    "charming"."ss_customer_demographics_marital_status" as "ss_rows_99_ss_customer_demographics_marital_status",
-    "charming"."ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year",
-    "charming"."ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
-    "charming"."ss_date_year" as "ss_rows_99_ss_date_year",
-    "charming"."ss_item_id" as "ss_rows_99_ss_item_id",
-    "charming"."ss_item_product_name" as "ss_rows_99_ss_item_product_name",
-    "charming"."ss_list_price" as "ss_rows_99_ss_list_price",
-    "charming"."ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
-    "charming"."ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
-    "charming"."ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
-    "charming"."ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
-    "charming"."ss_store_name" as "ss_rows_99_ss_store_name",
-    "charming"."ss_store_zip" as "ss_rows_99_ss_store_zip",
-    "charming"."ss_ticket_number" as "ss_rows_99_ss_ticket_number",
-    "charming"."ss_wholesale_cost" as "ss_rows_99_ss_wholesale_cost"
-FROM
-    "charming"),
-vast as (
-SELECT
-    "courageous"."_q64_results_cnt_00" as "_q64_results_cnt_00",
-    "courageous"."_q64_results_s1_00" as "_q64_results_s1_00",
-    "courageous"."_q64_results_s2_00" as "_q64_results_s2_00",
-    "courageous"."_q64_results_s3_00" as "_q64_results_s3_00",
-    "courageous"."ss_rows_00_ss_date_year" as "_q64_results_syear_00",
-    "courageous"."ss_rows_00_ss_item_id" as "item_sk",
-    "courageous"."ss_rows_00_ss_store_name" as "s_name",
-    "courageous"."ss_rows_00_ss_store_zip" as "s_zip"
-FROM
-    "courageous"),
 premium as (
 SELECT
-    "protective"."ss_rows_99_ss_coupon_amt" as "ss_rows_99_ss_coupon_amt",
-    "protective"."ss_rows_99_ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
-    "protective"."ss_rows_99_ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
-    "protective"."ss_rows_99_ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
-    "protective"."ss_rows_99_ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
-    "protective"."ss_rows_99_ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year",
-    "protective"."ss_rows_99_ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
-    "protective"."ss_rows_99_ss_date_year" as "ss_rows_99_ss_date_year",
-    "protective"."ss_rows_99_ss_item_id" as "ss_rows_99_ss_item_id",
-    "protective"."ss_rows_99_ss_item_product_name" as "ss_rows_99_ss_item_product_name",
-    "protective"."ss_rows_99_ss_list_price" as "ss_rows_99_ss_list_price",
-    "protective"."ss_rows_99_ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
-    "protective"."ss_rows_99_ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
-    "protective"."ss_rows_99_ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
-    "protective"."ss_rows_99_ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
-    "protective"."ss_rows_99_ss_store_name" as "ss_rows_99_ss_store_name",
-    "protective"."ss_rows_99_ss_store_zip" as "ss_rows_99_ss_store_zip",
-    "protective"."ss_rows_99_ss_ticket_number" as "ss_rows_99_ss_ticket_number",
-    "protective"."ss_rows_99_ss_wholesale_cost" as "ss_rows_99_ss_wholesale_cost"
+    "protective"."ss_coupon_amt" as "ss_rows_99_ss_coupon_amt",
+    "protective"."ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
+    "protective"."ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
+    "protective"."ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
+    "protective"."ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
+    "protective"."ss_customer_demographic_marital_status" as "ss_rows_99_ss_customer_demographic_marital_status",
+    "protective"."ss_customer_demographics_marital_status" as "ss_rows_99_ss_customer_demographics_marital_status",
+    "protective"."ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year",
+    "protective"."ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
+    "protective"."ss_date_year" as "ss_rows_99_ss_date_year",
+    "protective"."ss_item_id" as "ss_rows_99_ss_item_id",
+    "protective"."ss_item_product_name" as "ss_rows_99_ss_item_product_name",
+    "protective"."ss_list_price" as "ss_rows_99_ss_list_price",
+    "protective"."ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
+    "protective"."ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
+    "protective"."ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
+    "protective"."ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
+    "protective"."ss_store_name" as "ss_rows_99_ss_store_name",
+    "protective"."ss_store_zip" as "ss_rows_99_ss_store_zip",
+    "protective"."ss_ticket_number" as "ss_rows_99_ss_ticket_number",
+    "protective"."ss_wholesale_cost" as "ss_rows_99_ss_wholesale_cost"
 FROM
-    "protective"
-WHERE
-    "protective"."ss_rows_99_ss_customer_demographic_marital_status" != "protective"."ss_rows_99_ss_customer_demographics_marital_status"
-),
-waggish as (
+    "protective"),
+cool as (
+SELECT
+    "vast"."_q64_results_cnt_00" as "_q64_results_cnt_00",
+    "vast"."_q64_results_s1_00" as "_q64_results_s1_00",
+    "vast"."_q64_results_s2_00" as "_q64_results_s2_00",
+    "vast"."_q64_results_s3_00" as "_q64_results_s3_00",
+    "vast"."ss_rows_00_ss_date_year" as "_q64_results_syear_00",
+    "vast"."ss_rows_00_ss_item_id" as "item_sk",
+    "vast"."ss_rows_00_ss_store_name" as "s_name",
+    "vast"."ss_rows_00_ss_store_zip" as "s_zip"
+FROM
+    "vast"),
+puzzled as (
 SELECT
     "premium"."ss_rows_99_ss_coupon_amt" as "ss_rows_99_ss_coupon_amt",
     "premium"."ss_rows_99_ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
@@ -417,6 +383,7 @@ SELECT
     "premium"."ss_rows_99_ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
     "premium"."ss_rows_99_ss_date_year" as "ss_rows_99_ss_date_year",
     "premium"."ss_rows_99_ss_item_id" as "ss_rows_99_ss_item_id",
+    "premium"."ss_rows_99_ss_item_product_name" as "ss_rows_99_ss_item_product_name",
     "premium"."ss_rows_99_ss_list_price" as "ss_rows_99_ss_list_price",
     "premium"."ss_rows_99_ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
     "premium"."ss_rows_99_ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
@@ -428,6 +395,31 @@ SELECT
     "premium"."ss_rows_99_ss_wholesale_cost" as "ss_rows_99_ss_wholesale_cost"
 FROM
     "premium"
+WHERE
+    "premium"."ss_rows_99_ss_customer_demographic_marital_status" != "premium"."ss_rows_99_ss_customer_demographics_marital_status"
+),
+rambunctious as (
+SELECT
+    "puzzled"."ss_rows_99_ss_coupon_amt" as "ss_rows_99_ss_coupon_amt",
+    "puzzled"."ss_rows_99_ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
+    "puzzled"."ss_rows_99_ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
+    "puzzled"."ss_rows_99_ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
+    "puzzled"."ss_rows_99_ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
+    "puzzled"."ss_rows_99_ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year",
+    "puzzled"."ss_rows_99_ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
+    "puzzled"."ss_rows_99_ss_date_year" as "ss_rows_99_ss_date_year",
+    "puzzled"."ss_rows_99_ss_item_id" as "ss_rows_99_ss_item_id",
+    "puzzled"."ss_rows_99_ss_list_price" as "ss_rows_99_ss_list_price",
+    "puzzled"."ss_rows_99_ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
+    "puzzled"."ss_rows_99_ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
+    "puzzled"."ss_rows_99_ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
+    "puzzled"."ss_rows_99_ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
+    "puzzled"."ss_rows_99_ss_store_name" as "ss_rows_99_ss_store_name",
+    "puzzled"."ss_rows_99_ss_store_zip" as "ss_rows_99_ss_store_zip",
+    "puzzled"."ss_rows_99_ss_ticket_number" as "ss_rows_99_ss_ticket_number",
+    "puzzled"."ss_rows_99_ss_wholesale_cost" as "ss_rows_99_ss_wholesale_cost"
+FROM
+    "puzzled"
 GROUP BY
     1,
     2,
@@ -447,47 +439,47 @@ GROUP BY
     16,
     17,
     18),
-puzzled as (
+waggish as (
 SELECT
-    "premium"."ss_rows_99_ss_customer_address_city" as "_q64_results_c_city_99",
-    "premium"."ss_rows_99_ss_customer_address_street_name" as "_q64_results_c_str_99",
-    "premium"."ss_rows_99_ss_customer_address_street_number" as "_q64_results_c_sn_99",
-    "premium"."ss_rows_99_ss_customer_address_zip" as "_q64_results_c_zip_99",
-    "premium"."ss_rows_99_ss_customer_first_sales_date_year" as "_q64_results_fsyear_99",
-    "premium"."ss_rows_99_ss_customer_first_shipto_date_year" as "_q64_results_s2year_99",
-    "premium"."ss_rows_99_ss_date_year" as "_q64_results_syear_99",
-    "premium"."ss_rows_99_ss_item_id" as "_q64_results_item_sk_99",
-    "premium"."ss_rows_99_ss_item_product_name" as "_q64_results_p_name_99",
-    "premium"."ss_rows_99_ss_sale_address_city" as "_q64_results_b_city_99",
-    "premium"."ss_rows_99_ss_sale_address_street_name" as "_q64_results_b_str_99",
-    "premium"."ss_rows_99_ss_sale_address_street_number" as "_q64_results_b_sn_99",
-    "premium"."ss_rows_99_ss_sale_address_zip" as "_q64_results_b_zip_99",
-    "premium"."ss_rows_99_ss_store_name" as "_q64_results_s_name_99",
-    "premium"."ss_rows_99_ss_store_zip" as "_q64_results_s_zip_99"
+    "puzzled"."ss_rows_99_ss_customer_address_city" as "_q64_results_c_city_99",
+    "puzzled"."ss_rows_99_ss_customer_address_street_name" as "_q64_results_c_str_99",
+    "puzzled"."ss_rows_99_ss_customer_address_street_number" as "_q64_results_c_sn_99",
+    "puzzled"."ss_rows_99_ss_customer_address_zip" as "_q64_results_c_zip_99",
+    "puzzled"."ss_rows_99_ss_customer_first_sales_date_year" as "_q64_results_fsyear_99",
+    "puzzled"."ss_rows_99_ss_customer_first_shipto_date_year" as "_q64_results_s2year_99",
+    "puzzled"."ss_rows_99_ss_date_year" as "_q64_results_syear_99",
+    "puzzled"."ss_rows_99_ss_item_id" as "_q64_results_item_sk_99",
+    "puzzled"."ss_rows_99_ss_item_product_name" as "_q64_results_p_name_99",
+    "puzzled"."ss_rows_99_ss_sale_address_city" as "_q64_results_b_city_99",
+    "puzzled"."ss_rows_99_ss_sale_address_street_name" as "_q64_results_b_str_99",
+    "puzzled"."ss_rows_99_ss_sale_address_street_number" as "_q64_results_b_sn_99",
+    "puzzled"."ss_rows_99_ss_sale_address_zip" as "_q64_results_b_zip_99",
+    "puzzled"."ss_rows_99_ss_store_name" as "_q64_results_s_name_99",
+    "puzzled"."ss_rows_99_ss_store_zip" as "_q64_results_s_zip_99"
 FROM
-    "premium"),
-rambunctious as (
+    "puzzled"),
+puffy as (
 SELECT
-    "waggish"."ss_rows_99_ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
-    "waggish"."ss_rows_99_ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
-    "waggish"."ss_rows_99_ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
-    "waggish"."ss_rows_99_ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
-    "waggish"."ss_rows_99_ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year",
-    "waggish"."ss_rows_99_ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
-    "waggish"."ss_rows_99_ss_date_year" as "ss_rows_99_ss_date_year",
-    "waggish"."ss_rows_99_ss_item_id" as "ss_rows_99_ss_item_id",
-    "waggish"."ss_rows_99_ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
-    "waggish"."ss_rows_99_ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
-    "waggish"."ss_rows_99_ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
-    "waggish"."ss_rows_99_ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
-    "waggish"."ss_rows_99_ss_store_name" as "ss_rows_99_ss_store_name",
-    "waggish"."ss_rows_99_ss_store_zip" as "ss_rows_99_ss_store_zip",
-    count("waggish"."ss_rows_99_ss_ticket_number") as "_q64_results_cnt_99",
-    sum("waggish"."ss_rows_99_ss_coupon_amt") as "_q64_results_s3_99",
-    sum("waggish"."ss_rows_99_ss_list_price") as "_q64_results_s2_99",
-    sum("waggish"."ss_rows_99_ss_wholesale_cost") as "_q64_results_s1_99"
+    "rambunctious"."ss_rows_99_ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
+    "rambunctious"."ss_rows_99_ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
+    "rambunctious"."ss_rows_99_ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
+    "rambunctious"."ss_rows_99_ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
+    "rambunctious"."ss_rows_99_ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year",
+    "rambunctious"."ss_rows_99_ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
+    "rambunctious"."ss_rows_99_ss_date_year" as "ss_rows_99_ss_date_year",
+    "rambunctious"."ss_rows_99_ss_item_id" as "ss_rows_99_ss_item_id",
+    "rambunctious"."ss_rows_99_ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
+    "rambunctious"."ss_rows_99_ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
+    "rambunctious"."ss_rows_99_ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
+    "rambunctious"."ss_rows_99_ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
+    "rambunctious"."ss_rows_99_ss_store_name" as "ss_rows_99_ss_store_name",
+    "rambunctious"."ss_rows_99_ss_store_zip" as "ss_rows_99_ss_store_zip",
+    count("rambunctious"."ss_rows_99_ss_ticket_number") as "_q64_results_cnt_99",
+    sum("rambunctious"."ss_rows_99_ss_coupon_amt") as "_q64_results_s3_99",
+    sum("rambunctious"."ss_rows_99_ss_list_price") as "_q64_results_s2_99",
+    sum("rambunctious"."ss_rows_99_ss_wholesale_cost") as "_q64_results_s1_99"
 FROM
-    "waggish"
+    "rambunctious"
 GROUP BY
     1,
     2,
@@ -503,80 +495,80 @@ GROUP BY
     12,
     13,
     14),
-puffy as (
+hard as (
 SELECT
-    "puzzled"."_q64_results_b_city_99" as "_q64_results_b_city_99",
-    "puzzled"."_q64_results_b_sn_99" as "_q64_results_b_sn_99",
-    "puzzled"."_q64_results_b_str_99" as "_q64_results_b_str_99",
-    "puzzled"."_q64_results_b_zip_99" as "_q64_results_b_zip_99",
-    "puzzled"."_q64_results_c_city_99" as "_q64_results_c_city_99",
-    "puzzled"."_q64_results_c_sn_99" as "_q64_results_c_sn_99",
-    "puzzled"."_q64_results_c_str_99" as "_q64_results_c_str_99",
-    "puzzled"."_q64_results_c_zip_99" as "_q64_results_c_zip_99",
-    "puzzled"."_q64_results_item_sk_99" as "item_sk",
-    "puzzled"."_q64_results_p_name_99" as "_q64_results_p_name_99",
-    "puzzled"."_q64_results_s_name_99" as "s_name",
-    "puzzled"."_q64_results_s_zip_99" as "s_zip",
-    "puzzled"."_q64_results_syear_99" as "_q64_results_syear_99",
-    "rambunctious"."_q64_results_cnt_99" as "_q64_results_cnt_99",
-    "rambunctious"."_q64_results_s1_99" as "_q64_results_s1_99",
-    "rambunctious"."_q64_results_s2_99" as "_q64_results_s2_99",
-    "rambunctious"."_q64_results_s3_99" as "_q64_results_s3_99"
-FROM
-    "rambunctious"
-    INNER JOIN "puzzled" on "rambunctious"."ss_rows_99_ss_customer_address_city" = "puzzled"."_q64_results_c_city_99" AND "rambunctious"."ss_rows_99_ss_customer_address_street_name" = "puzzled"."_q64_results_c_str_99" AND "rambunctious"."ss_rows_99_ss_customer_address_street_number" = "puzzled"."_q64_results_c_sn_99" AND "rambunctious"."ss_rows_99_ss_customer_address_zip" = "puzzled"."_q64_results_c_zip_99" AND "rambunctious"."ss_rows_99_ss_customer_first_sales_date_year" = "puzzled"."_q64_results_fsyear_99" AND "rambunctious"."ss_rows_99_ss_customer_first_shipto_date_year" = "puzzled"."_q64_results_s2year_99" AND "rambunctious"."ss_rows_99_ss_date_year" = "puzzled"."_q64_results_syear_99" AND "rambunctious"."ss_rows_99_ss_item_id" = "puzzled"."_q64_results_item_sk_99" AND "rambunctious"."ss_rows_99_ss_sale_address_city" = "puzzled"."_q64_results_b_city_99" AND "rambunctious"."ss_rows_99_ss_sale_address_street_name" = "puzzled"."_q64_results_b_str_99" AND "rambunctious"."ss_rows_99_ss_sale_address_street_number" = "puzzled"."_q64_results_b_sn_99" AND "rambunctious"."ss_rows_99_ss_sale_address_zip" = "puzzled"."_q64_results_b_zip_99" AND "rambunctious"."ss_rows_99_ss_store_name" = "puzzled"."_q64_results_s_name_99" AND "rambunctious"."ss_rows_99_ss_store_zip" = "puzzled"."_q64_results_s_zip_99"),
-cool as (
-SELECT
-    "puffy"."_q64_results_b_city_99" as "_q64_results_b_city_99",
-    "puffy"."_q64_results_b_sn_99" as "_q64_results_b_sn_99",
-    "puffy"."_q64_results_b_str_99" as "_q64_results_b_str_99",
-    "puffy"."_q64_results_b_zip_99" as "_q64_results_b_zip_99",
-    "puffy"."_q64_results_c_city_99" as "_q64_results_c_city_99",
-    "puffy"."_q64_results_c_sn_99" as "_q64_results_c_sn_99",
-    "puffy"."_q64_results_c_str_99" as "_q64_results_c_str_99",
-    "puffy"."_q64_results_c_zip_99" as "_q64_results_c_zip_99",
     "puffy"."_q64_results_cnt_99" as "_q64_results_cnt_99",
-    "puffy"."_q64_results_p_name_99" as "_q64_results_p_name_99",
     "puffy"."_q64_results_s1_99" as "_q64_results_s1_99",
     "puffy"."_q64_results_s2_99" as "_q64_results_s2_99",
     "puffy"."_q64_results_s3_99" as "_q64_results_s3_99",
-    "puffy"."_q64_results_syear_99" as "_q64_results_syear_99",
-    "vast"."_q64_results_cnt_00" as "_q64_results_cnt_00",
-    "vast"."_q64_results_s1_00" as "_q64_results_s1_00",
-    "vast"."_q64_results_s2_00" as "_q64_results_s2_00",
-    "vast"."_q64_results_s3_00" as "_q64_results_s3_00",
-    "vast"."_q64_results_syear_00" as "_q64_results_syear_00",
-    coalesce("puffy"."s_name","vast"."s_name") as "s_name",
-    coalesce("puffy"."s_zip","vast"."s_zip") as "s_zip"
+    "waggish"."_q64_results_b_city_99" as "_q64_results_b_city_99",
+    "waggish"."_q64_results_b_sn_99" as "_q64_results_b_sn_99",
+    "waggish"."_q64_results_b_str_99" as "_q64_results_b_str_99",
+    "waggish"."_q64_results_b_zip_99" as "_q64_results_b_zip_99",
+    "waggish"."_q64_results_c_city_99" as "_q64_results_c_city_99",
+    "waggish"."_q64_results_c_sn_99" as "_q64_results_c_sn_99",
+    "waggish"."_q64_results_c_str_99" as "_q64_results_c_str_99",
+    "waggish"."_q64_results_c_zip_99" as "_q64_results_c_zip_99",
+    "waggish"."_q64_results_item_sk_99" as "item_sk",
+    "waggish"."_q64_results_p_name_99" as "_q64_results_p_name_99",
+    "waggish"."_q64_results_s_name_99" as "s_name",
+    "waggish"."_q64_results_s_zip_99" as "s_zip",
+    "waggish"."_q64_results_syear_99" as "_q64_results_syear_99"
 FROM
     "puffy"
-    FULL JOIN "vast" on "puffy"."item_sk" is not distinct from "vast"."item_sk" AND "puffy"."s_name" is not distinct from "vast"."s_name" AND "puffy"."s_zip" is not distinct from "vast"."s_zip")
+    INNER JOIN "waggish" on "puffy"."ss_rows_99_ss_customer_address_city" = "waggish"."_q64_results_c_city_99" AND "puffy"."ss_rows_99_ss_customer_address_street_name" = "waggish"."_q64_results_c_str_99" AND "puffy"."ss_rows_99_ss_customer_address_street_number" = "waggish"."_q64_results_c_sn_99" AND "puffy"."ss_rows_99_ss_customer_address_zip" = "waggish"."_q64_results_c_zip_99" AND "puffy"."ss_rows_99_ss_customer_first_sales_date_year" = "waggish"."_q64_results_fsyear_99" AND "puffy"."ss_rows_99_ss_customer_first_shipto_date_year" = "waggish"."_q64_results_s2year_99" AND "puffy"."ss_rows_99_ss_date_year" = "waggish"."_q64_results_syear_99" AND "puffy"."ss_rows_99_ss_item_id" = "waggish"."_q64_results_item_sk_99" AND "puffy"."ss_rows_99_ss_sale_address_city" = "waggish"."_q64_results_b_city_99" AND "puffy"."ss_rows_99_ss_sale_address_street_name" = "waggish"."_q64_results_b_str_99" AND "puffy"."ss_rows_99_ss_sale_address_street_number" = "waggish"."_q64_results_b_sn_99" AND "puffy"."ss_rows_99_ss_sale_address_zip" = "waggish"."_q64_results_b_zip_99" AND "puffy"."ss_rows_99_ss_store_name" = "waggish"."_q64_results_s_name_99" AND "puffy"."ss_rows_99_ss_store_zip" = "waggish"."_q64_results_s_zip_99"),
+elated as (
 SELECT
-    "cool"."_q64_results_p_name_99" as "q64_results_p_name_99",
-    "cool"."s_name" as "q64_results_s_name",
-    "cool"."s_zip" as "q64_results_s_zip",
-    "cool"."_q64_results_b_sn_99" as "q64_results_b_sn_99",
-    "cool"."_q64_results_b_str_99" as "q64_results_b_str_99",
-    "cool"."_q64_results_b_city_99" as "q64_results_b_city_99",
-    "cool"."_q64_results_b_zip_99" as "q64_results_b_zip_99",
-    "cool"."_q64_results_c_sn_99" as "q64_results_c_sn_99",
-    "cool"."_q64_results_c_str_99" as "q64_results_c_str_99",
-    "cool"."_q64_results_c_city_99" as "q64_results_c_city_99",
-    "cool"."_q64_results_c_zip_99" as "q64_results_c_zip_99",
-    "cool"."_q64_results_syear_99" as "q64_results_syear_99",
-    "cool"."_q64_results_cnt_99" as "q64_results_cnt_99",
-    "cool"."_q64_results_s1_99" as "q64_results_s1_99",
-    "cool"."_q64_results_s2_99" as "q64_results_s2_99",
-    "cool"."_q64_results_s3_99" as "q64_results_s3_99",
-    "cool"."_q64_results_s1_00" as "q64_results_s1_00",
-    "cool"."_q64_results_s2_00" as "q64_results_s2_00",
-    "cool"."_q64_results_s3_00" as "q64_results_s3_00",
-    "cool"."_q64_results_syear_00" as "q64_results_syear_00",
-    "cool"."_q64_results_cnt_00" as "q64_results_cnt_00"
+    "cool"."_q64_results_cnt_00" as "_q64_results_cnt_00",
+    "cool"."_q64_results_s1_00" as "_q64_results_s1_00",
+    "cool"."_q64_results_s2_00" as "_q64_results_s2_00",
+    "cool"."_q64_results_s3_00" as "_q64_results_s3_00",
+    "cool"."_q64_results_syear_00" as "_q64_results_syear_00",
+    "hard"."_q64_results_b_city_99" as "_q64_results_b_city_99",
+    "hard"."_q64_results_b_sn_99" as "_q64_results_b_sn_99",
+    "hard"."_q64_results_b_str_99" as "_q64_results_b_str_99",
+    "hard"."_q64_results_b_zip_99" as "_q64_results_b_zip_99",
+    "hard"."_q64_results_c_city_99" as "_q64_results_c_city_99",
+    "hard"."_q64_results_c_sn_99" as "_q64_results_c_sn_99",
+    "hard"."_q64_results_c_str_99" as "_q64_results_c_str_99",
+    "hard"."_q64_results_c_zip_99" as "_q64_results_c_zip_99",
+    "hard"."_q64_results_cnt_99" as "_q64_results_cnt_99",
+    "hard"."_q64_results_p_name_99" as "_q64_results_p_name_99",
+    "hard"."_q64_results_s1_99" as "_q64_results_s1_99",
+    "hard"."_q64_results_s2_99" as "_q64_results_s2_99",
+    "hard"."_q64_results_s3_99" as "_q64_results_s3_99",
+    "hard"."_q64_results_syear_99" as "_q64_results_syear_99",
+    coalesce("cool"."s_name","hard"."s_name") as "s_name",
+    coalesce("cool"."s_zip","hard"."s_zip") as "s_zip"
 FROM
-    "cool"
+    "hard"
+    FULL JOIN "cool" on "hard"."item_sk" is not distinct from "cool"."item_sk" AND "hard"."s_name" is not distinct from "cool"."s_name" AND "hard"."s_zip" is not distinct from "cool"."s_zip")
+SELECT
+    "elated"."_q64_results_p_name_99" as "q64_results_p_name_99",
+    "elated"."s_name" as "q64_results_s_name",
+    "elated"."s_zip" as "q64_results_s_zip",
+    "elated"."_q64_results_b_sn_99" as "q64_results_b_sn_99",
+    "elated"."_q64_results_b_str_99" as "q64_results_b_str_99",
+    "elated"."_q64_results_b_city_99" as "q64_results_b_city_99",
+    "elated"."_q64_results_b_zip_99" as "q64_results_b_zip_99",
+    "elated"."_q64_results_c_sn_99" as "q64_results_c_sn_99",
+    "elated"."_q64_results_c_str_99" as "q64_results_c_str_99",
+    "elated"."_q64_results_c_city_99" as "q64_results_c_city_99",
+    "elated"."_q64_results_c_zip_99" as "q64_results_c_zip_99",
+    "elated"."_q64_results_syear_99" as "q64_results_syear_99",
+    "elated"."_q64_results_cnt_99" as "q64_results_cnt_99",
+    "elated"."_q64_results_s1_99" as "q64_results_s1_99",
+    "elated"."_q64_results_s2_99" as "q64_results_s2_99",
+    "elated"."_q64_results_s3_99" as "q64_results_s3_99",
+    "elated"."_q64_results_s1_00" as "q64_results_s1_00",
+    "elated"."_q64_results_s2_00" as "q64_results_s2_00",
+    "elated"."_q64_results_s3_00" as "q64_results_s3_00",
+    "elated"."_q64_results_syear_00" as "q64_results_syear_00",
+    "elated"."_q64_results_cnt_00" as "q64_results_cnt_00"
+FROM
+    "elated"
 WHERE
-    "cool"."_q64_results_cnt_00" <= "cool"."_q64_results_cnt_99"
+    "elated"."_q64_results_cnt_00" <= "elated"."_q64_results_cnt_99"
 
 ORDER BY 
     "q64_results_p_name_99" asc nulls first,

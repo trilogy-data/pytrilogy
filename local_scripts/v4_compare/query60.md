@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3705 | 68 | 26.70 ms |
-| reference | 3304 | 58 | 29.93 ms |
-| v4 / ref | 1.12x | 1.17x | 0.89x |
+| v4 | 3694 | 72 | 23.17 ms |
+| reference | 3304 | 58 | 22.80 ms |
+| v4 / ref | 1.12x | 1.24x | 1.02x |
 
 ## Preql
 
@@ -48,14 +48,21 @@ limit 100
 
 ```sql
 WITH 
-uneven as (
+yummy as (
 SELECT
     "sales_item_items"."I_ITEM_ID" as "music_item_ids"
 FROM
     "memory"."item" as "sales_item_items"
 WHERE
     "sales_item_items"."I_CATEGORY" = 'Music'
-),
+
+GROUP BY
+    1),
+uneven as (
+SELECT
+    "sales_item_items"."I_ITEM_SK" as "sales_item_id"
+FROM
+    "memory"."item" as "sales_item_items"),
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
@@ -66,7 +73,7 @@ FROM
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
-    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 9 and "sales_item_items"."I_ITEM_ID" in (select uneven."music_item_ids" from uneven where uneven."music_item_ids" is not null)
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 9 and "sales_item_items"."I_ITEM_ID" in (select yummy."music_item_ids" from yummy where yummy."music_item_ids" is not null)
 
 UNION ALL
 SELECT
@@ -78,7 +85,7 @@ FROM
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
-    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 9 and "sales_item_items"."I_ITEM_ID" in (select uneven."music_item_ids" from uneven where uneven."music_item_ids" is not null)
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 9 and "sales_item_items"."I_ITEM_ID" in (select yummy."music_item_ids" from yummy where yummy."music_item_ids" is not null)
 
 UNION ALL
 SELECT
@@ -90,24 +97,21 @@ FROM
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
-    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 9 and "sales_item_items"."I_ITEM_ID" in (select uneven."music_item_ids" from uneven where uneven."music_item_ids" is not null)
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 9 and "sales_item_items"."I_ITEM_ID" in (select yummy."music_item_ids" from yummy where yummy."music_item_ids" is not null)
 ),
 abundant as (
 SELECT
     "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price",
     "thoughtful"."sales_item_text_id" as "sales_item_text_id"
 FROM
-    "thoughtful"
-WHERE
-    "thoughtful"."sales_item_text_id" in (select uneven."music_item_ids" from uneven where uneven."music_item_ids" is not null)
-)
+    "thoughtful")
 SELECT
     "abundant"."sales_item_text_id" as "sales_item_text_id",
     sum("abundant"."sales_ext_sales_price") as "total_sales"
 FROM
     "abundant"
 WHERE
-    "abundant"."sales_item_text_id" in (select uneven."music_item_ids" from uneven where uneven."music_item_ids" is not null)
+    "abundant"."sales_item_text_id" in (select yummy."music_item_ids" from yummy where yummy."music_item_ids" is not null)
 
 GROUP BY
     1

@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2124 | 51 | 13.24 ms |
-| reference | 1434 | 42 | 98.86 ms |
-| v4 / ref | 1.48x | 1.21x | 0.13x |
+| v4 | 2159 | 59 | 12.73 ms |
+| reference | 1434 | 42 | 87.22 ms |
+| v4 / ref | 1.51x | 1.40x | 0.15x |
 
 ## Preql
 
@@ -69,6 +69,13 @@ FROM
     "wakeful"),
 thoughtful as (
 SELECT
+    "cheerful"."inv_item_ids" as "inv_item_ids"
+FROM
+    "cheerful"
+GROUP BY
+    1),
+cooperative as (
+SELECT
     "items_items"."I_CURRENT_PRICE" as "items_current_price",
     "items_items"."I_ITEM_DESC" as "items_desc",
     "items_items"."I_ITEM_ID" as "items_text_id",
@@ -76,30 +83,31 @@ SELECT
 FROM
     "memory"."item" as "items_items"
 WHERE
-    "items_items"."I_CURRENT_PRICE" BETWEEN 68 AND 98 and "items_items"."I_MANUFACT_ID" in (677,940,694,808) and "items_items"."I_ITEM_SK" in (select cheerful."inv_item_ids" from cheerful where cheerful."inv_item_ids" is not null)
+    "items_items"."I_CURRENT_PRICE" BETWEEN 68 AND 98 and "items_items"."I_MANUFACT_ID" in (677,940,694,808) and "items_items"."I_ITEM_SK" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
 ),
-cooperative as (
+questionable as (
 SELECT
-    "thoughtful"."items_current_price" as "items_current_price",
-    "thoughtful"."items_desc" as "items_desc",
-    "thoughtful"."items_id" as "items_id",
-    "thoughtful"."items_text_id" as "items_text_id"
-FROM
-    "thoughtful"
-WHERE
-    "thoughtful"."items_id" in (select cheerful."inv_item_ids" from cheerful where cheerful."inv_item_ids" is not null)
-)
-SELECT
-    "cooperative"."items_text_id" as "items_text_id",
+    "cooperative"."items_current_price" as "items_current_price",
     "cooperative"."items_desc" as "items_desc",
-    "cooperative"."items_current_price" as "items_current_price"
+    "cooperative"."items_id" as "items_id",
+    "cooperative"."items_text_id" as "items_text_id"
 FROM
-    "cooperative"
+    "cooperative")
+SELECT
+    "questionable"."items_text_id" as "items_text_id",
+    "questionable"."items_desc" as "items_desc",
+    "questionable"."items_current_price" as "items_current_price"
+FROM
+    "questionable"
 WHERE
-    "cooperative"."items_id" in (select cheerful."inv_item_ids" from cheerful where cheerful."inv_item_ids" is not null)
+    "questionable"."items_id" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
 
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
-    "cooperative"."items_text_id" asc nulls first
+    "questionable"."items_text_id" asc nulls first
 LIMIT (100)
 ```
 

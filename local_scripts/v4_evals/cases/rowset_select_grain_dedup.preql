@@ -1,0 +1,33 @@
+# A rowset whose SELECT has only non-aggregate outputs and no key must dedup to
+# its select grain (implicit GROUP BY), exactly like a plain SELECT of those
+# concepts. Here txn 1 and 2 share the (item, yr, amt) tuple, so the rowset has
+# one row for it; the outer sum over the deduped rows is 5 + 7 = 12, not
+# 5 + 5 + 7 = 17. v4 used to emit the rowset as a bare projection (no GROUP BY),
+# leaking the duplicate row into the sum. Distilled from TPC-DS query75's
+# `deduped` rowset (UNION DISTINCT semantics before the per-year SUMs).
+key txn int;
+property txn.item int;
+property txn.yr int;
+property txn.amt int;
+
+datasource txns (
+    txn: txn,
+    item: item,
+    yr: yr,
+    amt: amt,
+)
+grain (txn)
+query '''
+select 1 txn, 10 item, 2001 yr, 5 amt
+union all select 2, 10, 2001, 5
+union all select 3, 10, 2001, 7
+union all select 4, 20, 2002, 3
+''';
+
+rowset deduped <- select item, yr, amt;
+
+WHERE deduped.yr = 2001
+SELECT
+    deduped.item,
+    sum(deduped.amt) -> total
+ORDER BY deduped.item asc;

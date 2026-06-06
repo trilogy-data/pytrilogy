@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7356 | 130 | 155.68 ms |
-| reference | 4875 | 84 | 92.88 ms |
-| v4 / ref | 1.51x | 1.55x | 1.68x |
+| v4 | 7473 | 137 | 117.67 ms |
+| reference | 4875 | 84 | 73.60 ms |
+| v4 / ref | 1.53x | 1.63x | 1.60x |
 
 ## Preql
 
@@ -130,7 +130,14 @@ SELECT
     CASE WHEN "vacuous"."physical_sales_date_year" = 2002 and "vacuous"."physical_sales_date_month_of_year" in (1,2,3,4) and "vacuous"."customer_address_county" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "vacuous"."web_sales_date_year" = 2002 and "vacuous"."web_sales_date_month_of_year" in (1,2,3,4) ) or ( "vacuous"."catalog_sales_date_year" = 2002 and "vacuous"."catalog_sales_date_month_of_year" in (1,2,3,4) ) ) THEN "vacuous"."customer_id" ELSE NULL END as "relevant_customers"
 FROM
     "vacuous"),
-sparkling as (
+young as (
+SELECT
+    "concerned"."relevant_customers" as "relevant_customers"
+FROM
+    "concerned"
+GROUP BY
+    1),
+abhorrent as (
 SELECT
     "customer_customers"."C_CUSTOMER_SK" as "customer_id",
     "customer_demographics_customer_demographics"."CD_CREDIT_RATING" as "customer_demographics_credit_rating",
@@ -145,23 +152,23 @@ FROM
     "memory"."customer" as "customer_customers"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "customer_demographics_customer_demographics"."CD_GENDER" is not null and "customer_customers"."C_CUSTOMER_SK" in (select concerned."relevant_customers" from concerned where concerned."relevant_customers" is not null)
+    "customer_demographics_customer_demographics"."CD_GENDER" is not null and "customer_customers"."C_CUSTOMER_SK" in (select young."relevant_customers" from young where young."relevant_customers" is not null)
 ),
-abhorrent as (
+sweltering as (
 SELECT
-    "sparkling"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    "sparkling"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
-    "sparkling"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
-    "sparkling"."customer_demographics_education_status" as "customer_demographics_education_status",
-    "sparkling"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
-    "sparkling"."customer_demographics_gender" as "customer_demographics_gender",
-    "sparkling"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    "sparkling"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
-    "sparkling"."customer_id" as "customer_id"
+    "abhorrent"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "abhorrent"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
+    "abhorrent"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "abhorrent"."customer_demographics_education_status" as "customer_demographics_education_status",
+    "abhorrent"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    "abhorrent"."customer_demographics_gender" as "customer_demographics_gender",
+    "abhorrent"."customer_demographics_marital_status" as "customer_demographics_marital_status",
+    "abhorrent"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
+    "abhorrent"."customer_id" as "customer_id"
 FROM
-    "sparkling"
+    "abhorrent"
 WHERE
-    "sparkling"."customer_id" in (select concerned."relevant_customers" from concerned where concerned."relevant_customers" is not null)
+    "abhorrent"."customer_id" in (select young."relevant_customers" from young where young."relevant_customers" is not null)
 
 GROUP BY
     1,
@@ -174,22 +181,22 @@ GROUP BY
     8,
     9)
 SELECT
-    "abhorrent"."customer_demographics_gender" as "customer_demographics_gender",
-    "abhorrent"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    "abhorrent"."customer_demographics_education_status" as "customer_demographics_education_status",
-    count("abhorrent"."customer_id") as "cnt1",
-    "abhorrent"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
-    count("abhorrent"."customer_id") as "cnt2",
-    "abhorrent"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
-    count("abhorrent"."customer_id") as "cnt3",
-    "abhorrent"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
-    count("abhorrent"."customer_id") as "cnt4",
-    "abhorrent"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
-    count("abhorrent"."customer_id") as "cnt5",
-    "abhorrent"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    count("abhorrent"."customer_id") as "cnt6"
+    "sweltering"."customer_demographics_gender" as "customer_demographics_gender",
+    "sweltering"."customer_demographics_marital_status" as "customer_demographics_marital_status",
+    "sweltering"."customer_demographics_education_status" as "customer_demographics_education_status",
+    count("sweltering"."customer_id") as "cnt1",
+    "sweltering"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
+    count("sweltering"."customer_id") as "cnt2",
+    "sweltering"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
+    count("sweltering"."customer_id") as "cnt3",
+    "sweltering"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    count("sweltering"."customer_id") as "cnt4",
+    "sweltering"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    count("sweltering"."customer_id") as "cnt5",
+    "sweltering"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    count("sweltering"."customer_id") as "cnt6"
 FROM
-    "abhorrent"
+    "sweltering"
 GROUP BY
     1,
     2,
@@ -200,14 +207,14 @@ GROUP BY
     11,
     13
 ORDER BY 
-    "abhorrent"."customer_demographics_gender" asc,
-    "abhorrent"."customer_demographics_marital_status" asc,
-    "abhorrent"."customer_demographics_education_status" asc,
-    "abhorrent"."customer_demographics_purchase_estimate" asc,
-    "abhorrent"."customer_demographics_credit_rating" asc,
-    "abhorrent"."customer_demographics_dependent_count" asc,
-    "abhorrent"."customer_demographics_employed_dependent_count" asc,
-    "abhorrent"."customer_demographics_college_dependent_count" asc
+    "sweltering"."customer_demographics_gender" asc,
+    "sweltering"."customer_demographics_marital_status" asc,
+    "sweltering"."customer_demographics_education_status" asc,
+    "sweltering"."customer_demographics_purchase_estimate" asc,
+    "sweltering"."customer_demographics_credit_rating" asc,
+    "sweltering"."customer_demographics_dependent_count" asc,
+    "sweltering"."customer_demographics_employed_dependent_count" asc,
+    "sweltering"."customer_demographics_college_dependent_count" asc
 ```
 
 ## Reference SQL (zquery log)

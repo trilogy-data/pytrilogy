@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5194 | 112 | 86.50 ms |
-| reference | 4137 | 80 | 109.12 ms |
-| v4 / ref | 1.26x | 1.40x | 0.79x |
+| v4 | 5240 | 118 | 49.91 ms |
+| reference | 4137 | 80 | 53.61 ms |
+| v4 / ref | 1.27x | 1.48x | 0.93x |
 
 ## Preql
 
@@ -120,22 +120,26 @@ FROM
 WHERE
     "sales_date_date"."D_YEAR" = 2001 and "sales_date_date"."D_MOY" BETWEEN 4 AND 6
 ),
-abhorrent as (
+late as (
 SELECT
     "abundant"."sales_billing_customer_id" as "_store_buyers_store_cust_id"
 FROM
     "abundant"
 WHERE
     "abundant"."sales_sales_channel" = 'STORE' and "abundant"."sales_billing_customer_id" is not null
-),
-concerned as (
+
+GROUP BY
+    1),
+young as (
 SELECT
     "abundant"."sales_ship_customer_id" as "_catalog_buyers_cat_cust_id"
 FROM
     "abundant"
 WHERE
     "abundant"."sales_sales_channel" = 'CATALOG' and "abundant"."sales_ship_customer_id" is not null
-),
+
+GROUP BY
+    1),
 yummy as (
 SELECT
     "abundant"."sales_billing_customer_id" as "_web_buyers_web_cust_id"
@@ -143,18 +147,20 @@ FROM
     "abundant"
 WHERE
     "abundant"."sales_sales_channel" = 'WEB' and "abundant"."sales_billing_customer_id" is not null
-),
-late as (
+
+GROUP BY
+    1),
+friendly as (
 SELECT
-    "abhorrent"."_store_buyers_store_cust_id" as "store_buyers_store_cust_id"
+    "late"."_store_buyers_store_cust_id" as "store_buyers_store_cust_id"
 FROM
-    "abhorrent"),
-sparkling as (
+    "late"),
+sweltering as (
 SELECT
-    "concerned"."_catalog_buyers_cat_cust_id" as "catalog_buyers_cat_cust_id"
+    "young"."_catalog_buyers_cat_cust_id" as "catalog_buyers_cat_cust_id"
 FROM
-    "concerned"),
-vacuous as (
+    "young"),
+concerned as (
 SELECT
     "yummy"."_web_buyers_web_cust_id" as "web_buyers_web_cust_id"
 FROM
@@ -172,7 +178,7 @@ FROM
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     LEFT OUTER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "customer_address_customer_address"."CA_STATE" in ('KY','GA','NM') and "customer_customers"."C_CUSTOMER_SK" in (select late."store_buyers_store_cust_id" from late where late."store_buyers_store_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select vacuous."web_buyers_web_cust_id" from vacuous where vacuous."web_buyers_web_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select sparkling."catalog_buyers_cat_cust_id" from sparkling where sparkling."catalog_buyers_cat_cust_id" is not null)
+    "customer_address_customer_address"."CA_STATE" in ('KY','GA','NM') and "customer_customers"."C_CUSTOMER_SK" in (select friendly."store_buyers_store_cust_id" from friendly where friendly."store_buyers_store_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select concerned."web_buyers_web_cust_id" from concerned where concerned."web_buyers_web_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select sweltering."catalog_buyers_cat_cust_id" from sweltering where sweltering."catalog_buyers_cat_cust_id" is not null)
 )
 SELECT
     "cheerful"."customer_demographics_gender" as "customer_demographics_gender",

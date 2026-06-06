@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4257 | 84 | 45.21 ms |
-| reference | 5253 | 81 | 54.42 ms |
-| v4 / ref | 0.81x | 1.04x | 0.83x |
+| v4 | 4323 | 91 | 37.09 ms |
+| reference | 5253 | 81 | 34.06 ms |
+| v4 / ref | 0.82x | 1.12x | 1.09x |
 
 ## Preql
 
@@ -78,7 +78,14 @@ FROM
 WHERE
     "date_date"."D_DATE" = '2000-01-03'
 ),
-cooperative as (
+wakeful as (
+SELECT
+    "highfalutin"."target_week_seq" as "target_week_seq"
+FROM
+    "highfalutin"
+GROUP BY
+    1),
+questionable as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
@@ -88,7 +95,7 @@ FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seq" from highfalutin where highfalutin."target_week_seq" is not null)
+    "sales_date_date"."D_WEEK_SEQ" in (select wakeful."target_week_seq" from wakeful where wakeful."target_week_seq" is not null)
 
 UNION ALL
 SELECT
@@ -100,7 +107,7 @@ FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seq" from highfalutin where highfalutin."target_week_seq" is not null)
+    "sales_date_date"."D_WEEK_SEQ" in (select wakeful."target_week_seq" from wakeful where wakeful."target_week_seq" is not null)
 
 UNION ALL
 SELECT
@@ -112,46 +119,46 @@ FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_date_date"."D_WEEK_SEQ" in (select highfalutin."target_week_seq" from highfalutin where highfalutin."target_week_seq" is not null)
-),
-uneven as (
-SELECT
-    "cooperative"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "cooperative"."sales_sales_channel" as "sales_sales_channel",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
-FROM
-    "cooperative"
-    INNER JOIN "memory"."item" as "sales_item_items" on "cooperative"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
-WHERE
-    "cooperative"."sales_date_week_seq" in (select highfalutin."target_week_seq" from highfalutin where highfalutin."target_week_seq" is not null)
+    "sales_date_date"."D_WEEK_SEQ" in (select wakeful."target_week_seq" from wakeful where wakeful."target_week_seq" is not null)
 ),
 yummy as (
 SELECT
-    "uneven"."sales_item_text_id" as "sales_item_text_id",
-    sum(CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' THEN "uneven"."sales_ext_sales_price" ELSE NULL END) as "cs_item_rev",
-    sum(CASE WHEN "uneven"."sales_sales_channel" = 'STORE' THEN "uneven"."sales_ext_sales_price" ELSE NULL END) as "ss_item_rev",
-    sum(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_ext_sales_price" ELSE NULL END) as "ws_item_rev"
+    "questionable"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "questionable"."sales_sales_channel" as "sales_sales_channel",
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
 FROM
-    "uneven"
+    "questionable"
+    INNER JOIN "memory"."item" as "sales_item_items" on "questionable"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "questionable"."sales_date_week_seq" in (select wakeful."target_week_seq" from wakeful where wakeful."target_week_seq" is not null)
+),
+juicy as (
+SELECT
+    "yummy"."sales_item_text_id" as "sales_item_text_id",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) as "cs_item_rev",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) as "ss_item_rev",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) as "ws_item_rev"
+FROM
+    "yummy"
 GROUP BY
     1
 HAVING
     "ss_item_rev" BETWEEN 0.9 * "cs_item_rev" AND 1.1 * "cs_item_rev" and "ss_item_rev" BETWEEN 0.9 * "ws_item_rev" AND 1.1 * "ws_item_rev" and "cs_item_rev" BETWEEN 0.9 * "ss_item_rev" AND 1.1 * "ss_item_rev" and "cs_item_rev" BETWEEN 0.9 * "ws_item_rev" AND 1.1 * "ws_item_rev" and "ws_item_rev" BETWEEN 0.9 * "ss_item_rev" AND 1.1 * "ss_item_rev" and "ws_item_rev" BETWEEN 0.9 * "cs_item_rev" AND 1.1 * "cs_item_rev"
 )
 SELECT
-    "yummy"."sales_item_text_id" as "item_id",
-    "yummy"."ss_item_rev" as "ss_item_rev",
-    ( "yummy"."ss_item_rev" / ( (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 ) ) * 100 as "ss_dev",
-    "yummy"."cs_item_rev" as "cs_item_rev",
-    ( "yummy"."cs_item_rev" / ( (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 ) ) * 100 as "cs_dev",
-    "yummy"."ws_item_rev" as "ws_item_rev",
-    ( "yummy"."ws_item_rev" / ( (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 ) ) * 100 as "ws_dev",
-    (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 as "avg_rev"
+    "juicy"."sales_item_text_id" as "item_id",
+    "juicy"."ss_item_rev" as "ss_item_rev",
+    ( "juicy"."ss_item_rev" / ( (( "juicy"."ss_item_rev" + "juicy"."cs_item_rev" ) + "juicy"."ws_item_rev") / 3 ) ) * 100 as "ss_dev",
+    "juicy"."cs_item_rev" as "cs_item_rev",
+    ( "juicy"."cs_item_rev" / ( (( "juicy"."ss_item_rev" + "juicy"."cs_item_rev" ) + "juicy"."ws_item_rev") / 3 ) ) * 100 as "cs_dev",
+    "juicy"."ws_item_rev" as "ws_item_rev",
+    ( "juicy"."ws_item_rev" / ( (( "juicy"."ss_item_rev" + "juicy"."cs_item_rev" ) + "juicy"."ws_item_rev") / 3 ) ) * 100 as "ws_dev",
+    (( "juicy"."ss_item_rev" + "juicy"."cs_item_rev" ) + "juicy"."ws_item_rev") / 3 as "avg_rev"
 FROM
-    "yummy"
+    "juicy"
 ORDER BY 
     "item_id" asc nulls first,
-    "yummy"."ss_item_rev" asc nulls first
+    "juicy"."ss_item_rev" asc nulls first
 LIMIT (100)
 ```
 

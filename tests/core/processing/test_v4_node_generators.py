@@ -790,11 +790,16 @@ class TestMultiGroupAssembly:
             if "local.spread" in {concept.address for concept in node.output_concepts}
         ]
         assert matching_nodes
-        assert {
-            "local.spread",
-            "local.left_id",
-            "local.right_id",
-        } <= {concept.address for concept in matching_nodes[0].output_concepts}
+        # The basic node that *produces* spread must carry its declared grain
+        # keys so a downstream sibling can join on them. When spread is the sole
+        # query output the FINAL node dedups it to grain {spread} (matching v3),
+        # so the keys live on the producing node beneath that group, not the
+        # outermost node — assert the invariant on the producer.
+        assert any(
+            {"local.spread", "local.left_id", "local.right_id"}
+            <= {concept.address for concept in node.output_concepts}
+            for node in matching_nodes
+        )
 
     def test_condition_needed_concept_includes_grain_keys(self):
         _, benv = _build(BASIC_COMPOSITE_GRAIN_MODEL)

@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3274 | 84 | 732.57 ms |
-| reference | 2506 | 58 | 48.68 ms |
-| v4 / ref | 1.31x | 1.45x | 15.05x |
+| v4 | 3399 | 91 | 639.72 ms |
+| reference | 2506 | 58 | 40.46 ms |
+| v4 / ref | 1.36x | 1.57x | 15.81x |
 
 ## Preql
 
@@ -503,7 +503,14 @@ SELECT
     SUBSTRING("concerned"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
 FROM
     "concerned"),
-late as (
+sparkling as (
+SELECT
+    "young"."final_zips" as "final_zips"
+FROM
+    "young"
+GROUP BY
+    1),
+macho as (
 SELECT
     "physical_sales_store_sales"."SS_ITEM_SK" as "physical_sales_item_id",
     "physical_sales_store_sales"."SS_NET_PROFIT" as "physical_sales_net_profit",
@@ -514,28 +521,28 @@ FROM
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
 WHERE
-    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select young."final_zips" from young where young."final_zips" is not null)
+    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select sparkling."final_zips" from sparkling where sparkling."final_zips" is not null)
 ),
-macho as (
+scrawny as (
 SELECT
-    "late"."physical_sales_net_profit" as "physical_sales_net_profit",
-    "late"."physical_sales_store_name" as "physical_sales_store_name"
-FROM
-    "late"
-GROUP BY
-    1,
-    2,
-    "late"."physical_sales_item_id",
-    "late"."physical_sales_ticket_number")
-SELECT
-    "macho"."physical_sales_store_name" as "physical_sales_store_name",
-    sum("macho"."physical_sales_net_profit") as "store_net_profit"
+    "macho"."physical_sales_net_profit" as "physical_sales_net_profit",
+    "macho"."physical_sales_store_name" as "physical_sales_store_name"
 FROM
     "macho"
 GROUP BY
+    1,
+    2,
+    "macho"."physical_sales_item_id",
+    "macho"."physical_sales_ticket_number")
+SELECT
+    "scrawny"."physical_sales_store_name" as "physical_sales_store_name",
+    sum("scrawny"."physical_sales_net_profit") as "store_net_profit"
+FROM
+    "scrawny"
+GROUP BY
     1
 ORDER BY 
-    "macho"."physical_sales_store_name" asc
+    "scrawny"."physical_sales_store_name" asc
 LIMIT (100)
 ```
 

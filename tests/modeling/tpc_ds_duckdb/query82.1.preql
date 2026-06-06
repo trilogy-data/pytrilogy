@@ -1,0 +1,19 @@
+import inventory as inventory;
+import physical_sales as physical_sales;
+
+
+
+where
+    inventory.item.current_price between 62 and 92
+    and inventory.date.date between '2000-05-25'::date and '2000-07-24'::date
+    and inventory.item.manufacturer_id in (129, 270, 821, 423)
+    and inventory.quantity_on_hand between 100 and 500
+    and inventory.item.id in physical_sales.item.id
+select
+    inventory.item.text_id,
+    inventory.item.desc,
+    inventory.item.current_price,
+order by
+    inventory.item.text_id asc
+limit 100
+;
