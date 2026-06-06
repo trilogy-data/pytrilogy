@@ -1,7 +1,43 @@
 # Bug B3: `grouping()` in ORDER BY emitted into a groupless CTE (rollup + HAVING-vs-scalar)
 
-**Status:** OPEN (found 2026-06-06). Part of the documented rollup hard-cluster
-(see EVAL_LOOP_INSTRUCTIONS "Rollup family ... is the hard cluster").
+**Status:** FIXED 2026-06-06. Root cause was NOT the renderer — it was select
+finalization. A bare `grouping()`/`grouping_id()` parses with the default
+`STANDARD` grouping mode and (for order-by-only uses) is never sourced as a
+concept, so the planner re-emits it inline in whatever CTE the ORDER BY lands
+on. When a HAVING-vs-scalar comparison forces a groupless join/filter wrapper,
+that CTE has no `GROUP BY`/`ROLLUP` → DuckDB rejects it.
+
+Fix in `trilogy/parsing/v2/select_finalize.py`, called from
+`finalize_select_statement` — two parts:
+
+1. `_validate_order_by_aggregates`: an inline aggregate in ORDER BY that isn't a
+   SELECT output is now a parse error (`ORDER BY contains aggregate ...`). An
+   aggregate can't be computed in the ordering scope; ORDER BY may only
+   reference one via its SELECT alias. The query author projects the
+   `grouping()` (prefix `--` to keep it out of the output rows) and orders by
+   the alias. We do NOT auto-project from ORDER BY — that would be inconsistent
+   with how every other ORDER BY reference must already be in the SELECT.
+   (The pre-existing check only walked `order_by.concept_arguments`, i.e. the
+   aggregate's leaf args — `brand` etc. were in the SELECT, so the inline
+   aggregate slipped through.)
+2. `_fix_projection_grouping_mode`: a `grouping()` projected alongside a
+   ROLLUP/CUBE/GROUPING SETS aggregate is retagged in place to that grouping
+   spec (mode + `by` + grouping_sets) so it co-locates with the rollup aggregate
+   and computes in that CTE instead of stranding in a STANDARD bucket.
+
+So the agent rewrite is: `select ..., --grouping(brand) as gb ... order by gb`.
+Regression tests: `tests/engine/test_duckdb.py::test_inline_aggregate_in_order_by_raises`
+and `::test_projected_grouping_in_rollup_orders_by_alias`. Verified against the
+captured repro workspace (`20260606-032822_ingest`, now raises the actionable
+error) and the TPC-DS rollup suite (q14/18/22/27/36/67/70/77/80/86 still pass —
+they project grouping via named `auto`s / order by aliases).
+
+**Secondary symptom is NOT a bug.** The `:channel` "bind-param leak" for the
+`'store' as channel` constant projection binds fine on this path — DuckDB
+executes past it; the only failure was the `grouping()` one above. Left as-is.
+
+**Original report follows.**
+
 **Severity:** medium — generated SQL is rejected by DuckDB. Top token outlier ingest q14.
 **Area:** `trilogy/dialect/base.py` SQL render — `grouping()` ordering is placed in a downstream
 join/filter CTE that has no `GROUP BY`/`ROLLUP`. (Secondary: a `:channel` bind-param leak for a
@@ -83,3 +119,4 @@ crash and split into three per-channel SELECTs (wrong shape). Related rollup-clu
 EVAL_LOOP_INSTRUCTIONS "Open / harder than a question fix"; inventory
 `token_burn_inventory_20260606.md`.
 </content>
+

@@ -1,0 +1,13 @@
+import all_sales as s;
+
+auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG' and s.date.year = 1998;
+auto web_qual <- s.billing_customer.id ? s.sales_channel = 'WEB'     and s.date.year = 1998;
+auto cust_total <- sum(s.ext_sales_price ? s.sales_channel = 'STORE') by s.billing_customer.id;
+
+where s.billing_customer.id in cat_qual
+   or s.billing_customer.id in web_qual
+  and cust_total is not null
+select
+    round(cust_total / 50) as segment,
+    count(s.billing_customer.id) as customer_count
+limit 100;

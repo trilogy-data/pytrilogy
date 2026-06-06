@@ -36,10 +36,15 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from trilogy.constants import CONFIG
-from trilogy.core.enums import ConceptSource, FunctionClass, FunctionType
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    ConceptSource,
+    FunctionClass,
+    FunctionType,
+)
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -435,6 +440,106 @@ def _rewrite_aliased_source_refs(select: SelectStatement) -> None:
         )
 
 
+_GROUPING_FNS = (FunctionType.GROUPING, FunctionType.GROUPING_ID)
+
+
+def _select_rollup_spec(
+    select: SelectStatement,
+) -> tuple[AggregateGroupingMode, list[Any], list[list[Any]]] | None:
+    """The query's non-STANDARD grouping spec (mode, by, grouping_sets) taken
+    from a ROLLUP/CUBE/GROUPING SETS aggregate in the SELECT projection."""
+    for item in select.selection:
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        lineage = item.content.output.lineage
+        if (
+            isinstance(lineage, AggregateWrapper)
+            and lineage.grouping != AggregateGroupingMode.STANDARD
+        ):
+            return (
+                lineage.grouping,
+                list(lineage.by),
+                [list(g) for g in lineage.grouping_sets],
+            )
+    return None
+
+
+def _is_standard_grouping_aggregate(node: Any) -> bool:
+    return (
+        isinstance(node, AggregateWrapper)
+        and node.grouping == AggregateGroupingMode.STANDARD
+        and node.function.operator in _GROUPING_FNS
+    )
+
+
+def _fix_projection_grouping_mode(select: SelectStatement) -> None:
+    """``grouping()``/``grouping_id()`` are only meaningful inside the scope that
+    performs the ROLLUP/CUBE/GROUPING SETS. They parse with the default STANDARD
+    grouping mode, which keys them into a separate planner bucket from the rollup
+    aggregate; they then strand in a downstream groupless join/filter CTE and
+    render as ``grouping(col)`` with no GROUP BY (DuckDB: "GROUPING statement
+    cannot be used without groups").
+
+    A ``grouping()`` projected in the SELECT (the only place it is allowed — see
+    ``_validate_order_by_aggregates``) just needs its mode aligned with the
+    query's rollup spec so it co-locates with the rollup aggregate.
+    """
+    spec = _select_rollup_spec(select)
+    if spec is None:
+        return
+    mode, by, grouping_sets = spec
+    for sitem in select.selection:
+        if isinstance(
+            sitem.content, ConceptTransform
+        ) and _is_standard_grouping_aggregate(sitem.content.output.lineage):
+            wrapper = cast(AggregateWrapper, sitem.content.output.lineage)
+            sitem.content.output.lineage = AggregateWrapper(
+                function=wrapper.function,
+                by=list(by),
+                grouping=mode,
+                grouping_sets=[list(g) for g in grouping_sets],
+            )
+
+
+def _validate_order_by_aggregates(select: SelectStatement, line_no: int | None) -> None:
+    """Reject inline aggregates in ORDER BY that are not SELECT outputs.
+
+    An aggregate cannot be computed in the ordering scope (it belongs to a
+    GROUP BY); ``grouping()`` in particular renders into a groupless wrapper CTE
+    and crashes DuckDB. ORDER BY may only reference an aggregate via its SELECT
+    alias, so an inline one that has no matching projection is an error — add it
+    to SELECT (``--`` to keep it out of the output rows) and order by the alias.
+    """
+    if not select.order_by:
+        return
+    sig_to_alias = {
+        sig: _strip_local_namespace(addr)
+        for sig, addr in _select_aggregate_outputs(select)
+    }
+    for item in select.order_by.items:
+        aggregates = _collect_condition_aggregates(item.expr)
+        if not aggregates:
+            continue
+        rendered = _render_aggregate(aggregates[0])
+        sig = _aggregate_full_signature(aggregates[0])
+        alias = sig_to_alias.get(sig) if sig is not None else None
+        if alias is not None:
+            hint = (
+                f"order by the SELECT alias `{alias}` instead (`order by {alias} desc`)"
+            )
+        else:
+            hint = (
+                f"add it to SELECT — prefix with `--` to keep it out of the output "
+                f"rows — and order by the alias, e.g. "
+                f"`select ..., --{rendered} as g order by g desc`"
+            )
+        raise InvalidSyntaxException(
+            f"ORDER BY contains aggregate `{rendered}` (line {line_no}), which is "
+            f"not a SELECT output. Aggregates cannot be computed in the ordering "
+            f"scope; {hint}."
+        )
+
+
 def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     line_no = select.meta.line_number if select.meta else None
     if select.where_clause:
@@ -518,6 +623,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                     f"rows, e.g. `select ..., --{cref.address} "
                     f"order by {cref.address} asc`."
                 )
+        _validate_order_by_aggregates(select, line_no)
 
 
 def finalize_select_statement(
@@ -611,6 +717,7 @@ def finalize_select_statement(
                 )
             output_addresses.add(addr)
     select.grain = _calculate_grain(select, context, merged)
+    _fix_projection_grouping_mode(select)
     _validate_syntax(select, context)
 
 

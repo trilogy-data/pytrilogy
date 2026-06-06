@@ -53,6 +53,69 @@ select g, r;
     assert results == [("a", 1.0)]
 
 
+_ROLLUP_GROUPING_MODEL = """
+key sale_id int;
+property sale_id.brand string;
+property sale_id.class string;
+property sale_id.amount float;
+datasource sales (sale_id, brand, class, amount)
+  grain (sale_id)
+  query '''select 1 as sale_id, 'A' as brand, 'X' as class, 10.0 as amount
+           union all select 2, 'A', 'Y', 20.0
+           union all select 3, 'B', 'X', 30.0
+           union all select 4, 'B', 'Y', 100.0''';
+"""
+
+
+def test_inline_aggregate_in_order_by_raises():
+    """An inline aggregate in ORDER BY that isn't a SELECT output is rejected —
+    aggregates can't be computed in the ordering scope. `grouping()` is the
+    motivating case (Bug B3): it must be projected and ordered by alias."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+rowset overall <- select avg(amount) as overall_avg;
+select brand, class, sum(amount) by rollup brand, class as total, --overall.overall_avg
+having total > overall.overall_avg
+order by grouping(brand) desc, grouping(class) desc, brand nulls first;
+"""
+    with raises(Exception, match="ORDER BY contains aggregate"):
+        engine.generate_sql(text)
+
+
+def test_projected_grouping_in_rollup_orders_by_alias():
+    """A `grouping()` projected (here hidden) alongside a `by rollup` aggregate
+    and ordered by its alias must compute in the ROLLUP CTE and be referenced
+    downstream by alias — not re-emitted as `grouping(col)` in the groupless
+    join/filter wrapper (DuckDB: 'GROUPING statement cannot be used without
+    groups'). Bug B3."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+rowset overall <- select avg(amount) as overall_avg;
+select
+    brand,
+    class,
+    sum(amount) by rollup brand, class as total,
+    --overall.overall_avg,
+    --grouping(brand) as gb,
+    --grouping(class) as gc
+having total > overall.overall_avg
+order by gb desc, gc desc, brand nulls first, class nulls first;
+"""
+    sql = engine.generate_sql(text)[-1]
+    # grouping() must be computed in the rollup CTE, not re-emitted in the
+    # groupless ORDER BY of the final wrapper SELECT.
+    assert "grouping(" not in sql.split("ORDER BY")[-1], sql
+    results = engine.execute_text(text)[-1].fetchall()
+    # overall avg = 40; surviving rollup buckets: grand total (160) and B (130).
+    assert [tuple(r) for r in results] == [
+        (None, None, 160.0),
+        ("B", None, 130.0),
+        ("B", "Y", 100.0),
+    ]
+
+
 def test_predicate_not_pushed_past_window_order_key():
     """A filter on a window's ORDER BY key (an aggregate also materialized in
     the upstream group) must not be pushed below/into the window — SQL WHERE
