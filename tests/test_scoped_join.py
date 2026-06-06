@@ -162,20 +162,17 @@ def test_unsupported_join_types_rejected(models: Path, jointype: str):
         parse_text(_select(jointype), root=models)
 
 
-def test_augment_pseudonyms_for_scoped_joins():
-    from trilogy.core.models.build import augment_pseudonyms_for_scoped_joins
+def test_build_scoped_merge_index():
+    from trilogy.core.models.build import _build_scoped_merge_index
 
-    pm: dict[str, set[str]] = {"a": {"a"}, "b": {"b"}, "c": {"c", "x"}}
-    augment_pseudonyms_for_scoped_joins(pm, [("a", "b", [])])
-    assert pm["a"] == {"a", "b"} and pm["b"] == {"a", "b"}
-    # transitive: a<->b then b<->c collapses {a,b,c,x} into one group
-    augment_pseudonyms_for_scoped_joins(pm, [("b", "c", [])])
-    group = {"a", "b", "c", "x"}
-    assert all(pm[k] == group for k in group)
-    # idempotent
-    snapshot = {k: set(v) for k, v in pm.items()}
-    augment_pseudonyms_for_scoped_joins(pm, [("a", "b", []), ("b", "c", [])])
-    assert {k: set(v) for k, v in pm.items()} == snapshot
+    merge_map, partial = _build_scoped_merge_index([("a", "b", [])])
+    assert merge_map == {"a": "b"} and partial == set()
+    # chained joins collapse transitively onto the final target
+    merge_map, _ = _build_scoped_merge_index([("a", "b", []), ("b", "c", [])])
+    assert merge_map == {"a": "c", "b": "c"}
+    # PARTIAL (left) source is tracked for nullable binding
+    _, partial = _build_scoped_merge_index([("a", "b", [Modifier.PARTIAL])])
+    assert partial == {"a"}
 
 
 DIM_ITEM = """key item_id int;
@@ -301,3 +298,143 @@ SELECT
     # the merged anchor key resolves (sourced via the orders datasource)
     assert "customers_customer_id" in sql
     assert "orders_tbl" in sql
+
+
+# --- multi-way join collapse (bug: a 3+ equivalence group selecting a
+# source-side attribute must collapse like a global merge, not surface
+# AmbiguousRelationshipResolution) ----------------------------------------
+
+DIM = """key dim_id int;
+property dim_id.attr string;
+
+datasource dims (did: dim_id, a: attr)
+grain (dim_id)
+address dim_tbl;
+"""
+
+FACT1 = """import dim as d;
+
+key k1 int;
+property k1.m1 float;
+
+datasource f1t (kk: k1, did: d.dim_id, m: m1)
+grain (k1)
+address f1_tbl;
+"""
+
+FACT_N = """import dim as d;
+
+key {key} int;
+
+datasource {tbl} (kk: {key}, did: d.dim_id)
+grain ({key})
+address {tbl}_tbl;
+"""
+
+
+@pytest.fixture
+def three_fact_models(tmp_path: Path) -> Path:
+    (tmp_path / "dim.preql").write_text(DIM)
+    (tmp_path / "f1.preql").write_text(FACT1)
+    (tmp_path / "f2.preql").write_text(FACT_N.format(key="k2", tbl="f2t"))
+    (tmp_path / "f3.preql").write_text(FACT_N.format(key="k3", tbl="f3t"))
+    return tmp_path
+
+
+def test_three_way_join_collapses_like_merge(three_fact_models: Path):
+    # Three facts each import their OWN copy of `dim`; joining all three dim
+    # keys into one equivalence group and selecting a SOURCE-side attribute
+    # (`f1.d.attr`) must resolve, exactly as the equivalent global `merge`
+    # does. The pseudonym-only scoped merge left three distinct dim concepts,
+    # so the planner saw three join paths and raised
+    # AmbiguousRelationshipResolutionException.
+    join_text = """
+import f1 as f1;
+import f2 as f2;
+import f3 as f3;
+
+inner join f1.d.dim_id = f2.d.dim_id
+inner join f1.d.dim_id = f3.d.dim_id
+select f1.d.attr as attr, sum(f1.m1) as total;
+"""
+    env, parsed = parse_text(join_text, root=three_fact_models)
+    # must RESOLVE (no AmbiguousRelationshipResolution) and join the single
+    # collapsed dim onto f1 — the same outcome as the global-merge form.
+    join_sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    assert "dim_tbl" in join_sql and "f1_tbl" in join_sql
+    # f2/f3 contribute no output and are pruned — proof the keys collapsed to one.
+    assert "f2_tbl" not in join_sql and "f3_tbl" not in join_sql
+
+
+# --- build-environment contract: what materialize_for_select produces for a
+# given (env, scoped_joins) input. These pin the build-time merge behavior
+# directly, independent of downstream query resolution. -------------------
+
+
+def _env_for(root: Path, imports: str):
+    # parse a trivial select so the env is populated with the imported concepts
+    env, _ = parse_text(imports + "\nSELECT 1 -> one;", root=root)
+    return env
+
+
+def test_buildenv_collapses_source_concept_to_target(models: Path):
+    env = _env_for(models, "import orders as orders;\nimport customers as customers;")
+    be = env.materialize_for_select(
+        scoped_joins=[("orders.customer_id", "customers.customer_id", [])]
+    )
+    # source resolves to the target concept; target is unchanged
+    assert be.concepts["orders.customer_id"].address == "customers.customer_id"
+    assert be.concepts["customers.customer_id"].address == "customers.customer_id"
+    # the global author env is untouched
+    assert env.concepts["orders.customer_id"].address == "orders.customer_id"
+
+
+def test_buildenv_multiway_collapses_all_sources_to_one_canonical(
+    three_fact_models: Path,
+):
+    env = _env_for(
+        three_fact_models,
+        "import f1 as f1;\nimport f2 as f2;\nimport f3 as f3;",
+    )
+    be = env.materialize_for_select(
+        scoped_joins=[
+            ("f1.d.dim_id", "f2.d.dim_id", []),
+            ("f1.d.dim_id", "f3.d.dim_id", []),
+        ]
+    )
+    # union-find: both sources collapse to the final target (f3), one canonical key
+    assert be.concepts["f1.d.dim_id"].address == "f3.d.dim_id"
+    assert be.concepts["f2.d.dim_id"].address == "f3.d.dim_id"
+    # a dependent's grain collapses too (the whole point — no N distinct keys)
+    attr_grain = be.concepts["f1.d.attr"].grain.components
+    assert "f3.d.dim_id" in attr_grain
+    assert "f1.d.dim_id" not in attr_grain and "f2.d.dim_id" not in attr_grain
+
+
+def test_buildenv_left_join_marks_datasource_binding_partial(models: Path):
+    env = _env_for(models, "import orders as orders;\nimport customers as customers;")
+    be = env.materialize_for_select(
+        scoped_joins=[
+            ("orders.customer_id", "customers.customer_id", [Modifier.PARTIAL])
+        ]
+    )
+    # the orders datasource bound the source key; after a LEFT merge its binding
+    # for the (now target) concept must be partial -> drives a LEFT-OUTER join.
+    orders_ds = be.datasources["orders.orders"]
+    binding = next(
+        c for c in orders_ds.columns if c.concept.address == "customers.customer_id"
+    )
+    assert Modifier.PARTIAL in binding.modifiers
+    assert not binding.is_complete
+
+
+def test_buildenv_inner_join_binding_not_partial(models: Path):
+    env = _env_for(models, "import orders as orders;\nimport customers as customers;")
+    be = env.materialize_for_select(
+        scoped_joins=[("orders.customer_id", "customers.customer_id", [])]
+    )
+    orders_ds = be.datasources["orders.orders"]
+    binding = next(
+        c for c in orders_ds.columns if c.concept.address == "customers.customer_id"
+    )
+    assert Modifier.PARTIAL not in binding.modifiers

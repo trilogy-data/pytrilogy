@@ -4,6 +4,9 @@ gen_length = 8996
 preql_size = 1618
 comp_size = 1089
 generated_sql = """
+
+WITH 
+uneven as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
     \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" as \"catalog_sales_quantity\",
@@ -101,6 +104,27 @@ SELECT
     sum(\"juicy\".\"correlated_catalog_sales_quantity\") as \"catalog_sales_quantity\"
 FROM
     \"juicy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\",
+    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\",
+    coalesce(\"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",\"physical_sales_item_items\".\"I_ITEM_SK\",\"physical_sales_store_returns\".\"SR_ITEM_SK\",\"physical_sales_store_sales\".\"SS_ITEM_SK\"))
+SELECT
+    \"uneven\".\"correlated_physical_sales_item_text_id\" as \"store_sales_item_name\",
+    \"uneven\".\"correlated_physical_sales_item_desc\" as \"store_sales_item_desc\",
+    \"uneven\".\"correlated_physical_sales_store_text_id\" as \"store_sales_store_text_id\",
+    \"uneven\".\"correlated_physical_sales_store_name\" as \"store_name\",
+    sum(\"uneven\".\"correlated_physical_sales_quantity\") as \"store_sales_quantity\",
+    sum(\"uneven\".\"correlated_physical_sales_return_quantity\") as \"store_returns_quantity\",
+    sum(\"uneven\".\"correlated_catalog_sales_quantity\") as \"catalog_sales_quantity\"
+FROM
+    \"uneven\"
 GROUP BY
     1,
     2,

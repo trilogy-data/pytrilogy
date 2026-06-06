@@ -12,7 +12,7 @@ Semantic model statements:
 - datasource statements define a datasource, which is a mapping of fields to a SQL database table. The left side is the SQL column name, the right side is the field name.
 
 SELECT RULES:
-- No FROM, GROUP BY, SUB SELECTS, DISTINCT, UNION, or SELECT *. (SQL table-style `FROM a JOIN b ON ...` is also unsupported — to blend two models on a shared key use the query-scoped `inner|left join <a> = <b>` clause or a `merge`, both described above.) The most common SUB SELECTS misuse is `IN (select ...)` to filter on a related dimension — that does not work. Instead, reference the dimension by its dotted path; Trilogy auto-resolves the join:
+- No FROM, GROUP BY, SUB SELECTS, DISTINCT, UNION, TABLE JOINS (JOIN X on Y=Z), or SELECT *. 
   * Wrong (SQL-style subselect): `where enrollments.student_id in (select student_id where student.state = 'TN')`
   * Right (dot-path on the related dim): `where enrollments.student.state = 'TN'`
   This pattern generalises: any "filter the fact by some attribute of a related entity" → reach across the import chain (`fact.dim.attr`) and put it in WHERE.

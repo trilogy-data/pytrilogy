@@ -34,7 +34,6 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
-    augment_pseudonyms_for_scoped_joins,
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -542,15 +541,13 @@ def get_query_node(
     # in this resolution reuses the base environment's materialized concepts.
     caches = history.build_caches
     # Query-scoped JOINs are applied during the build, not by cloning the author
-    # env: the concept equivalence folds into the (shared) pseudonym_map and the
-    # datasource remap happens in Factory._build_datasource. Stored on caches so
-    # nested sub-selects inherit the same merges.
+    # env: each Factory collapses merged-away source concepts to their canonical
+    # target in `_build_concept` (and marks partial datasource bindings). Stored
+    # on caches so nested sub-selects inherit the same merges.
     if scoped_joins:
         caches.scoped_joins = scoped_joins
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(environment)
-    if caches.scoped_joins:
-        augment_pseudonyms_for_scoped_joins(caches.pseudonym_map, caches.scoped_joins)
     build_cache: dict[str, BuildConcept] = caches.build_cache
     canonical_build_cache: dict[str, BuildConcept] = caches.canonical_build_cache
     base_factory = Factory(

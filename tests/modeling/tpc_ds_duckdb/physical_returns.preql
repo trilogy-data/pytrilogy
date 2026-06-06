@@ -9,8 +9,8 @@ import store as store;
 import item as item;
 import date as return_date;
 import time as time;
-import customer as billing_customer;
-import customer_demographic as customer_demographic;
+import customer as billing_customer; # the billing customer associated with the original sale and current information about them
+import customer_demographic as customer_demographic; # customer demographic profile at return time (optional, may be null)
 
 key ticket_number int; # Surrogate key uniquely identifying a store sales ticket.
 

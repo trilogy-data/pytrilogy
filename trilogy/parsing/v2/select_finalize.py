@@ -111,12 +111,15 @@ def _calculate_grain(
     local_concepts: Mapping[str, Concept],
 ) -> Grain:
     targets = [item.concept for item in select.selection]
-    return Grain.from_concepts(
+    result = Grain.from_concepts(
         targets,
         where_clause=select.where_clause,
         environment=context.environment,
         local_concepts=local_concepts,
     )
+    if select.join_clauses:
+        result = select._collapse_join_keys_in_grain(result)
+    return result
 
 
 def _concept_address(c: Any) -> str:
