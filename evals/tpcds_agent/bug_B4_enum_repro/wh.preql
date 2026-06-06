@@ -1,9 +1,0 @@
-key warehouse_sk int;
-property warehouse_sk.sq_ft enum<bigint>[138504, 294242, 621234, 977787]?;
-
-datasource warehouse (
-    W_WAREHOUSE_SK: warehouse_sk,
-    W_WAREHOUSE_SQ_FT: sq_ft,
-)
-grain (warehouse_sk)
-address warehouse;
