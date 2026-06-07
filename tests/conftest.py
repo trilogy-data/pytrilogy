@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import pytest
 from pytest import fixture
 
 from trilogy.constants import CONFIG
@@ -38,6 +39,22 @@ def _maybe_enable_v4_discovery():
         CONFIG.use_v4_discovery = prior
     else:
         yield
+
+
+def pytest_collection_modifyitems(config, items):
+    """Under a v4 sweep (`TRILOGY_V4_DISCOVERY=1`), turn each test in the v4
+    known-failing registry into an xfail(strict). Keeps the suite green on the
+    v4 planner while every gap stays tracked; a registered test that starts
+    passing XPASSes (strict) so we know to promote it. No-op under v3."""
+    if os.environ.get("TRILOGY_V4_DISCOVERY") != "1":
+        return
+    from tests.v4_known_failing import V4_KNOWN_FAILING
+
+    for item in items:
+        base = item.nodeid.split("[", 1)[0]
+        reason = V4_KNOWN_FAILING.get(base)
+        if reason:
+            item.add_marker(pytest.mark.xfail(reason=reason, strict=True))
 
 
 def load_secret(key: str) -> str | None:

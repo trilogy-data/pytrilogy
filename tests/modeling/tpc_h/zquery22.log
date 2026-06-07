@@ -1,6 +1,6 @@
 query_id = "22"
-generator = "v3"
-gen_length = 1711
+generator = "v4"
+gen_length = 1590
 preql_size = 589
 comp_size = 806
 generated_sql = """
@@ -8,45 +8,43 @@ generated_sql = """
 WITH 
 highfalutin as (
 SELECT
-    avg(CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
+    CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END as \"_virt_filter_account_balance_2277439660458733\"
 FROM
-    \"memory\".\"customer\" as \"orders_customer_customers\"
-WHERE
-    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
+    \"memory\".\"customer\" as \"orders_customer_customers\"),
+wakeful as (
+SELECT
+    1 as \"__preql_internal_all_rows\"
 ),
-thoughtful as (
+abundant as (
 SELECT
     \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
     \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
-    \"orders_customer_customers\".\"c_phone\" as \"orders_customer_phone\"
+    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) as \"cntrycode\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
     LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
 WHERE
     SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') and \"orders_orders\".\"o_orderkey\" is null
 ),
-cooperative as (
+cheerful as (
 SELECT
-    \"thoughtful\".\"orders_customer_account_balance\" as \"orders_customer_account_balance\",
-    \"thoughtful\".\"orders_customer_id\" as \"orders_customer_id\",
-    SUBSTRING(\"thoughtful\".\"orders_customer_phone\",1,2) as \"cntrycode\"
+    avg(\"highfalutin\".\"_virt_filter_account_balance_2277439660458733\") as \"avg_bal_in_target\"
 FROM
-    \"highfalutin\"
-    INNER JOIN \"thoughtful\" on 1=1
-WHERE
-    \"thoughtful\".\"orders_customer_account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
-
+    \"wakeful\"
+    FULL JOIN \"highfalutin\" on 1=1
 GROUP BY
-    1,
-    2,
-    3)
+    \"wakeful\".\"__preql_internal_all_rows\")
 SELECT
-    \"cooperative\".\"cntrycode\" as \"cntrycode\",
-    count(\"cooperative\".\"orders_customer_id\") as \"numcust\",
-    sum(\"cooperative\".\"orders_customer_account_balance\") as \"totacctbal\"
+    \"abundant\".\"cntrycode\" as \"cntrycode\",
+    count(\"abundant\".\"orders_customer_id\") as \"numcust\",
+    sum(\"abundant\".\"orders_customer_account_balance\") as \"totacctbal\"
 FROM
-    \"cooperative\"
+    \"cheerful\"
+    INNER JOIN \"abundant\" on 1=1
+WHERE
+    \"abundant\".\"orders_customer_account_balance\" > \"cheerful\".\"avg_bal_in_target\"
+
 GROUP BY
     1
 ORDER BY 
-    \"cooperative\".\"cntrycode\" asc"""
+    \"abundant\".\"cntrycode\" asc"""

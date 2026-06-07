@@ -22,6 +22,8 @@ if str(_HARNESS_DIR) not in sys.path:
 from run_parity import CASES_DIR, run_case  # noqa: E402
 
 CASES = sorted(CASES_DIR.glob("*.preql"))
+FAILING_DIR = CASES_DIR.parent / "failing_cases"
+FAILING_CASES = sorted(FAILING_DIR.glob("*.preql"))
 
 
 @pytest.mark.v4_parity
@@ -37,6 +39,19 @@ def test_v4_parity(case: Path):
         f"only in v3: {sorted(set(r['_v3'] or []) - set(r['_v4'] or []))[:5]}\n"
         f"only in v4: {sorted(set(r['_v4'] or []) - set(r['_v3'] or []))[:5]}"
     )
+
+
+@pytest.mark.v4_parity
+@pytest.mark.xfail(strict=True, reason="known v4 regression repro, not yet at parity")
+@pytest.mark.parametrize("case", FAILING_CASES, ids=lambda p: p.stem)
+def test_v4_known_failing_case(case: Path):
+    """Standalone repros of v4 regressions distilled from suite tests. Expected to
+    fail (crash or row diff) until the gap is fixed; strict xfail flips this red on
+    a fix so the case gets promoted to cases/."""
+    r = run_case(case)
+    assert (
+        r["status"] == "match"
+    ), f"{case.stem}: still failing ({r['status']})\n{r['v4_err']}"
 
 
 def test_v4_parity_cases_discovered():
