@@ -1,4 +1,5 @@
 from trilogy import Dialects
+from trilogy.hooks.query_debugger import DebuggingHook
 
 SETUP_CODE = """
 
@@ -52,8 +53,6 @@ SELECT
 
 
 def test_aggregate_handling():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     q1 = SETUP_CODE
     exec = Dialects.DUCK_DB.default_executor()
@@ -80,8 +79,6 @@ SELECT
 
 
 def test_aggregate_handling_alias():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     q1 = SETUP_CODE
     exec = Dialects.DUCK_DB.default_executor()
@@ -142,8 +139,6 @@ SELECT
 
 
 def test_aggregate_handling_abstract():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 

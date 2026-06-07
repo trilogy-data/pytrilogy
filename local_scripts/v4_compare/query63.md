@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2569 | 48 | 10.04 ms |
-| reference | 2569 | 48 | 10.25 ms |
-| v4 / ref | 1.00x | 1.00x | 0.98x |
+| v4 | 4665 | 84 | 55.26 ms |
+| reference | 2609 | 48 | 11.50 ms |
+| v4 / ref | 1.79x | 1.75x | 4.81x |
 
 ## Preql
 
@@ -67,8 +67,22 @@ limit 100
 
 ```sql
 WITH 
+abundant as (
+SELECT
+    "physical_sales_store_sales"."SS_ITEM_SK" as "physical_sales_item_id",
+    "physical_sales_store_sales"."SS_SOLD_DATE_SK" as "physical_sales_date_id"
+FROM
+    "memory"."store_sales" as "physical_sales_store_sales"
+WHERE
+    "physical_sales_store_sales"."SS_STORE_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    "physical_sales_store_sales"."SS_STORE_SK"),
 cheerful as (
 SELECT
+    "physical_sales_date_date"."D_MOY" as "physical_sales_date_month_of_year",
     "physical_sales_item_items"."I_MANAGER_ID" as "physical_sales_item_manager_id",
     sum("physical_sales_store_sales"."SS_SALES_PRICE") as "sum_sales"
 FROM
@@ -80,39 +94,61 @@ WHERE
 
 GROUP BY
     1,
-    "physical_sales_date_date"."D_MOY"),
-questionable as (
-SELECT
-    "cheerful"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
-    avg("cheerful"."sum_sales") as "avg_monthly_sales"
-FROM
-    "cheerful"
-GROUP BY
-    1),
+    2),
 uneven as (
 SELECT
+    "physical_sales_date_date"."D_MOY" as "physical_sales_date_month_of_year",
+    "physical_sales_item_items"."I_MANAGER_ID" as "physical_sales_item_manager_id"
+FROM
+    "abundant"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "abundant"."physical_sales_date_id" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "abundant"."physical_sales_item_id" = "physical_sales_item_items"."I_ITEM_SK"
+WHERE
+    "physical_sales_date_date"."D_MONTH_SEQ" in (1200,1201,1202,1203,1204,1205,1206,1207,1208,1209,1210,1211) and ( ( "physical_sales_item_items"."I_CATEGORY" in ('Books','Children','Electronics') and "physical_sales_item_items"."I_CLASS" in ('personal','portable','reference','self-help') and "physical_sales_item_items"."I_BRAND" in ('scholaramalgamalg #14','scholaramalgamalg #7','exportiunivamalg #9','scholaramalgamalg #9') ) or ( "physical_sales_item_items"."I_CATEGORY" in ('Women','Music','Men') and "physical_sales_item_items"."I_CLASS" in ('accessories','classical','fragrances','pants') and "physical_sales_item_items"."I_BRAND" in ('amalgimporto #1','edu packscholar #1','exportiimporto #1','importoamalg #1') ) )
+),
+yummy as (
+SELECT
     "cheerful"."sum_sales" as "sum_sales",
-    "questionable"."avg_monthly_sales" as "avg_monthly_sales",
-    coalesce("cheerful"."physical_sales_item_manager_id","questionable"."physical_sales_item_manager_id") as "physical_sales_item_manager_id"
+    "uneven"."physical_sales_item_manager_id" as "physical_sales_item_manager_id"
+FROM
+    "uneven"
+    LEFT OUTER JOIN "cheerful" on "uneven"."physical_sales_date_month_of_year" = "cheerful"."physical_sales_date_month_of_year" AND "uneven"."physical_sales_item_manager_id" is not distinct from "cheerful"."physical_sales_item_manager_id"
+GROUP BY
+    1,
+    2,
+    "uneven"."physical_sales_date_month_of_year"),
+vacuous as (
+SELECT
+    "yummy"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
+    avg("yummy"."sum_sales") as "avg_monthly_sales"
+FROM
+    "yummy"
+GROUP BY
+    1),
+concerned as (
+SELECT
+    "cheerful"."sum_sales" as "sum_sales",
+    "vacuous"."avg_monthly_sales" as "avg_monthly_sales",
+    coalesce("cheerful"."physical_sales_item_manager_id","vacuous"."physical_sales_item_manager_id") as "physical_sales_item_manager_id"
 FROM
     "cheerful"
-    INNER JOIN "questionable" on "cheerful"."physical_sales_item_manager_id" is not distinct from "questionable"."physical_sales_item_manager_id"
+    INNER JOIN "vacuous" on "cheerful"."physical_sales_item_manager_id" is not distinct from "vacuous"."physical_sales_item_manager_id"
 WHERE
     CASE
-	WHEN "questionable"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
+	WHEN "vacuous"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "vacuous"."avg_monthly_sales") / "vacuous"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    "uneven"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
-    "uneven"."sum_sales" as "sum_sales",
-    "uneven"."avg_monthly_sales" as "avg_monthly_sales"
+    "concerned"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
+    "concerned"."sum_sales" as "sum_sales",
+    "concerned"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
-    "uneven"
+    "concerned"
 ORDER BY 
-    "uneven"."physical_sales_item_manager_id" asc,
-    "uneven"."avg_monthly_sales" asc,
-    "uneven"."sum_sales" asc
+    "concerned"."physical_sales_item_manager_id" asc,
+    "concerned"."avg_monthly_sales" asc,
+    "concerned"."sum_sales" asc
 LIMIT (100)
 ```
 
@@ -134,7 +170,7 @@ WHERE
 GROUP BY
     1,
     "physical_sales_date_date"."D_MOY"),
-questionable as (
+cooperative as (
 SELECT
     "cheerful"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
     avg("cheerful"."sum_sales") as "avg_monthly_sales"
@@ -142,29 +178,29 @@ FROM
     "cheerful"
 GROUP BY
     1),
-uneven as (
+questionable as (
 SELECT
     "cheerful"."sum_sales" as "sum_sales",
-    "questionable"."avg_monthly_sales" as "avg_monthly_sales",
-    coalesce("cheerful"."physical_sales_item_manager_id","questionable"."physical_sales_item_manager_id") as "physical_sales_item_manager_id"
+    "cooperative"."avg_monthly_sales" as "avg_monthly_sales",
+    coalesce("cheerful"."physical_sales_item_manager_id","cooperative"."physical_sales_item_manager_id") as "physical_sales_item_manager_id"
 FROM
     "cheerful"
-    INNER JOIN "questionable" on "cheerful"."physical_sales_item_manager_id" is not distinct from "questionable"."physical_sales_item_manager_id"
+    INNER JOIN "cooperative" on "cheerful"."physical_sales_item_manager_id" is not distinct from "cooperative"."physical_sales_item_manager_id"
 WHERE
     CASE
-	WHEN "questionable"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
+	WHEN "cooperative"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_monthly_sales") / "cooperative"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    "uneven"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
-    "uneven"."sum_sales" as "sum_sales",
-    "uneven"."avg_monthly_sales" as "avg_monthly_sales"
+    "questionable"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
+    "questionable"."sum_sales" as "sum_sales",
+    "questionable"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
-    "uneven"
+    "questionable"
 ORDER BY 
-    "uneven"."physical_sales_item_manager_id" asc,
-    "uneven"."avg_monthly_sales" asc,
-    "uneven"."sum_sales" asc
+    "questionable"."physical_sales_item_manager_id" asc,
+    "questionable"."avg_monthly_sales" asc,
+    "questionable"."sum_sales" asc
 LIMIT (100)
 ```

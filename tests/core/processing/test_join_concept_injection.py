@@ -10,7 +10,12 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildGrain
+from trilogy.core.models.build import (
+    BuildColumnAssignment,
+    BuildConcept,
+    BuildDatasource,
+    BuildGrain,
+)
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 
@@ -41,8 +46,6 @@ def create_test_datasource(
     concepts: list[BuildConcept],
 ) -> BuildDatasource:
     """Helper to create a BuildDatasource for testing."""
-    from trilogy.core.models.build import BuildColumnAssignment
-
     columns = [
         BuildColumnAssignment(concept=c, alias=c.name, modifiers=[]) for c in concepts
     ]

@@ -18,9 +18,9 @@ ref rows: 100 (92 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1632 | 42 | 55.19 ms |
-| reference | 2472 | 61 | 94.63 ms |
-| v4 / ref | 0.66x | 0.69x | 0.58x |
+| v4 | 2425 | 66 | 31.00 ms |
+| reference | 1822 | 48 | 24.67 ms |
+| v4 / ref | 1.33x | 1.38x | 1.26x |
 
 ## Preql
 
@@ -47,46 +47,70 @@ limit 100
 
 ```sql
 WITH 
-thoughtful as (
+abundant as (
 SELECT
-    "returns_billing_customer_customers"."C_CUSTOMER_ID" as "returns_billing_customer_text_id",
+    "returns_store_returns"."SR_CUSTOMER_SK" as "returns_billing_customer_id",
     "returns_store_store"."S_STORE_SK" as "returns_store_id",
     sum("returns_store_returns"."SR_RETURN_AMT") as "total_returns"
 FROM
     "memory"."store_returns" as "returns_store_returns"
     INNER JOIN "memory"."store" as "returns_store_store" on "returns_store_returns"."SR_STORE_SK" = "returns_store_store"."S_STORE_SK"
     INNER JOIN "memory"."date_dim" as "returns_return_date_date" on "returns_store_returns"."SR_RETURNED_DATE_SK" = "returns_return_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer" as "returns_billing_customer_customers" on "returns_store_returns"."SR_CUSTOMER_SK" = "returns_billing_customer_customers"."C_CUSTOMER_SK"
 WHERE
     "returns_store_store"."S_STATE" = 'TN' and "returns_return_date_date"."D_YEAR" = 2000
 
 GROUP BY
     1,
-    2,
-    "returns_billing_customer_customers"."C_CUSTOMER_SK"),
-abundant as (
+    2),
+wakeful as (
 SELECT
-    "thoughtful"."returns_store_id" as "returns_store_id",
-    avg("thoughtful"."total_returns") as "avg_store_returns"
+    "returns_billing_customer_customers"."C_CUSTOMER_ID" as "returns_billing_customer_text_id",
+    "returns_billing_customer_customers"."C_CUSTOMER_SK" as "returns_billing_customer_id",
+    "returns_store_returns"."SR_STORE_SK" as "returns_store_id"
 FROM
-    "thoughtful"
+    "memory"."store_returns" as "returns_store_returns"
+    INNER JOIN "memory"."customer" as "returns_billing_customer_customers" on "returns_store_returns"."SR_CUSTOMER_SK" = "returns_billing_customer_customers"."C_CUSTOMER_SK"),
+juicy as (
+SELECT
+    "abundant"."returns_store_id" as "returns_store_id",
+    avg("abundant"."total_returns") as "avg_store_returns"
+FROM
+    "abundant"
 GROUP BY
-    1)
+    1),
+thoughtful as (
 SELECT
-    "thoughtful"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
+    "wakeful"."returns_store_id" as "returns_store_id"
 FROM
-    "thoughtful"
-    INNER JOIN "abundant" on "thoughtful"."returns_store_id" = "abundant"."returns_store_id"
-WHERE
-    "thoughtful"."total_returns" > ( 1.2 * "abundant"."avg_store_returns" )
-
+    "wakeful"
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    "wakeful"."returns_billing_customer_id" as "returns_billing_customer_id",
+    "wakeful"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
+FROM
+    "wakeful"
 GROUP BY
     1,
-    "abundant"."avg_store_returns",
-    "thoughtful"."returns_store_id",
-    "thoughtful"."total_returns"
+    2),
+concerned as (
+SELECT
+    "cheerful"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
+FROM
+    "abundant"
+    INNER JOIN "cheerful" on "abundant"."returns_billing_customer_id" = "cheerful"."returns_billing_customer_id"
+    INNER JOIN "juicy" on "abundant"."returns_store_id" = "juicy"."returns_store_id"
+    INNER JOIN "thoughtful" on "abundant"."returns_store_id" = "thoughtful"."returns_store_id"
+WHERE
+    "abundant"."total_returns" > ( 1.2 * "juicy"."avg_store_returns" )
+)
+SELECT
+    "concerned"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
+FROM
+    "concerned"
 ORDER BY 
-    "thoughtful"."returns_billing_customer_text_id" asc
+    "concerned"."returns_billing_customer_text_id" asc
 LIMIT (100)
 ```
 
@@ -96,62 +120,49 @@ LIMIT (100)
 WITH 
 thoughtful as (
 SELECT
-    "returns_billing_customer_customers"."C_CUSTOMER_ID" as "returns_billing_customer_text_id",
-    "returns_billing_customer_customers"."C_CUSTOMER_SK" as "returns_billing_customer_id",
-    "returns_store_returns"."SR_RETURN_AMT" as "returns_return_amount",
-    "returns_store_store"."S_STORE_SK" as "returns_store_id"
+    "returns_store_returns"."SR_CUSTOMER_SK" as "returns_billing_customer_id",
+    "returns_store_store"."S_STORE_SK" as "returns_store_id",
+    sum("returns_store_returns"."SR_RETURN_AMT") as "total_returns"
 FROM
     "memory"."store_returns" as "returns_store_returns"
     INNER JOIN "memory"."store" as "returns_store_store" on "returns_store_returns"."SR_STORE_SK" = "returns_store_store"."S_STORE_SK"
     INNER JOIN "memory"."date_dim" as "returns_return_date_date" on "returns_store_returns"."SR_RETURNED_DATE_SK" = "returns_return_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer" as "returns_billing_customer_customers" on "returns_store_returns"."SR_CUSTOMER_SK" = "returns_billing_customer_customers"."C_CUSTOMER_SK"
 WHERE
     "returns_store_store"."S_STATE" = 'TN' and "returns_return_date_date"."D_YEAR" = 2000
-),
-yummy as (
-SELECT
-    "thoughtful"."returns_billing_customer_id" as "returns_billing_customer_id",
-    "thoughtful"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2),
-cooperative as (
-SELECT
-    "thoughtful"."returns_billing_customer_id" as "returns_billing_customer_id",
-    "thoughtful"."returns_billing_customer_text_id" as "returns_billing_customer_text_id",
-    "thoughtful"."returns_store_id" as "returns_store_id",
-    sum("thoughtful"."returns_return_amount") as "total_returns"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2,
-    3),
-abundant as (
-SELECT
-    "cooperative"."returns_store_id" as "returns_store_id",
-    avg("cooperative"."total_returns") as "avg_store_returns"
-FROM
-    "cooperative"
-GROUP BY
-    1)
-SELECT
-    "cooperative"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
-FROM
-    "cooperative"
-    INNER JOIN "abundant" on "cooperative"."returns_store_id" = "abundant"."returns_store_id"
-    INNER JOIN "yummy" on "cooperative"."returns_billing_customer_id" = "yummy"."returns_billing_customer_id" AND "cooperative"."returns_billing_customer_text_id" = "yummy"."returns_billing_customer_text_id"
-WHERE
-    "cooperative"."total_returns" > ( 1.2 * "abundant"."avg_store_returns" )
 
 GROUP BY
     1,
-    "abundant"."avg_store_returns",
-    "cooperative"."returns_store_id",
-    "cooperative"."total_returns"
+    2),
+abundant as (
+SELECT
+    "thoughtful"."returns_store_id" as "returns_store_id",
+    avg("thoughtful"."total_returns") as "avg_store_returns"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
+questionable as (
+SELECT
+    "returns_billing_customer_customers"."C_CUSTOMER_ID" as "returns_billing_customer_text_id",
+    "thoughtful"."returns_store_id" as "returns_store_id",
+    "thoughtful"."total_returns" as "total_returns"
+FROM
+    "thoughtful"
+    INNER JOIN "memory"."customer" as "returns_billing_customer_customers" on "thoughtful"."returns_billing_customer_id" = "returns_billing_customer_customers"."C_CUSTOMER_SK"),
+uneven as (
+SELECT
+    "questionable"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
+FROM
+    "questionable"
+    INNER JOIN "abundant" on "questionable"."returns_store_id" = "abundant"."returns_store_id"
+WHERE
+    "questionable"."total_returns" > ( 1.2 * "abundant"."avg_store_returns" )
+)
+SELECT
+    "uneven"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
+FROM
+    "uneven"
 ORDER BY 
-    "cooperative"."returns_billing_customer_text_id" asc
+    "uneven"."returns_billing_customer_text_id" asc
 LIMIT (100)
 ```

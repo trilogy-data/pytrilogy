@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
-| reference execution | OK (1 rows) |
+| v4 execution | OK (6 rows) |
+| reference execution | OK (6 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+v4 rows: 6 (6 distinct)
+ref rows: 6 (6 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2730 | 67 | 6.02 ms |
-| reference | 1805 | 39 | 4.95 ms |
-| v4 / ref | 1.51x | 1.72x | 1.22x |
+| v4 | 2864 | 79 | 6.46 ms |
+| reference | 1805 | 39 | 9.44 ms |
+| v4 / ref | 1.59x | 2.03x | 0.68x |
 
 ## Preql
 
@@ -65,21 +65,20 @@ order by u_id_s asc nulls first
 
 ```sql
 WITH 
-uneven as (
+juicy as (
 SELECT
     "ss_store_returns"."SR_STORE_SK" as "ss_return_store_id",
     sum("ss_store_returns"."SR_NET_LOSS") as "_sr_grouped_sr_loss",
     sum("ss_store_returns"."SR_RETURN_AMT") as "_sr_grouped_sr_returns"
 FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    "memory"."store_returns" as "ss_store_returns"
     INNER JOIN "memory"."date_dim" as "ss_return_date_date" on "ss_store_returns"."SR_RETURNED_DATE_SK" = "ss_return_date_date"."D_DATE_SK"
 WHERE
     cast("ss_return_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
 
 GROUP BY
     1),
-wakeful as (
+cheerful as (
 SELECT
     "ss_store_sales"."SS_STORE_SK" as "ss_store_id",
     sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "_ss_grouped_ss_sales",
@@ -92,45 +91,58 @@ WHERE
 
 GROUP BY
     1),
-juicy as (
+quizzical as (
 SELECT
-    "uneven"."_sr_grouped_sr_loss" as "_sr_grouped_sr_loss",
-    "uneven"."_sr_grouped_sr_returns" as "_sr_grouped_sr_returns",
-    "uneven"."ss_return_store_id" as "_sr_grouped_sr_store_id"
-FROM
-    "uneven"),
-thoughtful as (
+    :u_channel_s as "u_channel_s"
+),
+young as (
 SELECT
-    "wakeful"."_ss_grouped_ss_profit" as "_ss_grouped_ss_profit",
-    "wakeful"."_ss_grouped_ss_sales" as "_ss_grouped_ss_sales",
-    "wakeful"."ss_store_id" as "_ss_grouped_ss_store_id"
-FROM
-    "wakeful"),
-vacuous as (
-SELECT
-    "juicy"."_sr_grouped_sr_loss" as "sr_grouped_sr_loss",
-    "juicy"."_sr_grouped_sr_returns" as "sr_grouped_sr_returns",
-    "juicy"."_sr_grouped_sr_store_id" as "sr_grouped_sr_store_id"
+    "juicy"."_sr_grouped_sr_loss" as "_sr_grouped_sr_loss",
+    "juicy"."_sr_grouped_sr_returns" as "_sr_grouped_sr_returns",
+    "juicy"."ss_return_store_id" as "_sr_grouped_sr_store_id"
 FROM
     "juicy"),
-cooperative as (
+questionable as (
 SELECT
-    "thoughtful"."_ss_grouped_ss_profit" as "ss_grouped_ss_profit",
-    "thoughtful"."_ss_grouped_ss_sales" as "ss_grouped_ss_sales",
-    "thoughtful"."_ss_grouped_ss_store_id" as "ss_grouped_ss_store_id"
+    "cheerful"."_ss_grouped_ss_profit" as "_ss_grouped_ss_profit",
+    "cheerful"."_ss_grouped_ss_sales" as "_ss_grouped_ss_sales",
+    "cheerful"."ss_store_id" as "_ss_grouped_ss_store_id"
 FROM
-    "thoughtful")
+    "cheerful"),
+sparkling as (
 SELECT
-    :u_channel_s as "u_channel_s",
-    "cooperative"."ss_grouped_ss_store_id" as "u_id_s",
-    cast("cooperative"."ss_grouped_ss_sales" as numeric(15,2)) as "u_sales_s",
-    cast(coalesce("vacuous"."sr_grouped_sr_returns",0) as numeric(15,2)) as "u_returns_s",
-    "cooperative"."ss_grouped_ss_profit" - cast(coalesce("vacuous"."sr_grouped_sr_loss",0) as numeric(15,2)) as "u_profit_s"
+    "young"."_sr_grouped_sr_loss" as "sr_grouped_sr_loss",
+    "young"."_sr_grouped_sr_returns" as "sr_grouped_sr_returns",
+    "young"."_sr_grouped_sr_store_id" as "sr_grouped_sr_store_id"
 FROM
-    "vacuous"
-    INNER JOIN "cooperative" on "vacuous"."sr_grouped_sr_store_id" = "cooperative"."ss_grouped_ss_store_id"
+    "young"),
+abundant as (
+SELECT
+    "questionable"."_ss_grouped_ss_profit" as "ss_grouped_ss_profit",
+    "questionable"."_ss_grouped_ss_sales" as "ss_grouped_ss_sales",
+    "questionable"."_ss_grouped_ss_store_id" as "ss_grouped_ss_store_id"
+FROM
+    "questionable"),
+abhorrent as (
+SELECT
+    "abundant"."ss_grouped_ss_profit" - cast(coalesce("sparkling"."sr_grouped_sr_loss",0) as numeric(15,2)) as "u_profit_s",
+    "abundant"."ss_grouped_ss_store_id" as "u_id_s",
+    cast("abundant"."ss_grouped_ss_sales" as numeric(15,2)) as "u_sales_s",
+    cast(coalesce("sparkling"."sr_grouped_sr_returns",0) as numeric(15,2)) as "u_returns_s"
+FROM
+    "sparkling"
+    INNER JOIN "abundant" on "sparkling"."sr_grouped_sr_store_id" = "abundant"."ss_grouped_ss_store_id")
+SELECT
+    "quizzical"."u_channel_s" as "u_channel_s",
+    "abhorrent"."u_id_s" as "u_id_s",
+    "abhorrent"."u_sales_s" as "u_sales_s",
+    "abhorrent"."u_returns_s" as "u_returns_s",
+    "abhorrent"."u_profit_s" as "u_profit_s"
+FROM
+    "quizzical"
+    FULL JOIN "abhorrent" on 1=1
 ORDER BY 
-    "u_id_s" asc nulls first
+    "abhorrent"."u_id_s" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

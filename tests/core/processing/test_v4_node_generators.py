@@ -7,9 +7,13 @@ generator bodies all run on a genuine plan — synthetic StrategyNodes wouldn't
 exercise the lineage/grain branches the generators isinstance-check.
 """
 
+import types
+
 import pytest
 
-from trilogy import Environment
+import trilogy.core.processing.concept_strategies_v4 as cs
+from trilogy import Dialects, Environment
+from trilogy.constants import CONFIG
 from trilogy.core import graph as nx
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.env_processor import generate_graph
@@ -36,7 +40,10 @@ from trilogy.core.processing.nodes import (
     UnionNode,
     UnnestNode,
 )
+from trilogy.core.processing.v4_helper.strategy_builder import _add_needed_concept
 from trilogy.core.processing.v4_node_generators.dispatch import build_node
+from trilogy.core.processing.v4_node_generators.recursive import gen_recursive
+from trilogy.core.processing.v4_node_generators.rowset import gen_rowset
 
 
 def _build(text: str) -> tuple[Environment, BuildEnvironment]:
@@ -56,11 +63,29 @@ def _search(env, benv, addresses, conditions=None):
     )
 
 
+def _generate_v4_sql(text: str) -> str:
+    env = Environment()
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    CONFIG.use_v4_discovery = True
+    try:
+        statements = executor.generate_sql(text)
+    finally:
+        CONFIG.use_v4_discovery = False
+    return statements[-1]
+
+
 def _find(node: StrategyNode, kind: type) -> bool:
     """True if any node in the parent tree is an instance of `kind`."""
     if isinstance(node, kind):
         return True
     return any(_find(p, kind) for p in node.parents)
+
+
+def _walk(node: StrategyNode) -> list[StrategyNode]:
+    nodes = [node]
+    for parent in node.parents:
+        nodes.extend(_walk(parent))
+    return nodes
 
 
 # ----- recursive -------------------------------------------------------
@@ -117,6 +142,142 @@ class TestUnion:
         info = _search(env, benv, ["local.u"])
         assert info.strategy_node is not None
         assert _find(info.strategy_node, UnionNode)
+
+
+# ----- root source planning -------------------------------------------
+
+BRIDGED_ROOT_MODEL = """
+key passenger_id int;
+property passenger_id.name string;
+property passenger_id.passenger_last_name string;
+
+key rich_full_name string;
+property rich_full_name.rich_last_name string;
+property rich_full_name.net_worth int;
+
+merge passenger_last_name into rich_last_name;
+
+datasource passengers (
+    passenger_id: passenger_id,
+    name: name,
+    passenger_last_name: passenger_last_name,
+)
+grain (passenger_id)
+query '''select 1 as passenger_id, 'Ada' as name, 'Lovelace' as passenger_last_name''';
+
+datasource rich_info (
+    rich_full_name: rich_full_name,
+    rich_last_name: rich_last_name,
+    net_worth: net_worth,
+)
+grain (rich_full_name)
+query '''select 'Ada Lovelace' as rich_full_name, 'Lovelace' as rich_last_name, 10 as net_worth''';
+"""
+
+ROOT_AGGREGATE_FILTER_MODEL = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+key warehouse_id int;
+property order_id.channel string;
+property order_id.amount float;
+
+datasource sales (
+    order_id: order_id,
+    customer_id: customer_id,
+    warehouse_id: warehouse_id,
+    channel: channel,
+    amount: amount,
+)
+grain (order_id, warehouse_id)
+query '''select 1 as order_id, 1 as customer_id, 1 as warehouse_id, 'STORE' as channel, 2.0 as amount''';
+
+datasource customers (
+    customer_id: customer_id,
+    name: name,
+)
+grain (customer_id)
+query '''select 1 as customer_id, 'Ada' as name''';
+
+auto store_total <- sum(amount ? channel = 'STORE') by customer_id;
+auto web_total <- sum(amount ? channel = 'WEB') by customer_id;
+"""
+
+EXISTENCE_COPY_MODEL = """
+key order_id int;
+key warehouse_id int;
+property order_id.cost float;
+key returned_order_id int;
+
+datasource sales (
+    order_id: order_id,
+    warehouse_id: warehouse_id,
+    cost: cost,
+)
+grain (order_id, warehouse_id)
+query '''select 1 as order_id, 1 as warehouse_id, 2.0 as cost''';
+
+datasource returns (
+    returned_order_id: returned_order_id,
+)
+grain (returned_order_id)
+query '''select 2 as returned_order_id''';
+
+auto multi_warehouse_order <- order_id ? count(warehouse_id) by order_id > 1;
+"""
+
+
+class TestRootSourcePlanning:
+    def test_root_source_planner_injects_bridge_keys(self):
+        env, benv = _build(BRIDGED_ROOT_MODEL)
+        info = _search(env, benv, ["local.name", "local.net_worth"])
+
+        assert info.strategy_node is not None
+        assert isinstance(info.strategy_node, MergeNode)
+        parent_outputs = [
+            {concept.address for concept in parent.output_concepts}
+            for parent in info.strategy_node.parents
+        ]
+        assert any(
+            {"local.name", "local.passenger_last_name"}.issubset(outputs)
+            for outputs in parent_outputs
+        )
+        assert any(
+            {"local.net_worth", "local.rich_last_name"}.issubset(outputs)
+            for outputs in parent_outputs
+        )
+
+    def test_root_filter_can_use_aggregate_side_parent(self):
+        sql = _generate_v4_sql(ROOT_AGGREGATE_FILTER_MODEL + """
+where
+    store_total > 0
+    and web_total > store_total
+select
+    name,
+order by
+    name asc
+;
+""")
+
+        assert "INVALID_REFERENCE_BUG" not in sql
+        assert '"name"' in sql
+        assert "customer_id" in sql
+        assert "on 1=1" not in sql
+
+    def test_existence_sources_follow_copied_condition_hosts(self):
+        sql = _generate_v4_sql(EXISTENCE_COPY_MODEL + """
+where
+    order_id not in returned_order_id
+    and order_id in multi_warehouse_order
+select
+    count(order_id) as order_count,
+    sum(cost) as total_cost,
+;
+""")
+
+        assert "INVALID_REFERENCE_BUG" not in sql
+        assert "returned_order_id" in sql
+        assert "multi_warehouse_order" in sql
 
 
 # ----- unnest ----------------------------------------------------------
@@ -371,10 +532,6 @@ class TestConditionInjection:
         assert [c.address for c in sources.existence_concepts] == ["local.avg_value"]
 
     def test_unresolved_row_args_raise(self, monkeypatch):
-        import types
-
-        import trilogy.core.processing.concept_strategies_v4 as cs
-
         env, benv = _build(HAVING_EXTERNAL_MODEL)
         inner = self._inner(env, benv)
         having = BuildHavingClause(
@@ -420,6 +577,146 @@ auto store_name_upper <- upper(store_name);
 auto value_per_store_renamed <- value_per_store;
 """
 
+FACT_AND_DIM_CUSTOMER_MODEL = """
+key return_id int;
+key customer_id int;
+key store_id int;
+property customer_id.text string;
+property return_id.return_amount float;
+
+datasource returns (
+    return_id:return_id,
+    customer_id:customer_id,
+    store_id:store_id,
+    return_amount:return_amount,
+)
+grain (return_id)
+query '''select 1 return_id, 1 customer_id, 10 store_id, 2.0 return_amount''';
+
+datasource customers (
+    customer_id:customer_id,
+    text:text,
+)
+grain (customer_id)
+query '''select 1 customer_id, 'A' text''';
+
+auto total <- sum(return_amount) by customer_id, store_id;
+auto store_avg <- avg(total) by store_id;
+"""
+
+BASIC_COMPOSITE_GRAIN_MODEL = """
+key left_id int;
+key right_id int;
+property left_id.left_value int;
+property right_id.right_value int;
+
+datasource links (
+    left_id:left_id,
+    right_id:right_id,
+)
+grain (left_id, right_id)
+query '''select 1 left_id, 2 right_id''';
+
+datasource lefts (
+    left_id:left_id,
+    left_value:left_value,
+)
+grain (left_id)
+query '''select 1 left_id, 10 left_value''';
+
+datasource rights (
+    right_id:right_id,
+    right_value:right_value,
+)
+grain (right_id)
+query '''select 2 right_id, 15 right_value''';
+
+auto spread <- right_value - left_value;
+"""
+
+AGGREGATE_INPUT_GRAIN_MODEL = """
+key ticket_number int;
+key item_id int;
+property <ticket_number, item_id>.row_counter int;
+
+datasource sales (
+    ticket_number:ticket_number,
+    item_id:item_id,
+    row_counter:row_counter,
+)
+grain (ticket_number, item_id)
+query '''select 1 ticket_number, 10 item_id, 1 row_counter''';
+
+auto total_rows <- sum(row_counter);
+"""
+
+AGGREGATE_WITH_BASIC_ENRICHMENT_MODEL = """
+key ticket_number int;
+key customer_id int;
+key sale_address_id int;
+key item_id int;
+key store_id int;
+property store_id.city string;
+property customer_id.first_name string;
+property customer_id.last_name string;
+property <ticket_number, item_id>.coupon_amt float;
+
+datasource sales (
+    ticket_number:ticket_number,
+    item_id:item_id,
+    customer_id:customer_id,
+    sale_address_id:sale_address_id,
+    store_id:store_id,
+    coupon_amt:coupon_amt,
+)
+grain (ticket_number, item_id)
+query '''select 1 ticket_number, 10 item_id, 2 customer_id, 3 sale_address_id, 4 store_id, 5.0 coupon_amt''';
+
+datasource stores (
+    store_id:store_id,
+    city:city,
+)
+grain (store_id)
+query '''select 4 store_id, 'Midway' city''';
+
+datasource customers (
+    customer_id:customer_id,
+    first_name:first_name,
+    last_name:last_name,
+)
+grain (customer_id)
+query '''select 2 customer_id, 'A' first_name, 'B' last_name''';
+
+auto amt <- sum(coupon_amt) by ticket_number, customer_id, sale_address_id, city;
+auto city_short <- substring(city, 1, 30);
+"""
+
+ROLLUP_ALIAS_MODEL = """
+key row_id int;
+key channel string;
+key entity_id int;
+property entity_id.entity_name string;
+property row_id.amount float;
+
+datasource sales (
+    row_id: row_id,
+    channel: channel,
+    entity_id: entity_id,
+    entity_name: entity_name,
+    amount: amount,
+)
+grain (row_id)
+query '''
+select 1 row_id, 'store' channel, 10 entity_id, 'A' entity_name, 5.0 amount
+''';
+
+auto channel_label <- channel;
+auto id_label <- entity_name;
+auto channel_out <- channel_label;
+auto id_out <- id_label;
+auto total <- sum(amount) by rollup channel_label, id_label;
+"""
+
 
 class TestMultiGroupAssembly:
     def test_derived_dimension_basic_splits_root(self):
@@ -459,6 +756,121 @@ class TestMultiGroupAssembly:
         assert info.strategy_node is not None
         out = {c.address for c in info.strategy_node.output_concepts}
         assert {"local.value_per_store", "local.store_name"} <= out
+
+    def test_grouping_consumes_narrow_root_slice(self):
+        env, benv = _build(FACT_AND_DIM_CUSTOMER_MODEL)
+        info = _search(env, benv, ["local.text", "local.total", "local.store_avg"])
+
+        assert info.strategy_node is not None
+        aggregate_nodes = [
+            node
+            for node in _walk(info.strategy_node)
+            if isinstance(node, GroupNode)
+            and "local.total" in {concept.address for concept in node.output_concepts}
+        ]
+        assert aggregate_nodes
+        for aggregate in aggregate_nodes:
+            descendant_selects = [
+                node for node in _walk(aggregate) if isinstance(node, SelectNode)
+            ]
+            assert all(
+                "local.text"
+                not in {concept.address for concept in node.output_concepts}
+                for node in descendant_selects
+            )
+
+    def test_basic_exposes_declared_grain_keys(self):
+        env, benv = _build(BASIC_COMPOSITE_GRAIN_MODEL)
+        info = _search(env, benv, ["local.spread"])
+
+        assert info.strategy_node is not None
+        matching_nodes = [
+            node
+            for node in _walk(info.strategy_node)
+            if "local.spread" in {concept.address for concept in node.output_concepts}
+        ]
+        assert matching_nodes
+        # The basic node that *produces* spread must carry its declared grain
+        # keys so a downstream sibling can join on them. When spread is the sole
+        # query output the FINAL node dedups it to grain {spread} (matching v3),
+        # so the keys live on the producing node beneath that group, not the
+        # outermost node — assert the invariant on the producer.
+        assert any(
+            {"local.spread", "local.left_id", "local.right_id"}
+            <= {concept.address for concept in node.output_concepts}
+            for node in matching_nodes
+        )
+
+    def test_condition_needed_concept_includes_grain_keys(self):
+        _, benv = _build(BASIC_COMPOSITE_GRAIN_MODEL)
+        needed: set[str] = set()
+
+        _add_needed_concept(needed, benv.concepts["local.spread"])
+
+        assert {"local.spread", "local.left_id", "local.right_id"} <= needed
+
+    def test_aggregate_input_grain_keys_reach_root_scan(self):
+        env, benv = _build(AGGREGATE_INPUT_GRAIN_MODEL)
+        info = _search(env, benv, ["local.total_rows"])
+
+        assert info.strategy_node is not None
+        root_selects = [
+            node
+            for node in _walk(info.strategy_node)
+            if isinstance(node, SelectNode)
+            and "local.row_counter"
+            in {concept.address for concept in node.output_concepts}
+        ]
+        assert root_selects
+        assert {
+            "local.ticket_number",
+            "local.item_id",
+            "local.row_counter",
+        } <= {concept.address for concept in root_selects[0].output_concepts}
+
+    def test_basic_enrichment_projects_to_aggregate_sibling_grain(self):
+        env, benv = _build(AGGREGATE_WITH_BASIC_ENRICHMENT_MODEL)
+        info = _search(
+            env,
+            benv,
+            [
+                "local.last_name",
+                "local.first_name",
+                "local.city_short",
+                "local.ticket_number",
+                "local.amt",
+            ],
+        )
+
+        assert info.strategy_node is not None
+        customer_projections = [
+            node
+            for node in _walk(info.strategy_node)
+            if isinstance(node, (GroupNode, SelectNode))
+            and {"local.first_name", "local.last_name", "local.customer_id"}
+            <= {concept.address for concept in node.output_concepts}
+        ]
+        assert customer_projections
+        assert "local.item_id" not in {
+            concept.address for concept in customer_projections[0].output_concepts
+        }
+
+    def test_rollup_aliases_project_from_grouped_contributor(self):
+        env, benv = _build(ROLLUP_ALIAS_MODEL)
+        info = _search(
+            env,
+            benv,
+            ["local.channel_out", "local.id_out", "local.total"],
+        )
+
+        assert info.strategy_node is not None
+        assert isinstance(info.strategy_node, SelectNode)
+        assert len(info.strategy_node.parents) == 1
+        assert any(
+            isinstance(node, GroupNode)
+            and "local.total" in {concept.address for concept in node.output_concepts}
+            for node in _walk(info.strategy_node.parents[0])
+        )
 
     def test_aggregate_normalizes_input_grain(self):
         """The builder normalizes aggregate inputs to argument grain before
@@ -554,14 +966,10 @@ class TestDispatchGuard:
 
 class TestGeneratorGuards:
     def test_gen_recursive_without_recursive_output_returns_none(self):
-        from trilogy.core.processing.v4_node_generators.recursive import gen_recursive
-
         env, benv = _build(UNNEST_MODEL)
         assert gen_recursive([benv.concepts["local.id"]], [], benv) is None
 
     def test_gen_rowset_empty_outputs_returns_none(self):
-        from trilogy.core.processing.v4_node_generators.rowset import gen_rowset
-
         env, benv = _build(UNNEST_MODEL)
         assert (
             gen_rowset(

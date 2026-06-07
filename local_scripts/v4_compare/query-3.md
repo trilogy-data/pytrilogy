@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
-| reference execution | OK (1 rows) |
+| v4 execution | OK (30 rows) |
+| reference execution | OK (30 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+v4 rows: 30 (30 distinct)
+ref rows: 30 (30 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2474 | 66 | 5.62 ms |
-| reference | 1572 | 38 | 5.86 ms |
-| v4 / ref | 1.57x | 1.74x | 0.96x |
+| v4 | 2818 | 79 | 5.21 ms |
+| reference | 1572 | 38 | 4.59 ms |
+| v4 / ref | 1.79x | 2.08x | 1.13x |
 
 ## Preql
 
@@ -66,7 +66,7 @@ order by u_id_w asc nulls first
 
 ```sql
 WITH 
-uneven as (
+juicy as (
 SELECT
     "ws_web_sales"."WS_WEB_PAGE_SK" as "ws_web_page_id",
     sum("ws_web_sales"."WS_EXT_SALES_PRICE") as "_ws_grouped_ws_sales",
@@ -79,7 +79,7 @@ WHERE
 
 GROUP BY
     1),
-wakeful as (
+cheerful as (
 SELECT
     "wr_web_returns"."WR_WEB_PAGE_SK" as "wr_web_page_id",
     sum("wr_web_returns"."WR_NET_LOSS") as "_wr_grouped_wr_loss",
@@ -92,45 +92,58 @@ WHERE
 
 GROUP BY
     1),
-juicy as (
+quizzical as (
 SELECT
-    "uneven"."_ws_grouped_ws_profit" as "_ws_grouped_ws_profit",
-    "uneven"."_ws_grouped_ws_sales" as "_ws_grouped_ws_sales",
-    "uneven"."ws_web_page_id" as "_ws_grouped_ws_wp_id"
-FROM
-    "uneven"),
-thoughtful as (
+    :u_channel_w as "u_channel_w"
+),
+young as (
 SELECT
-    "wakeful"."_wr_grouped_wr_loss" as "_wr_grouped_wr_loss",
-    "wakeful"."_wr_grouped_wr_returns" as "_wr_grouped_wr_returns",
-    "wakeful"."wr_web_page_id" as "_wr_grouped_wr_wp_id"
-FROM
-    "wakeful"),
-vacuous as (
-SELECT
-    "juicy"."_ws_grouped_ws_profit" as "ws_grouped_ws_profit",
-    "juicy"."_ws_grouped_ws_sales" as "ws_grouped_ws_sales",
-    "juicy"."_ws_grouped_ws_wp_id" as "ws_grouped_ws_wp_id"
+    "juicy"."_ws_grouped_ws_profit" as "_ws_grouped_ws_profit",
+    "juicy"."_ws_grouped_ws_sales" as "_ws_grouped_ws_sales",
+    "juicy"."ws_web_page_id" as "_ws_grouped_ws_wp_id"
 FROM
     "juicy"),
-cooperative as (
+questionable as (
 SELECT
-    "thoughtful"."_wr_grouped_wr_loss" as "wr_grouped_wr_loss",
-    "thoughtful"."_wr_grouped_wr_returns" as "wr_grouped_wr_returns",
-    "thoughtful"."_wr_grouped_wr_wp_id" as "wr_grouped_wr_wp_id"
+    "cheerful"."_wr_grouped_wr_loss" as "_wr_grouped_wr_loss",
+    "cheerful"."_wr_grouped_wr_returns" as "_wr_grouped_wr_returns",
+    "cheerful"."wr_web_page_id" as "_wr_grouped_wr_wp_id"
 FROM
-    "thoughtful")
+    "cheerful"),
+sparkling as (
 SELECT
-    :u_channel_w as "u_channel_w",
-    "vacuous"."ws_grouped_ws_wp_id" as "u_id_w",
-    cast("vacuous"."ws_grouped_ws_sales" as numeric(15,2)) as "u_sales_w",
-    cast(coalesce("cooperative"."wr_grouped_wr_returns",0) as numeric(15,2)) as "u_returns_w",
-    "vacuous"."ws_grouped_ws_profit" - cast(coalesce("cooperative"."wr_grouped_wr_loss",0) as numeric(15,2)) as "u_profit_w"
+    "young"."_ws_grouped_ws_profit" as "ws_grouped_ws_profit",
+    "young"."_ws_grouped_ws_sales" as "ws_grouped_ws_sales",
+    "young"."_ws_grouped_ws_wp_id" as "ws_grouped_ws_wp_id"
 FROM
-    "vacuous"
-    INNER JOIN "cooperative" on "vacuous"."ws_grouped_ws_wp_id" = "cooperative"."wr_grouped_wr_wp_id"
+    "young"),
+abundant as (
+SELECT
+    "questionable"."_wr_grouped_wr_loss" as "wr_grouped_wr_loss",
+    "questionable"."_wr_grouped_wr_returns" as "wr_grouped_wr_returns",
+    "questionable"."_wr_grouped_wr_wp_id" as "wr_grouped_wr_wp_id"
+FROM
+    "questionable"),
+abhorrent as (
+SELECT
+    "sparkling"."ws_grouped_ws_profit" - cast(coalesce("abundant"."wr_grouped_wr_loss",0) as numeric(15,2)) as "u_profit_w",
+    "sparkling"."ws_grouped_ws_wp_id" as "u_id_w",
+    cast("sparkling"."ws_grouped_ws_sales" as numeric(15,2)) as "u_sales_w",
+    cast(coalesce("abundant"."wr_grouped_wr_returns",0) as numeric(15,2)) as "u_returns_w"
+FROM
+    "sparkling"
+    INNER JOIN "abundant" on "sparkling"."ws_grouped_ws_wp_id" = "abundant"."wr_grouped_wr_wp_id")
+SELECT
+    "quizzical"."u_channel_w" as "u_channel_w",
+    "abhorrent"."u_id_w" as "u_id_w",
+    "abhorrent"."u_sales_w" as "u_sales_w",
+    "abhorrent"."u_returns_w" as "u_returns_w",
+    "abhorrent"."u_profit_w" as "u_profit_w"
+FROM
+    "quizzical"
+    FULL JOIN "abhorrent" on 1=1
 ORDER BY 
-    "u_id_w" asc nulls first
+    "abhorrent"."u_id_w" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

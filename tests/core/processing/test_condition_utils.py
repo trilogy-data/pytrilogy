@@ -9,6 +9,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import DataType, EnumType
 from trilogy.core.processing.condition_utility import (
+    _is_tautology as _is_taut_impl,
+)
+from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,
     conditions_mutually_exclusive,
@@ -180,8 +183,6 @@ class TestStripConditionAtoms:
         three = cond_bos + cond_dbh + cond_extra  # type: ignore[operator]
         stripped = strip_condition_atoms(three, cond_bos)
         assert stripped is not None
-        from trilogy.core.processing.condition_utility import decompose_condition
-
         atoms = decompose_condition(stripped)
         assert cond_dbh in atoms
         assert cond_extra in atoms
@@ -432,8 +433,4 @@ class TestFlattenConditions:
 
 
 def _is_tautology(node) -> bool:
-    from trilogy.core.processing.condition_utility import (
-        _is_tautology as _is_taut_impl,
-    )
-
     return isinstance(node, BuildComparison) and _is_taut_impl(node)

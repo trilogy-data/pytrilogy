@@ -1,4 +1,4 @@
-from trilogy import Environment, parse
+from trilogy import Dialects, Environment, parse
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators import gen_multiselect_node
@@ -98,8 +98,6 @@ ALIGN
 def test_multi_select_align_hide():
     """`--alias:` on align hides the join identity from the projection but keeps
     it available as the inner-CTE join key."""
-    from trilogy import Dialects
-
     env = Environment()
     _, statements = parse(
         """

@@ -18,9 +18,9 @@ ref rows: 34 (34 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5758 | 124 | 17.03 ms |
-| reference | 5758 | 124 | 18.34 ms |
-| v4 / ref | 1.00x | 1.00x | 0.93x |
+| v4 | 6093 | 139 | 26.35 ms |
+| reference | 5628 | 128 | 23.97 ms |
+| v4 / ref | 1.08x | 1.09x | 1.10x |
 
 ## Preql
 
@@ -175,28 +175,43 @@ SELECT
     rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_amt" as numeric(15,4)) / cast("yummy"."sale_paid" as numeric(15,4)) asc ) as "currency_rank",
     rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) asc ) as "return_rank"
 FROM
-    "yummy")
+    "yummy"),
+sparkling as (
 SELECT
+    "concerned"."currency_rank" as "currency_rank",
+    "concerned"."return_rank" as "return_rank",
+    "concerned"."return_ratio" as "return_ratio",
+    "concerned"."sales_item_id" as "item",
     CASE
 	WHEN "concerned"."sales_sales_channel" = 'WEB' THEN 'web'
 	WHEN "concerned"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
 	WHEN "concerned"."sales_sales_channel" = 'STORE' THEN 'store'
 	ELSE null
-	END as "channel",
-    "concerned"."sales_item_id" as "item",
-    "concerned"."return_ratio" as "return_ratio",
-    "concerned"."return_rank" as "return_rank",
-    "concerned"."currency_rank" as "currency_rank"
+	END as "channel"
 FROM
-    "concerned"
+    "concerned")
+SELECT
+    "sparkling"."channel" as "channel",
+    "sparkling"."item" as "item",
+    "sparkling"."return_ratio" as "return_ratio",
+    "sparkling"."return_rank" as "return_rank",
+    "sparkling"."currency_rank" as "currency_rank"
+FROM
+    "sparkling"
 WHERE
-    "concerned"."return_rank" <= 10 or "concerned"."currency_rank" <= 10
+    "sparkling"."return_rank" <= 10 or "sparkling"."currency_rank" <= 10
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
 ORDER BY 
-    "channel" asc nulls first,
-    "concerned"."return_rank" asc nulls first,
-    "concerned"."currency_rank" asc nulls first,
-    "item" asc nulls first
+    "sparkling"."channel" asc nulls first,
+    "sparkling"."return_rank" asc nulls first,
+    "sparkling"."currency_rank" asc nulls first,
+    "sparkling"."item" asc nulls first
 LIMIT (100)
 ```
 
@@ -283,10 +298,8 @@ yummy as (
 SELECT
     "abundant"."sales_item_id" as "sales_item_id",
     "abundant"."sales_sales_channel" as "sales_sales_channel",
-    sum("abundant"."sales_net_paid") as "sale_paid",
-    sum("abundant"."sales_quantity") as "sale_qty",
-    sum("cheerful"."sales_return_amount") as "return_amt",
-    sum("cheerful"."sales_return_quantity") as "return_qty"
+    cast(sum("cheerful"."sales_return_amount") as numeric(15,4)) / cast(sum("abundant"."sales_net_paid") as numeric(15,4)) as "currency_ratio",
+    cast(sum("cheerful"."sales_return_quantity") as numeric(15,4)) / cast(sum("abundant"."sales_quantity") as numeric(15,4)) as "return_ratio"
 FROM
     "abundant"
     INNER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
@@ -296,35 +309,41 @@ WHERE
 GROUP BY
     1,
     2),
-concerned as (
+vacuous as (
 SELECT
+    "yummy"."return_ratio" as "return_ratio",
     "yummy"."sales_item_id" as "sales_item_id",
-    "yummy"."sales_sales_channel" as "sales_sales_channel",
-    cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) as "return_ratio",
-    rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_amt" as numeric(15,4)) / cast("yummy"."sale_paid" as numeric(15,4)) asc ) as "currency_rank",
-    rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) asc ) as "return_rank"
+    CASE
+	WHEN "yummy"."sales_sales_channel" = 'WEB' THEN 'web'
+	WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
+	WHEN "yummy"."sales_sales_channel" = 'STORE' THEN 'store'
+	ELSE null
+	END as "channel_label",
+    rank() over (partition by "yummy"."sales_sales_channel" order by "yummy"."currency_ratio" asc ) as "currency_rank",
+    rank() over (partition by "yummy"."sales_sales_channel" order by "yummy"."return_ratio" asc ) as "return_rank"
 FROM
     "yummy")
 SELECT
-    CASE
-	WHEN "concerned"."sales_sales_channel" = 'WEB' THEN 'web'
-	WHEN "concerned"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
-	WHEN "concerned"."sales_sales_channel" = 'STORE' THEN 'store'
-	ELSE null
-	END as "channel",
-    "concerned"."sales_item_id" as "item",
-    "concerned"."return_ratio" as "return_ratio",
-    "concerned"."return_rank" as "return_rank",
-    "concerned"."currency_rank" as "currency_rank"
+    "vacuous"."channel_label" as "channel",
+    "vacuous"."sales_item_id" as "item",
+    "vacuous"."return_ratio" as "return_ratio",
+    "vacuous"."return_rank" as "return_rank",
+    "vacuous"."currency_rank" as "currency_rank"
 FROM
-    "concerned"
+    "vacuous"
 WHERE
-    "concerned"."return_rank" <= 10 or "concerned"."currency_rank" <= 10
+    "vacuous"."return_rank" <= 10 or "vacuous"."currency_rank" <= 10
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
 ORDER BY 
     "channel" asc nulls first,
-    "concerned"."return_rank" asc nulls first,
-    "concerned"."currency_rank" asc nulls first,
+    "vacuous"."return_rank" asc nulls first,
+    "vacuous"."currency_rank" asc nulls first,
     "item" asc nulls first
 LIMIT (100)
 ```

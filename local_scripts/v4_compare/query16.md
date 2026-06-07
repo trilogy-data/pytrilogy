@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3589 | 97 | 59.55 ms |
-| reference | 3589 | 97 | 60.22 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 5373 | 119 | 98.71 ms |
+| reference | 3728 | 83 | 52.67 ms |
+| v4 / ref | 1.44x | 1.43x | 1.87x |
 
 ## Preql
 
@@ -50,7 +50,7 @@ limit 100
 
 ```sql
 WITH 
-abundant as (
+uneven as (
 SELECT
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
     "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_id"
@@ -66,23 +66,39 @@ FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
 GROUP BY
     1),
-uneven as (
+yummy as (
 SELECT
-    "abundant"."cs_order_number" as "cs_order_number",
-    count("abundant"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
+    "uneven"."cs_order_number" as "cs_order_number",
+    count("uneven"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
 FROM
-    "abundant"
+    "uneven"
 GROUP BY
     1
 HAVING
     "_virt_agg_count_7777088585630721" > 1
 ),
-juicy as (
+vacuous as (
 SELECT
-    CASE WHEN "uneven"."_virt_agg_count_7777088585630721" > 1 THEN "uneven"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
+    CASE WHEN "yummy"."_virt_agg_count_7777088585630721" > 1 THEN "yummy"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
 FROM
-    "uneven"),
-questionable as (
+    "yummy"),
+thoughtful as (
+SELECT
+    "cs_catalog_sales"."CS_CALL_CENTER_SK" as "cs_call_center_id",
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+    "cs_catalog_sales"."CS_SHIP_ADDR_SK" as "cs_customer_address_id",
+    "cs_catalog_sales"."CS_SHIP_DATE_SK" as "cs_ship_date_id"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+WHERE
+    "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select vacuous."multi_warehouse_sales" from vacuous where vacuous."multi_warehouse_sales" is not null)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+abhorrent as (
 SELECT
     "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
     "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
@@ -94,57 +110,63 @@ FROM
     INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
     INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select vacuous."multi_warehouse_sales" from vacuous where vacuous."multi_warehouse_sales" is not null)
 ),
-vacuous as (
+abundant as (
 SELECT
-    "questionable"."cs_ext_ship_cost" as "cs_ext_ship_cost",
-    "questionable"."cs_item_id" as "cs_item_id",
-    "questionable"."cs_net_profit" as "cs_net_profit",
-    "questionable"."cs_order_number" as "cs_order_number"
+    "thoughtful"."cs_order_number" as "cs_order_number"
 FROM
-    "questionable"
+    "thoughtful"
+    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "thoughtful"."cs_ship_date_id" = "cs_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "thoughtful"."cs_call_center_id" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "thoughtful"."cs_customer_address_id" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "thoughtful"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "thoughtful"."cs_order_number" in (select vacuous."multi_warehouse_sales" from vacuous where vacuous."multi_warehouse_sales" is not null)
 ),
-sparkling as (
+sweltering as (
 SELECT
-    "vacuous"."cs_order_number" as "cs_order_number"
+    "abhorrent"."cs_ext_ship_cost" as "cs_ext_ship_cost",
+    "abhorrent"."cs_net_profit" as "cs_net_profit"
 FROM
-    "vacuous"
-GROUP BY
-    1),
-concerned as (
-SELECT
-    "vacuous"."cs_ext_ship_cost" as "cs_ext_ship_cost",
-    "vacuous"."cs_net_profit" as "cs_net_profit"
-FROM
-    "vacuous"
+    "abhorrent"
+WHERE
+    "abhorrent"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "abhorrent"."cs_order_number" in (select vacuous."multi_warehouse_sales" from vacuous where vacuous."multi_warehouse_sales" is not null)
+
 GROUP BY
     1,
     2,
-    "vacuous"."cs_item_id",
-    "vacuous"."cs_order_number"),
-abhorrent as (
+    "abhorrent"."cs_item_id",
+    "abhorrent"."cs_order_number"),
+concerned as (
 SELECT
-    count("sparkling"."cs_order_number") as "order_count"
+    "abundant"."cs_order_number" as "cs_order_number"
 FROM
-    "sparkling"),
-young as (
+    "abundant"
+WHERE
+    "abundant"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "abundant"."cs_order_number" in (select vacuous."multi_warehouse_sales" from vacuous where vacuous."multi_warehouse_sales" is not null)
+
+GROUP BY
+    1),
+macho as (
 SELECT
-    sum("concerned"."cs_ext_ship_cost") as "total_shipping_cost",
-    sum("concerned"."cs_net_profit") as "total_net_profit"
+    sum("sweltering"."cs_ext_ship_cost") as "total_shipping_cost",
+    sum("sweltering"."cs_net_profit") as "total_net_profit"
+FROM
+    "sweltering"),
+sparkling as (
+SELECT
+    count("concerned"."cs_order_number") as "order_count"
 FROM
     "concerned")
 SELECT
-    coalesce("abhorrent"."order_count",0) as "order_count",
-    "young"."total_shipping_cost" as "total_shipping_cost",
-    "young"."total_net_profit" as "total_net_profit"
+    coalesce("sparkling"."order_count",0) as "order_count",
+    "macho"."total_shipping_cost" as "total_shipping_cost",
+    "macho"."total_net_profit" as "total_net_profit"
 FROM
-    "young"
-    FULL JOIN "abhorrent" on 1=1
+    "sparkling"
+    FULL JOIN "macho" on 1=1
 ORDER BY 
-    coalesce("abhorrent"."order_count",0) desc
+    coalesce("sparkling"."order_count",0) desc
 LIMIT (100)
 ```
 
@@ -152,7 +174,7 @@ LIMIT (100)
 
 ```sql
 WITH 
-abundant as (
+cooperative as (
 SELECT
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
     "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_id"
@@ -168,27 +190,23 @@ FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
 GROUP BY
     1),
-uneven as (
+questionable as (
 SELECT
-    "abundant"."cs_order_number" as "cs_order_number",
-    count("abundant"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
+    "cooperative"."cs_order_number" as "multi_warehouse_sales"
 FROM
-    "abundant"
+    "cooperative"
 GROUP BY
     1
 HAVING
-    "_virt_agg_count_7777088585630721" > 1
+    count("cooperative"."cs_warehouse_id") > 1
 ),
-juicy as (
+abundant as (
 SELECT
-    CASE WHEN "uneven"."_virt_agg_count_7777088585630721" > 1 THEN "uneven"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
+    "questionable"."multi_warehouse_sales" as "multi_warehouse_sales"
 FROM
-    "uneven"),
-questionable as (
+    "questionable"),
+thoughtful as (
 SELECT
-    "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
-    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
-    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
 FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
@@ -196,42 +214,32 @@ FROM
     INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
     INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
-),
-vacuous as (
-SELECT
-    "questionable"."cs_ext_ship_cost" as "cs_ext_ship_cost",
-    "questionable"."cs_item_id" as "cs_item_id",
-    "questionable"."cs_net_profit" as "cs_net_profit",
-    "questionable"."cs_order_number" as "cs_order_number"
-FROM
-    "questionable"
-WHERE
-    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
-),
-sparkling as (
-SELECT
-    "vacuous"."cs_order_number" as "cs_order_number"
-FROM
-    "vacuous"
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select abundant."multi_warehouse_sales" from abundant where abundant."multi_warehouse_sales" is not null)
+
 GROUP BY
     1),
 concerned as (
 SELECT
-    "vacuous"."cs_ext_ship_cost" as "cs_ext_ship_cost",
-    "vacuous"."cs_net_profit" as "cs_net_profit"
+    "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
+    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit"
 FROM
-    "vacuous"
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select abundant."multi_warehouse_sales" from abundant where abundant."multi_warehouse_sales" is not null)
+
 GROUP BY
     1,
     2,
-    "vacuous"."cs_item_id",
-    "vacuous"."cs_order_number"),
-abhorrent as (
+    "cs_catalog_sales"."CS_ITEM_SK",
+    "cs_catalog_sales"."CS_ORDER_NUMBER"),
+vacuous as (
 SELECT
-    count("sparkling"."cs_order_number") as "order_count"
+    count("thoughtful"."cs_order_number") as "order_count"
 FROM
-    "sparkling"),
+    "thoughtful"),
 young as (
 SELECT
     sum("concerned"."cs_ext_ship_cost") as "total_shipping_cost",
@@ -239,13 +247,13 @@ SELECT
 FROM
     "concerned")
 SELECT
-    coalesce("abhorrent"."order_count",0) as "order_count",
+    coalesce("vacuous"."order_count",0) as "order_count",
     "young"."total_shipping_cost" as "total_shipping_cost",
     "young"."total_net_profit" as "total_net_profit"
 FROM
-    "young"
-    FULL JOIN "abhorrent" on 1=1
+    "vacuous"
+    FULL JOIN "young" on 1=1
 ORDER BY 
-    coalesce("abhorrent"."order_count",0) desc
+    coalesce("vacuous"."order_count",0) desc
 LIMIT (100)
 ```

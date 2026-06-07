@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7450 | 144 | 38.28 ms |
-| reference | 7450 | 144 | 39.79 ms |
-| v4 / ref | 1.00x | 1.00x | 0.96x |
+| v4 | 7710 | 153 | 39.19 ms |
+| reference | 7450 | 144 | 36.86 ms |
+| v4 / ref | 1.03x | 1.06x | 1.06x |
 
 ## Preql
 
@@ -192,17 +192,26 @@ FROM
     INNER JOIN "cheerful" on "vacuous"."sales_channel_dim_id" = "cheerful"."sales_channel_dim_id" AND "vacuous"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_channel_dim_text_id" is not null
-)
+),
+macho as (
 SELECT
-    "abhorrent"."channel_label" as "channel",
-    "abhorrent"."id_label" as "id",
+    "abhorrent"."channel_label" as "channel_label",
+    "abhorrent"."id_label" as "id_label",
+    sum("abhorrent"."profit_minus_loss") as "profit_total",
     sum("abhorrent"."sales_ext_sales_price") as "sales_total",
-    sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total",
-    sum("abhorrent"."profit_minus_loss") as "profit_total"
+    sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total"
 FROM
     "abhorrent"
 GROUP BY
-    ROLLUP (1, 2)
+    ROLLUP (1, 2))
+SELECT
+    "macho"."channel_label" as "channel",
+    "macho"."id_label" as "id",
+    "macho"."sales_total" as "sales_total",
+    "macho"."returns_total" as "returns_total",
+    "macho"."profit_total" as "profit_total"
+FROM
+    "macho"
 ORDER BY 
     "channel" asc nulls first,
     "id" asc nulls first

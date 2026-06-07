@@ -18,9 +18,9 @@ ref rows: 1031 (1031 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3799 | 69 | 22.37 ms |
-| reference | 3799 | 69 | 23.45 ms |
-| v4 / ref | 1.00x | 1.00x | 0.95x |
+| v4 | 3799 | 69 | 25.33 ms |
+| reference | 3459 | 60 | 25.18 ms |
+| v4 / ref | 1.10x | 1.15x | 1.01x |
 
 ## Preql
 
@@ -162,13 +162,12 @@ FROM
     INNER JOIN "memory"."time_dim" as "sales_time_time" on "sales_web_sales_unified"."WS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
 WHERE
     "sales_date_date"."D_YEAR" = 1999 and "sales_date_date"."D_MOY" = 11 and "sales_item_items"."I_MANAGER_ID" = 1 and ( "sales_time_time"."T_MEAL_TIME" = 'breakfast' or "sales_time_time"."T_MEAL_TIME" = 'dinner' )
-),
-abundant as (
+)
 SELECT
-    "sales_item_items"."I_BRAND" as "sales_item_brand_name",
-    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
-    "sales_time_time"."T_HOUR" as "sales_time_hour",
-    "sales_time_time"."T_MINUTE" as "sales_time_minute",
+    "sales_item_items"."I_BRAND_ID" as "brand_id",
+    "sales_item_items"."I_BRAND" as "brand",
+    "sales_time_time"."T_HOUR" as "t_hour",
+    "sales_time_time"."T_MINUTE" as "t_minute",
     sum("cheerful"."sales_ext_sales_price") as "ext_price"
 FROM
     "cheerful"
@@ -178,17 +177,9 @@ GROUP BY
     1,
     2,
     3,
-    4)
-SELECT
-    "abundant"."sales_item_brand_id" as "brand_id",
-    "abundant"."sales_item_brand_name" as "brand",
-    "abundant"."sales_time_hour" as "t_hour",
-    "abundant"."sales_time_minute" as "t_minute",
-    "abundant"."ext_price" as "ext_price"
-FROM
-    "abundant"
+    4
 ORDER BY 
-    "abundant"."ext_price" desc nulls first,
+    "ext_price" desc nulls first,
     "brand_id" asc nulls first,
     "t_hour" asc nulls first,
     "t_minute" asc nulls first

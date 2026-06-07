@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2751 | 42 | 43.39 ms |
-| reference | 2751 | 42 | 43.93 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 3897 | 56 | 52.16 ms |
+| reference | 2440 | 38 | 29.11 ms |
+| v4 / ref | 1.60x | 1.47x | 1.79x |
 
 ## Preql
 
@@ -35,20 +35,20 @@ where
     and physical_sales.date.day_of_week = 1
     and physical_sales.date.year in (1999, 2000, 2001)
     and physical_sales.store.employees between 200 and 295
-    and physical_sales.billing_customer.id is not null
+    and physical_sales.customer.id is not null
 select
     --physical_sales.sale_address.id,
-    physical_sales.billing_customer.last_name,
-    physical_sales.billing_customer.first_name,
+    physical_sales.customer.last_name,
+    physical_sales.customer.first_name,
     substring(physical_sales.store.city, 1, 30) as city_short,
     physical_sales.ticket_number,
     sum(physical_sales.coupon_amt)
-            by physical_sales.ticket_number, physical_sales.billing_customer.id, physical_sales.sale_address.id, physical_sales.store.city as amt,
+            by physical_sales.ticket_number, physical_sales.customer.id, physical_sales.sale_address.id, physical_sales.store.city as amt,
     sum(physical_sales.net_profit)
-            by physical_sales.ticket_number, physical_sales.billing_customer.id, physical_sales.sale_address.id, physical_sales.store.city as profit,
+            by physical_sales.ticket_number, physical_sales.customer.id, physical_sales.sale_address.id, physical_sales.store.city as profit,
 order by
-    physical_sales.billing_customer.last_name asc nulls first,
-    physical_sales.billing_customer.first_name asc nulls first,
+    physical_sales.customer.last_name asc nulls first,
+    physical_sales.customer.first_name asc nulls first,
     city_short asc nulls first,
     profit asc nulls first,
     physical_sales.ticket_number asc
@@ -62,9 +62,25 @@ limit 100
 WITH 
 cooperative as (
 SELECT
-    "physical_sales_billing_customer_customers"."C_FIRST_NAME" as "physical_sales_billing_customer_first_name",
-    "physical_sales_billing_customer_customers"."C_LAST_NAME" as "physical_sales_billing_customer_last_name",
-    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_billing_customer_id",
+    "physical_sales_customer_customers"."C_FIRST_NAME" as "physical_sales_customer_first_name",
+    "physical_sales_customer_customers"."C_LAST_NAME" as "physical_sales_customer_last_name",
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_customer_id"
+FROM
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
+WHERE
+    ( "physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 6 or "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 2 ) and "physical_sales_date_date"."D_DOW" = 1 and "physical_sales_date_date"."D_YEAR" in (1999,2000,2001) and "physical_sales_store_store"."S_NUMBER_EMPLOYEES" BETWEEN 200 AND 295 and "physical_sales_store_sales"."SS_CUSTOMER_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
+abundant as (
+SELECT
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_customer_id",
     "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
     "physical_sales_store_store"."S_CITY" as "physical_sales_store_city",
     sum("physical_sales_store_sales"."SS_COUPON_AMT") as "amt",
@@ -73,7 +89,6 @@ FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
     ( "physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 6 or "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 2 ) and "physical_sales_date_date"."D_DOW" = 1 and "physical_sales_date_date"."D_YEAR" in (1999,2000,2001) and "physical_sales_store_store"."S_NUMBER_EMPLOYEES" BETWEEN 200 AND 295 and "physical_sales_store_sales"."SS_CUSTOMER_SK" is not null
@@ -82,24 +97,23 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    5,
     "physical_sales_store_sales"."SS_ADDR_SK")
 SELECT
-    "cooperative"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
-    "cooperative"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
-    SUBSTRING("cooperative"."physical_sales_store_city",1,30) as "city_short",
-    "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    "cooperative"."amt" as "amt",
-    "cooperative"."profit" as "profit"
+    "cooperative"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
+    "cooperative"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
+    SUBSTRING("abundant"."physical_sales_store_city",1,30) as "city_short",
+    "abundant"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    "abundant"."amt" as "amt",
+    "abundant"."profit" as "profit"
 FROM
     "cooperative"
+    INNER JOIN "abundant" on "cooperative"."physical_sales_customer_id" = "abundant"."physical_sales_customer_id"
 ORDER BY 
-    "cooperative"."physical_sales_billing_customer_last_name" asc nulls first,
-    "cooperative"."physical_sales_billing_customer_first_name" asc nulls first,
+    "cooperative"."physical_sales_customer_last_name" asc nulls first,
+    "cooperative"."physical_sales_customer_first_name" asc nulls first,
     "city_short" asc nulls first,
-    "cooperative"."profit" asc nulls first,
-    "cooperative"."physical_sales_ticket_number" asc
+    "abundant"."profit" asc nulls first,
+    "abundant"."physical_sales_ticket_number" asc
 LIMIT (100)
 ```
 
@@ -109,9 +123,7 @@ LIMIT (100)
 WITH 
 cooperative as (
 SELECT
-    "physical_sales_billing_customer_customers"."C_FIRST_NAME" as "physical_sales_billing_customer_first_name",
-    "physical_sales_billing_customer_customers"."C_LAST_NAME" as "physical_sales_billing_customer_last_name",
-    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_billing_customer_id",
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_customer_id",
     "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
     "physical_sales_store_store"."S_CITY" as "physical_sales_store_city",
     sum("physical_sales_store_sales"."SS_COUPON_AMT") as "amt",
@@ -120,7 +132,6 @@ FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
     ( "physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 6 or "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 2 ) and "physical_sales_date_date"."D_DOW" = 1 and "physical_sales_date_date"."D_YEAR" in (1999,2000,2001) and "physical_sales_store_store"."S_NUMBER_EMPLOYEES" BETWEEN 200 AND 295 and "physical_sales_store_sales"."SS_CUSTOMER_SK" is not null
@@ -129,21 +140,20 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    5,
     "physical_sales_store_sales"."SS_ADDR_SK")
 SELECT
-    "cooperative"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
-    "cooperative"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
+    "physical_sales_customer_customers"."C_LAST_NAME" as "physical_sales_customer_last_name",
+    "physical_sales_customer_customers"."C_FIRST_NAME" as "physical_sales_customer_first_name",
     SUBSTRING("cooperative"."physical_sales_store_city",1,30) as "city_short",
     "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number",
     "cooperative"."amt" as "amt",
     "cooperative"."profit" as "profit"
 FROM
     "cooperative"
+    INNER JOIN "memory"."customer" as "physical_sales_customer_customers" on "cooperative"."physical_sales_customer_id" = "physical_sales_customer_customers"."C_CUSTOMER_SK"
 ORDER BY 
-    "cooperative"."physical_sales_billing_customer_last_name" asc nulls first,
-    "cooperative"."physical_sales_billing_customer_first_name" asc nulls first,
+    "physical_sales_customer_customers"."C_LAST_NAME" asc nulls first,
+    "physical_sales_customer_customers"."C_FIRST_NAME" asc nulls first,
     "city_short" asc nulls first,
     "cooperative"."profit" asc nulls first,
     "cooperative"."physical_sales_ticket_number" asc

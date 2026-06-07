@@ -348,8 +348,14 @@ class PredicatePushdown(OptimizationRule):
         self,
         parent_cte: UnionCTE,
         candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
+        inverse_map: dict[str, list[CTE | UnionCTE]],
     ) -> bool:
         if not isinstance(candidate, BuildConceptArgs):
+            return False
+        children = inverse_map.get(parent_cte.name, [])
+        if not children:
+            return False
+        if not all(is_child_of(candidate, child.condition) for child in children):
             return False
         row_conditions = {x.address for x in candidate.row_arguments}
         if not row_conditions:
@@ -402,7 +408,7 @@ class PredicatePushdown(OptimizationRule):
         if not isinstance(candidate, BuildConceptArgs):
             return False
         if isinstance(parent_cte, UnionCTE):
-            pruned = self._prune_union_parent(parent_cte, candidate)
+            pruned = self._prune_union_parent(parent_cte, candidate, inverse_map)
             pushed = self._push_into_union_branches(
                 cte, parent_cte, candidate, inverse_map
             )

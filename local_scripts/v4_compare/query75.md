@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9753 | 215 | 78.70 ms |
-| reference | 9753 | 215 | 83.42 ms |
-| v4 / ref | 1.00x | 1.00x | 0.94x |
+| v4 | 9192 | 200 | 84.34 ms |
+| reference | 8613 | 184 | 98.17 ms |
+| v4 / ref | 1.07x | 1.09x | 0.86x |
 
 ## Preql
 
@@ -183,11 +183,9 @@ SELECT
     "sales_item_items"."I_CATEGORY_ID" as "sales_item_category_id",
     "sales_item_items"."I_CLASS_ID" as "sales_item_class_id",
     "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id",
-    "thoughtful"."sales_return_amount" as "sales_return_amount",
-    "thoughtful"."sales_return_quantity" as "sales_return_quantity",
     "uneven"."sales_date_year" as "sales_date_year",
-    "uneven"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "uneven"."sales_quantity" as "sales_quantity"
+    "uneven"."sales_ext_sales_price" - coalesce("thoughtful"."sales_return_amount",0.0) as "amt_per_row",
+    "uneven"."sales_quantity" - coalesce("thoughtful"."sales_return_quantity",0) as "cnt_per_row"
 FROM
     "uneven"
     LEFT OUTER JOIN "thoughtful" on "uneven"."sales_item_id" = "thoughtful"."sales_item_id" AND "uneven"."sales_order_id" = "thoughtful"."sales_order_id" AND "uneven"."sales_sales_channel" = "thoughtful"."sales_sales_channel"
@@ -199,120 +197,107 @@ GROUP BY
     4,
     5,
     6,
-    7,
-    8,
-    9),
-concerned as (
-SELECT
-    "vacuous"."sales_date_year" as "sales_date_year",
-    "vacuous"."sales_ext_sales_price" - coalesce("vacuous"."sales_return_amount",0.0) as "amt_per_row",
-    "vacuous"."sales_item_brand_id" as "sales_item_brand_id",
-    "vacuous"."sales_item_category_id" as "sales_item_category_id",
-    "vacuous"."sales_item_class_id" as "sales_item_class_id",
-    "vacuous"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
-    "vacuous"."sales_quantity" - coalesce("vacuous"."sales_return_quantity",0) as "cnt_per_row"
-FROM
-    "vacuous"),
-young as (
-SELECT
-    "concerned"."amt_per_row" as "deduped_amt_per_row",
-    "concerned"."cnt_per_row" as "deduped_cnt_per_row",
-    "concerned"."sales_date_year" as "deduped_sales_date_year",
-    "concerned"."sales_item_brand_id" as "deduped_sales_item_brand_id",
-    "concerned"."sales_item_category_id" as "deduped_sales_item_category_id",
-    "concerned"."sales_item_class_id" as "deduped_sales_item_class_id",
-    "concerned"."sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id"
-FROM
-    "concerned"),
-macho as (
-SELECT
-    "young"."deduped_sales_item_brand_id" as "deduped_sales_item_brand_id",
-    "young"."deduped_sales_item_category_id" as "deduped_sales_item_category_id",
-    "young"."deduped_sales_item_class_id" as "deduped_sales_item_class_id",
-    "young"."deduped_sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id",
-    sum("young"."deduped_amt_per_row") as "_year_pair_curr_amt",
-    sum("young"."deduped_cnt_per_row") as "_year_pair_curr_cnt"
-FROM
-    "young"
-WHERE
-    "young"."deduped_sales_date_year" = 2002
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
+    7),
 sparkling as (
 SELECT
-    "young"."deduped_sales_item_brand_id" as "deduped_sales_item_brand_id",
-    "young"."deduped_sales_item_category_id" as "deduped_sales_item_category_id",
-    "young"."deduped_sales_item_class_id" as "deduped_sales_item_class_id",
-    "young"."deduped_sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id",
-    sum("young"."deduped_amt_per_row") as "_year_pair_prev_amt",
-    sum("young"."deduped_cnt_per_row") as "_year_pair_prev_cnt"
+    "vacuous"."amt_per_row" as "deduped_amt_per_row",
+    "vacuous"."cnt_per_row" as "deduped_cnt_per_row",
+    "vacuous"."sales_date_year" as "deduped_sales_date_year",
+    "vacuous"."sales_item_brand_id" as "deduped_sales_item_brand_id",
+    "vacuous"."sales_item_category_id" as "deduped_sales_item_category_id",
+    "vacuous"."sales_item_class_id" as "deduped_sales_item_class_id",
+    "vacuous"."sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id"
 FROM
-    "young"
+    "vacuous"),
+scrawny as (
+SELECT
+    "sparkling"."deduped_sales_item_brand_id" as "deduped_sales_item_brand_id",
+    "sparkling"."deduped_sales_item_category_id" as "deduped_sales_item_category_id",
+    "sparkling"."deduped_sales_item_class_id" as "deduped_sales_item_class_id",
+    "sparkling"."deduped_sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id",
+    sum("sparkling"."deduped_amt_per_row") as "_year_pair_curr_amt",
+    sum("sparkling"."deduped_cnt_per_row") as "_year_pair_curr_cnt"
+FROM
+    "sparkling"
 WHERE
-    "young"."deduped_sales_date_year" = 2001
+    "sparkling"."deduped_sales_date_year" = 2002
 
 GROUP BY
     1,
     2,
     3,
     4),
-kaput as (
+abhorrent as (
 SELECT
-    "macho"."_year_pair_curr_amt" as "_year_pair_curr_amt",
-    "macho"."_year_pair_curr_cnt" as "_year_pair_curr_cnt",
-    "macho"."deduped_sales_item_brand_id" as "i_brand_id",
-    "macho"."deduped_sales_item_category_id" as "i_category_id",
-    "macho"."deduped_sales_item_class_id" as "i_class_id",
-    "macho"."deduped_sales_item_manufacturer_id" as "i_manufact_id"
+    "sparkling"."deduped_sales_item_brand_id" as "deduped_sales_item_brand_id",
+    "sparkling"."deduped_sales_item_category_id" as "deduped_sales_item_category_id",
+    "sparkling"."deduped_sales_item_class_id" as "deduped_sales_item_class_id",
+    "sparkling"."deduped_sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id",
+    sum("sparkling"."deduped_amt_per_row") as "_year_pair_prev_amt",
+    sum("sparkling"."deduped_cnt_per_row") as "_year_pair_prev_cnt"
 FROM
-    "macho"),
-late as (
-SELECT
-    "sparkling"."_year_pair_prev_amt" as "_year_pair_prev_amt",
-    "sparkling"."_year_pair_prev_cnt" as "_year_pair_prev_cnt",
-    "sparkling"."deduped_sales_item_brand_id" as "i_brand_id",
-    "sparkling"."deduped_sales_item_category_id" as "i_category_id",
-    "sparkling"."deduped_sales_item_class_id" as "i_class_id",
-    "sparkling"."deduped_sales_item_manufacturer_id" as "i_manufact_id"
-FROM
-    "sparkling"),
+    "sparkling"
+WHERE
+    "sparkling"."deduped_sales_date_year" = 2001
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
 divergent as (
 SELECT
-    "kaput"."_year_pair_curr_amt" - "late"."_year_pair_prev_amt" as "sales_amt_diff",
-    "kaput"."_year_pair_curr_cnt" - "late"."_year_pair_prev_cnt" as "sales_cnt_diff",
-    "kaput"."_year_pair_curr_cnt" as "curr_yr_cnt",
-    "late"."_year_pair_prev_cnt" as "prev_yr_cnt",
-    coalesce("kaput"."i_brand_id","late"."i_brand_id") as "year_pair_i_brand_id",
-    coalesce("kaput"."i_category_id","late"."i_category_id") as "year_pair_i_category_id",
-    coalesce("kaput"."i_class_id","late"."i_class_id") as "year_pair_i_class_id",
-    coalesce("kaput"."i_manufact_id","late"."i_manufact_id") as "year_pair_i_manufact_id"
+    "scrawny"."_year_pair_curr_amt" as "_year_pair_curr_amt",
+    "scrawny"."_year_pair_curr_cnt" as "_year_pair_curr_cnt",
+    "scrawny"."deduped_sales_item_brand_id" as "i_brand_id",
+    "scrawny"."deduped_sales_item_category_id" as "i_category_id",
+    "scrawny"."deduped_sales_item_class_id" as "i_class_id",
+    "scrawny"."deduped_sales_item_manufacturer_id" as "i_manufact_id"
 FROM
-    "kaput"
-    FULL JOIN "late" on "kaput"."i_brand_id" is not distinct from "late"."i_brand_id" AND "kaput"."i_category_id" is not distinct from "late"."i_category_id" AND "kaput"."i_class_id" is not distinct from "late"."i_class_id" AND "kaput"."i_manufact_id" is not distinct from "late"."i_manufact_id")
+    "scrawny"),
+macho as (
+SELECT
+    "abhorrent"."_year_pair_prev_amt" as "_year_pair_prev_amt",
+    "abhorrent"."_year_pair_prev_cnt" as "_year_pair_prev_cnt",
+    "abhorrent"."deduped_sales_item_brand_id" as "i_brand_id",
+    "abhorrent"."deduped_sales_item_category_id" as "i_category_id",
+    "abhorrent"."deduped_sales_item_class_id" as "i_class_id",
+    "abhorrent"."deduped_sales_item_manufacturer_id" as "i_manufact_id"
+FROM
+    "abhorrent"),
+busy as (
+SELECT
+    "divergent"."_year_pair_curr_amt" - "macho"."_year_pair_prev_amt" as "sales_amt_diff",
+    "divergent"."_year_pair_curr_cnt" - "macho"."_year_pair_prev_cnt" as "sales_cnt_diff",
+    "divergent"."_year_pair_curr_cnt" as "curr_yr_cnt",
+    "macho"."_year_pair_prev_cnt" as "prev_yr_cnt",
+    coalesce("divergent"."i_brand_id","macho"."i_brand_id") as "year_pair_i_brand_id",
+    coalesce("divergent"."i_category_id","macho"."i_category_id") as "year_pair_i_category_id",
+    coalesce("divergent"."i_class_id","macho"."i_class_id") as "year_pair_i_class_id",
+    coalesce("divergent"."i_manufact_id","macho"."i_manufact_id") as "year_pair_i_manufact_id"
+FROM
+    "divergent"
+    FULL JOIN "macho" on "divergent"."i_brand_id" is not distinct from "macho"."i_brand_id" AND "divergent"."i_category_id" is not distinct from "macho"."i_category_id" AND "divergent"."i_class_id" is not distinct from "macho"."i_class_id" AND "divergent"."i_manufact_id" is not distinct from "macho"."i_manufact_id")
 SELECT
     "quizzical"."prev_year" as "prev_year",
     "quizzical"."year_" as "year_",
-    "divergent"."year_pair_i_brand_id" as "year_pair_i_brand_id",
-    "divergent"."year_pair_i_class_id" as "year_pair_i_class_id",
-    "divergent"."year_pair_i_category_id" as "year_pair_i_category_id",
-    "divergent"."year_pair_i_manufact_id" as "year_pair_i_manufact_id",
-    "divergent"."prev_yr_cnt" as "prev_yr_cnt",
-    "divergent"."curr_yr_cnt" as "curr_yr_cnt",
-    "divergent"."sales_cnt_diff" as "sales_cnt_diff",
-    "divergent"."sales_amt_diff" as "sales_amt_diff"
+    "busy"."year_pair_i_brand_id" as "year_pair_i_brand_id",
+    "busy"."year_pair_i_class_id" as "year_pair_i_class_id",
+    "busy"."year_pair_i_category_id" as "year_pair_i_category_id",
+    "busy"."year_pair_i_manufact_id" as "year_pair_i_manufact_id",
+    "busy"."prev_yr_cnt" as "prev_yr_cnt",
+    "busy"."curr_yr_cnt" as "curr_yr_cnt",
+    "busy"."sales_cnt_diff" as "sales_cnt_diff",
+    "busy"."sales_amt_diff" as "sales_amt_diff"
 FROM
-    "divergent"
+    "busy"
     LEFT OUTER JOIN "quizzical" on 1=1
 WHERE
-    cast("divergent"."curr_yr_cnt" as numeric(17,2)) / cast("divergent"."prev_yr_cnt" as numeric(17,2)) < 0.9
+    cast("busy"."curr_yr_cnt" as numeric(17,2)) / cast("busy"."prev_yr_cnt" as numeric(17,2)) < 0.9
 
 ORDER BY 
-    "divergent"."sales_cnt_diff" asc nulls first,
-    "divergent"."sales_amt_diff" asc nulls first
+    "busy"."sales_cnt_diff" asc nulls first,
+    "busy"."sales_amt_diff" asc nulls first
 LIMIT (100)
 ```
 
@@ -320,7 +305,7 @@ LIMIT (100)
 
 ```sql
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
     "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
     "sales_catalog_returns_unified"."CR_ORDER_NUMBER" as "sales_order_id",
@@ -347,7 +332,7 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_returns" as "sales_web_returns_unified"),
-uneven as (
+abundant as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
@@ -392,26 +377,21 @@ FROM
 WHERE
     "sales_date_date"."D_YEAR" in (2001,2002) and "sales_item_items"."I_CATEGORY" = 'Books'
 ),
-quizzical as (
+concerned as (
 SELECT
-    2001 as "prev_year",
-    2002 as "year_"
-),
-vacuous as (
-SELECT
-    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
-    "sales_item_items"."I_CATEGORY_ID" as "sales_item_category_id",
-    "sales_item_items"."I_CLASS_ID" as "sales_item_class_id",
-    "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id",
-    "thoughtful"."sales_return_amount" as "sales_return_amount",
-    "thoughtful"."sales_return_quantity" as "sales_return_quantity",
-    "uneven"."sales_date_year" as "sales_date_year",
-    "uneven"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "uneven"."sales_quantity" as "sales_quantity"
+    "abundant"."sales_ext_sales_price" - coalesce("cheerful"."sales_return_amount",0.0) as "deduped_amt_per_row",
+    "abundant"."sales_quantity" - coalesce("cheerful"."sales_return_quantity",0) as "deduped_cnt_per_row",
+    "sales_item_items"."I_BRAND_ID" as "deduped_sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "deduped_sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "deduped_sales_item_class_id",
+    "sales_item_items"."I_MANUFACT_ID" as "deduped_sales_item_manufacturer_id"
 FROM
-    "uneven"
-    LEFT OUTER JOIN "thoughtful" on "uneven"."sales_item_id" = "thoughtful"."sales_item_id" AND "uneven"."sales_order_id" = "thoughtful"."sales_order_id" AND "uneven"."sales_sales_channel" = "thoughtful"."sales_sales_channel"
-    INNER JOIN "memory"."item" as "sales_item_items" on "uneven"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+    "abundant"
+    LEFT OUTER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
+    INNER JOIN "memory"."item" as "sales_item_items" on "abundant"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "abundant"."sales_date_year" = 2002
+
 GROUP BY
     1,
     2,
@@ -419,44 +399,55 @@ GROUP BY
     4,
     5,
     6,
-    7,
-    8,
-    9),
-concerned as (
+    "abundant"."sales_date_year"),
+juicy as (
 SELECT
-    "vacuous"."sales_date_year" as "sales_date_year",
-    "vacuous"."sales_ext_sales_price" - coalesce("vacuous"."sales_return_amount",0.0) as "amt_per_row",
-    "vacuous"."sales_item_brand_id" as "sales_item_brand_id",
-    "vacuous"."sales_item_category_id" as "sales_item_category_id",
-    "vacuous"."sales_item_class_id" as "sales_item_class_id",
-    "vacuous"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
-    "vacuous"."sales_quantity" - coalesce("vacuous"."sales_return_quantity",0) as "cnt_per_row"
+    "abundant"."sales_ext_sales_price" - coalesce("cheerful"."sales_return_amount",0.0) as "deduped_amt_per_row",
+    "abundant"."sales_quantity" - coalesce("cheerful"."sales_return_quantity",0) as "deduped_cnt_per_row",
+    "sales_item_items"."I_BRAND_ID" as "deduped_sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "deduped_sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "deduped_sales_item_class_id",
+    "sales_item_items"."I_MANUFACT_ID" as "deduped_sales_item_manufacturer_id"
 FROM
-    "vacuous"),
+    "abundant"
+    LEFT OUTER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
+    INNER JOIN "memory"."item" as "sales_item_items" on "abundant"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "abundant"."sales_date_year" = 2001
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "abundant"."sales_date_year"),
 young as (
 SELECT
-    "concerned"."amt_per_row" as "deduped_amt_per_row",
-    "concerned"."cnt_per_row" as "deduped_cnt_per_row",
-    "concerned"."sales_date_year" as "deduped_sales_date_year",
-    "concerned"."sales_item_brand_id" as "deduped_sales_item_brand_id",
-    "concerned"."sales_item_category_id" as "deduped_sales_item_category_id",
-    "concerned"."sales_item_class_id" as "deduped_sales_item_class_id",
-    "concerned"."sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id"
+    "concerned"."deduped_sales_item_brand_id" as "i_brand_id",
+    "concerned"."deduped_sales_item_category_id" as "i_category_id",
+    "concerned"."deduped_sales_item_class_id" as "i_class_id",
+    "concerned"."deduped_sales_item_manufacturer_id" as "i_manufact_id",
+    sum("concerned"."deduped_amt_per_row") as "_year_pair_curr_amt",
+    sum("concerned"."deduped_cnt_per_row") as "_year_pair_curr_cnt"
 FROM
-    "concerned"),
-macho as (
+    "concerned"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+vacuous as (
 SELECT
-    "young"."deduped_sales_item_brand_id" as "deduped_sales_item_brand_id",
-    "young"."deduped_sales_item_category_id" as "deduped_sales_item_category_id",
-    "young"."deduped_sales_item_class_id" as "deduped_sales_item_class_id",
-    "young"."deduped_sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id",
-    sum("young"."deduped_amt_per_row") as "_year_pair_curr_amt",
-    sum("young"."deduped_cnt_per_row") as "_year_pair_curr_cnt"
+    "juicy"."deduped_sales_item_brand_id" as "i_brand_id",
+    "juicy"."deduped_sales_item_category_id" as "i_category_id",
+    "juicy"."deduped_sales_item_class_id" as "i_class_id",
+    "juicy"."deduped_sales_item_manufacturer_id" as "i_manufact_id",
+    sum("juicy"."deduped_amt_per_row") as "_year_pair_prev_amt",
+    sum("juicy"."deduped_cnt_per_row") as "_year_pair_prev_cnt"
 FROM
-    "young"
-WHERE
-    "young"."deduped_sales_date_year" = 2002
-
+    "juicy"
 GROUP BY
     1,
     2,
@@ -464,74 +455,37 @@ GROUP BY
     4),
 sparkling as (
 SELECT
-    "young"."deduped_sales_item_brand_id" as "deduped_sales_item_brand_id",
-    "young"."deduped_sales_item_category_id" as "deduped_sales_item_category_id",
-    "young"."deduped_sales_item_class_id" as "deduped_sales_item_class_id",
-    "young"."deduped_sales_item_manufacturer_id" as "deduped_sales_item_manufacturer_id",
-    sum("young"."deduped_amt_per_row") as "_year_pair_prev_amt",
-    sum("young"."deduped_cnt_per_row") as "_year_pair_prev_cnt"
+    "vacuous"."_year_pair_prev_cnt" as "prev_yr_cnt",
+    "young"."_year_pair_curr_amt" - "vacuous"."_year_pair_prev_amt" as "sales_amt_diff",
+    "young"."_year_pair_curr_cnt" - "vacuous"."_year_pair_prev_cnt" as "sales_cnt_diff",
+    "young"."_year_pair_curr_cnt" as "curr_yr_cnt",
+    2001 as "prev_year",
+    2002 as "year_",
+    coalesce("vacuous"."i_brand_id","young"."i_brand_id") as "year_pair_i_brand_id",
+    coalesce("vacuous"."i_category_id","young"."i_category_id") as "year_pair_i_category_id",
+    coalesce("vacuous"."i_class_id","young"."i_class_id") as "year_pair_i_class_id",
+    coalesce("vacuous"."i_manufact_id","young"."i_manufact_id") as "year_pair_i_manufact_id"
 FROM
     "young"
+    FULL JOIN "vacuous" on "young"."i_brand_id" is not distinct from "vacuous"."i_brand_id" AND "young"."i_category_id" is not distinct from "vacuous"."i_category_id" AND "young"."i_class_id" is not distinct from "vacuous"."i_class_id" AND "young"."i_manufact_id" is not distinct from "vacuous"."i_manufact_id")
+SELECT
+    "sparkling"."prev_year" as "prev_year",
+    "sparkling"."year_" as "year_",
+    "sparkling"."year_pair_i_brand_id" as "year_pair_i_brand_id",
+    "sparkling"."year_pair_i_class_id" as "year_pair_i_class_id",
+    "sparkling"."year_pair_i_category_id" as "year_pair_i_category_id",
+    "sparkling"."year_pair_i_manufact_id" as "year_pair_i_manufact_id",
+    "sparkling"."prev_yr_cnt" as "prev_yr_cnt",
+    "sparkling"."curr_yr_cnt" as "curr_yr_cnt",
+    "sparkling"."sales_cnt_diff" as "sales_cnt_diff",
+    "sparkling"."sales_amt_diff" as "sales_amt_diff"
+FROM
+    "sparkling"
 WHERE
-    "young"."deduped_sales_date_year" = 2001
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-kaput as (
-SELECT
-    "macho"."_year_pair_curr_amt" as "_year_pair_curr_amt",
-    "macho"."_year_pair_curr_cnt" as "_year_pair_curr_cnt",
-    "macho"."deduped_sales_item_brand_id" as "i_brand_id",
-    "macho"."deduped_sales_item_category_id" as "i_category_id",
-    "macho"."deduped_sales_item_class_id" as "i_class_id",
-    "macho"."deduped_sales_item_manufacturer_id" as "i_manufact_id"
-FROM
-    "macho"),
-late as (
-SELECT
-    "sparkling"."_year_pair_prev_amt" as "_year_pair_prev_amt",
-    "sparkling"."_year_pair_prev_cnt" as "_year_pair_prev_cnt",
-    "sparkling"."deduped_sales_item_brand_id" as "i_brand_id",
-    "sparkling"."deduped_sales_item_category_id" as "i_category_id",
-    "sparkling"."deduped_sales_item_class_id" as "i_class_id",
-    "sparkling"."deduped_sales_item_manufacturer_id" as "i_manufact_id"
-FROM
-    "sparkling"),
-divergent as (
-SELECT
-    "kaput"."_year_pair_curr_amt" - "late"."_year_pair_prev_amt" as "sales_amt_diff",
-    "kaput"."_year_pair_curr_cnt" - "late"."_year_pair_prev_cnt" as "sales_cnt_diff",
-    "kaput"."_year_pair_curr_cnt" as "curr_yr_cnt",
-    "late"."_year_pair_prev_cnt" as "prev_yr_cnt",
-    coalesce("kaput"."i_brand_id","late"."i_brand_id") as "year_pair_i_brand_id",
-    coalesce("kaput"."i_category_id","late"."i_category_id") as "year_pair_i_category_id",
-    coalesce("kaput"."i_class_id","late"."i_class_id") as "year_pair_i_class_id",
-    coalesce("kaput"."i_manufact_id","late"."i_manufact_id") as "year_pair_i_manufact_id"
-FROM
-    "kaput"
-    FULL JOIN "late" on "kaput"."i_brand_id" is not distinct from "late"."i_brand_id" AND "kaput"."i_category_id" is not distinct from "late"."i_category_id" AND "kaput"."i_class_id" is not distinct from "late"."i_class_id" AND "kaput"."i_manufact_id" is not distinct from "late"."i_manufact_id")
-SELECT
-    "quizzical"."prev_year" as "prev_year",
-    "quizzical"."year_" as "year_",
-    "divergent"."year_pair_i_brand_id" as "year_pair_i_brand_id",
-    "divergent"."year_pair_i_class_id" as "year_pair_i_class_id",
-    "divergent"."year_pair_i_category_id" as "year_pair_i_category_id",
-    "divergent"."year_pair_i_manufact_id" as "year_pair_i_manufact_id",
-    "divergent"."prev_yr_cnt" as "prev_yr_cnt",
-    "divergent"."curr_yr_cnt" as "curr_yr_cnt",
-    "divergent"."sales_cnt_diff" as "sales_cnt_diff",
-    "divergent"."sales_amt_diff" as "sales_amt_diff"
-FROM
-    "divergent"
-    LEFT OUTER JOIN "quizzical" on 1=1
-WHERE
-    cast("divergent"."curr_yr_cnt" as numeric(17,2)) / cast("divergent"."prev_yr_cnt" as numeric(17,2)) < 0.9
+    cast("sparkling"."curr_yr_cnt" as numeric(17,2)) / cast("sparkling"."prev_yr_cnt" as numeric(17,2)) < 0.9
 
 ORDER BY 
-    "divergent"."sales_cnt_diff" asc nulls first,
-    "divergent"."sales_amt_diff" asc nulls first
+    "sparkling"."sales_cnt_diff" asc nulls first,
+    "sparkling"."sales_amt_diff" asc nulls first
 LIMIT (100)
 ```

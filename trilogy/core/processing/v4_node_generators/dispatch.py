@@ -9,6 +9,10 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.v4_helper.source_policy import (
+    STRICT_SOURCE_POLICY,
+    SourcePolicy,
+)
 
 from .aggregate import gen_aggregate
 from .basic import gen_basic
@@ -58,6 +62,7 @@ def build_node(
     intrinsic_filter_pushdown: bool = True,
     history: History,
     g: ReferenceGraph,
+    source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
 ) -> StrategyNode | None:
     """Dispatch on `derivation`. ROOT and ROWSET need `history`/`g` (ROOT for
     datasource selection, ROWSET to recursively plan its inner select); the
@@ -76,7 +81,15 @@ def build_node(
         Derivation.ROWSET,
         Derivation.UNION,
     ):
-        return fn(outputs, parents, environment, conditions, history=history, g=g)
+        return fn(
+            outputs,
+            parents,
+            environment,
+            conditions,
+            history=history,
+            g=g,
+            source_policy=source_policy,
+        )
     if derivation == Derivation.FILTER:
         return fn(
             outputs,

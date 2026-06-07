@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from trilogy import parse
 from trilogy.core.enums import (
     BooleanOperator,
@@ -14,6 +16,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildSubselectComparison,
+    BuildWhereClause,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -971,6 +974,38 @@ def _make_union(
     )
 
 
+def _make_union_consumer(
+    name: str,
+    union: UnionCTE,
+    product_id: BuildConcept,
+    category_id: BuildConcept,
+    condition: BuildComparison,
+) -> CTE:
+    return CTE(
+        name=name,
+        source=QueryDatasource(
+            input_concepts=[product_id, category_id],
+            output_concepts=[product_id, category_id],
+            datasources=[union.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={
+                product_id.address: {union.source},
+                category_id.address: {union.source},
+            },
+        ),
+        output_columns=[product_id, category_id],
+        parent_ctes=[union],
+        condition=condition,
+        grain=BuildGrain(),
+        source_map={
+            product_id.address: [union.name],
+            category_id.address: [union.name],
+        },
+        existence_source_map={},
+    )
+
+
 def test_union_branch_pushdown(test_environment, test_environment_graph):
     test_environment = test_environment.materialize_for_select()
     products = test_environment.datasources["products"]
@@ -1019,6 +1054,69 @@ def test_union_branch_pushdown(test_environment, test_environment_graph):
     # second time around it's idempotent
     fresh_rule = PredicatePushdown()
     assert fresh_rule.optimize(consumer, inverse_map)[0] is False
+
+
+def test_union_branch_prune_requires_all_consumers_to_share_condition(
+    test_environment, test_environment_graph
+):
+    test_environment = test_environment.materialize_for_select()
+    products = test_environment.datasources["products"]
+    product_id = test_environment.concepts["product_id"]
+    category_id = test_environment.concepts["category_id"]
+
+    product_one = BuildComparison(
+        left=product_id, right=1, operator=ComparisonOperator.EQ
+    )
+    product_two = BuildComparison(
+        left=product_id, right=2, operator=ComparisonOperator.EQ
+    )
+    branch1_ds = replace(products, name="products_one")
+    branch1_ds.non_partial_for = BuildWhereClause(conditional=product_one)
+    branch2_ds = replace(products, name="products_two")
+    branch2_ds.non_partial_for = BuildWhereClause(conditional=product_two)
+    branch1 = _make_branch_cte("branch1", branch1_ds, product_id, category_id)
+    branch2 = _make_branch_cte("branch2", branch2_ds, product_id, category_id)
+    union = _make_union("union_cte", branch1, branch2, product_id, category_id)
+    consumer_one = _make_union_consumer(
+        "consumer_one", union, product_id, category_id, product_one
+    )
+    consumer_two = _make_union_consumer(
+        "consumer_two", union, product_id, category_id, product_two
+    )
+
+    inverse_map = {"union_cte": [consumer_one, consumer_two]}
+
+    assert PredicatePushdown().optimize(consumer_one, inverse_map)[0] is False
+    assert union.internal_ctes == [branch1, branch2]
+
+
+def test_union_branch_prune_single_consumer(test_environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
+    products = test_environment.datasources["products"]
+    product_id = test_environment.concepts["product_id"]
+    category_id = test_environment.concepts["category_id"]
+
+    product_one = BuildComparison(
+        left=product_id, right=1, operator=ComparisonOperator.EQ
+    )
+    product_two = BuildComparison(
+        left=product_id, right=2, operator=ComparisonOperator.EQ
+    )
+    branch1_ds = replace(products, name="products_one")
+    branch1_ds.non_partial_for = BuildWhereClause(conditional=product_one)
+    branch2_ds = replace(products, name="products_two")
+    branch2_ds.non_partial_for = BuildWhereClause(conditional=product_two)
+    branch1 = _make_branch_cte("branch1", branch1_ds, product_id, category_id)
+    branch2 = _make_branch_cte("branch2", branch2_ds, product_id, category_id)
+    union = _make_union("union_cte", branch1, branch2, product_id, category_id)
+    consumer = _make_union_consumer(
+        "consumer", union, product_id, category_id, product_one
+    )
+
+    inverse_map = {"union_cte": [consumer]}
+
+    assert PredicatePushdown().optimize(consumer, inverse_map)[0] is True
+    assert union.internal_ctes == [branch1]
 
 
 def test_union_branch_pushdown_remove_strips_consumer(

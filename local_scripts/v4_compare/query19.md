@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1944 | 28 | 25.61 ms |
-| reference | 1944 | 28 | 25.74 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 1896 | 28 | 25.69 ms |
+| reference | 1896 | 28 | 26.20 ms |
+| v4 / ref | 1.00x | 1.00x | 0.98x |
 
 ## Preql
 
@@ -31,7 +31,7 @@ where
     physical_sales.item.manager_id = 8
     and physical_sales.date.month_of_year = 11
     and physical_sales.date.year = 1998
-    and substring(physical_sales.billing_customer.address.zip, 1, 5) != substring(physical_sales.store.zip, 1, 5)
+    and substring(physical_sales.customer.address.zip, 1, 5) != substring(physical_sales.store.zip, 1, 5)
 select
     physical_sales.item.brand_id,
     physical_sales.item.brand_name,
@@ -62,10 +62,10 @@ FROM
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."customer_address" as "physical_sales_billing_customer_address_customer_address" on "physical_sales_billing_customer_customers"."C_CURRENT_ADDR_SK" = "physical_sales_billing_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "physical_sales_customer_address_customer_address" on "physical_sales_customer_customers"."C_CURRENT_ADDR_SK" = "physical_sales_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "physical_sales_item_items"."I_MANAGER_ID" = 8 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("physical_sales_store_store"."S_ZIP",1,5)
+    "physical_sales_item_items"."I_MANAGER_ID" = 8 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("physical_sales_store_store"."S_ZIP",1,5)
 
 GROUP BY
     1,
@@ -95,10 +95,10 @@ FROM
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."customer_address" as "physical_sales_billing_customer_address_customer_address" on "physical_sales_billing_customer_customers"."C_CURRENT_ADDR_SK" = "physical_sales_billing_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "physical_sales_customer_address_customer_address" on "physical_sales_customer_customers"."C_CURRENT_ADDR_SK" = "physical_sales_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "physical_sales_item_items"."I_MANAGER_ID" = 8 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("physical_sales_store_store"."S_ZIP",1,5)
+    "physical_sales_item_items"."I_MANAGER_ID" = 8 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("physical_sales_store_store"."S_ZIP",1,5)
 
 GROUP BY
     1,

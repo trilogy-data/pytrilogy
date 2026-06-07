@@ -1,4 +1,5 @@
 query_id = "48"
+generator = "v3"
 gen_length = 2366
 preql_size = 1610
 comp_size = 1425

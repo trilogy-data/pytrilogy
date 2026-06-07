@@ -1,22 +1,13 @@
 query_id = "15"
+generator = "v3"
 gen_length = 1430
 preql_size = 396
 comp_size = 560
 generated_sql = """
 
 WITH 
-highfalutin as (
+quizzical as (
 SELECT
-    \"lineitem\".\"l_linenumber\" as \"line_no\",
-    \"lineitem\".\"l_orderkey\" as \"order_id\",
-    CASE WHEN \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END as \"_virt_filter_revenue_6893837512415319\"
-FROM
-    \"memory\".\"lineitem\" as \"lineitem\"),
-yummy as (
-SELECT
-    \"lineitem\".\"l_discount\" as \"discount\",
-    \"lineitem\".\"l_extendedprice\" as \"extended_price\",
-    \"lineitem\".\"l_shipdate\" as \"ship_date\",
     \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
     sum(CASE WHEN \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) as \"supplier_rev\"
 FROM
@@ -32,98 +23,23 @@ cooperative as (
 SELECT
     \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
-    \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\"
+    \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
+    \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"quizzical\".\"supplier_rev\" as \"supplier_rev\"
 FROM
-    \"memory\".\"lineitem\" as \"lineitem\"
+    \"memory\".\"supplier\" as \"part_supplier_supplier\"
+    INNER JOIN \"quizzical\" on \"part_supplier_supplier\".\"s_suppkey\" = \"quizzical\".\"part_supplier_id\")
+SELECT
+    \"cooperative\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"cooperative\".\"part_supplier_name\" as \"part_supplier_name\",
+    \"cooperative\".\"part_supplier_address\" as \"part_supplier_address\",
+    \"cooperative\".\"part_supplier_phone\" as \"part_supplier_phone\",
+    \"cooperative\".\"supplier_rev\" as \"total_revenue\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"cooperative\" on 1=1
 WHERE
-    \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01'
-
-GROUP BY
-    1),
-cheerful as (
-SELECT
-    max(\"quizzical\".\"supplier_rev\") as \"max_supplier_rev\"
-FROM
-    \"quizzical\"),
-cooperative as (
-SELECT
-    \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
-    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
-    \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\"
-FROM
-    \"memory\".\"lineitem\" as \"lineitem\"
-    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"lineitem\".\"l_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"),
-cheerful as (
-SELECT
-    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
-    sum(\"highfalutin\".\"_virt_filter_revenue_6893837512415319\") as \"supplier_rev\"
-FROM
-    \"highfalutin\"
-    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"highfalutin\".\"line_no\" = \"lineitem\".\"l_linenumber\" AND \"highfalutin\".\"order_id\" = \"lineitem\".\"l_orderkey\"
-GROUP BY
-    1),
-concerned as (
-SELECT
-    \"yummy\".\"part_supplier_address\" as \"part_supplier_address\",
-    \"yummy\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"yummy\".\"part_supplier_name\" as \"part_supplier_name\",
-    \"yummy\".\"part_supplier_phone\" as \"part_supplier_phone\"
-FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-juicy as (
-SELECT
-    CASE WHEN \"yummy\".\"ship_date\" >= date '1996-01-01' and \"yummy\".\"ship_date\" < date '1996-04-01' THEN \"yummy\".\"extended_price\" * (1 - \"yummy\".\"discount\") ELSE NULL END as \"_virt_filter_revenue_6893837512415319\"
-FROM
-    \"yummy\"),
-questionable as (
-SELECT
-    max(\"cheerful\".\"supplier_rev\") as \"max_supplier_rev\"
-FROM
-    \"cheerful\"),
-young as (
-SELECT
-    \"cheerful\".\"supplier_rev\" as \"supplier_rev\",
-    \"concerned\".\"part_supplier_address\" as \"part_supplier_address\",
-    \"concerned\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"concerned\".\"part_supplier_name\" as \"part_supplier_name\",
-    \"concerned\".\"part_supplier_phone\" as \"part_supplier_phone\"
-FROM
-    \"concerned\"
-    INNER JOIN \"cheerful\" on \"concerned\".\"part_supplier_id\" = \"cheerful\".\"part_supplier_id\"
-    FULL JOIN \"juicy\" on 1=1
-    FULL JOIN \"questionable\" on 1=1
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-sweltering as (
-SELECT
-    \"young\".\"part_supplier_address\" as \"part_supplier_address\",
-    \"young\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"young\".\"part_supplier_name\" as \"part_supplier_name\",
-    \"young\".\"part_supplier_phone\" as \"part_supplier_phone\",
-    \"young\".\"supplier_rev\" as \"supplier_rev\",
-    \"young\".\"supplier_rev\" as \"total_revenue\"
-FROM
-    \"young\")
-SELECT
-    \"sweltering\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"sweltering\".\"part_supplier_name\" as \"part_supplier_name\",
-    \"sweltering\".\"part_supplier_address\" as \"part_supplier_address\",
-    \"sweltering\".\"part_supplier_phone\" as \"part_supplier_phone\",
-    \"sweltering\".\"total_revenue\" as \"total_revenue\"
-FROM
-    \"questionable\"
-    INNER JOIN \"sweltering\" on 1=1
-WHERE
-    \"sweltering\".\"supplier_rev\" = \"questionable\".\"max_supplier_rev\"
+    \"cooperative\".\"supplier_rev\" = \"cheerful\".\"max_supplier_rev\"
 
 ORDER BY 
-    \"sweltering\".\"part_supplier_id\" asc"""
+    \"cooperative\".\"part_supplier_id\" asc"""

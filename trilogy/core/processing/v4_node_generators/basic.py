@@ -7,7 +7,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 
-from .common import parent_outputs_needed
+from .common import outputs_with_parent_grain_keys, parent_outputs_needed
 
 
 def gen_basic(
@@ -31,11 +31,12 @@ def gen_basic(
             environment=environment,
             preexisting_conditions=pre,
         )
-    inputs = parent_outputs_needed(outputs, parents, conditions)
+    full_outputs = outputs_with_parent_grain_keys(outputs, parents)
+    inputs = parent_outputs_needed(full_outputs, parents, conditions)
     if len(parents) == 1:
         return SelectNode(
             input_concepts=inputs,
-            output_concepts=outputs,
+            output_concepts=full_outputs,
             environment=environment,
             parents=parents,
             conditions=conditions.conditional if conditions else None,
@@ -43,7 +44,7 @@ def gen_basic(
         )
     return MergeNode(
         input_concepts=inputs,
-        output_concepts=outputs,
+        output_concepts=full_outputs,
         environment=environment,
         parents=parents,
         conditions=conditions.conditional if conditions else None,

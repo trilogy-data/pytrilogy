@@ -1,11 +1,12 @@
 query_id = "02"
-gen_length = 2449
+generator = "v3"
+gen_length = 2679
 preql_size = 562
 comp_size = 840
 generated_sql = """
 
 WITH 
-thoughtful as (
+cooperative as (
 SELECT
     \"part\".\"p_mfgr\" as \"manufacturer\",
     \"part\".\"p_partkey\" as \"id\",
@@ -21,8 +22,9 @@ FROM
     INNER JOIN \"memory\".\"part\" as \"part\" on \"partsupp\".\"ps_partkey\" = \"part\".\"p_partkey\"
     INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
+    INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
 WHERE
-    \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS'
+    \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS' and \"supplier_nation_region_region\".\"r_name\" = 'EUROPE'
 ),
 questionable as (
 SELECT
@@ -39,23 +41,23 @@ WHERE
 GROUP BY
     1)
 SELECT
-    \"thoughtful\".\"supplier_account_balance\" as \"supplier_account_balance\",
-    \"thoughtful\".\"supplier_name\" as \"supplier_name\",
-    \"thoughtful\".\"supplier_nation_name\" as \"supplier_nation_name\",
-    \"thoughtful\".\"id\" as \"id\",
-    \"thoughtful\".\"manufacturer\" as \"manufacturer\",
-    \"thoughtful\".\"supplier_address\" as \"supplier_address\",
-    \"thoughtful\".\"supplier_phone\" as \"supplier_phone\",
-    \"thoughtful\".\"supplier_comment\" as \"supplier_comment\"
+    \"cooperative\".\"supplier_account_balance\" as \"supplier_account_balance\",
+    \"cooperative\".\"supplier_name\" as \"supplier_name\",
+    \"cooperative\".\"supplier_nation_name\" as \"supplier_nation_name\",
+    \"cooperative\".\"id\" as \"id\",
+    \"cooperative\".\"manufacturer\" as \"manufacturer\",
+    \"cooperative\".\"supplier_address\" as \"supplier_address\",
+    \"cooperative\".\"supplier_phone\" as \"supplier_phone\",
+    \"cooperative\".\"supplier_comment\" as \"supplier_comment\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"questionable\" on \"thoughtful\".\"id\" = \"questionable\".\"id\"
+    \"cooperative\"
+    INNER JOIN \"questionable\" on \"cooperative\".\"id\" = \"questionable\".\"id\"
 WHERE
-    \"thoughtful\".\"supply_cost\" = \"questionable\".\"min_supply_cost_in_europe\"
+    \"cooperative\".\"supply_cost\" = \"questionable\".\"min_supply_cost_in_europe\"
 
 ORDER BY 
-    \"thoughtful\".\"supplier_account_balance\" desc,
-    \"thoughtful\".\"supplier_nation_name\" asc,
-    \"thoughtful\".\"supplier_name\" asc,
-    \"thoughtful\".\"id\" asc
+    \"cooperative\".\"supplier_account_balance\" desc,
+    \"cooperative\".\"supplier_nation_name\" asc,
+    \"cooperative\".\"supplier_name\" asc,
+    \"cooperative\".\"id\" asc
 LIMIT (100)"""

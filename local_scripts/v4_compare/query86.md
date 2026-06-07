@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2387 | 59 | 44.96 ms |
-| reference | 2387 | 59 | 46.99 ms |
-| v4 / ref | 1.00x | 1.00x | 0.96x |
+| v4 | 2387 | 59 | 40.29 ms |
+| reference | 2138 | 52 | 40.49 ms |
+| v4 / ref | 1.12x | 1.13x | 0.99x |
 
 ## Preql
 
@@ -143,46 +143,39 @@ thoughtful as (
 SELECT
     "cheerful"."web_sales_item_category" as "web_sales_item_category",
     "cheerful"."web_sales_item_class" as "web_sales_item_class",
-    "cheerful"."web_sales_net_paid" as "web_sales_net_paid"
+    CASE
+	WHEN grouping("cheerful"."web_sales_item_class") = 0 THEN "cheerful"."web_sales_item_category"
+	ELSE null
+	END as "partition_cat",
+    grouping("cheerful"."web_sales_item_category") + grouping("cheerful"."web_sales_item_class") as "lochierarchy",
+    sum("cheerful"."web_sales_net_paid") as "total_sum"
 FROM
-    "cheerful"),
-cooperative as (
-SELECT
-    "thoughtful"."web_sales_item_category" as "web_sales_item_category",
-    "thoughtful"."web_sales_item_class" as "web_sales_item_class",
-    grouping("thoughtful"."web_sales_item_category") as "g_cat",
-    grouping("thoughtful"."web_sales_item_class") as "g_class",
-    sum("thoughtful"."web_sales_net_paid") as "total_sum"
-FROM
-    "thoughtful"
+    "cheerful"
 GROUP BY
     ROLLUP (1, 2)),
-questionable as (
+cooperative as (
 SELECT
-    "cooperative"."g_cat" + "cooperative"."g_class" as "lochierarchy",
+    "thoughtful"."lochierarchy" as "lochierarchy",
+    "thoughtful"."total_sum" as "total_sum",
+    "thoughtful"."web_sales_item_category" as "web_sales_item_category",
+    "thoughtful"."web_sales_item_class" as "web_sales_item_class",
+    rank() over (partition by "thoughtful"."lochierarchy","thoughtful"."partition_cat" order by "thoughtful"."total_sum" desc ) as "rank_within_parent"
+FROM
+    "thoughtful")
+SELECT
     "cooperative"."total_sum" as "total_sum",
-    "cooperative"."web_sales_item_category" as "web_sales_item_category",
-    "cooperative"."web_sales_item_class" as "web_sales_item_class",
-    rank() over (partition by "cooperative"."g_cat" + "cooperative"."g_class",CASE
-	WHEN "cooperative"."g_class" = 0 THEN "cooperative"."web_sales_item_category"
-	ELSE null
-	END order by "cooperative"."total_sum" desc ) as "rank_within_parent"
+    "cooperative"."web_sales_item_category" as "i_category",
+    "cooperative"."web_sales_item_class" as "i_class",
+    "cooperative"."lochierarchy" as "lochierarchy",
+    "cooperative"."rank_within_parent" as "rank_within_parent"
 FROM
-    "cooperative")
-SELECT
-    "questionable"."total_sum" as "total_sum",
-    "questionable"."web_sales_item_category" as "i_category",
-    "questionable"."web_sales_item_class" as "i_class",
-    "questionable"."lochierarchy" as "lochierarchy",
-    "questionable"."rank_within_parent" as "rank_within_parent"
-FROM
-    "questionable"
+    "cooperative"
 ORDER BY 
-    "questionable"."lochierarchy" desc nulls first,
+    "cooperative"."lochierarchy" desc nulls first,
     CASE
-	WHEN "questionable"."lochierarchy" = 0 THEN "questionable"."web_sales_item_category"
+	WHEN "cooperative"."lochierarchy" = 0 THEN "cooperative"."web_sales_item_category"
 	ELSE null
 	END asc nulls first,
-    "questionable"."rank_within_parent" asc nulls first
+    "cooperative"."rank_within_parent" asc nulls first
 LIMIT (100)
 ```

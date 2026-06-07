@@ -7,6 +7,10 @@ from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.union_node import build_layers, is_union
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
+from trilogy.core.processing.v4_helper.source_policy import (
+    STRICT_SOURCE_POLICY,
+    SourcePolicy,
+)
 
 from .common import parent_outputs_needed
 
@@ -23,6 +27,7 @@ def gen_union(
     *,
     history: V4History,
     g: ReferenceGraph,
+    source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
 ) -> StrategyNode | None:
     """Stack parent outputs into a UNION ALL. Each parent contributes one
     arm; the union node is responsible for column-aligning them. UnionNode
@@ -44,6 +49,7 @@ def gen_union(
             environment=environment,
             depth=0,
             g=g,
+            source_policy=source_policy,
             conditions=[conditions] if conditions else [],
         ).strategy_node
         if parent is None:

@@ -18,9 +18,9 @@ ref rows: 19 (19 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3051 | 52 | 16.45 ms |
-| reference | 3051 | 52 | 15.48 ms |
-| v4 / ref | 1.00x | 1.00x | 1.06x |
+| v4 | 3121 | 59 | 21.65 ms |
+| reference | 2224 | 44 | 18.41 ms |
+| v4 / ref | 1.40x | 1.34x | 1.18x |
 
 ## Preql
 
@@ -57,7 +57,14 @@ SELECT
     CASE WHEN "item2_items"."I_ITEM_SK" in (2,3,5,7,11,13,17,19,23,29) THEN "item2_items"."I_ITEM_ID" ELSE NULL END as "special_item_ids"
 FROM
     "memory"."item" as "item2_items"),
-abundant as (
+wakeful as (
+SELECT
+    "highfalutin"."special_item_ids" as "special_item_ids"
+FROM
+    "highfalutin"
+GROUP BY
+    1),
+uneven as (
 SELECT
     "web_sales_billing_customer_address_customer_address"."CA_CITY" as "web_sales_billing_customer_address_city",
     "web_sales_billing_customer_address_customer_address"."CA_ZIP" as "web_sales_billing_customer_address_zip",
@@ -72,36 +79,36 @@ FROM
     LEFT OUTER JOIN "memory"."customer" as "web_sales_billing_customer_customers" on "web_sales_web_sales"."WS_BILL_CUSTOMER_SK" = "web_sales_billing_customer_customers"."C_CUSTOMER_SK"
     LEFT OUTER JOIN "memory"."customer_address" as "web_sales_billing_customer_address_customer_address" on "web_sales_billing_customer_customers"."C_CURRENT_ADDR_SK" = "web_sales_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "web_sales_date_date"."D_QOY" = 2 and "web_sales_date_date"."D_YEAR" = 2001 and ( SUBSTRING("web_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "web_sales_item_items"."I_ITEM_ID" in (select highfalutin."special_item_ids" from highfalutin where highfalutin."special_item_ids" is not null) )
+    "web_sales_date_date"."D_QOY" = 2 and "web_sales_date_date"."D_YEAR" = 2001 and ( SUBSTRING("web_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "web_sales_item_items"."I_ITEM_ID" in (select wakeful."special_item_ids" from wakeful where wakeful."special_item_ids" is not null) )
 ),
-uneven as (
+yummy as (
 SELECT
-    "abundant"."web_sales_billing_customer_address_city" as "web_sales_billing_customer_address_city",
-    "abundant"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip",
-    "abundant"."web_sales_sales_price" as "web_sales_sales_price"
+    "uneven"."web_sales_billing_customer_address_city" as "web_sales_billing_customer_address_city",
+    "uneven"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip",
+    "uneven"."web_sales_sales_price" as "web_sales_sales_price"
 FROM
-    "abundant"
+    "uneven"
 WHERE
-    ( SUBSTRING("abundant"."web_sales_billing_customer_address_zip",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "abundant"."web_sales_item_text_id" in (select highfalutin."special_item_ids" from highfalutin where highfalutin."special_item_ids" is not null) )
+    ( SUBSTRING("uneven"."web_sales_billing_customer_address_zip",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "uneven"."web_sales_item_text_id" in (select wakeful."special_item_ids" from wakeful where wakeful."special_item_ids" is not null) )
 
 GROUP BY
     1,
     2,
     3,
-    "abundant"."web_sales_item_id",
-    "abundant"."web_sales_order_number")
+    "uneven"."web_sales_item_id",
+    "uneven"."web_sales_order_number")
 SELECT
-    "uneven"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip",
-    "uneven"."web_sales_billing_customer_address_city" as "web_sales_billing_customer_address_city",
-    sum("uneven"."web_sales_sales_price") as "total_sales"
+    "yummy"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip",
+    "yummy"."web_sales_billing_customer_address_city" as "web_sales_billing_customer_address_city",
+    sum("yummy"."web_sales_sales_price") as "total_sales"
 FROM
-    "uneven"
+    "yummy"
 GROUP BY
     1,
     2
 ORDER BY 
-    "uneven"."web_sales_billing_customer_address_zip" asc,
-    "uneven"."web_sales_billing_customer_address_city" asc
+    "yummy"."web_sales_billing_customer_address_zip" asc,
+    "yummy"."web_sales_billing_customer_address_city" asc
 LIMIT (100)
 ```
 
@@ -109,18 +116,20 @@ LIMIT (100)
 
 ```sql
 WITH 
-highfalutin as (
+quizzical as (
 SELECT
-    CASE WHEN "item2_items"."I_ITEM_SK" in (2,3,5,7,11,13,17,19,23,29) THEN "item2_items"."I_ITEM_ID" ELSE NULL END as "special_item_ids"
+    "item2_items"."I_ITEM_ID" as "special_item_ids"
 FROM
-    "memory"."item" as "item2_items"),
-abundant as (
+    "memory"."item" as "item2_items"
+WHERE
+    "item2_items"."I_ITEM_SK" in (2,3,5,7,11,13,17,19,23,29)
+
+GROUP BY
+    1),
+uneven as (
 SELECT
     "web_sales_billing_customer_address_customer_address"."CA_CITY" as "web_sales_billing_customer_address_city",
     "web_sales_billing_customer_address_customer_address"."CA_ZIP" as "web_sales_billing_customer_address_zip",
-    "web_sales_item_items"."I_ITEM_ID" as "web_sales_item_text_id",
-    "web_sales_item_items"."I_ITEM_SK" as "web_sales_item_id",
-    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number",
     "web_sales_web_sales"."WS_SALES_PRICE" as "web_sales_sales_price"
 FROM
     "memory"."web_sales" as "web_sales_web_sales"
@@ -129,24 +138,14 @@ FROM
     LEFT OUTER JOIN "memory"."customer" as "web_sales_billing_customer_customers" on "web_sales_web_sales"."WS_BILL_CUSTOMER_SK" = "web_sales_billing_customer_customers"."C_CUSTOMER_SK"
     LEFT OUTER JOIN "memory"."customer_address" as "web_sales_billing_customer_address_customer_address" on "web_sales_billing_customer_customers"."C_CURRENT_ADDR_SK" = "web_sales_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "web_sales_date_date"."D_QOY" = 2 and "web_sales_date_date"."D_YEAR" = 2001 and ( SUBSTRING("web_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "web_sales_item_items"."I_ITEM_ID" in (select highfalutin."special_item_ids" from highfalutin where highfalutin."special_item_ids" is not null) )
-),
-uneven as (
-SELECT
-    "abundant"."web_sales_billing_customer_address_city" as "web_sales_billing_customer_address_city",
-    "abundant"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip",
-    "abundant"."web_sales_sales_price" as "web_sales_sales_price"
-FROM
-    "abundant"
-WHERE
-    ( SUBSTRING("abundant"."web_sales_billing_customer_address_zip",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "abundant"."web_sales_item_text_id" in (select highfalutin."special_item_ids" from highfalutin where highfalutin."special_item_ids" is not null) )
+    "web_sales_date_date"."D_QOY" = 2 and "web_sales_date_date"."D_YEAR" = 2001 and ( SUBSTRING("web_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "web_sales_item_items"."I_ITEM_ID" in (select quizzical."special_item_ids" from quizzical where quizzical."special_item_ids" is not null) )
 
 GROUP BY
     1,
     2,
     3,
-    "abundant"."web_sales_item_id",
-    "abundant"."web_sales_order_number")
+    "web_sales_item_items"."I_ITEM_SK",
+    "web_sales_web_sales"."WS_ORDER_NUMBER")
 SELECT
     "uneven"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip",
     "uneven"."web_sales_billing_customer_address_city" as "web_sales_billing_customer_address_city",

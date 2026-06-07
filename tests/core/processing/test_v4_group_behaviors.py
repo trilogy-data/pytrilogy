@@ -13,16 +13,24 @@ import pytest
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildGrain
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     FilterNode,
+    History,
     MergeNode,
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.v4_helper.constants import DepthLabel, EdgeKind
+from trilogy.core.processing.v4_helper.concept_graph import node_id
+from trilogy.core.processing.v4_helper.constants import (
+    FINAL_NODE_ID,
+    DepthLabel,
+    EdgeKind,
+)
 from trilogy.core.processing.v4_helper.edges import EdgeMap, add_edge
 from trilogy.core.processing.v4_helper.group_behaviors import (
     GROUP_BEHAVIORS,
@@ -38,10 +46,21 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
 from trilogy.core.processing.v4_helper.group_graph import (
     _virtual_filter_scoped_columns,
 )
+from trilogy.core.processing.v4_helper.group_rules import (
+    partition_aggregates,
+    partition_basics_by_signature,
+    partition_roots,
+)
 from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
     GroupAttrs,
     GroupBucket,
+)
+from trilogy.core.processing.v4_helper.source_policy import STRICT_SOURCE_POLICY
+from trilogy.core.processing.v4_helper.strategy_builder import (
+    _filter_intrinsic_pushdown_safe,
+    _parent_nodes_for,
+    _pre_merge_parents,
 )
 
 
@@ -436,7 +455,6 @@ def test_behavior_for_unknown_returns_default():
 def test_node_id_default_label_is_bare_address():
     """Default-label keys stay as bare addresses so existing single-label
     consumers (everything pre-rowset) keep working without changes."""
-    from trilogy.core.processing.v4_helper.concept_graph import node_id
 
     assert node_id("", "local.sales") == "local.sales"
 
@@ -444,7 +462,6 @@ def test_node_id_default_label_is_bare_address():
 def test_node_id_labeled_prefix():
     """Labeled keys carry the sub-graph name as a bracketed prefix so an
     inner copy of a concept can't collide with the outer copy."""
-    from trilogy.core.processing.v4_helper.concept_graph import node_id
 
     assert node_id("q5_results", "local.channel_label") == (
         "[q5_results]local.channel_label"
@@ -456,9 +473,6 @@ def test_partition_basics_does_not_merge_across_labels():
     end up in the same bucket — that's the regression that produced the
     q05 cycle (outer renames and rowset-internal derives at compatible
     grain collapsing through the rowset boundary)."""
-    from trilogy.core.processing.v4_helper.group_rules import (
-        partition_basics_by_signature,
-    )
 
     items = [
         _item("local.sales", derivation=Derivation.BASIC, label=""),
@@ -487,9 +501,6 @@ def test_partition_basics_does_merge_within_label():
     """The label split shouldn't break the within-label subset-merge
     behavior: two compatible-grain BASICs at the same label still collapse
     to a single bucket (the q04 case)."""
-    from trilogy.core.processing.v4_helper.group_rules import (
-        partition_basics_by_signature,
-    )
 
     items = [
         _item(
@@ -518,9 +529,6 @@ def test_partition_basics_does_merge_within_label():
 
 
 def test_partition_basics_merges_nested_nonempty_signatures():
-    from trilogy.core.processing.v4_helper.group_rules import (
-        partition_basics_by_signature,
-    )
 
     items = [
         _item("local.key_alias", derivation=Derivation.BASIC),
@@ -561,9 +569,6 @@ def test_partition_basics_merges_nested_nonempty_signatures():
 
 
 def test_partition_basics_empty_signature_does_not_merge_into_sourced_basic():
-    from trilogy.core.processing.v4_helper.group_rules import (
-        partition_basics_by_signature,
-    )
 
     items = [
         _item("local.constant_label", derivation=Derivation.BASIC),
@@ -593,9 +598,6 @@ def test_partition_basics_empty_signature_does_not_merge_into_sourced_basic():
 
 
 def test_partition_basics_root_signature_subset_does_not_merge():
-    from trilogy.core.processing.v4_helper.group_rules import (
-        partition_basics_by_signature,
-    )
 
     items = [
         _item("local.root_rename", derivation=Derivation.BASIC),
@@ -628,7 +630,6 @@ def test_partition_basics_root_signature_subset_does_not_merge():
 
 
 def test_partition_aggregates_uses_input_grain():
-    from trilogy.core.processing.v4_helper.group_rules import partition_aggregates
 
     items = [
         _item(
@@ -663,7 +664,6 @@ def test_partition_aggregates_uses_input_grain():
 
 
 def test_partition_rollup_aggregates_share_bucket():
-    from trilogy.core.processing.v4_helper.group_rules import partition_aggregates
 
     items = [
         _item(
@@ -697,10 +697,6 @@ def test_partition_rollup_aggregates_share_bucket():
 
 
 def test_partition_rollup_aggregates_split_by_source_signature():
-    from trilogy.core.processing.v4_helper.group_rules import (
-        partition_aggregates,
-        partition_roots,
-    )
 
     items = [
         _item(
@@ -745,8 +741,8 @@ def test_partition_rollup_aggregates_split_by_source_signature():
             root_items, cg, ce, ca, primary_group, _noop_ensure
         ):
             gid = f"root:{'|'.join(bucket.primary_members)}"
-            for node_id in bucket.primary_node_ids:
-                primary_group[node_id] = gid
+            for nid in bucket.primary_node_ids:
+                primary_group[nid] = gid
 
     buckets = partition_aggregates(items, cg, ce, ca, primary_group, ensure_assigned)
 
@@ -758,7 +754,6 @@ def test_partition_rollup_aggregates_split_by_source_signature():
 
 
 def test_pre_merge_carries_sibling_join_keys_without_metrics():
-    from trilogy.core.processing.v4_helper.strategy_builder import _pre_merge_parents
 
     env = BuildEnvironment()
     part_name = _build_concept(
@@ -808,7 +803,6 @@ def test_pre_merge_carries_sibling_join_keys_without_metrics():
 
 
 def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
-    from trilogy.core.processing.v4_helper.strategy_builder import _parent_nodes_for
 
     env = BuildEnvironment()
     supplier_id = _build_concept("supplier.id", Purpose.KEY)
@@ -855,6 +849,10 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
         attrs,
         {"root": root_node, "filter": filter_node},
         "agg",
+        env,
+        ReferenceGraph(),
+        History(base_environment=Environment()),
+        STRICT_SOURCE_POLICY,
         needed={supplier_id.address, order_id.address, filtered_supplier.address},
     )
 
@@ -862,10 +860,6 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
 
 
 def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
-    from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
-    from trilogy.core.processing.v4_helper.strategy_builder import (
-        _filter_intrinsic_pushdown_safe,
-    )
 
     graph = nx.DiGraph()
     graph.add_edge("root", "filter")
@@ -878,10 +872,6 @@ def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
 
 
 def test_filter_intrinsic_pushdown_ignores_final_sink():
-    from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
-    from trilogy.core.processing.v4_helper.strategy_builder import (
-        _filter_intrinsic_pushdown_safe,
-    )
 
     graph = nx.DiGraph()
     graph.add_edge("root", "filter")
@@ -894,7 +884,6 @@ def test_filter_intrinsic_pushdown_ignores_final_sink():
 def test_partition_roots_buckets_per_label():
     """Each sub-graph (outer + each rowset) gets its own ROOT bucket
     because their scans are independent."""
-    from trilogy.core.processing.v4_helper.group_rules import partition_roots
 
     items = [
         _item("sales.item.id", derivation=Derivation.ROOT, depth_label=DepthLabel.ROOT),

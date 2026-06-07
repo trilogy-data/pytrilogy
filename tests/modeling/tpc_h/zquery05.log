@@ -1,5 +1,6 @@
 query_id = "05"
-gen_length = 2368
+generator = "v3"
+gen_length = 1482
 preql_size = 305
 comp_size = 521
 generated_sql = """
@@ -7,11 +8,7 @@ generated_sql = """
 WITH 
 questionable as (
 SELECT
-    \"lineitem\".\"l_discount\" as \"discount\",
-    \"lineitem\".\"l_extendedprice\" as \"extended_price\",
-    \"lineitem\".\"l_linenumber\" as \"line_no\",
-    \"lineitem\".\"l_orderkey\" as \"order_id\",
-    \"part_supplier_nation_nation\".\"n_nationkey\" as \"part_supplier_nation_id\",
+    \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") as \"revenue\",
     UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
@@ -26,35 +23,13 @@ WHERE
 GROUP BY
     1,
     2,
-    3,
-    4,
-    5,
-    6),
-abundant as (
+    \"lineitem\".\"l_linenumber\",
+    \"lineitem\".\"l_orderkey\")
 SELECT
-    \"questionable\".\"extended_price\" * (1 - \"questionable\".\"discount\") as \"revenue\",
-    \"questionable\".\"line_no\" as \"line_no\",
-    \"questionable\".\"order_id\" as \"order_id\",
-    \"questionable\".\"part_supplier_nation_id\" as \"part_supplier_nation_id\"
+    \"questionable\".\"part_supplier_nation_name\" as \"part_supplier_nation_name\",
+    sum(\"questionable\".\"revenue\") as \"q_revenue\"
 FROM
-    \"questionable\"),
-uneven as (
-SELECT
-    \"abundant\".\"revenue\" as \"revenue\",
-    \"questionable\".\"part_supplier_nation_name\" as \"part_supplier_nation_name\"
-FROM
-    \"abundant\"
-    INNER JOIN \"questionable\" on \"abundant\".\"line_no\" = \"questionable\".\"line_no\" AND \"abundant\".\"order_id\" = \"questionable\".\"order_id\" AND \"abundant\".\"part_supplier_nation_id\" = \"questionable\".\"part_supplier_nation_id\"
-GROUP BY
-    1,
-    2,
-    \"questionable\".\"line_no\",
-    \"questionable\".\"order_id\")
-SELECT
-    \"uneven\".\"part_supplier_nation_name\" as \"part_supplier_nation_name\",
-    sum(\"uneven\".\"revenue\") as \"q_revenue\"
-FROM
-    \"uneven\"
+    \"questionable\"
 GROUP BY
     1
 ORDER BY 

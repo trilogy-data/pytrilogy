@@ -1,5 +1,6 @@
 query_id = "05"
-gen_length = 10301
+generator = "v3"
+gen_length = 10571
 preql_size = 1468
 comp_size = 4238
 generated_sql = """
@@ -170,6 +171,11 @@ GROUP BY
     4,
     5,
     6,
+    \"abundant\".\"s_channel_dim_text_id\",
+    \"cheerful\".\"s_return_channel_dim_text_id\",
+    cast(\"s_date_date\".\"D_DATE\" as date),
+    cast(\"s_return_date_date\".\"D_DATE\" as date),
+    coalesce(\"abundant\".\"s_channel_dim_text_id\",\"cheerful\".\"s_return_channel_dim_text_id\"),
     coalesce(\"abundant\".\"s_sales_channel\",\"cheerful\".\"s_sales_channel\",\"sweltering\".\"s_sales_channel\",\"vacuous\".\"s_sales_channel\",\"young\".\"s_sales_channel\"),
     coalesce(\"sweltering\".\"s_item_id\",\"vacuous\".\"s_item_id\",\"young\".\"s_item_id\"),
     coalesce(\"sweltering\".\"s_order_id\",\"vacuous\".\"s_order_id\",\"young\".\"s_order_id\"))

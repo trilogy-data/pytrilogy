@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2043 | 58 | 80.35 ms |
-| reference | 2043 | 58 | 76.45 ms |
-| v4 / ref | 1.00x | 1.00x | 1.05x |
+| v4 | 2159 | 59 | 13.04 ms |
+| reference | 1434 | 42 | 103.23 ms |
+| v4 / ref | 1.51x | 1.40x | 0.13x |
 
 ## Preql
 
@@ -51,40 +51,29 @@ limit 100
 
 ```sql
 WITH 
-highfalutin as (
+wakeful as (
 SELECT
-    "inv_warehouse_inventory"."inv_date_sk" as "inv_date_id",
     "inv_warehouse_inventory"."inv_item_sk" as "inv_item_id",
-    "inv_warehouse_inventory"."inv_quantity_on_hand" as "inv_quantity_on_hand"
-FROM
-    "memory"."inventory" as "inv_warehouse_inventory"
-WHERE
-    "inv_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
-
-GROUP BY
-    1,
-    2,
-    3),
-cheerful as (
-SELECT
-    "highfalutin"."inv_item_id" as "inv_item_id",
-    "highfalutin"."inv_quantity_on_hand" as "inv_quantity_on_hand",
+    "inv_warehouse_inventory"."inv_quantity_on_hand" as "inv_quantity_on_hand",
     cast("inv_date_date"."D_DATE" as date) as "inv_date_date"
 FROM
-    "highfalutin"
-    INNER JOIN "memory"."date_dim" as "inv_date_date" on "highfalutin"."inv_date_id" = "inv_date_date"."D_DATE_SK"
+    "memory"."inventory" as "inv_warehouse_inventory"
+    INNER JOIN "memory"."date_dim" as "inv_date_date" on "inv_warehouse_inventory"."inv_date_sk" = "inv_date_date"."D_DATE_SK"
 WHERE
-    cast("inv_date_date"."D_DATE" as date) BETWEEN date '2000-02-01' AND date '2000-04-01'
-
-GROUP BY
-    1,
-    2,
-    3),
+    cast("inv_date_date"."D_DATE" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and "inv_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
+),
+cheerful as (
+SELECT
+    CASE WHEN "wakeful"."inv_date_date" BETWEEN date '2000-02-01' AND date '2000-04-01' and "wakeful"."inv_quantity_on_hand" BETWEEN 100 AND 500 THEN "wakeful"."inv_item_id" ELSE NULL END as "inv_item_ids"
+FROM
+    "wakeful"),
 thoughtful as (
 SELECT
-    CASE WHEN "cheerful"."inv_date_date" BETWEEN date '2000-02-01' AND date '2000-04-01' and "cheerful"."inv_quantity_on_hand" BETWEEN 100 AND 500 THEN "cheerful"."inv_item_id" ELSE NULL END as "inv_item_ids"
+    "cheerful"."inv_item_ids" as "inv_item_ids"
 FROM
-    "cheerful"),
+    "cheerful"
+GROUP BY
+    1),
 cooperative as (
 SELECT
     "items_items"."I_CURRENT_PRICE" as "items_current_price",
@@ -95,18 +84,30 @@ FROM
     "memory"."item" as "items_items"
 WHERE
     "items_items"."I_CURRENT_PRICE" BETWEEN 68 AND 98 and "items_items"."I_MANUFACT_ID" in (677,940,694,808) and "items_items"."I_ITEM_SK" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
-)
+),
+questionable as (
 SELECT
-    "cooperative"."items_text_id" as "items_text_id",
+    "cooperative"."items_current_price" as "items_current_price",
     "cooperative"."items_desc" as "items_desc",
-    "cooperative"."items_current_price" as "items_current_price"
+    "cooperative"."items_id" as "items_id",
+    "cooperative"."items_text_id" as "items_text_id"
 FROM
-    "cooperative"
+    "cooperative")
+SELECT
+    "questionable"."items_text_id" as "items_text_id",
+    "questionable"."items_desc" as "items_desc",
+    "questionable"."items_current_price" as "items_current_price"
+FROM
+    "questionable"
 WHERE
-    "cooperative"."items_id" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
+    "questionable"."items_id" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
 
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
-    "cooperative"."items_text_id" asc nulls first
+    "questionable"."items_text_id" asc nulls first
 LIMIT (100)
 ```
 
@@ -114,7 +115,7 @@ LIMIT (100)
 
 ```sql
 WITH 
-highfalutin as (
+wakeful as (
 SELECT
     "inv_warehouse_inventory"."inv_date_sk" as "inv_date_id",
     "inv_warehouse_inventory"."inv_item_sk" as "inv_item_id",
@@ -128,47 +129,31 @@ GROUP BY
     1,
     2,
     3),
-cheerful as (
+thoughtful as (
 SELECT
-    "highfalutin"."inv_item_id" as "inv_item_id",
-    "highfalutin"."inv_quantity_on_hand" as "inv_quantity_on_hand",
-    cast("inv_date_date"."D_DATE" as date) as "inv_date_date"
+    CASE WHEN cast("inv_date_date"."D_DATE" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and "wakeful"."inv_quantity_on_hand" BETWEEN 100 AND 500 THEN "wakeful"."inv_item_id" ELSE NULL END as "inv_item_ids"
 FROM
-    "highfalutin"
-    INNER JOIN "memory"."date_dim" as "inv_date_date" on "highfalutin"."inv_date_id" = "inv_date_date"."D_DATE_SK"
+    "wakeful"
+    INNER JOIN "memory"."date_dim" as "inv_date_date" on "wakeful"."inv_date_id" = "inv_date_date"."D_DATE_SK"
 WHERE
     cast("inv_date_date"."D_DATE" as date) BETWEEN date '2000-02-01' AND date '2000-04-01'
 
 GROUP BY
-    1,
-    2,
-    3),
-thoughtful as (
+    1)
 SELECT
-    CASE WHEN "cheerful"."inv_date_date" BETWEEN date '2000-02-01' AND date '2000-04-01' and "cheerful"."inv_quantity_on_hand" BETWEEN 100 AND 500 THEN "cheerful"."inv_item_id" ELSE NULL END as "inv_item_ids"
-FROM
-    "cheerful"),
-cooperative as (
-SELECT
-    "items_items"."I_CURRENT_PRICE" as "items_current_price",
-    "items_items"."I_ITEM_DESC" as "items_desc",
     "items_items"."I_ITEM_ID" as "items_text_id",
-    "items_items"."I_ITEM_SK" as "items_id"
+    "items_items"."I_ITEM_DESC" as "items_desc",
+    "items_items"."I_CURRENT_PRICE" as "items_current_price"
 FROM
     "memory"."item" as "items_items"
 WHERE
     "items_items"."I_CURRENT_PRICE" BETWEEN 68 AND 98 and "items_items"."I_MANUFACT_ID" in (677,940,694,808) and "items_items"."I_ITEM_SK" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
-)
-SELECT
-    "cooperative"."items_text_id" as "items_text_id",
-    "cooperative"."items_desc" as "items_desc",
-    "cooperative"."items_current_price" as "items_current_price"
-FROM
-    "cooperative"
-WHERE
-    "cooperative"."items_id" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
 
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
-    "cooperative"."items_text_id" asc nulls first
+    "items_items"."I_ITEM_ID" asc nulls first
 LIMIT (100)
 ```

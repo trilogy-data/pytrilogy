@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2098 | 35 | 9.37 ms |
-| reference | 2098 | 35 | 8.92 ms |
-| v4 / ref | 1.00x | 1.00x | 1.05x |
+| v4 | 2098 | 35 | 10.98 ms |
+| reference | 2112 | 42 | 9.79 ms |
+| v4 / ref | 0.99x | 0.83x | 1.12x |
 
 ## Preql
 
@@ -98,16 +98,18 @@ LIMIT (100)
 WITH 
 highfalutin as (
 SELECT
-    "item_items"."I_MANUFACT" as "item_manufact",
-    count(CASE WHEN ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'tan' and "item_items"."I_UNITS" = 'Oz' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'purple' and "item_items"."I_UNITS" = 'Ton' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" = 'misty' and "item_items"."I_UNITS" = 'Box' and "item_items"."I_SIZE" = 'medium' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'medium' and "item_items"."I_UNITS" = 'Tsp' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'midnight' and "item_items"."I_UNITS" = 'Gram' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'pale' and "item_items"."I_UNITS" = 'Pound' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'khaki' and "item_items"."I_UNITS" = 'Pallet' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'mint' and "item_items"."I_UNITS" = 'Gross' and "item_items"."I_SIZE" = 'N/A' ) THEN "item_items"."I_ITEM_SK" ELSE NULL END) as "manufact_matches"
+    "item_items"."I_MANUFACT" as "item_manufact"
 FROM
     "memory"."item" as "item_items"
+WHERE
+    ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'tan' and "item_items"."I_UNITS" = 'Oz' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'purple' and "item_items"."I_UNITS" = 'Ton' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" = 'misty' and "item_items"."I_UNITS" = 'Box' and "item_items"."I_SIZE" = 'medium' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'medium' and "item_items"."I_UNITS" = 'Tsp' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'midnight' and "item_items"."I_UNITS" = 'Gram' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'pale' and "item_items"."I_UNITS" = 'Pound' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'khaki' and "item_items"."I_UNITS" = 'Pallet' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'mint' and "item_items"."I_UNITS" = 'Gross' and "item_items"."I_SIZE" = 'N/A' )
+
 GROUP BY
     1
 HAVING
-    "manufact_matches" > 0
+    count("item_items"."I_ITEM_SK") > 0
 ),
-thoughtful as (
+cheerful as (
 SELECT
     "item_items"."I_MANUFACT" as "item_manufact",
     "item_items"."I_PRODUCT_NAME" as "filtered_product_name"
@@ -115,19 +117,24 @@ FROM
     "memory"."item" as "item_items"
 WHERE
     "item_items"."I_MANUFACT_ID" BETWEEN 1 AND 500
-)
-SELECT
-    "thoughtful"."filtered_product_name" as "filtered_product_name"
-FROM
-    "thoughtful"
-    INNER JOIN "highfalutin" on "thoughtful"."item_manufact" is not distinct from "highfalutin"."item_manufact"
-WHERE
-    "thoughtful"."filtered_product_name" is not null
 
 GROUP BY
     1,
-    "highfalutin"."manufact_matches"
+    2),
+cooperative as (
+SELECT
+    "cheerful"."filtered_product_name" as "filtered_product_name"
+FROM
+    "cheerful"
+    INNER JOIN "highfalutin" on "cheerful"."item_manufact" is not distinct from "highfalutin"."item_manufact"
+WHERE
+    "cheerful"."filtered_product_name" is not null
+)
+SELECT
+    "cooperative"."filtered_product_name" as "filtered_product_name"
+FROM
+    "cooperative"
 ORDER BY 
-    "thoughtful"."filtered_product_name" asc
+    "cooperative"."filtered_product_name" asc
 LIMIT (100)
 ```
