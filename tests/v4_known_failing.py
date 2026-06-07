@@ -1,11 +1,14 @@
 """Registry of suite tests that do not yet pass under the v4 discovery planner.
 
 When the suite runs with v4 enabled (`TRILOGY_V4_DISCOVERY=1`), `conftest`'s
-collection hook turns each listed test into an `xfail(strict=True)`. The
-strictness is the point: when v4 improves enough that a listed test passes, it
-XPASSes and the run goes red -- telling us to remove the entry (and, if the test
-asserts SQL *shape* rather than results, to instead condition the expected SQL on
-`CONFIG.use_v4_discovery` so it keeps passing under both planners).
+collection hook turns each listed test into an `xfail` (non-strict). Listed tests
+that still fail show as xfailed; ones that now pass show as xpassed; either way the
+v4 gate stays green, and a real regression (a test NOT listed here) still fails
+loudly. Non-strict because the suite has pre-existing cross-test state leakage, so
+a listed test can xpass in a full-suite run yet fail in isolation -- strict xpass
+would make the gate flaky. To promote an entry, re-check it in ISOLATION
+(`pytest <nodeid>` with the env var) and, if it asserts SQL *shape*, condition the
+expected SQL on `CONFIG.use_v4_discovery` so it passes under both planners.
 
 This is the migration tracking list for v4 gaps that aren't yet at parity:
 - structure regressions -- v4 returns correct rows but a worse plan (e.g. ignores
@@ -47,44 +50,14 @@ _TPCDS_SIZE = (
 
 V4_KNOWN_FAILING: dict[str, str] = {
     # --- discovery: aggregate-source selection gap ---
-    "tests/discovery/test_aggregate_handling.py::test_aggregate_handling": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_handling.py::test_aggregate_handling_abstract": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_handling.py::test_aggregate_handling_alias": _AGG_SOURCE,
     "tests/discovery/test_aggregate_handling.py::test_combine_grand_total_with_joined_namespace_count": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_handling.py::test_partial_additive_aggregate_rollup_sql": _AGG_SOURCE,
     "tests/discovery/test_aggregate_handling.py::test_partial_aggregate_rollup_rejects_unsupported_aggregates": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_handling.py::test_partial_sum_aggregate_rollup_sql": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_aggregate_with_order_by_and_limit": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_dimension_attribute_with_aggregate": _AGG_SOURCE,
     "tests/discovery/test_aggregate_resolution_coverage.py::test_dimension_filter_with_aggregate": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_exact_grain_match_customer": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_exact_grain_match_customer_date": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_exact_grain_match_date": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_filter_on_grain_in_select": _AGG_SOURCE,
     "tests/discovery/test_aggregate_resolution_coverage.py::test_filter_on_grain_not_in_select": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_multiple_aggregates_at_same_grain": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_partial_key_upgrade_via_dimension_table": _AGG_SOURCE,
     "tests/discovery/test_aggregate_resolution_coverage.py::test_partial_key_upgrade_with_filter": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_rollup_customer_date_to_customer": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_rollup_customer_date_to_date": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_rollup_from_finer_to_grand_total": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_rollup_with_multiple_grain_keys_dropped": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_cross_dimensional_aggregation": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_customer_aggregates": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_customer_daily_aggregates": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_customer_product_aggregates": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_customer_product_daily_aggregates": _AGG_SOURCE,
     "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_mixed_aggregation_and_dimension": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_mouse_customer_filter": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_mouse_product_filter": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_total_summary": _AGG_SOURCE,
-    "tests/discovery/test_primary_source_aggregate_fallback.py::test_partial_precomputed_uses_aggregate": _AGG_SOURCE,
-    "tests/discovery/test_primary_source_aggregate_fallback.py::test_partial_precomputed_uses_aggregate_with_filter_in_select": _AGG_SOURCE,
     "tests/discovery/test_primary_source_aggregate_fallback.py::test_partial_precomputed_uses_aggregate_with_grain_filter": _AGG_SOURCE,
-    "tests/discovery/test_year_alias_resolution.py::test_resolve_via_named_concept_uses_aggregate": _AGG_SOURCE,
     # --- discovery: history/debug SQL snapshot diffs ---
-    "tests/discovery/test_discovery.py::test_history_e2e": _INLINE,
     "tests/discovery/test_discovery.py::test_history_e2e_non_materialized_field": _INLINE,
     # --- optimization: CTE-shape snapshot diffs ---
     "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining": _INLINE,
@@ -94,19 +67,15 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/optimization/test_merge_coalesce_impute.py::test_merge_coalesce_impute_no_group_by": _INLINE,
     "tests/optimization/test_merge_coalesce_impute.py::test_union_sources_include_all_required_columns": _INLINE,
     "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection": _INLINE,
+    # --- complex: shape diffs (assert on SQL, not crashes) ---
+    "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _INLINE,
+    "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate": _INLINE,
+    "tests/complex/test_rowset.py::test_rowset_alias_name_collision": _INLINE,
     # --- complex: crashes ---
-    "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _CRASH,
-    "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate": _CRASH,
-    "tests/complex/test_rowset.py::test_rowset_alias_name_collision": _CRASH,
     "tests/complex/test_structs.py::test_struct_in_array_item_access": _CRASH,
     "tests/complex/test_structs.py::test_struct_in_array_parsing": _CRASH,
-    "tests/complex/test_window_function_parsing.py::test_rank_by": _CRASH,
     # --- persistence / etl: persisted-source reuse + shape diffs ---
-    "tests/etl/test_duckdb.py::test_partition_persistence": _PERSIST,
-    "tests/persistence/test_basic_persistence.py::test_derivations": _PERSIST,
-    "tests/persistence/test_basic_persistence.py::test_derivations_reparse": _PERSIST,
     "tests/persistence/test_basic_persistence.py::test_persist_with_where": _INLINE,
-    "tests/persistence/test_complex_persistence.py::test_complex": _PERSIST,
     # --- stdlib: result regression (distilled to failing_cases/top_x_by_metric) ---
     "tests/stdlib/test_report.py::test_top_x_by_metric": _RESULT,
     # --- scripts: refresh hits v4 ambiguous-join-resolution ---
@@ -121,12 +90,16 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- engine: rendering / source-selection / crashes ---
     "tests/engine/test_bigquery.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_sqlite.py::test_date_diff_rendering": _RENDER,
+    # persist-of-unnest: the persisted table holds the post-unnest rows, but v4's
+    # materialized-root short-circuit only trusts AGGREGATE/BASIC derivations
+    # (an UNNEST can be a multi-source merge that drops rows), so this stays derived.
+    "tests/persistence/test_complex_persistence.py::test_complex": _PERSIST,
     "tests/engine/test_duckdb.py::test_anon_function_resolves_from_precomputed_source": _AGG_SOURCE,
     "tests/engine/test_duckdb.py::test_recursive_enrichment": _CRASH,
     "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_array_inclusion_aggregate": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
-    "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _CRASH,
+    "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
     # --- modeling (non-TPC) sweep ---
     "tests/modeling/funnel_analysis/test_funnel_analysis.py::test_funnel_with_remap": _MODELING,
     "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two": _MODELING,

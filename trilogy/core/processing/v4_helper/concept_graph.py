@@ -65,26 +65,40 @@ def _condition_label(scope_label: str) -> str:
     return f"{scope_label}{PHASE_CONDITION_SUFFIX}"
 
 
-def _effective_label(concept: BuildConcept, label: str) -> str:
+def _effective_label(
+    concept: BuildConcept, label: str, materialized_roots: frozenset[str] = frozenset()
+) -> str:
     """ROOT concepts represent input columns; their scan is shared between
     the SELECT and WHERE phases, so they always live in the blank-phase
-    (scope-only) label. Everything else uses the recursion's label as-is."""
-    if concept.derivation == Derivation.ROOT:
+    (scope-only) label. Everything else uses the recursion's label as-is.
+
+    A concept in `materialized_roots` is sourced directly from a datasource
+    that materializes it (a precomputed/summary table), so it behaves as a
+    ROOT input here even though its lineage is derived."""
+    if concept.address in materialized_roots or concept.derivation == Derivation.ROOT:
         return _scope_and_phase(label)[0]
     return label
 
 
-def classify_depth(concept: BuildConcept, label: str) -> DepthLabel:
+def classify_depth(
+    concept: BuildConcept, label: str, materialized_roots: frozenset[str] = frozenset()
+) -> DepthLabel:
     """Tag a concept by its placement role.
 
     `d1` is no longer "address appears in a WHERE clause" — it's "this node
     was reached via the condition-phase recursion." The phase is encoded in
     the label, so the SELECT and WHERE walks build disjoint sub-graphs and
-    a concept that participates in both gets two distinct nodes."""
+    a concept that participates in both gets two distinct nodes.
+
+    A `materialized_roots` concept is a datasource scan, not a row-shape
+    barrier, so it never gets the d0 (barrier) tag."""
     _, phase = _scope_and_phase(label)
     if phase == "condition":
         return DepthLabel.D1
-    if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+    if (
+        concept.address not in materialized_roots
+        and concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS
+    ):
         return DepthLabel.D0
     return DepthLabel.STAR
 
@@ -288,6 +302,7 @@ def _add_concept(
     edges: EdgeMap,
     attrs: dict[str, ConceptAttrs],
     label: str = "",
+    materialized_roots: frozenset[str] = frozenset(),
 ) -> None:
     """Walk lineage from a concept toward its roots, under a fixed label.
 
@@ -296,8 +311,13 @@ def _add_concept(
     "condition" via the ``@condition`` suffix. The same concept reached from
     the SELECT walk and from the WHERE walk thus lands in two separate nodes
     (the WHERE one is d1, the SELECT one keeps its derivation-driven label).
-    No second-pass promotion is needed — the depth falls out of the label."""
-    eff_label = _effective_label(concept, label)
+    No second-pass promotion is needed — the depth falls out of the label.
+
+    A concept in `materialized_roots` is treated as a ROOT leaf: its lineage is
+    not walked (a datasource materializes it directly), and its node carries
+    `derivation=ROOT` so the group graph buckets it into a datasource scan."""
+    is_materialized_root = concept.address in materialized_roots
+    eff_label = _effective_label(concept, label, materialized_roots)
     nid = node_id(eff_label, concept.address)
     if nid in graph:
         return
@@ -307,7 +327,7 @@ def _add_concept(
     # using different grouping modes need separate CTEs (one emits GROUP
     # BY, the other GROUP BY ROLLUP).
     grouping_mode = None
-    if isinstance(concept.lineage, BuildAggregateWrapper):
+    if not is_materialized_root and isinstance(concept.lineage, BuildAggregateWrapper):
         grouping_mode = concept.lineage.grouping.value
     # Rowset identity: every handle of one rowset shares a row population (the
     # rowset is one sub-query, planned in full by `gen_rowset`), so the rowset
@@ -326,16 +346,26 @@ def _add_concept(
     attrs[nid] = ConceptAttrs(
         address=concept.address,
         label=eff_label,
-        derivation=concept.derivation,
+        derivation=Derivation.ROOT if is_materialized_root else concept.derivation,
         purpose=concept.purpose,
         granularity=concept.granularity,
-        depth_label=classify_depth(concept, eff_label),
+        depth_label=classify_depth(concept, eff_label, materialized_roots),
         grain_components=out_grain,
         grouping_mode=grouping_mode,
         rowset_name=rowset_name,
-        aggregate_input_grain=_aggregate_input_grain(concept, environment, out_grain),
+        aggregate_input_grain=(
+            frozenset()
+            if is_materialized_root
+            else _aggregate_input_grain(concept, environment, out_grain)
+        ),
         keys=frozenset(concept.keys or set()),
     )
+
+    # Materialized root: a datasource provides this concept directly (a
+    # precomputed/summary table), so we stop here exactly like a ROOT leaf —
+    # walking its lineage would re-derive it from base instead.
+    if is_materialized_root:
+        return
 
     # Rowset boundary: a ROWSET concept is the outer's "handle" on a
     # sub-query. From the outer graph's perspective it's a leaf — the
@@ -356,8 +386,10 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     for upstream in fetcher(concept, environment):
-        _add_concept(upstream, environment, graph, edges, attrs, label=label)
-        upstream_label = _effective_label(upstream, label)
+        _add_concept(
+            upstream, environment, graph, edges, attrs, label, materialized_roots
+        )
+        upstream_label = _effective_label(upstream, label, materialized_roots)
         add_edge(
             graph,
             edges,
@@ -371,6 +403,7 @@ def build_concept_graph(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
+    materialized_roots: frozenset[str] = frozenset(),
 ) -> tuple[nx.DiGraph, dict[str, ConceptAttrs], EdgeMap]:
     """Build the concept-level DAG. Constraint edges (d1→d0) record the
     invariant that filter inputs must be available above any row-shape barrier
@@ -391,7 +424,14 @@ def build_concept_graph(
     attrs: dict[str, ConceptAttrs] = {}
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
-        _add_concept(concept, environment, graph, edges, attrs)
+        _add_concept(
+            concept,
+            environment,
+            graph,
+            edges,
+            attrs,
+            materialized_roots=materialized_roots,
+        )
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so we never
     # have to retro-promote depth labels.
@@ -399,7 +439,13 @@ def build_concept_graph(
         for concept in clause.concept_arguments:
             resolved = environment.concepts.get(concept.address, concept) or concept
             _add_concept(
-                resolved, environment, graph, edges, attrs, label=_condition_label("")
+                resolved,
+                environment,
+                graph,
+                edges,
+                attrs,
+                label=_condition_label(""),
+                materialized_roots=materialized_roots,
             )
 
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):

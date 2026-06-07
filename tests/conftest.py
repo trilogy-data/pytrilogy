@@ -43,9 +43,15 @@ def _maybe_enable_v4_discovery():
 
 def pytest_collection_modifyitems(config, items):
     """Under a v4 sweep (`TRILOGY_V4_DISCOVERY=1`), turn each test in the v4
-    known-failing registry into an xfail(strict). Keeps the suite green on the
-    v4 planner while every gap stays tracked; a registered test that starts
-    passing XPASSes (strict) so we know to promote it. No-op under v3."""
+    known-failing registry into an xfail. Keeps the suite green on the v4 planner
+    while every gap stays tracked, and a real regression (a test NOT in the
+    registry) still fails loudly. No-op under v3.
+
+    Non-strict on purpose: the suite has pre-existing cross-test state leakage
+    (tests sharing a module-level `default_executor`), so a registered test can
+    XPASS in a full-suite run yet fail in isolation. strict=True would turn those
+    contamination-driven xpasses into hard failures and make the v4 gate flaky.
+    Re-check candidates for promotion in isolation, not from a full-suite xpass."""
     if os.environ.get("TRILOGY_V4_DISCOVERY") != "1":
         return
     from tests.v4_known_failing import V4_KNOWN_FAILING
@@ -54,7 +60,7 @@ def pytest_collection_modifyitems(config, items):
         base = item.nodeid.split("[", 1)[0]
         reason = V4_KNOWN_FAILING.get(base)
         if reason:
-            item.add_marker(pytest.mark.xfail(reason=reason, strict=True))
+            item.add_marker(pytest.mark.xfail(reason=reason, strict=False))
 
 
 def load_secret(key: str) -> str | None:

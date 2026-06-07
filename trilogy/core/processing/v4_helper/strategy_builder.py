@@ -20,6 +20,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import combine_condition_atoms
 from trilogy.core.processing.nodes import (
     FilterNode,
@@ -1095,6 +1096,13 @@ def _group_to_grain_if_required(
         node.set_output_concepts(targets, change_visibility=False)
         node.rebuild_cache()
         return node
+    # An additive aggregate exposed by a row-preserving scan being grouped to a
+    # coarser grain is a precomputed value at the finer grain (a
+    # materialized-root rollup from a finer summary table), so re-aggregate it
+    # with SUM rather than dedup it. Exact-grain materialized aggregates never
+    # reach here — their scan already matches the target grain, so no group is
+    # required. Mirrors v3's `rollup_concepts` on `gen_select_merge_node`.
+    rollup = [o for o in targets if o.is_aggregate and _is_additive_aggregate(o)]
     return GroupNode(
         output_concepts=targets,
         input_concepts=targets,
@@ -1103,6 +1111,7 @@ def _group_to_grain_if_required(
         partial_concepts=node.partial_concepts,
         preexisting_conditions=node.preexisting_conditions,
         hidden_concepts=set(node.hidden_concepts) if node.hidden_concepts else None,
+        rollup_concepts=rollup or None,
     )
 
 
