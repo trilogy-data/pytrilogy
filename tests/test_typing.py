@@ -21,7 +21,9 @@ def test_is_compatible_datatype_enum_and_trait():
     # compatible base (q05: enum<string> store_id aligns with bare string).
     assert is_compatible_datatype(enum_str, DataType.STRING)
     assert is_compatible_datatype(DataType.STRING, enum_str)
-    assert is_compatible_datatype(enum_str, EnumType(type=DataType.STRING, values=["x"]))
+    assert is_compatible_datatype(
+        enum_str, EnumType(type=DataType.STRING, values=["x"])
+    )
     # Integer-family stays mutually compatible through the enum/trait wrappers.
     assert is_compatible_datatype(enum_int, DataType.BIGINT)
     assert is_compatible_datatype(

@@ -125,7 +125,7 @@ FROM
 GROUP BY
     1
 HAVING
-    \"sr_item_present\" > 0
+    count(\"concerned\".\"_virt_filter_order_id_5282889778133979\") > 0 and count(\"concerned\".\"_virt_filter_order_id_7518965045904948\") > 0 and count(\"concerned\".\"_virt_filter_order_id_4128599423878258\") > 0
 ),
 sparkling as (
 SELECT

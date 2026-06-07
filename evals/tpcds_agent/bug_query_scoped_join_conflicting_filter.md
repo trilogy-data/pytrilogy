@@ -1,6 +1,37 @@
 # Bug: query-scoped join across conflicting WHERE filters → planner `Have {…}` crash
 
-**Status:** OPEN (found 2026-06-06, enriched eval q64).
+**Status:** FIXED 2026-06-06 (found same day, enriched eval q64).
+
+## Resolution
+
+A rowset is a self-contained query scope: its own WHERE stays inside it and is
+materialized as a CTE that's joined into the outer query (verified against
+existing behavior — a `year=2000` rowset joined into a no-WHERE outer query
+keeps the rowset filtered and the outer scan *unfiltered*; the rowset's filter
+does not leak out, and by symmetry the outer's filter does not leak in). The
+crash was purely a discovery-validation bug: the condition-completion check
+demanded that *every* node in the stack carry (or imply) the outer WHERE, but a
+rowset node legitimately carries its own, different (or `None`) condition. This
+also broke *non*-conflicting outer filters (e.g. an outer `store=1` over a
+`year=2000` rowset) — any outer WHERE differing from the rowset's crashed.
+
+Fix: a new `_is_independent_scope(node)` helper (node whose visible outputs are
+all `Derivation.ROWSET`) in `discovery_validation.py`, added as an exemption
+alongside `_is_scalar_only` in `_conditions_met` / `_condition_atom_met`, and in
+`generate_loop_completion`'s `condition_required` gate
+(`concept_strategies_v3.py`) so the outer condition isn't wrongly re-applied to
+the merge. The repro now compiles to two independently-filtered base scans
+(rowset `year=2000`, outer `year=1999`) joined by item — a meaningful
+year-over-year result, not empty.
+
+Regression tests: `tests/engine/test_duckdb_rowset.py::test_rowset_query_scoped_join_conflicting_filter`
+(end-to-end, asserts correct non-empty results) and
+`tests/core/processing/test_discovery_validation.py` (`TestIsIndependentScope`,
+`TestConditionsMetIndependentScope`).
+
+## Original report (for context)
+
+**Was:** OPEN (found 2026-06-06, enriched eval q64).
 **Severity:** high — a natural year-over-year self-join phrasing crashes with an opaque internal
 planner assertion, not a user-actionable error. Top token/iteration sink on q64 (58 calls).
 

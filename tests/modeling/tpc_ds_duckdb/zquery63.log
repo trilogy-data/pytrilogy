@@ -47,6 +47,7 @@ WHERE
 ),
 yummy as (
 SELECT
+    coalesce(\"cheerful\".\"physical_sales_item_manager_id\",\"cooperative\".\"physical_sales_item_manager_id\") as \"physical_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
     \"uneven\".\"physical_sales_item_manager_id\" as \"physical_sales_item_manager_id\"
 FROM

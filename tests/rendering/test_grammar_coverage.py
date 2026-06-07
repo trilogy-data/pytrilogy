@@ -377,7 +377,8 @@ derive c + 1 -> d
     _, queries = parse_text(src, env)
     rendered = Renderer().to_string(queries[-1])
     assert "derive" in rendered, rendered
-    assert "-> d" in rendered, rendered
+    # `->` and `as` are interchangeable on input; the renderer canonicalizes to `as`.
+    assert "as d" in rendered, rendered
 
     env2 = Environment()
     parse_text("key a int;\nkey b int;\n" + rendered, env2)

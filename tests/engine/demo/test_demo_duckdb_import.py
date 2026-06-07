@@ -24,7 +24,7 @@ count(passenger.id) -> family_count
 rich_info.last_name,
 rich_info.net_worth_1918_dollars
     ALIGN join_last_name:passenger.last_name, rich_info.last_name
-    WHERE 
+    HAVING
 rich_info.net_worth_1918_dollars is not null
 and passenger.last_name is not null;
 
@@ -50,7 +50,7 @@ count(passenger.id) -> family_count
 rich_info.last_name,
 rich_info.net_worth_1918_dollars
     ALIGN join_last_name:passenger.last_name, rich_info.last_name
-    WHERE 
+    HAVING
 rich_info.net_worth_1918_dollars is not null
 and passenger.last_name is not null;
 
