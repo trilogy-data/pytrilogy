@@ -1084,12 +1084,17 @@ def _group_to_grain_if_required(
         is not True
     ):
         return node
-    if isinstance(node, MergeNode):
-        node.force_group = True
-        node.rebuild_cache()
-        return node
     mandatory_addrs = {c.address for c in mandatory_list}
     targets = [o for o in node.output_concepts if o.address in mandatory_addrs]
+    if isinstance(node, MergeNode):
+        # Narrow to the requested grain *before* force-grouping: a MergeNode
+        # exposes its join/filter columns (q82's date, warehouse, quantity,
+        # manufacturer) as outputs, so force_group alone would GROUP BY the full
+        # merge grain and dedup nothing. Mirrors v3's group_if_required_v2.
+        node.force_group = True
+        node.set_output_concepts(targets, change_visibility=False)
+        node.rebuild_cache()
+        return node
     return GroupNode(
         output_concepts=targets,
         input_concepts=targets,

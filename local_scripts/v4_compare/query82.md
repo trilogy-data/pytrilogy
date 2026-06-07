@@ -1,29 +1,26 @@
 # Query 82
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (34 rows) |
+| v4 execution | OK (2 rows) |
 | reference execution | OK (2 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 34 (2 distinct)
+v4 rows: 2 (2 distinct)
 ref rows: 2 (2 distinct)
-only in v4 (showing up to 5 of 2):
-  20x  (Decimal('67.28000000'), 'Arab, financial pol', 'AAAAAAAAECMCAAAA')
-  12x  (Decimal('86.90000000'), 'Clinical, labour aspects might sit enough like a problems. Remarkably mysterious experts shall learn to th', 'AAAAAAAALIHCAAAA')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1266 | 24 | 9.45 ms |
-| reference | 1542 | 34 | 76.75 ms |
-| v4 / ref | 0.82x | 0.71x | 0.12x |
+| v4 | 1028 | 18 | 9.49 ms |
+| reference | 1542 | 34 | 95.74 ms |
+| v4 / ref | 0.67x | 0.53x | 0.10x |
 
 ## Preql
 
@@ -61,18 +58,12 @@ FROM
     INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "inventory_item_items" on "inventory_warehouse_inventory"."inv_item_sk" = "inventory_item_items"."I_ITEM_SK"
 WHERE
-    "inventory_item_items"."I_CURRENT_PRICE" BETWEEN 62 AND 92 and cast("inventory_date_date"."D_DATE" as date) BETWEEN date '2000-05-25' AND date '2000-07-24' and "inventory_item_items"."I_MANUFACT_ID" in (129,270,821,423) and "inventory_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500
+    "inventory_item_items"."I_CURRENT_PRICE" BETWEEN 62 AND 92 and cast("inventory_date_date"."D_DATE" as date) BETWEEN date '2000-05-25' AND date '2000-07-24' and "inventory_item_items"."I_MANUFACT_ID" in (129,270,821,423) and "inventory_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500 and "inventory_item_items"."I_ITEM_SK" is not null
 
 GROUP BY
     1,
     2,
-    3,
-    "inventory_date_date"."D_DATE_SK",
-    "inventory_item_items"."I_ITEM_SK",
-    "inventory_item_items"."I_MANUFACT_ID",
-    "inventory_warehouse_inventory"."inv_quantity_on_hand",
-    "inventory_warehouse_inventory"."inv_warehouse_sk",
-    cast("inventory_date_date"."D_DATE" as date)
+    3
 ORDER BY 
     "inventory_item_items"."I_ITEM_ID" asc
 LIMIT (100)

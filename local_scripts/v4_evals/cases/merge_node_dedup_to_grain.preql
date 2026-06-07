@@ -1,0 +1,49 @@
+# Selecting dimension attributes at a coarser grain than a multi-datasource
+# join must dedup to that grain. Here item attributes (descr, cost) are read by
+# joining the item table to a finer-grain inventory fact (one row per
+# date/item/warehouse) under a WHERE on both sides — so the FINAL contributor is
+# a MergeNode whose outputs include the join/filter columns. v4 used to either
+# not group at all, or force_group at the full merge grain (dedup nothing),
+# leaking one row per inventory snapshot. The merge must narrow to the requested
+# grain before grouping → one row per matching item. Distilled from TPC-DS
+# query82 (inventory x item fan-out).
+key item int;
+property item.descr string;
+property item.cost int;
+key dt int;
+key whse int;
+property <dt, item, whse>.qoh int;
+
+datasource items (
+    item: item,
+    descr: descr,
+    cost: cost,
+)
+grain (item)
+query '''
+select 1 as item, 'a' as descr, 50 as cost
+union all select 2 as item, 'b' as descr, 70 as cost
+''';
+
+datasource inv (
+    dt: dt,
+    item: item,
+    whse: whse,
+    qoh: qoh,
+)
+grain (dt, item, whse)
+query '''
+select 1 as dt, 2 as item, 1 as whse, 200 as qoh
+union all select 1 as dt, 2 as item, 2 as whse, 300 as qoh
+union all select 2 as dt, 2 as item, 1 as whse, 250 as qoh
+union all select 1 as dt, 1 as item, 1 as whse, 400 as qoh
+''';
+
+WHERE
+    qoh between 100 and 500
+    and cost between 60 and 92
+SELECT
+    item.descr,
+    item.cost,
+ORDER BY
+    item.descr asc;
