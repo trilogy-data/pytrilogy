@@ -11,6 +11,7 @@ from trilogy.authoring import (
     StructType,
     TraitDataType,
 )
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.core import DataTyped, EnumType, StructComponent
 
 
@@ -153,10 +154,17 @@ def datatype_to_field_prompt(
     return f"{datatype.value}"
 
 
+def concept_field_name(c: Concept) -> str:
+    # "local" is the implicit current-file namespace; don't surface it to the agent
+    if c.namespace == DEFAULT_NAMESPACE:
+        return c.name
+    return c.address
+
+
 def concepts_to_fields_prompt(concepts: list[Concept]) -> str:
     return ", ".join(
         [
-            f"[name: {c.address} | type: {datatype_to_field_prompt(c.datatype)}]"
+            f"[name: {concept_field_name(c)} | type: {datatype_to_field_prompt(c.datatype)}]"
             for c in concepts
         ]
     )
