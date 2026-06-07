@@ -74,27 +74,42 @@ def _has_year_equals(
     return False
 
 
+def _counts_flights(concept, env: Environment, flight_key: str) -> bool:
+    """True if concept is a flight count, regardless of phrasing.
+
+    Equivalent shapes: COUNT(id2), COUNT(<property keyed only on id2>) such as
+    flight_num, or SUM over a concept that itself counts flights (e.g. the auto
+    `count` measure rolled up via sum(count)).
+    """
+    lineage = concept.lineage
+    if not isinstance(lineage, AggregateWrapper):
+        return False
+    fn = lineage.function
+    arg = fn.arguments[0]
+    arg_concept = env.concepts.get(arg.address) if isinstance(arg, ConceptRef) else None
+    if arg_concept is None:
+        return False
+    if fn.operator == FunctionType.COUNT:
+        return arg_concept.address == flight_key or arg_concept.keys == {flight_key}
+    if fn.operator == FunctionType.SUM:
+        return _counts_flights(arg_concept, env, flight_key)
+    return False
+
+
 def validate_response(response: str, parsed: SelectStatement, env: Environment):
     assert parsed.where_clause is not None, f"Expected a where clause, got {response}"
     assert _has_year_equals(
         parsed.where_clause, env, env.concepts["local.dep_time"].address, 2020
     ), f"Expected a year(local.dep_time) = 2020 filter, got {response}"
 
-    found_count = False
-    for x in parsed.output_components:
-        full = env.concepts[x.address]
-        if not isinstance(full.lineage, AggregateWrapper):
-            continue
-        flin = full.lineage.function
-        if (
-            flin.operator == FunctionType.COUNT
-            and flin.arguments[0] == env.concepts["local.id2"].reference
-        ):
-            found_count = True
-            break
+    flight_key = env.concepts["local.id2"].address
+    found_count = any(
+        _counts_flights(env.concepts[x.address], env, flight_key)
+        for x in parsed.output_components
+    )
     assert (
         found_count
-    ), f"Expected to find a COUNT(local.id2) in the parsed output components, got {response}"
+    ), f"Expected a flight-count aggregate in the output components, got {response}"
 
 
 def run_provider_test(secret_name: str, provider: Provider, model: str):
