@@ -5,6 +5,7 @@ from pytest import raises
 
 from trilogy import Dialects, Executor
 from trilogy.constants import Rendering
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 
@@ -97,3 +98,39 @@ def test_aggregate_grouping_modes_rejected_on_sqlite():
 
     with raises(NotImplementedError, match="aggregate grouping mode"):
         executor.generate_sql("select a, b, sum(x) by rollup a, b as sx;")
+
+
+# DuckDB's QUALIFY lowering is covered e2e in test_duckdb.py (the mock engine
+# can't back its python-datasource setup); these cover generate-only rendering.
+QUALIFY_DIALECTS = [
+    Dialects.BIGQUERY,
+    Dialects.SNOWFLAKE,
+    Dialects.PRESTO,
+    Dialects.TRINO,
+    Dialects.CLICKHOUSE,
+]
+
+NO_QUALIFY_DIALECTS = [Dialects.POSTGRES, Dialects.SQLITE, Dialects.SQL_SERVER]
+
+_WINDOW_HAVING = (
+    "select a, sum(x) as sx having rank() over (order by sum(x) desc) <= 1;"
+)
+
+
+@pytest.mark.parametrize("dialect", QUALIFY_DIALECTS)
+def test_window_in_having_renders_qualify(dialect):
+    executor = _make_executor(dialect)
+    executor.parse_text(_SCHEMA)
+
+    sql = executor.generate_sql(_WINDOW_HAVING)[-1]
+    assert "QUALIFY" in sql.upper(), sql
+    assert "HAVING" not in sql.upper(), sql
+
+
+@pytest.mark.parametrize("dialect", NO_QUALIFY_DIALECTS)
+def test_window_in_having_rejected_without_qualify(dialect):
+    executor = _make_executor(dialect)
+    executor.parse_text(_SCHEMA)
+
+    with raises(InvalidSyntaxException, match="Window functions are not"):
+        executor.generate_sql(_WINDOW_HAVING)

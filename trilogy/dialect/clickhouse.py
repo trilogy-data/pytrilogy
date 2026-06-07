@@ -192,7 +192,9 @@ WHERE
 GROUP BY {% for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
-    {{ having }}{% endif %}{%- if order_by %}
+    {{ having }}{% endif %}{% if qualify %}
+QUALIFY
+    {{ qualify }}{% endif %}{%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
@@ -210,6 +212,7 @@ class ClickhouseDialect(BaseDialect):
     DB_COLUMN_TYPE_MAP = {**BaseDialect.DB_COLUMN_TYPE_MAP, **DB_COLUMN_TYPE_MAP}
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = CLICKHOUSE_SQL_TEMPLATE
+    SUPPORTS_QUALIFY = True
     # CH doesn't accept arrayJoin as a FROM-clause table function; DIRECT mode
     # emits `SELECT arrayJoin(...) AS alias` with no FROM, which CH supports.
     UNNEST_MODE = UnnestMode.DIRECT

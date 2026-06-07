@@ -334,6 +334,9 @@ GROUP BY
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
     {{ having }}
+{% endif %}{% if qualify %}
+QUALIFY
+    {{ qualify }}
 {% endif %}{%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -355,6 +358,7 @@ class DuckDBDialect(BaseDialect):
     DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, **DATATYPE_MAP}
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = DUCKDB_TEMPLATE
+    SUPPORTS_QUALIFY = True
     UNNEST_MODE = UnnestMode.DIRECT
     GROUP_MODE = GroupMode.BY_INDEX
     SUPPORTS_AGGREGATE_GROUPING_MODES = True

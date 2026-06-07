@@ -60,7 +60,9 @@ WITH {% for cte in ctes %}
 {%- if group_by %}GROUP BY{% for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
-\t{{ having }}{% endif %}
+\t{{ having }}{% endif %}{% if qualify %}
+QUALIFY
+\t{{ qualify }}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -86,6 +88,7 @@ class PrestoDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.PRESTO
     GROUP_MODE = GroupMode.BY_INDEX
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    SUPPORTS_QUALIFY = True
     ALIAS_ORDER_REFERENCING_ALLOWED = (
         False  # some complex presto functions don't support aliasing
     )

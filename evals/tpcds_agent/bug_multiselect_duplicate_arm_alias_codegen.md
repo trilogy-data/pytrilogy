@@ -1,6 +1,22 @@
 # Bug: multi-select arms sharing an output name → broken SQL (INVALID_REFERENCE_BUG / _virt_func_alias)
 
-**Status:** OPEN (found 2026-06-07, enriched eval q76; same family seen in q75, q77).
+**Status:** FIXED 2026-06-06 (clean-error route, suggested fix #2). Found 2026-06-07 [sic],
+enriched eval q76; same family seen in q75, q77.
+
+## Fix
+
+`multi_select_statement` (`trilogy/parsing/v2/rules/multiselect_rules.py`) now scans arm
+`output_components` after finalize and raises `InvalidSyntaxException` when an output address
+appears in more than one arm, instead of letting the collapsed graph node reach codegen as
+`INVALID_REFERENCE_BUG` / a dropped `_virt_func_alias`. Message points at the fix:
+"Multi-select arms must use distinct output names; '<name>' appears in more than one arm …
+`align grp: <name>1, <name>2`". This is the clean-error path (suggested fix #2); internal
+per-arm disambiguation (fix #1) was not attempted. Test:
+`tests/test_parse_engine_v2.py::test_parse_text_v2_multiselect_duplicate_arm_outputs_raise`.
+
+---
+
+**Original report (OPEN, found 2026-06-07, enriched eval q76; same family seen in q75, q77).**
 **Severity:** high — the natural way to write a 3-channel UNION (`store`/`catalog`/`web`) in a
 `merge…align…derive` multi-select is to give each arm the SAME output column names. That emits
 SQL containing a literal `INVALID_REFERENCE_BUG`, an `UndefinedConceptException` on a

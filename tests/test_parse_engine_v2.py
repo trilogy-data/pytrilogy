@@ -492,6 +492,22 @@ def test_parse_text_v2_align_and_between_groups_ok(backend: ParserBackend) -> No
         parse_text(_ALIGN_MODEL + good, Environment())
 
 
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_multiselect_duplicate_arm_outputs_raise(
+    backend: ParserBackend,
+) -> None:
+    # Two arms sharing an output address (`c`/`c` here) collapse to one graph node
+    # and emit broken SQL (INVALID_REFERENCE_BUG); reject with a clear message
+    # pointing at distinct names + align.
+    bad = (
+        "SELECT label as g, count(one) as c, MERGE SELECT label2 as g, count(two) as c,"
+        " ALIGN grp: g, g ORDER BY grp;"
+    )
+    with _using_backend(backend):
+        with pytest.raises(InvalidSyntaxException, match="distinct output names"):
+            parse_text(_ALIGN_MODEL + bad, Environment())
+
+
 def test_parse_text_v2_duplicate_select_outputs_raise() -> None:
     with pytest.raises(InvalidSyntaxException, match="Duplicate select output"):
         parse_text(

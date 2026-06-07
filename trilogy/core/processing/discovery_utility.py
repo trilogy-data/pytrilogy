@@ -592,8 +592,25 @@ def get_loop_iteration_targets(
     force_pushdown_to_complex_input = False
 
     pushdown_targets = get_inputs_that_require_pushdown(conditions, mandatory)
-    if pushdown_targets:
-        force_pushdown_to_complex_input = True
+    # Only force condition pushdown toward a complex input we can actually push
+    # into. A complex input that itself depends on a *derived* row-argument of
+    # the condition cannot receive it: sourcing that input re-introduces the
+    # derived arg (with the condition still attached) into the mandatory list,
+    # re-forcing evaluation and looping forever (e.g. `where (f1 or f2)` over two
+    # `?`-filtered operands — pushing the condition into `net_profit ? f1` drags
+    # in `f1`, a condition input). Such inputs must be built first and the
+    # condition applied above them, so they don't justify forced pushdown.
+    if pushdown_targets and conditions:
+        derived_condition_inputs = {
+            c.address
+            for c in conditions.row_arguments
+            if c.derivation not in ROOT_DERIVATIONS
+        }
+        if any(
+            not (derived_condition_inputs & get_upstream_concepts(x, nested=True))
+            for x in pushdown_targets
+        ):
+            force_pushdown_to_complex_input = True
     # a list of all non-materialized concepts, or all concepts
     # if a pushdown is required
     all_concepts_local: list[BuildConcept] = [

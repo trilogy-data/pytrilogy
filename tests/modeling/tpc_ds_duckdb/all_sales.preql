@@ -19,6 +19,7 @@ import ship_mode as ship_mode;
 key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
 key channel_dim_id int; # the ID of the store/web/site for order (web_site_id, catalog_id, or store_id as appropriate)
 key return_channel_dim_id int; # the ID of the store/web/site used for the return (web_site_id, catalog_id, or store_id as appropriate)
+key outlet_id int; # the channel's selling-outlet surrogate id, per channel: store_sk (STORE), call_center_sk (CATALOG), web_page_sk (WEB). Distinct from channel_dim_id (which is store/web_site/catalog_page).
 key order_id int; # the ID of the order (ticket number for store, order number for web/catalog)
 
 # return identifier
@@ -61,6 +62,7 @@ partial datasource web_sales_unified (
     WS_PROMO_SK: ?promotion.id,
     WS_WEB_SITE_SK: ?channel_dim_id,
     WS_WEB_SITE_SK: ?return_channel_dim_id,
+    WS_WEB_PAGE_SK: ?outlet_id,
     WS_WAREHOUSE_SK: ?warehouse.id,
     WS_SHIP_MODE_SK: ?ship_mode.id,
     WS_QUANTITY: quantity,
@@ -93,6 +95,7 @@ partial datasource catalog_sales_unified (
     CS_BILL_ADDR_SK: ?bill_address.id,
     CS_PROMO_SK: ?promotion.id,
     CS_CATALOG_PAGE_SK: ?channel_dim_id,
+    CS_CALL_CENTER_SK: ?outlet_id,
     CS_WAREHOUSE_SK: ?warehouse.id,
     CS_SHIP_MODE_SK: ?ship_mode.id,
     CS_QUANTITY: quantity,
@@ -125,6 +128,7 @@ partial datasource store_sales_unified (
     SS_ADDR_SK: ?bill_address.id,
     SS_PROMO_SK: ?promotion.id,
     SS_STORE_SK: ?channel_dim_id,
+    SS_STORE_SK: ?outlet_id,
     raw(''' NULL '''): warehouse.id,
     raw(''' NULL '''): ship_mode.id,
     SS_QUANTITY: quantity,

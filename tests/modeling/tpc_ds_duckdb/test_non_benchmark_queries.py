@@ -510,3 +510,34 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
     assert select_grain.components == {"s.item.id", "s.sales_channel"}, select_grain
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert re.search(r"rank\(\) over \(partition by", sql), sql
+
+
+def test_or_filter_over_differently_filtered_aggregates_no_recursion(engine):
+    # Bug B1 (second shape, enriched q77): a measure that is a difference of two
+    # inline-`?`-filtered values with DIFFERENT filter flags, aggregated, while a
+    # WHERE references those same flags as an OR. The discovery loop forced the
+    # `(f1 or f2)` condition to be pushed into a complex input (`net_profit ? f1`)
+    # that itself depends on a condition flag (`f1`); sourcing that input
+    # re-introduced the flag with the condition still attached, looping forever
+    # (opaque Python RecursionError). A condition can't be pushed into something
+    # that depends on its own derived inputs — that input is built first and the
+    # condition applied once above, over the joined rows.
+    query = """
+    import all_sales as sales;
+    auto f1 <- sales.date.date between '2000-08-23'::date and '2000-09-22'::date;
+    auto f2 <- sales.return_date.date between '2000-08-23'::date and '2000-09-22'::date;
+    auto m <- coalesce(sales.net_profit ? f1, 0) - coalesce(sales.return_net_loss ? f2, 0);
+    where sales.channel_dim_id is not null and (f1 or f2)
+    select sales.channel_dim_id, sum(m::numeric(15,2)) as t
+    limit 100;
+    """
+    sql = engine.generate_sql(query)[-1]
+    # the (f1 or f2) row filter must survive as an OR of both date-range checks,
+    # not be silently dropped when lifted off the recursive level
+    assert re.search(
+        r"between date '2000-08-23'.*?\bor\b.*?between date '2000-08-23'",
+        sql,
+        re.S | re.I,
+    ), sql
+    # and the query resolves and executes end-to-end against real data
+    engine.execute_text(query)[0].fetchall()

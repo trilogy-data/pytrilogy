@@ -34,6 +34,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildMultiSelectLineage,
     BuildOrderBy,
     BuildParamaterizedConceptReference,
     BuildRowsetItem,
@@ -447,6 +448,21 @@ class CTE:
             if c.derivation == Derivation.ROWSET:
                 assert isinstance(c.lineage, BuildRowsetItem)
                 return check_is_not_in_group(c.lineage.content)
+
+            # An aligned multiselect column resolves, in this arm CTE, to the
+            # underlying per-arm concept (e.g. `lc` -> `cnt1`). It inherits that
+            # concept's group-ness: aligning an aggregate must NOT add it to the
+            # GROUP BY (DuckDB rejects aggregates in GROUP BY); aligning a
+            # dimension keeps it a group key. Derive items are computed at the
+            # merge grain — never a group key here.
+            if c.derivation == Derivation.MULTISELECT:
+                assert isinstance(c.lineage, BuildMultiSelectLineage)
+                if c.address in c.lineage.calculated_derivations:
+                    return True
+                try:
+                    return check_is_not_in_group(c.lineage.find_source(c, self))
+                except SyntaxError:
+                    return False
 
             if c.derivation == Derivation.CONSTANT:
                 return True

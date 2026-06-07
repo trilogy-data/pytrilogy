@@ -9,6 +9,7 @@ from trilogy import Dialects
 from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import Concept, FunctionCallWrapper, Grain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
@@ -1526,6 +1527,34 @@ def test_const_equivalence_merge():
         assert len(results) == 5, sql
 
 
+def test_multi_select_align_aggregate():
+    # Aligning a per-arm aggregate must not push it into each arm's GROUP BY
+    # (DuckDB rejects aggregates in GROUP BY).
+    exec = Dialects.DUCK_DB.default_executor()
+    DebuggingHook()
+    exec.execute_raw_sql("CREATE TABLE s(sid int, cat varchar)")
+    exec.execute_raw_sql("CREATE TABLE w(wid int, cat2 varchar)")
+    exec.execute_raw_sql(
+        "INSERT INTO s VALUES (1,'a'),(2,'a'),(3,'b'); INSERT INTO w VALUES (4,'a'),(5,'b'),(6,'b')"
+    )
+    queries = exec.parse_text("""
+key sid int; property sid.cat string;
+datasource s (sid:sid, cat:cat) grain (sid) address s;
+key wid int; property wid.cat2 string;
+datasource w (wid:wid, cat2:cat2) grain (wid) address w;
+
+SELECT cat as g1, count(sid) as cnt1,
+MERGE
+SELECT cat2 as g2, count(wid) as cnt2,
+ALIGN grp: g1, g2 and lc: cnt1, cnt2
+ORDER BY grp;
+""")
+    sql = exec.generate_sql(queries[-1])[-1]
+    assert "count" in sql.lower()
+    results = exec.execute_query(queries[-1]).fetchall()
+    assert results
+
+
 def test_multi_select_derive():
     exec = Dialects.DUCK_DB.default_executor()
     DebuggingHook()
@@ -2136,6 +2165,41 @@ order by store_id asc, customer_id asc;
         (1, 2, 800, 450),
         (2, 2, 100, 75),
     ]
+
+
+def test_window_function_in_having_lowers_to_qualify_e2e():
+    # Per-store totals: store 1 = 900, store 2 = 150. A window predicate in
+    # HAVING can't live in WHERE/HAVING; it must lower to QUALIFY so the rank is
+    # evaluated after grouping. rank desc <= 1 keeps only store 1.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    sum(amount) as total
+having rank() over (order by sum(amount) desc) <= 1
+order by store_id asc;
+"""
+    sql = executor.generate_sql(text)[-1]
+    assert "QUALIFY" in sql, sql
+    assert "HAVING" not in sql, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert [(r.store_id, r.total) for r in rows] == [(1, 900)]
+
+
+def test_window_function_in_having_rejected_without_qualify():
+    # Dialects without QUALIFY (e.g. SQLite) can't lower a window in HAVING and
+    # must raise a clear, actionable error rather than emit invalid SQL.
+    executor = Dialects.SQLITE.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    sum(amount) as total
+having rank() over (order by sum(amount) desc) <= 1;
+"""
+    with raises(InvalidSyntaxException, match="Window functions are not"):
+        executor.generate_sql(text)
 
 
 _ORDER_BY_CONSTANT_SCHEMA = """key id int;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from trilogy.core.enums import Modifier
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
@@ -118,6 +119,25 @@ def multi_select_statement(
     # populated grain and local_concepts.
     for sel in selects:
         finalize_select_statement(sel, context)
+
+    # Arms sharing an output address collapse to one graph node (concepts are
+    # keyed by address), so codegen can't tell which arm's CTE a reference points
+    # at — it emits INVALID_REFERENCE_BUG / drops virtual aliases. Reject with an
+    # actionable message: use distinct names per arm and tie them with `align`.
+    seen: dict[str, int] = {}
+    for arm_index, sel in enumerate(selects):
+        for out_ref in sel.output_components:
+            prior = seen.get(out_ref.address)
+            if prior is not None and prior != arm_index:
+                short = out_ref.address.split(".", 1)[-1]
+                raise InvalidSyntaxException(
+                    f"Multi-select arms must use distinct output names; "
+                    f"'{short}' appears in more than one arm. Give each arm its "
+                    f"own name and tie them with `align` "
+                    f"(e.g. `... as {short}1` / `... as {short}2`, "
+                    f"`align grp: {short}1, {short}2`)."
+                )
+            seen[out_ref.address] = arm_index
 
     # A multi-select has no top-level WHERE: a pre-combination filter would have
     # to sit before the first arm (indistinguishable from that arm's own WHERE),

@@ -127,7 +127,9 @@ SELECT
 {%- if group_by %}GROUP BY {% for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
-\t{{ having }}{% endif %}
+\t{{ having }}{% endif %}{% if qualify %}
+QUALIFY
+\t{{ qualify }}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -227,6 +229,7 @@ class BigqueryDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    SUPPORTS_QUALIFY = True
 
     def hash_column_value(self, column_name: str) -> str:
         return f"FARM_FINGERPRINT(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS STRING))"

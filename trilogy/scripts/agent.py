@@ -188,6 +188,10 @@ REVIEWER_SYSTEM_PROMPT = (
 
 REVIEWER_TRANSCRIPT_MSG_LIMIT = 1200
 REVIEWER_TRANSCRIPT_ARG_LIMIT = 600
+# The reviewer only needs the agent's last few turns to detect a "still working"
+# self-signal. Feeding it the full transcript + task tempts it to grade the work
+# against the task (the q6 false-kickback). Keep just the agent's recent messages.
+REVIEWER_RECENT_AGENT_MESSAGES = 3
 
 
 def _build_provider(

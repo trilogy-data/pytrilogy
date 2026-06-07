@@ -1,6 +1,28 @@
 # Bug B1: Planner recursion crash on rank/window over a projected aggregate-ratio
 
-**Status:** OPEN (found 2026-06-06)
+**Status:** FIXED (2026-06-07).
+- Shape 1 (rank/ratio, build-time RecursionError) was already resolved by the
+  `_abstract_resolution_grain` fix in `build.py`; the select grain now uses the
+  window keys (item, sales_channel). Regression:
+  `tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rank_over_projected_aggregate_ratio_no_recursion`.
+- Shape 2 (q77 filtered-aggregate difference, discovery-time RecursionError) is a
+  *different* recursion — in node discovery, not in `__build_concept`. Root cause:
+  the named flag `f1` is both a derived row-argument of `where (f1 or f2)` and a
+  concept that must be built (the `?` filter operand). The loop forces the
+  condition to be pushed into a complex input (`net_profit ? f1`) that itself
+  depends on the flag `f1`; sourcing it re-introduces `f1` with the condition
+  still attached (`initialize_loop_context`), re-forcing evaluation — a loop.
+  Fix (stateless/local) in `discovery_utility.get_loop_iteration_targets`: gate
+  `force_pushdown_to_complex_input` so a complex pushdown target only counts when
+  it does NOT transitively depend on a DERIVED row-argument of the condition. You
+  can't push a condition into something that needs the condition's own derived
+  input; that input is built first and the condition applied above (over the
+  joined rows). Raw-column row-args still get normal datasource pushdown. Verified
+  the `(f1 or f2)` WHERE survives in the rendered SQL and the query executes
+  end-to-end. Regression:
+  `...::test_or_filter_over_differently_filtered_aggregates_no_recursion`.
+
+**Status (original):** OPEN (found 2026-06-06)
 **Severity:** high — an opaque `RecursionError` (Python stack overflow), NOT a clean rejection.
 A natural "rank items by a ratio of two aggregates" query crashes at build time. Burned the
 whole iteration budget on enriched q44 and q49 (two of the top token outliers in the 99-query
@@ -91,7 +113,7 @@ answer. The companion ingest-leg crash for the same shape is a *different* failu
 
 ---
 
-## NEW confirmed trigger shape (2026-06-07, enriched q77) — STILL OPEN
+## NEW confirmed trigger shape (2026-06-07, enriched q77) — FIXED 2026-06-07
 
 A second surface that hits the same `RecursionError` — **not** rank/ratio, so the B1 fix (if/when
 landed) must cover it too. Trigger: **a derived measure that is a *difference of two inline-`?`-

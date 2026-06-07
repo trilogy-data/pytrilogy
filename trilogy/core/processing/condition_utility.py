@@ -249,6 +249,49 @@ def is_scalar_condition(
     return True
 
 
+def contains_window(element: Any, materialized: set[str] | None = None) -> bool:
+    """True when a window function (``rank/lag/... over (…)``) must be *emitted*
+    by this condition — i.e. a window appears in the tree and isn't already a
+    materialized column. A materialized window concept is just a plain column
+    reference here (computed by a parent CTE), so it stays in WHERE; an inline
+    one must lower to QUALIFY since SQL forbids windows in WHERE/HAVING."""
+    if isinstance(element, WINDOW_TYPES):
+        return True
+    elif isinstance(element, PARENTHETICAL_TYPES):
+        return contains_window(element.content, materialized)
+    elif isinstance(element, COMPARISON_TYPES):
+        return contains_window(element.left, materialized) or contains_window(
+            element.right, materialized
+        )
+    elif isinstance(element, BETWEEN_TYPES):
+        return (
+            contains_window(element.left, materialized)
+            or contains_window(element.low, materialized)
+            or contains_window(element.high, materialized)
+        )
+    elif isinstance(element, CONDITIONAL_TYPES):
+        return contains_window(element.left, materialized) or contains_window(
+            element.right, materialized
+        )
+    elif isinstance(element, FUNCTION_TYPES):
+        return any(contains_window(x, materialized) for x in element.arguments)
+    elif isinstance(element, AGGREGATE_TYPES):
+        return contains_window(element.function, materialized)
+    elif isinstance(element, (BuildCaseWhen,)):
+        return contains_window(element.comparison, materialized) or contains_window(
+            element.expr, materialized
+        )
+    elif isinstance(element, (BuildCaseElse,)):
+        return contains_window(element.expr, materialized)
+    elif isinstance(element, CONCEPT_TYPES):
+        if materialized and element.address in materialized:
+            return False
+        if element.lineage is not None:
+            return contains_window(element.lineage, materialized)
+        return False
+    return False
+
+
 def reduce_expression(
     datatype: Any, group_tuple: list[tuple[ComparisonOperator, Any]]
 ) -> bool:
