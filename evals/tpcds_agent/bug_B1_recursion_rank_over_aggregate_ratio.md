@@ -88,4 +88,41 @@ after the agent rewrote each ratio operand as a distinct named `by`-grained `aut
 addresses → no collapse); q44 also eventually produced output. Pure budget burn, no wrong
 answer. The companion ingest-leg crash for the same shape is a *different* failure (SQL-render
 `INVALID_REFERENCE_BUG`) — see `bug_B2_invalid_reference_codegen.md`.
+
+---
+
+## NEW confirmed trigger shape (2026-06-07, enriched q77) — STILL OPEN
+
+A second surface that hits the same `RecursionError` — **not** rank/ratio, so the B1 fix (if/when
+landed) must cover it too. Trigger: **a derived measure that is a *difference of two inline-`?`-
+filtered aggregates with DIFFERENT filter flags*, aggregated, while a `where` clause references
+those same flags.**
+
+### Minimal repro — REPRODUCES on the checked-in enriched model (`tests/modeling/tpc_ds_duckdb`)
+```trilogy
+import all_sales as sales;
+auto f1 <- sales.date.date between '2000-08-23'::date and '2000-09-22'::date;
+auto f2 <- sales.return_date.date between '2000-08-23'::date and '2000-09-22'::date;
+auto m <- coalesce(sales.net_profit ? f1, 0) - coalesce(sales.return_net_loss ? f2, 0);
+where sales.channel_dim_id is not null and (f1 or f2)
+select sales.channel_dim_id, sum(m::numeric(15,2)) as t
+limit 100;
+```
+→ `RecursionError` at `generate_sql` (same opaque Python stack overflow as the rank/ratio shape).
+
+### Minimization (which pieces are load-bearing)
+- **Different filter flags** on the two operands (`? f1` vs `? f2`) — using the SAME flag for both
+  → compiles OK.
+- **A `where` referencing those flags** (`where … (f1 or f2)`) — dropping the `where` → compiles OK.
+- `by rollup` and the `def`-macro wrapper are NOT required (drop either → still crashes); they were
+  just how the q77 agent first hit it.
+
+So the cycle is the same root (an aggregate whose lineage nests other aggregates that share
+addresses with a WHERE-scoped filter), surfacing through filtered-aggregate *differences* rather
+than ratios. The `self._building` address-stack guard proposed above should resolve both shapes —
+verify against this repro as well as the rank/ratio one.
+
+Provenance: enriched q77 (multi-channel period sales/returns/profit rollup); the agent's natural
+`period_profit <- coalesce(net_profit ? sale_in_period,0) - coalesce(return_net_loss ?
+return_in_period,0)` definition hit this. 2.45M tokens.
 </content>

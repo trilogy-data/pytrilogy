@@ -160,31 +160,44 @@ class TestIsScalarOnly:
 
 
 class TestIsIndependentScope:
+    # An outer condition on a concept the rowset does NOT expose.
+    _OUTER = property(lambda self: _eq(_concept("outer_year"), "1999"))
+
     def test_all_rowset_outputs(self):
         a = _concept("cnt_2000", derivation=Derivation.ROWSET)
         b = _concept("item_id", derivation=Derivation.ROWSET)
-        assert _is_independent_scope(_StackNode([a, b])) is True
+        assert _is_independent_scope(_StackNode([a, b]), self._OUTER) is True
 
     def test_non_rowset_outputs(self):
         a = _concept("cnt_1999", derivation=Derivation.AGGREGATE)
         b = _concept("item_id", derivation=Derivation.ROOT)
-        assert _is_independent_scope(_StackNode([a, b])) is False
+        assert _is_independent_scope(_StackNode([a, b]), self._OUTER) is False
 
     def test_mixed_outputs_not_independent(self):
         a = _concept("cnt_2000", derivation=Derivation.ROWSET)
         b = _concept("item_id", derivation=Derivation.ROOT)
-        assert _is_independent_scope(_StackNode([a, b])) is False
+        assert _is_independent_scope(_StackNode([a, b]), self._OUTER) is False
 
     def test_no_visible_outputs(self):
         a = _concept("cnt_2000", derivation=Derivation.ROWSET)
         node = _StackNode([a], hidden_concepts={a.address})
-        assert _is_independent_scope(node) is False
+        assert _is_independent_scope(node, self._OUTER) is False
 
     def test_hidden_non_rowset_not_counted(self):
         rowset = _concept("cnt_2000", derivation=Derivation.ROWSET)
         hidden_root = _concept("item_id", derivation=Derivation.ROOT)
         node = _StackNode([rowset, hidden_root], hidden_concepts={hidden_root.address})
-        assert _is_independent_scope(node) is True
+        assert _is_independent_scope(node, self._OUTER) is True
+
+    def test_condition_on_exposed_rowset_output_not_independent(self):
+        """q75: the condition filters a column the rowset itself exposes
+        (e.g. `deduped.sales.date.year`). That's a consumer filter on the
+        rowset's rows and must be applied — the node is NOT exempt, even though
+        all its outputs are rowset-derived."""
+        year = _concept("deduped_year", derivation=Derivation.ROWSET)
+        cnt = _concept("deduped_cnt", derivation=Derivation.ROWSET)
+        node = _StackNode([year, cnt])
+        assert _is_independent_scope(node, _eq(year, "2002")) is False
 
 
 # ---------------------------------------------------------------------------

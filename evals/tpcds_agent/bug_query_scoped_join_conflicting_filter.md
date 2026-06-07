@@ -15,8 +15,10 @@ rowset node legitimately carries its own, different (or `None`) condition. This
 also broke *non*-conflicting outer filters (e.g. an outer `store=1` over a
 `year=2000` rowset) — any outer WHERE differing from the rowset's crashed.
 
-Fix: a new `_is_independent_scope(node)` helper (node whose visible outputs are
-all `Derivation.ROWSET`) in `discovery_validation.py`, added as an exemption
+Fix: a new `_is_independent_scope(node, condition)` helper in
+`discovery_validation.py` — a node whose visible outputs are all
+`Derivation.ROWSET` is exempt from `condition`, **but only when `condition`'s
+row arguments are disjoint from the node's outputs**. Added as an exemption
 alongside `_is_scalar_only` in `_conditions_met` / `_condition_atom_met`, and in
 `generate_loop_completion`'s `condition_required` gate
 (`concept_strategies_v3.py`) so the outer condition isn't wrongly re-applied to
@@ -24,10 +26,22 @@ the merge. The repro now compiles to two independently-filtered base scans
 (rowset `year=2000`, outer `year=1999`) joined by item — a meaningful
 year-over-year result, not empty.
 
-Regression tests: `tests/engine/test_duckdb_rowset.py::test_rowset_query_scoped_join_conflicting_filter`
-(end-to-end, asserts correct non-empty results) and
-`tests/core/processing/test_discovery_validation.py` (`TestIsIndependentScope`,
-`TestConditionsMetIndependentScope`).
+The disjointness clause is essential (q75 regression, caught in review): there
+are two kinds of condition next to a rowset node. (1) The rowset's *own*
+internal scope — the filtered column is consumed inside and is NOT a node output
+(repro: condition on `store_sales.date.year`, rowset exposes only `yr2000.*`) →
+exempt. (2) A *consumer* filtering a column the rowset *exposes* (q75 multi-
+select arms narrow `deduped.sales.date.year = 2002/2001`, and `deduped` projects
+that year) → must be applied, NOT exempt. A blanket exemption dropped q75's
+per-arm filters, summing both years into both arms (curr==prev → `having < 0.9`
+empties the result). The row-arg-vs-outputs disjointness check separates them.
+
+Regression tests: `tests/engine/test_duckdb_rowset.py` —
+`test_rowset_query_scoped_join_conflicting_filter` (original bug, end-to-end) and
+`test_rowset_multiselect_per_arm_filter_on_exposed_column` (q75 shape: asserts
+per-arm year filters stay separate, `[(1,10,30),(2,5,5)]` not `[(1,40,40),…]`);
+`tests/core/processing/test_discovery_validation.py` (`TestIsIndependentScope`
+incl. the exposed-column case, `TestConditionsMetIndependentScope`).
 
 ## Original report (for context)
 

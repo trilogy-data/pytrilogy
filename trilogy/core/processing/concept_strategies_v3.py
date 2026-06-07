@@ -319,7 +319,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                 )
             )
             or _is_scalar_only(x)
-            or _is_independent_scope(x)
+            or _is_independent_scope(x, context.conditions.conditional)
             for x in context.stack
         ]
     ):
