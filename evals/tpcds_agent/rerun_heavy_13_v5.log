@@ -5,3 +5,5 @@
   [q06] starting (worker _worker_2)
   [q17] starting (worker _worker_1)
   [q44] starting (worker _worker_0)
+  [q06] done in 157s (exit 0, score=pass)
+  [q49] starting (worker _worker_2)
