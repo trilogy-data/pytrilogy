@@ -167,9 +167,10 @@ EXIT_ITERATION_EXHAUSTED = 2
 
 REVIEWER_SYSTEM_PROMPT = (
     "You check ONE narrow thing: did the agent ITSELF signal it was not finished "
-    "when it called return_control_to_user? You receive the task and the agent's "
-    "tool-use transcript. Reply with exactly 'DONE' or 'NOT_DONE' on the first "
-    "line, then one sentence quoting the agent's own words.\n"
+    "when it called return_control_to_user? You receive ONLY the agent's most "
+    "recent messages — not the task and not tool output. Reply with exactly 'DONE' "
+    "or 'NOT_DONE' on the first line, then one sentence quoting the agent's own "
+    "words.\n"
     "Reply NOT_DONE only when the agent's OWN final message shows it was still "
     "working: it narrates a next step it hasn't taken ('now I'll...', 'let me...', "
     "'I still need to...'), self-notes unresolved uncertainty it is investigating, "
@@ -429,39 +430,41 @@ def _status_message(call: LLMToolCall) -> str:
     return call.name
 
 
-def _render_reviewer_transcript(messages: list[LLMMessage]) -> str:
+def _render_reviewer_transcript(
+    messages: list[LLMMessage],
+    max_agent_messages: int = REVIEWER_RECENT_AGENT_MESSAGES,
+) -> str:
+    """Render ONLY the agent's last ``max_agent_messages`` messages (assistant
+    role). The task prompt, tool results, and earlier turns are deliberately
+    excluded — the reviewer judges whether the agent ITSELF signalled it wasn't
+    finished, and seeing the task/output just tempts it to grade correctness."""
+    agent_msgs = [m for m in messages if m.role == "assistant"]
+    if max_agent_messages > 0:
+        agent_msgs = agent_msgs[-max_agent_messages:]
     blocks: list[str] = []
-    for msg in messages:
-        if msg.role == "system":
-            continue
-        info = msg.model_info or {}
-        tcs = info.get("tool_calls", [])
-        if msg.role == "assistant" and tcs:
-            for tc in tcs:
-                name = tc.get("name", "?")
-                args = tc.get("arguments")
-                rendered = (
-                    args if isinstance(args, str) else json.dumps(args, default=str)
-                )
-                rendered = truncate_middle(rendered, REVIEWER_TRANSCRIPT_ARG_LIMIT)
-                blocks.append(f"AGENT CALL {name}: {rendered}")
-            continue
-        content = truncate_middle(msg.content or "", REVIEWER_TRANSCRIPT_MSG_LIMIT)
-        prefix = "USER/TOOL_RESULT" if msg.role == "user" else msg.role.upper()
-        blocks.append(f"{prefix}: {content}")
+    for msg in agent_msgs:
+        if msg.content:
+            blocks.append(
+                f"AGENT: {truncate_middle(msg.content, REVIEWER_TRANSCRIPT_MSG_LIMIT)}"
+            )
+        for tc in (msg.model_info or {}).get("tool_calls", []):
+            name = tc.get("name", "?")
+            args = tc.get("arguments")
+            rendered = args if isinstance(args, str) else json.dumps(args, default=str)
+            rendered = truncate_middle(rendered, REVIEWER_TRANSCRIPT_ARG_LIMIT)
+            blocks.append(f"AGENT CALL {name}: {rendered}")
     return "\n\n".join(blocks)
 
 
 def _validate_completion(
     provider: LLMProvider,
-    original_task: str,
     messages: list[LLMMessage],
 ) -> tuple[bool, str]:
     """One-shot reviewer call. Clean context, no tools. Returns (is_done, note)."""
     reviewer = Conversation.create(provider, model_prompt=REVIEWER_SYSTEM_PROMPT)
     transcript = _render_reviewer_transcript(messages)
     reviewer.add_message(
-        f"ORIGINAL TASK:\n{original_task}\n\nAGENT TRANSCRIPT:\n{transcript}",
+        f"AGENT'S RECENT MESSAGES:\n{transcript}",
         role="user",
     )
     try:
@@ -553,7 +556,7 @@ def _run_turn(
                 ):
                     with with_status("Reviewer checking submit"):
                         is_done, note = _validate_completion(
-                            provider, original_task, conv.messages
+                            provider, conv.messages
                         )
                     _log_event(
                         log_path,

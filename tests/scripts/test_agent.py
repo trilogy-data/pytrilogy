@@ -816,20 +816,35 @@ def test_run_turn_reviewer_skipped_when_no_provider():
     assert state.submit_kickbacks == 0
 
 
-def test_reviewer_transcript_includes_tool_calls_and_results():
+def test_reviewer_transcript_only_agent_messages_no_task_or_results():
+    """The reviewer sees ONLY the agent's own messages — not the task prompt,
+    tool results, or system message."""
     msgs = [
         LLMMessage(role="system", content="ignored"),
-        LLMMessage(role="user", content="do the thing"),
-        LLMMessage(role="assistant", content=""),
-        LLMMessage(role="user", content='{"tool":"trilogy","result":"ok"}'),
+        LLMMessage(role="user", content="THE TASK do the thing"),
+        LLMMessage(role="assistant", content="I will run it"),
+        LLMMessage(role="user", content='{"tool":"trilogy","result":"TOOL_OUTPUT ok"}'),
     ]
     msgs[2].model_info = {
         "tool_calls": [{"name": "trilogy", "arguments": {"args": ["run"]}}]
     }
     rendered = _render_reviewer_transcript(msgs)
-    assert "do the thing" in rendered
+    assert "AGENT: I will run it" in rendered
     assert "AGENT CALL trilogy" in rendered
+    assert "THE TASK" not in rendered  # task prompt excluded
+    assert "TOOL_OUTPUT" not in rendered  # tool results excluded
     assert "ignored" not in rendered  # system messages dropped
+
+
+def test_reviewer_transcript_keeps_only_last_n_agent_messages():
+    """Only the last REVIEWER_RECENT_AGENT_MESSAGES agent turns are rendered."""
+    n = agent_mod.REVIEWER_RECENT_AGENT_MESSAGES
+    msgs = [LLMMessage(role="assistant", content=f"turn {i}") for i in range(n + 2)]
+    rendered = _render_reviewer_transcript(msgs)
+    assert "turn 0" not in rendered  # oldest dropped
+    assert "turn 1" not in rendered
+    for i in range(2, n + 2):  # the last n remain
+        assert f"turn {i}" in rendered
 
 
 def test_reviewer_transcript_truncates_long_message_from_middle():
@@ -837,7 +852,7 @@ def test_reviewer_transcript_truncates_long_message_from_middle():
     head = "HEAD_MARKER_"
     tail = "_TAIL_MARKER"
     body = head + "x" * (agent_mod.REVIEWER_TRANSCRIPT_MSG_LIMIT * 3) + tail
-    msgs = [LLMMessage(role="user", content=body)]
+    msgs = [LLMMessage(role="assistant", content=body)]
     rendered = _render_reviewer_transcript(msgs)
     assert head in rendered
     assert tail in rendered
@@ -1561,7 +1576,7 @@ def test_validate_completion_falls_open_when_reviewer_errors():
             raise RuntimeError("reviewer down")
 
     is_done, note = _validate_completion(
-        BoomProvider(), "do the thing", [LLMMessage(role="user", content="hi")]
+        BoomProvider(), [LLMMessage(role="assistant", content="hi")]
     )
     assert is_done is True
     assert "reviewer unavailable" in note

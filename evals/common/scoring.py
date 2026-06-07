@@ -43,6 +43,11 @@ class AgentMetrics:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # Submit-reviewer activity. `reviewer_kickbacks` (NOT_DONE verdicts) should
+    # stay low — each one is a forced re-loop; a high count signals the reviewer
+    # is over-firing (false positives) and burning agent budget.
+    reviewer_verdicts: int = 0
+    reviewer_kickbacks: int = 0
     farewell: str = ""
     # Per-tool response-size distribution. The dominant exploration cost
     # signal is "how often did the response come back truncated, forcing the
@@ -155,6 +160,10 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
                 msg = args.get("message")
                 if isinstance(msg, str):
                     m.farewell = msg
+        elif etype == "reviewer_verdict":
+            m.reviewer_verdicts += 1
+            if not event.get("is_done"):
+                m.reviewer_kickbacks += 1
         elif etype == "tool_result":
             m.tool_results_total += 1
             name = str(event.get("name", "?"))
@@ -196,6 +205,8 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
         agg.prompt_tokens += m.prompt_tokens
         agg.completion_tokens += m.completion_tokens
         agg.total_tokens += m.total_tokens
+        agg.reviewer_verdicts += m.reviewer_verdicts
+        agg.reviewer_kickbacks += m.reviewer_kickbacks
         by_name.update(m.tool_calls_by_name)
         subcmds.update(m.trilogy_subcommands)
         repeated.update(m.repeated_calls_by_name)

@@ -1,6 +1,12 @@
 # Bug: aggregate used as an `align` target → invalid GROUP-BY SQL
 
-**Status:** OPEN (found 2026-06-07, enriched eval q76).
+**Status:** FIXED 2026-06-07 (found 2026-06-07, enriched eval q76). Took fix option 1
+("make it just work"): an aligned multiselect column now inherits the group-ness of its
+underlying per-arm concept, so aligning an aggregate keeps it OUT of the arm's GROUP BY
+while aligning a dimension still groups. Fix in `CTE.group_concepts.check_is_not_in_group`
+(trilogy/core/models/execute.py): added a `Derivation.MULTISELECT` branch that resolves via
+`find_source` (mirrors the ROWSET branch); derive items always group-exempt. Regression test
+`test_multi_select_align_aggregate` in tests/engine/test_duckdb.py.
 **Severity:** medium-high — agents naturally align the per-arm aggregate (so the combined
 measure lines up across channels). Trilogy emits the aggregate into the outer `GROUP BY`,
 producing SQL DuckDB rejects. `generate_sql` succeeds; the failure is at execution. ~16 calls /
