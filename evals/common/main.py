@@ -53,6 +53,11 @@ OPENROUTER_ROUTING = {
 DEFAULT_PROVIDER = "deepseek"
 DEFAULT_MODEL = "deepseek-chat"
 
+# Hard ceiling for scoring ONE query (generate_sql + execute + reference), run
+# in a child process so it can be killed. Legit scoring is seconds; this only
+# trips on a planner loop or a runaway generated query.
+SCORE_TIMEOUT = 180.0
+
 
 def _force_utf8_stdio() -> None:
     """Survive redirection on Windows, where stdout defaults to cp1252 and
@@ -534,17 +539,14 @@ def run(spec: BenchmarkSpec) -> int:
     # --- live dashboard machinery ---------------------------------------
     # Build the scoring engine ONCE and reuse per query — avoids paying
     # engine setup + extension load on every grade.
-    try:
-        scoring_engine = scoring.make_scoring_engine(
-            workspace_db, workspace, spec.duckdb_extension
-        )
-    except Exception as exc:
-        scoring_engine = None
-        print(
-            f"  scoring engine init failed; live dashboard disabled: "
-            f"{type(exc).__name__}: {exc}",
-            file=sys.stderr,
-        )
+    # Scoring runs in a per-query CHILD PROCESS (scoring.score_query_timed) so a
+    # hung generate_sql / runaway DuckDB query can be killed by a hard timeout
+    # instead of deadlocking the worker — and, under the shared lock, the whole
+    # run (a single stuck score previously froze every worker indefinitely). We
+    # therefore do NOT hold a persistent engine open: a live connection would
+    # lock the duckdb file against the scoring subprocess. Per-query failures
+    # surface as that query's `error` result.
+    scoring_available = workspace_db.exists()
     # Reference SQL directory: per-spec folder where each ``query<NN>.sql`` is
     # the executable SQL the scorer compares the agent's output against, in
     # place of ``PRAGMA <extension>(<NN>)``. Most files reproduce the PRAGMA
@@ -561,7 +563,7 @@ def run(spec: BenchmarkSpec) -> int:
     RENDER_MIN_INTERVAL = 10.0  # seconds — debounce so matplotlib isn't hot
 
     def maybe_render_dashboard(force: bool = False) -> None:
-        if scoring_engine is None:
+        if not scoring_available:
             return
         with render_lock:
             now = time.perf_counter()
@@ -624,14 +626,15 @@ def run(spec: BenchmarkSpec) -> int:
                     produced.unlink()
             per_query_runs[index] = result
             per_query_metrics[index] = scoring.parse_agent_log(log_path)
-            if scoring_engine is not None:
+            if scoring_available:
                 try:
                     with scoring_lock:
-                        per_query_scores[index] = scoring.score_query(
-                            scoring_engine,
+                        per_query_scores[index] = scoring.score_query_timed(
+                            workspace_db,
                             workspace,
                             qid,
                             spec.duckdb_extension,
+                            SCORE_TIMEOUT,
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
                         )
@@ -693,16 +696,17 @@ def run(spec: BenchmarkSpec) -> int:
     (run_dir / "agent_output.txt").write_text(agent_run["output"], encoding="utf-8")
 
     print(f"[4/5] Finalising scores for {len(query_ids)} queries ...")
-    if scoring_engine is not None:
+    if scoring_available:
         for i, entry in enumerate(active):
             if per_query_scores[i] is None:
                 try:
                     with scoring_lock:
-                        per_query_scores[i] = scoring.score_query(
-                            scoring_engine,
+                        per_query_scores[i] = scoring.score_query_timed(
+                            workspace_db,
                             workspace,
                             entry["id"],
                             spec.duckdb_extension,
+                            SCORE_TIMEOUT,
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
                         )

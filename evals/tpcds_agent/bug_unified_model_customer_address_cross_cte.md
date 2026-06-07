@@ -1,6 +1,16 @@
 # Bug: unified-model 2-hop `customer.address` group/filter → cross-CTE "table not found"
 
-**Status:** OPEN (found 2026-06-07, enriched eval q6).
+**Status:** FIXED 2026-06-07 (found 2026-06-07, enriched eval q6). Root cause: datasource
+inlining folded the raw `customer` table into the address-join CTE as an inlined-but-dangling
+source — the FK key (`C_CURRENT_ADDR_SK`) was already materialized by the grouped parent CTE, so
+the inlined customer table never reached the FROM, yet the address join's ON still referenced its
+alias (a sibling CTE's), hence "table not found". Fix (the report's render-side option) in
+`_render_left_concept` (trilogy/dialect/common.py): when the join's recorded left node is not one
+of the consumer's emitted parent CTEs but the left concept IS available from an emitted parent CTE
+(per `source_map`), pin the key to that parent CTE. Covers both `purchasing_customer` and
+`billing_customer` paths. Regression test `test_unified_model_customer_address_cross_cte_join`
+(+ `_out_of_scope_join_aliases` static check) in
+tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py.
 **Severity:** medium — grouping/filtering by a customer's address property on the unified
 `all_sales` model generates SQL where the address join references the customer-table alias from a
 *sibling* CTE, which DuckDB rejects. `generate_sql` succeeds; execution fails. Drove part of q6's

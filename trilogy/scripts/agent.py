@@ -555,9 +555,7 @@ def _run_turn(
                     and state.submit_kickbacks < MAX_SUBMIT_KICKBACKS
                 ):
                     with with_status("Reviewer checking submit"):
-                        is_done, note = _validate_completion(
-                            provider, conv.messages
-                        )
+                        is_done, note = _validate_completion(provider, conv.messages)
                     _log_event(
                         log_path,
                         {

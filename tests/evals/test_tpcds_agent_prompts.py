@@ -84,6 +84,13 @@ _ALLOWED_TOKENS: frozenset[str] = frozenset(
         # literals that prefix per-outlet IDs — the agent must emit them verbatim
         # to match the reference, so the prompt has to name them.
         "web_site",
+        # Q76's reference output labels each missing-reference bucket with the
+        # physical column name as a literal `col_name` value ('ss_store_sk', etc.).
+        # These are required verbatim output strings, not schema hints — the agent
+        # must emit them to match the gold result.
+        "ss_store_sk",
+        "ws_ship_customer_sk",
+        "cs_ship_addr_sk",
     }
 )
 

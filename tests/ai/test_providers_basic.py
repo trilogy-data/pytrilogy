@@ -56,6 +56,25 @@ def _extracts_year_of(node, env: Environment, address: str) -> bool:
     return False
 
 
+def _computes_flight_count(node, env: Environment) -> bool:
+    """True if node counts flights: COUNT(local.id2) directly, or via the model's
+    `count` metric (`local.count <- count(id2)`), including a re-aggregating
+    `sum(local.count)`. Both are valid answers to "number of flights"."""
+    if isinstance(node, ConceptRef):
+        concept = env.concepts.get(node.address)
+        if concept is not None and concept.lineage is not None:
+            return _computes_flight_count(concept.lineage, env)
+        return False
+    if isinstance(node, AggregateWrapper):
+        return _computes_flight_count(node.function, env)
+    if isinstance(node, Function):
+        if node.operator == FunctionType.COUNT:
+            return node.arguments[0] == env.concepts["local.id2"].reference
+        if node.operator == FunctionType.SUM:
+            return _computes_flight_count(node.arguments[0], env)
+    return False
+
+
 def _has_year_equals(
     where: WhereClause, env: Environment, address: str, value: int
 ) -> bool:

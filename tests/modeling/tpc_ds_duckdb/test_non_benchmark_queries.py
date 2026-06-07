@@ -136,6 +136,21 @@ def _self_referential_joins(sql: str) -> list[str]:
     return bad
 
 
+def _out_of_scope_join_aliases(sql: str) -> list[tuple[str, str]]:
+    """(cte, alias) pairs where a join ON references a table alias not introduced
+    by that CTE's own FROM/JOIN — invalid SQL (alias bound in a sibling CTE)."""
+    bad: list[tuple[str, str]] = []
+    for m in re.finditer(r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\Z)", sql, re.DOTALL):
+        name, body = m.group(1), m.group(2)
+        in_scope = set(re.findall(r'(?:FROM|JOIN)\s+"?[\w".]+"?\s+as\s+"(\w+)"', body))
+        in_scope |= set(re.findall(r'(?:FROM|JOIN)\s+"(\w+)"(?!\."|\s+as)', body))
+        for ref in re.findall(r"\bon\b.*", body):
+            for alias in re.findall(r'"(\w+)"\."', ref):
+                if alias not in in_scope:
+                    bad.append((name, alias))
+    return bad
+
+
 def test_or_membership_with_projected_aggregate(engine):
     """Regression for bug B2 + its two co-sourcing siblings, using the full
     documented repro (feeder filters include a ``date.year`` join):
@@ -512,15 +527,40 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
     assert re.search(r"rank\(\) over \(partition by", sql), sql
 
 
+def test_unified_model_customer_address_cross_cte_join(engine):
+    # Bug (enriched q6): grouping/filtering by a 2-hop
+    # `<role>_customer.address.<prop>` on the unified `all_sales` model. The
+    # customer->address FK key (C_CURRENT_ADDR_SK) is materialized by the grouped
+    # parent CTE, but datasource inlining left the raw customer table inlined-but-
+    # dangling, so the address join's ON referenced the customer alias from a
+    # sibling CTE that isn't in scope ("table ... not found"). The left key must
+    # bind against the emitted parent CTE that exposes the FK column.
+    for role in ("purchasing_customer", "billing_customer"):
+        query = f"""
+import all_sales as sales;
+where sales.date.year = 2001
+  and sales.{role}.address.id is not null
+select
+    sales.{role}.address.state as state,
+    count(sales.item.id) as n
+limit 100;
+"""
+        sql = engine.generate_sql(query)[-1]
+        # every join ON alias must be introduced by that CTE's own FROM/JOIN
+        assert not _out_of_scope_join_aliases(sql), sql
+        # executes end-to-end against real data (was a BinderException)
+        engine.execute_text(query)[0].fetchall()
+
+
 def test_or_filter_over_differently_filtered_aggregates_no_recursion(engine):
     # Bug B1 (second shape, enriched q77): a measure that is a difference of two
     # inline-`?`-filtered values with DIFFERENT filter flags, aggregated, while a
-    # WHERE references those same flags as an OR. The discovery loop forced the
-    # `(f1 or f2)` condition to be pushed into a complex input (`net_profit ? f1`)
-    # that itself depends on a condition flag (`f1`); sourcing that input
-    # re-introduced the flag with the condition still attached, looping forever
-    # (opaque Python RecursionError). A condition can't be pushed into something
-    # that depends on its own derived inputs — that input is built first and the
+    # WHERE references those same flags as an OR. The flag `f1` is both a derived
+    # row-argument of `(f1 or f2)` and a concept that must be built (the `? f1`
+    # operand). The discovery loop routed the condition into building `f1`, but
+    # sourcing `f1`'s parents re-injected `f1` via the condition's row args —
+    # unbounded (opaque Python RecursionError). A condition can't be routed into
+    # building one of its own derived inputs; the flag is built first and the
     # condition applied once above, over the joined rows.
     query = """
     import all_sales as sales;

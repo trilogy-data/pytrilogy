@@ -592,25 +592,8 @@ def get_loop_iteration_targets(
     force_pushdown_to_complex_input = False
 
     pushdown_targets = get_inputs_that_require_pushdown(conditions, mandatory)
-    # Only force condition pushdown toward a complex input we can actually push
-    # into. A complex input that itself depends on a *derived* row-argument of
-    # the condition cannot receive it: sourcing that input re-introduces the
-    # derived arg (with the condition still attached) into the mandatory list,
-    # re-forcing evaluation and looping forever (e.g. `where (f1 or f2)` over two
-    # `?`-filtered operands — pushing the condition into `net_profit ? f1` drags
-    # in `f1`, a condition input). Such inputs must be built first and the
-    # condition applied above them, so they don't justify forced pushdown.
-    if pushdown_targets and conditions:
-        derived_condition_inputs = {
-            c.address
-            for c in conditions.row_arguments
-            if c.derivation not in ROOT_DERIVATIONS
-        }
-        if any(
-            not (derived_condition_inputs & get_upstream_concepts(x, nested=True))
-            for x in pushdown_targets
-        ):
-            force_pushdown_to_complex_input = True
+    if pushdown_targets:
+        force_pushdown_to_complex_input = True
     # a list of all non-materialized concepts, or all concepts
     # if a pushdown is required
     all_concepts_local: list[BuildConcept] = [
@@ -682,6 +665,26 @@ def get_loop_iteration_targets(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
             f"is a filter-scalar by-aggregate; dropping outer conditions for its scope"
+        )
+        conditions = None
+
+    # A condition can only be evaluated where all its inputs exist. When the
+    # priority we are about to build is itself a *derived* row-argument of the
+    # condition (e.g. a named `auto f1 <- a between x and y` flag used in both
+    # `where (f1 or f2)` and a `? f1` operand), routing the condition into its
+    # build is circular: sourcing the flag's parents puts the flag back in the
+    # mandatory list via the condition's row args, re-forcing forever. Build the
+    # flag first; the condition is applied at this level's completion instead.
+    # (An aggregate grouped *by* a derived row-arg is fine — it isn't the
+    # row-arg itself, so it never matches here and keeps normal pushdown.)
+    if (
+        conditions
+        and priority_concept.derivation not in ROOT_DERIVATIONS
+        and priority_concept.address in {c.address for c in conditions.row_arguments}
+    ):
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
+            f"is a derived condition input; not routing the condition into its build"
         )
         conditions = None
 

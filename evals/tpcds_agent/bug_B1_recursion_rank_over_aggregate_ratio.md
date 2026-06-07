@@ -8,18 +8,21 @@
 - Shape 2 (q77 filtered-aggregate difference, discovery-time RecursionError) is a
   *different* recursion — in node discovery, not in `__build_concept`. Root cause:
   the named flag `f1` is both a derived row-argument of `where (f1 or f2)` and a
-  concept that must be built (the `?` filter operand). The loop forces the
-  condition to be pushed into a complex input (`net_profit ? f1`) that itself
-  depends on the flag `f1`; sourcing it re-introduces `f1` with the condition
-  still attached (`initialize_loop_context`), re-forcing evaluation — a loop.
-  Fix (stateless/local) in `discovery_utility.get_loop_iteration_targets`: gate
-  `force_pushdown_to_complex_input` so a complex pushdown target only counts when
-  it does NOT transitively depend on a DERIVED row-argument of the condition. You
-  can't push a condition into something that needs the condition's own derived
-  input; that input is built first and the condition applied above (over the
-  joined rows). Raw-column row-args still get normal datasource pushdown. Verified
-  the `(f1 or f2)` WHERE survives in the rendered SQL and the query executes
-  end-to-end. Regression:
+  concept that must be built (the `? f1` operand). The loop routes the condition
+  into building `f1`; sourcing `f1`'s parents re-injects `f1` via the condition's
+  row args (`initialize_loop_context`), re-forcing evaluation — a loop.
+  Fix (stateless/local) in `discovery_utility.get_loop_iteration_targets`,
+  post-priority: if the chosen priority is a DERIVED concept that is a row-argument
+  of the condition, set `conditions=None` for its build. You can't route a
+  condition into building one of its own derived inputs; that input is built first
+  and the condition applied at completion (over the joined rows). `LoopContext`
+  keeps the condition, so it's still applied. NOTE: gating
+  `force_pushdown_to_complex_input` instead is too coarse — an aggregate grouped
+  BY a derived condition row-arg has it in `concept_arguments` as grain and must
+  still be pushable (regresses `test_bound_conversion_existence_presto`); only a
+  concept that IS the row-arg cycles, which the post-priority site pinpoints.
+  Verified the `(f1 or f2)` WHERE survives in the rendered SQL and the query
+  executes end-to-end. Regression:
   `...::test_or_filter_over_differently_filtered_aggregates_no_recursion`.
 
 **Status (original):** OPEN (found 2026-06-06)

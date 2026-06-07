@@ -34,32 +34,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 EVAL_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_DIR.parents[1]
 
-# Mirror the reviewer's own truncation budgets so the reconstructed transcript
-# matches what the live reviewer saw (agent.py REVIEWER_TRANSCRIPT_*_LIMIT).
-ARG_LIMIT = 600
-MSG_LIMIT = 1200
-
-
-def _truncate_middle(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    dropped = len(text) - limit
-    marker = f"\n...[truncated {dropped} bytes]...\n"
-    budget = max(limit - len(marker), 0)
-    head = budget // 2
-    tail = budget - head
-    return f"{text[:head]}{marker}{text[-tail:]}" if tail else f"{text[:head]}{marker}"
-
-
-_KICKBACK_NUDGE = (
-    "USER/TOOL_RESULT: A reviewer determined you might not actually be done; "
-    "keep working and submit again when you are truly finished. Reviewer note: {note}"
-)
-
 
 def _records_from_log(path: Path) -> list[dict]:
     """One record per reviewer_verdict in a single agent log, each carrying the
-    faithfully-reconstructed reviewer transcript as of that submit."""
+    reviewer input as of that submit. Reconstructs the agent's messages and
+    renders them with the LIVE `_render_reviewer_transcript` so the corpus and
+    production reviewer can never drift (last-N agent messages, no task / tool
+    output)."""
+    from trilogy.ai.models import LLMMessage
+    from trilogy.scripts.agent import _render_reviewer_transcript
+
     try:
         rows = [
             json.loads(line)
@@ -74,31 +58,26 @@ def _records_from_log(path: Path) -> list[dict]:
             task = r.get("command", "") or ""
             break
 
-    lines: list[str] = []
-    if task:
-        lines.append("USER/TOOL_RESULT: " + _truncate_middle(task, MSG_LIMIT))
+    messages: list[LLMMessage] = []
     last_farewell = ""
     submit_index = 0
     out: list[dict] = []
     for r in rows:
         t = r.get("type")
         if t == "llm_response":
+            msg = LLMMessage(role="assistant", content=r.get("text") or "")
+            msg.model_info = {"tool_calls": r.get("tool_calls") or []}
+            messages.append(msg)
             for tc in r.get("tool_calls") or []:
-                name = tc.get("name", "?")
-                args = json.dumps(tc.get("arguments"), default=str)
-                lines.append(f"AGENT CALL {name}: {_truncate_middle(args, ARG_LIMIT)}")
-                if name == "return_control_to_user":
+                if tc.get("name") == "return_control_to_user":
                     last_farewell = (tc.get("arguments") or {}).get("message", "")
-        elif t == "tool_result":
-            content = json.dumps({"tool": r.get("name"), "result": r.get("result")})
-            lines.append("USER/TOOL_RESULT: " + _truncate_middle(content, MSG_LIMIT))
         elif t == "reviewer_verdict":
             out.append(
                 {
                     "id": f"{path.stem}::{submit_index}",
                     "source": str(path.relative_to(REPO_ROOT)),
                     "task": task,
-                    "transcript": "\n\n".join(lines),
+                    "transcript": _render_reviewer_transcript(messages),
                     "farewell": last_farewell,
                     "submit_index": submit_index,
                     "historical_verdict": "DONE" if r.get("is_done") else "NOT_DONE",
@@ -106,8 +85,6 @@ def _records_from_log(path: Path) -> list[dict]:
                 }
             )
             submit_index += 1
-            if not r.get("is_done"):
-                lines.append(_KICKBACK_NUDGE.format(note=r.get("note", "")))
     return out
 
 
@@ -210,15 +187,15 @@ def label(args: argparse.Namespace) -> int:
     return 0
 
 
-def _predict_one(provider, task: str, transcript: str) -> str:
+def _predict_one(provider, transcript: str) -> str:
     from trilogy.ai.conversation import Conversation
     from trilogy.ai.models import LLMRequestOptions
     from trilogy.scripts.agent import REVIEWER_SYSTEM_PROMPT
 
+    # Mirror _validate_completion exactly: system prompt + agent-only transcript,
+    # NO task. Keep this string in sync with agent.py if it changes.
     reviewer = Conversation.create(provider, model_prompt=REVIEWER_SYSTEM_PROMPT)
-    reviewer.add_message(
-        f"ORIGINAL TASK:\n{task}\n\nAGENT TRANSCRIPT:\n{transcript}", role="user"
-    )
+    reviewer.add_message(f"AGENT'S RECENT MESSAGES:\n{transcript}", role="user")
     resp = reviewer.get_response(LLMRequestOptions(require_tool=False))
     first = (
         (resp.text or "").strip().splitlines()[0].strip().upper() if resp.text else ""
@@ -245,6 +222,19 @@ def measure(args: argparse.Namespace) -> int:
         for line in Path(args.labeled).read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    # Entries whose source log was deleted carry a pre-narrowing (full) transcript
+    # that no longer matches what the live reviewer sees — exclude them so the
+    # measurement reflects the current agent-only input. Re-extract from current
+    # runs to replace them.
+    stale = [r for r in rows if r.get("transcript_stale")]
+    if stale:
+        print(
+            f"WARNING: skipping {len(stale)}/{len(rows)} entries with stale "
+            "(pre-narrowing) transcripts — source logs deleted; rebuild the "
+            "labeled set from current runs for full coverage.",
+            file=sys.stderr,
+        )
+    rows = [r for r in rows if not r.get("transcript_stale")]
     # Balance the two classes so accuracy isn't dominated by the majority label.
     nd = [r for r in rows if r["gold"] == "NOT_DONE"]
     dn = [r for r in rows if r["gold"] == "DONE"]
@@ -253,7 +243,7 @@ def measure(args: argparse.Namespace) -> int:
     provider = DeepSeekProvider(name="reviewer-eval", model=args.model, api_key=key)
 
     def run(r: dict) -> tuple[str, str]:
-        return r["gold"], _predict_one(provider, r["task"], r["transcript"])
+        return r["gold"], _predict_one(provider, r["transcript"])
 
     results: list[tuple[str, str]] = []
     with ThreadPoolExecutor(max_workers=args.concurrency) as ex:

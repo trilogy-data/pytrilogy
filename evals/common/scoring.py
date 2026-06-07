@@ -315,6 +315,91 @@ def score_query(
     )
 
 
+def _score_subprocess_target(
+    db_path: str,
+    workspace: str,
+    idx: int,
+    extension: str,
+    params: dict | None,
+    custom_refs_dir: str | None,
+    conn,
+) -> None:
+    """Run in a spawned child: build a fresh engine and score one query. Sends
+    ``("ok", QueryResult)`` or ``("err", message)`` back over the pipe. Isolating
+    scoring in a killable process is what lets the parent bound a hung
+    `generate_sql` loop or a runaway DuckDB query with a hard timeout."""
+    try:
+        engine = make_scoring_engine(Path(db_path), Path(workspace), extension)
+        result = _score_one(
+            engine,
+            Path(workspace),
+            idx,
+            extension,
+            params=params,
+            custom_refs_dir=Path(custom_refs_dir) if custom_refs_dir else None,
+        )
+        conn.send(("ok", result))
+    except Exception as exc:  # pragma: no cover - serialised back to parent
+        conn.send(("err", f"{type(exc).__name__}: {exc}"))
+    finally:
+        conn.close()
+
+
+def score_query_timed(
+    db_path: Path,
+    workspace: Path,
+    idx: int,
+    extension: str,
+    timeout: float,
+    params: dict | None = None,
+    custom_refs_dir: Path | None = None,
+) -> QueryResult:
+    """Score one query in a child process bounded by ``timeout`` seconds. A
+    hang in `generate_sql` (planner loop) or DuckDB execution can no longer
+    block the worker (and, under the shared scoring lock, the whole run) — on
+    timeout the child is killed and the query is graded ``error``."""
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(
+        target=_score_subprocess_target,
+        args=(
+            str(db_path),
+            str(workspace),
+            idx,
+            extension,
+            params,
+            str(custom_refs_dir) if custom_refs_dir else None,
+            child_conn,
+        ),
+        daemon=True,
+    )
+    proc.start()
+    child_conn.close()  # only the child writes
+    try:
+        if parent_conn.poll(timeout):
+            kind, payload = parent_conn.recv()
+            proc.join(5)
+            if kind == "ok":
+                return payload
+            return QueryResult(id=idx, status="error", detail=f"score: {payload}")
+        # Timed out — kill the child so its DB connection / lock is released.
+        proc.terminate()
+        proc.join(5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(5)
+        return QueryResult(
+            id=idx,
+            status="error",
+            detail=f"scoring timed out after {timeout:g}s (likely planner loop "
+            "or runaway query)",
+        )
+    finally:
+        parent_conn.close()
+
+
 def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
     """Promote a non-passing result to ``status='timeout'`` when the agent
     subprocess hit its wall-clock limit. A passing query is left alone — the
