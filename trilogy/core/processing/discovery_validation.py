@@ -2,7 +2,7 @@ from collections import defaultdict
 from enum import Enum
 from typing import List
 
-from trilogy.core.enums import Granularity
+from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -35,6 +35,22 @@ def _is_scalar_only(node: StrategyNode) -> bool:
     return all(c.granularity == Granularity.SINGLE_ROW for c in visible)
 
 
+def _is_independent_scope(node: StrategyNode) -> bool:
+    """A node whose visible outputs are all rowset-derived is a self-contained
+    subquery — its own SELECT/WHERE scope, materialized as a CTE and joined in.
+    Its preexisting_conditions belong to that inner scope and are independent of
+    the outer query's row-level conditions (e.g. a rowset filtered to year=2000
+    joined into a query filtered to year=1999), so it must not be required to
+    satisfy them."""
+    resolved = node.resolve()
+    visible = [
+        c for c in resolved.output_concepts if c.address not in resolved.hidden_concepts
+    ]
+    if not visible:
+        return False
+    return all(c.derivation == Derivation.ROWSET for c in visible)
+
+
 def _node_condition_implies(
     node: StrategyNode,
     condition: BoolExpr,
@@ -53,7 +69,9 @@ def _condition_atom_met(
     if all(c.address in found_addresses for c in condition.row_arguments):
         return True
     return all(
-        _is_scalar_only(node) or _node_condition_implies(node, condition)
+        _is_scalar_only(node)
+        or _is_independent_scope(node)
+        or _node_condition_implies(node, condition)
         for node in stack
     )
 
@@ -68,7 +86,9 @@ def _conditions_met(
         return True
     conditional = conditions.conditional
     if all(
-        _is_scalar_only(node) or _node_condition_implies(node, conditional)
+        _is_scalar_only(node)
+        or _is_independent_scope(node)
+        or _node_condition_implies(node, conditional)
         for node in stack
     ):
         return True

@@ -40,6 +40,13 @@ ERROR_CODES: dict[int, str] = {
         "`select`. Put every filter in ONE `where` clause BEFORE the join(s) — "
         "e.g. `where a = 1 and b = 2 inner join x.id = y.id select ...`."
     ),
+    221: (
+        "Align groups are separated by `and`, not commas. Each `align` group is "
+        "`<name>: <colA>, <colB>` (one column per merge arm); join multiple groups "
+        "with `and` — e.g. `align item: a_item, b_item and store: a_store, b_store`. "
+        "A comma here does not start a new group, so the previous group consumed this "
+        "name as one of its columns."
+    ),
 }
 
 
@@ -142,6 +149,32 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
     if _POST_JOIN_CONTINUATION_RE.search(window) is None:
         return None
     return joins[-1].start()
+
+
+_ALIGN_RE = re.compile(r"\balign\b", re.IGNORECASE)
+# A second align group introduced by a comma instead of `and`: `, <name> :`.
+# Inside an align item commas only separate bare value identifiers, so a comma
+# followed by `<ident>:` is always a misused group separator.
+_ALIGN_COMMA_GROUP_RE = re.compile(r",\s*[a-zA-Z_]\w*\s*:")
+
+
+def detect_align_missing_and(text: str, pos: int) -> int | None:
+    """Locate a multi-select `align` group separated by a comma instead of `and`
+    (`align a: x, y, b: p` should be `align a: x, y and b: p`). The first align
+    item greedily eats `b` as a value, then fails at the `:`. Returns the
+    offending comma's position, or None. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    aligns = list(_ALIGN_RE.finditer(text, stmt_start, pos + 1))
+    if not aligns:
+        return None
+    floor = aligns[-1].end()
+    best: int | None = None
+    for m in _ALIGN_COMMA_GROUP_RE.finditer(text, floor, pos + 8):
+        # pest points just before the colon; keep the match nearest the failure.
+        if m.end() >= pos - 2:
+            best = m.start()
+            break
+    return best
 
 
 DEFAULT_ERROR_SPAN: int = 30

@@ -606,21 +606,30 @@ def get_query_node(
         )
     ds: StrategyNode = ods
     if build_statement.having_clause:
-        final = build_statement.having_clause.conditional
-        if ds.conditions:
-            final = BuildConditional(
-                left=ds.conditions,
-                right=build_statement.having_clause.conditional,
-                operator=BooleanOperator.AND,
+        having = build_statement.having_clause.conditional
+        # A HAVING filters the SELECT outputs, which a resolved merge/select
+        # node already carries — so fold the predicate onto that node rather
+        # than wrapping it in a fresh SelectNode. The wrapper adds a CTE level
+        # that masks the node's join-key grain anchors and triggers a spurious
+        # regroup in a downstream consumer (e.g. a rowset's outer select, q68).
+        if isinstance(ds, (MergeNode, SelectNode)):
+            ds.add_condition(having)
+        else:
+            final = having
+            if ds.conditions:
+                final = BuildConditional(
+                    left=ds.conditions,
+                    right=having,
+                    operator=BooleanOperator.AND,
+                )
+            ds = SelectNode(
+                output_concepts=build_statement.output_components,
+                input_concepts=ds.usable_outputs,
+                parents=[ds],
+                environment=ds.environment,
+                partial_concepts=ds.partial_concepts,
+                conditions=final,
             )
-        ds = SelectNode(
-            output_concepts=build_statement.output_components,
-            input_concepts=ds.usable_outputs,
-            parents=[ds],
-            environment=ds.environment,
-            partial_concepts=ds.partial_concepts,
-            conditions=final,
-        )
     ds.hidden_concepts = build_statement.hidden_components
     ds.ordering = build_statement.order_by
     # TODO: avoid this
