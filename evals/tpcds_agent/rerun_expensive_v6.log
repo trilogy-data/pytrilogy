@@ -1,66 +1,46 @@
 [1/5] Building TPC-DS DuckDB (sf=1) ...
 [2/5] Category 'enriched': setting up workspace ...
-[3/5] Running agent per query (13 queries, fresh context each, concurrency=4) — deepseek/deepseek-chat ...
-  [q02] starting (worker _worker_3)
-  [q06] starting (worker _worker_2)
-  [q17] starting (worker _worker_1)
-  [q44] starting (worker _worker_0)
-  [q06] done in 157s (exit 0, score=pass)
-  [q49] starting (worker _worker_2)
-  [q02] done in 186s (exit 0, score=pass)
-  [q50] starting (worker _worker_3)
-  [q50] done in 111s (exit 0, score=fail)
-  [q59] starting (worker _worker_3)
-  [q49] done in 163s (exit 0, score=pass)
-  [q64] starting (worker _worker_2)
-  [q17] done in 470s (exit 0, score=pass)
-  [q75] starting (worker _worker_1)
-  [q44] done in 662s (exit 2, score=exhausted)
-  [q76] starting (worker _worker_0)
-  [q59] done in 409s (exit 0, score=pass)
-  [q77] starting (worker _worker_3)
-  [q75] done in 246s (exit 0, score=fail)
-  [q78] starting (worker _worker_1)
-  [q76] done in 207s (exit 0, score=fail)
-  [q86] starting (worker _worker_0)
-  [q77] done in 228s (exit 0, score=fail)
-  [q86] done in 105s (exit 0, score=pass)
-  [q64] done in 827s (exit 0, score=fail)
-  [q78] done in 574s (exit 0, score=fail)
-[4/5] Finalising scores for 13 queries ...
-  spliced 86 prior results from 20260607-133403
-  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (86 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
-[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260607-133609
+[3/5] Running agent per query (3 queries, fresh context each, concurrency=3) — deepseek/deepseek-chat ...
+  [q44] starting (worker _worker_2)
+  [q78] starting (worker _worker_0)
+  [q64] starting (worker _worker_1)
+  [q44] done in 306s (exit 0, score=pass)
+  [q78] done in 335s (exit 0, score=fail)
+  [q64] done in 354s (exit 0, score=fail)
+[4/5] Finalising scores for 3 queries ...
+  spliced 96 prior results from 20260607-133609
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (21 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260607-160439
 
-# TPC-DS Agent Eval — 20260607-133609
+# TPC-DS Agent Eval — 20260607-160439
 
 - Model: `deepseek/deepseek-chat`
 - Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.282
 
 ## Result
 
-- **Pass rate: 51/99** (52%)
-- Status breakdown: {'pass': 51, 'timeout': 1, 'fail': 43, 'exhausted': 4}
-- Wall time: 1300.0s  |  Agent time: 4346.5s  |  Avg/query: 334.3s
-- Agent exit code: 1
+- **Pass rate: 52/99** (52%)
+- Status breakdown: {'pass': 52, 'timeout': 1, 'fail': 43, 'exhausted': 3}
+- Wall time: 359.1s  |  Agent time: 995.2s  |  Avg/query: 331.7s
+- Agent exit code: 0
 
 ## Agent harness metrics
 
-- LLM iterations: 447
-- Tool calls: 506  →  {'trilogy': 491, 'return_control_to_user': 15}
-- `trilogy` subcommands: {'agent-info': 27, 'file': 175, 'explore': 109, 'run': 179}
-- Tool success rate: 83% (420/506 ok)
-- Tokens: 19436949 total (19263148 prompt + 173801 completion)
-- Reviewer kickbacks: 3/13 verdicts (23% NOT_DONE) — lower is better
+- LLM iterations: 98
+- Tool calls: 118  →  {'trilogy': 114, 'return_control_to_user': 4}
+- `trilogy` subcommands: {'agent-info': 7, 'file': 44, 'explore': 33, 'run': 29, 'fmt': 1}
+- Tool success rate: 82% (97/118 ok)
+- Tokens: 4120647 total (4075768 prompt + 44879 completion)
+- Reviewer kickbacks: 1/3 verdicts (33% NOT_DONE) — lower is better
 
 ## Tool-output sizes
 
 | Tool | calls | avg chars | max chars | truncated | trunc-rate |
 |---|---:|---:|---:|---:|---:|
-| `trilogy` | 491 | 3151 | 32118 | 0 | 0% |
-| `return_control_to_user` | 15 | 26 | 26 | 0 | 0% |
+| `trilogy` | 114 | 3645 | 32118 | 0 | 0% |
+| `return_control_to_user` | 4 | 26 | 26 | 0 | 0% |
 
-- Repeated calls (same args seen earlier in same query): {'trilogy': 90} — total 90
+- Repeated calls (same args seen earlier in same query): {'trilogy': 22} — total 22
 
 ## Per-query
 
@@ -109,7 +89,7 @@
 | 41 | fail | 100 | 100 | 1797 | result set differs from reference |
 | 42 | pass | 10 | 10 | 1047 |  |
 | 43 | pass | 6 | 6 | 1731 |  |
-| 44 | exhausted | 0 | 0 | 872 | agent exhausted iterations (was: error) — execute: ProgrammingError: (_duckdb.Pa |
+| 44 | pass | 10 | 10 | 2431 |  |
 | 45 | pass | 19 | 19 | 1881 |  |
 | 46 | fail | 100 | 100 | 2356 | result set differs from reference |
 | 47 | pass | 100 | 100 | 5678 |  |
@@ -129,7 +109,7 @@
 | 61 | pass | 1 | 1 | 1842 |  |
 | 62 | fail | 100 | 100 | 3980 | result set differs from reference |
 | 63 | pass | 100 | 100 | 2350 |  |
-| 64 | fail | 2 | 2 | 15458 | result set differs from reference |
+| 64 | fail | 2 | 2 | 12631 | result set differs from reference |
 | 65 | fail | 100 | 100 | 3237 | result set differs from reference |
 | 66 | fail | 5 | 60 | 5180 | result set differs from reference |
 | 67 | fail | 100 | 100 | 4468 | result set differs from reference |
@@ -143,7 +123,7 @@
 | 75 | fail | 100 | 100 | 7844 | result set differs from reference |
 | 76 | fail | 100 | 100 | 4996 | result set differs from reference |
 | 77 | fail | 44 | 54 | 6318 | result set differs from reference |
-| 78 | fail | 100 | 100 | 6200 | result set differs from reference |
+| 78 | fail | 100 | 100 | 10267 | result set differs from reference |
 | 79 | fail | 100 | 100 | 1973 | result set differs from reference |
 | 80 | exhausted | 100 | 100 | 7214 | agent exhausted iterations (was: fail) — result set differs from reference |
 | 81 | fail | 100 | 100 | 9320 | result set differs from reference |
@@ -168,5 +148,17 @@
 
 ## Agent final message
 
-> Wrote and validated `query86.preql`. It imports `raw.web_sales`, filters to sold-date year 2000, aggregates total `net_paid` with `by rollup item.category, item.class`, computes hierarchy level via `grouping()`, ranks within each parent group, and orders by level desc, category asc, rank asc — returning 100 rows cleanly.
+> Created query78.preql and validated it with `trilogy run query78.preql`. The query runs cleanly returning 100 rows of results.
+> 
+> **Approach:** I used `raw.all_sales` — the unified multi-channel model that combines STORE, WEB, and CATALOG sales in a single model with a `sales_channel` discriminator. This avoided the complexity of merging three separate fact models.
+> 
+> **Key design decisions:**
+> - **Never-returned**: Found that `is_returned` is `null` (not `false`) for non-returned lines, so used `is_returned is null` as the condition.
+> - **Identified customer**: Filtered with `billing_customer.id is not null` (the unified model's bill-to customer).
+> - **Year 2000**: Filtered by `year(date.date) = 2000`.
+> - **Channel-specific aggregates**: Used filtered aggregates (`sum(quantity ? store_cond)` pinned with `by`) to compute store, web, and catalog totals independently at the (year, item, customer) grain, all in a single query pass over `all_sales`.
+> - **Ratio**: `round(store_qty / (web_qty + cat_qty), 2)` with `nullif` to avoid division by zero.
+> - **Keep condition**: Only rows where combined other-channel quantity > 0 and store quantity > 0.
+> - **Ordering**: As specified: year, item, customer, store qty desc, store wholesale desc, store sales price desc, then other-channel totals asc, then ratio.
+> - **Limit**: 100 rows.
 

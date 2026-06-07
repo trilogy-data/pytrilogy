@@ -43,8 +43,10 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
     BuildDatasource,
+    BuildFunction,
     BuildParenthetical,
 )
+from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -151,6 +153,44 @@ def _partial_addresses(
     no-order customers) and ``customer LEFT JOIN customer_address`` (the
     address PK is complete, so a non-null filter legitimately forces INNER)."""
     return {c.address for c in (getattr(source, "partial_concepts", None) or [])}
+
+
+def _opaque_binding_addresses(
+    source: CTE | UnionCTE | BuildDatasource | QueryDatasource | None,
+) -> set[str]:
+    """Addresses whose datasource column binding can be non-null even on a
+    join's NULL-padded (unmatched) rows.
+
+    A plain column is NULL-padded when its row is unmatched, so a non-null
+    proof on it genuinely forces that side present. But a ``RawColumnExpr``
+    (opaque SQL we can't analyze, e.g. ``CASE WHEN <rightcol> IS NOT NULL THEN
+    True ELSE False END``) or a null-opaque function can yield a non-null value
+    for an unmatched row — so proving such a concept non-null proves nothing
+    about the join. These must NOT force a LEFT/FULL→stricter upgrade. (The
+    ``is_returned = false`` bug: the predicate is satisfied by exactly the
+    unmatched rows, yet the CASE-derived flag is non-null, so the gate wrongly
+    upgraded the join to INNER and dropped them.)"""
+    out: set[str] = set()
+    seen: set[int] = set()
+
+    def scan(ds: object) -> None:
+        if ds is None or id(ds) in seen:
+            return
+        seen.add(id(ds))
+        for col in getattr(ds, "columns", None) or []:
+            alias = getattr(col, "alias", None)
+            if isinstance(alias, RawColumnExpr) or (
+                isinstance(alias, BuildFunction)
+                and not concepts_implied_non_null(alias)
+            ):
+                out.add(col.concept.address)
+        for child in getattr(ds, "datasources", None) or []:
+            scan(child)
+        scan(getattr(ds, "base_datasource", None))
+        scan(getattr(ds, "source", None))
+
+    scan(source)
+    return out
 
 
 def _source_datasources(
@@ -428,6 +468,12 @@ def _downgrade(
     right_only = right_only - right_block
     left_only = left_only - left_block
 
+    # A non-null proof on a concept whose column binding is structurally
+    # non-null (a CASE/raw expression) doesn't prove its side matched.
+    right_only = right_only - _opaque_binding_addresses(join.right_cte)
+    left_opaque = {a for lc in left_ctes for a in _opaque_binding_addresses(lc)}
+    left_only = left_only - left_opaque
+
     def proves_left_key(c: CTE | UnionCTE, address: str) -> bool:
         if address in left_block:
             return (c.name, address) in proofs.cte_keys
@@ -531,6 +577,10 @@ def _downgrade_base_join(
         right_operand_ds |= _source_datasources(right_base)
     right_block = _blocked_partials(cte, right_partial, right_operand_ds)
     right_only = right_only - right_block
+    # Structurally-non-null (CASE/raw) bindings don't force the side present.
+    right_only = right_only - _opaque_binding_addresses(right_ds)
+    if right_base is not None:
+        right_only = right_only - _opaque_binding_addresses(right_base)
 
     def proves_key(address: str) -> bool:
         if address in right_block:

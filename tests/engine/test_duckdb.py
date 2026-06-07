@@ -1555,6 +1555,56 @@ ORDER BY grp;
     assert results
 
 
+def test_multi_select_having_hidden_derive_arg_no_outer_group():
+    # A multiselect outer is a pure FULL JOIN of pre-aggregated arms; it must
+    # never re-group. When each arm hides a derive-arg column whose source key
+    # is absent from the align keys (here `--dt.yr as yr_a`, keyed by `date_id`,
+    # consumed only by `coalesce(yr_a, 0)`), that column inflates the joined
+    # pregrain past the align-key grain. The outer used to emit a spurious
+    # GROUP BY that omitted the raw aggregate projections (`coalesce(cnt_a, 0)`),
+    # which DuckDB rejects: column "cnt_a" must appear in the GROUP BY clause.
+    exec = Dialects.DUCK_DB.default_executor()
+    DebuggingHook()
+    exec.execute_raw_sql("CREATE TABLE item(item_id int, name varchar)")
+    exec.execute_raw_sql("CREATE TABLE dt(date_id int, yr int)")
+    exec.execute_raw_sql(
+        "CREATE TABLE sale(sid int, item_id int, date_id int, chan varchar)"
+    )
+    exec.execute_raw_sql(
+        "INSERT INTO item VALUES (1,'x'),(2,'y');"
+        "INSERT INTO dt VALUES (101,1999),(102,2000);"
+        "INSERT INTO sale VALUES "
+        "(1,1,101,'a'),(2,1,102,'a'),(3,2,101,'a'),"
+        "(4,1,101,'b'),(5,2,102,'b'),(6,2,101,'b')"
+    )
+    queries = exec.parse_text("""
+key item_id int; property item_id.name string;
+datasource item (item_id:item_id, name:name) grain (item_id) address item;
+key date_id int; property date_id.yr int;
+datasource dt (date_id:date_id, yr:yr) grain (date_id) address dt;
+key sid int; property sid.item_id int; property sid.date_id int; property sid.chan string;
+datasource sale (sid:sid, item_id:item_id, date_id:date_id, chan:chan)
+    grain (sid) address sale;
+
+WHERE chan = 'a'
+SELECT --item_id.name as g1, --date_id.yr as yr_a, --count(sid) as cnt_a,
+MERGE
+WHERE chan = 'b'
+SELECT --item_id.name as g2, --date_id.yr as yr_b, --count(sid) as cnt_b,
+ALIGN grp: g1, g2
+DERIVE coalesce(cnt_a,0) as c1, coalesce(cnt_b,0) as c2,
+    coalesce(yr_a,0) as ya, coalesce(yr_b,0) as yb
+HAVING c2 <= c1
+ORDER BY grp asc;
+""")
+    sql = exec.generate_sql(queries[-1])[-1]
+    # the outer SELECT (over the FULL JOIN of the arm CTEs) must not GROUP BY
+    outer = sql[sql.rindex("FULL JOIN") :]
+    assert "GROUP BY" not in outer
+    results = exec.execute_query(queries[-1]).fetchall()
+    assert results
+
+
 def test_multi_select_derive():
     exec = Dialects.DUCK_DB.default_executor()
     DebuggingHook()

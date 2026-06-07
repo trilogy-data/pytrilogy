@@ -508,6 +508,22 @@ def test_parse_text_v2_multiselect_duplicate_arm_outputs_raise(
             parse_text(_ALIGN_MODEL + bad, Environment())
 
 
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_multiselect_align_reuses_arm_name_raise(
+    backend: ParserBackend,
+) -> None:
+    # The align group output is a new merged concept; naming it after an arm
+    # output (`g`) collapses them by address and emits INVALID_REFERENCE_BUG in
+    # codegen. Reject with a message pointing at a distinct align name.
+    bad = (
+        "SELECT label as g, count(one) as c, MERGE SELECT label2 as g2, count(two) as c2,"
+        " ALIGN g: g, g2 DERIVE coalesce(c, 0) as t ORDER BY g;"
+    )
+    with _using_backend(backend):
+        with pytest.raises(InvalidSyntaxException, match="reuses an arm output name"):
+            parse_text(_ALIGN_MODEL + bad, Environment())
+
+
 def test_parse_text_v2_duplicate_select_outputs_raise() -> None:
     with pytest.raises(InvalidSyntaxException, match="Duplicate select output"):
         parse_text(

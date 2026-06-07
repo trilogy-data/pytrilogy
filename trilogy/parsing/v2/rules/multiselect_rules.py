@@ -139,6 +139,21 @@ def multi_select_statement(
                 )
             seen[out_ref.address] = arm_index
 
+    # An `align` group output is a NEW merged concept tying one column from each
+    # arm. If its name reuses an arm output address, the two collapse to one
+    # graph node (concepts are keyed by address) and codegen can't tell which
+    # arm's CTE the merged dimension came from — it emits INVALID_REFERENCE_BUG.
+    # Reject with the same actionable shape: give the align group its own name.
+    for item in align_c.items:
+        if item.aligned_concept in seen:
+            short = item.alias
+            members = ", ".join(c.address.split(".", 1)[-1] for c in item.concepts)
+            raise InvalidSyntaxException(
+                f"Multi-select align group '{short}' reuses an arm output name; "
+                f"give the align group its own name, distinct from every arm "
+                f"column (e.g. `align {short}_grp: {members}`)."
+            )
+
     # A multi-select has no top-level WHERE: a pre-combination filter would have
     # to sit before the first arm (indistinguishable from that arm's own WHERE),
     # so per-arm WHERE is the only input filter. Post-combination filtering of

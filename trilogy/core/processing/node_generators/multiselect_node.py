@@ -171,16 +171,14 @@ def gen_multiselect_node(
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
-        force_group=False,
-        # grain=BuildGrain.from_concepts(
-        #     [
-        #         x
-        #         for y in base_parents
-        #         for x in y.output_concepts
-        #         if x.address not in y.hidden_concepts
-        #     ],
-        #     environment=environment,
-        # ),
+        # A multiselect outer is a pure FULL JOIN of already-aggregated arms on
+        # the align keys; it must never re-group. The arms can carry hidden
+        # derive-arg columns (e.g. a `--date.year as yr_a` consumed only by a
+        # `derive coalesce(yr_a, 0)`) whose source key is absent from the align
+        # keys. Those inflate the joined pregrain past the align-key grain and
+        # would otherwise trigger a spurious GROUP BY that omits the raw
+        # aggregate projections, producing invalid SQL.
+        whole_grain=True,
     )
 
     enrichment = set([x.address for x in local_optional])

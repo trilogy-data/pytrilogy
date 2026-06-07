@@ -238,17 +238,27 @@ def group_if_required_v2(
     depth: int = 0,
 ):
     where_injected = where_injected or set()
+    targets = [
+        x
+        for x in root.output_concepts
+        if x.address in final or any(c in final for c in x.pseudonyms)
+    ]
+    # A whole_grain MergeNode (a multiselect align outer, or a group-to
+    # enrichment join) is already at its declared grain: a pure join over
+    # pre-aggregated parents, never a regroup. Its arms can carry constant
+    # extra dims — e.g. a per-arm `where year=1999` projected as a derive arg —
+    # that make the joined pregrain look finer than the align-key grain. Forcing
+    # a group here would emit a GROUP BY omitting the raw aggregate projections,
+    # yielding invalid SQL. Respect whole_grain and never regroup.
+    if isinstance(root, MergeNode) and root.whole_grain:
+        root.set_output_concepts(targets, change_visibility=False)
+        return root
     required = check_if_group_required(
         downstream_concepts=final,
         parents=[root.resolve()],
         environment=environment,
         depth=depth,
     )
-    targets = [
-        x
-        for x in root.output_concepts
-        if x.address in final or any(c in final for c in x.pseudonyms)
-    ]
     if required.required:
         if isinstance(root, MergeNode):
             root.force_group = True

@@ -11,7 +11,7 @@ SELECT
     sum(\"physical_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_5757395975543459\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"physical_sales_store_returns\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_store_returns\".\"SR_ITEM_SK\" AND \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"physical_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"physical_sales_store_returns\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_store_returns\".\"SR_ITEM_SK\" AND \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"physical_sales_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"physical_sales_customer_address_customer_address\" on \"physical_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"physical_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
@@ -39,7 +39,7 @@ FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
     INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"store_returns\" as \"physical_sales_store_returns\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_store_returns\".\"SR_ITEM_SK\" AND \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"physical_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"physical_sales_store_returns\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_store_returns\".\"SR_ITEM_SK\" AND \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"physical_sales_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"customer_address\" as \"physical_sales_customer_address_customer_address\" on \"physical_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"physical_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
 WHERE

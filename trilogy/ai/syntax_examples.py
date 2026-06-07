@@ -209,6 +209,9 @@ limit 100;
 #    `having completed < enrolled`, `order by completion_rate desc`).
 #  - Every arm must contribute ONE column per `align` name, and the arms' selects
 #    should have matching shape. Output columns are the align keys + derive results.
+#  - The `align` group name must be DISTINCT from every arm column name (use
+#    `align course: a_course, b_course`, NOT `align a_course: a_course, b_course`).
+#    Reusing an arm name for the group collapses them and errors at parse.
 #  - Each arm has its OWN leading `where` (that is how self-pairing filters each
 #    side differently). There is NO top-level `where` after `derive` — to filter
 #    the combined result use `having`. A standalone `where …;` with no following
