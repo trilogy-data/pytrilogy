@@ -1,17 +1,17 @@
 query_id = "68"
 generator = "v3"
-gen_length = 3227
-preql_size = 1343
+gen_length = 3198
+preql_size = 1198
 comp_size = 1453
 generated_sql = """
 
 WITH 
 wakeful as (
 SELECT
-    \"customer_address_customer_address\".\"CA_CITY\" as \"cust_current_city\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"cust_customer_id\",
-    \"customer_customers\".\"C_FIRST_NAME\" as \"cust_customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"cust_customer_last_name\"
+    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
+    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),
@@ -37,9 +37,9 @@ GROUP BY
     2,
     3)
 SELECT
-    \"wakeful\".\"cust_customer_last_name\" as \"cust_customer_last_name\",
-    \"wakeful\".\"cust_customer_first_name\" as \"cust_customer_first_name\",
-    \"wakeful\".\"cust_current_city\" as \"cust_current_city\",
+    \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
+    \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
+    \"wakeful\".\"customer_address_city\" as \"customer_address_city\",
     \"uneven\".\"bought_bought_city\" as \"bought_bought_city\",
     \"uneven\".\"bought_physical_sales_ticket_number\" as \"bought_physical_sales_ticket_number\",
     \"uneven\".\"bought_extended_price\" as \"bought_extended_price\",
@@ -47,11 +47,11 @@ SELECT
     \"uneven\".\"bought_list_price\" as \"bought_list_price\"
 FROM
     \"uneven\"
-    INNER JOIN \"wakeful\" on \"uneven\".\"bought_physical_sales_customer_id\" = \"wakeful\".\"cust_customer_id\"
+    INNER JOIN \"wakeful\" on \"uneven\".\"bought_physical_sales_customer_id\" = \"wakeful\".\"customer_id\"
 WHERE
-    \"wakeful\".\"cust_current_city\" != \"uneven\".\"bought_bought_city\"
+    \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_bought_city\"
 
 ORDER BY 
-    \"wakeful\".\"cust_customer_last_name\" asc nulls first,
+    \"wakeful\".\"customer_last_name\" asc nulls first,
     \"uneven\".\"bought_physical_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

@@ -19,27 +19,20 @@ select
     sum(physical_sales.ext_list_price) as list_price,
 ;
 
-rowset cust <- select
-    customer.id,
+inner join bought.physical_sales.customer.id = customer.id
+select
     customer.last_name,
     customer.first_name,
-    customer.address.city as current_city,
-;
-
-inner join bought.physical_sales.customer.id = cust.customer.id
-select
-    cust.customer.last_name,
-    cust.customer.first_name,
-    cust.current_city,
+    customer.address.city,
     bought.bought_city,
     bought.physical_sales.ticket_number,
     bought.extended_price,
     bought.extended_tax,
     bought.list_price,
 having
-    cust.current_city != bought.bought_city
+    customer.address.city != bought.bought_city
 order by
-    cust.customer.last_name asc nulls first,
+    customer.last_name asc nulls first,
     bought.physical_sales.ticket_number asc nulls first
 limit 100
 ;

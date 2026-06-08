@@ -1,3 +1,4 @@
+from dataclasses import replace as dc_replace
 from typing import List
 
 from trilogy.constants import logger
@@ -47,6 +48,47 @@ def _pseudonym_bridge_keys(
             if canonical is not None and canonical.derivation != Derivation.ROWSET:
                 pairs.append((fk, canonical))
     return pairs
+
+
+def _scoped_join_targets(
+    node: StrategyNode,
+    lineage: BuildRowsetItem,
+    environment: BuildEnvironment,
+) -> tuple[list[BuildConcept], set[str]]:
+    """When an in-query `join` collapses one of this rowset's derived keys onto a
+    sibling rowset's key (the join *target*), advertise that target join concept
+    sourced from a base column this rowset already exposes, so the outer merge
+    joins the two rowsets on the canonical target key — matching the join clause —
+    instead of dead-ending on the dropped source key.
+
+    Only bridges when the rowset's column for the collapsed key is a passthrough of
+    a base dimension it still outputs (e.g. two year-filtered copies of
+    `item.brand` both expose `item.brand`). When the key is freshly computed (q44's
+    rank), substitution has already labelled the rowset's own column with the
+    target address, so the join resolves without bridging and `shared` is empty.
+    Returns the target concepts plus the subset whose join is partial (LEFT)."""
+    node_output_addresses = {x.address for x in node.output_concepts}
+    targets: list[BuildConcept] = []
+    partial: set[str] = set()
+    seen: set[str] = set()
+    for source_address in lineage.rowset.derived_concepts:
+        canonical = environment.concepts.get(source_address)
+        if canonical is None or canonical.address == source_address:
+            continue  # not collapsed onto a scoped-join target
+        if not isinstance(canonical.lineage, BuildRowsetItem):
+            continue
+        base_addresses = set(getattr(canonical.lineage.content, "pseudonyms", set()))
+        shared = base_addresses & node_output_addresses
+        if not shared or canonical.address in seen:
+            continue
+        seen.add(canonical.address)
+        target = canonical
+        if not set(target.pseudonyms) & shared:
+            target = dc_replace(target, pseudonyms=set(target.pseudonyms) | shared)
+        targets.append(target)
+        if source_address in environment.scoped_partial_sources:
+            partial.add(canonical.address)
+    return targets, partial
 
 
 def gen_rowset_node(
@@ -105,6 +147,10 @@ def gen_rowset_node(
     rowset_relevant: list[BuildConcept] = [
         v for v in concept_pool if v.address in rowset_outputs
     ]
+    collapsed_targets, collapsed_partial = _scoped_join_targets(
+        node, lineage, environment
+    )
+    rowset_relevant += collapsed_targets
 
     additional_relevant = [
         factory.build(x) for x in select.output_components if x.address in enrichment
@@ -116,6 +162,12 @@ def gen_rowset_node(
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} adding {item} to partial concepts"
             )
+            node.partial_concepts.append(item)
+    # a LEFT in-query join contributes its target key only partially
+    for item in collapsed_targets:
+        if item.address in collapsed_partial and item.address not in {
+            c.address for c in node.partial_concepts
+        }:
             node.partial_concepts.append(item)
 
     node.grain = BuildGrain.from_concepts(

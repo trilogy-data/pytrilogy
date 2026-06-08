@@ -1,7 +1,8 @@
 # Bug: query-scoped JOIN over-collapses — drops dim expansion and self-join predicates
 
-**Status:** OPEN (found 2026-06-08 while converting the tpc_ds_duckdb multiselect
-queries to the new `join` clause to validate "rowsets + joins replace multiselect").
+**Status:** Bug A FIXED 2026-06-08 (commit `rowset_fixes`); **Bug B still OPEN.**
+Found 2026-06-08 while converting the tpc_ds_duckdb multiselect queries to the new
+`join` clause to validate "rowsets + joins replace multiselect".
 
 The query-scoped `inner|left join a = b` clause merges the two keys into a single
 concept via pseudonym substitution (`augment_pseudonyms_for_scoped_joins` /
@@ -11,7 +12,12 @@ converting alignment-style multiselects to the join clause.
 
 ---
 
-## Bug A — dim attributes unresolvable after joining a rowset FK to the dim key
+## Bug A — dim attributes unresolvable after joining a rowset FK to the dim key  (FIXED)
+
+Fixed by the `rowset_fixes` commit. query46/query68 now use the clean
+single-rowset form below (FK rowset + `inner join … = dim.key`, selecting dim
+attributes directly) and pass `test_forty_six`/`test_sixty_eight`. The two-rowset
+workaround is no longer needed. Original report retained below.
 
 The user flagged this one directly. Joining a rowset's foreign key to a freshly
 imported dimension key, then selecting the dimension's *attributes*, fails to
@@ -155,8 +161,8 @@ behave like `align` does for the multiselect arms.
 
 ## Impact / who hit it
 Converting the tpc_ds_duckdb multiselect suite to the join clause:
-- q46, q68 — convertible only via the Bug-A two-rowset workaround.
-- q64, q75 — **NOT convertible** because of Bug B; left as multiselects.
+- q46, q68 — converted to the clean single-rowset form once Bug A was fixed.
+- q64, q75 — **NOT convertible** because of Bug B (still open); left as multiselects.
 
 ## Validation harness
 - Each query is row-for-row checked against `PRAGMA tpcds(N)` in

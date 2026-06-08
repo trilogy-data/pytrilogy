@@ -233,29 +233,40 @@ def sort_select_output_processed(
 
     output_addresses = {c.address for c in targets}
     mapping = {x.address: x for x in cte.output_columns}
+    scoped_merge_map: dict[str, str] = (
+        getattr(query, "scoped_merge_map", {})
+        if isinstance(query, ProcessedQuery)
+        else {}
+    )
+
+    def render_as(target, oc: BuildConcept) -> BuildConcept:
+        # render `oc`'s column under the originally-written `target` name
+        return BuildConcept(
+            name=target.name,
+            canonical_name=target.name,
+            namespace=target.namespace,
+            pseudonyms={oc.address},
+            datatype=oc.datatype,
+            purpose=oc.purpose,
+            grain=oc.grain,
+            build_is_aggregate=oc.build_is_aggregate,
+        )
 
     new_output: list[BuildConcept] = []
     for x in targets:
         if x.address in mapping:
             new_output.append(mapping[x.address])
+            continue
         for oc in cte.output_columns:
             if x.address in oc.pseudonyms:
-                # create a wrapper BuildConcept to render the pseudonym under the original name
-                if any(x.address == y for y in mapping.keys()):
-                    continue
-                new_output.append(
-                    BuildConcept(
-                        name=x.name,
-                        canonical_name=x.name,
-                        namespace=x.namespace,
-                        pseudonyms={oc.address},
-                        datatype=oc.datatype,
-                        purpose=oc.purpose,
-                        grain=oc.grain,
-                        build_is_aggregate=oc.build_is_aggregate,
-                    )
-                )
+                new_output.append(render_as(x, oc))
                 break
+        else:
+            # an in-query JOIN collapses a source onto its canonical target; the
+            # target's column is present, render it under the written source name
+            canonical = scoped_merge_map.get(x.address)
+            if canonical is not None and canonical in mapping:
+                new_output.append(render_as(x, mapping[canonical]))
 
     for oc in cte.output_columns:
         # add hidden back

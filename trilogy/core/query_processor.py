@@ -34,6 +34,7 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
+    _build_scoped_merge_index,
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -897,6 +898,11 @@ def process_query(
         deduped_ctes, root_cte, statement, having_alias=having_alias
     )
 
+    join_clauses = getattr(statement, "join_clauses", None) or []
+    scoped_merge_map, _ = _build_scoped_merge_index(
+        [(j.source_address, j.target_address, j.modifiers) for j in join_clauses]
+    )
+
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
@@ -907,4 +913,5 @@ def process_query(
         local_concepts=statement.local_concepts,
         locally_derived=statement.locally_derived,
         parameters=_extract_params(environment.concepts, statement.local_concepts),
+        scoped_merge_map=scoped_merge_map,
     )

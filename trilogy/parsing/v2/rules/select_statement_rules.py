@@ -106,6 +106,13 @@ def join_clause(
         if isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
             raise fail(node, f"Join key `{key}` does not exist")
         resolved.append(concept)
+    if resolved[0].address == resolved[1].address:
+        raise fail(
+            node,
+            f"Cannot join `{source_key}` to itself: both sides resolve to the same"
+            f" concept `{resolved[0].address}`, which degenerates to `1=1`. Join two"
+            " distinct concepts (e.g. separate rowset outputs).",
+        )
     return SelectJoin(
         join_type=join_type,
         source_address=resolved[0].address,

@@ -3400,6 +3400,7 @@ class Factory:
         new = BuildEnvironment(
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,
+            scoped_partial_sources=set(self.scoped_partial_sources),
         )
 
         for k, v in base.concepts.all_items():

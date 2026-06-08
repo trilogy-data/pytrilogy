@@ -101,6 +101,9 @@ class BuildEnvironment:
     materialized_canonical_concepts: set[str] = field(default_factory=set)
     non_partial_materialized_canonical_concepts: set[str] = field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = field(default_factory=dict)
+    # Source addresses of LEFT (partial) in-query joins — the rowset node uses
+    # this to mark the advertised target join key partial (drives LEFT-OUTER).
+    scoped_partial_sources: set[str] = field(default_factory=set)
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []

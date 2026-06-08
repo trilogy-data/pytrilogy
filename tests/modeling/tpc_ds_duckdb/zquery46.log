@@ -1,17 +1,17 @@
 query_id = "46"
 generator = "v3"
-gen_length = 3126
-preql_size = 1301
+gen_length = 3096
+preql_size = 1155
 comp_size = 1474
 generated_sql = """
 
 WITH 
 wakeful as (
 SELECT
-    \"customer_address_customer_address\".\"CA_CITY\" as \"cust_current_city\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"cust_customer_id\",
-    \"customer_customers\".\"C_FIRST_NAME\" as \"cust_customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"cust_customer_last_name\"
+    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
+    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),
@@ -36,23 +36,23 @@ GROUP BY
     2,
     3)
 SELECT
-    \"wakeful\".\"cust_customer_last_name\" as \"cust_customer_last_name\",
-    \"wakeful\".\"cust_customer_first_name\" as \"cust_customer_first_name\",
-    \"wakeful\".\"cust_current_city\" as \"cust_current_city\",
+    \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
+    \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
+    \"wakeful\".\"customer_address_city\" as \"customer_address_city\",
     \"uneven\".\"bought_bought_city\" as \"bought_bought_city\",
     \"uneven\".\"bought_physical_sales_ticket_number\" as \"bought_physical_sales_ticket_number\",
     \"uneven\".\"bought_amt\" as \"bought_amt\",
     \"uneven\".\"bought_profit\" as \"bought_profit\"
 FROM
     \"uneven\"
-    INNER JOIN \"wakeful\" on \"uneven\".\"bought_physical_sales_customer_id\" = \"wakeful\".\"cust_customer_id\"
+    INNER JOIN \"wakeful\" on \"uneven\".\"bought_physical_sales_customer_id\" = \"wakeful\".\"customer_id\"
 WHERE
-    \"wakeful\".\"cust_current_city\" != \"uneven\".\"bought_bought_city\"
+    \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_bought_city\"
 
 ORDER BY 
-    \"wakeful\".\"cust_customer_last_name\" asc nulls first,
-    \"wakeful\".\"cust_customer_first_name\" asc nulls first,
-    \"wakeful\".\"cust_current_city\" asc nulls first,
+    \"wakeful\".\"customer_last_name\" asc nulls first,
+    \"wakeful\".\"customer_first_name\" asc nulls first,
+    \"wakeful\".\"customer_address_city\" asc nulls first,
     \"uneven\".\"bought_bought_city\" asc nulls first,
     \"uneven\".\"bought_physical_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

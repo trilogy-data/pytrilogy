@@ -162,6 +162,21 @@ def test_unsupported_join_types_rejected(models: Path, jointype: str):
         parse_text(_select(jointype), root=models)
 
 
+def test_literal_self_join_rejected(models: Path):
+    # joining a concept to itself collapses to 1=1; reject with a clear error.
+    # (Distinct concepts that share a base — e.g. two rowset outputs — are a
+    # legitimate join and must still be allowed.)
+    text = """
+import orders as orders;
+import customers as customers;
+
+INNER JOIN orders.customer_id = orders.customer_id
+SELECT sum(orders.order_amount) -> total;
+"""
+    with pytest.raises(ParseError, match="itself"):
+        parse_text(text, root=models)
+
+
 def test_build_scoped_merge_index():
     from trilogy.core.models.build import _build_scoped_merge_index
 
@@ -277,6 +292,49 @@ SELECT
     assert "orders_tbl" in sql
     assert "customers_tbl" in sql
     assert "shipments_tbl" in sql
+
+
+def _final_select(sql: str) -> str:
+    # the final SELECT projection (after the last SELECT, up to its FROM).
+    tail = sql[sql.rfind("SELECT") :]
+    return tail[: tail.find("FROM")]
+
+
+def test_projected_join_source_renders(models: Path):
+    # Selecting the *source* side of a scoped join (which collapses onto the
+    # target) must still render under the written name — not silently drop.
+    text = """
+import orders as orders;
+import customers as customers;
+
+INNER JOIN orders.customer_id = customers.customer_id
+SELECT
+    orders.customer_id,
+    sum(orders.order_amount) -> amt;
+"""
+    env, parsed = parse_text(text, root=models)
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    final = _final_select(sql)
+    assert 'as "orders_customer_id"' in final
+    assert 'as "amt"' in final
+
+
+def test_projected_join_target_renders(models: Path):
+    # the mirror of the above: selecting the target side also renders.
+    text = """
+import orders as orders;
+import customers as customers;
+
+INNER JOIN orders.customer_id = customers.customer_id
+SELECT
+    customers.customer_id,
+    sum(orders.order_amount) -> amt;
+"""
+    env, parsed = parse_text(text, root=models)
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    final = _final_select(sql)
+    assert 'as "customers_customer_id"' in final
+    assert 'as "amt"' in final
 
 
 def test_aggregate_grouped_by_merged_key(models: Path):
