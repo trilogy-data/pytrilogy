@@ -52,7 +52,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- discovery: aggregate-source selection gap ---
     "tests/discovery/test_aggregate_handling.py::test_combine_grand_total_with_joined_namespace_count": _AGG_SOURCE,
     "tests/discovery/test_aggregate_handling.py::test_partial_aggregate_rollup_rejects_unsupported_aggregates": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_dimension_filter_with_aggregate": _AGG_SOURCE,
     "tests/discovery/test_aggregate_resolution_coverage.py::test_filter_on_grain_not_in_select": _AGG_SOURCE,
     "tests/discovery/test_aggregate_resolution_coverage.py::test_partial_key_upgrade_with_filter": _AGG_SOURCE,
     "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter": _AGG_SOURCE,
@@ -85,7 +84,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # materialized-root short-circuit only trusts AGGREGATE/BASIC derivations
     # (an UNNEST can be a multi-source merge that drops rows), so this stays derived.
     "tests/persistence/test_complex_persistence.py::test_complex": _PERSIST,
-    "tests/engine/test_duckdb.py::test_anon_function_resolves_from_precomputed_source": _AGG_SOURCE,
     "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_array_inclusion_aggregate": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,

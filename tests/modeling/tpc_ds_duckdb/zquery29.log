@@ -26,7 +26,81 @@ FROM
     LEFT OUTER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"physical_sales_date_date\".\"D_MOY\" = 9 and \"physical_sales_date_date\".\"D_YEAR\" = 1999 and \"physical_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"physical_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
-
+),
+yummy as (
+SELECT
+    \"uneven\".\"catalog_sales_order_number\" as \"correlated_catalog_sales_order_number\",
+    \"uneven\".\"catalog_sales_quantity\" as \"correlated_catalog_sales_quantity\",
+    \"uneven\".\"physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
+    \"uneven\".\"physical_sales_item_id\" as \"correlated_physical_sales_item_id\",
+    \"uneven\".\"physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
+    \"uneven\".\"physical_sales_quantity\" as \"correlated_physical_sales_quantity\",
+    \"uneven\".\"physical_sales_return_quantity\" as \"correlated_physical_sales_return_quantity\",
+    \"uneven\".\"physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
+    \"uneven\".\"physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
+    \"uneven\".\"physical_sales_ticket_number\" as \"correlated_physical_sales_ticket_number\"
+FROM
+    \"uneven\"),
+concerned as (
+SELECT
+    \"yummy\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
+    \"yummy\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
+    \"yummy\".\"correlated_physical_sales_quantity\" as \"correlated_physical_sales_quantity\",
+    \"yummy\".\"correlated_physical_sales_return_quantity\" as \"correlated_physical_sales_return_quantity\",
+    \"yummy\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
+    \"yummy\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\"
+FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"yummy\".\"correlated_physical_sales_item_id\",
+    \"yummy\".\"correlated_physical_sales_ticket_number\"),
+juicy as (
+SELECT
+    \"yummy\".\"correlated_catalog_sales_quantity\" as \"correlated_catalog_sales_quantity\",
+    \"yummy\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
+    \"yummy\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
+    \"yummy\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
+    \"yummy\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\"
+FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    \"yummy\".\"correlated_catalog_sales_order_number\",
+    \"yummy\".\"correlated_physical_sales_item_id\"),
+young as (
+SELECT
+    \"concerned\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
+    \"concerned\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
+    \"concerned\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
+    \"concerned\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
+    sum(\"concerned\".\"correlated_physical_sales_quantity\") as \"store_sales_quantity\",
+    sum(\"concerned\".\"correlated_physical_sales_return_quantity\") as \"store_returns_quantity\"
+FROM
+    \"concerned\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+vacuous as (
+SELECT
+    \"juicy\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
+    \"juicy\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
+    \"juicy\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
+    \"juicy\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
+    sum(\"juicy\".\"correlated_catalog_sales_quantity\") as \"catalog_sales_quantity\"
+FROM
+    \"juicy\"
 GROUP BY
     1,
     2,

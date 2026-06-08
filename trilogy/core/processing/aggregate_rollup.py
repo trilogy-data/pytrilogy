@@ -136,6 +136,59 @@ def _conditions_supported(
     return True
 
 
+def filter_finer_row_args(
+    conditions: BuildWhereClause | None,
+    target_grain: BuildGrain,
+    concepts_by_address: Mapping[str, BuildConcept],
+) -> list[BuildConcept]:
+    """Row-arg filter concepts that are NOT constant within a target-grain group
+    — i.e. filters on a column *finer* than the target grain. A concept is
+    group-level (excluded here) when it is single-row, a target-grain component,
+    or a property functionally determined by the target grain (its keys are a
+    subset of the grain components). Everything else (e.g. `order_date` below a
+    `customer_id` grain) splits groups: SUM-rolling a coarser precomputed
+    aggregate and filtering after the fact double-counts, so it must be applied
+    pre-aggregation on a finer summary table."""
+    if conditions is None:
+        return []
+    target_components = set(target_grain.components)
+    target_canonicals = {
+        concepts_by_address[c].canonical_address
+        for c in target_components
+        if c in concepts_by_address
+    }
+    finer: list[BuildConcept] = []
+    for concept in conditions.row_arguments:
+        if concept.granularity == Granularity.SINGLE_ROW:
+            continue
+        if (
+            concept.address in target_components
+            or concept.canonical_address in target_canonicals
+        ):
+            continue
+        if (
+            concept.purpose == Purpose.PROPERTY
+            and concept.keys
+            and set(concept.keys).issubset(target_components)
+        ):
+            continue
+        finer.append(concept)
+    return finer
+
+
+def filter_is_group_level(
+    conditions: BuildWhereClause | None,
+    target_grain: BuildGrain,
+    concepts_by_address: Mapping[str, BuildConcept],
+) -> bool:
+    """True when every row-arg filter concept is constant within a target-grain
+    group, so the filter selects whole groups and can be applied post-rollup
+    (via a join on a coarser/exact aggregate). The complement — filters on a
+    column finer than the target grain — is returned by `filter_finer_row_args`
+    and handled by the pre-aggregation rollup path instead."""
+    return not filter_finer_row_args(conditions, target_grain, concepts_by_address)
+
+
 def get_additive_rollup_concepts(
     datasource: BuildDatasource,
     requested_concepts: list[BuildConcept],

@@ -39,6 +39,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
     _is_additive_aggregate,
+    filter_is_group_level,
     get_additive_rollup_concepts,
 )
 from trilogy.core.processing.discovery_utility import (
@@ -593,13 +594,14 @@ def _materialized_root_addresses(
         # address, since the finer instance has a different grain canonical), and
         # the additive aggregate can be SUM-rolled up to the target grain.
         #
-        # Only when unfiltered: marking the concept a root lets source-planning
-        # pick ANY table binding it, including a coarser exact table that can't
-        # express the filter (it would then be applied on a separate join and the
-        # precomputed value would ignore it). With no filter, every binding table
-        # is equivalent. Filtered rollup is a follow-up (needs the chosen source
-        # pinned to the filter-compatible finer table).
-        if where is not None:
+        # Marking the concept a root lets source-planning pick ANY table binding
+        # it, including a coarser exact table. That's safe only when the filter
+        # is group-level (constant within a target-grain group): then it selects
+        # whole groups and a post-rollup join applies it correctly. A filter on a
+        # finer column (`order_date` below `customer_id` grain) splits groups, so
+        # SUM-rolling a coarser table and filtering after the fact double-counts;
+        # those are handled by the pinned finer-table rollup, not here.
+        if not filter_is_group_level(where, target_grain, environment.concepts):
             continue
         for ds in datasources:
             if concept.address not in {c.address for c in ds.output_concepts}:

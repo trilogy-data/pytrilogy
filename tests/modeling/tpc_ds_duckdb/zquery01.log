@@ -6,7 +6,7 @@ comp_size = 689
 generated_sql = """
 
 WITH 
-thoughtful as (
+abundant as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_billing_customer_id\",
     \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
@@ -21,27 +21,45 @@ WHERE
 GROUP BY
     1,
     2),
-abundant as (
-SELECT
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"thoughtful\".\"total_returns\") as \"avg_store_returns\"
-FROM
-    \"thoughtful\"
-GROUP BY
-    1),
-questionable as (
+wakeful as (
 SELECT
     \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_text_id\",
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
-    \"thoughtful\".\"total_returns\" as \"total_returns\"
+    \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_billing_customer_id\",
+    \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\"
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"thoughtful\".\"returns_billing_customer_id\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
-    \"questionable\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+    \"abundant\".\"returns_store_id\" as \"returns_store_id\",
+    avg(\"abundant\".\"total_returns\") as \"avg_store_returns\"
 FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"
+    \"abundant\"
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    \"wakeful\".\"returns_store_id\" as \"returns_store_id\"
+FROM
+    \"wakeful\"
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    \"wakeful\".\"returns_billing_customer_id\" as \"returns_billing_customer_id\",
+    \"wakeful\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+FROM
+    \"wakeful\"
+GROUP BY
+    1,
+    2),
+concerned as (
+SELECT
+    \"cheerful\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+FROM
+    \"abundant\"
+    INNER JOIN \"cheerful\" on \"abundant\".\"returns_billing_customer_id\" = \"cheerful\".\"returns_billing_customer_id\"
+    INNER JOIN \"juicy\" on \"abundant\".\"returns_store_id\" = \"juicy\".\"returns_store_id\"
+    INNER JOIN \"thoughtful\" on \"abundant\".\"returns_store_id\" = \"thoughtful\".\"returns_store_id\"
 WHERE
     \"questionable\".\"total_returns\" > ( 1.2 * \"abundant\".\"avg_store_returns\" )
 

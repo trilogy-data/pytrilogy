@@ -30,53 +30,27 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 ),
-yummy as (
-SELECT
-    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
-FROM
-    \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-GROUP BY
-    1,
-    2,
-    3),
 cooperative as (
 SELECT
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
+    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    \"cheerful\".\"sales_sales_price\" as \"sales_sales_price\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
     \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-GROUP BY
-    1,
-    2),
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"),
 juicy as (
-SELECT
-    \"yummy\".\"sales_date_date\" as \"sales_date_date\",
-    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
-    max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 1
-	ELSE 0
-	END) as \"store_has_row\",
-    max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 1
-	ELSE 0
-	END) as \"web_has_row\"
-FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2),
-uneven as (
 SELECT
     \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
     \"cooperative\".\"sales_item_id\" as \"sales_item_id\",
-    sum(\"cooperative\".\"store_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"store_cume\",
-    sum(\"cooperative\".\"web_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"web_cume\"
+    max(CASE
+	WHEN \"cooperative\".\"sales_sales_channel\" = 'STORE' THEN 1
+	ELSE 0
+	END) as \"store_has_row\",
+    max(CASE
+	WHEN \"cooperative\".\"sales_sales_channel\" = 'WEB' THEN 1
+	ELSE 0
+	END) as \"web_has_row\"
 FROM
     \"cooperative\")
 SELECT
@@ -99,6 +73,6 @@ WHERE
     \"uneven\".\"web_cume\" > \"uneven\".\"store_cume\"
 
 ORDER BY 
-    \"vacuous\".\"item_sk\" asc nulls first,
-    \"vacuous\".\"d_date\" asc nulls first
+    \"item_sk\" asc nulls first,
+    \"d_date\" asc nulls first
 LIMIT (100)"""

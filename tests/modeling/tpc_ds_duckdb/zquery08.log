@@ -1,65 +1,98 @@
 query_id = "08"
-generator = "v3"
-gen_length = 2502
+generator = "v4"
+gen_length = 3397
 preql_size = 7493
 comp_size = 19155
 generated_sql = """
 
 WITH 
-cheerful as (
-SELECT
-    \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\",
-    count(CASE WHEN \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN \"customer_customers\".\"C_CUSTOMER_SK\" ELSE NULL END) as \"zip_p_count\"
-FROM
-    \"memory\".\"customer\" as \"customer_customers\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
-GROUP BY
-    1),
 quizzical as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
-questionable as (
+thoughtful as (
 SELECT
-    SUBSTRING(CASE WHEN \"cheerful\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+    \"customer_address_customer_address\".\"CA_ADDRESS_SK\" as \"customer_address_id\",
+    \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"
+    \"memory\".\"customer\" as \"customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),
+highfalutin as (
+SELECT
+    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) as \"zips\"
+FROM
+    \"quizzical\"),
+uneven as (
+SELECT
+    \"thoughtful\".\"customer_address_id\" as \"customer_address_id\"
+FROM
+    \"thoughtful\"
 GROUP BY
     1),
-juicy as (
+cooperative as (
 SELECT
-    SUBSTRING(SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
+    \"thoughtful\".\"customer_address_zip\" as \"customer_address_zip\",
+    count(CASE WHEN \"thoughtful\".\"customer_preferred_cust_flag\" = 'Y' THEN \"thoughtful\".\"customer_id\" ELSE NULL END) as \"zip_p_count\"
 FROM
-    \"quizzical\"
-WHERE
-    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) in (select questionable.\"_virt_func_substring_4293448550966409\" from questionable where questionable.\"_virt_func_substring_4293448550966409\" is not null)
-
+    \"thoughtful\"
 GROUP BY
     1),
-sweltering as (
+yummy as (
 SELECT
+    SUBSTRING(CASE WHEN coalesce(\"cooperative\".\"zip_p_count\",0) > 10 THEN \"cooperative\".\"customer_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+FROM
+    \"uneven\"
+    FULL JOIN \"cooperative\" on 1=1),
+concerned as (
+SELECT
+    CASE WHEN \"highfalutin\".\"zips\" in (select yummy.\"_virt_func_substring_4293448550966409\" from yummy where yummy.\"_virt_func_substring_4293448550966409\" is not null) THEN \"highfalutin\".\"zips\" ELSE NULL END as \"_virt_filter_zips_2159288073185462\"
+FROM
+    \"highfalutin\"),
+young as (
+SELECT
+    SUBSTRING(\"concerned\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
+FROM
+    \"concerned\"),
+sparkling as (
+SELECT
+    \"young\".\"final_zips\" as \"final_zips\"
+FROM
+    \"young\"
+GROUP BY
+    1),
+macho as (
+SELECT
+    \"physical_sales_store_sales\".\"SS_ITEM_SK\" as \"physical_sales_item_id\",
     \"physical_sales_store_sales\".\"SS_NET_PROFIT\" as \"physical_sales_net_profit\",
+    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
     \"physical_sales_store_store\".\"S_STORE_NAME\" as \"physical_sales_store_name\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_QOY\" = 2 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,2) in (select juicy.\"final_zips\" from juicy where juicy.\"final_zips\" is not null)
-
+    \"physical_sales_date_date\".\"D_QOY\" = 2 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,2) in (select sparkling.\"final_zips\" from sparkling where sparkling.\"final_zips\" is not null)
+),
+scrawny as (
+SELECT
+    \"macho\".\"physical_sales_net_profit\" as \"physical_sales_net_profit\",
+    \"macho\".\"physical_sales_store_name\" as \"physical_sales_store_name\"
+FROM
+    \"macho\"
 GROUP BY
     1,
     2,
-    \"physical_sales_store_sales\".\"SS_ITEM_SK\",
-    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\")
+    \"macho\".\"physical_sales_item_id\",
+    \"macho\".\"physical_sales_ticket_number\")
 SELECT
-    \"sweltering\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
-    sum(\"sweltering\".\"physical_sales_net_profit\") as \"store_net_profit\"
+    \"scrawny\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
+    sum(\"scrawny\".\"physical_sales_net_profit\") as \"store_net_profit\"
 FROM
-    \"sweltering\"
+    \"scrawny\"
 GROUP BY
     1
 ORDER BY 
-    \"sweltering\".\"physical_sales_store_name\" asc
+    \"scrawny\".\"physical_sales_store_name\" asc
 LIMIT (100)"""
