@@ -39,7 +39,6 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
     _is_additive_aggregate,
-    filter_is_group_level,
     get_additive_rollup_concepts,
 )
 from trilogy.core.processing.discovery_utility import (
@@ -594,15 +593,16 @@ def _materialized_root_addresses(
         # address, since the finer instance has a different grain canonical), and
         # the additive aggregate can be SUM-rolled up to the target grain.
         #
-        # Marking the concept a root lets source-planning pick ANY table binding
-        # it, including a coarser exact table. That's safe only when the filter
-        # is group-level (constant within a target-grain group): then it selects
-        # whole groups and a post-rollup join applies it correctly. A filter on a
-        # finer column (`order_date` below `customer_id` grain) splits groups, so
-        # SUM-rolling a coarser table and filtering after the fact double-counts;
-        # those are handled by the pinned finer-table rollup, not here.
-        if not filter_is_group_level(where, target_grain, environment.concepts):
-            continue
+        # Marking the concept a root lets source-planning pick a table binding
+        # it. `get_additive_rollup_concepts` below is passed the filter and only
+        # matches a datasource whose grain can express it (`_conditions_supported`):
+        # a group-level filter (constant within a target-grain group) matches any
+        # coarser/exact table, while a finer filter (`order_date` below a
+        # `customer_id` grain) only matches a finer summary that carries the
+        # column — `plan_source._plan_finer_filter_rollup` then pins that table,
+        # pushes the filter pre-aggregation, and SUM-rolls. A coarser table is
+        # never matched under a finer filter, so post-rollup decoupling can't
+        # double-count.
         for ds in datasources:
             if concept.address not in {c.address for c in ds.output_concepts}:
                 continue

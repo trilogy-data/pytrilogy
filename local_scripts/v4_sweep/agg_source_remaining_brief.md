@@ -1,14 +1,31 @@
-# v4 aggregate-source-selection — remaining 6 (handoff)
+# v4 aggregate-source-selection — ALL FIXED ✅ (handoff)
+
+> **2026-06-08: all 6 remaining tests are now fixed.** Sub-problems 1–4 below are
+> all resolved; the `_AGG_SOURCE` bucket in `tests/v4_known_failing.py` is empty.
+> Fixes live in `v4_helper/source_planning.py` (`_plan_finer_filter_rollup`,
+> `_plan_complete_where_source`, `_single_source_covers_completely` bridge guard)
+> and `v4_helper/group_rules.py` (`partition_roots` SINGLE_ROW split). The
+> sections below are retained for context.
+
 
 > **Context (2026-06-08).** The original `_AGG_SOURCE` bucket (37 tests, see
-> `agg_source_reuse_brief.md`) is down to 6. Exact-grain match, additive
+> `agg_source_reuse_brief.md`) is down to 2. Exact-grain match, additive
 > grand-total/coarser rollup (unfiltered), and partial-key dimension upgrade
 > (unfiltered) all land. This pass added **group-level filtered rollup** and
 > fixed `test_dimension_filter_with_aggregate`; see "What landed" below.
 >
-> The 6 left are NOT localized patches — each is a real v4 source-selection
-> capability. They split into 4 independent sub-problems. Each section is
-> self-contained for a fresh agent.
+> **UPDATE (2026-06-08): sub-problems 1 and 2 below are now FIXED.** Both pin a
+> datasource at the top of `plan_source` (`v4_helper/source_planning.py`):
+> sub-problem 1 → `_plan_finer_filter_rollup`, sub-problem 2 →
+> `_plan_complete_where_source`. The finer-filter gate in
+> `_materialized_root_addresses` was removed (the `get_additive_rollup_concepts`
+> conditions check already guards it). **Sub-problem 3 is also FIXED** — in
+> `group_rules.partition_roots`, SINGLE_ROW roots are split into their own bucket
+> so two grand-totals from different sources cross-join instead of forming one
+> unsourceable bucket. Remaining: sub-problem 4.
+>
+> The 1 left is NOT a localized patch — it's a real v4 source-selection
+> capability. The section is self-contained for a fresh agent.
 
 ## Shared model
 
@@ -53,7 +70,12 @@ list. The group-level check is the correctness guard.
 
 ---
 
-## Sub-problem 1 — finer-filter pre-aggregation rollup (3 tests)
+## Sub-problem 1 — finer-filter pre-aggregation rollup (3 tests) — ✅ FIXED 2026-06-08
+
+> Fixed via `_plan_finer_filter_rollup` in `v4_helper/source_planning.py` +
+> removal of the finer-filter gate in `_materialized_root_addresses`. The
+> analysis below is retained for context.
+
 
 `test_filter_on_grain_not_in_select`, `test_partial_key_upgrade_with_filter`
 (both in `test_aggregate_resolution_coverage.py`),
@@ -145,7 +167,12 @@ guard, currently passing) stays correct.
 
 ---
 
-## Sub-problem 2 — partial/`complete where` datasource match under filter (1 test)
+## Sub-problem 2 — partial/`complete where` datasource match under filter (1 test) — ✅ FIXED 2026-06-08
+
+> Fixed via `_plan_complete_where_source` in `v4_helper/source_planning.py`
+> (pins the partial datasource whose `non_partial_for` is implied by the WHERE).
+> The analysis below is retained for context.
+
 
 `test_aggregates_comprehensive.py::test_high_value_customer_filter`.
 
@@ -178,7 +205,14 @@ detection) — out of scope.
 
 ---
 
-## Sub-problem 3 — grand-total signature match across namespaces (1 test)
+## Sub-problem 3 — grand-total signature match across namespaces (1 test) — ✅ FIXED 2026-06-08
+
+> Fixed in `group_rules.partition_roots`: SINGLE_ROW roots are pulled out of the
+> reach/union/bailout and given their own `grp:root:root:∅:single_row` bucket,
+> so a grand-total precomputed source and a different-source grand-total
+> cross-join at FINAL instead of forming one unsourceable root bucket. The
+> analysis below is retained for context.
+
 
 `test_aggregate_handling.py::test_combine_grand_total_with_joined_namespace_count`.
 
@@ -207,7 +241,14 @@ when `named_carriers` is also requested (isolate: it likely works for
 
 ---
 
-## Sub-problem 4 — prefer summary's dimension column for recomputed non-additive (1 test)
+## Sub-problem 4 — prefer summary's dimension column for recomputed non-additive (1 test) — ✅ FIXED 2026-06-08
+
+> Fixed via `_single_source_covers_completely` guard in `_bridge_plan`
+> (`source_planning.py`): when one datasource binds every requested concept as a
+> non-partial output, the bridge bails so `_direct_source`'s grain-aware scoring
+> picks the exact-grain summary instead of the bridge routing dims through base
+> via a spurious `id` connector. The analysis below is retained for context.
+
 
 `test_aggregate_handling.py::test_partial_aggregate_rollup_rejects_unsupported_aggregates`.
 

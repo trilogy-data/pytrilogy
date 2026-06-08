@@ -14,7 +14,7 @@ from collections import defaultdict
 from typing import Callable
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, Granularity
 
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
@@ -296,6 +296,20 @@ def partition_roots(
         addr_of = {node: data.address for node, data in sub_items}
         existence_only_nodes = [(n, d) for n, d in sub_items if d.existence_only]
         main_items = [(n, d) for n, d in sub_items if not d.existence_only]
+        # Single-row roots (a grand-total precomputed value, a constant, a `<*>`
+        # watermark) join by cross product, never by a key. Co-bucketing one with
+        # keyed roots from a different scan yields an unsourceable group — no join
+        # key links e.g. a `flight_count` grand-total table to a `carrier` dim,
+        # and a zero-reach single-row output would otherwise force the
+        # conservative single-bucket bailout to swallow every keyed root. Pull
+        # them out: same-source single rows still share one scan (one bucket
+        # together), and the FINAL node cross-joins them onto the keyed plan.
+        single_row_items = [
+            (n, d) for n, d in main_items if d.granularity == Granularity.SINGLE_ROW
+        ]
+        main_items = [
+            (n, d) for n, d in main_items if d.granularity != Granularity.SINGLE_ROW
+        ]
 
         # Forward lineage reach per root, following only LINEAGE edges (a
         # d1→d0 ordering rides its own CONSTRAINT edge and is excluded here).
@@ -373,6 +387,20 @@ def partition_roots(
             for node, data in members:
                 _add_member(bucket, node, data)
             buckets.append(bucket)
+
+        if single_row_items:
+            single_row_bucket = _bucket_for(
+                depth_label=DepthLabel.ROOT,
+                derivation=Derivation.ROOT,
+                grain=frozenset(),
+                label=label_value,
+            )
+            # Distinct id from the keyed `grp:root:root:∅` bucket so they stay
+            # separate scans the FINAL node cross-joins.
+            single_row_bucket.discriminator = "single_row"
+            for node, data in single_row_items:
+                _add_member(single_row_bucket, node, data)
+            buckets.append(single_row_bucket)
 
         for node, data in existence_only_nodes:
             solo = _bucket_for(

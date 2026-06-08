@@ -6,83 +6,78 @@ comp_size = 1462
 generated_sql = """
 
 WITH 
-abundant as (
+thoughtful as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
-    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\"
+    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"item_avg_profit\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" = 1
-),
-wakeful as (
+
+GROUP BY
+    1),
+cooperative as (
 SELECT
-    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"_addr_null_threshold_threshold\"
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" = 1
+
+GROUP BY
+    1,
+    \"ss_store_sales\".\"SS_STORE_SK\"),
+highfalutin as (
+SELECT
+    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"addr_null_threshold_threshold\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" = 1 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
 ),
-quizzical as (
-SELECT
-    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_ascending_best_performing\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_descending_worst_performing\"
-FROM
-    \"memory\".\"item\" as \"ss_item_items\"),
-uneven as (
-SELECT
-    \"abundant\".\"ss_item_id\" as \"ss_item_id\",
-    \"abundant\".\"ss_net_profit\" as \"ss_net_profit\"
-FROM
-    \"abundant\"),
 questionable as (
 SELECT
-    \"wakeful\".\"_addr_null_threshold_threshold\" as \"addr_null_threshold_threshold\"
+    \"thoughtful\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"thoughtful\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"wakeful\"),
-yummy as (
+    \"cooperative\"
+    INNER JOIN \"thoughtful\" on \"cooperative\".\"ss_item_id\" = \"thoughtful\".\"ss_item_id\"),
+abundant as (
 SELECT
-    \"uneven\".\"ss_item_id\" as \"ss_item_id\",
-    avg(\"uneven\".\"ss_net_profit\") as \"item_avg_profit\"
+    \"questionable\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"questionable\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"uneven\"
-GROUP BY
-    1),
-vacuous as (
-SELECT
-    \"yummy\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"yummy\".\"ss_item_id\" as \"ss_item_id\"
-FROM
-    \"uneven\"
-    INNER JOIN \"yummy\" on \"uneven\".\"ss_item_id\" = \"yummy\".\"ss_item_id\"
+    \"highfalutin\"
     INNER JOIN \"questionable\" on 1=1
 WHERE
-    \"yummy\".\"item_avg_profit\" > 0.9 * \"questionable\".\"addr_null_threshold_threshold\"
+    \"questionable\".\"item_avg_profit\" > 0.9 * \"highfalutin\".\"addr_null_threshold_threshold\"
 
 GROUP BY
     1,
     2),
-abhorrent as (
+uneven as (
 SELECT
-    \"vacuous\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"vacuous\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
-    rank() over (order by \"vacuous\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
+    \"abundant\".\"ss_item_id\" as \"ss_item_id\",
+    rank() over (order by \"abundant\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
+    rank() over (order by \"abundant\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
-    \"vacuous\"),
-sweltering as (
+    \"abundant\"),
+juicy as (
 SELECT
-    \"abhorrent\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\",
-    \"abhorrent\".\"_descending_rnk_d\" as \"_descending_rnk_d\",
-    \"quizzical\".\"_ascending_best_performing\" as \"_ascending_best_performing\",
-    \"quizzical\".\"_descending_worst_performing\" as \"_descending_worst_performing\"
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"descending_worst_performing\",
+    \"uneven\".\"_descending_rnk_d\" as \"descending_rnk_d\",
+    \"uneven\".\"_descending_rnk_d\" as \"rnk\"
 FROM
-    \"abhorrent\"
-    INNER JOIN \"quizzical\" on \"abhorrent\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"),
-macho as (
+    \"uneven\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+GROUP BY
+    1,
+    2),
+yummy as (
 SELECT
-    \"sweltering\".\"_descending_rnk_d\" as \"rnk\",
-    \"sweltering\".\"_descending_worst_performing\" as \"descending_worst_performing\"
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ascending_best_performing\",
+    \"uneven\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
 FROM
     \"uneven\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
@@ -94,15 +89,8 @@ SELECT
     \"yummy\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"juicy\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"sweltering\"),
-friendly as (
-SELECT
-    \"late\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"macho\".\"descending_worst_performing\" as \"descending_worst_performing\",
-    \"macho\".\"rnk\" as \"rnk\"
-FROM
-    \"macho\"
-    INNER JOIN \"late\" on \"macho\".\"rnk\" = \"late\".\"ascending_rnk_a\"
+    \"juicy\"
+    INNER JOIN \"yummy\" on \"juicy\".\"descending_rnk_d\" = \"yummy\".\"ascending_rnk_a\"
 WHERE
     \"juicy\".\"rnk\" < 11
 

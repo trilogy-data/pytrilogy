@@ -27,10 +27,6 @@ from __future__ import annotations
 
 # Reason strings are deliberately coarse: they name the v4 capability gap, not a
 # per-test diff. Group edits when a whole class of tests shares one root cause.
-_AGG_SOURCE = (
-    "v4 aggregate-source selection: picks the raw source instead of a "
-    "pre-aggregated / rollup summary table (correct rows, worse plan)"
-)
 _CRASH = "v4 crash during build/render"
 _INLINE = "v4 inlining/merge produces a different CTE shape than v3"
 _PERSIST = (
@@ -49,13 +45,6 @@ _TPCDS_SIZE = (
 )
 
 V4_KNOWN_FAILING: dict[str, str] = {
-    # --- discovery: aggregate-source selection gap ---
-    "tests/discovery/test_aggregate_handling.py::test_combine_grand_total_with_joined_namespace_count": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_handling.py::test_partial_aggregate_rollup_rejects_unsupported_aggregates": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_filter_on_grain_not_in_select": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_partial_key_upgrade_with_filter": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter": _AGG_SOURCE,
-    "tests/discovery/test_primary_source_aggregate_fallback.py::test_partial_precomputed_uses_aggregate_with_grain_filter": _AGG_SOURCE,
     # --- discovery: history/debug SQL snapshot diffs ---
     "tests/discovery/test_discovery.py::test_history_e2e_non_materialized_field": _INLINE,
     # --- optimization: CTE-shape snapshot diffs ---

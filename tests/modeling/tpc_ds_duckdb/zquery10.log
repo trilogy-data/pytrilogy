@@ -101,33 +101,6 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9)
-SELECT
-    \"sweltering\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
-    \"sweltering\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    \"sweltering\".\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
-    count(\"sweltering\".\"customer_id\") as \"cnt1\",
-    \"sweltering\".\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
-    count(\"sweltering\".\"customer_id\") as \"cnt2\",
-    \"sweltering\".\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
-    count(\"sweltering\".\"customer_id\") as \"cnt3\",
-    \"sweltering\".\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
-    count(\"sweltering\".\"customer_id\") as \"cnt4\",
-    \"sweltering\".\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
-    count(\"sweltering\".\"customer_id\") as \"cnt5\",
-    \"sweltering\".\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
-    count(\"sweltering\".\"customer_id\") as \"cnt6\"
-FROM
-    \"sweltering\"
-GROUP BY
-    1,
-    2,
-    3,
     5,
     7,
     9,

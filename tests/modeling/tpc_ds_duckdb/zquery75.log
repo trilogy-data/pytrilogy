@@ -6,7 +6,7 @@ comp_size = 2939
 generated_sql = """
 
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
     \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
@@ -33,7 +33,7 @@ SELECT
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
-uneven as (
+abundant as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
@@ -78,24 +78,21 @@ FROM
 WHERE
     \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"sales_item_items\".\"I_CATEGORY\" = 'Books'
 ),
-quizzical as (
+concerned as (
 SELECT
-    2001 as \"prev_year\",
-    2002 as \"year_\"
-),
-vacuous as (
-SELECT
-    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
-    \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
-    \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
-    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\",
-    \"uneven\".\"sales_date_year\" as \"sales_date_year\",
-    \"uneven\".\"sales_ext_sales_price\" - coalesce(\"thoughtful\".\"sales_return_amount\",0.0) as \"amt_per_row\",
-    \"uneven\".\"sales_quantity\" - coalesce(\"thoughtful\".\"sales_return_quantity\",0) as \"cnt_per_row\"
+    \"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0) as \"deduped_amt_per_row\",
+    \"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0) as \"deduped_cnt_per_row\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"deduped_sales_item_brand_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"deduped_sales_item_category_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"deduped_sales_item_class_id\",
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"deduped_sales_item_manufacturer_id\"
 FROM
-    \"uneven\"
-    LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"sales_item_id\" = \"thoughtful\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"thoughtful\".\"sales_order_id\" AND \"uneven\".\"sales_sales_channel\" = \"thoughtful\".\"sales_sales_channel\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"uneven\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+    \"abundant\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"abundant\".\"sales_date_year\" = 2002
+
 GROUP BY
     1,
     2,

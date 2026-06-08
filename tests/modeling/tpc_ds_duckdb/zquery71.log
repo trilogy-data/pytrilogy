@@ -1,6 +1,6 @@
 query_id = "71"
-generator = "v4"
-gen_length = 3795
+generator = "v3"
+gen_length = 3455
 preql_size = 532
 comp_size = 1399
 generated_sql = """
@@ -44,13 +44,12 @@ FROM
     INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"sales_time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"sales_time_time\".\"T_MEAL_TIME\" = 'dinner' )
-),
-abundant as (
+)
 SELECT
-    \"sales_item_items\".\"I_BRAND\" as \"sales_item_brand_name\",
-    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
-    \"sales_time_time\".\"T_HOUR\" as \"sales_time_hour\",
-    \"sales_time_time\".\"T_MINUTE\" as \"sales_time_minute\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"brand_id\",
+    \"sales_item_items\".\"I_BRAND\" as \"brand\",
+    \"sales_time_time\".\"T_HOUR\" as \"t_hour\",
+    \"sales_time_time\".\"T_MINUTE\" as \"t_minute\",
     sum(\"cheerful\".\"sales_ext_sales_price\") as \"ext_price\"
 FROM
     \"cheerful\"
@@ -60,17 +59,9 @@ GROUP BY
     1,
     2,
     3,
-    4)
-SELECT
-    \"abundant\".\"sales_item_brand_id\" as \"brand_id\",
-    \"abundant\".\"sales_item_brand_name\" as \"brand\",
-    \"abundant\".\"sales_time_hour\" as \"t_hour\",
-    \"abundant\".\"sales_time_minute\" as \"t_minute\",
-    \"abundant\".\"ext_price\" as \"ext_price\"
-FROM
-    \"abundant\"
+    4
 ORDER BY 
-    \"abundant\".\"ext_price\" desc nulls first,
+    \"ext_price\" desc nulls first,
     \"brand_id\" asc nulls first,
     \"t_hour\" asc nulls first,
     \"t_minute\" asc nulls first"""
