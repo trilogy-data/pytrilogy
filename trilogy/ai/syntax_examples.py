@@ -393,6 +393,19 @@ select
     rnk,
 order by level desc nulls first, parent asc nulls first, rnk asc nulls first
 limit 100;
+
+# ---------------------------------------------------------------------------
+# NOTE — composite aggregate over a rollup (a difference/ratio of sums):
+# put `by rollup` on EACH operand.
+#   GOOD: (sum(profit) by rollup enroll.course, enroll.year)
+#       - (sum(loss) by rollup enroll.course, enroll.year) as net
+# BAD: `sum(profit) - sum(loss) by rollup enroll.course, enroll.year` binds the
+# `by rollup` to the LAST operand only — `sum(profit)` then stays at leaf grain
+# and comes out NULL on the subtotal/grand-total rows. And the tidy-looking
+# `(sum(profit) - sum(loss)) by rollup ...` does NOT parse (a `by` clause
+# attaches to a single aggregate, not to a parenthesized expression). 
+#  Because it cannot generalize to complex parnetheses. Spell out
+# `by rollup` on every operand so they all roll up to the same levels.
 """,
     ),
     SyntaxExample(
