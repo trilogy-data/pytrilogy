@@ -8,10 +8,10 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
-    \"customer_address_customer_address\".\"CA_CITY\" as \"cust_current_city\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"cust_customer_id\",
-    \"customer_customers\".\"C_FIRST_NAME\" as \"cust_customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"cust_customer_last_name\"
+    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
+    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),

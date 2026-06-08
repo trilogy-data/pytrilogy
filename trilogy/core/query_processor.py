@@ -922,6 +922,11 @@ def process_query(
         full_join_keys=full_join_keys,
     )
 
+    join_clauses = getattr(statement, "join_clauses", None) or []
+    scoped_merge_map, _ = _build_scoped_merge_index(
+        [(j.source_address, j.target_address, j.modifiers) for j in join_clauses]
+    )
+
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
