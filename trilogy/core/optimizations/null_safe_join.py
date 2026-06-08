@@ -20,8 +20,8 @@ every branch independently proves the column non-null.
 
 from __future__ import annotations
 
-from trilogy.core.enums import JoinType, Modifier
-from trilogy.core.models.build import BuildConcept
+from trilogy.core.enums import AggregateGroupingMode, JoinType, Modifier
+from trilogy.core.models.build import BuildAggregateWrapper, BuildConcept
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import condition_proves_non_null
@@ -64,6 +64,22 @@ def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:
                 if not addrs.isdisjoint(pair_outputs):
                     return True
     return False
+
+
+def _rollup_injects_null(cte: CTE, addrs: set[str]) -> bool:
+    """True when ``cte`` performs a ROLLUP/CUBE/GROUPING SETS that injects NULLs
+    into any address in ``addrs`` (its grouping-key dims, or anything marked
+    nullable as a result). Like ``_join_pads_null``, this stops the parent-walk
+    from proving a rollup key non-null via the upstream source where it *is*
+    non-null — the rollup is the source of the NULLs at subtotal rows."""
+    has_rollup = any(
+        isinstance(c.lineage, BuildAggregateWrapper)
+        and c.lineage.grouping != AggregateGroupingMode.STANDARD
+        for c in cte.output_columns
+    )
+    if not has_rollup:
+        return False
+    return not addrs.isdisjoint(_equivalent_addrs(list(cte.nullable_concepts)))
 
 
 def _proven_non_null(
@@ -109,9 +125,11 @@ def _proven_non_null(
             return True
     if cte.name in _visited:
         return False
-    # An outer join here may itself introduce the NULL — don't claim a parent
-    # proof if our own join is the source of the nullability.
-    if _join_pads_null(cte, concept.equivalent_addresses):
+    # An outer join — or a ROLLUP/CUBE — here may itself introduce the NULL;
+    # don't claim a parent proof if our own node is the source of the nullability.
+    if _join_pads_null(cte, concept.equivalent_addresses) or _rollup_injects_null(
+        cte, concept.equivalent_addresses
+    ):
         return False
     next_visited = _visited | {cte.name}
     contributing = [

@@ -628,52 +628,6 @@ def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
     return found
 
 
-def _is_bare_standard_aggregate(node: Any) -> bool:
-    """A grain-less aggregate (`sum(x)` with no `by`) in STANDARD mode. Excludes
-    ``grouping()``/``grouping_id()`` (handled above) and `by *` globals (which
-    carry an explicit all-rows ``by``)."""
-    return (
-        isinstance(node, AggregateWrapper)
-        and node.grouping == AggregateGroupingMode.STANDARD
-        and not node.by
-        and node.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-        and node.function.operator not in _GROUPING_FNS
-    )
-
-
-def _collect_bare_aggregates(node: Any) -> list[AggregateWrapper]:
-    """Top-level bare aggregates in an expression tree — composite operands
-    (``sum(a) - sum(b)``) or a standalone ``sum(a)``. Recursion stops at any
-    AggregateWrapper so we never reach aggregates nested inside another
-    aggregate's arguments (those have their own grain)."""
-    if isinstance(node, AggregateWrapper):
-        return (
-            [cast(AggregateWrapper, node)] if _is_bare_standard_aggregate(node) else []
-        )
-    found: list[AggregateWrapper] = []
-    if isinstance(node, Comparison):
-        found += _collect_bare_aggregates(node.left)
-        found += _collect_bare_aggregates(node.right)
-    elif isinstance(node, Conditional):
-        found += _collect_bare_aggregates(node.left)
-        found += _collect_bare_aggregates(node.right)
-    elif isinstance(node, Parenthetical):
-        found += _collect_bare_aggregates(node.content)
-    elif isinstance(node, Between):
-        found += _collect_bare_aggregates(node.left)
-        found += _collect_bare_aggregates(node.low)
-        found += _collect_bare_aggregates(node.high)
-    elif isinstance(node, CaseWhen):
-        found += _collect_bare_aggregates(node.comparison)
-        found += _collect_bare_aggregates(node.expr)
-    elif isinstance(node, CaseElse):
-        found += _collect_bare_aggregates(node.expr)
-    elif isinstance(node, Function):
-        for arg in node.arguments:
-            found += _collect_bare_aggregates(arg)
-    return found
-
-
 def _fix_projection_grouping_mode(
     select: SelectStatement, context: RuleContext
 ) -> None:
@@ -689,51 +643,24 @@ def _fix_projection_grouping_mode(
     its mode aligned with the query's rollup spec so it co-locates with the
     rollup aggregate. Mutates each wrapper in place (they are dataclasses) so
     by-name ``auto`` concepts are fixed at their canonical address.
-
-    The same stranding hits a composite rollup aggregate's bare operands:
-    ``sum(a) - sum(b) by rollup k`` binds the ``by rollup`` to the trailing
-    operand only, leaving ``sum(a)`` STANDARD with an empty ``by``. With one
-    rollup aggregate the planner still rolls the bare operand up to the select
-    grain, but a second rollup aggregate forces a multi-CTE split that re-projects
-    the bare operand ungrouped (DuckDB: "column must appear in the GROUP BY").
-    Aligning the inline bare operands to the rollup spec makes every operand
-    co-locate in the one rollup group node — escape via ``by *`` for a genuine
-    global.
     """
     spec = _select_rollup_spec(select, context)
     if spec is None:
         return
     mode, by, grouping_sets = spec
-
-    def apply(wrapper: AggregateWrapper) -> None:
-        wrapper.by = list(by)
-        wrapper.grouping = mode
-        wrapper.grouping_sets = [list(g) for g in grouping_sets]
-
     for sitem in select.selection:
         lineage = _item_lineage(sitem, context)
         if lineage is None:
             continue
         for wrapper in _collect_standard_grouping_wrappers(lineage):
-            apply(wrapper)
-        # Only inline outputs: a by-name reference to an externally defined
-        # aggregate (e.g. a rowset grand total used in HAVING) keeps its grain.
-        if not isinstance(sitem.content, ConceptTransform):
-            continue
-        # Composite operands (`sum(a) - sum(b) by rollup k`) keep an empty `by`
-        # on every operand but the trailing one — set_select_grain only injects
-        # the top-level wrapper, not nested operands — so they strand in STANDARD
-        # mode. Align them so all operands co-locate in the rollup group node.
-        for agg in _collect_bare_aggregates(lineage):
-            apply(agg)
+            wrapper.by = list(by)
+            wrapper.grouping = mode
+            wrapper.grouping_sets = [list(g) for g in grouping_sets]
 
 
 def _validate_order_by_aggregates(select: SelectStatement, line_no: int | None) -> None:
     """Reject inline aggregates in ORDER BY that are not SELECT outputs.
-
-    An aggregate cannot be computed in the ordering scope (it belongs to a
-    GROUP BY); ``grouping()`` in particular renders into a groupless wrapper CTE
-    and crashes DuckDB. ORDER BY may only reference an aggregate via its SELECT
+    ORDER BY may only reference an aggregate via its SELECT
     alias, so an inline one that has no matching projection is an error — add it
     to SELECT (``--`` to keep it out of the output rows) and order by the alias.
     """

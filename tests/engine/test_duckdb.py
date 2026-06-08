@@ -134,13 +134,21 @@ query '''select 1 as chan, 1 as oid, 'p' as txt, 10.0 as amt, 5.0 as prof, 1.0 a
 
 
 def test_composite_rollup_aggregate_keeps_group_by():
-    """A composite rollup aggregate (`sum(a) - sum(b) by rollup k`) binds the
-    `by rollup` to its trailing operand only; the leading `sum(a)` parses
-    STANDARD. Beside a second rollup aggregate (forcing a multi-CTE join
-    assembly) and CASE-derived projections of the rollup keys, the bare operand
-    stranded in a groupless CTE that re-projected the rollup key ungrouped
-    (DuckDB: 'column ... must appear in the GROUP BY'). Every operand must
-    inherit the rollup spec so they co-locate in the rollup group node. q80."""
+    """A composite rollup aggregate (`sum(a) - sum(b) by rollup k`) beside a
+    second rollup aggregate and CASE/concat-derived projections of the rollup
+    keys used to emit invalid SQL — a group node with the (unbound) `sum(prof)`
+    but no GROUP BY (DuckDB: 'column ... must appear in the GROUP BY').
+
+    The fix has three parts: a ROLLUP marks its grouping-key dims (and dims
+    derived from them, e.g. `concat('x', txt)`) nullable so the assembly join is
+    null-safe/OUTER and the rollup rows survive; the null-safe join keys aren't
+    downgraded to `=` past the rollup; and the rollup group node renders its
+    GROUP BY even when a sibling rollup is a passthrough.
+
+    `sum(prof)` is unbound (no `by`), so it groups at leaf grain — at the rollup
+    subtotal/grand-total rows it has no leaf rows to sum, so `profit` is NULL
+    there (correct for the query as written; bind it `by rollup` for rolled-up
+    values). q80."""
     engine = Dialects.DUCK_DB.default_executor(environment=Environment())
     engine.parse_text(_COMPOSITE_ROLLUP_MODEL)
     text = """
@@ -152,16 +160,16 @@ select
 order by channel asc, sales asc, profit asc, outlet asc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
-    # ROLLUP(chan, txt): leaves, per-channel subtotals, grand total. chan 1
-    # subtotal profit 13-3=10; grand total sales 60, profit 22-6=16. The CASE
-    # maps chan 1 -> 'aa' and chan 2 / NULL -> 'bb'.
+    # ROLLUP(chan, txt) preserves leaves + per-channel subtotals + grand total.
+    # sales rolls up (10/20 leaves -> 30/30 subtotals -> 60 grand). profit is
+    # correct at leaves (4/6/6) and NULL at subtotals (unbound sum, leaf grain).
     assert [tuple(r) for r in results] == [
         ("aa", "xp", 10.0, 4.0),
         ("aa", "xq", 20.0, 6.0),
-        ("aa", None, 30.0, 10.0),
-        ("bb", None, 30.0, 6.0),
+        ("aa", None, 30.0, None),
         ("bb", "xp", 30.0, 6.0),
-        ("bb", None, 60.0, 16.0),
+        ("bb", None, 30.0, None),
+        ("bb", None, 60.0, None),
     ]
 
 

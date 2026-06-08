@@ -1,9 +1,10 @@
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import SourceType
+from trilogy.core.enums import AggregateGroupingMode, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildOrderBy,
@@ -155,6 +156,33 @@ class GroupNode(StrategyNode):
                 {x.address, x.canonical_address, *x.pseudonyms}
             )
         ]
+        # A ROLLUP/CUBE/GROUPING SETS injects NULLs into its grouping-key dims at
+        # the subtotal/grand-total rows. Mark those dims — and any dim derived
+        # from them (e.g. ``concat('x', txt)``, which propagates the NULL) —
+        # nullable, so downstream joins on them use null-safe (OUTER) semantics
+        # and preserve the rollup rows instead of dropping or doubling them.
+        rollup_by_addresses: set[str] = set()
+        for c in self.output_concepts:
+            if (
+                isinstance(c.lineage, BuildAggregateWrapper)
+                and c.lineage.grouping != AggregateGroupingMode.STANDARD
+            ):
+                rollup_by_addresses.update(b.address for b in c.lineage.by)
+        if rollup_by_addresses:
+            from trilogy.core.processing.discovery_utility import (
+                get_upstream_concepts,
+            )
+
+            already_nullable = {x.address for x in nullable_concepts}
+            nullable_concepts = nullable_concepts + [
+                x
+                for x in self.output_concepts
+                if x.address not in already_nullable
+                and (
+                    x.address in rollup_by_addresses
+                    or rollup_by_addresses & get_upstream_concepts(x)
+                )
+            ]
         # Merge partial concepts from parent resolved sources
         # so partial keys from upstream datasources propagate through grouping.
         output_addresses = {c.address for c in self.output_concepts}

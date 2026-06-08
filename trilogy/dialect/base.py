@@ -1632,6 +1632,21 @@ class BaseDialect:
                 return False
         return True
 
+    @staticmethod
+    def _has_local_aggregate(cte: CTE | UnionCTE) -> bool:
+        """True if the CTE computes an aggregate locally (not merely passing one
+        through from a parent). Such a CTE must emit a GROUP BY even when its only
+        rollup output is a passthrough — which would otherwise short-circuit the
+        GROUP BY via ``_all_grouped_outputs_are_passthrough`` and leave the local
+        aggregate ungrouped (invalid SQL)."""
+        if not isinstance(cte, CTE):
+            return False
+        return any(
+            get_grouped_aggregate_wrapper(c) is not None
+            and not cte.source_map.get(c.address)
+            for c in cte.output_columns
+        )
+
     @classmethod
     def _all_grouped_outputs_are_passthrough(cls, cte: CTE | UnionCTE) -> bool:
         if not isinstance(cte, CTE) or not cte.parent_ctes:
@@ -1658,6 +1673,11 @@ class BaseDialect:
             for c in cte.output_columns
             if (aggregate := get_grouped_aggregate_wrapper(c)) is not None
             and aggregate.grouping != AggregateGroupingMode.STANDARD
+            # A passthrough rollup (already aggregated upstream, selected here as a
+            # plain column) must not drive this CTE's grouping mode — re-emitting
+            # its ROLLUP would double-aggregate. Only locally-computed grouped
+            # aggregates set the mode.
+            and not getattr(cte, "source_map", {}).get(c.address)
         ]
         if not grouped:
             return AggregateGroupingMode.STANDARD, [], []
@@ -1764,7 +1784,9 @@ class BaseDialect:
         if not cte.group_to_grain:
             return None
 
-        if self._all_grouped_outputs_are_passthrough(cte):
+        if self._all_grouped_outputs_are_passthrough(
+            cte
+        ) and not self._has_local_aggregate(cte):
             return None
 
         grouping_mode = self._render_grouping_mode(cte, select_index)

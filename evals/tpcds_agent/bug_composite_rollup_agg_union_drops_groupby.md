@@ -1,6 +1,49 @@
 # Bug: composite rollup aggregate over a union model + derived-key projection → "column must appear in GROUP BY"
 
-**Status:** OPEN (found 2026-06-08, enriched eval q80 — exhausted at 75 calls / ~240 events).
+**Status:** FIXED 2026-06-08 (found enriched eval q80 — exhausted at 75 calls / ~240 events).
+
+## Fix
+
+Root cause: **a ROLLUP injects NULLs into its grouping-key dimension columns at
+the subtotal/grand-total rows, but those concepts weren't marked nullable on the
+output QueryDatasource.** Consequences: the unbound leading operand `sum(prof)`
+(no `by`) is grouped at the other output keys, and its assembly join back to the
+rollup side used INNER `=` (NULL≠NULL) — dropping every rollup row, or, with the
+join preserved, doubling them; the renderer also failed to emit a GROUP BY for
+that group node (its only rollup output was a passthrough). The `chan,txt` keys —
+and dims *derived* from them, e.g. `concat('x', txt)` which propagates the NULL —
+all go NULL at subtotals.
+
+Three coordinated fixes:
+
+1. `trilogy/core/processing/nodes/group_node.py` (`GroupNode._resolve`): a ROLLUP
+   marks its `by` keys **and any output dim derived from them** (via
+   `get_upstream_concepts`) as nullable on the output. `get_node_joins` then
+   correctly returns OUTER/FULL and the assembly join keys become null-safe, so
+   the rollup rows survive.
+2. `trilogy/core/optimizations/null_safe_join.py` (`_rollup_injects_null`): the
+   parent-walk that proves a join key non-null (to downgrade `IS NOT DISTINCT
+   FROM` → `=`) must **stop at a rollup node** — the rollup is the source of the
+   NULLs, so it can't be proven non-null from the upstream raw source. Mirrors the
+   existing `_join_pads_null` guard for OUTER joins.
+3. `trilogy/dialect/base.py` (`render_cte_group_by` / `_get_aggregate_grouping`):
+   a CTE that computes a local aggregate emits its GROUP BY even when its only
+   *grouped* output is a passthrough rollup; and a passthrough rollup never drives
+   the grouping mode (re-emitting its ROLLUP would double-aggregate).
+
+**Semantics (correct as written):** `sum(prof)` is unbound (no `by`), so it groups
+at leaf grain; at the rollup subtotal/grand-total rows it has no leaf rows to sum,
+so `profit` is NULL there. `sales` (bound `by rollup`) rolls up correctly. Bind the
+operand `by rollup` for rolled-up profit. Test:
+`tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by`.
+
+REJECTED (do not retry): mutating the operand's grouping mode to ROLLUP in
+`select_finalize` ("spooky promotion"); a grain-calc change so an explicit-`by`
+metric contributes its `by` keys instead of itself (blanket version broke the q13
+distribution idiom + titanic demos; the gated version was unprincipled
+special-casing). The grain stays untouched — this is a nullable-propagation +
+join + render fix, not a grain fix. Grain handling (rolling the unbound operand
+up) is a possible future improvement, deferred.
 **Severity:** high — `generate_sql` succeeds, execution fails. Trilogy emits invalid SQL (violates
 the "never emit syntactically invalid SQL" rule). The agent had no way to fix it from the query side
 and burned the whole iteration budget rewriting around it.
