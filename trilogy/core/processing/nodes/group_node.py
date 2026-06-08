@@ -235,19 +235,18 @@ class GroupNode(StrategyNode):
                 targets=self.output_concepts,
                 inherited_inputs=base.output_concepts,
             )
-            existence_source_map: dict[str, set[BuildDatasource | QueryDatasource]] = {}
-            for src in existence_sources:
-                for c in src.output_concepts:
-                    if c.address in existence_addrs:
-                        existence_source_map.setdefault(c.address, set()).add(src)
             return QueryDatasource(
                 input_concepts=base.output_concepts,
                 output_concepts=self.output_concepts,
                 datasources=[base, *existence_sources],
                 source_type=SourceType.SELECT,
                 source_map=source_map,
+                # Resolve existence concepts against the wrapper's actual
+                # datasources (the relocated feeders), not the feeder-stripped
+                # ``base`` — otherwise the membership subselect can't find its
+                # source CTE and renders an INVALID_REFERENCE_BUG (bug B2).
                 existence_source_map=resolve_existence_map(
-                    [base], self.existence_concepts
+                    [base, *existence_sources], self.existence_concepts
                 ),
                 joins=[],
                 grain=target_grain,

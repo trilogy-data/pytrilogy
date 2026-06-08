@@ -58,7 +58,12 @@ from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
-from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    History,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
 from trilogy.core.statements.author import (
     ChartLayer,
     ChartStatement,

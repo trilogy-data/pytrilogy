@@ -1,6 +1,6 @@
 query_id = "37"
-generator = "v4"
-gen_length = 2156
+generator = "v3"
+gen_length = 1429
 preql_size = 480
 comp_size = 592
 generated_sql = """
@@ -8,59 +8,42 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
+    \"inv_warehouse_inventory\".\"inv_date_sk\" as \"inv_date_id\",
     \"inv_warehouse_inventory\".\"inv_item_sk\" as \"inv_item_id\",
-    \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inv_quantity_on_hand\",
-    cast(\"inv_date_date\".\"D_DATE\" as date) as \"inv_date_date\"
+    \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inv_quantity_on_hand\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500
-),
-cheerful as (
-SELECT
-    CASE WHEN \"wakeful\".\"inv_date_date\" BETWEEN date '2000-02-01' AND date '2000-04-01' and \"wakeful\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500 THEN \"wakeful\".\"inv_item_id\" ELSE NULL END as \"inv_item_ids\"
-FROM
-    \"wakeful\"),
+    \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500
+
+GROUP BY
+    1,
+    2,
+    3),
 thoughtful as (
 SELECT
-    \"cheerful\".\"inv_item_ids\" as \"inv_item_ids\"
+    CASE WHEN cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and \"wakeful\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500 THEN \"wakeful\".\"inv_item_id\" ELSE NULL END as \"inv_item_ids\"
 FROM
-    \"cheerful\"
+    \"wakeful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"wakeful\".\"inv_date_id\" = \"inv_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01'
+
 GROUP BY
-    1),
-cooperative as (
+    1)
 SELECT
-    \"items_items\".\"I_CURRENT_PRICE\" as \"items_current_price\",
-    \"items_items\".\"I_ITEM_DESC\" as \"items_desc\",
     \"items_items\".\"I_ITEM_ID\" as \"items_text_id\",
-    \"items_items\".\"I_ITEM_SK\" as \"items_id\"
+    \"items_items\".\"I_ITEM_DESC\" as \"items_desc\",
+    \"items_items\".\"I_CURRENT_PRICE\" as \"items_current_price\"
 FROM
     \"memory\".\"item\" as \"items_items\"
 WHERE
     \"items_items\".\"I_CURRENT_PRICE\" BETWEEN 68 AND 98 and \"items_items\".\"I_MANUFACT_ID\" in (677,940,694,808) and \"items_items\".\"I_ITEM_SK\" in (select thoughtful.\"inv_item_ids\" from thoughtful where thoughtful.\"inv_item_ids\" is not null)
-),
-questionable as (
-SELECT
-    \"cooperative\".\"items_current_price\" as \"items_current_price\",
-    \"cooperative\".\"items_desc\" as \"items_desc\",
-    \"cooperative\".\"items_id\" as \"items_id\",
-    \"cooperative\".\"items_text_id\" as \"items_text_id\"
-FROM
-    \"cooperative\")
-SELECT
-    \"questionable\".\"items_text_id\" as \"items_text_id\",
-    \"questionable\".\"items_desc\" as \"items_desc\",
-    \"questionable\".\"items_current_price\" as \"items_current_price\"
-FROM
-    \"questionable\"
-WHERE
-    \"questionable\".\"items_id\" in (select thoughtful.\"inv_item_ids\" from thoughtful where thoughtful.\"inv_item_ids\" is not null)
 
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"questionable\".\"items_text_id\" asc nulls first
+    \"items_items\".\"I_ITEM_ID\" asc nulls first
 LIMIT (100)"""
