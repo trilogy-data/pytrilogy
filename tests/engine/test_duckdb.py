@@ -118,6 +118,53 @@ order by gb desc, gc desc, brand nulls first, class nulls first;
     ]
 
 
+_COMPOSITE_ROLLUP_MODEL = """
+key chan int;
+key oid int;
+property <oid, chan>.txt string;
+property <oid, chan>.amt float;
+property <oid, chan>.prof float;
+property <oid, chan>.loss float;
+datasource sales (chan: chan, oid: oid, txt: txt, amt: amt, prof: prof, loss: loss)
+grain (oid, chan)
+query '''select 1 as chan, 1 as oid, 'p' as txt, 10.0 as amt, 5.0 as prof, 1.0 as loss
+         union all select 1, 2, 'q', 20.0, 8.0, 2.0
+         union all select 2, 1, 'p', 30.0, 9.0, 3.0''';
+"""
+
+
+def test_composite_rollup_aggregate_keeps_group_by():
+    """A composite rollup aggregate (`sum(a) - sum(b) by rollup k`) binds the
+    `by rollup` to its trailing operand only; the leading `sum(a)` parses
+    STANDARD. Beside a second rollup aggregate (forcing a multi-CTE join
+    assembly) and CASE-derived projections of the rollup keys, the bare operand
+    stranded in a groupless CTE that re-projected the rollup key ungrouped
+    (DuckDB: 'column ... must appear in the GROUP BY'). Every operand must
+    inherit the rollup spec so they co-locate in the rollup group node. q80."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_COMPOSITE_ROLLUP_MODEL)
+    text = """
+select
+  case when chan = 1 then 'aa' else 'bb' end as channel,
+  concat('x', txt) as outlet,
+  sum(amt) by rollup chan, txt as sales,
+  sum(prof) - sum(coalesce(loss, 0)) by rollup chan, txt as profit
+order by channel asc, sales asc, profit asc, outlet asc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    # ROLLUP(chan, txt): leaves, per-channel subtotals, grand total. chan 1
+    # subtotal profit 13-3=10; grand total sales 60, profit 22-6=16. The CASE
+    # maps chan 1 -> 'aa' and chan 2 / NULL -> 'bb'.
+    assert [tuple(r) for r in results] == [
+        ("aa", "xp", 10.0, 4.0),
+        ("aa", "xq", 20.0, 6.0),
+        ("aa", None, 30.0, 10.0),
+        ("bb", None, 30.0, 6.0),
+        ("bb", "xp", 30.0, 6.0),
+        ("bb", None, 60.0, 16.0),
+    ]
+
+
 def test_predicate_not_pushed_past_window_order_key():
     """A filter on a window's ORDER BY key (an aggregate also materialized in
     the upstream group) must not be pushed below/into the window — SQL WHERE

@@ -53,6 +53,46 @@ order by iris.species asc;
 """,
     ),
     SyntaxExample(
+        name="row-level-where-vs-having",
+        title=(
+            "Row-level filter (WHERE) vs aggregate filter (HAVING) — don't wrap a "
+            "per-row threshold in max()/min()"
+        ),
+        summary=(
+            "a plain per-ROW condition (`x.col > N`) goes in WHERE (filters the rows "
+            "feeding every aggregate); HAVING filters an aggregate RESULT. "
+            "`max(col) by g > N` in HAVING filters GROUPS, not rows — different meaning"
+        ),
+        body="""\
+# A non-aggregate, per-ROW condition belongs in WHERE — it filters the rows that
+# feed every aggregate, BEFORE grouping. HAVING is ONLY for filtering on an
+# aggregate RESULT. These are different operations; do not substitute one for the
+# other.
+import iris as iris;
+
+# RIGHT — keep only large-sepal FLOWERS, then average their petals.
+# `sepal_length > 6.0` is a per-row test on a column -> WHERE.
+where iris.sepal_length > 6.0
+select
+    iris.species,
+    avg(iris.petal_length) as avg_petal,
+order by iris.species asc;
+
+# WRONG — `having max(iris.sepal_length) by iris.species > 6.0` does NOT keep
+# large-sepal rows. It keeps whole SPECIES whose single largest flower exceeds
+# 6.0, then averages ALL of that species' flowers (small ones included). Wrapping
+# a per-row threshold in max()/min() in HAVING silently changes the meaning, and
+# AND-ing it with another filter (e.g. a rank cutoff) often yields 0 rows because
+# the two now select disjoint populations.
+#
+# Pick by what the condition is ABOUT:
+#   per-row value of a column   -> WHERE     `where x.amount > 10000`
+#   an aggregate's result       -> HAVING    `having total_amount > 10000`
+#                                             (select it, hide with `--`)
+#   aggregate just SOME rows    -> inline `?` `sum(x.amount ? x.amount > 10000)`
+""",
+    ),
+    SyntaxExample(
         name="nested-aggregate-group-average",
         title="Compare a per-entity total to the group average of those totals",
         summary=(
