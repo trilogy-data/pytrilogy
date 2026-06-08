@@ -907,6 +907,17 @@ class TestAggregateFunctionTypes:
             select y;
             """)
 
+    def test_max_with_string_succeeds(self):
+        """MAX/MIN are lexicographic over STRING in every dialect we target."""
+        env, _ = parse_text("""
+            const s <- 'abc';
+            auto mx <- max(s);
+            auto mn <- min(s);
+            select mx, mn;
+            """)
+        assert env.concepts["mx"].datatype == DataType.STRING
+        assert env.concepts["mn"].datatype == DataType.STRING
+
     def test_bool_and_with_non_bool_fails(self):
         """BOOL_AND requires boolean argument."""
         with pytest.raises(TypeError, match="Invalid argument type"):

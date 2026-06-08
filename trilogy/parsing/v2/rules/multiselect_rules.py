@@ -6,6 +6,7 @@ from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     Comparison,
+    ConceptRef,
     DeriveClause,
     DeriveItem,
     Function,
@@ -201,10 +202,21 @@ def multi_select_statement(
         for derived in derive.items:
             derivation = derived.expr
             name = derived.name
+            if isinstance(derivation, ConceptRef):
+                raise fail(
+                    node,
+                    f"Invalid derive expression `{name} <- {derivation.address}`: "
+                    "`derive` builds NEW computed columns and needs an expression "
+                    "(a function, comparison, or window), not a bare concept "
+                    f"reference. To carry `{derivation.address}` through, list it "
+                    "directly in a SELECT arm (and `align` it if shared across "
+                    f"arms); to rename it, use `... as {name}` in a SELECT arm.",
+                )
             if not isinstance(derivation, (Function, Comparison, WindowItem)):
                 raise fail(
                     node,
-                    f"Invalid derive expression {derivation}, must be a function or conditional",
+                    f"Invalid derive expression {derivation}, must be a function, "
+                    "comparison, or window expression.",
                 )
             concept = derive_item_to_concept_v2(
                 derivation, name, lineage, context=context

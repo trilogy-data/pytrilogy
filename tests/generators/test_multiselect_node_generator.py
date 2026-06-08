@@ -193,6 +193,24 @@ ORDER BY cb desc
 """)
 
 
+def test_multiselect_derive_bare_concept_ref_actionable_error():
+    """A `derive` of a bare concept reference (instead of an expression) must
+    fail with guidance to carry/rename it via a SELECT arm, not the opaque
+    'must be a function or conditional'."""
+    import pytest
+
+    with pytest.raises(Exception) as exc:
+        parse(
+            _DERIVE_MODEL + "SELECT label, sum(val_a) as a_sum, MERGE SELECT label2,"
+            " sum(val_b) as b_sum, ALIGN lbl: label, label2 DERIVE a_sum as carried;",
+            Environment(),
+        )
+    msg = str(exc.value)
+    assert "carried <- local.a_sum" in msg
+    assert "bare concept reference" in msg
+    assert "as carried" in msg
+
+
 def test_multiselect_derive_arrow_and_as_equivalent():
     """`->` and `as` are interchangeable in a derive clause."""
     from trilogy import Dialects
