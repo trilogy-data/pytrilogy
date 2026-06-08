@@ -83,7 +83,7 @@ HAVING
 ),
 late as (
 SELECT
-    \"sweltering\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
+    \"sweltering\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
 FROM
     \"sweltering\"
     INNER JOIN \"abhorrent\" on 1=1

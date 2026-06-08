@@ -99,6 +99,6 @@ WHERE
     \"uneven\".\"web_cume\" > \"uneven\".\"store_cume\"
 
 ORDER BY 
-    \"item_sk\" asc nulls first,
-    \"d_date\" asc nulls first
+    \"vacuous\".\"item_sk\" asc nulls first,
+    \"vacuous\".\"d_date\" asc nulls first
 LIMIT (100)"""
