@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -146,6 +147,83 @@ order by w asc;
 """
     results = engine.execute_text(text)[-1].fetchall()
     assert [(r.s, r.w, r.r) for r in results] == [(1, 10, 2.0)]
+
+
+_NESTED_FILTER_AGG_MEMBERSHIP_MODEL = """
+key order_number int;
+key item_id int;
+property <order_number, item_id>.warehouse int;
+property <order_number, item_id>.profit float;
+property <order_number, item_id>.state string;
+property <order_number, item_id>._ret int?;
+auto is_returned <- _ret is not null;
+
+datasource sales (
+    order_number: order_number,
+    item_id: item_id,
+    warehouse: warehouse,
+    profit: profit,
+    state: state
+)
+grain (order_number, item_id)
+query '''
+    select 100 as order_number, 1 as item_id, 1 as warehouse, 10.0 as profit, 'IL' as state
+    union all select 100, 2, 2, 20.0, 'IL'
+    union all select 200, 1, 1, 5.0, 'IL'
+    union all select 300, 1, 1, 7.0, 'CA'
+    union all select 300, 2, 2, 8.0, 'CA'
+''';
+
+datasource returns (
+    item_id: ~item_id,
+    order_number: ~order_number,
+    _ret: _ret
+)
+grain (order_number, item_id)
+query '''select 200 as order_number, 1 as item_id, 200 as _ret''';
+"""
+
+# A filtered-membership key whose condition references another filtered concept
+# (`applicable_orders is not null`) plus per-key aggregate(s). The q94 shape.
+_NESTED_FILTER_AGG_MEMBERSHIP_QUERY = """
+auto applicable_orders <- order_number ? state = 'IL';
+auto qualifying_orders <- order_number
+  ? applicable_orders is not null
+    and count_distinct(warehouse) by order_number > 1
+    and bool_or(is_returned) by order_number is not true;
+where order_number in qualifying_orders
+select order_number as o, sum(profit) as total_profit
+order by o;
+"""
+
+
+def test_nested_filter_per_key_aggregate_membership_not_in_group_by():
+    """Bug: a filtered-membership key (`order ? applicable_orders is not null AND
+    count_distinct(...) by order > 1 AND ...`) whose condition mixes a nested
+    filter concept with per-key aggregates was lowered as a grouped filter that
+    rendered the membership CASE — aggregates and all — into the GROUP BY
+    (DuckDB: 'GROUP BY clause cannot contain aggregates'). The per-key aggregates
+    must be materialized in their own grouped CTE and the membership CASE
+    evaluated at row grain — never inside a GROUP BY."""
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_NESTED_FILTER_AGG_MEMBERSHIP_MODEL)
+    sql = executor.generate_sql(_NESTED_FILTER_AGG_MEMBERSHIP_QUERY)[-1]
+    for block in re.findall(
+        r"GROUP BY(.*?)(?:HAVING|ORDER BY|\)|$)", sql, re.DOTALL | re.IGNORECASE
+    ):
+        assert "count(" not in block.lower(), f"aggregate in GROUP BY:\n{sql}"
+        assert "bool_or(" not in block.lower(), f"aggregate in GROUP BY:\n{sql}"
+
+
+def test_nested_filter_per_key_aggregate_membership_executes():
+    """End-to-end for the q94 shape: only order 100 qualifies — state IL
+    (applicable), two distinct warehouses (count_distinct > 1), and no return
+    (bool_or(is_returned) is not true). Orders 200 (one warehouse, returned) and
+    300 (state CA) are excluded."""
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_NESTED_FILTER_AGG_MEMBERSHIP_MODEL)
+    results = executor.execute_text(_NESTED_FILTER_AGG_MEMBERSHIP_QUERY)[-1].fetchall()
+    assert [(r.o, float(r.total_profit)) for r in results] == [(100, 30.0)]
 
 
 def test_window_over_rollup_preserves_grouping_rows():
@@ -2058,6 +2136,71 @@ ORDER BY
         (1, 2, 20, 0, 0),
         (1, None, 30, 0, 1),
         (None, None, 30, 1, 3),
+    ]
+
+
+_GROUPING_ID_CASE_MODEL = """
+key a int;
+key b int?;
+property <a, b>.x int;
+datasource test_data (
+    a: a,
+    b: b,
+    x: x
+)
+grain (a, b)
+query '''
+    select 1 as a, 1 as b, 10 as x
+    union all
+    select 1 as a, 2 as b, 20 as x
+''';
+"""
+
+# grouping_id() nested in a `case` deriving the rollup level, over a `by rollup`
+# aggregate referenced by name (the TPC-DS-native idiom). No explicit `by rollup`
+# on the grouping_id itself.
+_GROUPING_ID_CASE_QUERY = """
+auto total <- sum(x) by rollup a, b;
+auto lvl <- case
+    when grouping_id(a, b) = 3 then 2
+    when grouping_id(a, b) = 1 then 1
+    else 0 end;
+select a, b, total, lvl
+order by lvl asc, a asc nulls first, b asc nulls first;
+"""
+
+
+def test_grouping_id_in_case_over_named_rollup_colocates():
+    """Bug: a `grouping_id(...)` nested in a `case` deriving the rollup level,
+    over a `by rollup` aggregate referenced by name, parsed STANDARD-mode and
+    stranded in a separate groupless CTE (`GROUP BY 1, 2`) — DuckDB rejects
+    `grouping_id` there ('GROUPING statement cannot be used without groups').
+    It must co-locate in the single ROLLUP CTE that gives it context."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    sql = executor.generate_sql(_GROUPING_ID_CASE_QUERY)[-1]
+    assert "ROLLUP" in sql
+    assert "grouping_id(" in sql
+    # The only GROUP BY is the ROLLUP; grouping_id is not stranded in its own
+    # plain-GROUP-BY CTE.
+    assert sql.count("GROUP BY") == 1, sql
+
+
+def test_grouping_id_in_case_over_named_rollup_executes():
+    """End-to-end: the same query runs and the derived level is correct — 0 for
+    leaf rows, 1 for the `b` subtotal, 2 for the grand total."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    results = list(executor.execute_text(_GROUPING_ID_CASE_QUERY)[-1].fetchall())
+    assert [tuple(r) for r in results] == [
+        (1, 1, 10, 0),
+        (1, 2, 20, 0),
+        (1, None, 30, 1),
+        (None, None, 30, 2),
     ]
 
 

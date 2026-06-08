@@ -57,3 +57,76 @@ def test_undefined_concept_in_nested_aggregate_raises():
     env.parse("key x int;")
     with pytest.raises(UndefinedConceptException):
         env.parse("select sum(totally_made_up_concept) + sum(x) as foo;")
+
+
+def _dict_with(*keys: str) -> EnvironmentConceptDict:
+    d = EnvironmentConceptDict()
+    for k in keys:
+        leaf = k.rsplit(".", 1)[-1]
+        d[k] = Concept(name=leaf, datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    return d
+
+
+def test_find_similar_leaf_match_surfaces_full_paths():
+    """A bare leaf reference (e.g. `first_name` in ORDER BY, where the full path
+    is required) has no fuzzy match against long full-path keys, so leaf matching
+    must surface every concept whose path ends in `.<leaf>`."""
+    d = _dict_with("a.billing.first_name", "a.ship.first_name", "a.last_name")
+    sugg = d._find_similar_concepts("first_name")
+    # both `.first_name` paths are surfaced, and lead (leaf matches before fuzzy)
+    assert "a.billing.first_name" in sugg
+    assert "a.ship.first_name" in sugg
+    assert sugg.index("a.billing.first_name") < len(sugg)
+
+
+def test_find_similar_extra_keys_surfaces_staged_concept():
+    """`extra_keys` (concepts staged this parse but not yet committed — e.g. a
+    rowset output) must be considered for suggestions even though they are absent
+    from the dict's own keys."""
+    d = _dict_with("ws.order_number")
+    sugg = d._find_similar_concepts(
+        "qual.order_number", extra_keys=["qual.ws.order_number"]
+    )
+    assert "qual.ws.order_number" in sugg  # the real (staged) rowset path
+    assert "ws.order_number" in sugg
+
+
+def test_find_similar_never_suggests_the_looked_up_address():
+    """A staged placeholder for the missing address itself may be in the
+    candidate set; it must never be echoed back as a suggestion."""
+    d = _dict_with("qual.ws.order_number")
+    sugg = d._find_similar_concepts(
+        "qual.order_number",
+        extra_keys=["qual.order_number", "qual.ws.order_number"],
+    )
+    assert "qual.order_number" not in sugg
+    assert "qual.ws.order_number" in sugg
+
+
+def test_undefined_rowset_field_suggests_rowset_path(tmp_path):
+    """A rowset column from an import namespace, selected WITHOUT `as`, keeps its
+    full source path (`qual.ws.order_number`, not `qual.order_number`).
+    Referencing the bare leaf in the same parse must suggest the real rowset
+    path — even though the rowset concept is only STAGED (not yet committed) when
+    the referencing statement fails."""
+    (tmp_path / "ws.preql").write_text(
+        "key order_number int;\n"
+        "property order_number.cost float;\n"
+        "datasource ws (order_number:order_number, cost:cost)\n"
+        "grain (order_number) address ws;\n"
+    )
+    env = Environment(working_path=str(tmp_path))
+    with pytest.raises(UndefinedConceptException) as exc:
+        # rowset column `ws.order_number` (no `as`) is exposed as
+        # `qual.ws.order_number`; the bare leaf `qual.order_number` must point
+        # at the real path even though `qual` is only staged at this point.
+        env.parse(
+            "import ws as ws;\n"
+            "rowset qual <- select ws.order_number where ws.cost > 0;\n"
+            "select qual.order_number;\n"
+        )
+    assert any(
+        "qual.ws.order_number" in s for s in exc.value.suggestions
+    ), exc.value.suggestions
+    # never echo the looked-up address itself
+    assert "qual.order_number" not in exc.value.suggestions

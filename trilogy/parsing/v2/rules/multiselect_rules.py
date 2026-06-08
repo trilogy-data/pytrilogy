@@ -28,7 +28,11 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
-from trilogy.parsing.v2.select_finalize import finalize_select_statement
+from trilogy.parsing.v2.select_finalize import (
+    collect_clause_undefined,
+    finalize_select_statement,
+    raise_collected_undefined,
+)
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 
@@ -212,6 +216,15 @@ def multi_select_statement(
     # clauses can resolve them.
     having: HavingClause | None = hydrate(having_node) if having_node else None
     order_by_val: OrderBy | None = hydrate(order_by_node) if order_by_node else None
+    # order_list defers unresolved identifiers to placeholders; validate them
+    # here (the inner selects' finalize never sees the multi-select ORDER BY).
+    if order_by_val is not None:
+        ms_line = node.meta.line if node.meta else None
+        undefined = collect_clause_undefined(
+            context, "ORDER BY", order_by_val.concept_arguments, ms_line
+        )
+        if undefined:
+            raise_collected_undefined(context, undefined)
     return MultiSelectStatement(
         selects=selects,
         align=align_c,

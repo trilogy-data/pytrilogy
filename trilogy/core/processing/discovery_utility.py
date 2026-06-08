@@ -26,7 +26,12 @@ from trilogy.core.processing.grain_utility import (
     _grain_coverage_addresses,
     concept_source_address,
 )
-from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    MergeNode,
+    MultiSelectMergeNode,
+    StrategyNode,
+)
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
 
@@ -243,14 +248,18 @@ def group_if_required_v2(
         for x in root.output_concepts
         if x.address in final or any(c in final for c in x.pseudonyms)
     ]
-    # A whole_grain MergeNode (a multiselect align outer, or a group-to
-    # enrichment join) is already at its declared grain: a pure join over
-    # pre-aggregated parents, never a regroup. Its arms can carry constant
-    # extra dims — e.g. a per-arm `where year=1999` projected as a derive arg —
-    # that make the joined pregrain look finer than the align-key grain. Forcing
-    # a group here would emit a GROUP BY omitting the raw aggregate projections,
-    # yielding invalid SQL. Respect whole_grain and never regroup.
-    if isinstance(root, MergeNode) and root.whole_grain:
+    # A multiselect align outer is a pure FULL JOIN of pre-aggregated arms at the
+    # align-key grain and must never regroup: its arms can carry hidden derive-arg
+    # columns whose source keys are absent from the align keys (e.g. a
+    # `--date.year as yr_a` consumed only by `coalesce(yr_a, 0)`), which inflate
+    # the joined pregrain past the align grain. Forcing a GROUP BY there omits the
+    # raw aggregate projections and yields invalid SQL. Keyed off the concrete
+    # node type (the multiselect generator emits a MultiSelectMergeNode) — not the
+    # generic ``whole_grain`` flag, which a group-to enrichment join also sets even
+    # though it joins on the group keys and can genuinely fan out (e.g.
+    # `group(store_id) by order_id` enriched with `product_id`) and so must still
+    # defer to the regroup check below.
+    if isinstance(root, MultiSelectMergeNode):
         root.set_output_concepts(targets, change_visibility=False)
         return root
     required = check_if_group_required(

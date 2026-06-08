@@ -12,7 +12,12 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
-from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
+from trilogy.core.processing.nodes import (
+    History,
+    MergeNode,
+    MultiSelectMergeNode,
+    NodeJoin,
+)
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
@@ -164,7 +169,7 @@ def gen_multiselect_node(
         if x.address not in y.hidden_concepts
     ]
     logger.info(f"Non-hidden {merge_concepts_in}")
-    node = MergeNode(
+    node = MultiSelectMergeNode(
         input_concepts=list(merge_concepts_in),
         output_concepts=list(merge_concepts_in),
         environment=environment,

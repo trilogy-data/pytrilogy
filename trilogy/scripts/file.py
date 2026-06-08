@@ -182,6 +182,13 @@ def read_cmd(path: str) -> None:
     sys.stdout.buffer.flush()
 
 
+# Sentinel `flag_value` for `--content`/`-c`: distinguishes "flag absent" (None →
+# stdin) from "flag given with no value" (also stdin). Lets `-c` be passed bare
+# alongside stdin without click's "Option '-c' requires an argument" error, while
+# `-c <value>` still binds the value normally.
+_CONTENT_FROM_STDIN = "\x00__content_from_stdin__\x00"
+
+
 @file.command("write")
 @click.argument("path", type=str)
 @click.option(
@@ -189,7 +196,10 @@ def read_cmd(path: str) -> None:
     "-c",
     type=str,
     default=None,
-    help="Inline content. If omitted, reads from stdin.",
+    is_flag=False,
+    flag_value=_CONTENT_FROM_STDIN,
+    help="Inline content. Omit the flag entirely, or pass `-c` with no value, "
+    "to read from stdin instead.",
 )
 @click.option(
     "--from-file",
@@ -250,12 +260,24 @@ def write_cmd(
     truncated or HTML-escaped body can't land silently. Pass --force to skip
     that check (e.g. partial drafts you intend to edit in place).
     """
+    # A bare `-c`/`--content` (no value) means "read from stdin" — normalise it to
+    # None so it flows through the same stdin path as omitting the flag entirely.
+    bare_content_flag = content == _CONTENT_FROM_STDIN
+    if bare_content_flag:
+        content = None
+
     sources = [s for s in (content, from_file, from_url) if s is not None]
     if len(sources) > 1:
         print_error("Pass at most one of --content, --from-file, or --from-url.")
         raise click.exceptions.Exit(2)
     if escapes and content is None:
-        print_error("--escapes only applies to --content.")
+        # `--escapes` interprets `\n`/`\t` in an INLINE `--content` value — its
+        # whole purpose is no-heredoc shells. stdin already carries real newlines,
+        # so `-e` with stdin (incl. a bare `-c`) is a no-op the user didn't intend.
+        print_error(
+            "--escapes only applies to an inline `--content <value>`; stdin "
+            "already supports real newlines, so drop `-e` when piping content."
+        )
         raise click.exceptions.Exit(2)
 
     backend = _resolve(path)
