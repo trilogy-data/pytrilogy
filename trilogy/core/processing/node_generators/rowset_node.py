@@ -19,6 +19,36 @@ from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
 
+def _optional_satisfied(
+    concept: BuildConcept, output_addresses: set[str], partial_addresses: set[str]
+) -> bool:
+    """An optional is already served by the rowset node if the node outputs it
+    directly (or a pseudonym of it) and that output is not partial."""
+    if concept.address in partial_addresses:
+        return False
+    return concept.address in output_addresses or any(
+        addr in concept.pseudonyms for addr in output_addresses
+    )
+
+
+def _pseudonym_bridge_keys(
+    outputs: List[BuildConcept], environment: BuildEnvironment
+) -> list[tuple[BuildConcept, BuildConcept]]:
+    """Pair each rowset-derived FK output with the non-rowset (dim) key it was
+    merged/joined onto. A query-scoped `join`/`merge` collapses the FK's address
+    onto the dim key, leaving the FK only as a non-rowset pseudonym; offering
+    that canonical key lets the rowset be enriched from the dim's datasource."""
+    pairs: list[tuple[BuildConcept, BuildConcept]] = []
+    for fk in outputs:
+        if fk.derivation != Derivation.ROWSET:
+            continue
+        for address in fk.pseudonyms:
+            canonical = environment.concepts.get(address)
+            if canonical is not None and canonical.derivation != Derivation.ROWSET:
+                pairs.append((fk, canonical))
+    return pairs
+
+
 def gen_rowset_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -106,25 +136,22 @@ def gen_rowset_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]} with grain {node.grain}"
     )
-    if not local_optional or all(
-        (
-            x.address in node.output_concepts
-            or (z in x.pseudonyms for z in node.output_concepts)
-        )
-        and x.address not in node.partial_concepts
+    output_addresses = {x.address for x in node.output_concepts}
+    partial_addresses = {x.address for x in node.partial_concepts}
+    remaining = [
+        x
         for x in local_optional
-    ):
+        if not _optional_satisfied(x, output_addresses, partial_addresses)
+    ]
+    if not remaining:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
         return node
-    remaining = [
-        x
-        for x in local_optional
-        if x not in node.output_concepts or x in node.partial_concepts
-    ]
+    bridge_keys = _pseudonym_bridge_keys(node.output_concepts, environment)
     possible_joins = concept_to_relevant_joins(
         [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]
+        + [canonical for _, canonical in bridge_keys]
     )
     if not possible_joins:
         logger.info(
@@ -153,12 +180,16 @@ def gen_rowset_node(
         )
         return node
 
-    non_hidden = [
-        x for x in node.output_concepts if x.address not in node.hidden_concepts
-    ]
     for x in possible_joins:
         if x.address in node.hidden_concepts:
             node.unhide_output_concepts([x])
+    # keep the bridge FK visible on the rowset side so the merge joins on it
+    for fk, _ in bridge_keys:
+        if fk.address in node.hidden_concepts:
+            node.unhide_output_concepts([fk])
+    non_hidden = [
+        x for x in node.output_concepts if x.address not in node.hidden_concepts
+    ]
     non_hidden_enrich = [
         x
         for x in enrich_node.output_concepts

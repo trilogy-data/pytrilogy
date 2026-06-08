@@ -1,27 +1,27 @@
 query_id = "46"
 generator = "v3"
-gen_length = 2947
-preql_size = 1044
+gen_length = 3126
+preql_size = 1301
 comp_size = 1474
 generated_sql = """
 
 WITH 
 wakeful as (
 SELECT
-    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
-    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
+    \"customer_address_customer_address\".\"CA_CITY\" as \"cust_current_city\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"cust_customer_id\",
+    \"customer_customers\".\"C_FIRST_NAME\" as \"cust_customer_first_name\",
+    \"customer_customers\".\"C_LAST_NAME\" as \"cust_customer_last_name\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),
 uneven as (
 SELECT
-    \"physical_sales_sale_address_customer_address\".\"CA_CITY\" as \"bought_city\",
-    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
-    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
-    sum(\"physical_sales_store_sales\".\"SS_COUPON_AMT\") as \"amt\",
-    sum(\"physical_sales_store_sales\".\"SS_NET_PROFIT\") as \"profit\"
+    \"physical_sales_sale_address_customer_address\".\"CA_CITY\" as \"bought_bought_city\",
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"bought_physical_sales_customer_id\",
+    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"bought_physical_sales_ticket_number\",
+    sum(\"physical_sales_store_sales\".\"SS_COUPON_AMT\") as \"bought_amt\",
+    sum(\"physical_sales_store_sales\".\"SS_NET_PROFIT\") as \"bought_profit\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
@@ -36,23 +36,23 @@ GROUP BY
     2,
     3)
 SELECT
-    \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
-    \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
-    \"wakeful\".\"customer_address_city\" as \"customer_address_city\",
-    \"uneven\".\"bought_city\" as \"bought_city\",
-    \"uneven\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\",
-    \"uneven\".\"amt\" as \"amt\",
-    \"uneven\".\"profit\" as \"profit\"
+    \"wakeful\".\"cust_customer_last_name\" as \"cust_customer_last_name\",
+    \"wakeful\".\"cust_customer_first_name\" as \"cust_customer_first_name\",
+    \"wakeful\".\"cust_current_city\" as \"cust_current_city\",
+    \"uneven\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"uneven\".\"bought_physical_sales_ticket_number\" as \"bought_physical_sales_ticket_number\",
+    \"uneven\".\"bought_amt\" as \"bought_amt\",
+    \"uneven\".\"bought_profit\" as \"bought_profit\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"uneven\" on \"wakeful\".\"customer_id\" = \"uneven\".\"customer_id\"
+    \"uneven\"
+    INNER JOIN \"wakeful\" on \"uneven\".\"bought_physical_sales_customer_id\" = \"wakeful\".\"cust_customer_id\"
 WHERE
-    \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_city\"
+    \"wakeful\".\"cust_current_city\" != \"uneven\".\"bought_bought_city\"
 
 ORDER BY 
-    \"wakeful\".\"customer_last_name\" asc nulls first,
-    \"wakeful\".\"customer_first_name\" asc nulls first,
-    \"wakeful\".\"customer_address_city\" asc nulls first,
-    \"uneven\".\"bought_city\" asc nulls first,
-    \"uneven\".\"physical_sales_ticket_number\" asc nulls first
+    \"wakeful\".\"cust_customer_last_name\" asc nulls first,
+    \"wakeful\".\"cust_customer_first_name\" asc nulls first,
+    \"wakeful\".\"cust_current_city\" asc nulls first,
+    \"uneven\".\"bought_bought_city\" asc nulls first,
+    \"uneven\".\"bought_physical_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

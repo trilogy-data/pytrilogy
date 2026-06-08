@@ -1,49 +1,41 @@
 # Generate counts of promotional sales and total sales, and their ratio from the web channel for a particular item
 #category and month to customers in a given time zone
+#
+# Full-outer "store vs catalog" overlap, expressed with the conformed-dimension
+# + left-join idiom instead of a multi-select align: customer + item are the
+# shared universe both facts attach to, and per-(customer,item) presence in each
+# channel is a filtered customer_item value. This converges on the query97-one
+# formulation — joins onto a conformed dimension are how a full-outer overlap is
+# expressed without the multi-select.
 import physical_sales as physical_sales;
 import catalog_sales as catalog_sales;
+import customer as customer;
+import item as item;
 
-rowset merged <- where
-    physical_sales.date.month_seq between 1200 and 1200 + 11
-select
-    physical_sales.customer.id,
-    physical_sales.item.id,
-merge
-where
-    catalog_sales.date.month_seq between 1200 and 1200 + 11
-select
-    catalog_sales.bill_customer.id,
-    catalog_sales.item.id,
-align
-    customer_id: physical_sales.customer.id, catalog_sales.bill_customer.id
-    and item_id: physical_sales.item.id, catalog_sales.item.id
-;
+auto customer_item <- concat(concat(customer.id::string, '-'), item.id::string);
+auto store_present <- customer_item ? physical_sales.date.month_seq between 1200 and 1200 + 11;
+auto catalog_present <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
 
+left join physical_sales.customer.id = customer.id
+left join physical_sales.item.id = item.id
+left join catalog_sales.bill_customer.id = customer.id
+left join catalog_sales.item.id = item.id
 select
     sum(
             case
-                when merged.physical_sales.customer.id is not null
-                and merged.physical_sales.item.id is not null
-                and merged.catalog_sales.bill_customer.id is null
-                and merged.catalog_sales.item.id is null then 1
+                when store_present is not null and catalog_present is null then 1
                 else 0
             end
         ) as store_sale_count,
     sum(
             case
-                when merged.physical_sales.customer.id is null
-                and merged.physical_sales.item.id is null
-                and merged.catalog_sales.bill_customer.id is not null
-                and merged.catalog_sales.item.id is not null then 1
+                when store_present is null and catalog_present is not null then 1
                 else 0
             end
         ) as catalog_sale_count,
     sum(
             case
-                when merged.physical_sales.customer.id is not null
-                and merged.physical_sales.item.id is not null
-                and merged.catalog_sales.bill_customer.id is not null
-                and merged.catalog_sales.item.id is not null then 1
+                when store_present is not null and catalog_present is not null then 1
                 else 0
             end
         ) as both_sale_count,

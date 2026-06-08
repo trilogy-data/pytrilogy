@@ -1,8 +1,6 @@
 import catalog_sales as cs;
 import inventory as inv;
 
-merge inv.item.id into cs.item.id;
-
 where
     cs.sold_date.year = 1999
     and cs.bill_household_demographic.buy_potential = '>10000'
@@ -10,6 +8,7 @@ where
     and inv.date.week_seq = cs.sold_date.week_seq
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
+inner join inv.item.id = cs.item.id
 select
     cs.item.desc as item_desc,
     inv.warehouse.name as warehouse_name,
