@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from trilogy.core.exceptions import UnresolvableQueryException
@@ -47,6 +48,9 @@ class History:
     select_history: dict[str, StrategyNode | None] = field(default_factory=dict)
     rowset_history: dict[str, StrategyNode | None] = field(default_factory=dict)
     started: dict[str, int] = field(default_factory=dict)
+    # Root sets whose merge expansion is mid-flight; balanced add/discard (see
+    # merge_in_progress) so it only blocks nested re-entry, unlike `started`.
+    merge_in_progress_keys: set[str] = field(default_factory=set)
     build_caches: BuildCaches = field(default_factory=BuildCaches)
 
     def _concepts_to_lookup(
@@ -147,6 +151,25 @@ class History:
             )
             in self.started
         )
+
+    @contextmanager
+    def merge_in_progress(
+        self,
+        search: list[BuildConcept],
+        accept_partial: bool = False,
+        conditions: BuildWhereClause | None = None,
+    ):
+        """Mark a root set's merge expansion in-flight; yields True if it was
+        already in-flight (caller should skip to break the recursion)."""
+        key = self._concepts_to_lookup(search, accept_partial, conditions=conditions)
+        if key in self.merge_in_progress_keys:
+            yield True
+            return
+        self.merge_in_progress_keys.add(key)
+        try:
+            yield False
+        finally:
+            self.merge_in_progress_keys.discard(key)
 
     def gen_select_node(
         self,

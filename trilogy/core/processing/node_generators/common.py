@@ -469,7 +469,12 @@ def gen_enrichment_node(
         if x not in base_node.output_lcl or x in base_node.partial_lcl
     ]
 
-    if extra_required and all(x.purpose in PROPERTY_PURPOSES for x in extra_required):
+    # Property enrichment resolves each extra via its key closure, so every
+    # extra must be a property *with* keys. A keyless property (e.g. a rowset
+    # column) has no closure to join on; fall through to the general path.
+    if extra_required and all(
+        x.purpose in PROPERTY_PURPOSES and x.keys for x in extra_required
+    ):
         property_node = gen_property_enrichment_node(
             base_node,
             extra_required,
