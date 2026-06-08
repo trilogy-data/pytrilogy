@@ -28,16 +28,29 @@ class EdgeAttrs:
 
     kind: EdgeKind
     phase: EdgePhase | None = None
+    # When set, this lineage edge is one ALTERNATIVE among several feeding the
+    # same pseudonym-hub node — exactly one survives `resolve_alternatives`,
+    # which then strips the tag. All edges sharing a tag are mutually exclusive
+    # candidates (e.g. `local.a` reachable via `uA.a` OR `uB.a`). Downstream
+    # (group graph onward) never sees a tagged edge: resolution runs first.
+    alt_group: str | None = None
 
 
 # A graph's companion edge-metadata map, keyed by ``(source, target)``.
 EdgeMap = dict[Edge, EdgeAttrs]
 
 
-def add_edge(graph: nx.DiGraph, edges: EdgeMap, u: str, v: str, kind: EdgeKind) -> None:
+def add_edge(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    u: str,
+    v: str,
+    kind: EdgeKind,
+    alt_group: str | None = None,
+) -> None:
     """Add a typed edge to both the topology graph and its metadata map."""
     graph.add_edge(u, v)
-    edges[(u, v)] = EdgeAttrs(kind=kind)
+    edges[(u, v)] = EdgeAttrs(kind=kind, alt_group=alt_group)
 
 
 def remove_edge(graph: nx.DiGraph, edges: EdgeMap, u: str, v: str) -> None:
@@ -87,4 +100,7 @@ def subgraph_of_kinds(
 
 
 def copy_edges(edges: EdgeMap) -> EdgeMap:
-    return {edge: EdgeAttrs(kind=a.kind, phase=a.phase) for edge, a in edges.items()}
+    return {
+        edge: EdgeAttrs(kind=a.kind, phase=a.phase, alt_group=a.alt_group)
+        for edge, a in edges.items()
+    }
