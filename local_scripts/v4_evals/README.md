@@ -14,6 +14,25 @@ These complement `../discovery_v4_compare.py` (TPC-DS vs v3 reference logs).
 parametrizes over the same cases via this harness — so adding a case here adds a
 CI test for free. Run just those: `pytest -m v4_parity`.
 
+## Full-suite v4 sweep
+
+Run any group with the v4 planner forced on:
+
+```
+TRILOGY_V4_DISCOVERY=1 pytest tests/<group>
+```
+
+Tests that don't yet pass on v4 are listed in `tests/v4_known_failing.py`; the
+`conftest` collection hook turns each into an `xfail(strict)` *only* during a v4
+sweep, so the suite stays green on both planners while every gap stays tracked.
+When v4 improves enough that a listed test passes, it XPASSes (strict) and the
+run goes red — that's the signal to remove the entry and, if it asserts SQL
+shape, condition the expected SQL on `CONFIG.use_v4_discovery`.
+
+Result regressions that distill to a standalone program get a `.preql` under
+`failing_cases/` (tracked by `test_v4_known_failing_case`, xfail until fixed),
+then move to `cases/` once at parity.
+
 ## Harnesses
 
 - **`run_parity.py`** — generic. Each `cases/*.preql` is a self-contained

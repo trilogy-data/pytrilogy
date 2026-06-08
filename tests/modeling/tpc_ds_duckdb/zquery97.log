@@ -1,6 +1,6 @@
 query_id = "97"
-generator = "v3"
-gen_length = 2307
+generator = "v4"
+gen_length = 2315
 preql_size = 1227
 comp_size = 1159
 generated_sql = """
@@ -35,11 +35,11 @@ SELECT
     max(CASE
 	WHEN \"cheerful\".\"sales_sales_channel\" = 'CATALOG' THEN \"cheerful\".\"sales_order_id\"
 	ELSE 0
-	END) as \"pair_presence_catalog_present\",
+	END) as \"_pair_presence_catalog_present\",
     max(CASE
 	WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_order_id\"
 	ELSE 0
-	END) as \"pair_presence_store_present\"
+	END) as \"_pair_presence_store_present\"
 FROM
     \"cheerful\"
 GROUP BY
@@ -47,15 +47,15 @@ GROUP BY
     \"cheerful\".\"sales_item_id\")
 SELECT
     sum(CASE
-	WHEN \"cooperative\".\"pair_presence_store_present\" >= 1 and \"cooperative\".\"pair_presence_catalog_present\" = 0 THEN 1
+	WHEN \"cooperative\".\"_pair_presence_store_present\" >= 1 and \"cooperative\".\"_pair_presence_catalog_present\" = 0 THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"cooperative\".\"pair_presence_store_present\" = 0 and \"cooperative\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"cooperative\".\"_pair_presence_store_present\" = 0 and \"cooperative\".\"_pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"cooperative\".\"pair_presence_store_present\" >= 1 and \"cooperative\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"cooperative\".\"_pair_presence_store_present\" >= 1 and \"cooperative\".\"_pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM

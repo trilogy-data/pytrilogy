@@ -487,6 +487,20 @@ def _merge_component_sources(
     )
 
 
+def _bridge_parents_cover(parents: list[StrategyNode], required: set[str]) -> bool:
+    """Every requested concept is actually emitted by some bridge datasource.
+
+    The graph Steiner solver can route a requested root concept through a
+    *derived* concept's lineage (a window/aggregate output that shares a key
+    with it), yielding a bridge whose datasource set never sources the concept
+    — e.g. `country` (on `users`) "reached" from `posts` via a window keyed by
+    `user_id`. `_merge_component_sources` would then promise `country` off a
+    posts-only scan and render INVALID_REFERENCE. Reject such a bridge so
+    `_direct_source` (which merges both datasources) is used instead."""
+    available = {c.address for parent in parents for c in parent.usable_outputs}
+    return required <= available
+
+
 def plan_source(request: SourceRequest) -> StrategyNode | None:
     """Source ROOT-level concepts through one v4 path.
 
@@ -494,11 +508,15 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     are split but the graph can prove connector concepts, source each expanded
     component directly and merge them under a v4 node.
     """
+    requested_addresses = {c.address for c in _requested_concepts(request)}
     for attempt in request.source_policy.attempts:
         bridge_plan = _bridge_plan(request, attempt)
         if bridge_plan is not None:
             parents = _datasource_nodes_for_bridge(request, bridge_plan, attempt)
-            if parents is not None:
+            if parents is not None and (
+                attempt.accepts_partial
+                or _bridge_parents_cover(parents, requested_addresses)
+            ):
                 return _merge_component_sources(request, parents, bridge_plan.concepts)
         direct = _direct_source(request, attempt)
         if direct is not None:
