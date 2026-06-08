@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from trilogy.core import graph as nx
+from trilogy.core.enums import Granularity
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -194,19 +195,28 @@ def _resolve_bridge_graph(
         attempt.criteria,
         conditions=search_conditions,
     )
+    # Single-row / abstract-grain concepts (a `<*>` watermark, a constant) join
+    # by cross product, never by a key, so they must not drive the connectivity
+    # search — otherwise the Steiner walk invents a spurious intermediate join
+    # key to attach them and two equal candidates raise a false ambiguity
+    # (refresh of a count-by-X persist with a shared `data_through`). They fall
+    # through to `_direct_source`, which sources constants as a cross-join.
+    bridge_concepts = [
+        concept for concept in concepts if concept.granularity != Granularity.SINGLE_ROW
+    ]
     node_list = sorted(
         concept_to_node(concept.with_default_grain())
-        for concept in concepts
+        for concept in bridge_concepts
         if "__preql_internal" not in concept.address
     )
     synonyms: dict[str, str] = {}
-    for concept in concepts:
+    for concept in bridge_concepts:
         for pseudonym in concept.pseudonyms:
             synonyms[pseudonym] = concept.address
 
     found: list[ReferenceGraph] = []
     reduced_concept_sets: list[set[str]] = []
-    requested_addresses = {concept.address for concept in concepts}
+    requested_addresses = {concept.address for concept in bridge_concepts}
     for _ in range(AMBIGUITY_CHECK_LIMIT):
         try:
             graph = determine_induced_minimal_nodes(
@@ -240,7 +250,9 @@ def _resolve_bridge_graph(
                 search_graph.remove_node(node)
     if not found:
         return None
-    detect_ambiguity_and_raise(concepts, reduced_concept_sets, request.environment)
+    detect_ambiguity_and_raise(
+        bridge_concepts, reduced_concept_sets, request.environment
+    )
     return found[0]
 
 

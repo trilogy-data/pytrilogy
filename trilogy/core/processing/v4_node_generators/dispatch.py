@@ -80,6 +80,7 @@ def build_node(
         Derivation.ROOT,
         Derivation.ROWSET,
         Derivation.UNION,
+        Derivation.SUBSELECT,
     ):
         return fn(
             outputs,

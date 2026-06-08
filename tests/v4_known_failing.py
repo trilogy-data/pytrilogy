@@ -71,9 +71,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _INLINE,
     "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate": _INLINE,
     "tests/complex/test_rowset.py::test_rowset_alias_name_collision": _INLINE,
-    # --- complex: crashes ---
-    "tests/complex/test_structs.py::test_struct_in_array_item_access": _CRASH,
-    "tests/complex/test_structs.py::test_struct_in_array_parsing": _CRASH,
     # --- persistence / etl: persisted-source reuse + shape diffs ---
     "tests/persistence/test_basic_persistence.py::test_persist_with_where": _INLINE,
     # --- stdlib: result regression (distilled to failing_cases/top_x_by_metric) ---
@@ -85,8 +82,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/engine/demo/test_demo_duckdb.py::test_merge": _RESULT,
     "tests/engine/demo/test_demo_duckdb.py::test_merge_basic": _RESULT,
     "tests/engine/demo/test_demo_duckdb_import.py::test_demo_merge_rowset_e2e": _RESULT,
-    "tests/engine/demo/test_demo_duckdb_multi_table.py::test_rowset_shape": _CRASH,
-    "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_closest_warehouse": _CRASH,
     # --- engine: rendering / source-selection / crashes ---
     "tests/engine/test_bigquery.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_sqlite.py::test_date_diff_rendering": _RENDER,

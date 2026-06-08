@@ -295,6 +295,37 @@ def _aggregate_input_grain(
     return frozenset(input_grain)
 
 
+def _derivable_pseudonym_origin(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    datasource_addresses: frozenset[str],
+) -> BuildConcept | None:
+    """If `concept` is an unsourceable bare key (ROOT, no lineage, bound by no
+    datasource) but a pseudonym of it has a derivable origin, return that origin.
+
+    The motivating case is a struct field reached through an unnest:
+    `unnest_array.a` parses to the bare key `local.a`, which no datasource binds
+    directly — it is only reachable as `attr_access(unnest(array_struct), a)`.
+    v3's synonym node swaps the bare key for that attr-access origin; mirror it
+    here so the graph walks attr_access -> unnest -> datasource instead of
+    dead-ending on a ROOT leaf with no source."""
+    if concept.derivation != Derivation.ROOT or concept.lineage is not None:
+        return None
+    if concept.address in datasource_addresses:
+        return None
+    # A merge can demote a derived concept to a bare ROOT key while its real
+    # lineage survives in `alias_origin_lookup` under the SAME address (e.g.
+    # `merge first_parent into parent.id` leaves `local.first_parent` ROOT but its
+    # origin is the RECURSIVE `recurse_edge(...)`). Check the concept's own
+    # address alongside its pseudonyms. Recursion is bounded: the origin has a
+    # lineage, so a re-entry returns None immediately.
+    for pseudonym in (concept.address, *concept.pseudonyms):
+        origin = environment.alias_origin_lookup.get(pseudonym)
+        if origin is not None and origin.lineage is not None and origin is not concept:
+            return origin
+    return None
+
+
 def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -303,6 +334,7 @@ def _add_concept(
     attrs: dict[str, ConceptAttrs],
     label: str = "",
     materialized_roots: frozenset[str] = frozenset(),
+    datasource_addresses: frozenset[str] = frozenset(),
 ) -> None:
     """Walk lineage from a concept toward its roots, under a fixed label.
 
@@ -316,6 +348,9 @@ def _add_concept(
     A concept in `materialized_roots` is treated as a ROOT leaf: its lineage is
     not walked (a datasource materializes it directly), and its node carries
     `derivation=ROOT` so the group graph buckets it into a datasource scan."""
+    origin = _derivable_pseudonym_origin(concept, environment, datasource_addresses)
+    if origin is not None:
+        concept = origin
     is_materialized_root = concept.address in materialized_roots
     eff_label = _effective_label(concept, label, materialized_roots)
     nid = node_id(eff_label, concept.address)
@@ -386,8 +421,22 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     for upstream in fetcher(concept, environment):
+        # Substitute here too so the edge wires to the origin's node (the
+        # recursive call below adds the origin, not the bare key) — otherwise
+        # the bare key gets an implicit graph node with no attrs entry.
+        upstream = (
+            _derivable_pseudonym_origin(upstream, environment, datasource_addresses)
+            or upstream
+        )
         _add_concept(
-            upstream, environment, graph, edges, attrs, label, materialized_roots
+            upstream,
+            environment,
+            graph,
+            edges,
+            attrs,
+            label,
+            materialized_roots,
+            datasource_addresses,
         )
         upstream_label = _effective_label(upstream, label, materialized_roots)
         add_edge(
@@ -422,6 +471,9 @@ def build_concept_graph(
     graph: nx.DiGraph = nx.DiGraph()
     edges: EdgeMap = {}
     attrs: dict[str, ConceptAttrs] = {}
+    datasource_addresses = frozenset(
+        c.address for ds in environment.datasources.values() for c in ds.output_concepts
+    )
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
         _add_concept(
@@ -431,6 +483,7 @@ def build_concept_graph(
             edges,
             attrs,
             materialized_roots=materialized_roots,
+            datasource_addresses=datasource_addresses,
         )
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so we never
@@ -446,6 +499,7 @@ def build_concept_graph(
                 attrs,
                 label=_condition_label(""),
                 materialized_roots=materialized_roots,
+                datasource_addresses=datasource_addresses,
             )
 
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
@@ -534,7 +588,26 @@ def build_concept_graph(
             src_address = attrs[src].address
             if src_address not in row_arg_addresses:
                 continue
+            # A condition concept derived from a ROWSET (e.g. a WINDOW `eldest`
+            # computed over a rowset, then filtered `eldest = 1`) sits above that
+            # rowset already — its value can't exist until the rowset's rows do.
+            # A rowset is one indivisible group, so constraining the condition
+            # back onto ANY of the rowset's handles forms a cycle (rowset→window
+            # lineage, window→rowset constraint). Skip those: deriving from one
+            # handle means `src` is above the whole rowset, including the handles
+            # it doesn't read directly (the window reads `id`/`last_name`/`age`
+            # but its filter sits above `name`/`survived` from the same rowset).
+            src_lineage_ancestor_rowsets = {
+                attrs[a].rowset_name
+                for a in nx.ancestors(graph, src)
+                if attrs[a].rowset_name
+            }
             for dst in d0_blank_nodes:
+                if (
+                    attrs[dst].rowset_name
+                    and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
+                ):
+                    continue
                 # A lineage edge already present src→dst is left as-is; the
                 # constraint ordering it would carry is implied by the lineage.
                 if not graph.has_edge(src, dst):

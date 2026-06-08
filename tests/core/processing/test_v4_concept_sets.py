@@ -28,8 +28,9 @@ from trilogy.core.processing.v4_helper.models import (
 
 # A minimal stand-in for BuildConcept — _compute_concept_sets only reads `.address`.
 class _FakeConcept:
-    def __init__(self, address: str):
+    def __init__(self, address: str, pseudonyms: set[str] | None = None):
         self.address = address
+        self.pseudonyms = pseudonyms or set()
 
 
 def _gg_node(
