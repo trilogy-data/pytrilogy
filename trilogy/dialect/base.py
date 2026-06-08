@@ -43,6 +43,7 @@ from trilogy.core.enums import (
     UnnestMode,
     WindowType,
 )
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
@@ -92,6 +93,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
+    contains_window,
     decompose_condition,
     is_scalar_condition,
 )
@@ -684,6 +686,9 @@ class BaseDialect:
     # Gates the aggregate-predicate -> HAVING pushdown and lets that HAVING
     # render by alias instead of re-inlining the aggregate expression.
     SUPPORTS_ALIAS_IN_HAVING = False
+    # Whether the dialect supports a QUALIFY clause, used to lower a window
+    # function appearing in a `having` condition. False dialects reject instead.
+    SUPPORTS_QUALIFY = False
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
@@ -1627,6 +1632,21 @@ class BaseDialect:
                 return False
         return True
 
+    @staticmethod
+    def _has_local_aggregate(cte: CTE | UnionCTE) -> bool:
+        """True if the CTE computes an aggregate locally (not merely passing one
+        through from a parent). Such a CTE must emit a GROUP BY even when its only
+        rollup output is a passthrough — which would otherwise short-circuit the
+        GROUP BY via ``_all_grouped_outputs_are_passthrough`` and leave the local
+        aggregate ungrouped (invalid SQL)."""
+        if not isinstance(cte, CTE):
+            return False
+        return any(
+            get_grouped_aggregate_wrapper(c) is not None
+            and not cte.source_map.get(c.address)
+            for c in cte.output_columns
+        )
+
     @classmethod
     def _all_grouped_outputs_are_passthrough(cls, cte: CTE | UnionCTE) -> bool:
         if not isinstance(cte, CTE) or not cte.parent_ctes:
@@ -1653,6 +1673,11 @@ class BaseDialect:
             for c in cte.output_columns
             if (aggregate := get_grouped_aggregate_wrapper(c)) is not None
             and aggregate.grouping != AggregateGroupingMode.STANDARD
+            # A passthrough rollup (already aggregated upstream, selected here as a
+            # plain column) must not drive this CTE's grouping mode — re-emitting
+            # its ROLLUP would double-aggregate. Only locally-computed grouped
+            # aggregates set the mode.
+            and not getattr(cte, "source_map", {}).get(c.address)
         ]
         if not grouped:
             return AggregateGroupingMode.STANDARD, [], []
@@ -1759,7 +1784,9 @@ class BaseDialect:
         if not cte.group_to_grain:
             return None
 
-        if self._all_grouped_outputs_are_passthrough(cte):
+        if self._all_grouped_outputs_are_passthrough(
+            cte
+        ) and not self._has_local_aggregate(cte):
             return None
 
         grouping_mode = self._render_grouping_mode(cte, select_index)
@@ -1938,22 +1965,37 @@ class BaseDialect:
             final_joins = cte.joins or []
         where: BoolExpr | None = None
         having: BoolExpr | None = None
+        qualify: BoolExpr | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
-            if not cte.group_to_grain or is_scalar_condition(
-                cte.condition, materialized=materialized
+            # Window predicates (rank/lag/... over) can't live in WHERE or HAVING;
+            # they must be lowered to QUALIFY. Fast-path the common no-window case.
+            if not contains_window(cte.condition, materialized=materialized) and (
+                not cte.group_to_grain
+                or is_scalar_condition(cte.condition, materialized=materialized)
             ):
                 where = cte.condition
-
             else:
                 components = decompose_condition(cte.condition)
                 for x in components:
-                    if is_scalar_condition(x, materialized=materialized):
-                        where = where + x if where else x
-                    else:
+                    if contains_window(x, materialized=materialized):
+                        qualify = qualify + x if qualify else x
+                    elif cte.group_to_grain and not is_scalar_condition(
+                        x, materialized=materialized
+                    ):
                         having = having + x if having else x
+                    else:
+                        where = where + x if where else x
+
+        if qualify is not None and not self.SUPPORTS_QUALIFY:
+            raise InvalidSyntaxException(
+                "Window functions are not allowed in a `having` clause for this "
+                "dialect. Project the window as a column "
+                "(`--rank() over (...) as r`) and filter on it instead."
+            )
 
         rendered_where = self.render_expr(where, cte) if where else None
+        rendered_qualify = self.render_expr(qualify, cte) if qualify else None
         if having is not None and self.SUPPORTS_ALIAS_IN_HAVING:
             # reference the SELECT alias rather than re-inlining the aggregate.
             # Only valid at the top of the HAVING tree — dialects resolve
@@ -1993,6 +2035,7 @@ class BaseDialect:
                 ],
                 where=rendered_where,
                 having=rendered_having,
+                qualify=rendered_qualify,
                 order_by=(
                     [self.render_order_item(i, cte) for i in cte.order_by.items]
                     if cte.order_by

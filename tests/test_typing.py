@@ -4,8 +4,34 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Dialects
+from trilogy.core.models.core import (
+    DataType,
+    EnumType,
+    TraitDataType,
+    is_compatible_datatype,
+)
 
 FILE = Path(__file__)
+
+
+def test_is_compatible_datatype_enum_and_trait():
+    enum_str = EnumType(type=DataType.STRING, values=["a", "b"])
+    enum_int = EnumType(type=DataType.INTEGER, values=[1, 2])
+    # An enum is compatible with its base type and another enum over a
+    # compatible base (q05: enum<string> store_id aligns with bare string).
+    assert is_compatible_datatype(enum_str, DataType.STRING)
+    assert is_compatible_datatype(DataType.STRING, enum_str)
+    assert is_compatible_datatype(
+        enum_str, EnumType(type=DataType.STRING, values=["x"])
+    )
+    # Integer-family stays mutually compatible through the enum/trait wrappers.
+    assert is_compatible_datatype(enum_int, DataType.BIGINT)
+    assert is_compatible_datatype(
+        enum_int, TraitDataType(type=DataType.INTEGER, traits=["month"])
+    )
+    # Genuinely different bases remain incompatible.
+    assert not is_compatible_datatype(enum_str, DataType.INTEGER)
+    assert not is_compatible_datatype(enum_int, DataType.STRING)
 
 
 def test_invalid_typing():

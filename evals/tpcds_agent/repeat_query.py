@@ -128,6 +128,7 @@ def main() -> int:
         args.max_iterations,
         force_tool_choice=args.force_tool_choice,
         allow_database_introspection=False,  # query generation, raw/ pre-populated
+        allow_file_read=False,  # schema discovery via explore, not raw file reads
         disable_todo=True,  # eval default: fewer tools for short single-query tasks
     )
     print(f"[2/3] Category '{category.key}': setting up workspace ...")

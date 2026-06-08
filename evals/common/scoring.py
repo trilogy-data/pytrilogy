@@ -43,6 +43,11 @@ class AgentMetrics:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # Submit-reviewer activity. `reviewer_kickbacks` (NOT_DONE verdicts) should
+    # stay low — each one is a forced re-loop; a high count signals the reviewer
+    # is over-firing (false positives) and burning agent budget.
+    reviewer_verdicts: int = 0
+    reviewer_kickbacks: int = 0
     farewell: str = ""
     # Per-tool response-size distribution. The dominant exploration cost
     # signal is "how often did the response come back truncated, forcing the
@@ -155,6 +160,10 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
                 msg = args.get("message")
                 if isinstance(msg, str):
                     m.farewell = msg
+        elif etype == "reviewer_verdict":
+            m.reviewer_verdicts += 1
+            if not event.get("is_done"):
+                m.reviewer_kickbacks += 1
         elif etype == "tool_result":
             m.tool_results_total += 1
             name = str(event.get("name", "?"))
@@ -196,6 +205,8 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
         agg.prompt_tokens += m.prompt_tokens
         agg.completion_tokens += m.completion_tokens
         agg.total_tokens += m.total_tokens
+        agg.reviewer_verdicts += m.reviewer_verdicts
+        agg.reviewer_kickbacks += m.reviewer_kickbacks
         by_name.update(m.tool_calls_by_name)
         subcmds.update(m.trilogy_subcommands)
         repeated.update(m.repeated_calls_by_name)
@@ -302,6 +313,91 @@ def score_query(
         params=params,
         custom_refs_dir=custom_refs_dir,
     )
+
+
+def _score_subprocess_target(
+    db_path: str,
+    workspace: str,
+    idx: int,
+    extension: str,
+    params: dict | None,
+    custom_refs_dir: str | None,
+    conn,
+) -> None:
+    """Run in a spawned child: build a fresh engine and score one query. Sends
+    ``("ok", QueryResult)`` or ``("err", message)`` back over the pipe. Isolating
+    scoring in a killable process is what lets the parent bound a hung
+    `generate_sql` loop or a runaway DuckDB query with a hard timeout."""
+    try:
+        engine = make_scoring_engine(Path(db_path), Path(workspace), extension)
+        result = _score_one(
+            engine,
+            Path(workspace),
+            idx,
+            extension,
+            params=params,
+            custom_refs_dir=Path(custom_refs_dir) if custom_refs_dir else None,
+        )
+        conn.send(("ok", result))
+    except Exception as exc:  # pragma: no cover - serialised back to parent
+        conn.send(("err", f"{type(exc).__name__}: {exc}"))
+    finally:
+        conn.close()
+
+
+def score_query_timed(
+    db_path: Path,
+    workspace: Path,
+    idx: int,
+    extension: str,
+    timeout: float,
+    params: dict | None = None,
+    custom_refs_dir: Path | None = None,
+) -> QueryResult:
+    """Score one query in a child process bounded by ``timeout`` seconds. A
+    hang in `generate_sql` (planner loop) or DuckDB execution can no longer
+    block the worker (and, under the shared scoring lock, the whole run) — on
+    timeout the child is killed and the query is graded ``error``."""
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(
+        target=_score_subprocess_target,
+        args=(
+            str(db_path),
+            str(workspace),
+            idx,
+            extension,
+            params,
+            str(custom_refs_dir) if custom_refs_dir else None,
+            child_conn,
+        ),
+        daemon=True,
+    )
+    proc.start()
+    child_conn.close()  # only the child writes
+    try:
+        if parent_conn.poll(timeout):
+            kind, payload = parent_conn.recv()
+            proc.join(5)
+            if kind == "ok":
+                return payload
+            return QueryResult(id=idx, status="error", detail=f"score: {payload}")
+        # Timed out — kill the child so its DB connection / lock is released.
+        proc.terminate()
+        proc.join(5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(5)
+        return QueryResult(
+            id=idx,
+            status="error",
+            detail=f"scoring timed out after {timeout:g}s (likely planner loop "
+            "or runaway query)",
+        )
+    finally:
+        parent_conn.close()
 
 
 def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:

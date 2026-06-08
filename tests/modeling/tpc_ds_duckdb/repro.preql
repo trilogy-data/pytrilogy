@@ -1,0 +1,7 @@
+import all_sales as sales;
+auto f1 <- sales.date.date between '2000-08-23'::date and '2000-09-22'::date;
+auto f2 <- sales.return_date.date between '2000-08-23'::date and '2000-09-22'::date;
+auto m <- coalesce(sales.net_profit ? f1, 0) - coalesce(sales.return_net_loss ? f2, 0);
+where sales.channel_dim_id is not null and (f1 or f2)
+select sales.channel_dim_id, sum(m::numeric(15,2)) as t
+limit 100;

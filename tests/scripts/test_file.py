@@ -20,6 +20,16 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _reset_output_format():
+    """`--format json` flips the process-global output format; restore the
+    default afterwards so JSON mode doesn't leak into the rich-output tests."""
+    from trilogy.scripts import display_core
+
+    yield
+    display_core.set_output_format("rich")
+
+
 def test_list_empty_directory(runner, tmp_path: Path):
     result = runner.invoke(cli, ["file", "list", str(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -76,6 +86,22 @@ def test_list_no_description_block_emits_path_only(runner, tmp_path: Path):
     assert result.exit_code == 0, result.output
     assert "bare.preql" in result.output
     assert "↳" not in result.output
+
+
+def test_list_json_surfaces_preql_description(runner, tmp_path: Path):
+    """The agent reads `file list` as JSON, so each .preql entry must carry its
+    leading-comment description there too — this is what replaces the standalone
+    `list_files` tool the Trilogy toolset used to expose."""
+    import json
+
+    (tmp_path / "fact.preql").write_text(
+        "# Unified sales fact across all channels.\nkey id int;\n", encoding="utf-8"
+    )
+    result = runner.invoke(cli, ["--format", "json", "file", "list", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    event = json.loads(result.output)
+    entry = next(e for e in event["entries"] if e["path"].endswith("fact.preql"))
+    assert entry["description"] == "Unified sales fact across all channels."
 
 
 def test_list_recursive(runner, tmp_path: Path):

@@ -3,6 +3,126 @@ from logging import INFO
 from trilogy import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
 
+_CONFLICTING_FILTER_FIXTURE = """
+key line_id int;
+property line_id.item_id int;
+property line_id.yr int;
+
+datasource lines (
+    line_id: line_id,
+    item_id: item_id,
+    yr: yr,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 10 as item_id, 1999 as yr union all
+select 2 as line_id, 10 as item_id, 1999 as yr union all
+select 3 as line_id, 10 as item_id, 2000 as yr union all
+select 4 as line_id, 10 as item_id, 2000 as yr union all
+select 5 as line_id, 10 as item_id, 2000 as yr union all
+select 6 as line_id, 20 as item_id, 1999 as yr union all
+select 7 as line_id, 20 as item_id, 2000 as yr union all
+select 8 as line_id, 30 as item_id, 2000 as yr union all
+select 9 as line_id, 40 as item_id, 1999 as yr
+''';
+"""
+
+
+def test_rowset_query_scoped_join_conflicting_filter():
+    # A query-scoped inner join to a rowset, where the rowset and the outer
+    # query filter the SAME dimension to DIFFERENT values (year 2000 vs 1999).
+    # This used to crash the planner with `Have {...} need ...` because the
+    # validator demanded every node carry the outer condition, but the rowset
+    # node legitimately carries its own (year=2000) scope. A rowset is a
+    # self-contained subquery: its WHERE stays inside it and the outer WHERE
+    # only filters the outer scan, yielding a meaningful year-over-year join.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_CONFLICTING_FILTER_FIXTURE)
+    results = executor.execute_text("""
+rowset yr2000 <-
+    where yr = 2000
+    select
+        item_id as r_item_id,
+        count(line_id) as cnt_2000;
+
+where yr = 1999
+inner join yr2000.r_item_id = item_id
+select
+    item_id,
+    count(line_id) as cnt_1999,
+    yr2000.cnt_2000 as cnt_2000
+order by item_id asc;
+""")[0].fetchall()
+    # Inner join keeps only items present in BOTH years (10, 20); item 30
+    # (2000 only) and item 40 (1999 only) drop out. Each count reflects its
+    # own year scope independently.
+    assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
+
+
+_PER_ARM_FILTER_FIXTURE = """
+key line_id int;
+property line_id.item_id int;
+property line_id.yr int;
+property line_id.val int;
+
+datasource lines (
+    line_id: line_id,
+    item_id: item_id,
+    yr: yr,
+    val: val,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 1 as item_id, 2001 as yr, 10 as val union all
+select 2 as line_id, 1 as item_id, 2002 as yr, 30 as val union all
+select 3 as line_id, 2 as item_id, 2001 as yr, 5 as val union all
+select 4 as line_id, 2 as item_id, 2002 as yr, 5 as val
+''';
+"""
+
+
+def test_rowset_multiselect_per_arm_filter_on_exposed_column():
+    # The q75 shape: a rowset (`deduped`) exposes a `yr` column, and the two
+    # multi-select arms each narrow it to a different value (2002 / 2001). That
+    # per-arm filter is a consumer filter on the rowset's exposed output and
+    # MUST be applied to each arm independently. A too-broad independent-scope
+    # exemption drops it, summing both years into both arms (10+30=40, 5+5=10)
+    # so curr==prev everywhere; the correct result keeps the years separate.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_PER_ARM_FILTER_FIXTURE)
+    results = executor.execute_text("""
+rowset deduped <- where
+    yr in (2001, 2002)
+select
+    item_id,
+    yr,
+    val,
+;
+
+rowset year_pair <- where
+    deduped.yr = 2002
+select
+    deduped.item_id as item_curr,
+    sum(deduped.val) as curr_total,
+merge
+where
+    deduped.yr = 2001
+select
+    deduped.item_id as item_prev,
+    sum(deduped.val) as prev_total,
+align
+    item: item_curr, item_prev
+;
+
+select
+    year_pair.item,
+    year_pair.prev_total,
+    year_pair.curr_total,
+order by year_pair.item asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in results] == [(1, 10, 30), (2, 5, 5)]
+
+
 _ROWSET_DEDUP_FIXTURE = """
 key row_id int;
 property row_id.group_key int;

@@ -93,6 +93,11 @@ class AgentConfig:
     # exists under raw/, and listing tables just adds a confusing, unneeded
     # surface. The per-query eval turns this off; the ingest eval leaves it on.
     allow_database_introspection: bool = True
+    # When False, the ``trilogy`` tool refuses ``file read`` (a gentle deny that
+    # points the agent at ``explore``) and the prompt drops the read bullet.
+    # ``file list`` still works. Query-generation evals turn this off — the model
+    # is meant to discover schema via ``explore``, not by reading raw files.
+    allow_file_read: bool = True
 
 
 @dataclass
@@ -153,6 +158,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
         "disable_todo",
         "force_tool_choice",
         "allow_database_introspection",
+        "allow_file_read",
     },
 }
 
@@ -294,6 +300,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
         allow_database_introspection=bool(
             agent_raw.get("allow_database_introspection", True)
         ),
+        allow_file_read=bool(agent_raw.get("allow_file_read", True)),
     )
 
     # Canonical location is [engine].parallelism (matches docs and `trilogy init`

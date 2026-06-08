@@ -1,6 +1,6 @@
 query_id = "21"
-generator = "v4"
-gen_length = 1629
+generator = "v3"
+gen_length = 1623
 preql_size = 510
 comp_size = 802
 generated_sql = """
@@ -17,7 +17,7 @@ GROUP BY
     1,
     2,
     3),
-abundant as (
+uneven as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
@@ -30,7 +30,7 @@ FROM
 WHERE
     UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'SAUDI ARABIA' and \"order_orders\".\"o_orderstatus\" = 'F' and \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\"
 ),
-cheerful as (
+thoughtful as (
 SELECT
     \"highfalutin\".\"order_id\" as \"order_id\"
 FROM
@@ -41,14 +41,14 @@ HAVING
     count(\"highfalutin\".\"part_supplier_id\") > 1 and count(\"highfalutin\".\"_virt_filter_id_1852383943558009\") = 1
 )
 SELECT
-    \"abundant\".\"part_supplier_name\" as \"part_supplier_name\",
-    sum(\"abundant\".\"line_item\") as \"numwait\"
+    \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
+    sum(\"uneven\".\"line_item\") as \"numwait\"
 FROM
-    \"abundant\"
-    INNER JOIN \"cheerful\" on \"abundant\".\"order_id\" = \"cheerful\".\"order_id\"
+    \"uneven\"
+    INNER JOIN \"thoughtful\" on \"uneven\".\"order_id\" = \"thoughtful\".\"order_id\"
 GROUP BY
     1
 ORDER BY 
     \"numwait\" desc,
-    \"abundant\".\"part_supplier_name\" asc
+    \"uneven\".\"part_supplier_name\" asc
 LIMIT (100)"""

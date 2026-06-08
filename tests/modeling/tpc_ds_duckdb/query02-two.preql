@@ -2,9 +2,6 @@ import catalog_sales as catalog_sales;
 import web_sales as web_sales;
 import date as date;
 
-merge catalog_sales.date.* into ~date.*;
-merge web_sales.date.* into ~date.*;
-
 auto relevent_week_seq <- date.week_seq ? date.year in (2001, 2002);
 
 def weekday_sales(weekday) -> sum(
@@ -24,6 +21,8 @@ def round_lag(sales) -> round(sales / (lead(sales, 53) over (order by date.week_
 
 where
     date.week_seq in relevent_week_seq
+left join catalog_sales.date.id = date.id
+left join web_sales.date.id = date.id
 select
     date.week_seq,
     @round_lag(@weekday_sales(0)) as sunday_increase,

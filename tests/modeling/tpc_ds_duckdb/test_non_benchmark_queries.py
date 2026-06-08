@@ -122,6 +122,80 @@ select
     assert avg_duration < 2.0, f"Average duration: {avg_duration:.4f}s"
 
 
+def _self_referential_joins(sql: str) -> list[str]:
+    """CTE names whose own join ON clause references the CTE itself — invalid
+    SQL (a CTE can't alias itself in its own body)."""
+    bad = []
+    for m in re.finditer(r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\Z)", sql, re.DOTALL):
+        name, body = m.group(1), m.group(2)
+        for jref in re.findall(
+            r'JOIN\s+"?[\w".]+"?\s+(?:as\s+"\w+"\s+)?on "(\w+)"', body
+        ):
+            if jref == name:
+                bad.append(name)
+    return bad
+
+
+def _out_of_scope_join_aliases(sql: str) -> list[tuple[str, str]]:
+    """(cte, alias) pairs where a join ON references a table alias not introduced
+    by that CTE's own FROM/JOIN — invalid SQL (alias bound in a sibling CTE)."""
+    bad: list[tuple[str, str]] = []
+    for m in re.finditer(r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\Z)", sql, re.DOTALL):
+        name, body = m.group(1), m.group(2)
+        in_scope = set(re.findall(r'(?:FROM|JOIN)\s+"?[\w".]+"?\s+as\s+"(\w+)"', body))
+        in_scope |= set(re.findall(r'(?:FROM|JOIN)\s+"(\w+)"(?!\."|\s+as)', body))
+        for ref in re.findall(r"\bon\b.*", body):
+            for alias in re.findall(r'"(\w+)"\."', ref):
+                if alias not in in_scope:
+                    bad.append((name, alias))
+    return bad
+
+
+def test_or_membership_with_projected_aggregate(engine):
+    """Regression for bug B2 + its two co-sourcing siblings, using the full
+    documented repro (feeder filters include a ``date.year`` join):
+
+    * B2: ``A in X or A in Y and <agg> is not null`` where ``<agg>`` is also a
+      projected output. The aggregate makes the condition non-scalar, so the
+      group node lifts it onto a wrapper SELECT — which used to strip the
+      membership feeder sources, leaving ``in (select ...)`` pointing at a CTE
+      that was never emitted (INVALID_REFERENCE_BUG).
+    * Feeder-CTE join self-reference: the feeder's date join rendered its own
+      CTE name as the left alias (``on "feeder"."s_date_id"``) → BinderException.
+    * Predicate-pushdown over-pruning: the feeders' ``channel`` filters pruned
+      the union scan they share with the unfiltered STORE aggregate down to one
+      channel, so the STORE sum read no STORE rows.
+    """
+    query = """
+import all_sales as s;
+
+auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG' and s.date.year = 1998;
+auto web_qual <- s.billing_customer.id ? s.sales_channel = 'WEB'     and s.date.year = 1998;
+auto cust_total <- sum(s.ext_sales_price ? s.sales_channel = 'STORE') by s.billing_customer.id;
+
+where s.billing_customer.id in cat_qual
+   or s.billing_customer.id in web_qual
+  and cust_total is not null
+select
+    round(cust_total / 50) as segment,
+    count(s.billing_customer.id) as customer_count
+limit 100;
+"""
+    sql = engine.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    # the membership feeders must resolve to real, declared CTEs
+    referenced = set(re.findall(r"in \(select (\w+)\.", sql))
+    declared = set(re.findall(r"(\w+) as \(", sql))
+    assert referenced, sql
+    assert referenced <= declared, f"dangling membership CTEs: {referenced - declared}"
+    # no feeder CTE may reference itself in its own join ON
+    assert not _self_referential_joins(sql), sql
+    # the STORE aggregate's union scan must keep all channels (not pruned to one)
+    assert "store_sales" in sql and "web_sales" in sql and "catalog_sales" in sql, sql
+    # and the query executes end-to-end against real data
+    engine.execute_text(query)[0].fetchall()
+
+
 def test_merge_comparison(engine):
 
     x = """
@@ -424,3 +498,86 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
 
     assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
+
+
+def test_rank_over_projected_aggregate_ratio_no_recursion():
+    # Bug B1: a rank() whose order_by is the same sum(a)/sum(b) ratio that is
+    # also projected, with a partition key not in the projection, used to push
+    # the window output into the select grain. The abstract sums then resolved
+    # their `by` against that grain — grouping by the rank, whose order_by
+    # rebuilt the sums — a build-time RecursionError. The grain must instead use
+    # the window's keys (item, sales_channel).
+    query = """
+    import all_sales as s;
+    where s.return_amount > 10000
+    select
+        s.item.id as item,
+        sum(s.return_quantity) / sum(s.quantity) as return_quantity_ratio,
+        rank(s.item.id) over (
+            partition by s.sales_channel
+            order by sum(s.return_quantity) / sum(s.quantity) asc
+        ) as rank_a
+    limit 100;
+    """
+    env = Environment(working_path=working_path)
+    _, statements = parse_text(query, env)
+    select_grain = statements[-1].grain
+    assert select_grain.components == {"s.item.id", "s.sales_channel"}, select_grain
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    assert re.search(r"rank\(\) over \(partition by", sql), sql
+
+
+def test_unified_model_customer_address_cross_cte_join(engine):
+    # Bug (enriched q6): grouping/filtering by a 2-hop
+    # `<role>_customer.address.<prop>` on the unified `all_sales` model. The
+    # customer->address FK key (C_CURRENT_ADDR_SK) is materialized by the grouped
+    # parent CTE, but datasource inlining left the raw customer table inlined-but-
+    # dangling, so the address join's ON referenced the customer alias from a
+    # sibling CTE that isn't in scope ("table ... not found"). The left key must
+    # bind against the emitted parent CTE that exposes the FK column.
+    for role in ("purchasing_customer", "billing_customer"):
+        query = f"""
+import all_sales as sales;
+where sales.date.year = 2001
+  and sales.{role}.address.id is not null
+select
+    sales.{role}.address.state as state,
+    count(sales.item.id) as n
+limit 100;
+"""
+        sql = engine.generate_sql(query)[-1]
+        # every join ON alias must be introduced by that CTE's own FROM/JOIN
+        assert not _out_of_scope_join_aliases(sql), sql
+        # executes end-to-end against real data (was a BinderException)
+        engine.execute_text(query)[0].fetchall()
+
+
+def test_or_filter_over_differently_filtered_aggregates_no_recursion(engine):
+    # Bug B1 (second shape, enriched q77): a measure that is a difference of two
+    # inline-`?`-filtered values with DIFFERENT filter flags, aggregated, while a
+    # WHERE references those same flags as an OR. The flag `f1` is both a derived
+    # row-argument of `(f1 or f2)` and a concept that must be built (the `? f1`
+    # operand). The discovery loop routed the condition into building `f1`, but
+    # sourcing `f1`'s parents re-injected `f1` via the condition's row args —
+    # unbounded (opaque Python RecursionError). A condition can't be routed into
+    # building one of its own derived inputs; the flag is built first and the
+    # condition applied once above, over the joined rows.
+    query = """
+    import all_sales as sales;
+    auto f1 <- sales.date.date between '2000-08-23'::date and '2000-09-22'::date;
+    auto f2 <- sales.return_date.date between '2000-08-23'::date and '2000-09-22'::date;
+    auto m <- coalesce(sales.net_profit ? f1, 0) - coalesce(sales.return_net_loss ? f2, 0);
+    where sales.channel_dim_id is not null and (f1 or f2)
+    select sales.channel_dim_id, sum(m::numeric(15,2)) as t
+    limit 100;
+    """
+    sql = engine.generate_sql(query)[-1]
+    # the (f1 or f2) row filter must survive as an OR of both date-range checks,
+    # not be silently dropped when lifted off the recursive level
+    assert re.search(
+        r"between date '2000-08-23'.*?\bor\b.*?between date '2000-08-23'",
+        sql,
+        re.S | re.I,
+    ), sql
+    # and the query resolves and executes end-to-end against real data
+    engine.execute_text(query)[0].fetchall()

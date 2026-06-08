@@ -690,10 +690,13 @@ def _plot_metrics(ax, report: dict, events: list[dict]) -> None:
         exits = f"{nonzero}/{len(per_query)} non-zero"
     else:
         exits = f"rollup {agent['exit_code']}"
+    kickbacks = agent.get("reviewer_kickbacks", 0)
+    verdicts = agent.get("reviewer_verdicts", 0)
+    kb = f"     reviewer kickbacks: {kickbacks}/{verdicts}" if verdicts else ""
     header = (
         f"pass {summary['pass_count']}/{meta['num_queries']} "
         f"({summary['pass_rate'] * 100:.0f}%)     wall {wall:.0f}s     "
-        f"agent exits: {exits}"
+        f"agent exits: {exits}{kb}"
     )
     ax.text(0.0, 1.0, "Run metrics", fontsize=11, fontweight="bold", va="top")
     ax.text(0.0, 0.90, header, fontsize=9, va="top", family="monospace")

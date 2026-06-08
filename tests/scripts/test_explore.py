@@ -60,9 +60,20 @@ def test_explore_hides_builtins_by_default(runner, sample_preql: Path):
 
 
 def test_explore_include_builtins(runner, sample_preql: Path):
-    result = runner.invoke(cli, ["explore", str(sample_preql), "--include-builtins"])
+    # --include-builtins surfaces internal concepts in the flat concepts table…
+    result = runner.invoke(
+        cli, ["explore", str(sample_preql), "--include-builtins", "--show", "concepts"]
+    )
     assert result.exit_code == 0
     assert "__preql_internal" in result.output
+
+
+def test_explore_groups_never_expose_internal_namespace(runner, sample_preql: Path):
+    # …but the grouped/imported summary (the default view the agent reads) never
+    # lists the internal `__preql_internal` model, even with --include-builtins.
+    result = runner.invoke(cli, ["explore", str(sample_preql), "--include-builtins"])
+    assert result.exit_code == 0
+    assert "__preql_internal" not in result.output
 
 
 def test_explore_show_concepts_only(runner, sample_preql: Path):

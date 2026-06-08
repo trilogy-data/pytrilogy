@@ -532,7 +532,7 @@ class MergeNode(StrategyNode):
         return qds
 
     def copy(self) -> "MergeNode":
-        return MergeNode(
+        return type(self)(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -554,3 +554,15 @@ class MergeNode(StrategyNode):
             existence_concepts=list(self.existence_concepts),
             ordering=self.ordering,
         )
+
+
+class MultiSelectMergeNode(MergeNode):
+    """The outer FULL JOIN of a multiselect's aligned arms.
+
+    A distinct type so the regroup pass (``group_if_required_v2``) can recognize
+    it unambiguously: this node is always already at the align-key grain and must
+    never be regrouped, even when hidden derive-arg columns inflate the joined
+    pregrain past that grain (forcing a GROUP BY would omit the raw aggregate
+    projections and produce invalid SQL). Inherits all behavior — the subclass
+    is purely a marker — and ``copy()`` preserves it via ``type(self)``.
+    """

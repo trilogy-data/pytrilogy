@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.enums import ConceptSource, Modifier
+from trilogy.core.enums import ConceptSource, JoinType, Modifier
 from trilogy.core.models.author import (
     Concept,
     HavingClause,
@@ -16,6 +16,7 @@ from trilogy.core.statements.author import (
     FromClause,
     Limit,
     SelectItem,
+    SelectJoin,
     SelectStatement,
 )
 from trilogy.parsing.v2.concept_factory import (
@@ -49,6 +50,7 @@ def select_statement(
     from_clause_val: FromClause | None = None
     where: WhereClause | None = None
     having: HavingClause | None = None
+    join_clauses: list[SelectJoin] = []
     for arg in args:
         atype = type(arg)
         if atype is list:
@@ -59,6 +61,8 @@ def select_statement(
             order_by = arg
         elif atype is FromClause:
             from_clause_val = arg
+        elif atype is SelectJoin:
+            join_clauses.append(arg)
         elif atype is WhereClause:
             if where is not None:
                 raise fail(node, "Multiple where clauses are not supported")
@@ -74,7 +78,38 @@ def select_statement(
         having_clause=having,
         limit=limit,
         eligible_datasources=from_clause_val.sources if from_clause_val else None,
+        join_clauses=join_clauses,
         meta=metadata_from_meta(node.meta),
+    )
+
+
+def join_clause(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> SelectJoin:
+    args = hydrated_children(node, hydrate)
+    join_type = next(a for a in args if isinstance(a, JoinType))
+    if join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
+        raise fail(
+            node,
+            f"`{join_type.value}` join is not yet supported in query-scoped joins;"
+            " use INNER or LEFT",
+        )
+    # Positional direction: left key is the brought-in (source) concept, right
+    # key is the anchor. Both are fully-addressed concepts, so no model token is
+    # needed to disambiguate.
+    source_key, target_key = [a for a in args if isinstance(a, str)]
+    resolved: list[Concept] = []
+    for key in (source_key, target_key):
+        concept = context.concepts.require(key)
+        if isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
+            raise fail(node, f"Join key `{key}` does not exist")
+        resolved.append(concept)
+    return SelectJoin(
+        join_type=join_type,
+        source_address=resolved[0].address,
+        target_address=resolved[1].address,
     )
 
 
@@ -191,6 +226,7 @@ def from_clause(
 
 SELECT_STATEMENT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.SELECT_STATEMENT: select_statement,
+    SyntaxNodeKind.JOIN_CLAUSE: join_clause,
     SyntaxNodeKind.SELECT_ITEM: select_item,
     SyntaxNodeKind.SELECT_TRANSFORM: select_transform,
     SyntaxNodeKind.SELECT_LIST: select_list,

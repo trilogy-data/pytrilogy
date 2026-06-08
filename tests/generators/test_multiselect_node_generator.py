@@ -149,3 +149,81 @@ ALIGN
     # but the join is still wired up in an earlier clause
     assert "JOIN" in sql
     assert "one_key" in sql
+
+
+_DERIVE_MODEL = """
+key one int;
+property one.label string;
+property one.val_a int;
+datasource num1 (one:one, label:label, val_a:val_a)
+grain (one) address num1;
+
+key two int;
+property two.label2 string;
+property two.val_b int;
+datasource num2 (two:two, label2:label2, val_b:val_b)
+grain (two) address num2;
+"""
+
+
+def _exec_multiselect(body: str) -> None:
+    from trilogy import Dialects
+
+    env = Environment()
+    e = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = e.generate_sql(_DERIVE_MODEL + body)[-1]
+    e.execute_raw_sql("CREATE TABLE num1(one int, label varchar, val_a int)")
+    e.execute_raw_sql("CREATE TABLE num2(two int, label2 varchar, val_b int)")
+    e.execute_raw_sql(sql).fetchall()
+
+
+def test_multiselect_derive_having_order_by_derived():
+    """A derived output must be referenceable from HAVING and ORDER BY, and the
+    generated SQL must bind (regression: derived concepts were registered after
+    those clauses hydrated, so they fell back to invalid inner-CTE columns)."""
+    _exec_multiselect("""
+SELECT label, sum(val_a) as a_sum,
+MERGE
+SELECT label2, sum(val_b) as b_sum,
+ALIGN lbl: label, label2
+DERIVE coalesce(a_sum, 0) as ca, coalesce(b_sum, 0) as cb
+HAVING cb <= ca
+ORDER BY cb desc
+;
+""")
+
+
+def test_multiselect_derive_bare_concept_ref_actionable_error():
+    """A `derive` of a bare concept reference (instead of an expression) must
+    fail with guidance to carry/rename it via a SELECT arm, not the opaque
+    'must be a function or conditional'."""
+    import pytest
+
+    with pytest.raises(Exception) as exc:
+        parse(
+            _DERIVE_MODEL + "SELECT label, sum(val_a) as a_sum, MERGE SELECT label2,"
+            " sum(val_b) as b_sum, ALIGN lbl: label, label2 DERIVE a_sum as carried;",
+            Environment(),
+        )
+    msg = str(exc.value)
+    assert "carried <- local.a_sum" in msg
+    assert "bare concept reference" in msg
+    assert "as carried" in msg
+
+
+def test_multiselect_derive_arrow_and_as_equivalent():
+    """`->` and `as` are interchangeable in a derive clause."""
+    from trilogy import Dialects
+
+    arrow = "DERIVE coalesce(a_sum, 0) -> ca"
+    as_form = "DERIVE coalesce(a_sum, 0) as ca"
+    tmpl = (
+        "SELECT label, sum(val_a) as a_sum, MERGE SELECT label2, sum(val_b) as b_sum,"
+        " ALIGN lbl: label, label2 {clause} ORDER BY ca desc ;"
+    )
+    sqls = []
+    for clause in (arrow, as_form):
+        env = Environment()
+        e = Dialects.DUCK_DB.default_executor(environment=env)
+        sqls.append(e.generate_sql(_DERIVE_MODEL + tmpl.format(clause=clause))[-1])
+    assert sqls[0] == sqls[1]

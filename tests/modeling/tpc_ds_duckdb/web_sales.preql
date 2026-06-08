@@ -40,13 +40,15 @@ properties <order_number, item.id> (
     ext_discount_amount numeric::usd?, # Extended discount amount applied to the line (USD).
     return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
     --return_quantity int?, # Units returned for this line (joined from web_returns).
-    is_returned bool, # Flag indicating whether a return row exists for this line.
+    _returned_order_number int?, # Internal: the web_returns order number matched to this line; NULL when not returned. Use is_returned instead.
     row_counter int, # Constant 1, one per web line item (a unique order_number + item.id combination).
 );
 
 auto line_item <- concat(order_number::string, '-', item.id::string); # Unique line-item identifier (one web order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
 auto line_item_count <- sum(row_counter); # Number of web-sale line items (= count(line_item)); kept for queries that reference it.
 auto days_to_ship <- date_diff(date.date, ship_date.date, day); # Shipping lag in days (ship date minus sold date); positive when shipped after sold.
+
+auto is_returned <- _returned_order_number is not null; # True when a return row exists for this line, else False. Computed post-join from a real (NULL-padded) web_returns column, so "not returned" works as `= false` / `is not true` / `is null`.
 
 datasource web_sales (
     raw('''1'''): row_counter,
@@ -87,8 +89,7 @@ datasource web_returns (
     WR_ORDER_NUMBER: ~order_number,
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
-    raw('''CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END'''): is_returned, # Derived flag: row exists in web_returns.
+    WR_ORDER_NUMBER: _returned_order_number, # Real column (NULL-padded by the LEFT join) backing is_returned.
 )
 grain (item.id, order_number)
-complete where is_returned is True
 address memory.web_returns;

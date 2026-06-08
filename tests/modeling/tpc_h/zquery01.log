@@ -1,76 +1,28 @@
 query_id = "01"
-generator = "v4"
-gen_length = 2328
+generator = "v3"
+gen_length = 792
 preql_size = 480
 comp_size = 544
 generated_sql = """
-
-WITH 
-quizzical as (
 SELECT
-    \"lineitem\".\"l_discount\" as \"discount\",
-    \"lineitem\".\"l_extendedprice\" as \"extended_price\",
-    \"lineitem\".\"l_linestatus\" as \"line_status\",
-    \"lineitem\".\"l_quantity\" as \"quantity\",
     \"lineitem\".\"l_returnflag\" as \"return_flag\",
-    \"lineitem\".\"l_tax\" as \"tax\",
-    1 as \"line_item\"
+    \"lineitem\".\"l_linestatus\" as \"line_status\",
+    sum(\"lineitem\".\"l_quantity\") as \"sum_qty\",
+    sum(\"lineitem\".\"l_extendedprice\") as \"sum_base_price\",
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"sum_disc_price\",
+    sum(( \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ) * (1 + \"lineitem\".\"l_tax\")) as \"sum_charge\",
+    avg(\"lineitem\".\"l_quantity\") as \"avg_qty\",
+    avg(\"lineitem\".\"l_extendedprice\") as \"avg_price\",
+    avg(\"lineitem\".\"l_discount\") as \"avg_disc\",
+    sum(1) as \"count_order\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 WHERE
     \"lineitem\".\"l_shipdate\" <= date '1998-09-02'
-),
-highfalutin as (
-SELECT
-    \"quizzical\".\"discount\" as \"discount\",
-    \"quizzical\".\"extended_price\" as \"extended_price\",
-    \"quizzical\".\"line_item\" as \"line_item\",
-    \"quizzical\".\"line_status\" as \"line_status\",
-    \"quizzical\".\"quantity\" as \"quantity\",
-    \"quizzical\".\"return_flag\" as \"return_flag\",
-    \"quizzical\".\"tax\" as \"tax\"
-FROM
-    \"quizzical\"),
-thoughtful as (
-SELECT
-    \"highfalutin\".\"line_status\" as \"line_status\",
-    \"highfalutin\".\"return_flag\" as \"return_flag\",
-    sum(\"highfalutin\".\"extended_price\" * (1 - \"highfalutin\".\"discount\")) as \"sum_disc_price\",
-    sum(( \"highfalutin\".\"extended_price\" * (1 - \"highfalutin\".\"discount\") ) * (1 + \"highfalutin\".\"tax\")) as \"sum_charge\"
-FROM
-    \"highfalutin\"
+
 GROUP BY
     1,
-    2),
-wakeful as (
-SELECT
-    \"highfalutin\".\"line_status\" as \"line_status\",
-    \"highfalutin\".\"return_flag\" as \"return_flag\",
-    avg(\"highfalutin\".\"discount\") as \"avg_disc\",
-    avg(\"highfalutin\".\"extended_price\") as \"avg_price\",
-    avg(\"highfalutin\".\"quantity\") as \"avg_qty\",
-    sum(\"highfalutin\".\"extended_price\") as \"sum_base_price\",
-    sum(\"highfalutin\".\"line_item\") as \"count_order\",
-    sum(\"highfalutin\".\"quantity\") as \"sum_qty\"
-FROM
-    \"highfalutin\"
-GROUP BY
-    1,
-    2)
-SELECT
-    \"wakeful\".\"return_flag\" as \"return_flag\",
-    \"wakeful\".\"line_status\" as \"line_status\",
-    \"wakeful\".\"sum_qty\" as \"sum_qty\",
-    \"wakeful\".\"sum_base_price\" as \"sum_base_price\",
-    \"thoughtful\".\"sum_disc_price\" as \"sum_disc_price\",
-    \"thoughtful\".\"sum_charge\" as \"sum_charge\",
-    \"wakeful\".\"avg_qty\" as \"avg_qty\",
-    \"wakeful\".\"avg_price\" as \"avg_price\",
-    \"wakeful\".\"avg_disc\" as \"avg_disc\",
-    \"wakeful\".\"count_order\" as \"count_order\"
-FROM
-    \"thoughtful\"
-    INNER JOIN \"wakeful\" on \"thoughtful\".\"line_status\" = \"wakeful\".\"line_status\" AND \"thoughtful\".\"return_flag\" = \"wakeful\".\"return_flag\"
+    2
 ORDER BY 
-    \"wakeful\".\"return_flag\" asc,
-    \"wakeful\".\"line_status\" asc"""
+    \"lineitem\".\"l_returnflag\" asc,
+    \"lineitem\".\"l_linestatus\" asc"""

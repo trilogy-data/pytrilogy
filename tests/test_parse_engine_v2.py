@@ -459,6 +459,71 @@ auto in_window <- (d between '2020-01-01'::date and '2020-12-31'::date) and flag
     assert env.concepts["local.in_window"].lineage is not None
 
 
+_ALIGN_MODEL = """
+key one int; property one.label string; property one.v int;
+datasource num1 (one:one, label:label, v:v) grain (one) address num1;
+key two int; property two.label2 string; property two.w int;
+datasource num2 (two:two, label2:label2, w:w) grain (two) address num2;
+"""
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_align_comma_between_groups_actionable(
+    backend: ParserBackend,
+) -> None:
+    # `align a: x, y, b: p` (comma instead of `and` between groups) must raise the
+    # actionable 221 error, not the opaque "expected limit, order_by, or having".
+    bad = (
+        "SELECT label, count(one) as c, MERGE SELECT label2, count(two) as c2,"
+        " ALIGN k: label, label2, k2: c, c2 ORDER BY c desc;"
+    )
+    with _using_backend(backend):
+        with pytest.raises(InvalidSyntaxException, match=r"separated by `and`"):
+            parse_text(_ALIGN_MODEL + bad, Environment())
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_align_and_between_groups_ok(backend: ParserBackend) -> None:
+    good = (
+        "SELECT label, count(one) as c, MERGE SELECT label2, count(two) as c2,"
+        " ALIGN k: label, label2 and k2: c, c2 ORDER BY c desc;"
+    )
+    with _using_backend(backend):
+        parse_text(_ALIGN_MODEL + good, Environment())
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_multiselect_duplicate_arm_outputs_raise(
+    backend: ParserBackend,
+) -> None:
+    # Two arms sharing an output address (`c`/`c` here) collapse to one graph node
+    # and emit broken SQL (INVALID_REFERENCE_BUG); reject with a clear message
+    # pointing at distinct names + align.
+    bad = (
+        "SELECT label as g, count(one) as c, MERGE SELECT label2 as g, count(two) as c,"
+        " ALIGN grp: g, g ORDER BY grp;"
+    )
+    with _using_backend(backend):
+        with pytest.raises(InvalidSyntaxException, match="distinct output names"):
+            parse_text(_ALIGN_MODEL + bad, Environment())
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_multiselect_align_reuses_arm_name_raise(
+    backend: ParserBackend,
+) -> None:
+    # The align group output is a new merged concept; naming it after an arm
+    # output (`g`) collapses them by address and emits INVALID_REFERENCE_BUG in
+    # codegen. Reject with a message pointing at a distinct align name.
+    bad = (
+        "SELECT label as g, count(one) as c, MERGE SELECT label2 as g2, count(two) as c2,"
+        " ALIGN g: g, g2 DERIVE coalesce(c, 0) as t ORDER BY g;"
+    )
+    with _using_backend(backend):
+        with pytest.raises(InvalidSyntaxException, match="reuses an arm output name"):
+            parse_text(_ALIGN_MODEL + bad, Environment())
+
+
 def test_parse_text_v2_duplicate_select_outputs_raise() -> None:
     with pytest.raises(InvalidSyntaxException, match="Duplicate select output"):
         parse_text(

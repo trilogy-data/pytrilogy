@@ -19,6 +19,7 @@ def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
 
     renderer = BaseDialect()
     renderer.SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    renderer.SUPPORTS_QUALIFY = True
     renderer.render_cte(cte)
     return dict(renderer.used_map)
 

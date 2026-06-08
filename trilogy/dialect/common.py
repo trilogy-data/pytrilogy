@@ -111,6 +111,68 @@ def _render_left_concept(
     render_expr_func: Callable,
     use_map: dict[str, set[str]],
 ) -> str:
+    node = join.authoritative(consumer, pair.cte)
+    # A join key whose CTE resolves to the consumer itself, while the consumer's
+    # FROM is a *different* source (``base_alias`` names another CTE), is a stale
+    # self-reference: an optimization merged the inner source that supplied the
+    # key up into the consumer, but the join key pair still points at the merged
+    # consumer. ``self_name.col`` is invalid SQL there — pin it to the FROM-base
+    # CTE instead. (When ``base_alias == name`` the CTE legitimately IS its own
+    # FROM and ``name.col`` is correct, so leave those alone.)
+    if (
+        isinstance(consumer, CTE)
+        and node.name == consumer.name
+        and consumer.base_alias != consumer.name
+    ):
+        base = next(
+            (p for p in consumer.dependency_nodes() if p.name == consumer.base_alias),
+            None,
+        )
+        if base is not None:
+            return render_join_concept(
+                join.name_for(consumer, base),
+                quote_character,
+                base,
+                pair.left,
+                consumer.column_for(base, pair.left),
+                render_expr_func,
+                use_map=use_map,
+            )
+    # The join's recorded left node can be an inlined/folded datasource that no
+    # longer renders in the consumer's FROM — e.g. a unified-model 2-hop
+    # (``customer`` -> ``customer.address``) where the FK key was already
+    # materialized by the grouped FROM-base CTE, leaving the raw customer table
+    # inlined-but-dangling. The tell is that the consumer's own ``source_map``
+    # for the left concept does NOT list this node, but DOES list the FROM-base
+    # CTE — so referencing the node's alias is "table not found" while the base
+    # carries the column. Pin the key to the base. (A legitimately-inlined source
+    # IS in the source_map for its key; and we target only ``base_alias``, the one
+    # parent guaranteed to render in the FROM, so normal joins stay untouched.)
+    if isinstance(consumer, CTE) and consumer.base_alias != consumer.name:
+        left_sources = consumer.source_map.get(pair.left.address) or []
+        if (
+            consumer.base_alias in left_sources
+            and consumer.source_key_for(node) not in left_sources
+            and node.name not in left_sources
+        ):
+            base = next(
+                (
+                    p
+                    for p in consumer.dependency_nodes()
+                    if p.name == consumer.base_alias
+                ),
+                None,
+            )
+            if base is not None:
+                return render_join_concept(
+                    base.name,
+                    quote_character,
+                    base,
+                    pair.left,
+                    consumer.column_for(base, pair.left),
+                    render_expr_func,
+                    use_map=use_map,
+                )
     if join.left_is_local:
         # LHS key is the rendering branch's own base column (no self-alias).
         # If the key also resolves through a hoisted dim, the generic concept
@@ -132,7 +194,6 @@ def _render_left_concept(
                     f".{quote_character}{col}{quote_character}"
                 )
         return render_expr_func(pair.left, consumer)
-    node = join.authoritative(consumer, pair.cte)
     col = (
         consumer.column_for(node, pair.left)
         if isinstance(consumer, CTE)

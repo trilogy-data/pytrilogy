@@ -12,7 +12,12 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
-from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
+from trilogy.core.processing.nodes import (
+    History,
+    MergeNode,
+    MultiSelectMergeNode,
+    NodeJoin,
+)
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
@@ -164,23 +169,21 @@ def gen_multiselect_node(
         if x.address not in y.hidden_concepts
     ]
     logger.info(f"Non-hidden {merge_concepts_in}")
-    node = MergeNode(
+    node = MultiSelectMergeNode(
         input_concepts=list(merge_concepts_in),
         output_concepts=list(merge_concepts_in),
         environment=environment,
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
-        force_group=False,
-        # grain=BuildGrain.from_concepts(
-        #     [
-        #         x
-        #         for y in base_parents
-        #         for x in y.output_concepts
-        #         if x.address not in y.hidden_concepts
-        #     ],
-        #     environment=environment,
-        # ),
+        # A multiselect outer is a pure FULL JOIN of already-aggregated arms on
+        # the align keys; it must never re-group. The arms can carry hidden
+        # derive-arg columns (e.g. a `--date.year as yr_a` consumed only by a
+        # `derive coalesce(yr_a, 0)`) whose source key is absent from the align
+        # keys. Those inflate the joined pregrain past the align-key grain and
+        # would otherwise trigger a spurious GROUP BY that omits the raw
+        # aggregate projections, producing invalid SQL.
+        whole_grain=True,
     )
 
     enrichment = set([x.address for x in local_optional])

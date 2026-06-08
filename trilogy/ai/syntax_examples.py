@@ -53,6 +53,46 @@ order by iris.species asc;
 """,
     ),
     SyntaxExample(
+        name="row-level-where-vs-having",
+        title=(
+            "Row-level filter (WHERE) vs aggregate filter (HAVING) — don't wrap a "
+            "per-row threshold in max()/min()"
+        ),
+        summary=(
+            "a plain per-ROW condition (`x.col > N`) goes in WHERE (filters the rows "
+            "feeding every aggregate); HAVING filters an aggregate RESULT. "
+            "`max(col) by g > N` in HAVING filters GROUPS, not rows — different meaning"
+        ),
+        body="""\
+# A non-aggregate, per-ROW condition belongs in WHERE — it filters the rows that
+# feed every aggregate, BEFORE grouping. HAVING is ONLY for filtering on an
+# aggregate RESULT. These are different operations; do not substitute one for the
+# other.
+import iris as iris;
+
+# RIGHT — keep only large-sepal FLOWERS, then average their petals.
+# `sepal_length > 6.0` is a per-row test on a column -> WHERE.
+where iris.sepal_length > 6.0
+select
+    iris.species,
+    avg(iris.petal_length) as avg_petal,
+order by iris.species asc;
+
+# WRONG — `having max(iris.sepal_length) by iris.species > 6.0` does NOT keep
+# large-sepal rows. It keeps whole SPECIES whose single largest flower exceeds
+# 6.0, then averages ALL of that species' flowers (small ones included). Wrapping
+# a per-row threshold in max()/min() in HAVING silently changes the meaning, and
+# AND-ing it with another filter (e.g. a rank cutoff) often yields 0 rows because
+# the two now select disjoint populations.
+#
+# Pick by what the condition is ABOUT:
+#   per-row value of a column   -> WHERE     `where x.amount > 10000`
+#   an aggregate's result       -> HAVING    `having total_amount > 10000`
+#                                             (select it, hide with `--`)
+#   aggregate just SOME rows    -> inline `?` `sum(x.amount ? x.amount > 10000)`
+""",
+    ),
+    SyntaxExample(
         name="nested-aggregate-group-average",
         title="Compare a per-entity total to the group average of those totals",
         summary=(
@@ -153,20 +193,29 @@ order by enroll.year asc nulls first;
     ),
     SyntaxExample(
         name="aligned-multi-select",
-        title="Combine two aggregations over shared dimensions (multi-select)",
+        title="Combine / pair aggregations with a multi-select (merge … align … derive)",
         summary=(
-            "`merge … align … derive` joins two `select` blocks on shared dims; "
-            "`by rollup` adds subtotals; `--col` keeps a column out of the output"
+            "`merge … align … derive` stitches independent `select` blocks on a shared key — "
+            "use it to COMBINE two measures, SELF-PAIR one model across two periods/sets, or "
+            "STACK channels; `by rollup` adds subtotals. Read the GOTCHAS — agents misuse this a lot"
         ),
         body="""\
-# Two independent aggregations (here total enrollments vs completed
-# enrollments) over the same model, aligned on a shared dimension, then
-# combined in `derive`.
-#  - prefix a projection with `--` to keep it for alignment but OUT of the
-#    printed rows (the printed columns come from `align` + `derive`).
+# A multi-select runs several independent `select` blocks (arms) and stitches
+# them on a shared key. It is the tool for THREE shapes agents reach for:
+#   (1) COMBINE different measures over one population (total vs completed below);
+#   (2) SELF-PAIR one model against itself across two periods/sets — give each arm
+#       a different `where` over the SAME model and align on the (possibly shifted)
+#       key. This is how you compare "this period vs another period" of one fact;
+#   (3) STACK channels / sources — one arm per source, aligned on the common key.
+#  - prefix a projection with `--` to keep it for alignment but OUT of the printed
+#    rows (the printed columns come from `align` + `derive`).
 #  - `by rollup <dims>` adds subtotal + grand-total rows (the dim is NULL there).
-#  - `align <name>: <colA>, <colB>` ties one column from each block together;
-#    chain more with `and <name2>: ...`.
+#  - `align <name>: <colA>, <colB>` ties one column from EACH arm together; chain
+#    more alignments with `and <name2>: <colA2>, <colB2>`.
+#  - `having <cond>` (after `derive`) filters on the COMBINED/derived outputs —
+#    this is the only way to compare one arm to another (e.g. `completed < enrolled`
+#    or "rows present in both periods"). There is no top-level `where` on a
+#    multi-select (a pre-combination filter lives inside each arm's own `where`).
 import enrollments as enroll;
 
 where enroll.year = 2020
@@ -181,11 +230,44 @@ select
 align
     course: a_course, b_course
 derive
-    coalesce(enrolled_a, 0) -> enrolled,
-    coalesce(completed_b, 0) -> completed,
-    round(coalesce(completed_b, 0) * 1.0 / coalesce(enrolled_a, 0), 2) -> completion_rate
+    coalesce(enrolled_a, 0) as enrolled,
+    coalesce(completed_b, 0) as completed,
+    round(coalesce(completed_b, 0) * 1.0 / coalesce(enrolled_a, 0), 2) as completion_rate
+having completed < enrolled
 order by course asc nulls first
 limit 100;
+
+# ---------------------------------------------------------------------------
+# GOTCHAS (each of these is a real, repeated agent failure):
+#  - `derive` names each output with `as` or `->` (`coalesce(a,0) as x` ==
+#    `coalesce(a,0) -> x`); it takes only FUNCTIONS/CONDITIONALS (coalesce, round,
+#    case, arithmetic, +/-/*//). A bare column rename (`derive amt as x`) or a
+#    literal (`derive 2001 as y`) errors with "Invalid derive expression … must be
+#    a function or conditional". To pass a value through unchanged, make it an
+#    `align` key (aligned keys are output directly), or wrap it (`coalesce(amt,amt)`).
+#  - `derive` outputs are referenceable in `having` and `order by` (e.g.
+#    `having completed < enrolled`, `order by completion_rate desc`).
+#  - Every arm must contribute ONE column per `align` name, and the arms' selects
+#    should have matching shape. Output columns are the align keys + derive results.
+#  - The `align` group name must be DISTINCT from every arm column name (use
+#    `align course: a_course, b_course`, NOT `align a_course: a_course, b_course`).
+#    Reusing an arm name for the group collapses them and errors at parse.
+#  - Each arm has its OWN leading `where` (that is how self-pairing filters each
+#    side differently). There is NO top-level `where` after `derive` — to filter
+#    the combined result use `having`. A standalone `where …;` with no following
+#    `select` is a parse error.
+#  - To pair on a SHIFTED key (e.g. match a period to the next one), project the
+#    shifted value as a hidden `--<expr> as key_b` column in one arm and align it
+#    to the other arm's plain key. Do NOT rely on `lead/lag(N)` for this when the
+#    ordering key is sparse/non-contiguous — an N-row offset is not an N-period
+#    offset; pair on the explicit key instead.
+#  - Window functions (`rank/lead/lag … over (…)`) cannot live in `derive` or in a
+#    top-level `where`. Compute a window in an arm's `select` (hidden with `--`) and
+#    reference it, or filter it via a hidden select column + `having`.
+#  - Don't reference an alias inside its own definition (`x as foo` then reading
+#    `foo` in the same expression) — that is a recursive self-reference and is
+#    rejected. Name the upstream pieces as distinct `auto`s instead.
+#  - Every projection needs an explicit `as` alias (`min(x) as x_min`, not `min(x)`).
 """,
     ),
     SyntaxExample(
@@ -259,6 +341,10 @@ select
 # row BEFORE aggregating (so duplicates don't double-count), materialize the
 # tuple in a `rowset <- select <cols>`: a rowset select groups at its own grain,
 # emitting one row per distinct tuple. Then aggregate over the rowset's columns.
+#  - ALIAS every rowset column you reference downstream with `as`. Without `as`,
+#    the column keeps its FULL source path under the rowset name — `select
+#    sales.item.brand_id` is reachable as `rs.sales.item.brand_id`, NOT
+#    `rs.brand_id`. `as brand_id` makes it `rs.brand_id`.
 import enrollments as enroll;
 
 # Collapse repeat (student, course) enrollments to one row each (a student who
@@ -307,6 +393,19 @@ select
     rnk,
 order by level desc nulls first, parent asc nulls first, rnk asc nulls first
 limit 100;
+
+# ---------------------------------------------------------------------------
+# NOTE — composite aggregate over a rollup (a difference/ratio of sums):
+# put `by rollup` on EACH operand.
+#   GOOD: (sum(profit) by rollup enroll.course, enroll.year)
+#       - (sum(loss) by rollup enroll.course, enroll.year) as net
+# BAD: `sum(profit) - sum(loss) by rollup enroll.course, enroll.year` binds the
+# `by rollup` to the LAST operand only — `sum(profit)` then stays at leaf grain
+# and comes out NULL on the subtotal/grand-total rows. And the tidy-looking
+# `(sum(profit) - sum(loss)) by rollup ...` does NOT parse (a `by` clause
+# attaches to a single aggregate, not to a parenthesized expression). 
+#  Because it cannot generalize to complex parnetheses. Spell out
+# `by rollup` on every operand so they all roll up to the same levels.
 """,
     ),
     SyntaxExample(

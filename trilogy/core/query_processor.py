@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
     FunctionType,
+    Modifier,
     SourceType,
 )
 from trilogy.core.env_processor import generate_graph
@@ -57,7 +58,12 @@ from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
-from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    History,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
 from trilogy.core.statements.author import (
     ChartLayer,
     ChartStatement,
@@ -528,6 +534,7 @@ def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
+    scoped_joins: list[tuple[str, str, list[Modifier]]] | None = None,
 ) -> StrategyNode:
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
@@ -538,6 +545,12 @@ def get_query_node(
     # Caches live on History so every sub-select (rowsets, multiselect arms)
     # in this resolution reuses the base environment's materialized concepts.
     caches = history.build_caches
+    # Query-scoped JOINs are applied during the build, not by cloning the author
+    # env: each Factory collapses merged-away source concepts to their canonical
+    # target in `_build_concept` (and marks partial datasource bindings). Stored
+    # on caches so nested sub-selects inherit the same merges.
+    if scoped_joins:
+        caches.scoped_joins = scoped_joins
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(environment)
     build_cache: dict[str, BuildConcept] = caches.build_cache
@@ -548,6 +561,7 @@ def get_query_node(
         canonical_build_cache=canonical_build_cache,
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
+        scoped_joins=caches.scoped_joins,
     )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
         statement
@@ -560,6 +574,7 @@ def get_query_node(
         grain_build_cache=base_factory.grain_build_cache,
         canonical_build_cache=canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
+        scoped_joins=caches.scoped_joins,
     )
 
     graph = generate_graph(build_environment)
@@ -596,21 +611,30 @@ def get_query_node(
         )
     ds: StrategyNode = ods
     if build_statement.having_clause:
-        final = build_statement.having_clause.conditional
-        if ds.conditions:
-            final = BuildConditional(
-                left=ds.conditions,
-                right=build_statement.having_clause.conditional,
-                operator=BooleanOperator.AND,
+        having = build_statement.having_clause.conditional
+        # A HAVING filters the SELECT outputs, which a resolved merge/select
+        # node already carries — so fold the predicate onto that node rather
+        # than wrapping it in a fresh SelectNode. The wrapper adds a CTE level
+        # that masks the node's join-key grain anchors and triggers a spurious
+        # regroup in a downstream consumer (e.g. a rowset's outer select, q68).
+        if isinstance(ds, (MergeNode, SelectNode)):
+            ds.add_condition(having)
+        else:
+            final = having
+            if ds.conditions:
+                final = BuildConditional(
+                    left=ds.conditions,
+                    right=having,
+                    operator=BooleanOperator.AND,
+                )
+            ds = SelectNode(
+                output_concepts=build_statement.output_components,
+                input_concepts=ds.usable_outputs,
+                parents=[ds],
+                environment=ds.environment,
+                partial_concepts=ds.partial_concepts,
+                conditions=final,
             )
-        ds = SelectNode(
-            output_concepts=build_statement.output_components,
-            input_concepts=ds.usable_outputs,
-            parents=[ds],
-            environment=ds.environment,
-            partial_concepts=ds.partial_concepts,
-            conditions=final,
-        )
     ds.hidden_concepts = build_statement.hidden_components
     ds.ordering = build_statement.order_by
     # TODO: avoid this
@@ -634,7 +658,13 @@ def get_query_datasources(
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-    ds = get_query_node(environment, statement.as_lineage(environment))
+    join_clauses = getattr(statement, "join_clauses", None) or []
+    scoped_joins = [
+        (j.source_address, j.target_address, j.modifiers) for j in join_clauses
+    ]
+    ds = get_query_node(
+        environment, statement.as_lineage(environment), scoped_joins=scoped_joins
+    )
 
     final_qds = ds.resolve()
 

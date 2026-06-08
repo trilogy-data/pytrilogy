@@ -14,7 +14,7 @@ properties id (
     day_of_week enum<int>[0, 1, 2, 3, 4, 5, 6], # Day-of-week index (0 = Sunday … 6 = Saturday).
     day_of_month int::day?, # Day-of-month (1-31).
     day_name enum<string>['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']?, # Spelled-out day name.
-    week_seq int::week, # Monotonically-increasing week-of-time sequence number. ~53 per year (e.g. 2001 = 5270-5322), so the same week one year later is week_seq + 53. A week is one unit even when its days straddle a calendar-year boundary — aggregate by week_seq and use year only to pick which weeks to report, not to filter the underlying rows.
+    week_seq int::week, # Monotonically-increasing week-of-time sequence number. ~53 per year (e.g. 2001 = 5270-5322), so the same week one year later is week_seq + 53. One week_seq can appear in two years.
     month_of_year enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], # Month of the year (1 = January … 12 = December).
     quarter enum<int>[1, 2, 3, 4], # Calendar quarter (1-4) within the year.
     quarter_name string?, # Quarter label combining year and quarter (e.g. '1998Q3').

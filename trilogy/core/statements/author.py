@@ -11,6 +11,7 @@ from trilogy.core.enums import (
     CreateMode,
     FunctionClass,
     IOType,
+    JoinType,
     Modifier,
     PersistMode,
     PublishAction,
@@ -109,6 +110,21 @@ class FromClause:
 
 
 @dataclass
+class SelectJoin:
+    """A query-scoped join: a local merge of `source` (the brought-in key) into
+    `target` (the anchor key kept in this select). Applied only to the per-query
+    environment, never the global one."""
+
+    join_type: JoinType
+    source_address: str
+    target_address: str
+
+    @property
+    def modifiers(self) -> List[Modifier]:
+        return self.join_type.merge_modifiers
+
+
+@dataclass
 class SelectStatement(HasUUID, SelectTypeMixin):
     selection: List[SelectItem]
     where_clause: Optional[WhereClause] = None
@@ -116,6 +132,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     eligible_datasources: Optional[list[str]] = None
+    join_clauses: List[SelectJoin] = field(default_factory=list)
     meta: Metadata = field(default_factory=Metadata)
     local_concepts: EnvironmentConceptDict = field(
         default_factory=EnvironmentConceptDict
@@ -232,7 +249,42 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             environment=environment,
             local_concepts=local_concepts,
         )
+        if self.join_clauses:
+            result = self._collapse_join_keys_in_grain(result)
         return result
+
+    def _collapse_join_keys_in_grain(self, grain: Grain) -> Grain:
+        """Fold each query-scoped JOIN source key into its canonical target
+        within the grain. The query grain is computed here, at authoring time,
+        before the build-time merge — without this it carries every joined key
+        separately (e.g. both `ascending.rnk_a` AND `descending.rnk_d`) instead
+        of the single collapsed key, and that wrong grain then poisons every
+        concept grain the build derives from it."""
+        parent: dict[str, str] = {}
+
+        def find(x: str) -> str:
+            parent.setdefault(x, x)
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        for join in self.join_clauses:
+            rs, rt = find(join.source_address), find(join.target_address)
+            if rs != rt:
+                parent[rs] = rt
+        new_order: list[str] = []
+        seen: set[str] = set()
+        for c in grain.component_order:
+            rc = find(c) if c in parent else c
+            if rc not in seen:
+                seen.add(rc)
+                new_order.append(rc)
+        return Grain(
+            components={find(c) if c in parent else c for c in grain.components},
+            where_clause=grain.where_clause,
+            component_order=new_order,
+        )
 
     def validate_syntax(self, environment: Environment):
         if self.where_clause:

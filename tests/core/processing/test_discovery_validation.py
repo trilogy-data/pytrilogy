@@ -41,6 +41,8 @@ from trilogy.core.processing.discovery_node_factory import (
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
+    _conditions_met,
+    _is_independent_scope,
     _is_scalar_only,
     validate_stack,
 )
@@ -150,6 +152,52 @@ class TestIsScalarOnly:
             [scalar, hidden_multi], hidden_concepts={hidden_multi.address}
         )
         assert _is_scalar_only(node) is True
+
+
+# ---------------------------------------------------------------------------
+# _is_independent_scope
+# ---------------------------------------------------------------------------
+
+
+class TestIsIndependentScope:
+    # An outer condition on a concept the rowset does NOT expose.
+    _OUTER = property(lambda self: _eq(_concept("outer_year"), "1999"))
+
+    def test_all_rowset_outputs(self):
+        a = _concept("cnt_2000", derivation=Derivation.ROWSET)
+        b = _concept("item_id", derivation=Derivation.ROWSET)
+        assert _is_independent_scope(_StackNode([a, b]), self._OUTER) is True
+
+    def test_non_rowset_outputs(self):
+        a = _concept("cnt_1999", derivation=Derivation.AGGREGATE)
+        b = _concept("item_id", derivation=Derivation.ROOT)
+        assert _is_independent_scope(_StackNode([a, b]), self._OUTER) is False
+
+    def test_mixed_outputs_not_independent(self):
+        a = _concept("cnt_2000", derivation=Derivation.ROWSET)
+        b = _concept("item_id", derivation=Derivation.ROOT)
+        assert _is_independent_scope(_StackNode([a, b]), self._OUTER) is False
+
+    def test_no_visible_outputs(self):
+        a = _concept("cnt_2000", derivation=Derivation.ROWSET)
+        node = _StackNode([a], hidden_concepts={a.address})
+        assert _is_independent_scope(node, self._OUTER) is False
+
+    def test_hidden_non_rowset_not_counted(self):
+        rowset = _concept("cnt_2000", derivation=Derivation.ROWSET)
+        hidden_root = _concept("item_id", derivation=Derivation.ROOT)
+        node = _StackNode([rowset, hidden_root], hidden_concepts={hidden_root.address})
+        assert _is_independent_scope(node, self._OUTER) is True
+
+    def test_condition_on_exposed_rowset_output_not_independent(self):
+        """q75: the condition filters a column the rowset itself exposes
+        (e.g. `deduped.sales.date.year`). That's a consumer filter on the
+        rowset's rows and must be applied — the node is NOT exempt, even though
+        all its outputs are rowset-derived."""
+        year = _concept("deduped_year", derivation=Derivation.ROWSET)
+        cnt = _concept("deduped_cnt", derivation=Derivation.ROWSET)
+        node = _StackNode([year, cnt])
+        assert _is_independent_scope(node, _eq(year, "2002")) is False
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +379,67 @@ class TestValidateStackScalarConditions:
             accept_partial=False,
         )
         assert result == ValidationResult.INCOMPLETE_CONDITION
+
+
+# ---------------------------------------------------------------------------
+# _conditions_met — rowset (independent scope) must not block the outer WHERE
+# ---------------------------------------------------------------------------
+
+
+class TestConditionsMetIndependentScope:
+    def test_rowset_scope_does_not_block_outer_condition(self):
+        """The query-scoped-join bug: a rowset node (all ROWSET outputs) carries
+        its own scope's WHERE (year=2000), differing from the outer WHERE
+        (year=1999). The rowset is a self-contained subquery, so it must not be
+        required to satisfy the outer condition; the local node already does."""
+        item_id = _concept("item_id")
+        cnt_2000 = _concept("cnt_2000", derivation=Derivation.ROWSET)
+        r_item_id = _concept("r_item_id", derivation=Derivation.ROWSET)
+        cnt_1999 = _concept("cnt_1999", derivation=Derivation.AGGREGATE)
+        year = _concept("year")
+        outer = _eq(year, "1999")
+        rowset_node = _StackNode(
+            [cnt_2000, r_item_id],
+            preexisting_conditions=_eq(year, "2000"),
+            label="rowset",
+        )
+        local_node = _StackNode(
+            [cnt_1999, item_id], preexisting_conditions=outer, label="local"
+        )
+        assert (
+            _conditions_met(
+                [rowset_node, local_node],
+                {"cnt_2000", "r_item_id", "cnt_1999", "item_id"},
+                [cnt_2000, r_item_id, cnt_1999, item_id, year],
+                BuildWhereClause(conditional=outer),
+            )
+            is True
+        )
+
+    def test_plain_conflicting_scope_still_blocks(self):
+        """A plain (non-rowset) node carrying a conflicting condition is NOT
+        exempt — the outer condition genuinely isn't satisfied for its rows."""
+        item_id = _concept("item_id")
+        cnt_a = _concept("cnt_a", derivation=Derivation.AGGREGATE)
+        other = _concept("other", derivation=Derivation.ROOT)
+        cnt_1999 = _concept("cnt_1999", derivation=Derivation.AGGREGATE)
+        year = _concept("year")
+        outer = _eq(year, "1999")
+        node_a = _StackNode(
+            [cnt_a, other], preexisting_conditions=_eq(year, "2000"), label="a"
+        )
+        local_node = _StackNode(
+            [cnt_1999, item_id], preexisting_conditions=outer, label="b"
+        )
+        assert (
+            _conditions_met(
+                [node_a, local_node],
+                {"cnt_a", "other", "cnt_1999", "item_id"},
+                [cnt_a, other, cnt_1999, item_id, year],
+                BuildWhereClause(conditional=outer),
+            )
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------

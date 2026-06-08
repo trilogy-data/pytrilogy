@@ -331,16 +331,45 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         self[derived.address] = derived
         return derived
 
-    def _find_similar_concepts(self, concept_name: str):
+    def _find_similar_concepts(
+        self, concept_name: str, extra_keys: list[str] | None = None
+    ):
         def strip_local(input: str):
             if input.startswith(f"{DEFAULT_NAMESPACE}."):
                 return input[len(DEFAULT_NAMESPACE) + 1 :]
             return input
 
-        matches = difflib.get_close_matches(
-            strip_local(concept_name), [strip_local(x) for x in self.keys()]
+        # Candidate set = committed concepts plus `extra_keys` — concepts STAGED
+        # during the current parse (e.g. a rowset output referenced before the
+        # parse commits) which aren't in `self.keys()` yet, so the suggestion
+        # can still point at them.
+        keys = list(self.keys())
+        if extra_keys:
+            keys += [k for k in extra_keys if k not in keys]
+        # Never suggest the very address being looked up (a staged placeholder for
+        # it may be present in the candidate set).
+        keys = [k for k in keys if k != concept_name]
+
+        # Leaf-name match: a bare reference like `first_name` (e.g. in ORDER BY,
+        # where the full path is required) has no fuzzy match against the long
+        # full-path keys, so difflib returns nothing. Surface every concept whose
+        # path ends in `.<leaf>` so the user sees the real path(s) to use.
+        leaf = concept_name.rsplit(".", 1)[-1]
+        leaf_matches = [
+            strip_local(k)
+            for k in keys
+            if k != concept_name and k.rsplit(".", 1)[-1] == leaf
+        ]
+
+        fuzzy = difflib.get_close_matches(
+            strip_local(concept_name), [strip_local(x) for x in keys]
         )
-        return matches
+        # Prefer exact-leaf matches, then fuzzy, de-duplicated, capped.
+        out: list[str] = []
+        for m in leaf_matches + fuzzy:
+            if m not in out:
+                out.append(m)
+        return out[:6]
 
 
 _concept_ta: _TypeAdapter | None = None
@@ -423,6 +452,7 @@ class Environment:
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, List[Modifier]]] | None = None,
     ) -> "BuildEnvironment":
         """helper method"""
         from trilogy.core.models.build import Factory
@@ -435,6 +465,7 @@ class Environment:
             grain_build_cache=grain_build_cache,
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
+            scoped_joins=scoped_joins,
         )
         return factory.build(self)
 

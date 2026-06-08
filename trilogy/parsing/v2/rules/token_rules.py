@@ -8,6 +8,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     DatePart,
     FunctionType,
+    JoinType,
     Modifier,
     PersistMode,
     Purpose,
@@ -131,6 +132,16 @@ def PARSE_SHORTHAND_MODIFIER(token: SyntaxToken, context: RuleContext) -> Modifi
     return Modifier(token.value)
 
 
+def PARSE_JOIN_TYPE(token: SyntaxToken, context: RuleContext) -> JoinType:
+    return {
+        "left": JoinType.LEFT_OUTER,
+        "inner": JoinType.INNER,
+        "full": JoinType.FULL,
+        "right": JoinType.RIGHT_OUTER,
+        "cross": JoinType.CROSS,
+    }[token.value.strip().lower()]
+
+
 def PARSE_WILDCARD_IDENTIFIER(token: SyntaxToken, context: RuleContext) -> str:
     return token.value
 
@@ -236,6 +247,7 @@ TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.WINDOW_TYPE_SQL_NAVIGATION: PARSE_WINDOW_TYPE_SQL,
     SyntaxTokenKind.ORDER_IDENTIFIER: PARSE_ORDER_IDENTIFIER,
     SyntaxTokenKind.SHORTHAND_MODIFIER: PARSE_SHORTHAND_MODIFIER,
+    SyntaxTokenKind.JOIN_TYPE: PARSE_JOIN_TYPE,
     SyntaxTokenKind.WILDCARD_IDENTIFIER: PARSE_WILDCARD_IDENTIFIER,
     SyntaxTokenKind.DATASOURCE_PARTIAL: PARSE_DATASOURCE_PARTIAL,
     SyntaxTokenKind.PERSIST_MODE: PARSE_PERSIST_MODE,

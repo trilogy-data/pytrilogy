@@ -69,12 +69,13 @@ def test_aliased_aggregate_referenced_in_having_and_order_by() -> None:
     inner concept in downstream CTEs — producing
     `monthly_total - monthly_total` instead of `monthly_total - avg_sales`.
 
-    Two fixes back this up:
-      (A) `_rewrite_aliased_source_refs` rewrites source refs in HAVING/ORDER
-          BY to point at the SELECT alias before downstream rendering sees them.
-      (B) `_cte_at_aggregate_grain` guards the FUNCTION_GRAIN_MATCH_MAP
-          fallback so any remaining miss raises INVALID_REFERENCE_BUG
-          rather than silently emitting the aggregate's first argument.
+    The HAVING folds onto the merge node (no wrapper CTE), so the reference
+    renders as the materialized aggregate column `avg_monthly_overall` — an
+    equivalent spelling of the `avg_sales` alias, NOT the collapsed inner arg.
+
+    `_cte_at_aggregate_grain` guards the FUNCTION_GRAIN_MATCH_MAP fallback so
+    any genuinely unrenderable reference raises INVALID_REFERENCE_BUG rather
+    than silently emitting the aggregate's first argument.
     """
     exec = Dialects.DUCK_DB.default_executor()
     src = """
@@ -101,11 +102,17 @@ order by (monthly_total - avg_monthly_overall) asc;
 """
     sql = exec.generate_sql(src)[0]
     assert "INVALID_REFERENCE_BUG" not in sql
+    # The SELECT alias is still produced.
+    assert "as `avg_sales`" in sql or 'as "avg_sales"' in sql
     order_by_section = sql.split("ORDER BY")[1]
-    # The arithmetic must keep both operands distinct — no collapse.
+    # The arithmetic must keep both operands distinct — no collapse to
+    # `monthly_total - monthly_total`. The HAVING folds onto the merge node, so
+    # the reference renders as the materialized aggregate column rather than the
+    # SELECT alias (an equivalent spelling of the same value).
     assert 'monthly_total" - "' in order_by_section.replace("`", '"')
-    assert "avg_sales" in order_by_section
-    # Outer WHERE (HAVING after pushdown) must filter on the alias.
+    assert "avg_monthly_overall" in order_by_section
+    # Outer WHERE (HAVING after pushdown) must filter on the aggregate, not the
+    # raw per-row monthly_total.
     where_section = sql.split("WHERE")[-1].split("ORDER BY")[0]
-    assert "avg_sales" in where_section
+    assert "avg_monthly_overall" in where_section
     assert '"monthly_total" > 0' not in where_section.replace("`", '"')

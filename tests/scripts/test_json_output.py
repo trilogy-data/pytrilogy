@@ -48,14 +48,15 @@ def parse_events(output: str) -> list[dict]:
         if idx >= n:
             break
         payload, end = decoder.raw_decode(output, idx)
-        assert "event" in payload, payload
+        # `event` tags run/error events; explore uses `type` as its discriminator.
+        assert "event" in payload or "type" in payload, payload
         events.append(payload)
         idx = end
     return events
 
 
 def events_of(events: list[dict], name: str) -> list[dict]:
-    return [e for e in events if e["event"] == name]
+    return [e for e in events if name in (e.get("event"), e.get("type"))]
 
 
 def all_decls(concepts: dict) -> list[str]:
@@ -233,6 +234,52 @@ def test_explore_json_hides_underscore_imports(runner, tmp_path):
     leaves = concepts["imported"]["dem"]
     assert "edu" in leaves
     assert "_raw_edu" not in leaves
+
+
+def test_explore_json_uses_type_discriminator(runner, tmp_path):
+    f = tmp_path / "flight.preql"
+    f.write_text("key id int;\n", encoding="utf-8")
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(f), "--show", "all"]
+    )
+    assert result.exit_code == 0, result.output
+    events = parse_events(result.output)
+    # Explore tags its objects with `type`, not the run/error `event` key.
+    assert all("type" in e and "event" not in e for e in events)
+    assert {e["type"] for e in events} == {"concepts", "datasources", "imports"}
+
+
+def test_explore_json_imports_omit_local_alias_and_null_description(runner, tmp_path):
+    (tmp_path / "dem.preql").write_text("key cd_id int;\n", encoding="utf-8")
+    parent = tmp_path / "sales.preql"
+    # No-alias import binds to the `local` namespace; aliased import keeps its alias.
+    parent.write_text(
+        "import dem;\nimport dem as d;\nkey ticket int;\n", encoding="utf-8"
+    )
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(parent), "--show", "imports"]
+    )
+    assert result.exit_code == 0, result.output
+    imports = events_of(parse_events(result.output), "imports")[0]["imports"]
+    # local alias is dropped (no "alias" key); null description never appears.
+    assert {"path": "dem"} in imports
+    assert {"alias": "d", "path": "dem"} in imports
+    assert all("description" not in e for e in imports)
+    assert all(e.get("alias") != "local" for e in imports)
+
+
+def test_explore_json_include_builtins_hides_internal_namespace(runner, tmp_path):
+    f = tmp_path / "flight.preql"
+    f.write_text("key id int;\n", encoding="utf-8")
+    result = runner.invoke(
+        cli,
+        ["--format", "json", "explore", str(f), "--show", "all", "--include-builtins"],
+    )
+    assert result.exit_code == 0, result.output
+    concepts = events_of(parse_events(result.output), "concepts")[0]
+    # The internal `__preql_internal` model is never surfaced as an import,
+    # even when --include-builtins is set.
+    assert "__preql_internal" not in (concepts.get("imported") or {})
 
 
 def test_explore_json_expand_imports_renders_everything_local(runner, tmp_path):

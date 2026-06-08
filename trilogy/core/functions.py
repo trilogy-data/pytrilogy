@@ -359,15 +359,30 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
+    # MAX/MIN are lexicographic over STRING and orderable for BOOL in every SQL
+    # dialect we target (DuckDB, Postgres, SQLite, BigQuery, Snowflake, Trino,
+    # MySQL, Redshift, SQL Server), so STRING/BOOL are valid inputs.
     FunctionType.MAX: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES
-        | {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP, DataType.BOOL},
+        | {
+            DataType.DATE,
+            DataType.DATETIME,
+            DataType.TIMESTAMP,
+            DataType.BOOL,
+            DataType.STRING,
+        },
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
     FunctionType.MIN: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES
-        | {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP},
+        | {
+            DataType.DATE,
+            DataType.DATETIME,
+            DataType.TIMESTAMP,
+            DataType.BOOL,
+            DataType.STRING,
+        },
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),

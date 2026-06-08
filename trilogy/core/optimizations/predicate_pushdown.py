@@ -31,6 +31,37 @@ def is_child_of(a, comparison):
     return condition_contains_atom(a, comparison)
 
 
+def _transitively_depends_on(node: CTE | UnionCTE, target_name: str) -> bool:
+    """True if ``node`` reaches ``target_name`` through its dependency chain."""
+    seen: set[str] = set()
+    stack: list[CTE | UnionCTE] = list(node.dependency_nodes())
+    while stack:
+        dep = stack.pop()
+        if dep.name == target_name:
+            return True
+        if dep.name in seen:
+            continue
+        seen.add(dep.name)
+        stack.extend(dep.dependency_nodes())
+    return False
+
+
+def _promotion_would_cycle(
+    target: CTE | UnionCTE, sources: list[CTE | UnionCTE]
+) -> bool:
+    """True if making ``target`` depend on any of ``sources`` closes a cycle.
+
+    Promoting an existence source adds a ``target -> source`` edge. If a source
+    already (transitively) depends on ``target`` — the symmetric case where two
+    existence filters on the same concept push into each other's producers — the
+    new edge makes the CTE graph non-acyclic and ``reorder_ctes`` cannot sort it.
+    """
+    return any(
+        s.name == target.name or _transitively_depends_on(s, target.name)
+        for s in sources
+    )
+
+
 def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bool:
     """True if ``consumer`` references ``union`` on the nullable side of an
     outer join — pushing predicates into the union branches in that case
@@ -364,6 +395,17 @@ class PredicatePushdown(OptimizationRule):
         if not row_conditions.issubset(union_outputs):
             return False
 
+        # Dropping branches changes the rows EVERY consumer sees. Only safe when
+        # every consumer of the union already carries this filter — otherwise a
+        # co-sourcing consumer that needs the other branches (e.g. an unfiltered
+        # ``sum(... ? channel='STORE')`` reading the same union as a
+        # ``channel='CATALOG'`` membership feeder) silently loses its rows.
+        children = inverse_map.get(parent_cte.name, [])
+        if not children or not all(
+            is_child_of(candidate, child.condition) for child in children
+        ):
+            return False
+
         kept = []
         dropped = []
         for internal in parent_cte.internal_ctes:
@@ -455,6 +497,29 @@ class PredicatePushdown(OptimizationRule):
         if row_conditions.issubset(materialized):
             children = inverse_map.get(parent_cte.name, [])
             if all([is_child_of(candidate, child.condition) for child in children]):
+                # Existence sources to promote onto the parent (computed before
+                # any mutation so the cycle guard can veto the whole push).
+                promotions: list[tuple[str, list[CTE | UnionCTE]]] = []
+                for x in all_inputs.difference(row_conditions):
+                    if x not in parent_cte.source_map and x in cte.source_map:
+                        promotions.append(
+                            (
+                                x,
+                                [
+                                    parent
+                                    for parent in cte.dependency_nodes()
+                                    if parent.name in cte.source_map[x]
+                                ],
+                            )
+                        )
+                if any(
+                    _promotion_would_cycle(parent_cte, srcs) for _, srcs in promotions
+                ):
+                    self.log(
+                        f"Not pushing {candidate} into {parent_cte.name}: existence "
+                        "source already depends on it (would create a CTE cycle)"
+                    )
+                    return False
                 self.log(
                     f"All concepts [{row_conditions}] and existence conditions [{existence_conditions}] not block pushup of [{output_addresses}]found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
                 )
@@ -470,17 +535,10 @@ class PredicatePushdown(OptimizationRule):
                 else:
                     parent_cte.condition = candidate
                 # promote up existence sources
-                if all_inputs.difference(row_conditions):
-                    for x in all_inputs.difference(row_conditions):
-                        if x not in parent_cte.source_map and x in cte.source_map:
-                            sources = [
-                                parent
-                                for parent in cte.dependency_nodes()
-                                if parent.name in cte.source_map[x]
-                            ]
-                            parent_cte.source_map[x] = cte.source_map[x]
-                            for source in sources:
-                                parent_cte.add_dependency(source)
+                for x, sources in promotions:
+                    parent_cte.source_map[x] = cte.source_map[x]
+                    for source in sources:
+                        parent_cte.add_dependency(source)
                 return True
         self.debug(
             f"conditions {row_conditions} not subset of parent {parent_cte.name} parent has {materialized} "

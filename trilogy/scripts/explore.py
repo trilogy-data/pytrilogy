@@ -18,7 +18,7 @@ import click
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Concept
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import Environment, Import
 from trilogy.parser import parse_text
 from trilogy.scripts.display import emit_event, is_json_mode, print_error, print_info
 
@@ -277,6 +277,8 @@ def _emit_imported_summary(
     chains keep their full dotted namespace (``store_sales.customer``)."""
     by_ns: dict[str, list[str]] = defaultdict(list)
     for addr, c in imported_items:
+        if c.namespace.startswith("__"):  # internal model — never expose
+            continue
         by_ns[c.namespace].append(_display_address(addr))
     click.echo()
     print_info(
@@ -452,6 +454,24 @@ def _grouped_decls(
     return out
 
 
+def _import_entry(alias: str, stmt: Import) -> dict[str, str] | None:
+    """One structured import-listing entry, or ``None`` to drop it. Internal
+    ``__``-prefixed models are never exposed. The default-namespace alias
+    (``local`` — a no-alias ``import std.date;``) is omitted rather than shown,
+    and an empty trailing-comment description is dropped entirely."""
+    path = str(stmt.path)
+    if path.startswith("__") or alias.startswith("__"):
+        return None
+    entry: dict[str, str] = {}
+    if alias and alias != DEFAULT_NAMESPACE:
+        entry["alias"] = alias
+    entry["path"] = path
+    desc = (stmt.description or "").strip()
+    if desc:
+        entry["description"] = desc
+    return entry
+
+
 def _emit_explore_json(
     env: Environment,
     concept_items: list[tuple[str, Concept]],
@@ -480,6 +500,8 @@ def _emit_explore_json(
         # agent reaches a concept as `<ns>.<leaf>`; drill in with --regex.
         imported: dict[str, list[str]] = defaultdict(list)
         for addr, c in sorted(imported_items, key=lambda kc: kc[0]):
+            if c.namespace.startswith("__"):  # internal model — never expose
+                continue
             disp = _display_address(addr)
             prefix = f"{c.namespace}."
             leaf = disp[len(prefix) :] if disp.startswith(prefix) else disp
@@ -491,6 +513,7 @@ def _emit_explore_json(
         }
         emit_event(
             "concepts",
+            discriminator="type",
             count=len(concept_items),
             namespaces=_grouped_decls(env, local_items) or None,
             imported=imported_joined or None,
@@ -504,18 +527,20 @@ def _emit_explore_json(
             }
             for name, ds in sorted(env.datasources.items())
         ]
-        emit_event("datasources", count=len(datasources), datasources=datasources)
+        emit_event(
+            "datasources",
+            discriminator="type",
+            count=len(datasources),
+            datasources=datasources,
+        )
     if show in ("all", "imports"):
-        imports = [
-            {
-                "alias": alias,
-                "path": str(stmt.path),
-                "description": (stmt.description or "").strip() or None,
-            }
-            for alias, stmts in sorted(env.imports.items())
-            for stmt in stmts
-        ]
-        emit_event("imports", count=len(imports), imports=imports)
+        imports = []
+        for alias, stmts in sorted(env.imports.items()):
+            for stmt in stmts:
+                entry = _import_entry(alias, stmt)
+                if entry is not None:
+                    imports.append(entry)
+        emit_event("imports", discriminator="type", count=len(imports), imports=imports)
 
 
 @click.command("explore")
@@ -678,8 +703,15 @@ def explore(
         import_rows = []
         for alias, stmts in sorted(env.imports.items()):
             for stmt in stmts:
+                entry = _import_entry(alias, stmt)
+                if entry is None:
+                    continue
                 import_rows.append(
-                    (alias, str(stmt.path), (stmt.description or "").strip())
+                    (
+                        entry.get("alias", ""),
+                        entry["path"],
+                        entry.get("description", ""),
+                    )
                 )
         _emit_table(
             f"Imports ({len(import_rows)})",

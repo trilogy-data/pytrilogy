@@ -681,6 +681,45 @@ class TestRichTypeDetection:
         assert detect_rich_type("amount", DataType.FLOAT) == (None, None)
         assert detect_rich_type("description", DataType.STRING) == (None, None)
 
+    def test_date_part_detection(self):
+        # Date-part columns map to std.date traits over an integer base
+        # (INTEGER or BIGINT), gated by an in-range value set.
+        assert detect_rich_type("moy", DataType.BIGINT, [1, 2, 12]) == (
+            "std.date",
+            "month",
+        )
+        assert detect_rich_type("month_of_year", DataType.INTEGER, [3, 11]) == (
+            "std.date",
+            "month",
+        )
+        assert detect_rich_type("year", DataType.INTEGER, [1998, 2001]) == (
+            "std.date",
+            "year",
+        )
+        assert detect_rich_type("dom", DataType.INTEGER, [1, 15, 31]) == (
+            "std.date",
+            "day",
+        )
+        assert detect_rich_type("dow", DataType.INTEGER, [0, 6]) == (
+            "std.date",
+            "day_of_week",
+        )
+        assert detect_rich_type("qoy", DataType.INTEGER, [1, 4]) == (
+            "std.date",
+            "quarter",
+        )
+
+    def test_date_part_value_gate_rejects_out_of_range(self):
+        # A same-named column whose values fall outside the date-part range
+        # (e.g. d_month_seq ~1200) must NOT be classified as that date part.
+        assert detect_rich_type("month_seq", DataType.BIGINT, [1200, 1201]) == (
+            None,
+            None,
+        )
+        assert detect_rich_type("moy", DataType.INTEGER, [1, 2, 99]) == (None, None)
+        # No samples -> a value-gated type cannot be confirmed.
+        assert detect_rich_type("moy", DataType.INTEGER) == (None, None)
+
 
 class TestCheckColumnCombinationUniqueness:
     """Test the helper function for checking column combination uniqueness."""

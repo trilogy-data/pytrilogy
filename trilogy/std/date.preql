@@ -5,6 +5,7 @@ type decade int;
 type century int;
 type month int;
 type month_name string;
+type quarter int;
 type week int;
 type day int;
 type hour int;

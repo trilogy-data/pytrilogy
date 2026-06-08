@@ -164,21 +164,26 @@ full_persist = {
 from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 
 select_statement = {
-    from_clause? ~ where? ~ ^"select" ~ select_list ~ where? ~ having? ~ order_by? ~ limit?
+    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ where? ~ having? ~ order_by? ~ limit?
 }
+
+// query-scoped join: blends two otherwise-disjoint concepts on a shared key for
+// this select only (a query-local merge). The left key is the brought-in
+// (source) concept, the right key is the anchor. left -> partial, inner -> full.
+join_clause = { JOIN_TYPE ~ ^"join" ~ IDENTIFIER ~ "=" ~ IDENTIFIER }
 
 multi_select_statement = {
     select_statement
     ~ (^"merge" ~ select_statement)+
     ~ ^"align" ~ align_clause
     ~ (^"derive" ~ derive_clause)?
-    ~ where? ~ order_by? ~ limit?
+    ~ having? ~ order_by? ~ limit?
 }
 
 align_item   = { select_hide_modifier? ~ IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 align_clause = { align_item ~ (^"and" ~ align_item)* ~ (^"and")? }
 
-derive_item   = { expr ~ "->" ~ IDENTIFIER }
+derive_item   = { expr ~ ("->" | ^"as") ~ IDENTIFIER }
 derive_clause = { derive_item ~ ("," ~ derive_item)* ~ ","? }
 
 merge_statement = { ^"merge" ~ WILDCARD_IDENTIFIER ~ ^"into" ~ SHORTHAND_MODIFIER? ~ WILDCARD_IDENTIFIER }
@@ -804,6 +809,7 @@ FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT 
 F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
 
 SHORTHAND_MODIFIER = @{ "~" | "?" }
+JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" }
 
 // =============================================================================
 // PURPOSE / KEYWORDS (order matters: priority-like)

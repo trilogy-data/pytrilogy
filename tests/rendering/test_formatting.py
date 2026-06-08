@@ -241,19 +241,19 @@ property id.b string;
 datasource d (id: id, A: a, B: b) grain (id) address memory.t;
 
 with mset as
-select a, b
+select a as a1, b as b1
 merge
-select a, b
+select a as a2, b as b2
 align
-    chan: a, a
-    AND meas: b, b
+    chan: a1, a2
+    AND meas: b1, b2
 ;
 
 select mset.chan;
 """)
     rowset_stmt = queries[-2]
     rendered = Renderer().to_string(rowset_stmt)
-    assert "\n    chan: a, a\n    and meas: b, b\n" in rendered, rendered
+    assert "\n    chan: a1, a2\n    and meas: b1, b2\n" in rendered, rendered
 
     env2 = Environment()
     env2.parse("""

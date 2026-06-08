@@ -48,7 +48,13 @@ from trilogy.core.models.author import (
     WindowItem,
     get_concept_arguments,
 )
-from trilogy.core.models.core import DataType, TraitDataType, arg_to_datatype
+from trilogy.core.models.core import (
+    DataType,
+    TraitDataType,
+    arg_to_datatype,
+    is_compatible_datatype,
+    merge_datatypes,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.helpers import Meta
@@ -663,6 +669,14 @@ def concepts_to_grain_concepts_ordered(
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
+
+    def _lookup(addr: str) -> Concept | None:
+        if local_concepts and addr in local_concepts:
+            return local_concepts[addr]  # type: ignore
+        if environment:
+            return environment.concepts.get(addr)
+        return None
+
     preconcepts: list[Concept] = []
     for x in raw:
         if (
@@ -673,10 +687,18 @@ def concepts_to_grain_concepts_ordered(
         ):
             # alias is a renamed view of the source — use the source for grain
             source_addr = x.lineage.arguments[0].address  # type: ignore
-            if local_concepts and source_addr in local_concepts:
-                preconcepts.append(local_concepts[source_addr])
-            else:
-                preconcepts.append(environment.concepts[source_addr])
+            source = _lookup(source_addr)
+            preconcepts.append(source if source is not None else x)
+        elif x.derivation == Derivation.WINDOW and x.keys and environment:
+            # A window output (rank/row_number/…) is row-distinct, so it would
+            # otherwise enter the grain as itself. But its value is determined by
+            # its keys (partition + anchor), and its order_by may re-derive an
+            # aggregate that would then be grouped by this very output — a build
+            # recursion. Contribute the window's keys to the grain instead.
+            for kaddr in x.keys:
+                key_concept = _lookup(kaddr)
+                if key_concept is not None:
+                    preconcepts.append(key_concept)
         else:
             preconcepts.append(x)
     seen: set[str] = set()
@@ -1195,24 +1217,26 @@ def align_item_to_concept(
     limit: int | None = None,
 ) -> Concept:
     align = parent
-    # Strip TraitDataType wrappers before grouping: traits are pure annotations
-    # on top of an underlying type and shouldn't split an otherwise-compatible
-    # set (e.g. ``numeric(15,2)::usd`` aligning with bare ``numeric(15,2)``).
+    # Align tolerates any datatypes the engine can coerce together: traits are
+    # pure annotations (``numeric(15,2)::usd`` aligns with bare ``numeric(15,2)``)
+    # and the whole integer/bigint/float/numeric family is mutually compatible
+    # (so ``date_dim.moy`` bigint aligns with ``month(date)`` int::month). Use the
+    # structural compatibility check rather than exact-inner-type grouping.
     raw_datatypes = [c.datatype for c in align.concepts]
-    by_inner: dict = {}
-    for dt in raw_datatypes:
-        inner = dt.type if isinstance(dt, TraitDataType) else dt
-        existing = by_inner.get(inner)
-        # Prefer keeping the trait-wrapped representative so the merged concept
-        # inherits the richer type information.
-        if existing is None or (
-            not isinstance(existing, TraitDataType) and isinstance(dt, TraitDataType)
-        ):
-            by_inner[inner] = dt
-    if len(by_inner) > 1:
+    if any(
+        not is_compatible_datatype(a, b)
+        for i, a in enumerate(raw_datatypes)
+        for b in raw_datatypes[i + 1 :]
+    ):
         raise InvalidSyntaxException(
             f"Datatypes do not align for merged statements {align.alias}, have {set(raw_datatypes)}"
         )
+    # Prefer a trait-bearing representative so the merged concept keeps the richer
+    # type information; otherwise widen across the compatible set.
+    merged_datatype = next(
+        (dt for dt in raw_datatypes if isinstance(dt, TraitDataType)),
+        merge_datatypes(raw_datatypes),
+    )
 
     new_selects = [x.as_lineage(environment) for x in selects]
     multi_lineage = MultiSelectLineage(
@@ -1227,7 +1251,7 @@ def align_item_to_concept(
     grain = Grain()
     new = Concept(
         name=align.alias,
-        datatype=next(iter(by_inner.values())),
+        datatype=merged_datatype,
         purpose=Purpose.PROPERTY,
         lineage=multi_lineage,
         grain=grain,

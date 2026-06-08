@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -9,6 +10,7 @@ from trilogy import Dialects
 from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import Concept, FunctionCallWrapper, Grain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
@@ -53,6 +55,124 @@ select g, r;
     assert results == [("a", 1.0)]
 
 
+_ROLLUP_GROUPING_MODEL = """
+key sale_id int;
+property sale_id.brand string;
+property sale_id.class string;
+property sale_id.amount float;
+datasource sales (sale_id, brand, class, amount)
+  grain (sale_id)
+  query '''select 1 as sale_id, 'A' as brand, 'X' as class, 10.0 as amount
+           union all select 2, 'A', 'Y', 20.0
+           union all select 3, 'B', 'X', 30.0
+           union all select 4, 'B', 'Y', 100.0''';
+"""
+
+
+def test_inline_aggregate_in_order_by_raises():
+    """An inline aggregate in ORDER BY that isn't a SELECT output is rejected —
+    aggregates can't be computed in the ordering scope. `grouping()` is the
+    motivating case (Bug B3): it must be projected and ordered by alias."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+rowset overall <- select avg(amount) as overall_avg;
+select brand, class, sum(amount) by rollup brand, class as total, --overall.overall_avg
+having total > overall.overall_avg
+order by grouping(brand) desc, grouping(class) desc, brand nulls first;
+"""
+    with raises(Exception, match="ORDER BY contains aggregate"):
+        engine.generate_sql(text)
+
+
+def test_projected_grouping_in_rollup_orders_by_alias():
+    """A `grouping()` projected (here hidden) alongside a `by rollup` aggregate
+    and ordered by its alias must compute in the ROLLUP CTE and be referenced
+    downstream by alias — not re-emitted as `grouping(col)` in the groupless
+    join/filter wrapper (DuckDB: 'GROUPING statement cannot be used without
+    groups'). Bug B3."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+rowset overall <- select avg(amount) as overall_avg;
+select
+    brand,
+    class,
+    sum(amount) by rollup brand, class as total,
+    --overall.overall_avg,
+    --grouping(brand) as gb,
+    --grouping(class) as gc
+having total > overall.overall_avg
+order by gb desc, gc desc, brand nulls first, class nulls first;
+"""
+    sql = engine.generate_sql(text)[-1]
+    # grouping() must be computed in the rollup CTE, not re-emitted in the
+    # groupless ORDER BY of the final wrapper SELECT.
+    assert "grouping(" not in sql.split("ORDER BY")[-1], sql
+    results = engine.execute_text(text)[-1].fetchall()
+    # overall avg = 40; surviving rollup buckets: grand total (160) and B (130).
+    assert [tuple(r) for r in results] == [
+        (None, None, 160.0),
+        ("B", None, 130.0),
+        ("B", "Y", 100.0),
+    ]
+
+
+_COMPOSITE_ROLLUP_MODEL = """
+key chan int;
+key oid int;
+property <oid, chan>.txt string;
+property <oid, chan>.amt float;
+property <oid, chan>.prof float;
+property <oid, chan>.loss float;
+datasource sales (chan: chan, oid: oid, txt: txt, amt: amt, prof: prof, loss: loss)
+grain (oid, chan)
+query '''select 1 as chan, 1 as oid, 'p' as txt, 10.0 as amt, 5.0 as prof, 1.0 as loss
+         union all select 1, 2, 'q', 20.0, 8.0, 2.0
+         union all select 2, 1, 'p', 30.0, 9.0, 3.0''';
+"""
+
+
+def test_composite_rollup_aggregate_keeps_group_by():
+    """A composite rollup aggregate (`sum(a) - sum(b) by rollup k`) beside a
+    second rollup aggregate and CASE/concat-derived projections of the rollup
+    keys used to emit invalid SQL — a group node with the (unbound) `sum(prof)`
+    but no GROUP BY (DuckDB: 'column ... must appear in the GROUP BY').
+
+    The fix has three parts: a ROLLUP marks its grouping-key dims (and dims
+    derived from them, e.g. `concat('x', txt)`) nullable so the assembly join is
+    null-safe/OUTER and the rollup rows survive; the null-safe join keys aren't
+    downgraded to `=` past the rollup; and the rollup group node renders its
+    GROUP BY even when a sibling rollup is a passthrough.
+
+    `sum(prof)` is unbound (no `by`), so it groups at leaf grain — at the rollup
+    subtotal/grand-total rows it has no leaf rows to sum, so `profit` is NULL
+    there (correct for the query as written; bind it `by rollup` for rolled-up
+    values). q80."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_COMPOSITE_ROLLUP_MODEL)
+    text = """
+select
+  case when chan = 1 then 'aa' else 'bb' end as channel,
+  concat('x', txt) as outlet,
+  sum(amt) by rollup chan, txt as sales,
+  sum(prof) - sum(coalesce(loss, 0)) by rollup chan, txt as profit
+order by channel asc, sales asc, profit asc, outlet asc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    # ROLLUP(chan, txt) preserves leaves + per-channel subtotals + grand total.
+    # sales rolls up (10/20 leaves -> 30/30 subtotals -> 60 grand). profit is
+    # correct at leaves (4/6/6) and NULL at subtotals (unbound sum, leaf grain).
+    assert [tuple(r) for r in results] == [
+        ("aa", "xp", 10.0, 4.0),
+        ("aa", "xq", 20.0, 6.0),
+        ("aa", None, 30.0, None),
+        ("bb", "xp", 30.0, 6.0),
+        ("bb", None, 30.0, None),
+        ("bb", None, 60.0, None),
+    ]
+
+
 def test_predicate_not_pushed_past_window_order_key():
     """A filter on a window's ORDER BY key (an aggregate also materialized in
     the upstream group) must not be pushed below/into the window — SQL WHERE
@@ -82,6 +202,83 @@ order by w asc;
 """
     results = engine.execute_text(text)[-1].fetchall()
     assert [(r.s, r.w, r.r) for r in results] == [(1, 10, 2.0)]
+
+
+_NESTED_FILTER_AGG_MEMBERSHIP_MODEL = """
+key order_number int;
+key item_id int;
+property <order_number, item_id>.warehouse int;
+property <order_number, item_id>.profit float;
+property <order_number, item_id>.state string;
+property <order_number, item_id>._ret int?;
+auto is_returned <- _ret is not null;
+
+datasource sales (
+    order_number: order_number,
+    item_id: item_id,
+    warehouse: warehouse,
+    profit: profit,
+    state: state
+)
+grain (order_number, item_id)
+query '''
+    select 100 as order_number, 1 as item_id, 1 as warehouse, 10.0 as profit, 'IL' as state
+    union all select 100, 2, 2, 20.0, 'IL'
+    union all select 200, 1, 1, 5.0, 'IL'
+    union all select 300, 1, 1, 7.0, 'CA'
+    union all select 300, 2, 2, 8.0, 'CA'
+''';
+
+datasource returns (
+    item_id: ~item_id,
+    order_number: ~order_number,
+    _ret: _ret
+)
+grain (order_number, item_id)
+query '''select 200 as order_number, 1 as item_id, 200 as _ret''';
+"""
+
+# A filtered-membership key whose condition references another filtered concept
+# (`applicable_orders is not null`) plus per-key aggregate(s). The q94 shape.
+_NESTED_FILTER_AGG_MEMBERSHIP_QUERY = """
+auto applicable_orders <- order_number ? state = 'IL';
+auto qualifying_orders <- order_number
+  ? applicable_orders is not null
+    and count_distinct(warehouse) by order_number > 1
+    and bool_or(is_returned) by order_number is not true;
+where order_number in qualifying_orders
+select order_number as o, sum(profit) as total_profit
+order by o;
+"""
+
+
+def test_nested_filter_per_key_aggregate_membership_not_in_group_by():
+    """Bug: a filtered-membership key (`order ? applicable_orders is not null AND
+    count_distinct(...) by order > 1 AND ...`) whose condition mixes a nested
+    filter concept with per-key aggregates was lowered as a grouped filter that
+    rendered the membership CASE — aggregates and all — into the GROUP BY
+    (DuckDB: 'GROUP BY clause cannot contain aggregates'). The per-key aggregates
+    must be materialized in their own grouped CTE and the membership CASE
+    evaluated at row grain — never inside a GROUP BY."""
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_NESTED_FILTER_AGG_MEMBERSHIP_MODEL)
+    sql = executor.generate_sql(_NESTED_FILTER_AGG_MEMBERSHIP_QUERY)[-1]
+    for block in re.findall(
+        r"GROUP BY(.*?)(?:HAVING|ORDER BY|\)|$)", sql, re.DOTALL | re.IGNORECASE
+    ):
+        assert "count(" not in block.lower(), f"aggregate in GROUP BY:\n{sql}"
+        assert "bool_or(" not in block.lower(), f"aggregate in GROUP BY:\n{sql}"
+
+
+def test_nested_filter_per_key_aggregate_membership_executes():
+    """End-to-end for the q94 shape: only order 100 qualifies — state IL
+    (applicable), two distinct warehouses (count_distinct > 1), and no return
+    (bool_or(is_returned) is not true). Orders 200 (one warehouse, returned) and
+    300 (state CA) are excluded."""
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_NESTED_FILTER_AGG_MEMBERSHIP_MODEL)
+    results = executor.execute_text(_NESTED_FILTER_AGG_MEMBERSHIP_QUERY)[-1].fetchall()
+    assert [(r.o, float(r.total_profit)) for r in results] == [(100, 30.0)]
 
 
 def test_window_over_rollup_preserves_grouping_rows():
@@ -1463,6 +1660,84 @@ def test_const_equivalence_merge():
         assert len(results) == 5, sql
 
 
+def test_multi_select_align_aggregate():
+    # Aligning a per-arm aggregate must not push it into each arm's GROUP BY
+    # (DuckDB rejects aggregates in GROUP BY).
+    exec = Dialects.DUCK_DB.default_executor()
+    DebuggingHook()
+    exec.execute_raw_sql("CREATE TABLE s(sid int, cat varchar)")
+    exec.execute_raw_sql("CREATE TABLE w(wid int, cat2 varchar)")
+    exec.execute_raw_sql(
+        "INSERT INTO s VALUES (1,'a'),(2,'a'),(3,'b'); INSERT INTO w VALUES (4,'a'),(5,'b'),(6,'b')"
+    )
+    queries = exec.parse_text("""
+key sid int; property sid.cat string;
+datasource s (sid:sid, cat:cat) grain (sid) address s;
+key wid int; property wid.cat2 string;
+datasource w (wid:wid, cat2:cat2) grain (wid) address w;
+
+SELECT cat as g1, count(sid) as cnt1,
+MERGE
+SELECT cat2 as g2, count(wid) as cnt2,
+ALIGN grp: g1, g2 and lc: cnt1, cnt2
+ORDER BY grp;
+""")
+    sql = exec.generate_sql(queries[-1])[-1]
+    assert "count" in sql.lower()
+    results = exec.execute_query(queries[-1]).fetchall()
+    assert results
+
+
+def test_multi_select_having_hidden_derive_arg_no_outer_group():
+    # A multiselect outer is a pure FULL JOIN of pre-aggregated arms; it must
+    # never re-group. When each arm hides a derive-arg column whose source key
+    # is absent from the align keys (here `--dt.yr as yr_a`, keyed by `date_id`,
+    # consumed only by `coalesce(yr_a, 0)`), that column inflates the joined
+    # pregrain past the align-key grain. The outer used to emit a spurious
+    # GROUP BY that omitted the raw aggregate projections (`coalesce(cnt_a, 0)`),
+    # which DuckDB rejects: column "cnt_a" must appear in the GROUP BY clause.
+    exec = Dialects.DUCK_DB.default_executor()
+    DebuggingHook()
+    exec.execute_raw_sql("CREATE TABLE item(item_id int, name varchar)")
+    exec.execute_raw_sql("CREATE TABLE dt(date_id int, yr int)")
+    exec.execute_raw_sql(
+        "CREATE TABLE sale(sid int, item_id int, date_id int, chan varchar)"
+    )
+    exec.execute_raw_sql(
+        "INSERT INTO item VALUES (1,'x'),(2,'y');"
+        "INSERT INTO dt VALUES (101,1999),(102,2000);"
+        "INSERT INTO sale VALUES "
+        "(1,1,101,'a'),(2,1,102,'a'),(3,2,101,'a'),"
+        "(4,1,101,'b'),(5,2,102,'b'),(6,2,101,'b')"
+    )
+    queries = exec.parse_text("""
+key item_id int; property item_id.name string;
+datasource item (item_id:item_id, name:name) grain (item_id) address item;
+key date_id int; property date_id.yr int;
+datasource dt (date_id:date_id, yr:yr) grain (date_id) address dt;
+key sid int; property sid.item_id int; property sid.date_id int; property sid.chan string;
+datasource sale (sid:sid, item_id:item_id, date_id:date_id, chan:chan)
+    grain (sid) address sale;
+
+WHERE chan = 'a'
+SELECT --item_id.name as g1, --date_id.yr as yr_a, --count(sid) as cnt_a,
+MERGE
+WHERE chan = 'b'
+SELECT --item_id.name as g2, --date_id.yr as yr_b, --count(sid) as cnt_b,
+ALIGN grp: g1, g2
+DERIVE coalesce(cnt_a,0) as c1, coalesce(cnt_b,0) as c2,
+    coalesce(yr_a,0) as ya, coalesce(yr_b,0) as yb
+HAVING c2 <= c1
+ORDER BY grp asc;
+""")
+    sql = exec.generate_sql(queries[-1])[-1]
+    # the outer SELECT (over the FULL JOIN of the arm CTEs) must not GROUP BY
+    outer = sql[sql.rindex("FULL JOIN") :]
+    assert "GROUP BY" not in outer
+    results = exec.execute_query(queries[-1]).fetchall()
+    assert results
+
+
 def test_multi_select_derive():
     exec = Dialects.DUCK_DB.default_executor()
     DebuggingHook()
@@ -1919,6 +2194,71 @@ ORDER BY
     ]
 
 
+_GROUPING_ID_CASE_MODEL = """
+key a int;
+key b int?;
+property <a, b>.x int;
+datasource test_data (
+    a: a,
+    b: b,
+    x: x
+)
+grain (a, b)
+query '''
+    select 1 as a, 1 as b, 10 as x
+    union all
+    select 1 as a, 2 as b, 20 as x
+''';
+"""
+
+# grouping_id() nested in a `case` deriving the rollup level, over a `by rollup`
+# aggregate referenced by name (the TPC-DS-native idiom). No explicit `by rollup`
+# on the grouping_id itself.
+_GROUPING_ID_CASE_QUERY = """
+auto total <- sum(x) by rollup a, b;
+auto lvl <- case
+    when grouping_id(a, b) = 3 then 2
+    when grouping_id(a, b) = 1 then 1
+    else 0 end;
+select a, b, total, lvl
+order by lvl asc, a asc nulls first, b asc nulls first;
+"""
+
+
+def test_grouping_id_in_case_over_named_rollup_colocates():
+    """Bug: a `grouping_id(...)` nested in a `case` deriving the rollup level,
+    over a `by rollup` aggregate referenced by name, parsed STANDARD-mode and
+    stranded in a separate groupless CTE (`GROUP BY 1, 2`) — DuckDB rejects
+    `grouping_id` there ('GROUPING statement cannot be used without groups').
+    It must co-locate in the single ROLLUP CTE that gives it context."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    sql = executor.generate_sql(_GROUPING_ID_CASE_QUERY)[-1]
+    assert "ROLLUP" in sql
+    assert "grouping_id(" in sql
+    # The only GROUP BY is the ROLLUP; grouping_id is not stranded in its own
+    # plain-GROUP-BY CTE.
+    assert sql.count("GROUP BY") == 1, sql
+
+
+def test_grouping_id_in_case_over_named_rollup_executes():
+    """End-to-end: the same query runs and the derived level is correct — 0 for
+    leaf rows, 1 for the `b` subtotal, 2 for the grand total."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    results = list(executor.execute_text(_GROUPING_ID_CASE_QUERY)[-1].fetchall())
+    assert [tuple(r) for r in results] == [
+        (1, 1, 10, 0),
+        (1, 2, 20, 0),
+        (1, None, 30, 1),
+        (None, None, 30, 2),
+    ]
+
+
 def test_duckdb_rollup_passthrough_outer_no_regroup():
     # Regression: when an outer CTE projects rollup-aggregate outputs that are
     # forwarded passthroughs from a parent CTE which already applied the
@@ -2073,6 +2413,41 @@ order by store_id asc, customer_id asc;
         (1, 2, 800, 450),
         (2, 2, 100, 75),
     ]
+
+
+def test_window_function_in_having_lowers_to_qualify_e2e():
+    # Per-store totals: store 1 = 900, store 2 = 150. A window predicate in
+    # HAVING can't live in WHERE/HAVING; it must lower to QUALIFY so the rank is
+    # evaluated after grouping. rank desc <= 1 keeps only store 1.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    sum(amount) as total
+having rank() over (order by sum(amount) desc) <= 1
+order by store_id asc;
+"""
+    sql = executor.generate_sql(text)[-1]
+    assert "QUALIFY" in sql, sql
+    assert "HAVING" not in sql, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert [(r.store_id, r.total) for r in rows] == [(1, 900)]
+
+
+def test_window_function_in_having_rejected_without_qualify():
+    # Dialects without QUALIFY (e.g. SQLite) can't lower a window in HAVING and
+    # must raise a clear, actionable error rather than emit invalid SQL.
+    executor = Dialects.SQLITE.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    sum(amount) as total
+having rank() over (order by sum(amount) desc) <= 1;
+"""
+    with raises(InvalidSyntaxException, match="Window functions are not"):
+        executor.generate_sql(text)
 
 
 _ORDER_BY_CONSTANT_SCHEMA = """key id int;

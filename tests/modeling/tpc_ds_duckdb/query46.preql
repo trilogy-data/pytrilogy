@@ -23,7 +23,7 @@ select
     sum(physical_sales.net_profit) as profit,
 align
     --customer_id: physical_sales.customer.id, customer.id
-where
+having
 customer.address.city != bought_city
 order by
     customer.last_name asc nulls first,

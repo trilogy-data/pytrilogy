@@ -1,4 +1,4 @@
-key sales_channel enum<string>['WEB', 'CATALOG'];
+key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
 key order_id int;
 key item_id int;
 key date_id int;

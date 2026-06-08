@@ -1,9 +1,10 @@
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import SourceType
+from trilogy.core.enums import AggregateGroupingMode, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildOrderBy,
@@ -155,6 +156,33 @@ class GroupNode(StrategyNode):
                 {x.address, x.canonical_address, *x.pseudonyms}
             )
         ]
+        # A ROLLUP/CUBE/GROUPING SETS injects NULLs into its grouping-key dims at
+        # the subtotal/grand-total rows. Mark those dims — and any dim derived
+        # from them (e.g. ``concat('x', txt)``, which propagates the NULL) —
+        # nullable, so downstream joins on them use null-safe (OUTER) semantics
+        # and preserve the rollup rows instead of dropping or doubling them.
+        rollup_by_addresses: set[str] = set()
+        for c in self.output_concepts:
+            if (
+                isinstance(c.lineage, BuildAggregateWrapper)
+                and c.lineage.grouping != AggregateGroupingMode.STANDARD
+            ):
+                rollup_by_addresses.update(b.address for b in c.lineage.by)
+        if rollup_by_addresses:
+            from trilogy.core.processing.discovery_utility import (
+                get_upstream_concepts,
+            )
+
+            already_nullable = {x.address for x in nullable_concepts}
+            nullable_concepts = nullable_concepts + [
+                x
+                for x in self.output_concepts
+                if x.address not in already_nullable
+                and (
+                    x.address in rollup_by_addresses
+                    or rollup_by_addresses & get_upstream_concepts(x)
+                )
+            ]
         # Merge partial concepts from parent resolved sources
         # so partial keys from upstream datasources propagate through grouping.
         output_addresses = {c.address for c in self.output_concepts}
@@ -202,6 +230,26 @@ class GroupNode(StrategyNode):
         # inject an additional CTE
         if self.conditions and not is_scalar_condition(self.conditions):
             base.condition = None
+            # Existence feeders (membership ``in <derived>`` subselects) only
+            # feed the lifted condition, not the group itself. They sit as
+            # datasources on ``base``; relocate them onto this wrapper SELECT —
+            # the node that actually renders the condition — so the subselect
+            # can resolve them (tracked in ``existence_source_map``, separate
+            # from row source resolution).
+            existence_addrs = {c.address for c in self.existence_concepts}
+            existence_sources = [
+                ds
+                for ds in base.datasources
+                if isinstance(ds, QueryDatasource)
+                and ds.output_concepts
+                and all(c.address in existence_addrs for c in ds.output_concepts)
+            ]
+            if existence_sources:
+                base.datasources = [
+                    ds for ds in base.datasources if ds not in existence_sources
+                ]
+                for addr in existence_addrs:
+                    base.source_map.pop(addr, None)
             base.output_concepts = unique(
                 list(base.output_concepts) + list(self.conditions.row_arguments),
                 "address",
@@ -218,11 +266,15 @@ class GroupNode(StrategyNode):
             return QueryDatasource(
                 input_concepts=base.output_concepts,
                 output_concepts=self.output_concepts,
-                datasources=[base],
+                datasources=[base, *existence_sources],
                 source_type=SourceType.SELECT,
                 source_map=source_map,
+                # Resolve existence concepts against the wrapper's actual
+                # datasources (the relocated feeders), not the feeder-stripped
+                # ``base`` — otherwise the membership subselect can't find its
+                # source CTE and renders an INVALID_REFERENCE_BUG (bug B2).
                 existence_source_map=resolve_existence_map(
-                    [base], self.existence_concepts
+                    [base, *existence_sources], self.existence_concepts
                 ),
                 joins=[],
                 grain=target_grain,

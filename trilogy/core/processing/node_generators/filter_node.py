@@ -329,6 +329,18 @@ def _can_pushdown_as_grouped_filter(
         ]
         if any(a.grain != content.grain for a in agg_args):
             return False
+    # A non-aggregate predicate on a *nested* filter concept (another `x ? cond`)
+    # alongside the per-key aggregate(s) can't be collapsed into this group's
+    # HAVING/WHERE: the nested filter needs its own per-row CASE materialized,
+    # which the grouped form pushes into GROUP BY next to the aggregates (invalid
+    # `GROUP BY CASE WHEN ... count(...) ...`) or splits off and regroups at the
+    # wrong grain. Fall back to the standard filter-node plan, which computes the
+    # predicate CASE at row grain over materialized aggregate columns.
+    if any(
+        r.derivation != Derivation.AGGREGATE and isinstance(r.lineage, BuildFilterItem)
+        for r in filter_where.row_arguments
+    ):
+        return False
     return True
 
 

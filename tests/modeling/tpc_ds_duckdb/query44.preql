@@ -26,10 +26,9 @@ select
     ss.item.product_name as worst_performing,
 ;
 
-merge ascending.rnk_a into descending.rnk_d;
-
 where
     ss.store.id = 1
+inner join ascending.rnk_a = descending.rnk_d
 select
     ascending.rnk_a as rnk,
     ascending.best_performing,

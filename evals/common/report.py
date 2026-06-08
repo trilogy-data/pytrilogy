@@ -92,6 +92,8 @@ def build_report(
                 }
                 for tool, s in metrics.tool_output_stats.items()
             },
+            "reviewer_verdicts": metrics.reviewer_verdicts,
+            "reviewer_kickbacks": metrics.reviewer_kickbacks,
             "tokens": {
                 "prompt": metrics.prompt_tokens,
                 "completion": metrics.completion_tokens,
@@ -153,6 +155,14 @@ def render_markdown(spec: BenchmarkSpec, report: dict) -> str:
         f"- Tokens: {tok['total']} total "
         f"({tok['prompt']} prompt + {tok['completion']} completion)"
     )
+    verdicts = agent.get("reviewer_verdicts", 0)
+    kickbacks = agent.get("reviewer_kickbacks", 0)
+    if verdicts:
+        rate = kickbacks / verdicts
+        out.append(
+            f"- Reviewer kickbacks: {kickbacks}/{verdicts} verdicts "
+            f"({rate * 100:.0f}% NOT_DONE) — lower is better"
+        )
     out.append("")
     stats = agent.get("tool_output_stats") or {}
     if stats:

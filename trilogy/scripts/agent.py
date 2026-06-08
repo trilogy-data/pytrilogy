@@ -69,6 +69,7 @@ def get_agent_instructions(
     include_show: bool = True,
     include_todo: bool = True,
     include_database: bool = True,
+    include_file_read: bool = True,
 ) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
@@ -99,20 +100,23 @@ Available tools:
       Join discovery is not needed;
     write `select store_sales.date_dim.year, ...;` and Trilogy
       handles the join. There is no manual JOIN clause in this language.
+    * ["file", "list", "<dir>"] (add "--recursive") — list workspace files;
+      .preql entries carry their leading-comment description. Use this when
+      unsure what exists (e.g. before guessing `./store_sales.preql` — the
+      model files live under raw/)."""
+    if include_file_read:
+        base += """
     * ["file", "read", "<path>"] — read a file's raw contents (rarely needed;
-      prefer explore for model files).
-    * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
+      prefer explore for model files)."""
+    base += """
+    * Only documented subcommands work — do NOT invent `raw`, `shell`,
       `read_file`, etc. `trilogy agent-info` lists everything that exists.
 
 To create or overwrite a file (every .preql query file you write), use
 `trilogy file write <path> --content <full body>`. Pass the complete file
 body as a single string in `--content`; embed literal newlines. Trilogy
 parses the body before it lands on disk — partial or broken .preql writes
-are rejected with the parse error. Re-issue the call with the COMPLETE body.
-- list_files(path=".", recursive=True): list files in the workspace.
-  Call this when you are unsure what files exist (e.g. before guessing a
-  path like `./store_sales.preql` — the model files live under `raw/`).
-  Skips noise (`__pycache__`, `.duckdb`, `_worker_*`)."""
+are rejected with the parse error. Re-issue the call with the COMPLETE body."""
     if include_todo:
         base += """
 - todo(action, id=None, description=None): scratch TODO list, for multi-step
@@ -163,9 +167,10 @@ EXIT_ITERATION_EXHAUSTED = 2
 
 REVIEWER_SYSTEM_PROMPT = (
     "You check ONE narrow thing: did the agent ITSELF signal it was not finished "
-    "when it called return_control_to_user? You receive the task and the agent's "
-    "tool-use transcript. Reply with exactly 'DONE' or 'NOT_DONE' on the first "
-    "line, then one sentence quoting the agent's own words.\n"
+    "when it called return_control_to_user? You receive ONLY the agent's most "
+    "recent messages — not the task and not tool output. Reply with exactly 'DONE' "
+    "or 'NOT_DONE' on the first line, then one sentence quoting the agent's own "
+    "words.\n"
     "Reply NOT_DONE only when the agent's OWN final message shows it was still "
     "working: it narrates a next step it hasn't taken ('now I'll...', 'let me...', "
     "'I still need to...'), self-notes unresolved uncertainty it is investigating, "
@@ -184,6 +189,10 @@ REVIEWER_SYSTEM_PROMPT = (
 
 REVIEWER_TRANSCRIPT_MSG_LIMIT = 1200
 REVIEWER_TRANSCRIPT_ARG_LIMIT = 600
+# The reviewer only needs the agent's last few turns to detect a "still working"
+# self-signal. Feeding it the full transcript + task tempts it to grade the work
+# against the task (the q6 false-kickback). Keep just the agent's recent messages.
+REVIEWER_RECENT_AGENT_MESSAGES = 3
 
 
 def _build_provider(
@@ -421,39 +430,41 @@ def _status_message(call: LLMToolCall) -> str:
     return call.name
 
 
-def _render_reviewer_transcript(messages: list[LLMMessage]) -> str:
+def _render_reviewer_transcript(
+    messages: list[LLMMessage],
+    max_agent_messages: int = REVIEWER_RECENT_AGENT_MESSAGES,
+) -> str:
+    """Render ONLY the agent's last ``max_agent_messages`` messages (assistant
+    role). The task prompt, tool results, and earlier turns are deliberately
+    excluded — the reviewer judges whether the agent ITSELF signalled it wasn't
+    finished, and seeing the task/output just tempts it to grade correctness."""
+    agent_msgs = [m for m in messages if m.role == "assistant"]
+    if max_agent_messages > 0:
+        agent_msgs = agent_msgs[-max_agent_messages:]
     blocks: list[str] = []
-    for msg in messages:
-        if msg.role == "system":
-            continue
-        info = msg.model_info or {}
-        tcs = info.get("tool_calls", [])
-        if msg.role == "assistant" and tcs:
-            for tc in tcs:
-                name = tc.get("name", "?")
-                args = tc.get("arguments")
-                rendered = (
-                    args if isinstance(args, str) else json.dumps(args, default=str)
-                )
-                rendered = truncate_middle(rendered, REVIEWER_TRANSCRIPT_ARG_LIMIT)
-                blocks.append(f"AGENT CALL {name}: {rendered}")
-            continue
-        content = truncate_middle(msg.content or "", REVIEWER_TRANSCRIPT_MSG_LIMIT)
-        prefix = "USER/TOOL_RESULT" if msg.role == "user" else msg.role.upper()
-        blocks.append(f"{prefix}: {content}")
+    for msg in agent_msgs:
+        if msg.content:
+            blocks.append(
+                f"AGENT: {truncate_middle(msg.content, REVIEWER_TRANSCRIPT_MSG_LIMIT)}"
+            )
+        for tc in (msg.model_info or {}).get("tool_calls", []):
+            name = tc.get("name", "?")
+            args = tc.get("arguments")
+            rendered = args if isinstance(args, str) else json.dumps(args, default=str)
+            rendered = truncate_middle(rendered, REVIEWER_TRANSCRIPT_ARG_LIMIT)
+            blocks.append(f"AGENT CALL {name}: {rendered}")
     return "\n\n".join(blocks)
 
 
 def _validate_completion(
     provider: LLMProvider,
-    original_task: str,
     messages: list[LLMMessage],
 ) -> tuple[bool, str]:
     """One-shot reviewer call. Clean context, no tools. Returns (is_done, note)."""
     reviewer = Conversation.create(provider, model_prompt=REVIEWER_SYSTEM_PROMPT)
     transcript = _render_reviewer_transcript(messages)
     reviewer.add_message(
-        f"ORIGINAL TASK:\n{original_task}\n\nAGENT TRANSCRIPT:\n{transcript}",
+        f"AGENT'S RECENT MESSAGES:\n{transcript}",
         role="user",
     )
     try:
@@ -544,9 +555,7 @@ def _run_turn(
                     and state.submit_kickbacks < MAX_SUBMIT_KICKBACKS
                 ):
                     with with_status("Reviewer checking submit"):
-                        is_done, note = _validate_completion(
-                            provider, original_task, conv.messages
-                        )
+                        is_done, note = _validate_completion(provider, conv.messages)
                     _log_event(
                         log_path,
                         {
@@ -684,7 +693,7 @@ def agent(
         if cfg.disable_todo:
             excluded_tool_names.add(TODO_TOOL.name)
         tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
-        if cfg.allow_database_introspection:
+        if cfg.allow_database_introspection and cfg.allow_file_read:
             if actual_quiet and cfg.disable_todo:
                 system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
             elif actual_quiet:
@@ -694,11 +703,12 @@ def agent(
             else:
                 system_prompt = SYSTEM_PROMPT
         else:
-            # Drop the database bullet too when introspection is disabled.
+            # Drop the database / file-read bullets when those surfaces are off.
             system_prompt = get_agent_instructions(
                 include_show=not actual_quiet,
                 include_todo=not cfg.disable_todo,
-                include_database=False,
+                include_database=cfg.allow_database_introspection,
+                include_file_read=cfg.allow_file_read,
             )
 
     log_path: Path | None = None
@@ -720,6 +730,7 @@ def agent(
     state = AgentState(
         tool_output_limit=cfg.tool_output_limit,
         allow_db_introspection=cfg.allow_database_introspection,
+        allow_file_read=cfg.allow_file_read,
     )
 
     context_block = _read_context_files(context)

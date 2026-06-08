@@ -1,49 +1,34 @@
 query_id = "04"
-generator = "v4"
-gen_length = 1126
+generator = "v3"
+gen_length = 663
 preql_size = 313
 comp_size = 407
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"order_orders\".\"o_orderkey\" as \"order_id\",
-    \"order_orders\".\"o_orderpriority\" as \"order_priority\"
-FROM
-    \"memory\".\"orders\" as \"order_orders\"
-WHERE
-    \"order_orders\".\"o_orderdate\" >= date '1993-07-01' and \"order_orders\".\"o_orderdate\" < date '1993-10-01'
-),
 quizzical as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
+WHERE
+    \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\"
+
 GROUP BY
     1
 HAVING
-    count(CASE WHEN \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\" THEN \"lineitem\".\"l_linenumber\" ELSE NULL END) > 0
-),
-cooperative as (
+    count(\"lineitem\".\"l_linenumber\") > 0
+)
 SELECT
-    \"thoughtful\".\"order_id\" as \"order_id\",
-    \"thoughtful\".\"order_priority\" as \"order_priority\"
-FROM
-    \"thoughtful\"),
-questionable as (
-SELECT
-    \"cooperative\".\"order_id\" as \"order_id\",
-    \"cooperative\".\"order_priority\" as \"order_priority\"
-FROM
-    \"cooperative\")
-SELECT
-    \"questionable\".\"order_priority\" as \"order_priority\",
+    \"order_orders\".\"o_orderpriority\" as \"order_priority\",
     count(\"quizzical\".\"order_id\") as \"order_count\"
 FROM
-    \"questionable\"
-    INNER JOIN \"quizzical\" on \"questionable\".\"order_id\" = \"quizzical\".\"order_id\"
+    \"memory\".\"orders\" as \"order_orders\"
+    INNER JOIN \"quizzical\" on \"order_orders\".\"o_orderkey\" = \"quizzical\".\"order_id\"
+WHERE
+    \"order_orders\".\"o_orderdate\" >= date '1993-07-01' and \"order_orders\".\"o_orderdate\" < date '1993-10-01'
+
 GROUP BY
     1
 ORDER BY 
-    \"questionable\".\"order_priority\" asc"""
+    \"order_orders\".\"o_orderpriority\" asc"""

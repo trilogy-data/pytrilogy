@@ -7,6 +7,8 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.parsing.v2.errors import (
     create_generic_syntax_error,
     create_syntax_error,
+    detect_align_missing_and,
+    detect_clause_after_join,
     detect_definition_after_clause,
     detect_group_by,
     detect_subselect,
@@ -279,6 +281,17 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     def_pos = detect_definition_after_clause(text, pos)
     if def_pos is not None:
         return create_syntax_error(104, def_pos, text)
+
+    # 220: a filter/WHERE continuation placed after a query-scoped join clause
+    # (a join may only be followed by another join or `select`).
+    join_pos = detect_clause_after_join(text, pos)
+    if join_pos is not None:
+        return create_syntax_error(220, join_pos, text)
+
+    # 221: a multi-select `align` group separated by a comma instead of `and`.
+    align_pos = detect_align_missing_and(text, pos)
+    if align_pos is not None:
+        return create_syntax_error(221, align_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position
     # is at or past the last non-whitespace character — otherwise we'd mask

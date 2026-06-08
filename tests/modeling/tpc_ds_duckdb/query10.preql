@@ -1,48 +1,46 @@
-import customer as customer;
-import physical_sales as physical_sales;
-import web_sales as web_sales;
-import catalog_sales as catalog_sales;
+import all_sales as sales;
 
-#Count the customers with the same gender, marital status, education status, purchase estimate, credit rating,
-#dependent count, employed dependent count and college dependent count who live in certain counties and who
-# have purchased from both stores and another sales channel during a three month time period of a given year.
-merge catalog_sales.ship_customer.id into ~customer.id;
-merge web_sales.billing_customer.id into ~customer.id;
-merge physical_sales.customer.id into ~customer.id;
-
-auto relevant_customers <- customer.id
-    ? physical_sales.date.year = 2002
-and physical_sales.date.month_of_year in (1, 2, 3, 4)
-and customer.address.county in ('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', 'La Porte County')
-and (
-    (web_sales.date.year = 2002 and web_sales.date.month_of_year in (1, 2, 3, 4))
-    or (catalog_sales.date.year = 2002 and catalog_sales.date.month_of_year in (1, 2, 3, 4))
-);
+# Two single-channel existence sets sharing the same date window. Phrased as
+# top-level AND atoms (no wrapping parens) so the shared `date` dim filter is a
+# standalone atom: UnionDimPushdown then pushes the date_dim join + filter down
+# through the dedup and into each union branch, pruning every channel's scan to
+# 2002 months 1-4 *before* the UNION ALL.
+auto store_buyers <- sales.purchasing_customer.id ?
+    sales.sales_channel = 'STORE'
+    and sales.date.year = 2002
+    and sales.date.month_of_year in (1, 2, 3, 4);
+auto webcat_buyers <- sales.purchasing_customer.id ?
+    sales.sales_channel in ('WEB', 'CATALOG')
+    and sales.date.year = 2002
+    and sales.date.month_of_year in (1, 2, 3, 4);
 
 where
-    customer.id in relevant_customers and customer.demographics.gender is not null
+    sales.purchasing_customer.id in store_buyers
+    and sales.purchasing_customer.id in webcat_buyers
+    and sales.purchasing_customer.address.county in ('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', 'La Porte County')
+    and sales.purchasing_customer.demographics.gender is not null
 select
-    customer.demographics.gender,
-    customer.demographics.marital_status,
-    customer.demographics.education_status,
-    count(customer.id) as cnt1,
-    customer.demographics.purchase_estimate,
-    count(customer.id) as cnt2,
-    customer.demographics.credit_rating,
-    count(customer.id) as cnt3,
-    customer.demographics.dependent_count,
-    count(customer.id) as cnt4,
-    customer.demographics.employed_dependent_count,
-    count(customer.id) as cnt5,
-    customer.demographics.college_dependent_count,
-    count(customer.id) as cnt6,
+    sales.purchasing_customer.demographics.gender,
+    sales.purchasing_customer.demographics.marital_status,
+    sales.purchasing_customer.demographics.education_status,
+    count(sales.purchasing_customer.id) as cnt1,
+    sales.purchasing_customer.demographics.purchase_estimate,
+    count(sales.purchasing_customer.id) as cnt2,
+    sales.purchasing_customer.demographics.credit_rating,
+    count(sales.purchasing_customer.id) as cnt3,
+    sales.purchasing_customer.demographics.dependent_count,
+    count(sales.purchasing_customer.id) as cnt4,
+    sales.purchasing_customer.demographics.employed_dependent_count,
+    count(sales.purchasing_customer.id) as cnt5,
+    sales.purchasing_customer.demographics.college_dependent_count,
+    count(sales.purchasing_customer.id) as cnt6,
 order by
-    customer.demographics.gender asc,
-    customer.demographics.marital_status asc,
-    customer.demographics.education_status asc,
-    customer.demographics.purchase_estimate asc,
-    customer.demographics.credit_rating asc,
-    customer.demographics.dependent_count asc,
-    customer.demographics.employed_dependent_count asc,
-    customer.demographics.college_dependent_count asc
+    sales.purchasing_customer.demographics.gender asc,
+    sales.purchasing_customer.demographics.marital_status asc,
+    sales.purchasing_customer.demographics.education_status asc,
+    sales.purchasing_customer.demographics.purchase_estimate asc,
+    sales.purchasing_customer.demographics.credit_rating asc,
+    sales.purchasing_customer.demographics.dependent_count asc,
+    sales.purchasing_customer.demographics.employed_dependent_count asc,
+    sales.purchasing_customer.demographics.college_dependent_count asc
 ;

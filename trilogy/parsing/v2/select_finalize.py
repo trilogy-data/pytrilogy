@@ -36,14 +36,21 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping, NamedTuple, cast
 
 from trilogy.constants import CONFIG
-from trilogy.core.enums import ConceptSource, FunctionClass, FunctionType
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    ConceptSource,
+    FunctionClass,
+    FunctionType,
+)
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
     Between,
+    CaseElse,
+    CaseWhen,
     Comparison,
     Concept,
     ConceptRef,
@@ -84,6 +91,17 @@ def _merged_local_concepts(
     return merged
 
 
+def _staged_addresses(context: RuleContext) -> list[str]:
+    """Addresses of all concepts visible to the parse, INCLUDING ones staged this
+    parse but not yet committed to ``environment.concepts`` (e.g. a `rowset`
+    output referenced before commit). Lets the undefined-suggestion point at them
+    — `context.concepts.values()` already merges pending + committed."""
+    try:
+        return [c.address for c in context.concepts.values()]
+    except Exception:
+        return []
+
+
 def _raise_undefined(
     context: RuleContext, address: str, line_no: int | None = None
 ) -> None:
@@ -94,7 +112,9 @@ def _raise_undefined(
         return
     matches: list[str] = []
     try:
-        matches = context.environment.concepts._find_similar_concepts(address)
+        matches = context.environment.concepts._find_similar_concepts(
+            address, extra_keys=_staged_addresses(context)
+        )
     except Exception:
         matches = []
     message = f"Undefined concept: {address}."
@@ -105,18 +125,115 @@ def _raise_undefined(
     raise UndefinedConceptException(message, matches)
 
 
+class _UndefinedRef(NamedTuple):
+    address: str
+    clause: str
+    line: int | None
+    column: int | None
+
+
+def _is_unresolved(context: RuleContext, address: str) -> bool:
+    resolved = context.concepts.get(address)
+    return resolved is None or isinstance(
+        resolved, (UndefinedConcept, UndefinedConceptFull)
+    )
+
+
+def _undefined_ref(
+    ref: ConceptRef | Concept, clause: str, fallback_line: int | None
+) -> _UndefinedRef:
+    meta = getattr(ref, "metadata", None)
+    line = meta.line_number if meta and meta.line_number else fallback_line
+    column = meta.column if meta else None
+    return _UndefinedRef(ref.address, clause, line, column)
+
+
+def collect_clause_undefined(
+    context: RuleContext,
+    clause: str,
+    refs: Iterable[ConceptRef],
+    fallback_line: int | None,
+) -> list[_UndefinedRef]:
+    out: list[_UndefinedRef] = []
+    for ref in refs:
+        if _is_unresolved(context, ref.address):
+            out.append(_undefined_ref(ref, clause, fallback_line))
+    return out
+
+
+def _format_location(rec: _UndefinedRef) -> str:
+    parts: list[str] = []
+    if rec.line is not None:
+        loc = f"line {rec.line}"
+        if rec.column is not None:
+            loc += f", col {rec.column}"
+        parts.append(loc)
+    parts.append(f"in {rec.clause}")
+    return f" ({', '.join(parts)})"
+
+
+def raise_collected_undefined(
+    context: RuleContext, records: list[_UndefinedRef]
+) -> None:
+    """Raise a single ``UndefinedConceptException`` describing every undefined
+    reference in a statement, each with its position and suggestions. Reporting
+    them all at once collapses the fix-rerun-hit-the-next-one loop."""
+    seen: set[tuple[str, str, int | None]] = set()
+    deduped: list[_UndefinedRef] = []
+    for rec in records:
+        key = (rec.address, rec.clause, rec.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(rec)
+
+    staged = _staged_addresses(context)
+
+    def suggest(address: str) -> list[str]:
+        try:
+            return context.environment.concepts._find_similar_concepts(
+                address, extra_keys=staged
+            )
+        except Exception:
+            return []
+
+    if len(deduped) == 1:
+        rec = deduped[0]
+        matches = suggest(rec.address)
+        message = f"Undefined concept: {rec.address}{_format_location(rec)}."
+        if matches:
+            message += f" Suggestions: {matches}"
+        raise UndefinedConceptException(message, matches)
+
+    all_matches: list[str] = []
+    lines: list[str] = []
+    for rec in deduped:
+        matches = suggest(rec.address)
+        all_matches.extend(matches)
+        hint = f"; did you mean: {', '.join(matches)}?" if matches else ""
+        lines.append(f"  - {rec.address}{_format_location(rec)}{hint}")
+    message = (
+        f"Undefined concepts ({len(deduped)} references); fix all before "
+        f"re-running:\n" + "\n".join(lines)
+    )
+    raise UndefinedConceptException(message, all_matches)
+
+
 def _calculate_grain(
     select: SelectStatement,
     context: RuleContext,
     local_concepts: Mapping[str, Concept],
 ) -> Grain:
     targets = [item.concept for item in select.selection]
-    return Grain.from_concepts(
+    result = Grain.from_concepts(
         targets,
         where_clause=select.where_clause,
         environment=context.environment,
         local_concepts=local_concepts,
     )
+    if select.join_clauses:
+        result = select._collapse_join_keys_in_grain(result)
+    return result
 
 
 def _concept_address(c: Any) -> str:
@@ -432,6 +549,151 @@ def _rewrite_aliased_source_refs(select: SelectStatement) -> None:
         )
 
 
+_GROUPING_FNS = (FunctionType.GROUPING, FunctionType.GROUPING_ID)
+
+
+def _item_lineage(item: Any, context: RuleContext) -> Any:
+    """The lineage expression behind a select item, whether it is an inline
+    ``ConceptTransform`` or a by-name reference to an ``auto`` concept."""
+    content = item.content
+    if isinstance(content, ConceptTransform):
+        return content.output.lineage
+    addr = getattr(content, "address", None)
+    if addr is None:
+        return None
+    concept = context.concepts.get(addr)
+    if concept is None or isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
+        return None
+    return concept.lineage
+
+
+def _select_rollup_spec(
+    select: SelectStatement,
+    context: RuleContext,
+) -> tuple[AggregateGroupingMode, list[Any], list[list[Any]]] | None:
+    """The query's non-STANDARD grouping spec (mode, by, grouping_sets) taken
+    from a ROLLUP/CUBE/GROUPING SETS aggregate referenced in the SELECT
+    projection (inline or by name)."""
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
+        if (
+            isinstance(lineage, AggregateWrapper)
+            and lineage.grouping != AggregateGroupingMode.STANDARD
+        ):
+            return (
+                lineage.grouping,
+                list(lineage.by),
+                [list(g) for g in lineage.grouping_sets],
+            )
+    return None
+
+
+def _is_standard_grouping_aggregate(node: Any) -> bool:
+    return (
+        isinstance(node, AggregateWrapper)
+        and node.grouping == AggregateGroupingMode.STANDARD
+        and node.function.operator in _GROUPING_FNS
+    )
+
+
+def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
+    """All STANDARD-mode ``grouping()``/``grouping_id()`` wrappers anywhere in an
+    expression tree (e.g. nested inside a ``case`` that derives a rollup level)."""
+    if _is_standard_grouping_aggregate(node):
+        return [cast(AggregateWrapper, node)]
+    found: list[AggregateWrapper] = []
+    if isinstance(node, Comparison):
+        found += _collect_standard_grouping_wrappers(node.left)
+        found += _collect_standard_grouping_wrappers(node.right)
+    elif isinstance(node, Conditional):
+        found += _collect_standard_grouping_wrappers(node.left)
+        found += _collect_standard_grouping_wrappers(node.right)
+    elif isinstance(node, Parenthetical):
+        found += _collect_standard_grouping_wrappers(node.content)
+    elif isinstance(node, Between):
+        found += _collect_standard_grouping_wrappers(node.left)
+        found += _collect_standard_grouping_wrappers(node.low)
+        found += _collect_standard_grouping_wrappers(node.high)
+    elif isinstance(node, CaseWhen):
+        found += _collect_standard_grouping_wrappers(node.comparison)
+        found += _collect_standard_grouping_wrappers(node.expr)
+    elif isinstance(node, CaseElse):
+        found += _collect_standard_grouping_wrappers(node.expr)
+    elif isinstance(node, AggregateWrapper):
+        for arg in node.function.arguments:
+            found += _collect_standard_grouping_wrappers(arg)
+    elif isinstance(node, Function):
+        for arg in node.arguments:
+            found += _collect_standard_grouping_wrappers(arg)
+    return found
+
+
+def _fix_projection_grouping_mode(
+    select: SelectStatement, context: RuleContext
+) -> None:
+    """``grouping()``/``grouping_id()`` are only meaningful inside the scope that
+    performs the ROLLUP/CUBE/GROUPING SETS. They parse with the default STANDARD
+    grouping mode, which keys them into a separate planner bucket from the rollup
+    aggregate; they then strand in a downstream groupless join/filter CTE and
+    render as ``grouping(col)`` with no GROUP BY (DuckDB: "GROUPING statement
+    cannot be used without groups").
+
+    A ``grouping()`` reached from the SELECT — directly, or nested inside a
+    ``case`` deriving the subtotal level, the TPC-DS-native idiom — just needs
+    its mode aligned with the query's rollup spec so it co-locates with the
+    rollup aggregate. Mutates each wrapper in place (they are dataclasses) so
+    by-name ``auto`` concepts are fixed at their canonical address.
+    """
+    spec = _select_rollup_spec(select, context)
+    if spec is None:
+        return
+    mode, by, grouping_sets = spec
+    for sitem in select.selection:
+        lineage = _item_lineage(sitem, context)
+        if lineage is None:
+            continue
+        for wrapper in _collect_standard_grouping_wrappers(lineage):
+            wrapper.by = list(by)
+            wrapper.grouping = mode
+            wrapper.grouping_sets = [list(g) for g in grouping_sets]
+
+
+def _validate_order_by_aggregates(select: SelectStatement, line_no: int | None) -> None:
+    """Reject inline aggregates in ORDER BY that are not SELECT outputs.
+    ORDER BY may only reference an aggregate via its SELECT
+    alias, so an inline one that has no matching projection is an error — add it
+    to SELECT (``--`` to keep it out of the output rows) and order by the alias.
+    """
+    if not select.order_by:
+        return
+    sig_to_alias = {
+        sig: _strip_local_namespace(addr)
+        for sig, addr in _select_aggregate_outputs(select)
+    }
+    for item in select.order_by.items:
+        aggregates = _collect_condition_aggregates(item.expr)
+        if not aggregates:
+            continue
+        rendered = _render_aggregate(aggregates[0])
+        sig = _aggregate_full_signature(aggregates[0])
+        alias = sig_to_alias.get(sig) if sig is not None else None
+        if alias is not None:
+            hint = (
+                f"order by the SELECT alias `{alias}` instead (`order by {alias} desc`)"
+            )
+        else:
+            hint = (
+                f"add it to SELECT — prefix with `--` to keep it out of the output "
+                f"rows — and order by the alias, e.g. "
+                f"`select ..., --{rendered} as g order by g desc`"
+            )
+        raise InvalidSyntaxException(
+            f"ORDER BY contains aggregate `{rendered}` (line {line_no}), which is "
+            f"not a SELECT output. Aggregates cannot be computed in the ordering "
+            f"scope; {hint}."
+        )
+
+
 def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     line_no = select.meta.line_number if select.meta else None
     if select.where_clause:
@@ -515,6 +777,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                     f"rows, e.g. `select ..., --{cref.address} "
                     f"order by {cref.address} asc`."
                 )
+        _validate_order_by_aggregates(select, line_no)
 
 
 def finalize_select_statement(
@@ -531,20 +794,26 @@ def finalize_select_statement(
     select.grain = _calculate_grain(select, context, merged)
     output_addresses: set[str] = set()
     line_no = select.meta.line_number if select.meta else None
+    # Accumulate every undefined reference (across SELECT / WHERE / ORDER BY)
+    # and raise once at the end, rather than aborting on the first.
+    undefined: list[_UndefinedRef] = []
     for x in select.selection:
         if x.is_undefined:
-            _raise_undefined(context, x.concept.address, line_no)
+            undefined.append(_undefined_ref(x.concept, "SELECT", line_no))
+            continue
         elif isinstance(x.content, ConceptTransform):
             # Validate transform inputs: an undefined concept used only as a
             # function argument (e.g. `sum(missing) as foo`) has a defined
             # output alias, so it would otherwise slip past to SQL generation.
+            bad_arg = False
             for arg in x.content.function.concept_arguments:
-                if isinstance(arg, (UndefinedConcept, UndefinedConceptFull)):
-                    resolved = context.concepts.get(arg.address)
-                    if resolved is None or isinstance(
-                        resolved, (UndefinedConcept, UndefinedConceptFull)
-                    ):
-                        _raise_undefined(context, arg.address, line_no)
+                if isinstance(
+                    arg, (UndefinedConcept, UndefinedConceptFull)
+                ) and _is_unresolved(context, arg.address):
+                    undefined.append(_undefined_ref(arg, "SELECT", line_no))
+                    bad_arg = True
+            if bad_arg:
+                continue
             if isinstance(x.content.output, UndefinedConcept):
                 continue
             # A SELECT output whose expression references its own alias address
@@ -599,7 +868,7 @@ def finalize_select_statement(
             if resolved is None or isinstance(
                 resolved, (UndefinedConcept, UndefinedConceptFull)
             ):
-                _raise_undefined(context, addr, line_no)
+                undefined.append(_undefined_ref(x.content, "SELECT", line_no))
                 continue
             select.local_concepts[addr] = resolved
             if addr in output_addresses:
@@ -607,7 +876,20 @@ def finalize_select_statement(
                     f"Duplicate select output for {addr}; Line: {line_no or 'unknown'}"
                 )
             output_addresses.add(addr)
+    # WHERE / ORDER BY are checked after the SELECT loop so references to
+    # select-defined aliases (added above) resolve before being flagged.
+    if select.where_clause:
+        undefined += collect_clause_undefined(
+            context, "WHERE", select.where_clause.concept_arguments, line_no
+        )
+    if select.order_by:
+        undefined += collect_clause_undefined(
+            context, "ORDER BY", select.order_by.concept_arguments, line_no
+        )
+    if undefined:
+        raise_collected_undefined(context, undefined)
     select.grain = _calculate_grain(select, context, merged)
+    _fix_projection_grouping_mode(select, context)
     _validate_syntax(select, context)
 
 

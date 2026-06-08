@@ -1,7 +1,7 @@
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import ModelValidationError
+from trilogy.core.exceptions import InvalidComparison, ModelValidationError
 from trilogy.core.models.core import EnumType
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -47,6 +47,157 @@ def test_enum_comparison_invalid():
     executor.execute_text(PREQL)
     with pytest.raises(Exception):
         executor.execute_text("select sales where category = 'C';")
+
+
+NULLABLE_ENUM_PREQL = """
+key warehouse_sk int;
+property warehouse_sk.sq_ft enum<bigint>[138504, 294242, 621234, 977787]?;
+
+datasource warehouse (
+    warehouse_sk: warehouse_sk,
+    sq_ft: sq_ft,
+)
+grain (warehouse_sk)
+query '''
+select 1 as warehouse_sk, 138504 as sq_ft
+''';
+"""
+
+NON_NULLABLE_ENUM_PREQL = """
+key warehouse_sk int;
+property warehouse_sk.sq_ft enum<bigint>[138504, 294242, 621234, 977787];
+
+datasource warehouse (
+    warehouse_sk: warehouse_sk,
+    sq_ft: sq_ft,
+)
+grain (warehouse_sk)
+query '''
+select 1 as warehouse_sk, 138504 as sq_ft
+''';
+"""
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        "sq_ft > 977787",  # nothing exceeds the max
+        "sq_ft < 138504",  # nothing below the min
+        "sq_ft = 0",  # not a domain member
+        "sq_ft between 100 and 500",  # range excludes the whole domain
+        "sq_ft in (0, 1)",  # no member listed
+    ],
+)
+def test_enum_unsatisfiable_comparison(predicate):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(NULLABLE_ENUM_PREQL)
+    with pytest.raises(InvalidComparison) as exc:
+        executor.execute_text(f"select warehouse_sk where {predicate};")
+    message = str(exc.value)
+    assert "can never match" in message and "always false" in message
+    assert predicate in message  # the rendered comparison, incl. operator
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        "sq_ft > 0",  # every member exceeds 0
+        "sq_ft >= 138504",  # every member >= min
+        "sq_ft != 0",  # every member differs from a non-member
+        "sq_ft between 0 and 9999999",  # range covers the whole domain
+        "sq_ft not in (0, 1)",  # excludes nothing in the domain
+    ],
+)
+def test_nullable_enum_match_all_suggests_is_not_null(predicate):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(NULLABLE_ENUM_PREQL)
+    with pytest.raises(InvalidComparison) as exc:
+        executor.execute_text(f"select warehouse_sk where {predicate};")
+    message = str(exc.value)
+    assert "only excludes nulls" in message
+    assert "sq_ft is not null" in message
+    assert predicate in message  # the rendered comparison, incl. operator
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        "sq_ft > 0",  # every member exceeds 0
+        "sq_ft != 0",  # every member differs from a non-member
+        "sq_ft between 0 and 9999999",  # range covers the whole domain
+    ],
+)
+def test_non_nullable_enum_match_all_is_tautology(predicate):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(NON_NULLABLE_ENUM_PREQL)
+    with pytest.raises(InvalidComparison) as exc:
+        executor.execute_text(f"select warehouse_sk where {predicate};")
+    message = str(exc.value)
+    assert "matches every value" in message and "always true" in message
+    assert predicate in message  # the rendered comparison, incl. operator
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        "sq_ft = 138504",  # a real member
+        "sq_ft > 138504",  # some members exceed it, some don't
+        "sq_ft between 100 and 300000",  # only the two smallest members
+        "sq_ft in (138504, 999)",  # one member listed
+        "sq_ft not in (138504, 999)",  # excludes one member
+    ],
+)
+def test_enum_discriminating_comparison_allowed(predicate):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(NULLABLE_ENUM_PREQL)
+    executor.generate_sql(f"select warehouse_sk where {predicate};")
+
+
+STRING_ENUM_PREQL = """
+key category enum<string>['RED', 'BLUE', 'GREEN'];
+property category.qty int;
+
+datasource d (
+    category: category,
+    qty: qty,
+)
+grain (category)
+query '''
+select 'RED' as category, 1 as qty
+''';
+"""
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        "category like '%'",  # matches every member
+        "category like 'Z%'",  # matches no member
+        "category not like '%'",  # excludes every member
+        "category ilike 'z%'",  # case-insensitive, still no member
+        "like(category, 'Q%')",  # function form, no member
+    ],
+)
+def test_string_enum_like_constant_raises(predicate):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(STRING_ENUM_PREQL)
+    with pytest.raises(InvalidComparison):
+        executor.generate_sql(f"select category where {predicate};")
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        "category like 'R%'",  # only RED
+        "category like '____'",  # only BLUE (4 chars)
+        "category ilike 'red'",  # only RED, case-insensitive
+        "category not like 'R%'",  # excludes only RED
+    ],
+)
+def test_string_enum_like_discriminating_allowed(predicate):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(STRING_ENUM_PREQL)
+    executor.generate_sql(f"select category where {predicate};")
 
 
 def test_enum_union_injection():

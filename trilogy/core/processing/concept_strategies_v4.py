@@ -127,6 +127,7 @@ def _factory_for_history(history: "V4History") -> Factory:
         canonical_build_cache=caches.canonical_build_cache,
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
+        scoped_joins=caches.scoped_joins,
     )
 
 
@@ -150,6 +151,7 @@ def _build_nested_select(
         grain_build_cache=caches.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
+        scoped_joins=caches.scoped_joins,
     )
     return built, build_env, built.where_clause
 

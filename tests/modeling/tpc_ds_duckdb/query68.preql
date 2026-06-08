@@ -25,7 +25,7 @@ select
     customer.address.city,
 align
     customer_id: physical_sales.customer.id, customer.id
-where
+having
 customer.address.city != physical_sales.sale_address.city
 ;
 

@@ -19,6 +19,7 @@ from trilogy.core.models.build import (
     BuildGrain,
 )
 from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -778,3 +779,70 @@ def test_seed_addresses_returns_empty_when_no_fallback_resolves():
     ]
 
     assert _seed_addresses(cte) == set()
+
+
+def _build_flag_scenario(flag_alias):
+    """fact LEFT_OUTER returns on KEY; returns carries a FLAG bound via
+    ``flag_alias``. Query filters ``FLAG = False`` and the join is evaluated
+    by ``UpgradeJoinOnGuards`` — returns the resulting join type."""
+    key = _build_concept("KEY")
+    measure = _build_concept("MEASURE")
+    flag = _build_concept("FLAG")
+
+    fact_ds = BuildDatasource(
+        name="fact",
+        columns=[
+            BuildColumnAssignment(alias="KEY", concept=key),
+            BuildColumnAssignment(alias="MEASURE", concept=measure),
+        ],
+        address="fact",
+        namespace="test",
+        grain=BuildGrain(),
+    )
+    returns_ds = BuildDatasource(
+        name="returns",
+        columns=[
+            BuildColumnAssignment(alias="KEY", concept=key),
+            BuildColumnAssignment(alias=flag_alias, concept=flag),
+        ],
+        address="returns",
+        namespace="test",
+        grain=BuildGrain(),
+    )
+
+    root = _build_cte("root", [key, measure, flag])
+    root.condition = BuildComparison(
+        left=flag, right=False, operator=ComparisonOperator.EQ
+    )
+    root.source.datasources = [fact_ds, returns_ds]
+    root.source.joins = [
+        BaseJoin(
+            left_datasource=fact_ds,
+            right_datasource=returns_ds,
+            join_type=JoinType.LEFT_OUTER,
+            concept_pairs=[
+                ConceptPair(left=key, right=key, existing_datasource=fact_ds)
+            ],
+        )
+    ]
+
+    UpgradeJoinOnGuards(base_join_only=True).optimize(root, {})
+    return root.source.joins[0].join_type
+
+
+def test_raw_derived_flag_eq_false_keeps_left_outer():
+    """``FLAG = false`` where FLAG is a ``CASE``-style raw column (non-null even
+    on the join's unmatched rows) must NOT upgrade LEFT_OUTER→INNER: the
+    predicate is satisfied by exactly the NULL-padded rows, so an INNER drops
+    the whole result set. (``is_returned = false`` silent-zero-rows bug.)"""
+    raw_flag = RawColumnExpr(
+        text="CASE WHEN RET_ORDER_NUMBER IS NOT NULL THEN True ELSE False END"
+    )
+    assert _build_flag_scenario(raw_flag) == JoinType.LEFT_OUTER
+
+
+def test_plain_column_flag_eq_false_still_upgrades():
+    """Control: a genuine plain right-side column IS NULL-padded on unmatched
+    rows, so ``flag = false`` legitimately rejects them — INNER is sound and
+    the gate must still fire. Confirms the fix is scoped to opaque bindings."""
+    assert _build_flag_scenario("WR_FLAG") == JoinType.INNER

@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from trilogy.core.enums import Ordering
-from trilogy.core.models.author import OrderBy, OrderItem
+from trilogy.core.models.author import (
+    Metadata,
+    OrderBy,
+    OrderItem,
+    UndefinedConcept,
+    UndefinedConceptFull,
+)
 from trilogy.core.statements.author import Limit
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -9,7 +15,12 @@ from trilogy.parsing.v2.rules_context import (
     RuleContext,
     hydrated_children,
 )
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+from trilogy.parsing.v2.syntax import (
+    SyntaxNode,
+    SyntaxNodeKind,
+    SyntaxToken,
+    SyntaxTokenKind,
+)
 
 
 def order_by(
@@ -21,19 +32,45 @@ def order_by(
     return OrderBy(items=args[0])
 
 
+def _order_identifier_expr(context: RuleContext, token: SyntaxToken):
+    """Resolve an ORDER BY identifier to a reference, deferring unresolved names
+    to an ``UndefinedConcept`` placeholder (carrying the token position) so
+    ``finalize_select_statement`` can report every undefined order term at once
+    instead of this rule raising on the first one."""
+    address = token.value.strip()
+    resolved = context.concepts.get(address)
+    if resolved is not None and not isinstance(
+        resolved, (UndefinedConcept, UndefinedConceptFull)
+    ):
+        return resolved.reference
+    return UndefinedConcept(
+        address=address,
+        metadata=Metadata(line_number=token.line, column=token.column),
+    )
+
+
 def order_list(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> list[OrderItem]:
-    args = hydrated_children(node, hydrate)
-    return [
-        OrderItem(
-            expr=(context.concepts.reference(str(x)) if isinstance(x, str) else x),
-            order=y,
-        )
-        for x, y in zip(args[::2], args[1::2])
-    ]
+    # Children alternate (order term, ordering); a term is either an
+    # ORDER_IDENTIFIER token or a general expr node.
+    elems = node.children
+    items: list[OrderItem] = []
+    for i in range(0, len(elems), 2):
+        term = elems[i]
+        order = hydrate(elems[i + 1])
+        if (
+            isinstance(term, SyntaxToken)
+            and term.kind == SyntaxTokenKind.ORDER_IDENTIFIER
+        ):
+            expr = _order_identifier_expr(context, term)
+        else:
+            hv = hydrate(term)
+            expr = context.concepts.reference(hv) if isinstance(hv, str) else hv
+        items.append(OrderItem(expr=expr, order=order))
+    return items
 
 
 def ordering(

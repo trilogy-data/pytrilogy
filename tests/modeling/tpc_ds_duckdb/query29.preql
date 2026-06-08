@@ -1,9 +1,6 @@
 import physical_sales as physical_sales;
 import catalog_sales as catalog_sales;
 
-merge catalog_sales.bill_customer.id into physical_sales.return_customer.id;
-merge catalog_sales.item.id into physical_sales.item.id;
-
 # RC-A correlated-grain shape (2026-05-20). Reference q29 has ONE source
 # grain — the joined rowset of physical_sales ⋈ physical_returns ⋈
 # catalog_sales on (customer, item) — at effective grain
@@ -37,6 +34,8 @@ select
     catalog_sales.quantity,
 ;
 
+inner join catalog_sales.bill_customer.id = physical_sales.return_customer.id
+inner join catalog_sales.item.id = physical_sales.item.id
 select
     correlated.physical_sales.item.text_id as store_sales_item_name,
     correlated.physical_sales.item.desc as store_sales_item_desc,

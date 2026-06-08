@@ -26,7 +26,12 @@ from trilogy.core.processing.grain_utility import (
     _grain_coverage_addresses,
     concept_source_address,
 )
-from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    MergeNode,
+    MultiSelectMergeNode,
+    StrategyNode,
+)
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
 
@@ -238,17 +243,31 @@ def group_if_required_v2(
     depth: int = 0,
 ):
     where_injected = where_injected or set()
+    targets = [
+        x
+        for x in root.output_concepts
+        if x.address in final or any(c in final for c in x.pseudonyms)
+    ]
+    # A multiselect align outer is a pure FULL JOIN of pre-aggregated arms at the
+    # align-key grain and must never regroup: its arms can carry hidden derive-arg
+    # columns whose source keys are absent from the align keys (e.g. a
+    # `--date.year as yr_a` consumed only by `coalesce(yr_a, 0)`), which inflate
+    # the joined pregrain past the align grain. Forcing a GROUP BY there omits the
+    # raw aggregate projections and yields invalid SQL. Keyed off the concrete
+    # node type (the multiselect generator emits a MultiSelectMergeNode) — not the
+    # generic ``whole_grain`` flag, which a group-to enrichment join also sets even
+    # though it joins on the group keys and can genuinely fan out (e.g.
+    # `group(store_id) by order_id` enriched with `product_id`) and so must still
+    # defer to the regroup check below.
+    if isinstance(root, MultiSelectMergeNode):
+        root.set_output_concepts(targets, change_visibility=False)
+        return root
     required = check_if_group_required(
         downstream_concepts=final,
         parents=[root.resolve()],
         environment=environment,
         depth=depth,
     )
-    targets = [
-        x
-        for x in root.output_concepts
-        if x.address in final or any(c in final for c in x.pseudonyms)
-    ]
     if required.required:
         if isinstance(root, MergeNode):
             root.force_group = True
@@ -665,6 +684,26 @@ def get_loop_iteration_targets(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
             f"is a filter-scalar by-aggregate; dropping outer conditions for its scope"
+        )
+        conditions = None
+
+    # A condition can only be evaluated where all its inputs exist. When the
+    # priority we are about to build is itself a *derived* row-argument of the
+    # condition (e.g. a named `auto f1 <- a between x and y` flag used in both
+    # `where (f1 or f2)` and a `? f1` operand), routing the condition into its
+    # build is circular: sourcing the flag's parents puts the flag back in the
+    # mandatory list via the condition's row args, re-forcing forever. Build the
+    # flag first; the condition is applied at this level's completion instead.
+    # (An aggregate grouped *by* a derived row-arg is fine — it isn't the
+    # row-arg itself, so it never matches here and keeps normal pushdown.)
+    if (
+        conditions
+        and priority_concept.derivation not in ROOT_DERIVATIONS
+        and priority_concept.address in {c.address for c in conditions.row_arguments}
+    ):
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
+            f"is a derived condition input; not routing the condition into its build"
         )
         conditions = None
 

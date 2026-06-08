@@ -1,6 +1,6 @@
 query_id = "17"
-generator = "v4"
-gen_length = 9524
+generator = "v3"
+gen_length = 8095
 preql_size = 1439
 comp_size = 1764
 generated_sql = """
@@ -17,7 +17,7 @@ GROUP BY
     1,
     2,
     3),
-young as (
+vacuous as (
 SELECT
     \"analysis_catalog_sales\".\"CS_QUANTITY\" as \"analysis_catalog_quantity\",
     \"analysis_item_items\".\"I_ITEM_DESC\" as \"analysis_item_desc\",
@@ -69,23 +69,23 @@ GROUP BY
     5,
     \"analysis_store_sales\".\"SS_TICKET_NUMBER\",
     \"wakeful\".\"analysis_item_id\"),
-abhorrent as (
+concerned as (
 SELECT
-    \"young\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"young\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
-    \"young\".\"analysis_store_state\" as \"analysis_store_state\",
-    avg(\"young\".\"analysis_catalog_quantity\") as \"_virt_agg_avg_1688371525139287\",
-    avg(\"young\".\"analysis_catalog_quantity\") as \"catalog_sales_quantityave\",
-    count(\"young\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitycount\",
-    stddev_samp(\"young\".\"analysis_catalog_quantity\") as \"_virt_agg_stddev_2693366057110854\",
-    stddev_samp(\"young\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitystdev\"
+    \"vacuous\".\"analysis_item_desc\" as \"analysis_item_desc\",
+    \"vacuous\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
+    \"vacuous\".\"analysis_store_state\" as \"analysis_store_state\",
+    avg(\"vacuous\".\"analysis_catalog_quantity\") as \"_virt_agg_avg_1688371525139287\",
+    avg(\"vacuous\".\"analysis_catalog_quantity\") as \"catalog_sales_quantityave\",
+    count(\"vacuous\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitycount\",
+    stddev_samp(\"vacuous\".\"analysis_catalog_quantity\") as \"_virt_agg_stddev_2693366057110854\",
+    stddev_samp(\"vacuous\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitystdev\"
 FROM
-    \"young\"
+    \"vacuous\"
 GROUP BY
     1,
     2,
     3),
-vacuous as (
+juicy as (
 SELECT
     \"yummy\".\"analysis_item_desc\" as \"analysis_item_desc\",
     \"yummy\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
@@ -105,54 +105,28 @@ FROM
 GROUP BY
     1,
     2,
-    3),
-sweltering as (
+    3)
 SELECT
-    \"abhorrent\".\"_virt_agg_stddev_2693366057110854\" / \"abhorrent\".\"_virt_agg_avg_1688371525139287\" as \"catalog_sales_quantitycov\",
-    \"abhorrent\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"abhorrent\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
-    \"abhorrent\".\"analysis_store_state\" as \"analysis_store_state\",
-    \"abhorrent\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
-    \"abhorrent\".\"catalog_sales_quantitycount\" as \"catalog_sales_quantitycount\",
-    \"abhorrent\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\"
+    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
+    coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") as \"analysis_item_desc\",
+    coalesce(\"concerned\".\"analysis_store_state\",\"juicy\".\"analysis_store_state\") as \"analysis_store_state\",
+    coalesce(\"juicy\".\"store_sales_quantitycount\",0) as \"store_sales_quantitycount\",
+    \"juicy\".\"store_sales_quantityave\" as \"store_sales_quantityave\",
+    \"juicy\".\"store_sales_quantitystdev\" as \"store_sales_quantitystdev\",
+    \"juicy\".\"_virt_agg_stddev_8948125603328408\" / \"juicy\".\"_virt_agg_avg_7518273379920258\" as \"store_sales_quantitycov\",
+    coalesce(\"juicy\".\"store_returns_quantitycount\",0) as \"store_returns_quantitycount\",
+    \"juicy\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
+    \"juicy\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
+    \"juicy\".\"_virt_agg_stddev_2955055239782943\" / \"juicy\".\"_virt_agg_avg_8572613716165371\" as \"store_returns_quantitycov\",
+    \"concerned\".\"catalog_sales_quantitycount\" as \"catalog_sales_quantitycount\",
+    \"concerned\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
+    \"concerned\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\",
+    \"concerned\".\"_virt_agg_stddev_2693366057110854\" / \"concerned\".\"_virt_agg_avg_1688371525139287\" as \"catalog_sales_quantitycov\"
 FROM
-    \"abhorrent\"),
-concerned as (
-SELECT
-    \"vacuous\".\"_virt_agg_stddev_2955055239782943\" / \"vacuous\".\"_virt_agg_avg_8572613716165371\" as \"store_returns_quantitycov\",
-    \"vacuous\".\"_virt_agg_stddev_8948125603328408\" / \"vacuous\".\"_virt_agg_avg_7518273379920258\" as \"store_sales_quantitycov\",
-    \"vacuous\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"vacuous\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
-    \"vacuous\".\"analysis_store_state\" as \"analysis_store_state\",
-    \"vacuous\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
-    \"vacuous\".\"store_returns_quantitycount\" as \"store_returns_quantitycount\",
-    \"vacuous\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
-    \"vacuous\".\"store_sales_quantityave\" as \"store_sales_quantityave\",
-    \"vacuous\".\"store_sales_quantitycount\" as \"store_sales_quantitycount\",
-    \"vacuous\".\"store_sales_quantitystdev\" as \"store_sales_quantitystdev\"
-FROM
-    \"vacuous\")
-SELECT
-    coalesce(\"concerned\".\"analysis_item_text_id\",\"sweltering\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
-    coalesce(\"concerned\".\"analysis_item_desc\",\"sweltering\".\"analysis_item_desc\") as \"analysis_item_desc\",
-    coalesce(\"concerned\".\"analysis_store_state\",\"sweltering\".\"analysis_store_state\") as \"analysis_store_state\",
-    coalesce(\"concerned\".\"store_sales_quantitycount\",0) as \"store_sales_quantitycount\",
-    \"concerned\".\"store_sales_quantityave\" as \"store_sales_quantityave\",
-    \"concerned\".\"store_sales_quantitystdev\" as \"store_sales_quantitystdev\",
-    \"concerned\".\"store_sales_quantitycov\" as \"store_sales_quantitycov\",
-    coalesce(\"concerned\".\"store_returns_quantitycount\",0) as \"store_returns_quantitycount\",
-    \"concerned\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
-    \"concerned\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
-    \"concerned\".\"store_returns_quantitycov\" as \"store_returns_quantitycov\",
-    \"sweltering\".\"catalog_sales_quantitycount\" as \"catalog_sales_quantitycount\",
-    \"sweltering\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
-    \"sweltering\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\",
-    \"sweltering\".\"catalog_sales_quantitycov\" as \"catalog_sales_quantitycov\"
-FROM
-    \"sweltering\"
-    FULL JOIN \"concerned\" on \"sweltering\".\"analysis_item_desc\" is not distinct from \"concerned\".\"analysis_item_desc\" AND \"sweltering\".\"analysis_item_text_id\" = \"concerned\".\"analysis_item_text_id\" AND \"sweltering\".\"analysis_store_state\" = \"concerned\".\"analysis_store_state\"
+    \"concerned\"
+    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_text_id\" = \"juicy\".\"analysis_item_text_id\" AND \"concerned\".\"analysis_store_state\" is not distinct from \"juicy\".\"analysis_store_state\"
 ORDER BY 
-    coalesce(\"concerned\".\"analysis_item_text_id\",\"sweltering\".\"analysis_item_text_id\") asc nulls first,
-    coalesce(\"concerned\".\"analysis_item_desc\",\"sweltering\".\"analysis_item_desc\") asc nulls first,
-    coalesce(\"concerned\".\"analysis_store_state\",\"sweltering\".\"analysis_store_state\") asc nulls first
+    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") asc nulls first,
+    coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") asc nulls first,
+    coalesce(\"concerned\".\"analysis_store_state\",\"juicy\".\"analysis_store_state\") asc nulls first
 LIMIT (100)"""

@@ -20,7 +20,14 @@ and do NOT edit files in `raw/`.
 Answer the ONE business question below by writing a Trilogy query file to
 `query{{nn}}.preql` in the working directory (alongside `trilogy.toml`, NOT
 inside `raw/`). Validate with `trilogy run query{{nn}}.preql{{validate_params}}`.
-Return control once it runs cleanly.
+
+Return control once it runs cleanly to submit your result. This will be 
+your final action.
+
+
+Not every question returns rows — some correctly produce an empty result. An
+empty result can be the right answer, so don't add, drop, or loosen filters just
+to force rows. 
 
 Question {{id}}:
 {{prompt}}{{params_block}}
@@ -38,7 +45,13 @@ Answer the ONE business question below with plain DuckDB SQL.
 
 Write your answer as a SINGLE self-contained SELECT to `query{{nn}}.sql` in the
 working directory, and validate it with the run_file tool before finishing.
-Return control once it runs cleanly.
+
+Return control once it runs cleanly to submit your result. This will be 
+your final action.
+
+Not every question returns rows — some correctly produce an empty result. An
+empty result can be the right answer, so don't add, drop, or loosen filters just
+to force rows. 
 
 Question {{id}}:
 {{prompt}}{{params_block}}
@@ -63,6 +76,10 @@ Each question below states its exact filename (`queryNN.preql`, where NN is the
 question number). Validate each file with `trilogy run <file>` before moving
 on. Typically, you will import one fact file from raw/ per question, though
 some rare ones may require merging multiple facts.
+
+Not every question returns rows — some correctly produce an empty result. An
+empty result can be the right answer, so don't add, drop, or loosen filters just
+to force rows.
 
 Business questions
 ==================
