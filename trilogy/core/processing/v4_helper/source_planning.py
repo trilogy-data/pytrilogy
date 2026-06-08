@@ -166,7 +166,16 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             if graph is None:
                 continue
             bridged = unique(_concepts_in_graph(graph, request.environment), "address")
-            if {c.address for c in bridged} != requested or _has_union_datasource(
+            # The bridge is only worth preferring over `_direct_source` when it
+            # ADDED connector concepts (a superset of what was requested) or a
+            # union. A bridged set that is a strict *subset* of `requested` is
+            # not a connector — it just means single-row/abstract concepts were
+            # excluded from the bridge search (`_resolve_bridge_graph`). Treating
+            # that subset as a connector would route the remaining concepts
+            # through a single partial datasource, dropping the complete-key
+            # merge `_direct_source` would otherwise build (refresh of a
+            # count-by-X persist whose output also carries a `data_through`).
+            if ({c.address for c in bridged} - requested) or _has_union_datasource(
                 graph
             ):
                 return BridgePlan(concepts=bridged, graph=graph)
@@ -349,9 +358,88 @@ def _datasource_nodes_for_bridge(
                 depth=request.depth + 1,
             )
         )
+    parents.extend(_derived_connector_nodes(request, plan, parents))
     if not parents:
         return None
     return parents
+
+
+def _derived_connector_nodes(
+    request: SourceRequest,
+    plan: BridgePlan,
+    datasource_parents: list[StrategyNode],
+) -> list[StrategyNode]:
+    """Materialize bridge concepts whose source is a *derived* connector.
+
+    The bridge can route through a merged derivation (e.g. a recursive
+    `recurse_edge` whose output was `merge`d into a dimension key) that is not a
+    real datasource — its real lineage lives in `alias_origin_lookup`, keyed by
+    the concept's address or any pseudonym, while `environment.concepts` holds a
+    demoted lineage-less ROOT. Such a connector is dropped by the `ds~`-only
+    loop above, leaving the concept it provides unsourced (INVALID_REFERENCE).
+    Plan each needed connector's true origin and hand it back as a parent;
+    `_merge_component_sources` joins it on the pseudonym equivalence.
+    """
+    covered = {
+        c.address for parent in datasource_parents for c in parent.usable_outputs
+    }
+    if {c.address for c in plan.concepts} <= covered:
+        return []
+    # Imported lazily: `concept_strategies_v4` imports this module's package.
+    from trilogy.core.processing.concept_strategies_v4 import (
+        V4History,
+        search_concepts,
+    )
+
+    env = request.environment
+    history = cast(V4History, request.history)
+    planned: set[str] = set()
+    connectors: list[StrategyNode] = []
+    for concept in plan.concepts:
+        for alias in (concept.address, *concept.pseudonyms):
+            origin = env.alias_origin_lookup.get(alias)
+            # Skip non-derived origins, anything a datasource already sources,
+            # and any connector currently mid-plan. The last is the re-entry
+            # guard: planning a connector recurses to source its own inputs,
+            # whose bridge re-routes through the same connector — without the
+            # guard that re-injects forever.
+            if (
+                origin is None
+                or origin.lineage is None
+                or origin.address in planned
+                or origin.address in covered
+                or origin.address in history.connectors_in_progress
+            ):
+                continue
+            # Carry the connector's grain keys it still owes the bridge (e.g. a
+            # recursion keyed by `id` must emit `id`, not group it away) so the
+            # merge has the columns the consumer reads, not just the join key.
+            mandatory = unique(
+                [origin]
+                + [
+                    env.concepts[address]
+                    for address in origin.grain.components
+                    if address in env.concepts and address not in covered
+                ],
+                "address",
+            )
+            history.connectors_in_progress.add(origin.address)
+            try:
+                info = search_concepts(
+                    mandatory_list=mandatory,
+                    history=history,
+                    environment=env,
+                    depth=request.depth + 1,
+                    g=request.graph,
+                    conditions=[],
+                    source_policy=request.source_policy,
+                )
+            finally:
+                history.connectors_in_progress.discard(origin.address)
+            if info.strategy_node is not None:
+                planned.add(origin.address)
+                connectors.append(info.strategy_node)
+    return connectors
 
 
 def _datasource_grain_concept_nodes(

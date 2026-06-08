@@ -7,14 +7,36 @@ fresh agent. Three earlier-suspected "crashes" (`bound_conversion_existence_pres
 turned out to be SQL-shape assertion diffs, not exceptions — they're tracked as
 structure regressions in `tests/v4_known_failing.py`, not here.
 
-| brief | test(s) | exception |
-| --- | --- | --- |
-| [01](01_window_over_partition_invalid_ref.md) | `test_rank_by` | `ValueError: Invalid reference string` (INVALID_REFERENCE_BUG) |
-| [02](02_recursive_enrichment_invalid_ref.md) | `test_recursive_enrichment` | `ValueError: Invalid reference string` |
-| [03](03_subselect_correlation_invalid_ref.md) | `test_subselect_closest_warehouse` | `ValueError: Invalid reference string` |
-| [04](04_struct_in_array_unresolvable.md) | `test_struct_in_array_parsing`, `test_struct_in_array_item_access` | `UnresolvableQueryException` |
-| [05](05_rowset_window_unresolvable.md) | `test_rowset_shape` | `UnresolvableQueryException` |
-| [06](06_refresh_ambiguous_join.md) | `test_refresh_multiple_aggregate_persists_with_shared_count` | `AmbiguousRelationshipResolutionException` |
+| brief | test(s) | exception | status |
+| --- | --- | --- | --- |
+| [01](01_window_over_partition_invalid_ref.md) | `test_rank_by` | `ValueError: Invalid reference string` (INVALID_REFERENCE_BUG) | ✅ FIXED |
+| [02](02_recursive_enrichment_invalid_ref.md) | `test_recursive_enrichment` | `ValueError: Invalid reference string` | ✅ FIXED |
+| [03](03_subselect_correlation_invalid_ref.md) | `test_subselect_closest_warehouse` | `ValueError: Invalid reference string` | ✅ FIXED |
+| [04](04_struct_in_array_unresolvable.md) | `test_struct_in_array_parsing`, `test_struct_in_array_item_access` | `UnresolvableQueryException` | ✅ FIXED |
+| [05](05_rowset_window_unresolvable.md) | `test_rowset_shape` | `UnresolvableQueryException` | ✅ FIXED |
+| [06](06_refresh_ambiguous_join.md) | `test_refresh_multiple_aggregate_persists_with_shared_count` | `AmbiguousRelationshipResolutionException` → later `UnresolvableQueryException` | ✅ FIXED |
+
+**Remaining:** none — all six briefs are fixed.
+
+Brief 02's fix: `_datasource_nodes_for_bridge` (`v4_helper/source_planning.py`) only
+materialized real `ds~` datasource nodes and silently dropped the *derived*
+connector the bridge identified (a recursive `recurse_edge` merged into a dimension
+key — its lineage lives in `alias_origin_lookup`, not as a `ds~` node), leaving the
+concept it provides unsourced (INVALID_REFERENCE). New `_derived_connector_nodes`
+plans each needed connector's true origin (generic over any merged derivation, not
+just RECURSIVE) and hands it back as a parent for `_merge_component_sources` to join
+on the pseudonym equivalence. Two obstacles handled: (1) infinite re-entry — planning
+a connector recurses to source its own inputs whose bridge re-routes through the same
+connector; guarded via `V4History.connectors_in_progress`. (2) The connector must
+emit its grain keys (`id`), not just the join key — else the consumer's column is
+grouped away.
+
+Brief 06's final fix: `_bridge_plan` (`v4_helper/source_planning.py`) treated a
+bridged set that is a strict *subset* of the requested concepts (single-row/abstract
+concepts like `data_through` are excluded from the bridge search) as if the bridge
+had added a connector, routing the rest through one partial datasource and dropping
+the complete-key merge. Now it only prefers the bridge when it adds concepts NOT in
+the request (a real connector) or a union.
 
 ## Shared context: the `INVALID_REFERENCE_BUG` sentinel (briefs 01–03)
 

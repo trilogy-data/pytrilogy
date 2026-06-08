@@ -84,6 +84,10 @@ class V4History(History):
     parallel, correctly-typed cache for the BuildInfo bundles v4 returns."""
 
     build_history: dict[str, BuildInfo | None] = field(default_factory=dict)
+    # Derived-connector origin addresses currently mid-plan, used by the root
+    # source planner to break the self-referential bridge recursion (a merged
+    # recursive connector whose own input search re-routes through it).
+    connectors_in_progress: set[str] = field(default_factory=set)
 
     def _v4_key(
         self,

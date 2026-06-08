@@ -8,14 +8,17 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.processing.concept_strategies_v4 import V4History
-from trilogy.core.processing.nodes import UnionNode
+from trilogy.core.processing.nodes import RecursiveNode, UnionNode
 from trilogy.core.processing.v4_helper.source_planning import (
     SourceRequest,
     _bridge_plan,
+    _concepts_in_graph,
     _datasource_grain_concept_nodes,
     _datasource_nodes_for_bridge,
     _inject_union_datasources,
     _original_datasource_concept_nodes,
+    _requested_concepts,
+    _resolve_bridge_graph,
     _search_concepts_for_bridge,
     plan_source,
 )
@@ -163,6 +166,64 @@ grain (id)
 query '''select 1 id, 1201 month_seq, 10 value''';
 """
 
+# `code` lives complete on `carrier`; `flight` references it as a partial `~code`
+# foreign key. `data_through` is a `<*>` single-row watermark constant. Sourcing
+# {code, id, data_through} must keep `code` complete (carrier LEFT JOIN flight),
+# not collapse onto the partial flight scan. (refresh brief 06)
+PARTIAL_KEY_WITH_WATERMARK_MODEL = """
+key code string;
+key id int;
+property <*>.data_through datetime;
+
+datasource carrier (
+    code: code,
+)
+grain (code)
+query '''select 'AA' as code''';
+
+datasource flight (
+    carrier: ~code,
+    id2: id,
+)
+grain (id)
+query '''select 'AA' as carrier, 1 as id2''';
+
+datasource flight_watermark (
+    data_through: data_through,
+)
+grain (data_through)
+query '''select TIMESTAMP '2026-04-24 10:07:49' as data_through''';
+"""
+
+# A recursive `recurse_edge` connector (`first_parent`, grain {id}) merged into a
+# dimension key (`pid`) on a SEPARATE datasource. Sourcing {id, plabel} must
+# materialize the recursion as a connector parent (it owns `id`) and join it to
+# the dimension on `first_parent ≡ pid` — the bridge's derived connector lives in
+# `alias_origin_lookup`, not as a `ds~` node. (brief 02)
+RECURSIVE_CONNECTOR_MODEL = """
+key id int;
+property id.parent int;
+key pid int;
+property pid.plabel string;
+
+datasource edges (
+    id: id,
+    parent: parent,
+)
+grain (id)
+query '''select 1 as id, null as parent union all select 2, 1 union all select 3, 2''';
+
+datasource pnodes (
+    pid: pid,
+    plabel: plabel,
+)
+grain (pid)
+query '''select 1 as pid, 'A' as plabel union all select 2, 'B' ''';
+
+auto first_parent <- recurse_edge(id, parent);
+merge first_parent into pid;
+"""
+
 
 def _build_partial_union():
     env = Environment()
@@ -204,6 +265,18 @@ def _build_partitioned_channel_dim():
 def _build_condition_only():
     env = Environment()
     env.parse(CONDITION_ONLY_MODEL)
+    return env, env.materialize_for_select()
+
+
+def _build_partial_key_with_watermark():
+    env = Environment()
+    env.parse(PARTIAL_KEY_WITH_WATERMARK_MODEL)
+    return env, env.materialize_for_select()
+
+
+def _build_recursive_connector():
+    env = Environment()
+    env.parse(RECURSIVE_CONNECTOR_MODEL)
     return env, env.materialize_for_select()
 
 
@@ -379,6 +452,108 @@ class TestBridgeSourcePlanning:
 
         assert parents is not None
         assert any(isinstance(parent, UnionNode) for parent in parents)
+
+    def test_bridge_plan_ignores_single_row_subset_as_non_connector(self):
+        """A bridged set that is a strict SUBSET of the request is not a
+        connector — it just means a single-row/abstract concept (`data_through`)
+        was excluded from the bridge search. `_bridge_plan` must return None so
+        `_direct_source` builds the complete-key merge, rather than treating the
+        subset as a connector and routing through one partial scan. (brief 06)"""
+        env, benv = _build_partial_key_with_watermark()
+        request = SourceRequest(
+            outputs=[
+                benv.concepts["local.code"],
+                benv.concepts["local.id"],
+                benv.concepts["local.data_through"],
+            ],
+            environment=benv,
+            graph=generate_graph(benv),
+            history=V4History(base_environment=env),
+            source_policy=FALLBACK_SOURCE_POLICY,
+        )
+
+        # The bridge graph excludes the single-row `data_through`, so its concept
+        # set is exactly the strict subset that used to misfire the old
+        # `bridged != requested` gate.
+        search = _search_concepts_for_bridge(request)
+        bridge_graph = _resolve_bridge_graph(
+            search,
+            request,
+            attempt=SourceAttempt.FULL,
+            filter_downstream=False,
+            search_conditions=None,
+        )
+        assert bridge_graph is not None
+        bridged = {c.address for c in _concepts_in_graph(bridge_graph, benv)}
+        requested = {c.address for c in _requested_concepts(request)}
+        assert bridged < requested  # strict subset (data_through dropped)
+
+        for attempt in (SourceAttempt.FULL, SourceAttempt.PARTIAL_UNSCOPED):
+            assert _bridge_plan(request, attempt) is None
+
+    def test_plan_source_keeps_partial_key_complete_with_single_row_output(self):
+        """Sourcing a partial foreign key (`code`) alongside a single-row
+        constant (`data_through`) must still merge the complete dimension source
+        (`carrier`), leaving `code` non-partial. (brief 06)"""
+        env, benv = _build_partial_key_with_watermark()
+        node = plan_source(
+            SourceRequest(
+                outputs=[
+                    benv.concepts["local.code"],
+                    benv.concepts["local.id"],
+                    benv.concepts["local.data_through"],
+                ],
+                environment=benv,
+                graph=generate_graph(benv),
+                history=V4History(base_environment=env),
+                source_policy=FALLBACK_SOURCE_POLICY,
+            )
+        )
+
+        assert node is not None
+        assert {concept.address for concept in node.output_concepts} == {
+            "local.code",
+            "local.id",
+            "local.data_through",
+        }
+        assert "local.code" not in {
+            concept.address for concept in (node.partial_concepts or [])
+        }
+
+    def test_plan_source_materializes_recursive_bridge_connector(self):
+        """A `recurse_edge` connector merged into a dimension key on another
+        datasource is a derived bridge concept with no `ds~` node — its real
+        lineage lives in `alias_origin_lookup`. `plan_source` must materialize
+        the recursion as a parent (carrying both its key `id` and the join key
+        `first_parent`) and join it to the dimension source, not drop it and
+        render INVALID_REFERENCE. (brief 02)"""
+        env, benv = _build_recursive_connector()
+        node = plan_source(
+            SourceRequest(
+                outputs=[benv.concepts["local.id"], benv.concepts["local.plabel"]],
+                environment=benv,
+                graph=generate_graph(benv),
+                history=V4History(base_environment=env),
+                source_policy=FALLBACK_SOURCE_POLICY,
+            )
+        )
+
+        assert node is not None
+        assert {"local.id", "local.plabel"} <= {
+            concept.address for concept in node.output_concepts
+        }
+        recursive_nodes: list[RecursiveNode] = []
+        stack = list(node.parents)
+        while stack:
+            current = stack.pop()
+            if isinstance(current, RecursiveNode):
+                recursive_nodes.append(current)
+            stack.extend(current.parents)
+        assert recursive_nodes, "recursion connector was dropped from the bridge"
+        connector_outputs = {
+            c.address for n in recursive_nodes for c in n.output_concepts
+        }
+        assert {"local.id", "local.first_parent"} <= connector_outputs
 
     def test_direct_source_includes_condition_only_row_args(self):
         env, benv = _build_condition_only()
