@@ -7,6 +7,9 @@ class UsageDict:
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    # Reasoning/thinking tokens, when the provider reports them separately
+    # (e.g. Gemini's thoughtsTokenCount). Not included in completion_tokens.
+    reasoning_tokens: int = 0
 
 
 @dataclass
@@ -34,6 +37,9 @@ class LLMResponse:
     # output was truncated by max_tokens — tool_call arguments may be partial
     # (or auto-closed JSON), which silently corrupts write_file payloads.
     finish_reason: Optional[str] = None
+    # Thought-summary text, when the provider returns reasoning (e.g. Gemini
+    # parts flagged `thought: true`). Surfaced into the conversation trace.
+    reasoning: Optional[str] = None
 
 
 @dataclass

@@ -140,8 +140,13 @@ class GoogleProvider(LLMProvider):
         # Build the request URL
         url = f"{self.base_completion_url}/models/{self.model}:generateContent"
 
-        # Build request body
-        request_body: Dict[str, Any] = {"contents": contents, "generationConfig": {}}
+        # Build request body. Request thought summaries so reasoning shows up in
+        # the trace (Gemini 2.5 models think by default but only return the
+        # thought parts when includeThoughts is set).
+        request_body: Dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {"thinkingConfig": {"includeThoughts": True}},
+        }
         if options.tools:
             request_body["tools"] = [
                 {
@@ -215,7 +220,18 @@ class GoogleProvider(LLMProvider):
             if not parts:
                 raise Exception("No parts in response content")
 
-            text_parts = [part.get("text", "") for part in parts if part.get("text")]
+            # Parts flagged `thought: true` are reasoning summaries, not answer
+            # text — keep them out of the response text and surface separately.
+            text_parts = [
+                part["text"]
+                for part in parts
+                if part.get("text") and not part.get("thought")
+            ]
+            thought_parts = [
+                part["text"]
+                for part in parts
+                if part.get("text") and part.get("thought")
+            ]
             tool_calls = [
                 LLMToolCall(
                     name=part["functionCall"]["name"],
@@ -229,14 +245,17 @@ class GoogleProvider(LLMProvider):
             usage_metadata = data.get("usageMetadata", {})
             prompt_tokens = usage_metadata.get("promptTokenCount", 0)
             completion_tokens = usage_metadata.get("candidatesTokenCount", 0)
+            reasoning_tokens = usage_metadata.get("thoughtsTokenCount", 0)
 
             return LLMResponse(
                 text="\n".join(text_parts).strip(),
                 tool_calls=tool_calls,
+                reasoning="\n".join(thought_parts).strip() or None,
                 usage=UsageDict(
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens,
+                    total_tokens=prompt_tokens + completion_tokens + reasoning_tokens,
+                    reasoning_tokens=reasoning_tokens,
                 ),
             )
         except httpx.HTTPStatusError as error:

@@ -70,8 +70,7 @@ def test_generate_query_requires_submit_query_after_create_query():
     assert provider.call_count == 2
     assert response == f"{VALID_QUERY};"
     assert any(
-        TRILOGY_CREATE_QUERY_TOOL.name in message
-        and "process_query returned" in message
+        TRILOGY_CREATE_QUERY_TOOL.name in message and "syntactically valid" in message
         for message in user_messages(conversation)
     )
 
