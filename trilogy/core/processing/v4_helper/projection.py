@@ -41,6 +41,11 @@ def concept_satisfiable(
     seen = cache if cache is not None else {}
     if concept.address in available or concept.address in keep:
         return True
+    # A merged/struct concept can be available under a pseudonym address (e.g.
+    # the unnest exposes `local.unnest_array`, the attr-access arg is its merge
+    # alias `local.wrapper`); they name the same column, so either satisfies.
+    if any(p in available or p in keep for p in concept.pseudonyms):
+        return True
     if concept.address in seen:
         return seen[concept.address]
     args = row_lineage_arguments(concept)

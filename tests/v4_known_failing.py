@@ -27,10 +27,6 @@ from __future__ import annotations
 
 # Reason strings are deliberately coarse: they name the v4 capability gap, not a
 # per-test diff. Group edits when a whole class of tests shares one root cause.
-_AGG_SOURCE = (
-    "v4 aggregate-source selection: picks the raw source instead of a "
-    "pre-aggregated / rollup summary table (correct rows, worse plan)"
-)
 _CRASH = "v4 crash during build/render"
 _INLINE = "v4 inlining/merge produces a different CTE shape than v3"
 _PERSIST = (
@@ -49,14 +45,6 @@ _TPCDS_SIZE = (
 )
 
 V4_KNOWN_FAILING: dict[str, str] = {
-    # --- discovery: aggregate-source selection gap ---
-    "tests/discovery/test_aggregate_handling.py::test_combine_grand_total_with_joined_namespace_count": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_handling.py::test_partial_aggregate_rollup_rejects_unsupported_aggregates": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_dimension_filter_with_aggregate": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_filter_on_grain_not_in_select": _AGG_SOURCE,
-    "tests/discovery/test_aggregate_resolution_coverage.py::test_partial_key_upgrade_with_filter": _AGG_SOURCE,
-    "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter": _AGG_SOURCE,
-    "tests/discovery/test_primary_source_aggregate_fallback.py::test_partial_precomputed_uses_aggregate_with_grain_filter": _AGG_SOURCE,
     # --- discovery: history/debug SQL snapshot diffs ---
     "tests/discovery/test_discovery.py::test_history_e2e_non_materialized_field": _INLINE,
     # --- optimization: CTE-shape snapshot diffs ---
@@ -64,29 +52,20 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/optimization/test_inlining.py::test_select_literal_is_rendered_in_projection": _INLINE,
     "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection": _INLINE,
     "tests/optimization/test_merge_basic.py::test_inline_filter_basic": _INLINE,
-    "tests/optimization/test_merge_coalesce_impute.py::test_merge_coalesce_impute_no_group_by": _INLINE,
-    "tests/optimization/test_merge_coalesce_impute.py::test_union_sources_include_all_required_columns": _INLINE,
     "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection": _INLINE,
     # --- complex: shape diffs (assert on SQL, not crashes) ---
     "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _INLINE,
     "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate": _INLINE,
     "tests/complex/test_rowset.py::test_rowset_alias_name_collision": _INLINE,
-    # --- complex: crashes ---
-    "tests/complex/test_structs.py::test_struct_in_array_item_access": _CRASH,
-    "tests/complex/test_structs.py::test_struct_in_array_parsing": _CRASH,
     # --- persistence / etl: persisted-source reuse + shape diffs ---
     "tests/persistence/test_basic_persistence.py::test_persist_with_where": _INLINE,
     # --- stdlib: result regression (distilled to failing_cases/top_x_by_metric) ---
     "tests/stdlib/test_report.py::test_top_x_by_metric": _RESULT,
-    # --- scripts: refresh hits v4 ambiguous-join-resolution ---
-    "tests/scripts/test_refresh.py::test_refresh_multiple_aggregate_persists_with_shared_count": _CRASH,
     # --- engine/demo: rowset/merge fan-out result regressions + crashes ---
     "tests/engine/demo/test_demo_duckdb.py::test_demo_e2e": _RESULT,
     "tests/engine/demo/test_demo_duckdb.py::test_merge": _RESULT,
     "tests/engine/demo/test_demo_duckdb.py::test_merge_basic": _RESULT,
     "tests/engine/demo/test_demo_duckdb_import.py::test_demo_merge_rowset_e2e": _RESULT,
-    "tests/engine/demo/test_demo_duckdb_multi_table.py::test_rowset_shape": _CRASH,
-    "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_closest_warehouse": _CRASH,
     # --- engine: rendering / source-selection / crashes ---
     "tests/engine/test_bigquery.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_sqlite.py::test_date_diff_rendering": _RENDER,
@@ -94,14 +73,11 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # materialized-root short-circuit only trusts AGGREGATE/BASIC derivations
     # (an UNNEST can be a multi-source merge that drops rows), so this stays derived.
     "tests/persistence/test_complex_persistence.py::test_complex": _PERSIST,
-    "tests/engine/test_duckdb.py::test_anon_function_resolves_from_precomputed_source": _AGG_SOURCE,
-    "tests/engine/test_duckdb.py::test_recursive_enrichment": _CRASH,
     "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_array_inclusion_aggregate": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
     # --- modeling (non-TPC) sweep ---
-    "tests/modeling/funnel_analysis/test_funnel_analysis.py::test_funnel_with_remap": _MODELING,
     "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two": _MODELING,
     "tests/modeling/gcat/gcat2/test_gcat_two.py::test_refresh": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_equals_comparison": _MODELING,
@@ -125,11 +101,9 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous": _MODELING,
     "tests/modeling/usa_names/test_names.py::test_filter_constant": _MODELING,
     "tests/modeling/usa_names/test_names.py::test_group_by_with_existing": _MODELING,
-    # --- tpc-h: adhoc06 stops using the precomputed cache table; adhoc07 shape ---
-    "tests/modeling/tpc_h/test_tpch_queries.py::test_adhoc06": _PERSIST,
+    # --- tpc-h: adhoc07 shape ---
     "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07": _MODELING,
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---
-    "tests/modeling/tpc_ds/test_queries.py::test_one": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twelve": _TPCDS_SIZE,

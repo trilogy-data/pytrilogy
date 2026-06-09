@@ -1,18 +1,19 @@
+import json
+
 from trilogy import Environment
 from trilogy.ai.constants import AGGREGATE_FUNCTIONS, FUNCTIONS, RULE_PROMPT
 from trilogy.ai.models import LLMRequestOptions, LLMToolDefinition
 from trilogy.ai.syntax_examples import example_headers
 from trilogy.authoring import (
     ArrayType,
-    Concept,
     DataType,
     MapType,
     NumericType,
     StructType,
     TraitDataType,
 )
-from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.core import DataTyped, EnumType, StructComponent
+from trilogy.scripts.explore import build_concepts_payload
 
 
 def get_trilogy_syntax_reference() -> str:
@@ -154,23 +155,22 @@ def datatype_to_field_prompt(
     return f"{datatype.value}"
 
 
-def concept_field_name(c: Concept) -> str:
-    # "local" is the implicit current-file namespace; don't surface it to the agent
-    if c.namespace == DEFAULT_NAMESPACE:
-        return c.name
-    return c.address
-
-
-def concepts_to_fields_prompt(concepts: list[Concept]) -> str:
-    return ", ".join(
-        [
-            f"[name: {concept_field_name(c)} | type: {datatype_to_field_prompt(c.datatype)}]"
-            for c in concepts
-        ]
-    )
+def concepts_to_fields_prompt(environment: Environment) -> str:
+    """Concise JSON concept dump for the environment, sharing the `explore`
+    command's grouped formatting: local namespaces in full declaration syntax,
+    imported namespaces collapsed to name-only lists. Builtins and the internal
+    env scaffolding are filtered out, mirroring `explore`'s defaults."""
+    items = [
+        (addr, concept)
+        for addr, concept in environment.concepts.items()
+        if not addr.startswith("__") and not addr.startswith("local._env_")
+    ]
+    return json.dumps(build_concepts_payload(environment, items), indent=2)
 
 
 def create_query_prompt(query: str, environment: Environment) -> str:
-    fields = concepts_to_fields_prompt(list(environment.concepts.values()))
+    fields = concepts_to_fields_prompt(environment)
     return f"""
-Using these base and aliased calculations, derivations thereof created with valid Trilogy, and any extra context you have: {fields}, create the best valid Trilogy query to answer the following user input: "{query}". Use the {TRILOGY_CREATE_QUERY_TOOL.name} tool to validate draft queries if needed. You must finish by calling the {TRILOGY_QUERY_TOOL.name} tool with a complete Trilogy query in the query field. The final query must end with a semicolon."""
+Using these available concepts (base and derived calculations created with valid Trilogy), and any extra context you have:
+{fields}
+create the best valid Trilogy query to answer the following user input: "{query}". Use the {TRILOGY_CREATE_QUERY_TOOL.name} tool to validate draft queries if needed. You must finish by calling the {TRILOGY_QUERY_TOOL.name} tool with a complete Trilogy query in the query field. The final query must end with a semicolon."""

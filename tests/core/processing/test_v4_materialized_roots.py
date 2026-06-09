@@ -62,6 +62,36 @@ grain (customer_id, order_date)
 query '''select 101 as customer_id, date '2024-01-01' as order_date, 1 as order_count, 10.0 as total_amount''';
 """
 
+# Facts + only a per-customer summary (no per-date table): a filter on
+# order_date can't be expressed on any precomputed table.
+MODEL_COARSE_SUMMARY_ONLY = """
+key order_id int;
+key customer_id int;
+key order_date date;
+property order_id.amount float;
+auto order_count <- count(order_id);
+auto total_amount <- sum(amount);
+
+datasource orders (
+    order_id: order_id, customer_id: customer_id,
+    order_date: order_date, amount: amount,
+)
+grain (order_id)
+query '''select 1 as order_id, 101 as customer_id, date '2024-01-01' as order_date, 10.0 as amount''';
+
+datasource customers (
+    customer_id: customer_id,
+)
+grain (customer_id)
+query '''select 101 as customer_id''';
+
+datasource agg_by_customer (
+    customer_id: customer_id, order_count: order_count, total_amount: total_amount,
+)
+grain (customer_id)
+query '''select 101 as customer_id, 1 as order_count, 10.0 as total_amount''';
+"""
+
 # Same facts, no summary tables: nothing is materialized to short-circuit to.
 MODEL_NO_SUMMARY = """
 key order_id int;
@@ -139,11 +169,23 @@ def test_non_additive_not_rolled_up():
     assert _roots("SELECT customer_id, distinct_customers;") == set()
 
 
-def test_filter_below_grain_blocks_exact_and_rollup():
-    # A predicate on order_date can't be expressed on the customer-grain summary,
-    # so order_count must stay derived (exact rejected, rollup gated off).
+def test_filter_below_grain_uses_finer_summary():
+    # A predicate on order_date can't be expressed on the customer-grain summary
+    # (exact match rejected), but the finer agg_by_customer_date carries the
+    # column, so order_count is flagged a rollup root — source planning then pins
+    # that table, pushes the filter pre-aggregation, and SUM-rolls to customer.
     roots = _roots(
         "WHERE order_date >= '2024-01-01'::date SELECT customer_id, order_count;"
+    )
+    assert "local.order_count" in roots
+
+
+def test_filter_below_grain_without_finer_summary_stays_derived():
+    # No summary carries order_date, so the filter can't be pushed pre-aggregation
+    # on any precomputed table; order_count must be derived from base orders.
+    roots = _roots(
+        "WHERE order_date >= '2024-01-01'::date SELECT customer_id, order_count;",
+        MODEL_COARSE_SUMMARY_ONLY,
     )
     assert "local.order_count" not in roots
 

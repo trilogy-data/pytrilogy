@@ -4,7 +4,9 @@ import pytest
 
 from tests.conftest import load_secret
 from trilogy import Environment
-from trilogy.ai import Provider, text_to_query
+from trilogy.ai import Provider
+from trilogy.ai.conversation import Conversation
+from trilogy.ai.execute import build_provider
 from trilogy.authoring import (
     AggregateWrapper,
     Comparison,
@@ -115,20 +117,38 @@ def _counts_flights(concept, env: Environment, flight_key: str) -> bool:
     return False
 
 
-def validate_response(response: str, parsed: SelectStatement, env: Environment):
-    assert parsed.where_clause is not None, f"Expected a where clause, got {response}"
+def _format_conversation(conversation: Conversation) -> str:
+    lines = []
+    for message in conversation.messages:
+        lines.append(f"--- {message.role} ---")
+        lines.append(message.content)
+        if message.model_info:
+            lines.append(f"[model_info: {message.model_info}]")
+    return "\n".join(lines)
+
+
+def validate_response(
+    response: str,
+    parsed: SelectStatement,
+    env: Environment,
+    transcript: str,
+):
+    def detail(reason: str) -> str:
+        return f"{reason}, got {response}\n\nLLM conversation:\n{transcript}"
+
+    assert parsed.where_clause is not None, detail("Expected a where clause")
     assert _has_year_equals(
         parsed.where_clause, env, env.concepts["local.dep_time"].address, 2020
-    ), f"Expected a year(local.dep_time) = 2020 filter, got {response}"
+    ), detail("Expected a year(local.dep_time) = 2020 filter")
 
     flight_key = env.concepts["local.id2"].address
     found_count = any(
         _counts_flights(env.concepts[x.address], env, flight_key)
         for x in parsed.output_components
     )
-    assert (
-        found_count
-    ), f"Expected a flight-count aggregate in the output components, got {response}"
+    assert found_count, detail(
+        "Expected a flight-count aggregate in the output components"
+    )
 
 
 def run_provider_test(secret_name: str, provider: Provider, model: str):
@@ -137,15 +157,16 @@ def run_provider_test(secret_name: str, provider: Provider, model: str):
         pytest.skip(f"{secret_name} not found in .env.secrets or environment variables")
 
     environment, _ = Environment(working_path=env_path).parse("""import flight;""")
-    response = text_to_query(
-        environment,
-        "number of flights by month in 2020",
-        provider,
-        model,
-        api_key,
+    conversation = Conversation.create(
+        provider=build_provider(provider, model, api_key)
+    )
+    response = conversation.generate_query(
+        user_input="number of flights by month (departure date) in 2020", environment=environment
     )
     _, parsed = environment.parse(response)
-    validate_response(response, parsed[-1], environment)
+    validate_response(
+        response, parsed[-1], environment, _format_conversation(conversation)
+    )
 
 
 def test_basic_openai_completion():

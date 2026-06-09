@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from trilogy.core import graph as nx
+from trilogy.core.enums import Granularity, JoinType
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -21,11 +22,20 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import merge_conditions
+from trilogy.core.processing.aggregate_rollup import (
+    _is_additive_aggregate,
+    filter_finer_row_args,
+    get_additive_rollup_concepts,
+)
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    merge_conditions,
+)
 from trilogy.core.processing.node_generators.node_merge_node import (
     AMBIGUITY_CHECK_LIMIT,
     detect_ambiguity_and_raise,
@@ -36,6 +46,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_injection
     get_union_sources,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
+    create_select_node,
     create_select_node_candidate,
     finalize_select_node,
 )
@@ -149,7 +160,32 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
     return _concepts_with_grain_keys(_requested_concepts(request), request.environment)
 
 
+def _single_source_covers_completely(request: SourceRequest) -> bool:
+    """One datasource binds every requested concept (and filter column) as a
+    non-partial output.
+
+    When such a source exists no join connector is needed, so a bridge that
+    "adds" one is routing the requested columns through an unnecessary finer
+    source (e.g. base `flight` via its `id` key) instead of the summary table
+    that carries them directly. Let `_direct_source`'s grain-aware scoring pick
+    the better single source. A partial coverage still needs the bridge (the
+    partial key must be upgraded against its dimension), so non-partial is
+    required here."""
+    requested = {c.canonical_address for c in _requested_concepts(request)}
+    for ds in request.environment.datasources.values():
+        if not isinstance(ds, BuildDatasource):
+            continue
+        non_partial = {c.canonical_address for c in ds.output_concepts} - {
+            c.canonical_address for c in ds.partial_concepts
+        }
+        if requested.issubset(non_partial):
+            return True
+    return False
+
+
 def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan | None:
+    if _single_source_covers_completely(request):
+        return None
     search_concepts = _search_concepts_for_bridge(request)
     requested = {c.address for c in _requested_concepts(request)}
     condition_options = (request.conditions, None) if request.conditions else (None,)
@@ -165,7 +201,16 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             if graph is None:
                 continue
             bridged = unique(_concepts_in_graph(graph, request.environment), "address")
-            if {c.address for c in bridged} != requested or _has_union_datasource(
+            # The bridge is only worth preferring over `_direct_source` when it
+            # ADDED connector concepts (a superset of what was requested) or a
+            # union. A bridged set that is a strict *subset* of `requested` is
+            # not a connector — it just means single-row/abstract concepts were
+            # excluded from the bridge search (`_resolve_bridge_graph`). Treating
+            # that subset as a connector would route the remaining concepts
+            # through a single partial datasource, dropping the complete-key
+            # merge `_direct_source` would otherwise build (refresh of a
+            # count-by-X persist whose output also carries a `data_through`).
+            if ({c.address for c in bridged} - requested) or _has_union_datasource(
                 graph
             ):
                 return BridgePlan(concepts=bridged, graph=graph)
@@ -194,19 +239,28 @@ def _resolve_bridge_graph(
         attempt.criteria,
         conditions=search_conditions,
     )
+    # Single-row / abstract-grain concepts (a `<*>` watermark, a constant) join
+    # by cross product, never by a key, so they must not drive the connectivity
+    # search — otherwise the Steiner walk invents a spurious intermediate join
+    # key to attach them and two equal candidates raise a false ambiguity
+    # (refresh of a count-by-X persist with a shared `data_through`). They fall
+    # through to `_direct_source`, which sources constants as a cross-join.
+    bridge_concepts = [
+        concept for concept in concepts if concept.granularity != Granularity.SINGLE_ROW
+    ]
     node_list = sorted(
         concept_to_node(concept.with_default_grain())
-        for concept in concepts
+        for concept in bridge_concepts
         if "__preql_internal" not in concept.address
     )
     synonyms: dict[str, str] = {}
-    for concept in concepts:
+    for concept in bridge_concepts:
         for pseudonym in concept.pseudonyms:
             synonyms[pseudonym] = concept.address
 
     found: list[ReferenceGraph] = []
     reduced_concept_sets: list[set[str]] = []
-    requested_addresses = {concept.address for concept in concepts}
+    requested_addresses = {concept.address for concept in bridge_concepts}
     for _ in range(AMBIGUITY_CHECK_LIMIT):
         try:
             graph = determine_induced_minimal_nodes(
@@ -240,7 +294,9 @@ def _resolve_bridge_graph(
                 search_graph.remove_node(node)
     if not found:
         return None
-    detect_ambiguity_and_raise(concepts, reduced_concept_sets, request.environment)
+    detect_ambiguity_and_raise(
+        bridge_concepts, reduced_concept_sets, request.environment
+    )
     return found[0]
 
 
@@ -337,9 +393,88 @@ def _datasource_nodes_for_bridge(
                 depth=request.depth + 1,
             )
         )
+    parents.extend(_derived_connector_nodes(request, plan, parents))
     if not parents:
         return None
     return parents
+
+
+def _derived_connector_nodes(
+    request: SourceRequest,
+    plan: BridgePlan,
+    datasource_parents: list[StrategyNode],
+) -> list[StrategyNode]:
+    """Materialize bridge concepts whose source is a *derived* connector.
+
+    The bridge can route through a merged derivation (e.g. a recursive
+    `recurse_edge` whose output was `merge`d into a dimension key) that is not a
+    real datasource — its real lineage lives in `alias_origin_lookup`, keyed by
+    the concept's address or any pseudonym, while `environment.concepts` holds a
+    demoted lineage-less ROOT. Such a connector is dropped by the `ds~`-only
+    loop above, leaving the concept it provides unsourced (INVALID_REFERENCE).
+    Plan each needed connector's true origin and hand it back as a parent;
+    `_merge_component_sources` joins it on the pseudonym equivalence.
+    """
+    covered = {
+        c.address for parent in datasource_parents for c in parent.usable_outputs
+    }
+    if {c.address for c in plan.concepts} <= covered:
+        return []
+    # Imported lazily: `concept_strategies_v4` imports this module's package.
+    from trilogy.core.processing.concept_strategies_v4 import (
+        V4History,
+        search_concepts,
+    )
+
+    env = request.environment
+    history = cast(V4History, request.history)
+    planned: set[str] = set()
+    connectors: list[StrategyNode] = []
+    for concept in plan.concepts:
+        for alias in (concept.address, *concept.pseudonyms):
+            origin = env.alias_origin_lookup.get(alias)
+            # Skip non-derived origins, anything a datasource already sources,
+            # and any connector currently mid-plan. The last is the re-entry
+            # guard: planning a connector recurses to source its own inputs,
+            # whose bridge re-routes through the same connector — without the
+            # guard that re-injects forever.
+            if (
+                origin is None
+                or origin.lineage is None
+                or origin.address in planned
+                or origin.address in covered
+                or origin.address in history.connectors_in_progress
+            ):
+                continue
+            # Carry the connector's grain keys it still owes the bridge (e.g. a
+            # recursion keyed by `id` must emit `id`, not group it away) so the
+            # merge has the columns the consumer reads, not just the join key.
+            mandatory = unique(
+                [origin]
+                + [
+                    env.concepts[address]
+                    for address in origin.grain.components
+                    if address in env.concepts and address not in covered
+                ],
+                "address",
+            )
+            history.connectors_in_progress.add(origin.address)
+            try:
+                info = search_concepts(
+                    mandatory_list=mandatory,
+                    history=history,
+                    environment=env,
+                    depth=request.depth + 1,
+                    g=request.graph,
+                    conditions=[],
+                    source_policy=request.source_policy,
+                )
+            finally:
+                history.connectors_in_progress.discard(origin.address)
+            if info.strategy_node is not None:
+                planned.add(origin.address)
+                connectors.append(info.strategy_node)
+    return connectors
 
 
 def _datasource_grain_concept_nodes(
@@ -501,6 +636,192 @@ def _bridge_parents_cover(parents: list[StrategyNode], required: set[str]) -> bo
     return required <= available
 
 
+def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | None:
+    """A single datasource that can serve an additive-rollup aggregate under a
+    filter on a column *finer* than the requested grain.
+
+    The filter splits the requested groups (e.g. `WHERE order_date` below a
+    `customer_id` grain), so the only correct plan is to scan a summary table
+    that carries both the aggregate and the finer column, push the filter into
+    that scan, then SUM-roll to the requested grain. A coarser exact table
+    (`agg_by_customer`) can't express the filter — joining its unfiltered count
+    to a separately-filtered key list double-counts. We require ONE datasource
+    that binds every requested aggregate, holds the requested grain keys, and
+    supports the finer filter; otherwise there is no safe pinned source."""
+    conditions = request.conditions
+    if conditions is None:
+        return None
+    outputs = request.outputs
+    aggregates = [c for c in outputs if c.is_aggregate and _is_additive_aggregate(c)]
+    if not aggregates:
+        return None
+    environment = request.environment
+    target_grain = BuildGrain.from_concepts(outputs, environment=environment)
+    target_components = set(target_grain.components)
+    if not target_components:
+        return None
+    # Every output must be a rolled aggregate or a target-grain key — a property
+    # or other shape would not survive the pinned scan + SUM-roll.
+    if any(not c.is_aggregate and c.address not in target_components for c in outputs):
+        return None
+    finer = filter_finer_row_args(conditions, target_grain, environment.concepts)
+    if not finer:
+        return None
+    finer_canonicals = {c.canonical_address for c in finer}
+    datasources = [
+        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
+    ]
+    matches: list[BuildDatasource] = []
+    for ds in datasources:
+        ds_canonicals = {c.canonical_address for c in ds.output_concepts}
+        ds_addresses = {c.address for c in ds.output_concepts}
+        if not finer_canonicals.issubset(ds_canonicals):
+            continue
+        if not target_components.issubset(ds_addresses):
+            continue
+        rolled = get_additive_rollup_concepts(
+            datasource=ds,
+            requested_concepts=list(outputs),
+            concepts_by_address=environment.concepts,
+            datasources=datasources,
+            target_grain=target_grain,
+            conditions=conditions,
+        )
+        rolled_addresses = {c.address for c in rolled}
+        if all(agg.address in rolled_addresses for agg in aggregates):
+            matches.append(ds)
+    if not matches:
+        return None
+    # Prefer the finest match closest to the requested grain (fewest dropped
+    # grain components) for a deterministic, cheapest source.
+    matches.sort(key=lambda ds: (len(ds.grain.components), ds.name))
+    return matches[0]
+
+
+def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
+    """Scan a `partial ... complete where <c>` datasource when the query's WHERE
+    implies `<c>`.
+
+    A partial datasource pre-filtered to `complete where customer_revenue > 100`
+    is *complete* for any query whose conditions imply that predicate — every row
+    it would otherwise be missing is excluded by the filter anyway. Pinning it
+    lets `create_datasource_node` clear the partial flag (`partial_is_full`) and
+    treat the predicate as already applied, instead of the planner picking a
+    generic summary and then trying to render a HAVING it can't (the requested
+    aggregate and the filter's aggregate are canonically equal but differently
+    named, so the filter column isn't projected — INVALID_REFERENCE).
+
+    Requires ONE partial datasource whose `non_partial_for` is implied by the
+    conditions, that binds every requested output at the requested grain, and
+    that carries each filter column (so any extra predicate beyond
+    `non_partial_for` is still applied on the scan)."""
+    conditions = request.conditions
+    if conditions is None:
+        return None
+    outputs = request.outputs
+    environment = request.environment
+    target_grain = BuildGrain.from_concepts(outputs, environment=environment)
+    target_canonicals = {
+        environment.concepts[c].canonical_address
+        for c in target_grain.components
+        if c in environment.concepts
+    }
+    output_canonicals = {c.canonical_address for c in outputs}
+    condition_canonicals = {
+        c.canonical_address
+        for c in conditions.row_arguments
+        if c.granularity != Granularity.SINGLE_ROW
+    }
+    matches: list[BuildDatasource] = []
+    for ds in environment.datasources.values():
+        if not isinstance(ds, BuildDatasource) or ds.non_partial_for is None:
+            continue
+        if not condition_implies(
+            conditions.conditional, ds.non_partial_for.conditional
+        ):
+            continue
+        ds_canonicals = {c.canonical_address for c in ds.output_concepts}
+        if not output_canonicals.issubset(ds_canonicals):
+            continue
+        if not condition_canonicals.issubset(ds_canonicals):
+            continue
+        ds_grain_canonicals = {
+            environment.concepts[c].canonical_address
+            for c in ds.grain.components
+            if c in environment.concepts
+        }
+        if ds_grain_canonicals != target_canonicals:
+            continue
+        matches.append(ds)
+    if not matches:
+        return None
+    matches.sort(key=lambda ds: ds.name)
+    ds = matches[0]
+    scan_nodes = [concept_to_node(c.with_default_grain()) for c in outputs]
+    return create_select_node(
+        f"ds~{ds.name}",
+        scan_nodes,
+        accept_partial=False,
+        g=request.graph,
+        environment=environment,
+        depth=request.depth + 1,
+        conditions=conditions,
+    )
+
+
+def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
+    ds = _finer_filter_rollup_source(request)
+    if ds is None:
+        return None
+    environment = request.environment
+    outputs = list(request.outputs)
+    scan_nodes = [concept_to_node(c.with_default_grain()) for c in outputs]
+    scan = create_select_node(
+        f"ds~{ds.name}",
+        scan_nodes,
+        accept_partial=True,
+        g=request.graph,
+        environment=environment,
+        depth=request.depth + 1,
+        conditions=request.conditions,
+    )
+    target_components = set(
+        BuildGrain.from_concepts(outputs, environment=environment).components
+    )
+    partial_keys = [c for c in scan.partial_concepts if c.address in target_components]
+    if not partial_keys:
+        return scan
+    # The summary's grain keys are partial (a `~key` join column); complete each
+    # against its authoritative dimension and INNER-join, so the filtered scan
+    # selects exactly the surviving keys (a LEFT/FULL join would leak keys absent
+    # from the filtered aggregate with a NULL count).
+    key_node = plan_source(
+        SourceRequest(
+            outputs=partial_keys,
+            environment=environment,
+            graph=request.graph,
+            history=request.history,
+            conditions=None,
+            depth=request.depth + 1,
+            source_policy=request.source_policy,
+        )
+    )
+    if key_node is None:
+        return None
+    inputs = unique(
+        [c for parent in (scan, key_node) for c in parent.usable_outputs],
+        "address",
+    )
+    return MergeNode(
+        input_concepts=inputs,
+        output_concepts=outputs,
+        environment=environment,
+        parents=[scan, key_node],
+        depth=request.depth,
+        force_join_type=JoinType.INNER,
+    )
+
+
 def plan_source(request: SourceRequest) -> StrategyNode | None:
     """Source ROOT-level concepts through one v4 path.
 
@@ -508,6 +829,12 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     are split but the graph can prove connector concepts, source each expanded
     component directly and merge them under a v4 node.
     """
+    complete_where = _plan_complete_where_source(request)
+    if complete_where is not None:
+        return complete_where
+    pinned_rollup = _plan_finer_filter_rollup(request)
+    if pinned_rollup is not None:
+        return pinned_rollup
     requested_addresses = {c.address for c in _requested_concepts(request)}
     for attempt in request.source_policy.attempts:
         bridge_plan = _bridge_plan(request, attempt)

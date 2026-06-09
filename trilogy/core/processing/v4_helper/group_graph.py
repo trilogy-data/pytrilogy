@@ -661,6 +661,23 @@ def _compute_concept_sets(
     - reverse demand: which outputs/inputs each group must expose
     """
     mandatory_addresses = {c.address for c in mandatory_list}
+    # A struct field demanded as the canonical key (`local.a`) is produced under
+    # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
+    # match those aliases so the producing group keeps the field as an output.
+    # Gate strictly on the canonical key having NO group of its own — i.e. it is
+    # only reachable through the pseudonym. A plain alias (`channel_out <-
+    # channel_label`) IS a group primary, so it keeps its own projection and must
+    # not be matched against its alias's group.
+    all_primary_members = {
+        member
+        for gid, a in attrs.items()
+        if gid != FINAL_NODE_ID
+        for member in a.primary_members
+    }
+    mandatory_alias_addresses = set(mandatory_addresses)
+    for c in mandatory_list:
+        if c.address not in all_primary_members:
+            mandatory_alias_addresses.update(c.pseudonyms)
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     source_grain_of = _source_grain_by_address(concept_graph, concept_attrs)
     facts = _build_group_facts(
@@ -736,7 +753,7 @@ def _compute_concept_sets(
         outs: set[str] = existence_demand.get(gid, set()) & cap_gid
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
-                mand = cap_gid & mandatory_addresses
+                mand = cap_gid & mandatory_alias_addresses
                 if fact.derivation in GROUPING_DERIVATIONS:
                     mand &= fact.primary | fact.grain
                 for desc in nx.descendants(lineage_sub, gid):

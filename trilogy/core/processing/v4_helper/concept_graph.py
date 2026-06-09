@@ -40,6 +40,7 @@ from .constants import (
 )
 from .edges import EdgeMap, add_edge
 from .models import ConceptAttrs
+from .projection import concept_satisfiable
 
 UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], list[BuildConcept]]
 
@@ -295,6 +296,91 @@ def _aggregate_input_grain(
     return frozenset(input_grain)
 
 
+def _derivable_pseudonym_origins(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    datasource_addresses: frozenset[str],
+) -> list[BuildConcept]:
+    """All derivable pseudonym origins of an unsourceable bare key (ROOT, no
+    lineage, bound by no datasource), deterministically ordered by address.
+
+    The motivating case is a struct field reached through an unnest:
+    `unnest_array.a` parses to the bare key `local.a`, which no datasource binds
+    directly — it is only reachable as `attr_access(unnest(array_struct), a)`.
+    v3's synonym node swaps the bare key for that attr-access origin; mirror it
+    here so the graph walks attr_access -> unnest -> datasource instead of
+    dead-ending on a ROOT leaf with no source.
+
+    A field name can resolve to MORE THAN ONE origin — two struct arrays both
+    exposing `a` leave `local.a` with pseudonyms `{x.a, y.a}`, each its own
+    attr-access origin. They are equivalent columns but live over different
+    sources, so the caller must pick a *satisfiable* one rather than commit to
+    an arbitrary (hash-ordered) pseudonym."""
+    if concept.derivation != Derivation.ROOT or concept.lineage is not None:
+        return []
+    if concept.address in datasource_addresses:
+        return []
+    # A merge can demote a derived concept to a bare ROOT key while its real
+    # lineage survives in `alias_origin_lookup` under the SAME address (e.g.
+    # `merge first_parent into parent.id` leaves `local.first_parent` ROOT but its
+    # origin is the RECURSIVE `recurse_edge(...)`). Check the concept's own
+    # address alongside its pseudonyms. Recursion is bounded: each origin has a
+    # lineage, so re-entry on it returns [].
+    origins: dict[str, BuildConcept] = {}
+    for pseudonym in (concept.address, *concept.pseudonyms):
+        origin = environment.alias_origin_lookup.get(pseudonym)
+        if origin is not None and origin.lineage is not None and origin is not concept:
+            origins[origin.address] = origin
+    return [origins[a] for a in sorted(origins)]
+
+
+def _resolve_pseudonym_origin(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    datasource_addresses: frozenset[str],
+) -> BuildConcept | None:
+    """Pick the origin the graph should substitute for an unsourceable bare key.
+
+    Among the candidate origins, prefer one whose lineage actually bottoms out
+    at a datasource (`concept_satisfiable` against the bound addresses); the
+    alternatives are equivalent columns over sources that may not exist in this
+    environment. Falling back to the first candidate when none is satisfiable
+    preserves the original loud-failure behavior (a downstream
+    `NoDatasourceException` rather than a silent drop). Selection is
+    deterministic — origins are address-sorted — so a multi-origin key plans the
+    same way regardless of set iteration order."""
+    candidates = _derivable_pseudonym_origins(
+        concept, environment, datasource_addresses
+    )
+    if not candidates:
+        return None
+    for origin in candidates:
+        if concept_satisfiable(origin, set(datasource_addresses)):
+            return origin
+    return candidates[0]
+
+
+def _alternative_origins(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    datasource_addresses: frozenset[str],
+) -> list[BuildConcept]:
+    """Derivable origins at a DIFFERENT address than the bare key — the genuine
+    alternatives that warrant a hub (`local.a` via `uA.a` OR `uB.a`).
+
+    A same-address origin (the brief-02 recursive-merge demotion, where a merge
+    leaves `local.first_parent` a bare ROOT key whose origin is the RECURSIVE
+    concept at the same address) is a *promotion*, not an alternative: it is
+    handled by in-place substitution, never a hub, so it is excluded here."""
+    return [
+        o
+        for o in _derivable_pseudonym_origins(
+            concept, environment, datasource_addresses
+        )
+        if o.address != concept.address
+    ]
+
+
 def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -303,6 +389,7 @@ def _add_concept(
     attrs: dict[str, ConceptAttrs],
     label: str = "",
     materialized_roots: frozenset[str] = frozenset(),
+    datasource_addresses: frozenset[str] = frozenset(),
 ) -> None:
     """Walk lineage from a concept toward its roots, under a fixed label.
 
@@ -316,6 +403,15 @@ def _add_concept(
     A concept in `materialized_roots` is treated as a ROOT leaf: its lineage is
     not walked (a datasource materializes it directly), and its node carries
     `derivation=ROOT` so the group graph buckets it into a datasource scan."""
+    alternatives = _alternative_origins(concept, environment, datasource_addresses)
+    use_hub = len(alternatives) >= 2
+    if not use_hub:
+        # 0 or 1 genuine alternative: substitute the (satisfiable) origin in place
+        # exactly as before. A same-address origin (brief-02 recursive merge) and a
+        # single struct-field arm both take this path — no hub, no resolution pass.
+        origin = _resolve_pseudonym_origin(concept, environment, datasource_addresses)
+        if origin is not None:
+            concept = origin
     is_materialized_root = concept.address in materialized_roots
     eff_label = _effective_label(concept, label, materialized_roots)
     nid = node_id(eff_label, concept.address)
@@ -377,6 +473,36 @@ def _add_concept(
     if concept.derivation == Derivation.ROWSET:
         return
 
+    # Multiple distinct derivable origins: emit each as a mutually-exclusive
+    # ALTERNATIVE parent of this bare-key hub (`local.a` reachable via `uA.a` OR
+    # `uB.a`). `resolve_alternatives` — run before the group graph — keeps the
+    # cheapest satisfiable arm and contracts the hub away, so every downstream
+    # pass sees a single ordinary lineage parent.
+    if use_hub:
+        for origin in alternatives:
+            _add_concept(
+                origin,
+                environment,
+                graph,
+                edges,
+                attrs,
+                label,
+                materialized_roots,
+                datasource_addresses,
+            )
+            origin_nid = node_id(
+                _effective_label(origin, label, materialized_roots), origin.address
+            )
+            add_edge(
+                graph,
+                edges,
+                origin_nid,
+                nid,
+                EdgeKind.LINEAGE,
+                alt_group=concept.address,
+            )
+        return
+
     # Per-derivation upstream fetcher (see `_UPSTREAM`): everything the
     # fetcher returns is a real lineage dependency — the concept's input
     # CTE has to contain it for this node to render correctly. An
@@ -386,8 +512,25 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     for upstream in fetcher(concept, environment):
+        # Substitute here too so the edge wires to the origin's node (the
+        # recursive call below adds the origin, not the bare key) — otherwise
+        # the bare key gets an implicit graph node with no attrs entry. A
+        # genuine multi-alternative upstream is left as the bare key: its
+        # recursion builds the hub, and the edge below wires to that hub.
+        if len(_alternative_origins(upstream, environment, datasource_addresses)) < 2:
+            upstream = (
+                _resolve_pseudonym_origin(upstream, environment, datasource_addresses)
+                or upstream
+            )
         _add_concept(
-            upstream, environment, graph, edges, attrs, label, materialized_roots
+            upstream,
+            environment,
+            graph,
+            edges,
+            attrs,
+            label,
+            materialized_roots,
+            datasource_addresses,
         )
         upstream_label = _effective_label(upstream, label, materialized_roots)
         add_edge(
@@ -397,6 +540,208 @@ def _add_concept(
             nid,
             EdgeKind.LINEAGE,
         )
+
+
+# ---------------------------------------------------------------------------
+# Alternative (pseudonym-hub) resolution
+#
+# A bare key with ≥2 distinct derivable origins is added as a HUB with one
+# ALTERNATIVE-tagged lineage edge per arm (`_add_concept`). These functions
+# collapse every hub to a single arm BEFORE the group graph is built, so the
+# AND-only downstream never sees an OR. Selection is cost-aware (reuse scans
+# already in the query) and deterministic, and correlated hubs converge on a
+# shared source because each pick folds its scan footprint into `committed`.
+# ---------------------------------------------------------------------------
+
+
+def _is_datasource_node(
+    attrs: dict[str, ConceptAttrs], nid: str, datasource_addresses: frozenset[str]
+) -> bool:
+    a = attrs.get(nid)
+    return (
+        a is not None
+        and a.derivation == Derivation.ROOT
+        and a.address in datasource_addresses
+    )
+
+
+def _lineage_ancestors(
+    graph: nx.DiGraph, edges: EdgeMap, node: str, *, follow_alt: bool = True
+) -> set[str]:
+    """Ancestors of `node` reachable purely through LINEAGE edges (optionally
+    excluding ALTERNATIVE-tagged ones, to walk only the committed backbone)."""
+    seen: set[str] = set()
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        for p in graph.predecessors(n):
+            if p in seen:
+                continue
+            ea = edges.get((p, n))
+            if ea is None or ea.kind != EdgeKind.LINEAGE:
+                continue
+            if not follow_alt and ea.alt_group is not None:
+                continue
+            seen.add(p)
+            stack.append(p)
+    return seen
+
+
+def _datasource_footprint(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    node: str,
+    datasource_addresses: frozenset[str],
+) -> set[str]:
+    """The datasource scans an arm pulls in — its datasource-bound ROOT lineage
+    ancestors (inclusive). This is read off the already-built graph, not a
+    re-derivation of source-resolution logic."""
+    return {
+        n
+        for n in (_lineage_ancestors(graph, edges, node) | {node})
+        if _is_datasource_node(attrs, n, datasource_addresses)
+    }
+
+
+def _remove_node(graph: nx.DiGraph, edges: EdgeMap, n: str) -> None:
+    for p in list(graph.predecessors(n)):
+        edges.pop((p, n), None)
+    for s in list(graph.successors(n)):
+        edges.pop((n, s), None)
+    graph.remove_node(n)
+
+
+def _backbone_datasource_nodes(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    datasource_addresses: frozenset[str],
+    sink_ids: set[str],
+) -> set[str]:
+    """Datasource scans the query already performs along NON-alternative lineage
+    — the context an arm's cost is measured against. An arm reusing one of these
+    adds no new scan."""
+    roots: set[str] = set()
+    for sink in sink_ids:
+        if sink not in graph:
+            continue
+        for anc in _lineage_ancestors(graph, edges, sink, follow_alt=False) | {sink}:
+            if _is_datasource_node(attrs, anc, datasource_addresses):
+                roots.add(anc)
+    return roots
+
+
+def _pick_alternative(
+    alts: list[str],
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    datasource_addresses: frozenset[str],
+    committed: set[str],
+) -> str:
+    """Score each arm and keep the best: satisfiable first, then maximal reuse of
+    already-committed scans, then fewest new scans, then shallowest, then lowest
+    address (deterministic). `max` returns the first of equal-key elements, so
+    iterating address-sorted makes ties resolve to the lowest address."""
+
+    def key(nid: str) -> tuple[int, int, int, int]:
+        origin = environment.alias_origin_lookup.get(attrs[nid].address)
+        satisfiable = origin is not None and concept_satisfiable(
+            origin, set(datasource_addresses)
+        )
+        fp = _datasource_footprint(graph, edges, attrs, nid, datasource_addresses)
+        return (
+            1 if satisfiable else 0,
+            len(fp & committed),
+            -len(fp - committed),
+            -len(_lineage_ancestors(graph, edges, nid)),
+        )
+
+    return max(sorted(alts), key=key)
+
+
+def _contract_hub(
+    graph: nx.DiGraph, edges: EdgeMap, hub: str, winner: str, sinks: set[str]
+) -> None:
+    """Redirect the hub's successors onto the chosen arm, then drop the hub. A
+    hub that was itself a sink hands its sink role to the winner."""
+    for succ in list(graph.successors(hub)):
+        ea = edges.get((hub, succ))
+        kind = ea.kind if ea is not None else EdgeKind.LINEAGE
+        if succ != winner and not graph.has_edge(winner, succ):
+            add_edge(graph, edges, winner, succ, kind)
+    hub_is_sink = hub in sinks
+    _remove_node(graph, edges, hub)
+    if hub_is_sink:
+        sinks.discard(hub)
+        sinks.add(winner)
+
+
+def _prune_orphan_branch(
+    graph: nx.DiGraph, edges: EdgeMap, start: str, sinks: set[str]
+) -> None:
+    """Drop a losing arm: the start node and any lineage ancestor that, having
+    lost its only consumer, now feeds nothing. Cascades up but stops at nodes
+    still shared with a surviving arm (they keep another successor) and never
+    removes a sink."""
+    if start not in graph:
+        return
+    candidates = {start} | _lineage_ancestors(graph, edges, start)
+    changed = True
+    while changed:
+        changed = False
+        for n in list(candidates):
+            if n not in graph or n in sinks:
+                continue
+            if graph.out_degree(n) == 0:
+                _remove_node(graph, edges, n)
+                candidates.discard(n)
+                changed = True
+
+
+def resolve_alternatives(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    datasource_addresses: frozenset[str],
+    sink_ids: set[str],
+) -> None:
+    """Collapse every pseudonym hub to its cheapest satisfiable arm.
+
+    Hubs are processed in a stable order; each pick folds its scan footprint into
+    `committed`, so correlated hubs (two struct fields drawn from the same pair
+    of arrays) converge on one array rather than scanning both. Afterward no
+    ALTERNATIVE-tagged edge remains and the graph is AND-only again."""
+    hubs = sorted({v for (_, v), a in edges.items() if a.alt_group is not None})
+    if not hubs:
+        return
+    sinks = set(sink_ids)
+    committed = _backbone_datasource_nodes(
+        graph, edges, attrs, datasource_addresses, sinks
+    )
+    for hub in hubs:
+        if hub not in graph:
+            continue
+        alts = sorted(
+            p
+            for p in graph.predecessors(hub)
+            if (ea := edges.get((p, hub))) is not None and ea.alt_group is not None
+        )
+        if not alts:
+            continue
+        winner = _pick_alternative(
+            alts, graph, edges, attrs, environment, datasource_addresses, committed
+        )
+        committed |= _datasource_footprint(
+            graph, edges, attrs, winner, datasource_addresses
+        )
+        _contract_hub(graph, edges, hub, winner, sinks)
+        for loser in alts:
+            if loser != winner:
+                _prune_orphan_branch(graph, edges, loser, sinks)
 
 
 def build_concept_graph(
@@ -422,6 +767,9 @@ def build_concept_graph(
     graph: nx.DiGraph = nx.DiGraph()
     edges: EdgeMap = {}
     attrs: dict[str, ConceptAttrs] = {}
+    datasource_addresses = frozenset(
+        c.address for ds in environment.datasources.values() for c in ds.output_concepts
+    )
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
         _add_concept(
@@ -431,6 +779,7 @@ def build_concept_graph(
             edges,
             attrs,
             materialized_roots=materialized_roots,
+            datasource_addresses=datasource_addresses,
         )
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so we never
@@ -446,6 +795,7 @@ def build_concept_graph(
                 attrs,
                 label=_condition_label(""),
                 materialized_roots=materialized_roots,
+                datasource_addresses=datasource_addresses,
             )
 
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
@@ -481,6 +831,29 @@ def build_concept_graph(
             src_nid = node_id(_effective_label(source, flabel), source.address)
             if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
                 add_edge(graph, edges, src_nid, nid, EdgeKind.EXISTENCE)
+
+    # Collapse pseudonym hubs to a single arm now — after every `_add_concept`
+    # call (so all hubs exist) but before the constraint/existence EDGE passes
+    # below, which must see the winning origin node exactly as substitution would
+    # have left it. Sinks anchor hub-sink remapping and protect demanded nodes
+    # from the losing-arm prune.
+    sink_ids: set[str] = set()
+    for c in mandatory_list:
+        sid = node_id(_effective_label(c, "", materialized_roots), c.address)
+        if sid in graph:
+            sink_ids.add(sid)
+    for clause in conditions:
+        for cc in clause.concept_arguments:
+            resolved = environment.concepts.get(cc.address, cc) or cc
+            sid = node_id(
+                _effective_label(resolved, _condition_label(""), materialized_roots),
+                resolved.address,
+            )
+            if sid in graph:
+                sink_ids.add(sid)
+    resolve_alternatives(
+        graph, edges, attrs, environment, datasource_addresses, sink_ids
+    )
 
     # Classify how each atom uses its concept arguments. A row-argument
     # gets joined into the consumer's row stream; an existence-argument
@@ -534,7 +907,26 @@ def build_concept_graph(
             src_address = attrs[src].address
             if src_address not in row_arg_addresses:
                 continue
+            # A condition concept derived from a ROWSET (e.g. a WINDOW `eldest`
+            # computed over a rowset, then filtered `eldest = 1`) sits above that
+            # rowset already — its value can't exist until the rowset's rows do.
+            # A rowset is one indivisible group, so constraining the condition
+            # back onto ANY of the rowset's handles forms a cycle (rowset→window
+            # lineage, window→rowset constraint). Skip those: deriving from one
+            # handle means `src` is above the whole rowset, including the handles
+            # it doesn't read directly (the window reads `id`/`last_name`/`age`
+            # but its filter sits above `name`/`survived` from the same rowset).
+            src_lineage_ancestor_rowsets = {
+                attrs[a].rowset_name
+                for a in nx.ancestors(graph, src)
+                if attrs[a].rowset_name
+            }
             for dst in d0_blank_nodes:
+                if (
+                    attrs[dst].rowset_name
+                    and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
+                ):
+                    continue
                 # A lineage edge already present src→dst is left as-is; the
                 # constraint ordering it would carry is implied by the lineage.
                 if not graph.has_edge(src, dst):

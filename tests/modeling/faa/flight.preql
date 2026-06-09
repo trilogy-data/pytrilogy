@@ -4,10 +4,10 @@ import airport as destination;
 import carrier as carrier;
 
 
-key id2 int;
-property id2.origin string; #airport code, such as LAX
-property id2.destination string; #airport code, such as LAX
-property id2.flight_num string;
+key id2 int; #unique ID for each flight
+property id2.origin string; #origin airport code, such as LAX
+property id2.destination string; #destination airport code, such as LAX
+property id2.flight_num string; # flight number, not guaranteed to be unique
 property id2.flight_time int;
 property id2.dep_time datetime;
 property id2.arr_time datetime;

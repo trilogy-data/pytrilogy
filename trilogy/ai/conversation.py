@@ -58,12 +58,16 @@ class Conversation:
         response = self.provider.generate_completion(
             options or LLMRequestOptions(), history=self.messages
         )
-        model_info = {}
+        model_info: dict = {}
         if response.tool_calls:
             model_info["tool_calls"] = [
                 {"name": tool_call.name, "arguments": tool_call.arguments}
                 for tool_call in response.tool_calls
             ]
+        if response.reasoning:
+            model_info["reasoning"] = response.reasoning
+        if response.usage.reasoning_tokens:
+            model_info["reasoning_tokens"] = response.usage.reasoning_tokens
         response_message = LLMMessage(
             role="assistant", content=response.text, model_info=model_info
         )
@@ -82,9 +86,9 @@ class Conversation:
         normalized = self._normalize_query(query)
         try:
             _, raw = environment.parse(normalized)
-            processed = process_query(statement=raw[-1], environment=environment)
+            process_query(statement=raw[-1], environment=environment)
             return (
-                f"environment.parse succeeded and process_query returned: {processed}",
+                "The query is syntactically valid and resolves against the environment.",
                 None,
             )
         except (

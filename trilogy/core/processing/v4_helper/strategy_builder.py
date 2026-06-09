@@ -68,6 +68,25 @@ _MERGE_JOIN_PURPOSES = {
 }
 
 
+def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | None:
+    """Resolve a (possibly pseudonym) group-member address to its concept.
+
+    A derivable pseudonym address (e.g. the struct field `unnest_array.a`)
+    resolves through `environment.concepts` to its *canonical* concept (`local.a`,
+    lineage None), not the attr-access origin that actually computes it. v3
+    resolves these synonyms through `alias_origin_lookup`; mirror that so the
+    strategy builder builds the field's projection instead of a dead-end key.
+    Only the exact-address match from `concepts` is trusted; otherwise the
+    origin (whose `.address` equals the requested pseudonym) wins."""
+    concept = environment.concepts.get(address)
+    if concept is not None and concept.address == address:
+        return concept
+    origin = environment.alias_origin_lookup.get(address)
+    if origin is not None:
+        return origin
+    return concept
+
+
 def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     """AND-combine a list of condition atoms into a single BuildWhereClause."""
     if not atoms:
@@ -369,9 +388,9 @@ def _parent_nodes_for(
         if not slice_addresses or slice_addresses == parent_outputs:
             return node.copy()
         outputs = [
-            environment.concepts[address]
+            c
             for address in sorted(slice_addresses)
-            if address in environment.concepts
+            if (c := _concept_at(environment, address)) is not None
         ]
         sliced = build_node(
             derivation=Derivation.ROOT,
@@ -679,8 +698,8 @@ def _project_dimension_parents_to_group_grain(
         fd_candidates = {
             addr
             for addr in parent_needed
-            if addr in environment.concepts
-            and _fd_at_grain(environment.concepts[addr], group_grain_components)
+            if (c := _concept_at(environment, addr)) is not None
+            and _fd_at_grain(c, group_grain_components)
         }
         fd_needed = {
             addr
@@ -689,9 +708,9 @@ def _project_dimension_parents_to_group_grain(
         }
         non_fd_needed = parent_needed - fd_candidates
         concepts = [
-            environment.concepts[addr]
+            c
             for addr in sorted(fd_needed)
-            if addr in environment.concepts
+            if (c := _concept_at(environment, addr)) is not None
         ]
         if not concepts or non_fd_needed:
             projected.append(parent)
@@ -743,6 +762,19 @@ def _topological_order(group_graph: nx.DiGraph, group_edges: EdgeMap) -> list[st
         return []
 
 
+def _output_covers(output: BuildConcept, concept: BuildConcept) -> bool:
+    """Whether a node output supplies `concept`, directly or via pseudonym.
+
+    A struct field selected as `unnest_array.a` parses to the bare key
+    `local.a` but is produced under its derivable pseudonym `unnest_array.a`;
+    the CTE layer maps the two by pseudonym, so coverage matching must too."""
+    return (
+        output.address == concept.address
+        or output.address in concept.pseudonyms
+        or concept.address in output.pseudonyms
+    )
+
+
 def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -761,6 +793,15 @@ def _cover_groups_for_mandatory(
             for gid, node in built.items()
             if any(o.address == addr for o in node.output_concepts)
         ]
+        # Only fall back to pseudonym coverage (struct fields produced under
+        # their derivable origin address) when nothing provides the concept
+        # directly — a plain alias keeps its own contributor.
+        if not candidates:
+            candidates = [
+                gid
+                for gid, node in built.items()
+                if any(_output_covers(o, concept) for o in node.output_concepts)
+            ]
         if not candidates:
             continue
         candidates.sort(
@@ -889,9 +930,9 @@ def _projection_root_concepts(
             addresses.update(concept.grain.components)
         addresses.update(concept.keys or set())
     return [
-        environment.concepts[address]
+        c
         for address in sorted(addresses)
-        if address in environment.concepts
+        if (c := _concept_at(environment, address)) is not None
     ]
 
 
@@ -993,7 +1034,7 @@ def _wrap_for_grain(
             wraps.append(parent_node)
             continue
         grain_concepts = [
-            environment.concepts[a] for a in grain_comps if a in environment.concepts
+            c for a in grain_comps if (c := _concept_at(environment, a)) is not None
         ]
         # Dedup by address, keep concept order stable.
         outputs_by_addr: dict[str, BuildConcept] = {}
@@ -1087,6 +1128,17 @@ def _group_to_grain_if_required(
         return node
     mandatory_addrs = {c.address for c in mandatory_list}
     targets = [o for o in node.output_concepts if o.address in mandatory_addrs]
+    # Pseudonym fallback: a struct field surfaces under its origin address
+    # (`s.a`, carrying the attr-access lineage) while the requested output is the
+    # canonical key (`local.a`) that no output names directly. Keep the node's
+    # covering output so the projection renders; the CTE layer maps the two by
+    # pseudonym for the user-facing alias.
+    if not targets:
+        targets = [
+            o
+            for o in node.output_concepts
+            if any(_output_covers(o, m) for m in mandatory_list)
+        ]
     if isinstance(node, MergeNode):
         # Narrow to the requested grain *before* force-grouping: a MergeNode
         # exposes its join/filter columns (q82's date, warehouse, quantity,
@@ -1261,9 +1313,9 @@ def _assemble_final_node(
         if is_root and grouping_grain_components:
             seen_group_concepts = {concept.address for concept in group_concepts}
             group_concepts.extend(
-                environment.concepts[address]
+                c
                 for address in sorted(grouping_grain_components)
-                if address in environment.concepts
+                if (c := _concept_at(environment, address)) is not None
                 and address not in seen_group_concepts
             )
         if is_root:
@@ -1378,9 +1430,9 @@ def build_strategy_node(
             output_addrs = (*a.primary_members, *a.secondary_members)
         select_addrs = (*output_addrs, *hidden_addrs)
         outputs = [
-            environment.concepts[addr]
+            c
             for addr in select_addrs
-            if addr in environment.concepts
+            if (c := _concept_at(environment, addr)) is not None
         ]
         if not outputs:
             continue

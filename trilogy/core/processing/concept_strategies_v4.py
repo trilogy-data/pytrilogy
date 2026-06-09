@@ -84,6 +84,10 @@ class V4History(History):
     parallel, correctly-typed cache for the BuildInfo bundles v4 returns."""
 
     build_history: dict[str, BuildInfo | None] = field(default_factory=dict)
+    # Derived-connector origin addresses currently mid-plan, used by the root
+    # source planner to break the self-referential bridge recursion (a merged
+    # recursive connector whose own input search re-routes through it).
+    connectors_in_progress: set[str] = field(default_factory=set)
 
     def _v4_key(
         self,
@@ -589,14 +593,16 @@ def _materialized_root_addresses(
         # address, since the finer instance has a different grain canonical), and
         # the additive aggregate can be SUM-rolled up to the target grain.
         #
-        # Only when unfiltered: marking the concept a root lets source-planning
-        # pick ANY table binding it, including a coarser exact table that can't
-        # express the filter (it would then be applied on a separate join and the
-        # precomputed value would ignore it). With no filter, every binding table
-        # is equivalent. Filtered rollup is a follow-up (needs the chosen source
-        # pinned to the filter-compatible finer table).
-        if where is not None:
-            continue
+        # Marking the concept a root lets source-planning pick a table binding
+        # it. `get_additive_rollup_concepts` below is passed the filter and only
+        # matches a datasource whose grain can express it (`_conditions_supported`):
+        # a group-level filter (constant within a target-grain group) matches any
+        # coarser/exact table, while a finer filter (`order_date` below a
+        # `customer_id` grain) only matches a finer summary that carries the
+        # column — `plan_source._plan_finer_filter_rollup` then pins that table,
+        # pushes the filter pre-aggregation, and SUM-rolls. A coarser table is
+        # never matched under a finer filter, so post-rollup decoupling can't
+        # double-count.
         for ds in datasources:
             if concept.address not in {c.address for c in ds.output_concepts}:
                 continue
