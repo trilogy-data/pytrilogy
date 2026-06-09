@@ -1,7 +1,39 @@
 # Handoff: shared-parent DISTINCT dedup fused away in the rowset `join` form (q75)
 
-**Status:** OPEN. Failing test: `tests/test_rowset_derived_twice_join_bugs.py::test_shared_parent_dedup_fusion`
-(`xfail(strict=True)` — delete the marker when it passes).
+**Status:** RESOLVED 2026-06-08. `tests/test_rowset_derived_twice_join_bugs.py::test_shared_parent_dedup_fusion`
+passes (xfail removed). q75 join form (`query75_join.preql` + `test_seventy_five_join`)
+matches `PRAGMA tpcds(75)`. Full TPC-DS sweep 133 passed; core suite 3622 passed.
+
+## RESOLUTION
+Root cause: the `MergeIrrelevantGroupBy` optimization
+(`trilogy/core/optimizations/merge_irrelevant_group_by.py`) folds a child group-by CTE
+into its single non-aggregate parent group-by CTE, treating that parent's GROUP BY as a
+vacuous DISTINCT. That is sound for a *pure-scalar* child (`DISTINCT a` of `DISTINCT (a,b)`
+== `DISTINCT a`), but the `deduped` rowset is a DISTINCT that folds a non-key **measure**
+(`cnt_per_row`/`amt_per_row`) into its grain. When a child aggregate sums that same measure
+(`sum(deduped.cnt_per_row) by <attrs>`), dropping the parent's group double-counts the rows
+the dedup collapsed.
+
+Fix: `_drops_dedup_measure` — block the fold when the parent has no aggregate and a child
+aggregate reads a **non-key** concept that is a component of the parent's GROUP BY grain.
+The aggregate column is a rowset concept (`Derivation.ROWSET`) wrapping `sum(...)`, so
+`_aggregate_inputs` unwraps `BuildRowsetItem.content` to the underlying `BuildAggregateWrapper`
+arguments. Counting a parent-grain *key* (`count(rev_cust_id)` over `DISTINCT rev_cust_id` —
+q54's `macho<-late`) stays mergeable, so `purpose != KEY` is the discriminator.
+
+REJECTED alternatives:
+- Widening the existing `child grain ⊇ parent grain` guard to fire on any child aggregate:
+  over-blocks q54's `young<-concerned` (the `cust_ss` revenue sum) — its parent groups by the
+  store_sales PK, a vacuous group — adding a spurious extra GROUP BY (gen_length 4170→4556).
+- Guarding on "parent is a rowset-generated CTE": too blunt — q54's `count(rev_cust_id)`
+  pushes into a CTE whose grain component `my_revenue.rev_cust_id` IS a rowset concept, so a
+  rowset guard would block that vacuous count-of-key merge and regress q54 (5→6 groups). The
+  rowset origin isn't the discriminator; the non-key-measure-in-GROUP-BY is.
+
+q75 itself converted **in place** to the join form (`query75.preql`); `test_seventy_five`
+now validates the join form against `PRAGMA tpcds(75)`.
+
+(Original report below.)
 
 ## One-line
 Two rowsets that each aggregate a **shared DISTINCT-grain parent rowset** and are

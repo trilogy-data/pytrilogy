@@ -1,9 +1,12 @@
-"""Known-failing repros for two bugs hit while converting TPC-DS yoy
-multiselects (q75, q64) to the query-scoped `join` form. The self-referential
-rowset-key grain collapse (fixed 2026-06-08, see test_join_merge_parity.py)
-makes the *structural* shared-parent join work, but these two distinct issues
-remain. Both are `xfail(strict=True)` so they flip to a hard failure the moment
-they start passing — that's the signal to delete the marker.
+"""Repros for two bugs hit while converting TPC-DS yoy multiselects (q75, q64)
+to the query-scoped `join` form. The self-referential rowset-key grain collapse
+(fixed 2026-06-08, see test_join_merge_parity.py) makes the *structural*
+shared-parent join work.
+
+Bug A (shared-parent dedup fused into child aggregate) is FIXED 2026-06-08 —
+its test is a live assertion now. Bug B (q64 passthrough-dim grain tangle)
+remains `xfail(strict=True)` so it flips to a hard failure the moment it starts
+passing — that's the signal to delete the marker.
 
 Handoffs:
 - evals/tpcds_agent/handoff_q75_join_dedup_fusion.md
@@ -100,11 +103,6 @@ def _rows(engine: Executor, models: Path, text: str) -> list[tuple]:
     return [tuple(r) for r in engine.execute_text(text)[-1].fetchall()]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="shared-parent dedup fused into child aggregate in join form; "
-    "see handoff_q75_join_dedup_fusion.md",
-)
 def test_shared_parent_dedup_fusion(dedup_engine: Executor, tmp_path: Path):
     # reference: the multiselect form materializes the dedup and is correct.
     multi = _rows(dedup_engine, tmp_path, DEDUP_MULTISELECT)

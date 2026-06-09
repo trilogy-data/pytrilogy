@@ -1,12 +1,13 @@
 import all_sales as sales;
 
-# UNION DISTINCT semantics in the reference's `sales_detail` subquery dedups
-# rows with identical (year, brand, class, cat, manufact, cnt_per_row,
-# amt_per_row) tuples — including across cs/ss/ws — before the outer SUM.
-# `deduped` rowset materializes the 7-tuple via implicit GROUP BY at SELECT
-# grain; the per-year multi-select branches roll the deduped rows up to
-# item-attribute grain in two parallel filtered aggregates aligned on
-# (brand, class, category, manufact).
+# q75: year-over-year book sales count comparison, as a query-scoped `join`.
+# UNION DISTINCT semantics in the reference's `sales_detail` subquery dedups rows
+# with identical (year, brand, class, cat, manufact, cnt_per_row, amt_per_row)
+# tuples — including across cs/ss/ws — before the outer SUM. The `deduped` rowset
+# materializes that 7-tuple via implicit GROUP BY at SELECT grain; the per-year
+# `curr`/`prev` rowsets each roll the deduped rows up to item-attribute grain, and
+# the inner join on the 4 item-attribute keys reproduces the reference's
+# `from all_sales curr_yr, all_sales prev_yr where curr_yr.<key> = prev_yr.<key>`.
 auto cnt_per_row <- sales.quantity - coalesce(sales.return_quantity, 0);
 auto amt_per_row <- sales.ext_sales_price - coalesce(sales.return_amount, 0.0);
 
@@ -22,43 +23,41 @@ select
     amt_per_row,
 ;
 
-rowset year_pair <- where
-    deduped.sales.date.year = 2002
+rowset curr <- where deduped.sales.date.year = 2002
 select
-    deduped.sales.item.brand_id as brand_id_curr,
-    deduped.sales.item.class_id as class_id_curr,
-    deduped.sales.item.category_id as category_id_curr,
-    deduped.sales.item.manufacturer_id as manufact_id_curr,
+    deduped.sales.item.brand_id as i_brand_id,
+    deduped.sales.item.class_id as i_class_id,
+    deduped.sales.item.category_id as i_category_id,
+    deduped.sales.item.manufacturer_id as i_manufact_id,
     sum(deduped.cnt_per_row) as curr_cnt,
     sum(deduped.amt_per_row) as curr_amt,
-merge
-where
-    deduped.sales.date.year = 2001
-select
-    deduped.sales.item.brand_id as brand_id_prev,
-    deduped.sales.item.class_id as class_id_prev,
-    deduped.sales.item.category_id as category_id_prev,
-    deduped.sales.item.manufacturer_id as manufact_id_prev,
-    sum(deduped.cnt_per_row) as prev_cnt,
-    sum(deduped.amt_per_row) as prev_amt,
-align
-    i_brand_id: brand_id_curr, brand_id_prev
-    and i_class_id: class_id_curr, class_id_prev
-    and i_category_id: category_id_curr, category_id_prev
-    and i_manufact_id: manufact_id_curr, manufact_id_prev
 ;
 
+rowset prev <- where deduped.sales.date.year = 2001
+select
+    deduped.sales.item.brand_id as i_brand_id,
+    deduped.sales.item.class_id as i_class_id,
+    deduped.sales.item.category_id as i_category_id,
+    deduped.sales.item.manufacturer_id as i_manufact_id,
+    sum(deduped.cnt_per_row) as prev_cnt,
+    sum(deduped.amt_per_row) as prev_amt,
+;
+
+inner join curr.i_brand_id = prev.i_brand_id
+inner join curr.i_class_id = prev.i_class_id
+inner join curr.i_category_id = prev.i_category_id
+inner join curr.i_manufact_id = prev.i_manufact_id
 select
     2001 as prev_year,
     2002 as year_,
-    year_pair.i_brand_id,
-    year_pair.i_class_id,
-    year_pair.i_category_id,
-    year_pair.i_manufact_id,
-    year_pair.prev_cnt as prev_yr_cnt,
-    year_pair.curr_cnt as curr_yr_cnt,
-    year_pair.curr_cnt - year_pair.prev_cnt as sales_cnt_diff,
-    year_pair.curr_amt - year_pair.prev_amt as sales_amt_diff,
+    curr.i_brand_id,
+    curr.i_class_id,
+    curr.i_category_id,
+    curr.i_manufact_id,
+    prev.prev_cnt as prev_yr_cnt,
+    curr.curr_cnt as curr_yr_cnt,
+    curr.curr_cnt - prev.prev_cnt as sales_cnt_diff,
+    curr.curr_amt - prev.prev_amt as sales_amt_diff,
 having
     curr_yr_cnt::numeric(17,2) / prev_yr_cnt::numeric(17,2) < 0.9
 

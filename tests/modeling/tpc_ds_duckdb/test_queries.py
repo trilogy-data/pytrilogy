@@ -624,6 +624,10 @@ def test_seventy_four(engine):
 
 
 def test_seventy_five(engine):
+    # query75.preql is the query-scoped `join` form (two per-year rowsets each
+    # summing the shared `deduped` rowset, inner-joined on the 4 item-attribute
+    # keys). Exercises the shared-parent DISTINCT dedup that must NOT fuse into
+    # the child aggregate (see handoff_q75_join_dedup_fusion.md).
     _ = run_query(engine, 75)
 
 
