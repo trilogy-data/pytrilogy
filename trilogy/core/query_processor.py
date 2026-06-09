@@ -9,7 +9,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
     FunctionType,
-    Modifier,
+    JoinType,
     SourceType,
 )
 from trilogy.core.env_processor import generate_graph
@@ -535,7 +535,7 @@ def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
-    scoped_joins: list[tuple[str, str, list[Modifier]]] | None = None,
+    scoped_joins: list[tuple[str, str, JoinType]] | None = None,
 ) -> StrategyNode:
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
@@ -661,7 +661,7 @@ def get_query_datasources(
 ) -> QueryDatasource:
     join_clauses = getattr(statement, "join_clauses", None) or []
     scoped_joins = [
-        (j.source_address, j.target_address, j.modifiers) for j in join_clauses
+        (j.source_address, j.target_address, j.join_type) for j in join_clauses
     ]
     ds = get_query_node(
         environment, statement.as_lineage(environment), scoped_joins=scoped_joins
@@ -894,13 +894,25 @@ def process_query(
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
-    final_ctes = optimize_ctes(
-        deduped_ctes, root_cte, statement, having_alias=having_alias
-    )
-
     join_clauses = getattr(statement, "join_clauses", None) or []
     scoped_merge_map, _ = _build_scoped_merge_index(
-        [(j.source_address, j.target_address, j.modifiers) for j in join_clauses]
+        [(j.source_address, j.target_address, j.join_type) for j in join_clauses]
+    )
+    # Canonical keys of query-scoped FULL joins — flagged so the outer-join
+    # upgrade optimization never collapses an explicit FULL back to INNER.
+    full_join_keys = {
+        scoped_merge_map.get(addr, addr)
+        for j in join_clauses
+        if j.join_type is JoinType.FULL
+        for addr in (j.source_address, j.target_address)
+    }
+
+    final_ctes = optimize_ctes(
+        deduped_ctes,
+        root_cte,
+        statement,
+        having_alias=having_alias,
+        full_join_keys=full_join_keys,
     )
 
     return ProcessedQuery(

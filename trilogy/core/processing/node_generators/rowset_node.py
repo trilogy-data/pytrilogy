@@ -132,6 +132,12 @@ def gen_rowset_node(
         raise UnresolvableQueryException(
             f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
         )
+    # A LEFT scoped-join key is partial against its anchor; this arm keeps the
+    # anchor's rows, so re-enriching the key back to a shared base dimension fans
+    # the arm out against that base (a 1=1 cross product). Drop it from the
+    # enrichment set — the rowset already outputs the key directly. FULL keys are
+    # intentionally NOT dropped: a FULL join must source both sides in full (so a
+    # complete dimension on one side contributes all its rows).
     enrichment = set([x.address for x in local_optional])
 
     factory = Factory(environment=history.base_environment, grain=select.grain)

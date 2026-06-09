@@ -104,6 +104,11 @@ class BuildEnvironment:
     # Source addresses of LEFT (partial) in-query joins — the rowset node uses
     # this to mark the advertised target join key partial (drives LEFT-OUTER).
     scoped_partial_sources: set[str] = field(default_factory=set)
+    # Registry of canonical keys of query-scoped FULL joins. The key is complete
+    # (both sides bind it; the FULL JOIN coalesces it). join resolution consults
+    # this to emit a FULL JOIN for the key, instead of inferring it from a
+    # (falsely-)partial binding — so the gate and rowset enrichment are unaffected.
+    scoped_full_join_keys: set[str] = field(default_factory=set)
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []

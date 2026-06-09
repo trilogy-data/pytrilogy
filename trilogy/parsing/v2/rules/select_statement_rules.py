@@ -90,11 +90,11 @@ def join_clause(
 ) -> SelectJoin:
     args = hydrated_children(node, hydrate)
     join_type = next(a for a in args if isinstance(a, JoinType))
-    if join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
+    if join_type not in (JoinType.INNER, JoinType.LEFT_OUTER, JoinType.FULL):
         raise fail(
             node,
             f"`{join_type.value}` join is not yet supported in query-scoped joins;"
-            " use INNER or LEFT",
+            " use INNER, LEFT, or FULL",
         )
     # Positional direction: left key is the brought-in (source) concept, right
     # key is the anchor. Both are fully-addressed concepts, so no model token is

@@ -33,6 +33,7 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     Granularity,
+    JoinType,
     Modifier,
     Ordering,
     Purpose,
@@ -2186,12 +2187,21 @@ def materialize_constant(x):
 
 
 def _build_scoped_merge_index(
-    joins: list[tuple[str, str, List[Modifier]]],
+    joins: list[tuple[str, str, JoinType]],
 ) -> tuple[dict[str, str], set[str]]:
     """Collapse query-scoped merges into a union-find map (source address ->
-    canonical target address) plus the set of partial (LEFT) source addresses.
+    canonical target address) plus the set of partial source addresses.
     `merge a into b` makes b the root, matching a chained global merge, so an
-    N-way blend collapses every member to a single canonical concept."""
+    N-way blend collapses every member to a single canonical concept.
+
+    Partiality drives the eventual datasource-join type. Direction matches SQL
+    `A LEFT JOIN B`: in `LEFT JOIN a = b` the LEFT operand `a` is preserved and the
+    RIGHT operand `b` is optional. So for LEFT the TARGET (`b`) collapses onto the
+    SOURCE (`a`) — making `a` the complete canonical anchor — and `b` is marked
+    partial. The partial side is therefore always the collapsed-away side, which is
+    what the rowset partiality propagation expects. INNER collapses source->target
+    and marks neither. FULL collapses source->target, marks neither, and is driven
+    by the scoped_full_join_keys registry at join-resolution time instead."""
     parent: dict[str, str] = {}
 
     def find(x: str) -> str:
@@ -2202,12 +2212,17 @@ def _build_scoped_merge_index(
         return x
 
     partial: set[str] = set()
-    for source, target, modifiers in joins:
+    for source, target, join_type in joins:
         rs, rt = find(source), find(target)
         if rs != rt:
-            parent[rs] = rt
-        if Modifier.PARTIAL in modifiers:
-            partial.add(source)
+            # LEFT preserves the source (left operand) -> source is the canonical
+            # root; every other join type roots on the target.
+            if join_type is JoinType.LEFT_OUTER:
+                parent[rt] = rs
+            else:
+                parent[rs] = rt
+        if join_type is JoinType.LEFT_OUTER:
+            partial.add(target)
     merge_map = {a: find(a) for a in parent if find(a) != a}
     return merge_map, partial
 
@@ -2224,7 +2239,7 @@ class Factory:
         grain_build_cache: dict[tuple, "BuildGrain"] | None = None,
         canonical_build_cache: dict[str, BuildConcept] | None = None,
         datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
-        scoped_joins: list[tuple[str, str, List[Modifier]]] | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
     ):
         self.grain = grain or Grain()
         self.environment = environment
@@ -2233,11 +2248,23 @@ class Factory:
         # source address is mapped to its canonical target (scoped_merge_map) so
         # `_build_concept` returns the target instead of the source (and so the
         # grain/lineage of dependents collapse too). scoped_partial_sources marks
-        # the LEFT-join sources whose datasource binding must be partial.
-        self.scoped_joins: list[tuple[str, str, List[Modifier]]] = scoped_joins or []
+        # the LEFT/FULL-join sides whose datasource binding must be partial.
+        self.scoped_joins: list[tuple[str, str, JoinType]] = scoped_joins or []
         self.scoped_merge_map, self.scoped_partial_sources = _build_scoped_merge_index(
             self.scoped_joins
         )
+        # Canonical keys of FULL joins: partial against every side pre-resolution,
+        # but complete (coalesced) in the resolved FULL JOIN output.
+        # Registry of FULL-join canonical keys. The key stays complete; this set
+        # is what drives join resolution to emit a FULL JOIN for it (see
+        # get_join_type). Both join sides collapse onto the canonical address, so
+        # both binding datasources advertise it and the FULL JOIN coalesces them.
+        self.scoped_full_join_keys: set[str] = {
+            self.scoped_merge_map.get(addr, addr)
+            for s, t, jt in self.scoped_joins
+            if jt is JoinType.FULL
+            for addr in (s, t)
+        }
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
@@ -3401,6 +3428,7 @@ class Factory:
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,
             scoped_partial_sources=set(self.scoped_partial_sources),
+            scoped_full_join_keys=set(self.scoped_full_join_keys),
         )
 
         for k, v in base.concepts.all_items():
