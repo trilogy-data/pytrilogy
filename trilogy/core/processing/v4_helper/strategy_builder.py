@@ -87,10 +87,6 @@ def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | N
     return concept
 
 
-def _has_concept(environment: BuildEnvironment, address: str) -> bool:
-    return address in environment.concepts or address in environment.alias_origin_lookup
-
-
 def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     """AND-combine a list of condition atoms into a single BuildWhereClause."""
     if not atoms:
