@@ -1,10 +1,43 @@
 # Handoff: q75 / derived-twice rowset→rowset scoped JOIN (the shared-parent shape)
 
-**Status:** OPEN. The *independent* year-over-year rowset join shape now works
-(see `handoff_scoped_join_yoy_rowset_parity.md`, RESOLVED 2026-06-08). This handoff
-is the remaining gap: two rowsets that each aggregate a **shared upstream rowset**
-(q75's `deduped`, q64's `ss_rows_99/00`) and are then joined. Today this **silently
-cross-joins** (`FULL JOIN ... on 1=1`) — wrong data, no error.
+**Status:** GRAIN BUG RESOLVED 2026-06-08; full q75/q64 conversion still blocked by
+an *orthogonal* nested-aggregate limitation (see below).
+
+## RESOLUTION (2026-06-08): self-referential rowset key → grain collapse
+Root cause of the `FULL JOIN ... on 1=1` cross-join was a **self-referential key**
+on the join-key dimension, not a downstream grain/merge issue. When a dimension is
+sourced *through* an intermediate rowset (`base.sales.item.brand` rather than the raw
+`sales.item.brand`), that intermediate concept has empty keys, so its SELECT alias is
+keyed by the source concept *itself*. `rowset_to_concepts_v2` then remaps that key
+through `orig` and lands on the new concept's own address — `p.brand` keyed by
+`p.brand`. A self-referential key makes `_concept_is_relevant` treat the dimension as
+already-grouped and drop it from `BuildGrain.from_concepts`, collapsing the rowset
+node grain to `Abstract`; with no shared grain key the outer merge falls back to
+`1=1`, and the second arm groups by the dim but omits it from SELECT.
+
+**Fix:** one line in `trilogy/parsing/v2/rowset_semantics.py::rowset_to_concepts_v2`
+— after the key remap, `x.keys.discard(x.address)` so a remapped key never points at
+its own concept. This makes the derived-twice case match the once-derived case
+(empty keys → dim stays a free grain component). Also corrected **q54** (its
+`count(rev_cust_id)` over the `my_revenue` rowset was silently rendering as a per-row
+`CASE WHEN ... IS NOT NULL THEN 1 ELSE 0 END` instead of a real `count()`).
+`tests/test_join_merge_parity.py::yoy_shared_parent` now passes (join + merge).
+Full TPC-DS sweep 133 passed; broad suite 3821 passed.
+
+**Still OPEN (orthogonal):** the *real* q75/q64 need nested aggregates
+(`sum(deduped.cnt_per_row)` over `deduped.* = sum(...)`), which lower to invalid
+`sum(sum(...))`. That fails the `merge` reference identically and is tracked by the
+new xfail `yoy_shared_parent_nested_agg`. So q75/q64 stay multiselects until nested
+aggregates are split into separate grouping passes.
+
+---
+
+(Original handoff below, for context.)
+
+This handoff
+was the remaining gap: two rowsets that each aggregate a **shared upstream rowset**
+(q75's `deduped`, q64's `ss_rows_99/00`) and are then joined. This used to **silently
+cross-join** (`FULL JOIN ... on 1=1`) — wrong data, no error.
 
 ## Goal
 Make a query-scoped `join` between two rowsets that both derive from a third

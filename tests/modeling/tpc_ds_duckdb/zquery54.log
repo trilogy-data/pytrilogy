@@ -1,6 +1,6 @@
 query_id = "54"
 generator = "v3"
-gen_length = 4203
+gen_length = 4170
 preql_size = 1399
 comp_size = 1665
 generated_sql = """
@@ -81,7 +81,7 @@ GROUP BY
     2),
 macho as (
 SELECT
-    CASE WHEN \"late\".\"my_revenue_rev_cust_id\" IS NOT NULL THEN 1 ELSE 0 END as \"num_customers\"
+    count(\"late\".\"my_revenue_rev_cust_id\") as \"num_customers\"
 FROM
     \"late\")
 SELECT

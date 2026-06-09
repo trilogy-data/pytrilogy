@@ -110,12 +110,37 @@ select customer.name, bought.qty order by customer.name asc;
 """,
         [("alice", 17), ("bob", 9)],
     ),
-    # year-over-year where both rowsets derive from one shared `deduped` parent.
-    # Deeper rowset-derived-twice limitation that affects BOTH join and merge
-    # (the merge reference also emits FULL JOIN 1=1); xfail until the shared
-    # rowset source is split into two branches. Same expected as the
-    # independent-rowset case.
+    # year-over-year where both rowsets derive from one shared `base` parent
+    # (a row-grain passthrough rowset), each aggregating it per year and joined
+    # on brand. The join key is sourced *through* the intermediate rowset
+    # (`base.sales.item.brand`), which used to collapse the rowset node grain to
+    # Abstract and degenerate the outer join to FULL JOIN 1=1. Same expected as
+    # the independent-rowset case.
     "yoy_shared_parent": (
+        """
+import sales as sales;
+rowset base <- where sales.year in (2001, 2002) select sales.sale_id, sales.item.brand, sales.year, sales.qty;
+rowset c <- where base.sales.year = 2002 select base.sales.item.brand as brand, sum(base.sales.qty) as c_qty;
+rowset p <- where base.sales.year = 2001 select base.sales.item.brand as brand, sum(base.sales.qty) as p_qty;
+inner join c.brand = p.brand
+select c.brand, c.c_qty, p.p_qty order by c.brand asc;
+""",
+        """
+import sales as sales;
+rowset base <- where sales.year in (2001, 2002) select sales.sale_id, sales.item.brand, sales.year, sales.qty;
+rowset c <- where base.sales.year = 2002 select base.sales.item.brand as brand, sum(base.sales.qty) as c_qty;
+rowset p <- where base.sales.year = 2001 select base.sales.item.brand as brand, sum(base.sales.qty) as p_qty;
+merge c.brand into ~p.brand;
+select c.brand, c.c_qty, p.p_qty order by c.brand asc;
+""",
+        [(10, 7, 7), (20, 15, 3)],
+    ),
+    # Same shared-parent shape but the parent itself aggregates, so the child
+    # rowsets re-aggregate an aggregate (`sum(deduped.qty)` over
+    # `deduped.qty = sum(...)`). That lowers to `sum(sum(...))`, invalid SQL in
+    # every dialect; it fails the `merge` reference identically. Orthogonal to
+    # the grain-collapse bug fixed above — xfail until nested aggregates split.
+    "yoy_shared_parent_nested_agg": (
         """
 import sales as sales;
 rowset deduped <- where sales.year in (2001, 2002) select sales.item.brand, sales.year, sum(sales.qty) as qty;
@@ -136,10 +161,10 @@ select c.brand, c.c_qty, p.p_qty order by c.brand asc;
     ),
 }
 
-# `yoy_shared_parent` derives both rowsets from a third rowset, which nests an
-# aggregate over an aggregate — a deeper limitation that fails the `merge`
-# reference identically, so it stays xfail until rowset-derived-twice is split.
-XFAIL_CASES = {"yoy_shared_parent"}
+# `yoy_shared_parent_nested_agg` re-aggregates an aggregate (sum(sum(...))) — a
+# deeper limitation that fails the `merge` reference identically, so it stays
+# xfail until nested aggregates are split into separate grouping passes.
+XFAIL_CASES = {"yoy_shared_parent_nested_agg"}
 
 
 @pytest.mark.parametrize("name", list(PARITY_CASES))
