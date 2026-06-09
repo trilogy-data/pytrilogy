@@ -68,6 +68,32 @@ abhorrent as (
 SELECT
     max(\"young\".\"customer_total_in_window\") as \"max_total_cmax\"
 FROM
+    \"young\"),
+yummy as (
+SELECT
+    \"uneven\".\"sales_item_id\" as \"_frequent_items_frequent_item_id\"
+FROM
+    \"uneven\"
+GROUP BY
+    1,
+    \"uneven\".\"sales_date_date\",
+    \"uneven\".\"sales_item_desc_truncated\"
+HAVING
+    count(\"uneven\".\"sales_order_id\") > 4
+),
+late as (
+SELECT
+    \"sweltering\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
+FROM
+    \"sweltering\"
+    INNER JOIN \"abhorrent\" on 1=1
+WHERE
+    \"sweltering\".\"customer_total_overall\" > 0.5 * \"abhorrent\".\"max_total_cmax\"
+),
+juicy as (
+SELECT
+    \"yummy\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
+FROM
     \"yummy\"
 GROUP BY
     1),

@@ -148,44 +148,6 @@ SELECT
 FROM
     \"young\"
 GROUP BY
-    1,
-    2,
-    3,
-    4),
-young as (
-SELECT
-    \"juicy\".\"_l0_filtered_brand_l0\" as \"_l0_filtered_brand_l0\",
-    \"juicy\".\"_l0_filtered_bucket_count_l0\" as \"_l0_filtered_bucket_count_l0\",
-    \"juicy\".\"_l0_filtered_bucket_sum_l0\" as \"_l0_filtered_bucket_sum_l0\",
-    \"juicy\".\"_l0_filtered_category_l0\" as \"_l0_filtered_category_l0\",
-    \"juicy\".\"_l0_filtered_channel_l0\" as \"_l0_filtered_channel_l0\",
-    \"juicy\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\"
-FROM
-    \"vacuous\"
-    INNER JOIN \"juicy\" on 1=1
-WHERE
-    \"juicy\".\"_l0_filtered_bucket_sum_l0\" > \"vacuous\".\"avg_sales_average_sales\"
-),
-sparkling as (
-SELECT
-    \"young\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
-    \"young\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
-    \"young\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
-    \"young\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
-    \"young\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
-    \"young\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
-FROM
-    \"young\")
-SELECT
-    \"sparkling\".\"l0_filtered_channel_l0\" as \"channel\",
-    \"sparkling\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
-    \"sparkling\".\"l0_filtered_class_l0\" as \"i_class_id\",
-    \"sparkling\".\"l0_filtered_category_l0\" as \"i_category_id\",
-    sum(\"sparkling\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
-    sum(\"sparkling\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
-FROM
-    \"sparkling\"
-GROUP BY
     ROLLUP (1, 2, 3, 4)
 ORDER BY 
     \"channel\" asc nulls first,

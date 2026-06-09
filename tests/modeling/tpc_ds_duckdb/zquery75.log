@@ -97,6 +97,62 @@ GROUP BY
     1,
     2,
     3,
+    4,
+    5,
+    6,
+    \"abundant\".\"sales_date_year\"),
+juicy as (
+SELECT
+    \"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0) as \"deduped_amt_per_row\",
+    \"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0) as \"deduped_cnt_per_row\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"deduped_sales_item_brand_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"deduped_sales_item_category_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"deduped_sales_item_class_id\",
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"deduped_sales_item_manufacturer_id\"
+FROM
+    \"abundant\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"abundant\".\"sales_date_year\" = 2001
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"abundant\".\"sales_date_year\"),
+young as (
+SELECT
+    \"concerned\".\"deduped_sales_item_brand_id\" as \"i_brand_id\",
+    \"concerned\".\"deduped_sales_item_category_id\" as \"i_category_id\",
+    \"concerned\".\"deduped_sales_item_class_id\" as \"i_class_id\",
+    \"concerned\".\"deduped_sales_item_manufacturer_id\" as \"i_manufact_id\",
+    sum(\"concerned\".\"deduped_amt_per_row\") as \"_year_pair_curr_amt\",
+    sum(\"concerned\".\"deduped_cnt_per_row\") as \"_year_pair_curr_cnt\"
+FROM
+    \"concerned\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+vacuous as (
+SELECT
+    \"juicy\".\"deduped_sales_item_brand_id\" as \"i_brand_id\",
+    \"juicy\".\"deduped_sales_item_category_id\" as \"i_category_id\",
+    \"juicy\".\"deduped_sales_item_class_id\" as \"i_class_id\",
+    \"juicy\".\"deduped_sales_item_manufacturer_id\" as \"i_manufact_id\",
+    sum(\"juicy\".\"deduped_amt_per_row\") as \"_year_pair_prev_amt\",
+    sum(\"juicy\".\"deduped_cnt_per_row\") as \"_year_pair_prev_cnt\"
+FROM
+    \"juicy\"
+GROUP BY
+    1,
+    2,
+    3,
     4)
 SELECT
     2001 as \"prev_year\",

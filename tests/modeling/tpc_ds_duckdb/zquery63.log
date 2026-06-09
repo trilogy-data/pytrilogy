@@ -22,8 +22,8 @@ GROUP BY
     \"physical_sales_date_date\".\"D_MOY\"),
 cooperative as (
 SELECT
-    \"physical_sales_date_date\".\"D_MOY\" as \"physical_sales_date_month_of_year\",
-    \"physical_sales_item_items\".\"I_MANAGER_ID\" as \"physical_sales_item_manager_id\"
+    \"cheerful\".\"physical_sales_item_manager_id\" as \"physical_sales_item_manager_id\",
+    avg(\"cheerful\".\"sum_sales\") as \"avg_monthly_sales\"
 FROM
     \"cheerful\"
 GROUP BY
@@ -32,15 +32,6 @@ SELECT
     coalesce(\"cheerful\".\"physical_sales_item_manager_id\",\"cooperative\".\"physical_sales_item_manager_id\") as \"physical_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
     \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1),
-questionable as (
-SELECT
-    \"cheerful\".\"sum_sales\" as \"sum_sales\",
-    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
-    coalesce(\"cheerful\".\"physical_sales_item_manager_id\",\"cooperative\".\"physical_sales_item_manager_id\") as \"physical_sales_item_manager_id\"
 FROM
     \"cheerful\"
     INNER JOIN \"cooperative\" on \"cheerful\".\"physical_sales_item_manager_id\" is not distinct from \"cooperative\".\"physical_sales_item_manager_id\"

@@ -67,6 +67,17 @@ SELECT
 	ELSE 0
 	END) as \"web_has_row\"
 FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
+    \"cooperative\".\"sales_item_id\" as \"sales_item_id\",
+    sum(\"cooperative\".\"store_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"store_cume\",
+    sum(\"cooperative\".\"web_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"web_cume\"
+FROM
     \"cooperative\")
 SELECT
     \"juicy\".\"sales_item_id\" as \"item_sk\",
@@ -88,6 +99,6 @@ WHERE
     \"uneven\".\"web_cume\" > \"uneven\".\"store_cume\"
 
 ORDER BY 
-    \"vacuous\".\"item_sk\" asc nulls first,
-    \"vacuous\".\"d_date\" asc nulls first
+    \"item_sk\" asc nulls first,
+    \"d_date\" asc nulls first
 LIMIT (100)"""
