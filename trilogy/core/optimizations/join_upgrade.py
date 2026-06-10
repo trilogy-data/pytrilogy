@@ -203,11 +203,29 @@ def _source_datasources(
 ) -> set[str]:
     """Physical datasource identifiers an operand renders from. For a CTE this
     is every source in its ``source_map``; for a base datasource, itself."""
+    # --- TEMP PROBE: compare legacy vs safe_identifier-consistent ---
+    if isinstance(source, (CTE, UnionCTE)):
+        fixed = {d for vals in source.source_map.values() for d in vals}
+    elif isinstance(source, QueryDatasource):
+        fixed = {d.safe_identifier for vals in source.source_map.values() for d in vals}
+    else:
+        fixed = {source.safe_identifier}
     sm = getattr(source, "source_map", None)
     if sm:
-        return {d for vals in sm.values() for d in vals}
-    ident = getattr(source, "identifier", None) or getattr(source, "name", None)
-    return {ident} if ident else set()
+        legacy = {d for vals in sm.values() for d in vals}
+    else:
+        ident = getattr(source, "identifier", None) or getattr(source, "name", None)
+        legacy = {ident} if ident else set()
+    if fixed != legacy:
+        import sys
+
+        print(
+            f"PROBE_DS type={type(source).__name__} legacy={sorted(map(str, legacy))} "
+            f"fixed={sorted(fixed)}",
+            file=sys.stderr,
+        )
+    return legacy
+    # --- END TEMP PROBE ---
 
 
 def _blocked_partials(
