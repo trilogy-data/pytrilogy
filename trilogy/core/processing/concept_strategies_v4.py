@@ -563,11 +563,33 @@ def _materialized_root_addresses(
     out: set[str] = set()
     for concept in mandatory_list:
         # Only short-circuit derivations whose value is fully captured by a
-        # datasource row: a precomputed AGGREGATE or a scalar BASIC. Row-shaping
-        # derivations (UNNEST/ROWSET/RECURSIVE/FILTER/WINDOW/...) generate or
-        # drop rows the datasource scan wouldn't reproduce — e.g. an unnest
-        # merged onto a key (`merge orid into ~orid_2`) is exposed by the table
-        # as that key but really spans more rows.
+        # datasource row: a precomputed AGGREGATE or scalar BASIC, plus an UNNEST
+        # a table binds directly (handled just below). The other row-shaping
+        # derivations (ROWSET/RECURSIVE/FILTER/WINDOW/...) generate or drop rows
+        # the datasource scan wouldn't reproduce, so they stay derived.
+        if concept.derivation == Derivation.UNNEST:
+            # Safe to read an UNNEST straight from a table that materializes it as
+            # a real column (one physical row per unnest value — a `persist ...
+            # from select key, unnest_val` writes those rows even though the
+            # declared grain is the coarser key), instead of re-deriving it and
+            # FULL JOIN-ing back onto its source.
+            #
+            # REJECT the merge-onto-key shape (`merge orid into ~orid_2` where
+            # `orid_2 <- unnest(...)`): the merge makes the unnest concept share a
+            # physical column with the key it's merged onto, so the table holds
+            # one row per key, not per unnest value — a partial source missing the
+            # unnest values that never appear as keys. The tell-tale is the unnest
+            # concept carrying a pseudonym the same datasource also exposes (the
+            # merged key); a genuine persisted unnest column has no such pseudonym.
+            pseudonyms = set(concept.pseudonyms)
+            if any(
+                concept.address in {c.address for c in ds.output_concepts}
+                and not (pseudonyms & {c.address for c in ds.output_concepts})
+                and _conditions_supported(ds, where, environment.concepts)
+                for ds in datasources
+            ):
+                out.add(concept.address)
+            continue
         if concept.derivation not in (Derivation.AGGREGATE, Derivation.BASIC):
             continue
         is_aggregate = concept.derivation == Derivation.AGGREGATE

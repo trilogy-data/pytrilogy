@@ -29,10 +29,6 @@ from __future__ import annotations
 # per-test diff. Group edits when a whole class of tests shares one root cause.
 _CRASH = "v4 crash during build/render"
 _INLINE = "v4 inlining/merge produces a different CTE shape than v3"
-_PERSIST = (
-    "v4 persisted-source reuse: regenerates from the raw source instead of the "
-    "persisted/precomputed table (correct rows, worse plan)"
-)
 _RESULT = "v4 result regression (wrong rows) -- repro in v4_evals/failing_cases"
 _RENDER = "v4 drops/mis-renders date arithmetic (interval subtraction missing)"
 _MODELING = (
@@ -61,15 +57,9 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/persistence/test_basic_persistence.py::test_persist_with_where": _INLINE,
     # --- stdlib: result regression (distilled to failing_cases/top_x_by_metric) ---
     "tests/stdlib/test_report.py::test_top_x_by_metric": _RESULT,
-    # --- engine/demo: rowset/merge fan-out result regressions + crashes ---
-    "tests/engine/demo/test_demo_duckdb.py::test_demo_e2e": _RESULT,
     # --- engine: rendering / source-selection / crashes ---
     "tests/engine/test_bigquery.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_sqlite.py::test_date_diff_rendering": _RENDER,
-    # persist-of-unnest: the persisted table holds the post-unnest rows, but v4's
-    # materialized-root short-circuit only trusts AGGREGATE/BASIC derivations
-    # (an UNNEST can be a multi-source merge that drops rows), so this stays derived.
-    "tests/persistence/test_complex_persistence.py::test_complex": _PERSIST,
     "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_array_inclusion_aggregate": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
