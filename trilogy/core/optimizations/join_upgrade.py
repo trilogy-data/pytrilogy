@@ -201,31 +201,26 @@ def _opaque_binding_addresses(
 def _source_datasources(
     source: CTE | UnionCTE | BuildDatasource | QueryDatasource,
 ) -> set[str]:
-    """Physical datasource identifiers an operand renders from. For a CTE this
-    is every source in its ``source_map``; for a base datasource, itself."""
-    # --- TEMP PROBE: compare legacy vs safe_identifier-consistent ---
-    if isinstance(source, (CTE, UnionCTE)):
-        fixed = {d for vals in source.source_map.values() for d in vals}
-    elif isinstance(source, QueryDatasource):
-        fixed = {d.safe_identifier for vals in source.source_map.values() for d in vals}
-    else:
-        fixed = {source.safe_identifier}
-    sm = getattr(source, "source_map", None)
-    if sm:
-        legacy = {d for vals in sm.values() for d in vals}
-    else:
-        ident = getattr(source, "identifier", None) or getattr(source, "name", None)
-        legacy = {ident} if ident else set()
-    if fixed != legacy:
-        import sys
+    """Physical ``safe_identifier`` tokens an operand renders from, matching the
+    tokens stored in ``CTE.source_map`` (which ``_blocked_partials`` intersects
+    against). A CTE/UnionCTE source_map already holds those tokens; a
+    QueryDatasource maps to datasource *objects*, so take their
+    ``safe_identifier``; a bare BuildDatasource is its own ``safe_identifier``.
 
-        print(
-            f"PROBE_DS type={type(source).__name__} legacy={sorted(map(str, legacy))} "
-            f"fixed={sorted(fixed)}",
-            file=sys.stderr,
-        )
-    return legacy
-    # --- END TEMP PROBE ---
+    Using ``safe_identifier`` everywhere is load-bearing: ``identifier`` keeps
+    dots (``ns.name``) while ``source_map`` stores the underscored form, and a
+    QueryDatasource's raw map values are objects — neither would ever intersect
+    the string tokens, silently disabling the partial-block check on this path."""
+    if isinstance(source, (CTE, UnionCTE)):
+        return {d for vals in source.source_map.values() for d in vals}
+    if isinstance(source, QueryDatasource):
+        return {
+            d.safe_identifier
+            for vals in source.source_map.values()
+            for d in vals
+            if isinstance(d, (BuildDatasource, QueryDatasource))
+        }
+    return {source.safe_identifier}
 
 
 def _blocked_partials(
