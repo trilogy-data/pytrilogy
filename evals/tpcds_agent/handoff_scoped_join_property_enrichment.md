@@ -3,8 +3,10 @@
 **Status:** RESOLVED (not a bug). Enriching a property keyed on a base key, off a
 scoped self-join whose keys were *renamed*, works — you must chain the base key
 into the join group: `join sk_a = sk_b = store_id`. Tests:
-`tests/test_scoped_join_property_enrichment.py` (chained passes, unchained
-documented unresolvable).
+`tests/test_scoped_join_property_enrichment.py` (chained passes, unchained gets a
+targeted error). Done 2026-06-10: q64 switched to the chained enrich-later form
+(`test_sixty_four` passes, ~40% smaller SQL); a clear error now points users at
+the chain instead of the internal "No remaining priority concepts" dump.
 
 ## The shape
 
@@ -83,33 +85,42 @@ order by store_name asc;
 Store 1 is the only one with sales in both years, so the inner self-join keeps
 just it; result `('Alpha', 1, 1)`. Drop the `= store_id` and it dead-ends.
 
-## The one real (minor) planner opportunity: a clearer error
+## Clearer error on the un-chained form (IMPLEMENTED 2026-06-10)
 
-The un-chained form raises the internal
+The un-chained form used to raise the internal
 `ValueError: Cannot resolve query. No remaining priority concepts` — opaque for a
-user who just forgot the chain. A nicety (not a correctness bug) would be to
-detect "a rowset-renamed key whose lineage content is a base key, and a property
-of that base key is requested but the base key is not in any join group" and
-raise a targeted error suggesting `join ... = <base_key>`. The recoverable signal
-is the rowset key's lineage content (`agg_b.sk_b.lineage.content` ->
-`local._agg_b_sk_b`, whose `pseudonyms == {store_id}`).
+user who just forgot the chain. Now `get_query_node`
+(`trilogy/core/query_processor.py`) catches that dead-end and, via
+`_scoped_join_rename_hint(output_concepts, build_environment)`, raises a targeted
+`UnresolvableQueryException`:
 
-Do NOT try to *auto*-source it (re-identify `sk` with `store_id` silently) — that
-defeats the rename and, attempted via `_pseudonym_bridge_keys` in
-`rowset_node.py`, produced a `FULL JOIN ... ON 1=1` cartesian with wrong rows
-(verified and reverted). The correct behavior is the explicit chain; only the
-*error message* is worth improving.
+> Could not resolve query. `store_name` is a property of `store_id`, which is
+> present only as the renamed scoped-join key(s) agg_b.sk_b. Add the base key to
+> the join group, e.g. `inner join agg_b.sk_b = ... = store_id`.
 
-## Applying this to q64 (`tests/modeling/tpc_ds_duckdb/query64.preql`)
+The helper walks ROWSET concepts whose `BuildRowsetItem.content.pseudonyms` name a
+non-rowset base key, then matches that key against an output property's
+`grain.components`. Best-effort: if it detects nothing it re-raises the original
+error unchanged, so non-scoped-join dead-ends are untouched.
 
-The "aggregate on keys, join descriptive text later" form is therefore writable —
-group `agg_99`/`agg_00` on the id keys (`item.id`, `store.id`, `sale_address.id`,
-`customer.address.id`), chain each join key to its base
-(`agg_99.item_sk_99 = agg_00.item_sk_00 = item.id`, etc.), then enrich
-`item.product_name` / `store.name` / address text in the outer select. Not yet
-applied to `query64.preql` (it currently carries the text dims in the aggregate
-grain, which also works); a follow-up could switch it to the chained enrich-later
-form for a narrower aggregate. Verify against PRAGMA tpcds(64) at sf=1.
+Do NOT *auto*-source it (re-identify `sk` with `store_id` silently) — that defeats
+the rename and, attempted via `_pseudonym_bridge_keys` in `rowset_node.py`,
+produced a `FULL JOIN ... ON 1=1` cartesian with wrong rows (verified and
+reverted). The correct behavior is the explicit chain; only the *error message*
+was improved.
+
+## Applied to q64 (`tests/modeling/tpc_ds_duckdb/query64.preql`) — DONE 2026-06-10
+
+`query64.preql` is now the chained "aggregate on keys, join descriptive text
+later" form: `agg_99`/`agg_00` group on id keys (`item.id`, `store.id`,
+`sale_address.id`, `customer.address.id`, the date years); the join chains each
+key to its base (`agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id`,
+`... = ss.store.id`) and chains the arm-only address ids
+(`agg_99.b_addr_99 = ss.sale_address.id`); the outer select enriches
+`product_name` / `store.name` / `store.zip` / address text. `test_sixty_four`
+passes; the generated SQL is ~40% smaller (10.7k vs 17.7k chars, 8 vs 9 CTEs)
+than the carry-text-in-grain form. Marital stays deferred via `ss_rows_*` (perf,
+below).
 
 ## Perf constraint that overrides "fewer rowsets" for q64 (independent of the above)
 

@@ -32,6 +32,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildMultiSelectLineage,
     BuildParamaterizedConceptReference,
+    BuildRowsetItem,
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
@@ -550,27 +551,35 @@ def _scoped_join_rename_hint(
     # base key address -> rowset-renamed concepts that alias it
     renamed: dict[str, list[str]] = {}
     for c in environment.concepts.values():
-        if c.derivation != Derivation.ROWSET:
+        if c.derivation != Derivation.ROWSET or not isinstance(
+            c.lineage, BuildRowsetItem
+        ):
             continue
-        content = getattr(c.lineage, "content", None)
-        for base in getattr(content, "pseudonyms", set()) or set():
-            if environment.concepts.get(base, c).derivation != Derivation.ROWSET:
-                renamed.setdefault(base, [])
-                if c.address not in renamed[base]:
-                    renamed[base].append(c.address)
+        for base in c.lineage.content.pseudonyms:
+            base_concept = environment.concepts.get(base)
+            if base_concept is None or base_concept.derivation == Derivation.ROWSET:
+                continue
+            renamed.setdefault(base, [])
+            if c.address not in renamed[base]:
+                renamed[base].append(c.address)
+    prefix = f"{DEFAULT_NAMESPACE}."
+
+    def show(addr: str) -> str:
+        return addr[len(prefix) :] if addr.startswith(prefix) else addr
+
     for p in output_concepts:
-        # a property is keyed on something other than itself; its grain names the key
-        for comp in p.grain.components:
-            key = getattr(comp, "address", comp)
+        # a property is keyed on something other than itself; its grain (a set of
+        # key addresses) names that key.
+        for key in p.grain.components:
             if key == p.address or key in output_addresses:
                 continue
             keys = sorted(renamed.get(key, []))
             if keys:
                 return (
-                    f" `{p.address}` is a property of `{key}`, which is present only"
-                    f" as the renamed scoped-join key(s) {', '.join(keys)}. Add the"
-                    f" base key to the join group, e.g."
-                    f" `inner join {keys[0]} = ... = {key}`."
+                    f" `{show(p.address)}` is a property of `{show(key)}`, which is"
+                    f" present only as the renamed scoped-join key(s)"
+                    f" {', '.join(show(k) for k in keys)}. Add the base key to the"
+                    f" join group, e.g. `inner join {show(keys[0])} = ... = {show(key)}`."
                 )
     return None
 
@@ -624,32 +633,44 @@ def get_query_node(
 
     graph = generate_graph(build_environment)
 
-    if CONFIG.use_v4_discovery:
-        return _get_query_node_v4(
-            build_statement=build_statement,
-            build_environment=build_environment,
-            graph=graph,
+    search_concepts: list[BuildConcept] = build_statement.output_components
+    try:
+        if CONFIG.use_v4_discovery:
+            return _get_query_node_v4(
+                build_statement=build_statement,
+                build_environment=build_environment,
+                graph=graph,
+                conditions=build_statement.where_clause,
+                history=history,
+            )
+
+        logger.info(
+            f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
+        )
+
+        # A tautological `X IS NOT NULL` (X provably non-null given the actual join
+        # tree) is dropped later by the StripRedundantNotNull optimization rule,
+        # which operates on the built CTEs where join types and nullability are
+        # known — pre-resolution we can't tell whether an outer join pads X.
+        ods: StrategyNode = source_query_concepts(
+            output_concepts=search_concepts,
+            environment=build_environment,
+            g=graph,
             conditions=build_statement.where_clause,
             history=history,
         )
-
-    logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
-    )
-
-    search_concepts: list[BuildConcept] = build_statement.output_components
-
-    # A tautological `X IS NOT NULL` (X provably non-null given the actual join
-    # tree) is dropped later by the StripRedundantNotNull optimization rule,
-    # which operates on the built CTEs where join types and nullability are
-    # known — pre-resolution we can't tell whether an outer join pads X.
-    ods: StrategyNode = source_query_concepts(
-        output_concepts=search_concepts,
-        environment=build_environment,
-        g=graph,
-        conditions=build_statement.where_clause,
-        history=history,
-    )
+    except ValueError as e:
+        # The discovery dead-end "No remaining priority concepts" is opaque; if it
+        # is the scoped-join property-enrichment shape, point at the fix (chain the
+        # base key into the join group) rather than dumping internal candidate sets.
+        if "No remaining priority concepts" not in str(e):
+            raise
+        hint = _scoped_join_rename_hint(
+            build_statement.output_components, build_environment
+        )
+        if not hint:
+            raise
+        raise UnresolvableQueryException(f"Could not resolve query.{hint}") from e
     if not ods:
         raise ValueError(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"

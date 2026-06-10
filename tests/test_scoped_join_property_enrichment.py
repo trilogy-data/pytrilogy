@@ -20,6 +20,7 @@ see evals/tpcds_agent/handoff_scoped_join_property_enrichment.md.
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.environment import Environment
 
 # Fully self-contained via query-backed datasources (no external tables).
@@ -83,5 +84,7 @@ def test_enrich_property_off_scoped_join_key_chained():
 
 def test_enrich_property_off_scoped_join_key_unchained_unresolvable():
     eng = Dialects.DUCK_DB.default_executor(environment=Environment())
-    with pytest.raises(ValueError, match="resolve"):
+    # The dead-end raises a targeted hint naming the property, its key, and the
+    # renamed scoped-join key(s) to chain — not the opaque internal candidate sets.
+    with pytest.raises(UnresolvableQueryException, match="property of `store_id`"):
         eng.generate_sql(UNCHAINED)
