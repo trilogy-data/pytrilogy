@@ -1,6 +1,6 @@
 query_id = "72"
 generator = "v3"
-gen_length = 6279
+gen_length = 6303
 preql_size = 955
 comp_size = 1360
 generated_sql = """
@@ -110,12 +110,12 @@ SELECT
     coalesce(\"vacuous\".\"cs_sold_date_week_seq\",\"young\".\"cs_sold_date_week_seq\") as \"week_seq\",
     \"vacuous\".\"no_promo\" as \"no_promo\",
     \"vacuous\".\"promo\" as \"promo\",
-    \"young\".\"total_cnt\" as \"total_cnt\"
+    coalesce(\"young\".\"total_cnt\",0) as \"total_cnt\"
 FROM
     \"young\"
     INNER JOIN \"vacuous\" on \"young\".\"cs_item_desc\" is not distinct from \"vacuous\".\"cs_item_desc\" AND \"young\".\"cs_sold_date_week_seq\" = \"vacuous\".\"cs_sold_date_week_seq\" AND \"young\".\"inv_warehouse_name\" is not distinct from \"vacuous\".\"inv_warehouse_name\"
 ORDER BY 
-    \"young\".\"total_cnt\" desc nulls first,
+    coalesce(\"young\".\"total_cnt\",0) desc nulls first,
     \"item_desc\" asc nulls first,
     \"warehouse_name\" asc nulls first,
     \"week_seq\" asc nulls first

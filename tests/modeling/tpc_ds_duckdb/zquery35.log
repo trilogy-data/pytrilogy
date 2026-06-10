@@ -1,6 +1,6 @@
 query_id = "35"
 generator = "v3"
-gen_length = 10096
+gen_length = 10132
 preql_size = 2193
 comp_size = 1745
 generated_sql = """
@@ -137,17 +137,17 @@ SELECT
     coalesce(\"sparkling\".\"customer_demographics_gender\",\"sweltering\".\"customer_demographics_gender\") as \"customer_demographics_gender\",
     coalesce(\"sparkling\".\"customer_demographics_marital_status\",\"sweltering\".\"customer_demographics_marital_status\") as \"customer_demographics_marital_status\",
     coalesce(\"sparkling\".\"customer_demographics_dependent_count\",\"sweltering\".\"customer_demographics_dependent_count\") as \"customer_demographics_dependent_count\",
-    \"sweltering\".\"cnt1\" as \"cnt1\",
+    coalesce(\"sweltering\".\"cnt1\",0) as \"cnt1\",
     \"sparkling\".\"min1\" as \"min1\",
     \"sparkling\".\"max1\" as \"max1\",
     \"sparkling\".\"avg1\" as \"avg1\",
     coalesce(\"sparkling\".\"customer_demographics_employed_dependent_count\",\"sweltering\".\"customer_demographics_employed_dependent_count\") as \"customer_demographics_employed_dependent_count\",
-    \"sweltering\".\"cnt2\" as \"cnt2\",
+    coalesce(\"sweltering\".\"cnt2\",0) as \"cnt2\",
     \"sparkling\".\"min2\" as \"min2\",
     \"sparkling\".\"max2\" as \"max2\",
     \"sparkling\".\"avg2\" as \"avg2\",
     coalesce(\"sparkling\".\"customer_demographics_college_dependent_count\",\"sweltering\".\"customer_demographics_college_dependent_count\") as \"customer_demographics_college_dependent_count\",
-    \"sweltering\".\"cnt3\" as \"cnt3\",
+    coalesce(\"sweltering\".\"cnt3\",0) as \"cnt3\",
     \"sparkling\".\"min3\" as \"min3\",
     \"sparkling\".\"max3\" as \"max3\",
     \"sparkling\".\"avg3\" as \"avg3\"
