@@ -144,8 +144,10 @@ class JoinType(Enum):
 
     @property
     def merge_modifiers(self) -> list[Modifier]:
-        # As a query-scoped join: left outer -> the joined key is partial
-        # against the anchor; inner -> full merge, both keys required.
+        # As a query-scoped join: left outer -> the joined key is partial against
+        # the anchor; inner -> full merge, both keys required. FULL is NOT partial
+        # — its key is complete (coalesced); the FULL JOIN is driven by
+        # BuildEnvironment.scoped_full_join_keys at join-resolution time.
         return [Modifier.PARTIAL] if self is JoinType.LEFT_OUTER else []
 
 

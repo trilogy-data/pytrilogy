@@ -209,6 +209,15 @@ def rowset_to_concepts_v2(
             x.grain = Grain(components={orig[c].address for c in x.grain.components})
         else:
             x.grain = default_grain
+        # When the source dimension carried no key of its own, its alias is
+        # keyed by the source concept itself; remapping that through `orig`
+        # (a rowset derived twice from a shared parent) yields a self-key
+        # (`p.brand` keyed by `p.brand`). A self-referential key makes the
+        # dimension read as already-grouped and drops it from the rowset's
+        # grain, collapsing the outer join to 1=1. Strip it so the dimension
+        # stays a free grain component, matching the once-derived case.
+        if x.keys:
+            x.keys.discard(x.address)
     return RowsetConceptResult(
         concepts=pre_output,
         alias_updates=alias_updates,

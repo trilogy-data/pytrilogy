@@ -1,3 +1,4 @@
+from dataclasses import replace as dc_replace
 from typing import List
 
 from trilogy.constants import logger
@@ -17,6 +18,77 @@ from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
+
+
+def _optional_satisfied(
+    concept: BuildConcept, output_addresses: set[str], partial_addresses: set[str]
+) -> bool:
+    """An optional is already served by the rowset node if the node outputs it
+    directly (or a pseudonym of it) and that output is not partial."""
+    if concept.address in partial_addresses:
+        return False
+    return concept.address in output_addresses or any(
+        addr in concept.pseudonyms for addr in output_addresses
+    )
+
+
+def _pseudonym_bridge_keys(
+    outputs: List[BuildConcept], environment: BuildEnvironment
+) -> list[tuple[BuildConcept, BuildConcept]]:
+    """Pair each rowset-derived FK output with the non-rowset (dim) key it was
+    merged/joined onto. A query-scoped `join`/`merge` collapses the FK's address
+    onto the dim key, leaving the FK only as a non-rowset pseudonym; offering
+    that canonical key lets the rowset be enriched from the dim's datasource."""
+    pairs: list[tuple[BuildConcept, BuildConcept]] = []
+    for fk in outputs:
+        if fk.derivation != Derivation.ROWSET:
+            continue
+        for address in fk.pseudonyms:
+            canonical = environment.concepts.get(address)
+            if canonical is not None and canonical.derivation != Derivation.ROWSET:
+                pairs.append((fk, canonical))
+    return pairs
+
+
+def _scoped_join_targets(
+    node: StrategyNode,
+    lineage: BuildRowsetItem,
+    environment: BuildEnvironment,
+) -> tuple[list[BuildConcept], set[str]]:
+    """When an in-query `join` collapses one of this rowset's derived keys onto a
+    sibling rowset's key (the join *target*), advertise that target join concept
+    sourced from a base column this rowset already exposes, so the outer merge
+    joins the two rowsets on the canonical target key — matching the join clause —
+    instead of dead-ending on the dropped source key.
+
+    Only bridges when the rowset's column for the collapsed key is a passthrough of
+    a base dimension it still outputs (e.g. two year-filtered copies of
+    `item.brand` both expose `item.brand`). When the key is freshly computed (q44's
+    rank), substitution has already labelled the rowset's own column with the
+    target address, so the join resolves without bridging and `shared` is empty.
+    Returns the target concepts plus the subset whose join is partial (LEFT)."""
+    node_output_addresses = {x.address for x in node.output_concepts}
+    targets: list[BuildConcept] = []
+    partial: set[str] = set()
+    seen: set[str] = set()
+    for source_address in lineage.rowset.derived_concepts:
+        canonical = environment.concepts.get(source_address)
+        if canonical is None or canonical.address == source_address:
+            continue  # not collapsed onto a scoped-join target
+        if not isinstance(canonical.lineage, BuildRowsetItem):
+            continue
+        base_addresses = set(getattr(canonical.lineage.content, "pseudonyms", set()))
+        shared = base_addresses & node_output_addresses
+        if not shared or canonical.address in seen:
+            continue
+        seen.add(canonical.address)
+        target = canonical
+        if not set(target.pseudonyms) & shared:
+            target = dc_replace(target, pseudonyms=set(target.pseudonyms) | shared)
+        targets.append(target)
+        if source_address in environment.scoped_partial_sources:
+            partial.add(canonical.address)
+    return targets, partial
 
 
 def gen_rowset_node(
@@ -60,6 +132,12 @@ def gen_rowset_node(
         raise UnresolvableQueryException(
             f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
         )
+    # A LEFT scoped-join key is partial against its anchor; this arm keeps the
+    # anchor's rows, so re-enriching the key back to a shared base dimension fans
+    # the arm out against that base (a 1=1 cross product). Drop it from the
+    # enrichment set — the rowset already outputs the key directly. FULL keys are
+    # intentionally NOT dropped: a FULL join must source both sides in full (so a
+    # complete dimension on one side contributes all its rows).
     enrichment = set([x.address for x in local_optional])
 
     factory = Factory(environment=history.base_environment, grain=select.grain)
@@ -75,6 +153,10 @@ def gen_rowset_node(
     rowset_relevant: list[BuildConcept] = [
         v for v in concept_pool if v.address in rowset_outputs
     ]
+    collapsed_targets, collapsed_partial = _scoped_join_targets(
+        node, lineage, environment
+    )
+    rowset_relevant += collapsed_targets
 
     additional_relevant = [
         factory.build(x) for x in select.output_components if x.address in enrichment
@@ -86,6 +168,12 @@ def gen_rowset_node(
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} adding {item} to partial concepts"
             )
+            node.partial_concepts.append(item)
+    # a LEFT in-query join contributes its target key only partially
+    for item in collapsed_targets:
+        if item.address in collapsed_partial and item.address not in {
+            c.address for c in node.partial_concepts
+        }:
             node.partial_concepts.append(item)
 
     node.grain = BuildGrain.from_concepts(
@@ -106,25 +194,22 @@ def gen_rowset_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]} with grain {node.grain}"
     )
-    if not local_optional or all(
-        (
-            x.address in node.output_concepts
-            or (z in x.pseudonyms for z in node.output_concepts)
-        )
-        and x.address not in node.partial_concepts
+    output_addresses = {x.address for x in node.output_concepts}
+    partial_addresses = {x.address for x in node.partial_concepts}
+    remaining = [
+        x
         for x in local_optional
-    ):
+        if not _optional_satisfied(x, output_addresses, partial_addresses)
+    ]
+    if not remaining:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
         return node
-    remaining = [
-        x
-        for x in local_optional
-        if x not in node.output_concepts or x in node.partial_concepts
-    ]
+    bridge_keys = _pseudonym_bridge_keys(node.output_concepts, environment)
     possible_joins = concept_to_relevant_joins(
         [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]
+        + [canonical for _, canonical in bridge_keys]
     )
     if not possible_joins:
         logger.info(
@@ -153,12 +238,16 @@ def gen_rowset_node(
         )
         return node
 
-    non_hidden = [
-        x for x in node.output_concepts if x.address not in node.hidden_concepts
-    ]
     for x in possible_joins:
         if x.address in node.hidden_concepts:
             node.unhide_output_concepts([x])
+    # keep the bridge FK visible on the rowset side so the merge joins on it
+    for fk, _ in bridge_keys:
+        if fk.address in node.hidden_concepts:
+            node.unhide_output_concepts([fk])
+    non_hidden = [
+        x for x in node.output_concepts if x.address not in node.hidden_concepts
+    ]
     non_hidden_enrich = [
         x
         for x in enrich_node.output_concepts

@@ -486,6 +486,24 @@ class MergeNode(StrategyNode):
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
         )
+        # A derived-key FULL join binds a *different* column on each side (da vs
+        # db) that collapses to one canonical output. resolve_concept_map keyed
+        # each address to its own side only, so the canonical output would render
+        # one side's column and NULL the rows present only on the other. Union
+        # the two ConceptPair addresses' sources so the output renders
+        # coalesce(left.col, right.col). (Same-address keys — root/rowset FULL —
+        # already coalesce the shared column and are skipped.)
+        for join in joins:
+            if not isinstance(join, BaseJoin) or join.join_type != JoinType.FULL:
+                continue
+            for pair in join.concept_pairs or []:
+                la, ra = pair.left.address, pair.right.address
+                if la == ra:
+                    continue
+                combined = source_map.get(la, set()) | source_map.get(ra, set())
+                if len(combined) > 1:
+                    source_map[la] = set(combined)
+                    source_map[ra] = set(combined)
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )

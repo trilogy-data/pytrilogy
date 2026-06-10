@@ -23,7 +23,7 @@ select
     sum(wr.net_loss) as wr_loss,
 ;
 
-left join wr_grouped.wr_wp_id = ws_grouped.ws_wp_id
+left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id
 select
     'web channel' as u_channel_w,
     ws_grouped.ws_wp_id as u_id_w,

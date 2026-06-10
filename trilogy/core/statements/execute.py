@@ -63,6 +63,9 @@ class ProcessedQuery:
     )
     locally_derived: set[str] = field(default_factory=set)
     parameters: dict[str, Any] = field(default_factory=dict)
+    # in-query JOIN source address -> canonical target address, so the output
+    # projection can render a collapsed source under the name the user wrote.
+    scoped_merge_map: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

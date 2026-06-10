@@ -1,6 +1,6 @@
 query_id = "17"
 generator = "v3"
-gen_length = 8095
+gen_length = 8107
 preql_size = 1439
 comp_size = 1764
 generated_sql = """
@@ -118,7 +118,7 @@ SELECT
     \"juicy\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
     \"juicy\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
     \"juicy\".\"_virt_agg_stddev_2955055239782943\" / \"juicy\".\"_virt_agg_avg_8572613716165371\" as \"store_returns_quantitycov\",
-    \"concerned\".\"catalog_sales_quantitycount\" as \"catalog_sales_quantitycount\",
+    coalesce(\"concerned\".\"catalog_sales_quantitycount\",0) as \"catalog_sales_quantitycount\",
     \"concerned\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
     \"concerned\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\",
     \"concerned\".\"_virt_agg_stddev_2693366057110854\" / \"concerned\".\"_virt_agg_avg_1688371525139287\" as \"catalog_sales_quantitycov\"

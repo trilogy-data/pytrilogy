@@ -1,13 +1,7 @@
 import physical_sales as physical_sales;
 import customer as customer;
 
-select
-    --customer.id,
-    customer.last_name,
-    customer.first_name,
-    customer.address.city,
-merge
-where
+rowset bought <- where
     (
         physical_sales.household_demographic.dependent_count = 4
         or physical_sales.household_demographic.vehicle_count = 3
@@ -16,20 +10,29 @@ where
     and physical_sales.date.year in (1999, 2000, 2001)
     and physical_sales.store.city in ('Fairview', 'Midway')
 select
+    physical_sales.customer.id,
     physical_sales.sale_address.city as bought_city,
     physical_sales.ticket_number,
-    --physical_sales.customer.id,
     sum(physical_sales.coupon_amt) as amt,
     sum(physical_sales.net_profit) as profit,
-align
-    --customer_id: physical_sales.customer.id, customer.id
+;
+
+inner join bought.physical_sales.customer.id = customer.id
+select
+    customer.last_name,
+    customer.first_name,
+    customer.address.city,
+    bought.bought_city,
+    bought.physical_sales.ticket_number,
+    bought.amt,
+    bought.profit,
 having
-customer.address.city != bought_city
+    customer.address.city != bought.bought_city
 order by
     customer.last_name asc nulls first,
     customer.first_name asc nulls first,
     customer.address.city asc nulls first,
-    bought_city asc nulls first,
-    physical_sales.ticket_number asc nulls first
+    bought.bought_city asc nulls first,
+    bought.physical_sales.ticket_number asc nulls first
 limit 100
 ;

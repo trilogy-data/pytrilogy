@@ -1,5 +1,9 @@
-from trilogy.core.enums import Derivation, SourceType
-from trilogy.core.models.build import BuildConcept
+from trilogy.core.enums import Derivation, Purpose, SourceType
+from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildConcept,
+    BuildRowsetItem,
+)
 from trilogy.core.models.execute import (
     CTE,
     RecursiveCTE,
@@ -29,6 +33,38 @@ PARENT_INELIGIBLE_DERIVATIONS = {
 
 def _is_group_by_cte(cte: CTE) -> bool:
     return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
+
+
+def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
+    """The concepts an aggregate column reads, unwrapping rowset items. A rowset
+    concept over `sum(x)` reports ROWSET derivation and wraps the real aggregate."""
+    lineage = concept.lineage
+    if isinstance(lineage, BuildRowsetItem):
+        content = lineage.content
+        if isinstance(content, BuildConcept) and content.address != concept.address:
+            return _aggregate_inputs(content)
+        return []
+    if isinstance(lineage, BuildAggregateWrapper):
+        return list(lineage.function.concept_arguments)
+    return []
+
+
+def _drops_dedup_measure(cte: CTE, parent: CTE) -> bool:
+    """True when a child aggregate would coarsen past a non-aggregate parent's
+    GROUP BY that deduplicates on the very measure being aggregated.
+
+    A non-aggregate parent GROUP BY is normally a vacuous DISTINCT (keyed by real
+    keys) and safe to fold a child into. But when the parent's grain folds in a
+    non-key measure (a `select <measure>`-grain rowset / UNION-DISTINCT dedup) and
+    the child sums that measure, dropping the parent's group double-counts the rows
+    the dedup collapsed. Counting a parent-grain *key* stays safe (count-distinct of
+    an already-unique key), so only non-key grain components trip this."""
+    parent_grain = set(parent.grain.components)
+    for column in cte.output_columns:
+        for arg in _aggregate_inputs(column):
+            if arg.address in parent_grain and arg.purpose != Purpose.KEY:
+                return True
+    return False
 
 
 def _is_child_ineligible(concept: BuildConcept, cte: CTE, parent: CTE) -> bool:
@@ -114,6 +150,15 @@ class MergeIrrelevantGroupBy(OptimizationRule):
                 return False, None
             if concept.derivation == Derivation.AGGREGATE:
                 parent_has_aggregate = True
+
+        # A child aggregate over a non-aggregate parent whose GROUP BY folds in the
+        # measure being aggregated (a DISTINCT-grain rowset dedup) must NOT fuse —
+        # dropping the parent's group double-counts the rows the dedup collapsed.
+        if not parent_has_aggregate and _drops_dedup_measure(cte, parent):
+            self.debug(
+                f"CTE {cte.name} aggregates a measure {parent.name} deduplicates on, skipping"
+            )
+            return False, None
 
         # When the parent computes aggregates, its GROUP BY grain matters; only
         # safe to merge when the child preserves (or refines) that grain.

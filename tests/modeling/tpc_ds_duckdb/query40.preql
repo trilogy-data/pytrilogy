@@ -1,9 +1,6 @@
 import catalog_sales as catalog_sales;
 import catalog_returns as catalog_returns;
 
-merge catalog_returns.item.id into ~catalog_sales.item.id;
-merge catalog_returns.order_number into ~catalog_sales.order_number;
-
 const cutoff <- '2000-03-11'::date;
 const start_date <- '2000-02-10'::date;
 const end_date <- '2000-04-10'::date;
@@ -11,6 +8,8 @@ const end_date <- '2000-04-10'::date;
 where
     catalog_sales.item.current_price between 0.99 and 1.49
     and catalog_sales.sold_date.date between start_date and end_date
+left join catalog_sales.item.id = catalog_returns.item.id
+left join catalog_sales.order_number = catalog_returns.order_number
 select
     catalog_sales.warehouse.state,
     catalog_sales.item.text_id,

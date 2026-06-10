@@ -150,6 +150,15 @@ def find_nullable_concepts(
     output_addrs: dict[str, set[str]] = {
         i: {c.address for c in x.output_concepts} for x, i in typed_idents
     }
+    # Joins are emitted left-deep: each entry adds its ``right`` datasource to a
+    # growing left input whose ``left_datasource`` is recorded as None. A FULL
+    # (or RIGHT) join null-extends that ENTIRE accumulated left input, not just
+    # the immediate operand — e.g. in `m1 INNER f FULL m2`, an m2-only row leaves
+    # BOTH m1 and f NULL. Seed the accumulator with the anchor(s) (datasources
+    # that never appear as a ``right``) and grow it in join order.
+    base_joins = [j for j in joins if isinstance(j, BaseJoin)]
+    right_ids = {j.right_datasource.identifier for j in base_joins}
+    accumulated_left: set[str] = {i for _, i in typed_idents if i not in right_ids}
     for join in joins:
         is_on_nullable_condition = False
         if not isinstance(join, BaseJoin):
@@ -162,13 +171,12 @@ def find_nullable_concepts(
             right_ds = datasource_map.get(right_id)
             if right_ds is not None:
                 nullable_datasources.add(right_ds)
-        if (
-            join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL)
-            and join.left_datasource is not None
-        ):
-            left_ds = datasource_map.get(join.left_datasource.identifier)
-            if left_ds is not None:
-                nullable_datasources.add(left_ds)
+        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            for left_id_acc in accumulated_left:
+                left_ds = datasource_map.get(left_id_acc)
+                if left_ds is not None:
+                    nullable_datasources.add(left_ds)
+        accumulated_left.add(right_id)
         if not join.concept_pairs:
             continue
         # left_datasource is constant across the pair loop; identifier never
@@ -233,29 +241,40 @@ def sort_select_output_processed(
 
     output_addresses = {c.address for c in targets}
     mapping = {x.address: x for x in cte.output_columns}
+    scoped_merge_map: dict[str, str] = (
+        getattr(query, "scoped_merge_map", {})
+        if isinstance(query, ProcessedQuery)
+        else {}
+    )
+
+    def render_as(target, oc: BuildConcept) -> BuildConcept:
+        # render `oc`'s column under the originally-written `target` name
+        return BuildConcept(
+            name=target.name,
+            canonical_name=target.name,
+            namespace=target.namespace,
+            pseudonyms={oc.address},
+            datatype=oc.datatype,
+            purpose=oc.purpose,
+            grain=oc.grain,
+            build_is_aggregate=oc.build_is_aggregate,
+        )
 
     new_output: list[BuildConcept] = []
     for x in targets:
         if x.address in mapping:
             new_output.append(mapping[x.address])
+            continue
         for oc in cte.output_columns:
             if x.address in oc.pseudonyms:
-                # create a wrapper BuildConcept to render the pseudonym under the original name
-                if any(x.address == y for y in mapping.keys()):
-                    continue
-                new_output.append(
-                    BuildConcept(
-                        name=x.name,
-                        canonical_name=x.name,
-                        namespace=x.namespace,
-                        pseudonyms={oc.address},
-                        datatype=oc.datatype,
-                        purpose=oc.purpose,
-                        grain=oc.grain,
-                        build_is_aggregate=oc.build_is_aggregate,
-                    )
-                )
+                new_output.append(render_as(x, oc))
                 break
+        else:
+            # an in-query JOIN collapses a source onto its canonical target; the
+            # target's column is present, render it under the written source name
+            canonical = scoped_merge_map.get(x.address)
+            if canonical is not None and canonical in mapping:
+                new_output.append(render_as(x, mapping[canonical]))
 
     for oc in cte.output_columns:
         # add hidden back

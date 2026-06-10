@@ -1,7 +1,7 @@
 query_id = "75"
 generator = "v3"
-gen_length = 7988
-preql_size = 1915
+gen_length = 7783
+preql_size = 1815
 comp_size = 2939
 generated_sql = """
 
@@ -126,12 +126,12 @@ GROUP BY
     \"abundant\".\"sales_date_year\"),
 young as (
 SELECT
-    \"concerned\".\"deduped_sales_item_brand_id\" as \"i_brand_id\",
-    \"concerned\".\"deduped_sales_item_category_id\" as \"i_category_id\",
-    \"concerned\".\"deduped_sales_item_class_id\" as \"i_class_id\",
-    \"concerned\".\"deduped_sales_item_manufacturer_id\" as \"i_manufact_id\",
-    sum(\"concerned\".\"deduped_amt_per_row\") as \"_year_pair_curr_amt\",
-    sum(\"concerned\".\"deduped_cnt_per_row\") as \"_year_pair_curr_cnt\"
+    \"concerned\".\"deduped_sales_item_brand_id\" as \"curr_i_brand_id\",
+    \"concerned\".\"deduped_sales_item_category_id\" as \"curr_i_category_id\",
+    \"concerned\".\"deduped_sales_item_class_id\" as \"curr_i_class_id\",
+    \"concerned\".\"deduped_sales_item_manufacturer_id\" as \"curr_i_manufact_id\",
+    sum(\"concerned\".\"deduped_amt_per_row\") as \"curr_curr_amt\",
+    sum(\"concerned\".\"deduped_cnt_per_row\") as \"curr_curr_cnt\"
 FROM
     \"concerned\"
 GROUP BY
@@ -141,12 +141,12 @@ GROUP BY
     4),
 vacuous as (
 SELECT
-    \"juicy\".\"deduped_sales_item_brand_id\" as \"i_brand_id\",
-    \"juicy\".\"deduped_sales_item_category_id\" as \"i_category_id\",
-    \"juicy\".\"deduped_sales_item_class_id\" as \"i_class_id\",
-    \"juicy\".\"deduped_sales_item_manufacturer_id\" as \"i_manufact_id\",
-    sum(\"juicy\".\"deduped_amt_per_row\") as \"_year_pair_prev_amt\",
-    sum(\"juicy\".\"deduped_cnt_per_row\") as \"_year_pair_prev_cnt\"
+    \"juicy\".\"deduped_sales_item_brand_id\" as \"prev_i_brand_id\",
+    \"juicy\".\"deduped_sales_item_category_id\" as \"prev_i_category_id\",
+    \"juicy\".\"deduped_sales_item_class_id\" as \"prev_i_class_id\",
+    \"juicy\".\"deduped_sales_item_manufacturer_id\" as \"prev_i_manufact_id\",
+    sum(\"juicy\".\"deduped_amt_per_row\") as \"prev_prev_amt\",
+    sum(\"juicy\".\"deduped_cnt_per_row\") as \"prev_prev_cnt\"
 FROM
     \"juicy\"
 GROUP BY
@@ -157,19 +157,19 @@ GROUP BY
 SELECT
     2001 as \"prev_year\",
     2002 as \"year_\",
-    coalesce(\"vacuous\".\"i_brand_id\",\"young\".\"i_brand_id\") as \"year_pair_i_brand_id\",
-    coalesce(\"vacuous\".\"i_class_id\",\"young\".\"i_class_id\") as \"year_pair_i_class_id\",
-    coalesce(\"vacuous\".\"i_category_id\",\"young\".\"i_category_id\") as \"year_pair_i_category_id\",
-    coalesce(\"vacuous\".\"i_manufact_id\",\"young\".\"i_manufact_id\") as \"year_pair_i_manufact_id\",
-    \"vacuous\".\"_year_pair_prev_cnt\" as \"prev_yr_cnt\",
-    \"young\".\"_year_pair_curr_cnt\" as \"curr_yr_cnt\",
-    \"young\".\"_year_pair_curr_cnt\" - \"vacuous\".\"_year_pair_prev_cnt\" as \"sales_cnt_diff\",
-    \"young\".\"_year_pair_curr_amt\" - \"vacuous\".\"_year_pair_prev_amt\" as \"sales_amt_diff\"
+    \"young\".\"curr_i_brand_id\" as \"curr_i_brand_id\",
+    \"young\".\"curr_i_class_id\" as \"curr_i_class_id\",
+    \"young\".\"curr_i_category_id\" as \"curr_i_category_id\",
+    \"young\".\"curr_i_manufact_id\" as \"curr_i_manufact_id\",
+    \"vacuous\".\"prev_prev_cnt\" as \"prev_yr_cnt\",
+    \"young\".\"curr_curr_cnt\" as \"curr_yr_cnt\",
+    \"young\".\"curr_curr_cnt\" - \"vacuous\".\"prev_prev_cnt\" as \"sales_cnt_diff\",
+    \"young\".\"curr_curr_amt\" - \"vacuous\".\"prev_prev_amt\" as \"sales_amt_diff\"
 FROM
     \"young\"
-    FULL JOIN \"vacuous\" on \"young\".\"i_brand_id\" is not distinct from \"vacuous\".\"i_brand_id\" AND \"young\".\"i_category_id\" is not distinct from \"vacuous\".\"i_category_id\" AND \"young\".\"i_class_id\" is not distinct from \"vacuous\".\"i_class_id\" AND \"young\".\"i_manufact_id\" is not distinct from \"vacuous\".\"i_manufact_id\"
+    INNER JOIN \"vacuous\" on \"young\".\"curr_i_brand_id\" = \"vacuous\".\"prev_i_brand_id\" AND \"young\".\"curr_i_category_id\" = \"vacuous\".\"prev_i_category_id\" AND \"young\".\"curr_i_class_id\" = \"vacuous\".\"prev_i_class_id\" AND \"young\".\"curr_i_manufact_id\" = \"vacuous\".\"prev_i_manufact_id\"
 WHERE
-    cast(\"young\".\"_year_pair_curr_cnt\" as numeric(17,2)) / cast(\"vacuous\".\"_year_pair_prev_cnt\" as numeric(17,2)) < 0.9
+    cast(\"young\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"vacuous\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
 
 ORDER BY 
     \"sales_cnt_diff\" asc nulls first,

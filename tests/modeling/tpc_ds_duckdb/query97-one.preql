@@ -5,15 +5,14 @@ import catalog_sales as catalog_sales;
 import customer as customer;
 import item as item;
 
-merge physical_sales.customer.id into ~customer.id;
-merge physical_sales.item.id into ~item.id;
-merge catalog_sales.bill_customer.id into ~customer.id;
-merge catalog_sales.item.id into ~item.id;
-
 auto customer_item <- concat(concat(customer.id::string, '-'), item.id::string);
 auto catalog_sales <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
 auto physical_sales <- customer_item ? physical_sales.date.month_seq between 1200 and 1200 + 11;
 
+left join customer.id = physical_sales.customer.id
+left join item.id = physical_sales.item.id
+left join customer.id = catalog_sales.bill_customer.id
+left join item.id = catalog_sales.item.id
 select
     sum(
             case

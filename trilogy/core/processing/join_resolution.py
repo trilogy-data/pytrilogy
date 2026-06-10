@@ -112,7 +112,15 @@ def get_join_type(
     partials: dict[str, list[str]],
     nullables: dict[str, list[str]],
     all_connecting_keys: set[str],
+    full_join_keys: set[str] | None = None,
 ) -> JoinType:
+    # A query-scoped FULL join registers its canonical key here. Both sides bind
+    # it completely (it is NOT partial) — the FULL JOIN itself spans the rows
+    # absent from either side and `_build_joinkeys` coalesces the key. Driving
+    # FULL from this registry (rather than the partial flag) keeps the key
+    # complete, so the unresolvable-source gate and rowset enrichment never fire.
+    if full_join_keys and all_connecting_keys & full_join_keys:
+        return JoinType.FULL
     left_is_partial = _has_any(all_connecting_keys, left, partials)
     left_is_nullable = _has_any(all_connecting_keys, left, nullables)
     right_is_partial = _has_any(all_connecting_keys, right, partials)
@@ -221,6 +229,7 @@ def resolve_join_order_v2(
     partials: dict[str, list[str]],
     nullables: dict[str, list[str]],
     grain_size: dict[str, int] | None = None,
+    full_join_keys: set[str] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -320,7 +329,12 @@ def resolve_join_order_v2(
                     continue
 
                 join_type = get_join_type(
-                    left_candidate, right, partials, nullables, all_connecting_keys
+                    left_candidate,
+                    right,
+                    partials,
+                    nullables,
+                    all_connecting_keys,
+                    full_join_keys,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -538,6 +552,20 @@ def get_node_joins(
         partial_nodes = {
             canon_node(a) for a in _collect_deep_partial_addresses(datasource)
         }
+        # A LEFT scoped join on a *derived* key has no datasource column binding
+        # to carry Modifier.PARTIAL. The merge-mechanism keeps that key as a
+        # distinct output concept present ONLY on the partial side (the complete
+        # side outputs the canonical), so intersecting outputs with
+        # scoped_partial_derived marks exactly the partial side here. (Root/rowset
+        # partial keys are excluded — they carry partiality through the
+        # column-partial / rowset machinery, and a rowset key also survives as a
+        # distinct output, so marking it here would double-count.)
+        if environment.scoped_partial_derived:
+            partial_nodes |= {
+                canon_node(c.address)
+                for c in datasource.output_concepts
+                if c.address in environment.scoped_partial_derived
+            }
         nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
         p_list: list[str] = []
         n_list: list[str] = []
@@ -555,8 +583,14 @@ def get_node_joins(
         partials[ds_node] = p_list
         nullables[ds_node] = n_list
 
+    # Canonical keys of query-scoped FULL joins, mapped into graph concept nodes.
+    full_join_keys = {canon_node(a) for a in environment.scoped_full_join_keys}
     joins = resolve_join_order_v2(
-        graph, partials=partials, nullables=nullables, grain_size=grain_size
+        graph,
+        partials=partials,
+        nullables=nullables,
+        grain_size=grain_size,
+        full_join_keys=full_join_keys,
     )
     return [
         BaseJoin(

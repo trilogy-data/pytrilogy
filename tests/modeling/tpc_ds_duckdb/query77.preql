@@ -96,8 +96,8 @@ align
 ;
 
 # Final ROLLUP(channel, id) over the unioned L0.
-left join sr_grouped.sr_store_id = ss_grouped.ss_store_id
-left join wr_grouped.wr_wp_id = ws_grouped.ws_wp_id
+left join ss_grouped.ss_store_id = sr_grouped.sr_store_id
+left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id
 select
     l0_union.u_channel as channel,
     l0_union.u_id as id,

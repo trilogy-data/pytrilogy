@@ -434,8 +434,10 @@ def _enabled_dependencies(*names: tuple[str, bool]) -> tuple[str, ...]:
 
 def build_optimization_rule_plan(
     having_alias: bool = False,
+    full_join_keys: set[str] | None = None,
 ) -> list[OptimizationRulePlan]:
     opts = CONFIG.optimizations
+    full_join_keys = full_join_keys or set()
     plan: list[OptimizationRulePlan] = []
 
     if opts.merge_aggregate:
@@ -598,7 +600,9 @@ def build_optimization_rule_plan(
         plan.append(
             OptimizationRulePlan(
                 name="upgrade_outer_key_set_equivalence",
-                rule_factory=UpgradeOuterFromKeySetEquivalence,
+                rule_factory=lambda: UpgradeOuterFromKeySetEquivalence(
+                    full_join_keys=full_join_keys
+                ),
                 depends_on=_enabled_dependencies(
                     ("upgrade_join_on_guards.final", opts.upgrade_condition_joins)
                 ),
@@ -672,6 +676,7 @@ def optimize_ctes(
     root_cte: CTE | UnionCTE,
     select: SelectStatement | MultiSelectStatement,
     having_alias: bool = False,
+    full_join_keys: set[str] | None = None,
 ) -> list[CTE | UnionCTE]:
     direct_parent: CTE | UnionCTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
@@ -686,7 +691,9 @@ def optimize_ctes(
     cte_lookup[root_cte.name] = root_cte
 
     phase_actions: dict[str, bool] = {}
-    rule_plan = build_optimization_rule_plan(having_alias=having_alias)
+    rule_plan = build_optimization_rule_plan(
+        having_alias=having_alias, full_join_keys=full_join_keys
+    )
     log_optimization_rule_plan(rule_plan)
     for phase in rule_plan:
         if phase.refires_after and not any(

@@ -1,7 +1,7 @@
 query_id = "68"
 generator = "v3"
-gen_length = 3154
-preql_size = 1308
+gen_length = 3198
+preql_size = 1198
 comp_size = 1453
 generated_sql = """
 
@@ -17,12 +17,12 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),
 uneven as (
 SELECT
-    \"physical_sales_sale_address_customer_address\".\"CA_CITY\" as \"physical_sales_sale_address_city\",
-    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
-    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
-    sum(\"physical_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"_dn_list_price\",
-    sum(\"physical_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"_dn_extended_price\",
-    sum(\"physical_sales_store_sales\".\"SS_EXT_TAX\") as \"_dn_extended_tax\"
+    \"physical_sales_sale_address_customer_address\".\"CA_CITY\" as \"bought_bought_city\",
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"bought_physical_sales_customer_id\",
+    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"bought_physical_sales_ticket_number\",
+    sum(\"physical_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"bought_list_price\",
+    sum(\"physical_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"bought_extended_price\",
+    sum(\"physical_sales_store_sales\".\"SS_EXT_TAX\") as \"bought_extended_tax\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
@@ -37,21 +37,21 @@ GROUP BY
     2,
     3)
 SELECT
-    \"wakeful\".\"customer_last_name\" as \"dn_customer_last_name\",
-    \"wakeful\".\"customer_first_name\" as \"dn_customer_first_name\",
-    \"wakeful\".\"customer_address_city\" as \"dn_customer_address_city\",
-    \"uneven\".\"physical_sales_sale_address_city\" as \"dn_physical_sales_sale_address_city\",
-    \"uneven\".\"physical_sales_ticket_number\" as \"dn_physical_sales_ticket_number\",
-    \"uneven\".\"_dn_extended_price\" as \"dn_extended_price\",
-    \"uneven\".\"_dn_extended_tax\" as \"dn_extended_tax\",
-    \"uneven\".\"_dn_list_price\" as \"dn_list_price\"
+    \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
+    \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
+    \"wakeful\".\"customer_address_city\" as \"customer_address_city\",
+    \"uneven\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"uneven\".\"bought_physical_sales_ticket_number\" as \"bought_physical_sales_ticket_number\",
+    \"uneven\".\"bought_extended_price\" as \"bought_extended_price\",
+    \"uneven\".\"bought_extended_tax\" as \"bought_extended_tax\",
+    \"uneven\".\"bought_list_price\" as \"bought_list_price\"
 FROM
     \"uneven\"
-    INNER JOIN \"wakeful\" on \"uneven\".\"customer_id\" = \"wakeful\".\"customer_id\"
+    INNER JOIN \"wakeful\" on \"uneven\".\"bought_physical_sales_customer_id\" = \"wakeful\".\"customer_id\"
 WHERE
-    \"wakeful\".\"customer_address_city\" != \"uneven\".\"physical_sales_sale_address_city\"
+    \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_bought_city\"
 
 ORDER BY 
-    \"dn_customer_last_name\" asc nulls first,
-    \"dn_physical_sales_ticket_number\" asc nulls first
+    \"wakeful\".\"customer_last_name\" asc nulls first,
+    \"uneven\".\"bought_physical_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

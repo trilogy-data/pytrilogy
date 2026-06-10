@@ -368,21 +368,39 @@ class RootNodeHandler:
     def _try_merge_expansion(
         self, root_targets: List[BuildConcept]
     ) -> Optional[StrategyNode]:
-        for accept_partial in [False, True]:
-            expanded = gen_merge_node(
-                all_concepts=root_targets,
-                environment=self.ctx.environment,
-                g=self.ctx.g,
-                depth=self.ctx.next_depth,
-                source_concepts=self.ctx.source_concepts,
-                history=self.ctx.history,
-                search_conditions=self.ctx.conditions,
-                accept_partial=accept_partial,
-            )
+        # Merge expansion recursively re-searches the injected concepts, which
+        # can route back to an identical root search (e.g. a rowset over a
+        # window whose enrichment re-resolves these same roots). Guard against
+        # re-entering merge expansion for an in-progress root set so the inner
+        # search bottoms out instead of recursing infinitely. The guard is
+        # balanced (cleared on exit) so it only blocks nested re-entry and does
+        # not suppress the sibling synonym-resolution attempt at this level.
+        with self.ctx.history.merge_in_progress(
+            root_targets,
+            accept_partial=self.ctx.accept_partial,
+            conditions=self.ctx.conditions,
+        ) as already_in_progress:
+            if already_in_progress:
+                logger.info(
+                    f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
+                    f"skipping merge expansion, already in a recursion for these concepts"
+                )
+                return None
+            for accept_partial in [False, True]:
+                expanded = gen_merge_node(
+                    all_concepts=root_targets,
+                    environment=self.ctx.environment,
+                    g=self.ctx.g,
+                    depth=self.ctx.next_depth,
+                    source_concepts=self.ctx.source_concepts,
+                    history=self.ctx.history,
+                    search_conditions=self.ctx.conditions,
+                    accept_partial=accept_partial,
+                )
 
-            if expanded:
-                self._handle_expanded_node(expanded, root_targets)
-                return expanded
+                if expanded:
+                    self._handle_expanded_node(expanded, root_targets)
+                    return expanded
 
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "

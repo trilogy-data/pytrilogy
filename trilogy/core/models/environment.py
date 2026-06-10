@@ -35,6 +35,7 @@ from trilogy.core.enums import (
     Derivation,
     FunctionType,
     Granularity,
+    JoinType,
     Modifier,
     Purpose,
 )
@@ -452,7 +453,7 @@ class Environment:
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
-        scoped_joins: list[tuple[str, str, List[Modifier]]] | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
     ) -> "BuildEnvironment":
         """helper method"""
         from trilogy.core.models.build import Factory
