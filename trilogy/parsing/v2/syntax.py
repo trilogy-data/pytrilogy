@@ -227,6 +227,12 @@ class SyntaxNodeKind(str, Enum):
     ALIGN_ITEM = "align_item"
     DERIVE_CLAUSE = "derive_clause"
     DERIVE_ITEM = "derive_item"
+    # Table-valued functions (relational union)
+    TVF_UNION_INVOCATION = "tvf_union_invocation"
+    TVF_SELECT_STATEMENT = "tvf_select_statement"
+    TVF_OUTPUT = "tvf_output"
+    TVF_OUTPUT_ITEM = "tvf_output_item"
+    TVF_REL_ARG = "tvf_rel_arg"
     # Phase 7: remaining statements
     DATASOURCE = "datasource"
     PERSIST_STATEMENT = "persist_statement"
@@ -554,6 +560,11 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "align_item": SyntaxNodeKind.ALIGN_ITEM,
     "derive_clause": SyntaxNodeKind.DERIVE_CLAUSE,
     "derive_item": SyntaxNodeKind.DERIVE_ITEM,
+    "tvf_union_invocation": SyntaxNodeKind.TVF_UNION_INVOCATION,
+    "tvf_select_statement": SyntaxNodeKind.TVF_SELECT_STATEMENT,
+    "tvf_output": SyntaxNodeKind.TVF_OUTPUT,
+    "tvf_output_item": SyntaxNodeKind.TVF_OUTPUT_ITEM,
+    "tvf_rel_arg": SyntaxNodeKind.TVF_REL_ARG,
     # Phase 7: remaining statements
     "inline_property": SyntaxNodeKind.INLINE_PROPERTY,
     "inline_property_list": SyntaxNodeKind.INLINE_PROPERTY_LIST,

@@ -74,6 +74,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     SubselectItem,
     UndefinedConcept,
+    UnionSelectLineage,
     WhereClause,
     WindowItem,
 )
@@ -1910,6 +1911,14 @@ class BuildMultiSelectLineage(BuildConceptArgs):
         )
 
 
+class BuildUnionSelectLineage(BuildMultiSelectLineage):
+    """Build form of a relational `union(...)` TVF: a positional column-stack
+    (SQL UNION) of arm selects. Same arm/align machinery as the multiselect
+    build lineage; the distinct type routes the planner to the union combiner
+    (`UnionNode`) instead of the FULL-JOIN merge. `build_output_components` holds
+    only the bound union columns."""
+
+
 @dataclass(slots=True)
 class BuildAlignItem:
     alias: str
@@ -3382,8 +3391,21 @@ class Factory:
     def _(self, base: MultiSelectLineage) -> BuildMultiSelectLineage:
         return self._build_multi_select_lineage(base)
 
+    @_build_dispatch.register
+    def _(self, base: UnionSelectLineage) -> BuildUnionSelectLineage:
+        return self._build_multi_select_lineage(
+            base,
+            build_cls=BuildUnionSelectLineage,
+            derivation=Derivation.TVF_UNION,
+            outputs_only=True,
+        )
+
     def _build_multi_select_lineage(
-        self, base: MultiSelectLineage
+        self,
+        base: MultiSelectLineage,
+        build_cls: type[BuildMultiSelectLineage] = BuildMultiSelectLineage,
+        derivation: Derivation = Derivation.MULTISELECT,
+        outputs_only: bool = False,
     ) -> BuildMultiSelectLineage:
         local_build_cache: dict[str, BuildConcept] = {}
 
@@ -3408,7 +3430,7 @@ class Factory:
                     datatype=base_concept.datatype,
                     purpose=base_concept.purpose,
                     build_is_aggregate=False,
-                    derivation=Derivation.MULTISELECT,
+                    derivation=derivation,
                     lineage=None,
                     grain=final_grain,
                     keys=base_concept.keys,
@@ -3427,9 +3449,12 @@ class Factory:
             item.aligned_concept for item in base.align.items if item.hidden
         }
         select_hidden = base.hidden_components - align_hidden
-        final: list[BuildConcept] = [
-            x for x in all_output if x.address not in select_hidden
-        ]
+        if outputs_only:
+            # A union TVF exposes only its bound output columns; the arms'
+            # internal (per-arm mangled) columns must not surface.
+            final: list[BuildConcept] = list(derived_base)
+        else:
+            final = [x for x in all_output if x.address not in select_hidden]
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
@@ -3446,7 +3471,7 @@ class Factory:
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
         )
-        lineage = BuildMultiSelectLineage(
+        lineage = build_cls(
             # we don't build selects here; they'll be built automatically in query discovery
             selects=base.selects,
             grain=final_grain,
@@ -3754,5 +3779,6 @@ _CONCEPT_NAME_GENERATORS.update(
         BuildParenthetical: _gen_paren_name,
         BuildComparison: _gen_comp_name,
         BuildMultiSelectLineage: _gen_msl_name,
+        BuildUnionSelectLineage: _gen_msl_name,
     }
 )

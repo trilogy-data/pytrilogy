@@ -37,9 +37,11 @@ from trilogy.core.models.author import (
     MultiSelectLineage,
     OrderBy,
     Parenthetical,
+    RowsetItem,
     SelectLineage,
     SubselectItem,
     UndefinedConcept,
+    UnionSelectLineage,
     WhereClause,
     WindowItem,
 )
@@ -166,7 +168,13 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             where_clause=self.where_clause,
             having_clause=self.having_clause,
             local_concepts={
-                k: v for k, v in self.local_concepts.items() if k in derived
+                k: v
+                for k, v in self.local_concepts.items()
+                # Keep transform-derived locals, plus union/rowset-derived locals
+                # (inline `from union(...) -> (...)`): their bare names (`dt`,
+                # `val`) are referenced but never appear as a ConceptTransform
+                # output, so the `derived` filter alone would drop the lineage.
+                if k in derived or isinstance(v.lineage, RowsetItem)
             },
             hidden_components=self.hidden_components,
             grain=self.grain,
@@ -521,6 +529,33 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
         for select in self.selects:
             locally_derived = locally_derived.union(select.locally_derived)
         return locally_derived
+
+
+@dataclass
+class UnionSelectStatement(MultiSelectStatement):
+    """Relational `union(...)` TVF: a positional column-stack (SQL UNION) of the
+    arm selects. Reuses the multiselect arm structure (`selects`, `align` as the
+    positional output binding, `derived_concepts` as the union outputs) but
+    exposes only the bound union columns and lowers to a `UnionSelectLineage`."""
+
+    def as_lineage(self, environment: Environment) -> UnionSelectLineage:
+        new_selects = [x.as_lineage(environment) for x in self.selects]
+        return UnionSelectLineage(
+            selects=new_selects,
+            align=self.align,
+            derive=None,
+            namespace=self.namespace,
+            limit=self.limit,
+            order_by=self.order_by,
+            where_clause=self.where_clause,
+            having_clause=self.having_clause,
+            hidden_components=set(y for x in new_selects for y in x.hidden_components),
+        )
+
+    @property
+    def output_components(self) -> List[ConceptRef]:
+        # Only the bound union outputs; arm columns are internal.
+        return unique([x.reference for x in self.derived_concepts], "address")
 
 
 @dataclass

@@ -27,14 +27,18 @@ from trilogy.core.models.execute import (
     CTEConceptPair,
     InstantiatedUnnestJoin,
     Join,
+    QueryDatasource,
 )
 from trilogy.core.optimizations.join_upgrade import (
     UpgradeJoinOnGuards,
     _accumulated_left_addresses,
+    _blocked_partials,
     _cte_addresses,
     _gather_proofs,
+    _partial_addresses,
     _proves_non_null,
     _seed_addresses,
+    _source_datasources,
 )
 from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
@@ -846,3 +850,93 @@ def test_plain_column_flag_eq_false_still_upgrades():
     rows, so ``flag = false`` legitimately rejects them — INNER is sound and
     the gate must still fire. Confirms the fix is scoped to opaque bindings."""
     assert _build_flag_scenario("WR_FLAG") == JoinType.INNER
+
+
+def test_source_datasources_normalizes_to_safe_identifier_tokens():
+    """``_source_datasources`` must yield the same ``safe_identifier`` tokens
+    stored in ``CTE.source_map`` (what ``_blocked_partials`` intersects). A
+    namespaced datasource's ``identifier`` keeps dots while ``source_map``
+    stores the underscored form, and a ``QueryDatasource`` maps to datasource
+    *objects*, never strings — both must normalize to ``safe_identifier`` or
+    the partial-block check silently never matches on this path."""
+    key = _build_concept("KEY")
+    bd = BuildDatasource(
+        name="returns",
+        columns=[BuildColumnAssignment(alias="KEY", concept=key)],
+        address="returns",
+        namespace="test",
+        grain=BuildGrain(),
+    )
+    # The exact mismatch the fix closes: dotted identifier vs underscored token.
+    assert bd.identifier == "test.returns"
+    assert bd.safe_identifier == "test_returns"
+
+    # Bare BuildDatasource → its own safe_identifier (underscored, not dotted).
+    assert _source_datasources(bd) == {"test_returns"}
+
+    # QueryDatasource wrapping it → the BD's safe_identifier, not the object.
+    qds = QueryDatasource(
+        input_concepts=[key],
+        output_concepts=[key],
+        datasources=[bd],
+        source_map={key.address: {bd}},
+        grain=BuildGrain(components={key.address}),
+        joins=[],
+    )
+    assert _source_datasources(qds) == {"test_returns"}
+
+
+def test_source_datasources_cte_returns_source_map_tokens():
+    """A CTE/UnionCTE source_map already holds string tokens — returned as-is."""
+    key = _build_concept("KEY")
+    cte = _build_cte("c", [key])
+    cte.source_map = {key.address: ["test_c", "other_src"]}
+    assert _source_datasources(cte) == {"test_c", "other_src"}
+
+
+def test_blocked_partials_intersects_operand_tokens():
+    """A partial whose binding token IS the operand renders from it (not
+    blocked); one bound only elsewhere is blocked; an unbound one is skipped.
+    This is the decision the safe_identifier normalization makes reachable."""
+    cte = _build_cte("root", [_build_concept("X")])
+    cte.source_map = {
+        "test.from_operand": ["test_returns"],
+        "test.from_elsewhere": ["test_fact"],
+        "test.unbound": [],
+    }
+    blocked = _blocked_partials(
+        cte,
+        {"test.from_operand", "test.from_elsewhere", "test.unbound"},
+        {"test_returns"},
+    )
+    assert blocked == {"test.from_elsewhere"}
+
+
+def test_partial_addresses_per_source_type():
+    """``partial_concepts`` lives on CTE/UnionCTE/QueryDatasource; a bare
+    BuildDatasource has none, so it contributes no partial addresses."""
+    key = _build_concept("KEY")
+    other = _build_concept("OTHER")
+    bd = BuildDatasource(
+        name="d",
+        columns=[BuildColumnAssignment(alias="KEY", concept=key)],
+        address="d",
+        namespace="test",
+        grain=BuildGrain(),
+    )
+    assert _partial_addresses(bd) == set()
+
+    cte = _build_cte("c", [key, other])
+    cte.partial_concepts = [other]
+    assert _partial_addresses(cte) == {other.address}
+
+    qds = QueryDatasource(
+        input_concepts=[key],
+        output_concepts=[key],
+        datasources=[bd],
+        source_map={key.address: {bd}},
+        grain=BuildGrain(components={key.address}),
+        joins=[],
+        partial_concepts=[key],
+    )
+    assert _partial_addresses(qds) == {key.address}

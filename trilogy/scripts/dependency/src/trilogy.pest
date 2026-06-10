@@ -28,6 +28,7 @@ statement = _{
       function
     | type_declaration
     | multi_select_statement
+    | tvf_select_statement
     | select_statement
     | persist_statement
     | rowset_derivation_statement
@@ -253,8 +254,8 @@ type_declaration = { ^"type" ~ IDENTIFIER ~ data_type ~ ("|" ~ data_type)* ~ typ
 // ROWSET
 // =============================================================================
 rowset_derivation_statement = {
-      (^"rowset" ~ IDENTIFIER ~ "<-" ~ (multi_select_statement | select_statement))
-    | (^"with" ~ IDENTIFIER ~ ^"as" ~ (multi_select_statement | select_statement))
+      (^"rowset" ~ IDENTIFIER ~ "<-" ~ (tvf_union_invocation | multi_select_statement | select_statement))
+    | (^"with" ~ IDENTIFIER ~ ^"as" ~ (tvf_union_invocation | multi_select_statement | select_statement))
 }
 
 // =============================================================================
@@ -457,6 +458,15 @@ subselect       = { _SUBSELECT ~ expr ~ subselect_where? ~ subselect_order? ~ su
 
 _UNION = _{ ^"union(" }
 union  = { _UNION ~ (expr ~ ",")* ~ expr ~ ")" }
+
+// table-valued function: relational union(...). Reuses _UNION at statement
+// positions (rowset-RHS / inline-FROM), disjoint from the atom-level `union`.
+tvf_output_item      = { select_hide_modifier? ~ IDENTIFIER ~ (PURPOSE? ~ data_type ~ concept_nullable_modifier?)? ~ metadata? }
+tvf_output           = { "->" ~ "(" ~ tvf_output_item ~ ("," ~ tvf_output_item)* ~ ","? ~ ")" }
+tvf_rel_arg          = { "(" ~ select_statement ~ ")" }
+_tvf_arg             = _{ tvf_rel_arg }
+tvf_union_invocation = { _UNION ~ (_tvf_arg ~ ("," ~ _tvf_arg)* ~ ","?)? ~ ")" ~ tvf_output }
+tvf_select_statement = { ^"from" ~ tvf_union_invocation ~ select_statement }
 
 // =============================================================================
 // AGGREGATES

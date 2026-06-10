@@ -1311,11 +1311,27 @@ class TestExecutionJsonMode:
         assert ev["ok"] is True
 
     def test_chart_terminal_emits_event(self, capsys):
+        from trilogy.core.enums import ChartType
+        from trilogy.core.statements.execute import (
+            ProcessedChartLayer,
+            ProcessedChartStatement,
+        )
+
         layers = [[{"x": 1, "y": 2}]]
-        assert display.print_chart_terminal(layers, object()) is True
+        statement = ProcessedChartStatement(
+            layers=[
+                ProcessedChartLayer(
+                    layer_type=ChartType.LINE, x_fields=["x"], y_fields=["y"]
+                )
+            ]
+        )
+        assert display.print_chart_terminal(layers, statement) is True
         ev = self._events(capsys.readouterr().out)[0]
         assert ev["event"] == "chart"
         assert ev["layers"] == layers
+        # The first layer's type flows through as its enum .value (was silently
+        # always None under the old getattr(statement, "chart_type") shape).
+        assert ev["chart_type"] == "line"
 
 
 def test_print_chart_terminal_no_data_returns_true(capsys, monkeypatch):

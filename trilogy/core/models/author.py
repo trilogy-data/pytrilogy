@@ -3057,7 +3057,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> MultiSelectLineage:
-        new = MultiSelectLineage(
+        new = type(self)(
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
             derive=(
@@ -3087,7 +3087,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
         return new
 
     def with_namespace(self, namespace: str) -> "MultiSelectLineage":
-        return MultiSelectLineage(
+        return type(self)(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             derive=self.derive.with_namespace(namespace) if self.derive else None,
@@ -3123,6 +3123,27 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
         for select in self.selects:
             output += select.output_components
         return unique(output, "address")
+
+
+@dataclass
+class UnionSelectLineage(MultiSelectLineage):
+    """Positional column-stack (SQL UNION) of arm selects.
+
+    Shares the multiselect arm structure, but `align` items carry positional
+    output bindings (output *i* <- each arm's *i*-th column) and the build
+    combiner is a `UnionNode`, not the FULL-JOIN of a multiselect. The visible
+    output is exactly the bound union columns — the arms' internal (per-arm
+    mangled) columns are never exposed.
+    """
+
+    @property
+    def output_components(self) -> list[ConceptRef]:
+        # Align-item order is the positional output order; arms' own columns are
+        # internal and must not surface.
+        return [
+            ConceptRef(address=item.aligned_concept, datatype=DataType.UNKNOWN)
+            for item in self.align.items
+        ]
 
 
 @dataclass

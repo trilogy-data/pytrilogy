@@ -81,6 +81,7 @@ class Derivation(Enum):
     ROOT = "root"
     ROWSET = "rowset"
     MULTISELECT = "multiselect"
+    TVF_UNION = "tvf_union"
     RECURSIVE = "recursive"
     SUBSELECT = "subselect"
 

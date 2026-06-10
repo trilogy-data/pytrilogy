@@ -26,6 +26,7 @@ from trilogy.parsing.v2.rules.import_rules import IMPORT_NODE_HYDRATORS
 from trilogy.parsing.v2.rules.select_rules import SELECT_NODE_HYDRATORS
 from trilogy.parsing.v2.rules.statement_rules import STATEMENT_NODE_HYDRATORS
 from trilogy.parsing.v2.rules.token_rules import TOKEN_HYDRATORS
+from trilogy.parsing.v2.rules.tvf_rules import TVF_NODE_HYDRATORS
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.semantic_scope import SymbolTable
 from trilogy.parsing.v2.semantic_state import SemanticState
@@ -85,6 +86,7 @@ NODE_HYDRATORS = (
     | IMPORT_NODE_HYDRATORS
     | FUNCTION_NODE_HYDRATORS
     | STATEMENT_NODE_HYDRATORS
+    | TVF_NODE_HYDRATORS
 )
 
 

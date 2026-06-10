@@ -330,7 +330,11 @@ def print_chart_terminal(
         emit_event(
             "chart",
             layers=layer_data,
-            chart_type=getattr(statement, "chart_type", None),
+            # "chart_type" is the first layer's type (mirrors report _chart_type);
+            # ChartType is a plain Enum, so emit its .value for clean JSON.
+            chart_type=(
+                statement.layers[0].layer_type.value if statement.layers else None
+            ),
         )
         return True
     from trilogy.rendering.terminal_renderer import PLOTEXT_AVAILABLE

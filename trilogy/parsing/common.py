@@ -44,6 +44,7 @@ from trilogy.core.models.author import (
     SubselectItem,
     TupleWrapper,
     UndefinedConcept,
+    UnionSelectLineage,
     WhereClause,
     WindowItem,
     get_concept_arguments,
@@ -1259,6 +1260,69 @@ def align_item_to_concept(
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.MULTISELECT,
         keys=set(x.address for x in align.concepts),
+    )
+    return new
+
+
+def union_item_to_concept(
+    parent: AlignItem,
+    align_clause: AlignClause,
+    selects: list[SelectStatement],
+    environment: Environment,
+    purpose: Purpose | None = None,
+    datatype: DataType | TraitDataType | None = None,
+    nullable: bool = False,
+) -> Concept:
+    """Build one positional output concept of a relational ``union(...)`` TVF.
+
+    Mirrors :func:`align_item_to_concept` (the arm/positional binding shape is
+    shared) but the concept's lineage is a ``UnionSelectLineage`` and its
+    derivation is ``TVF_UNION`` so it lowers to a column-stack UNION rather than
+    a FULL-JOIN merge. ``purpose``/``datatype``/``nullable`` override the
+    inferred values when the output signature is explicit.
+    """
+    align = parent
+    raw_datatypes = [c.datatype for c in align.concepts]
+    if any(
+        not is_compatible_datatype(a, b)
+        for i, a in enumerate(raw_datatypes)
+        for b in raw_datatypes[i + 1 :]
+    ):
+        raise InvalidSyntaxException(
+            f"Datatypes do not align for union output {align.alias}, "
+            f"have {set(raw_datatypes)}"
+        )
+    inferred = next(
+        (dt for dt in raw_datatypes if isinstance(dt, TraitDataType)),
+        merge_datatypes(raw_datatypes),
+    )
+    if datatype is not None and not all(
+        is_compatible_datatype(datatype, dt) for dt in raw_datatypes
+    ):
+        raise InvalidSyntaxException(
+            f"Output column '{align.alias}' declared as {datatype} but arms "
+            f"produce incompatible types {set(raw_datatypes)}"
+        )
+    merged_datatype = datatype if datatype is not None else inferred
+
+    new_selects = [x.as_lineage(environment) for x in selects]
+    union_lineage = UnionSelectLineage(
+        selects=new_selects,
+        align=align_clause,
+        namespace=align.namespace,
+        hidden_components=set(y for x in new_selects for y in x.hidden_components),
+    )
+    new = Concept(
+        name=align.alias,
+        datatype=merged_datatype,
+        purpose=purpose or Purpose.PROPERTY,
+        lineage=union_lineage,
+        grain=Grain(),
+        namespace=align.namespace,
+        granularity=Granularity.MULTI_ROW,
+        derivation=Derivation.TVF_UNION,
+        keys=set(x.address for x in align.concepts),
+        modifiers=[Modifier.NULLABLE] if nullable else [],
     )
     return new
 
