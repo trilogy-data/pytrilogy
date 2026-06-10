@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Granularity, JoinType
+from trilogy.core.enums import Derivation, Granularity, JoinType
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -343,6 +343,26 @@ def _inject_union_datasources(
     graph.add_edges_from(union_edges)
 
 
+def _bridge_has_non_basic_merge(
+    plan: BridgePlan, environment: BuildEnvironment
+) -> bool:
+    """A bridge concept merges with a non-BASIC (recursive/aggregate) origin.
+
+    Such a key is materialized by `_derived_connector_nodes`, not a raw scan, so
+    the datasource-registration gap-fill must stand down for that bridge.
+    """
+    for concept in plan.concepts:
+        for alias in (concept.address, *concept.pseudonyms):
+            origin = environment.alias_origin_lookup.get(alias)
+            if (
+                origin is not None
+                and origin.lineage is not None
+                and origin.derivation != Derivation.BASIC
+            ):
+                return True
+    return False
+
+
 def _datasource_nodes_for_bridge(
     request: SourceRequest,
     plan: BridgePlan,
@@ -350,6 +370,42 @@ def _datasource_nodes_for_bridge(
 ) -> list[StrategyNode] | None:
     parents: list[StrategyNode] = []
     bridge_addresses = {concept.address for concept in plan.concepts}
+    # A datasource the Steiner tree reached only via the post-pass (a derived
+    # merge key routed the walk through the key's reverse-lineage instead of the
+    # datasource) is a node in the bridge graph but missing from its
+    # `.datasources` registry (rebuilt from the Steiner nodes). Re-point it from
+    # the full source graph so the loop scans it. `plan.graph` is this bridge's
+    # private copy, so this never disturbs the shared graph or the recursive
+    # connector's own bridges (unlike mutating the Steiner helper directly).
+    #
+    # Skip entirely when a bridge concept merges with a non-BASIC (recursive /
+    # aggregate) origin: that key is supplied by `_derived_connector_nodes`, and
+    # re-pointing the datasources its subplan consumes lets the bridge scan the
+    # merged key directly, stranding the connector (recursive enrichment). A
+    # BASIC merge key (`r_last <- split`) is computed inline on the scan, so it
+    # is safe.
+    if not _bridge_has_non_basic_merge(plan, request.environment):
+        covered = {
+            concept.address
+            for ds in plan.graph.datasources.values()
+            if isinstance(ds, BuildDatasource)
+            for concept in ds.output_concepts
+        }
+        for ds_node in sorted(n for n in plan.graph.nodes if n.startswith("ds~")):
+            if ds_node in plan.graph.datasources:
+                continue
+            source_ds = request.graph.datasources.get(ds_node)
+            # Union sources are injected separately (`_inject_union_datasources`).
+            if not isinstance(source_ds, BuildDatasource):
+                continue
+            # Only fill a genuine gap: register the missing source iff it provides
+            # a bridge concept no already-registered datasource covers. Blindly
+            # registering every reachable alternate over-sources a union/semijoin
+            # bridge (regresses partial_union_bridge_semijoin).
+            provides = {c.address for c in source_ds.output_concepts} & bridge_addresses
+            if provides - covered:
+                plan.graph.datasources[ds_node] = source_ds
+                covered |= provides
     for ds_node in sorted(node for node in plan.graph.datasources):
         concept_nodes = _local_concept_nodes_for_datasource(
             plan.graph,
@@ -572,9 +628,25 @@ def _local_concept_nodes_for_datasource(
             if not neighbor.startswith("c~"):
                 continue
             address = _concept_node_address(neighbor)
-            if (
-                address in environment.canonical_concepts
-                and address in bridge_addresses
+            canonical = environment.canonical_concepts.get(address)
+            # Bridge addresses are keyed by `.address`, but a derived concept's
+            # graph node uses its `.canonical_address` (a `_virt_func_*` name) —
+            # so a derived merge key (`p_last <- split(p_name)`) bound to this
+            # datasource is missed unless we also match the node concept's
+            # `.address`. Restrict that fallback to a BASIC-derived merge key (a
+            # concept carrying pseudonyms whose own derivation is BASIC): it can
+            # be computed inline on the scan. A recursive/complex merge key
+            # (`first_parent <- recurse_edge`) must come from
+            # `_derived_connector_nodes`, not a raw scan, and a plain derived
+            # concept that merely happens to be address-named must not be pulled
+            # onto a scan it isn't bound to (regresses window/cast lookups).
+            if canonical is not None and (
+                address in bridge_addresses
+                or (
+                    canonical.pseudonyms
+                    and canonical.derivation == Derivation.BASIC
+                    and canonical.address in bridge_addresses
+                )
             ):
                 concepts.setdefault(address, neighbor)
             queue.append(neighbor)

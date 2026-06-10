@@ -4,6 +4,7 @@ from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import Modifier, UnnestMode
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildFunction,
@@ -65,6 +66,12 @@ def render_join_concept(
     if isinstance(col, str):
         use_map[name].add(concept.address)
         return f"{quote_character}{name}{quote_character}.{quote_character}{col}{quote_character}"
+    # A folded datasource may return the side-appropriate derivation (a
+    # cross-namespace merge key it computes from its own columns) rather than the
+    # merged concept, whose own lineage points at the other namespace. Render the
+    # returned expression in that case; otherwise render the concept.
+    if isinstance(col, (BuildFunction, BuildAggregateWrapper)):
+        return render_expr(col, node)
     return render_expr(concept, node)
 
 

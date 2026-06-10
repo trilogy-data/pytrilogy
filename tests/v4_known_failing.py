@@ -63,9 +63,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/stdlib/test_report.py::test_top_x_by_metric": _RESULT,
     # --- engine/demo: rowset/merge fan-out result regressions + crashes ---
     "tests/engine/demo/test_demo_duckdb.py::test_demo_e2e": _RESULT,
-    "tests/engine/demo/test_demo_duckdb.py::test_merge": _RESULT,
-    "tests/engine/demo/test_demo_duckdb.py::test_merge_basic": _RESULT,
-    "tests/engine/demo/test_demo_duckdb_import.py::test_demo_merge_rowset_e2e": _RESULT,
     # --- engine: rendering / source-selection / crashes ---
     "tests/engine/test_bigquery.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_sqlite.py::test_date_diff_rendering": _RENDER,
@@ -79,7 +76,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
     # --- modeling (non-TPC) sweep ---
     "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two": _MODELING,
-    "tests/modeling/gcat/gcat2/test_gcat_two.py::test_refresh": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_equals_comparison": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
@@ -90,7 +86,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc03": _MODELING,
     "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join": _MODELING,
     "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order": _MODELING,
-    "tests/modeling/ncaa/test_ncaa.py::test_adhoc02": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc08": _MODELING,
     "tests/modeling/rides_example/test_ride_example.py::test_example_model": _MODELING,
