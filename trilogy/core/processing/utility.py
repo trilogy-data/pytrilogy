@@ -242,9 +242,7 @@ def sort_select_output_processed(
     output_addresses = {c.address for c in targets}
     mapping = {x.address: x for x in cte.output_columns}
     scoped_merge_map: dict[str, str] = (
-        getattr(query, "scoped_merge_map", {})
-        if isinstance(query, ProcessedQuery)
-        else {}
+        query.scoped_merge_map if isinstance(query, ProcessedQuery) else {}
     )
 
     def render_as(target, oc: BuildConcept) -> BuildConcept:

@@ -724,7 +724,9 @@ def get_query_datasources(
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-    join_clauses = getattr(statement, "join_clauses", None) or []
+    join_clauses = (
+        statement.join_clauses if isinstance(statement, SelectStatement) else []
+    )
     scoped_joins = [
         (j.source_address, j.target_address, j.join_type) for j in join_clauses
     ]
@@ -959,7 +961,9 @@ def process_query(
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
-    join_clauses = getattr(statement, "join_clauses", None) or []
+    join_clauses = (
+        statement.join_clauses if isinstance(statement, SelectStatement) else []
+    )
     scoped_merge_map, _ = _build_scoped_merge_index(
         [(j.source_address, j.target_address, j.join_type) for j in join_clauses]
     )

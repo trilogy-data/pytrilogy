@@ -1677,7 +1677,7 @@ class BaseDialect:
             # plain column) must not drive this CTE's grouping mode — re-emitting
             # its ROLLUP would double-aggregate. Only locally-computed grouped
             # aggregates set the mode.
-            and not getattr(cte, "source_map", {}).get(c.address)
+            and not cte.source_map.get(c.address)
         ]
         if not grouped:
             return AggregateGroupingMode.STANDARD, [], []

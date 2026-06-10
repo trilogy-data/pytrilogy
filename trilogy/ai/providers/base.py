@@ -76,7 +76,7 @@ def iter_history_turns(
         msg = history[i]
         tool_calls = None
         if msg.role == "assistant":
-            tool_calls = (getattr(msg, "model_info", None) or {}).get("tool_calls")
+            tool_calls = (msg.model_info or {}).get("tool_calls")
         if tool_calls:
             results: list[LLMMessage] = []
             for _ in range(len(tool_calls)):

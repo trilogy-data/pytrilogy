@@ -523,7 +523,7 @@ class ConceptLookup:
             sibling = self._existing_concept(sibling_addr)
             if sibling is None:
                 continue
-            sibling_keys = getattr(sibling, "keys", None)
+            sibling_keys = sibling.keys
             if sibling_keys and key_concept.address in sibling_keys:
                 return sibling
         return None

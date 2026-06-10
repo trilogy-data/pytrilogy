@@ -78,8 +78,8 @@ def _concept_description(concept: Concept) -> str:
     """Pull a one-line description off ``concept.metadata`` if set. Whitespace
     is collapsed so multi-line authoring comments still display cleanly in
     the explore output."""
-    meta = getattr(concept, "metadata", None)
-    raw = getattr(meta, "description", None) if meta is not None else None
+    meta = concept.metadata
+    raw = meta.description if meta is not None else None
     if not raw:
         return ""
     return " ".join(raw.split())

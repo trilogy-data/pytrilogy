@@ -142,7 +142,7 @@ def _is_unresolved(context: RuleContext, address: str) -> bool:
 def _undefined_ref(
     ref: ConceptRef | Concept, clause: str, fallback_line: int | None
 ) -> _UndefinedRef:
-    meta = getattr(ref, "metadata", None)
+    meta = ref.metadata
     line = meta.line_number if meta and meta.line_number else fallback_line
     column = meta.column if meta else None
     return _UndefinedRef(ref.address, clause, line, column)

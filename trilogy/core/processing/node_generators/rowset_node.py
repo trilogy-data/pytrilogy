@@ -77,7 +77,7 @@ def _scoped_join_targets(
             continue  # not collapsed onto a scoped-join target
         if not isinstance(canonical.lineage, BuildRowsetItem):
             continue
-        base_addresses = set(getattr(canonical.lineage.content, "pseudonyms", set()))
+        base_addresses = set(canonical.lineage.content.pseudonyms)
         shared = base_addresses & node_output_addresses
         if not shared or canonical.address in seen:
             continue

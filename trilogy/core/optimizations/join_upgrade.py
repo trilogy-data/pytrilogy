@@ -152,7 +152,9 @@ def _partial_addresses(
     orders`` (orders is partial for ``customer.id`` — promoting would drop
     no-order customers) and ``customer LEFT JOIN customer_address`` (the
     address PK is complete, so a non-null filter legitimately forces INNER)."""
-    return {c.address for c in (getattr(source, "partial_concepts", None) or [])}
+    if isinstance(source, BuildDatasource):
+        return set()
+    return {c.address for c in source.partial_concepts}
 
 
 def _opaque_binding_addresses(
@@ -173,21 +175,24 @@ def _opaque_binding_addresses(
     out: set[str] = set()
     seen: set[int] = set()
 
-    def scan(ds: object) -> None:
+    def scan(ds: CTE | UnionCTE | BuildDatasource | QueryDatasource | None) -> None:
         if ds is None or id(ds) in seen:
             return
         seen.add(id(ds))
-        for col in getattr(ds, "columns", None) or []:
-            alias = getattr(col, "alias", None)
-            if isinstance(alias, RawColumnExpr) or (
-                isinstance(alias, BuildFunction)
-                and not concepts_implied_non_null(alias)
-            ):
-                out.add(col.concept.address)
-        for child in getattr(ds, "datasources", None) or []:
-            scan(child)
-        scan(getattr(ds, "base_datasource", None))
-        scan(getattr(ds, "source", None))
+        if isinstance(ds, BuildDatasource):
+            for col in ds.columns:
+                alias = col.alias
+                if isinstance(alias, RawColumnExpr) or (
+                    isinstance(alias, BuildFunction)
+                    and not concepts_implied_non_null(alias)
+                ):
+                    out.add(col.concept.address)
+        elif isinstance(ds, QueryDatasource):
+            for child in ds.datasources:
+                scan(child)
+            scan(ds.base_datasource)
+        else:  # CTE | UnionCTE
+            scan(ds.source)
 
     scan(source)
     return out
