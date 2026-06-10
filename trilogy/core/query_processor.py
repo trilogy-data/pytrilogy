@@ -8,6 +8,7 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
+    Derivation,
     FunctionType,
     JoinType,
     SourceType,
@@ -536,6 +537,42 @@ def _get_query_node_v4(
             f" {partial_requested}. These concepts could only be resolved from partial sources."
         )
     return ds
+
+
+def _scoped_join_rename_hint(
+    output_concepts: list[BuildConcept], environment: BuildEnvironment
+) -> str | None:
+    """If an output property can't be sourced because its key exists only as a
+    renamed scoped-join key (e.g. `store_id as sk_a`/`sk_b` joined to each other,
+    so the group excludes `store_id`), suggest chaining the base key into the
+    join group. Best-effort: returns None on any uncertainty."""
+    output_addresses = {c.address for c in output_concepts}
+    # base key address -> rowset-renamed concepts that alias it
+    renamed: dict[str, list[str]] = {}
+    for c in environment.concepts.values():
+        if c.derivation != Derivation.ROWSET:
+            continue
+        content = getattr(c.lineage, "content", None)
+        for base in getattr(content, "pseudonyms", set()) or set():
+            if environment.concepts.get(base, c).derivation != Derivation.ROWSET:
+                renamed.setdefault(base, [])
+                if c.address not in renamed[base]:
+                    renamed[base].append(c.address)
+    for p in output_concepts:
+        # a property is keyed on something other than itself; its grain names the key
+        for comp in p.grain.components:
+            key = getattr(comp, "address", comp)
+            if key == p.address or key in output_addresses:
+                continue
+            keys = sorted(renamed.get(key, []))
+            if keys:
+                return (
+                    f" `{p.address}` is a property of `{key}`, which is present only"
+                    f" as the renamed scoped-join key(s) {', '.join(keys)}. Add the"
+                    f" base key to the join group, e.g."
+                    f" `inner join {keys[0]} = ... = {key}`."
+                )
+    return None
 
 
 def get_query_node(
