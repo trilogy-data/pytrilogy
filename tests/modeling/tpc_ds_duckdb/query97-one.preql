@@ -9,10 +9,10 @@ auto customer_item <- concat(concat(customer.id::string, '-'), item.id::string);
 auto catalog_sales <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
 auto physical_sales <- customer_item ? physical_sales.date.month_seq between 1200 and 1200 + 11;
 
-left join physical_sales.customer.id = customer.id
-left join physical_sales.item.id = item.id
-left join catalog_sales.bill_customer.id = customer.id
-left join catalog_sales.item.id = item.id
+left join customer.id = physical_sales.customer.id
+left join item.id = physical_sales.item.id
+left join customer.id = catalog_sales.bill_customer.id
+left join item.id = catalog_sales.item.id
 select
     sum(
             case

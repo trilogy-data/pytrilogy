@@ -121,16 +121,14 @@ def test_shared_parent_dedup_fusion(dedup_engine: Executor, tmp_path: Path):
 # no tpcds data is required to reproduce.
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="q64 join form: passthrough-dim grain tangle after multi-key join "
-    "collapse; see handoff_q64_join_grain_resolution.md",
-)
 def test_q64_join_form_plans():
     text = (MODELING_DIR / "query64_join.preql").read_text()
     env = Environment(working_path=MODELING_DIR)
     eng = Dialects.DUCK_DB.default_executor(environment=env)
-    # currently raises ValueError("Cannot resolve query. No remaining priority
-    # concepts ..."); when the grain tangle is fixed this generates valid SQL.
+    # The two per-year aggregate rowsets are joined on derived keys. A scoped
+    # INNER join now mirrors the global-merge equivalence (source<->target
+    # pseudonyms + source-identity in alias_origin_lookup), so each side's
+    # derivation stays sourceable and discovery resolves the cross-rowset join.
     sql = eng.generate_sql(text)[-1]
     assert sql
+    assert "INVALID_REFERENCE_BUG" not in sql

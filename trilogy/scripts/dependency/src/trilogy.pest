@@ -170,7 +170,8 @@ select_statement = {
 // query-scoped join: blends two otherwise-disjoint concepts on a shared key for
 // this select only (a query-local merge). The left key is the brought-in
 // (source) concept, the right key is the anchor. left -> partial, inner -> full.
-join_clause = { JOIN_TYPE ~ ^"join" ~ IDENTIFIER ~ "=" ~ IDENTIFIER }
+// `a = b = c` chains all keys into ONE equivalence group with this join type.
+join_clause = { JOIN_TYPE ~ ^"join" ~ IDENTIFIER ~ "=" ~ IDENTIFIER ~ ("=" ~ IDENTIFIER)* }
 
 multi_select_statement = {
     select_statement

@@ -552,6 +552,20 @@ def get_node_joins(
         partial_nodes = {
             canon_node(a) for a in _collect_deep_partial_addresses(datasource)
         }
+        # A LEFT scoped join on a *derived* key has no datasource column binding
+        # to carry Modifier.PARTIAL. The merge-mechanism keeps that key as a
+        # distinct output concept present ONLY on the partial side (the complete
+        # side outputs the canonical), so intersecting outputs with
+        # scoped_partial_derived marks exactly the partial side here. (Root/rowset
+        # partial keys are excluded — they carry partiality through the
+        # column-partial / rowset machinery, and a rowset key also survives as a
+        # distinct output, so marking it here would double-count.)
+        if environment.scoped_partial_derived:
+            partial_nodes |= {
+                canon_node(c.address)
+                for c in datasource.output_concepts
+                if c.address in environment.scoped_partial_derived
+            }
         nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
         p_list: list[str] = []
         n_list: list[str] = []

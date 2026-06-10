@@ -396,6 +396,16 @@ class CTE:
                 # not in parent_ctes — handled by the fallback below.
                 return concept.safe_address
 
+        # A derived-key FULL join coalesces the canonical key across both sides;
+        # the null-extendable side outputs it under a pseudonym column (da for
+        # db), so render that side's own column.
+        for cte in self.parent_ctes:
+            if source and source != cte.name:
+                continue
+            for col in cte.output_columns:
+                if concept.address in col.pseudonyms:
+                    return col.safe_address
+
         # An inlined datasource exposes *all* its raw columns to the consumer,
         # not just the leaf's pruned projection (e.g. ``_raw_name`` backing a
         # derived ``name``). Resolve those through the underlying datasource.

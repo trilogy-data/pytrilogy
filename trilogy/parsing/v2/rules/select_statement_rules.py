@@ -54,15 +54,18 @@ def select_statement(
     for arg in args:
         atype = type(arg)
         if atype is list:
-            select_items = arg
+            # join_clause hydrates to list[SelectJoin]; select_list to
+            # list[SelectItem]. Disambiguate on element type (both non-empty).
+            if arg and isinstance(arg[0], SelectJoin):
+                join_clauses.extend(arg)
+            else:
+                select_items = arg
         elif atype is Limit:
             limit = arg.count
         elif atype is OrderBy:
             order_by = arg
         elif atype is FromClause:
             from_clause_val = arg
-        elif atype is SelectJoin:
-            join_clauses.append(arg)
         elif atype is WhereClause:
             if where is not None:
                 raise fail(node, "Multiple where clauses are not supported")
@@ -71,6 +74,7 @@ def select_statement(
             having = arg
     if not select_items:
         raise fail(node, "Malformed select, missing select items")
+    _validate_join_groups(node, join_clauses)
     return SelectStatement(
         selection=select_items,
         order_by=order_by,
@@ -83,11 +87,47 @@ def select_statement(
     )
 
 
+def _validate_join_groups(node: SyntaxNode, joins: list[SelectJoin]) -> None:
+    """A query-scoped join collapses all `=`-related keys into one equivalence
+    group (union-find). A FULL edge spans rows absent from either side, so it
+    cannot coherently coexist with an INNER/LEFT edge on the SAME group (the
+    INNER says "key must match" while the FULL says "key may be one-sided") — a
+    FULL group must be entirely FULL. INNER and LEFT may mix freely (a shared
+    anchor with some required and some optional sources is well-defined), and
+    distinct (disjoint-key) groups may use any types."""
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for j in joins:
+        rs, rt = find(j.source_address), find(j.target_address)
+        if rs != rt:
+            parent[rs] = rt
+    types_by_group: dict[str, set[JoinType]] = {}
+    for j in joins:
+        types_by_group.setdefault(find(j.source_address), set()).add(j.join_type)
+    for types in types_by_group.values():
+        if JoinType.FULL in types and len(types) > 1:
+            names = ", ".join(sorted(t.value for t in types))
+            raise fail(
+                node,
+                f"Conflicting join types ({names}) on keys joined into one group: a "
+                "FULL join cannot be mixed with another type on the same key (it is "
+                "ambiguous whether the key is required or one-sided). Make the whole "
+                "group FULL (e.g. `FULL JOIN a = b = c`), or use a distinct key.",
+            )
+
+
 def join_clause(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> SelectJoin:
+) -> list[SelectJoin]:
     args = hydrated_children(node, hydrate)
     join_type = next(a for a in args if isinstance(a, JoinType))
     if join_type not in (JoinType.INNER, JoinType.LEFT_OUTER, JoinType.FULL):
@@ -96,28 +136,34 @@ def join_clause(
             f"`{join_type.value}` join is not yet supported in query-scoped joins;"
             " use INNER, LEFT, or FULL",
         )
-    # Positional direction: left key is the brought-in (source) concept, right
-    # key is the anchor. Both are fully-addressed concepts, so no model token is
-    # needed to disambiguate.
-    source_key, target_key = [a for a in args if isinstance(a, str)]
+    # Positional direction: the first key is the anchor, each subsequent key is a
+    # brought-in (source) concept. `a = b = c` chains into ONE equivalence group:
+    # adjacent pairs (a,b),(b,c) all share this join type. Both sides are
+    # fully-addressed concepts, so no model token is needed to disambiguate.
+    keys = [a for a in args if isinstance(a, str)]
     resolved: list[Concept] = []
-    for key in (source_key, target_key):
+    for key in keys:
         concept = context.concepts.require(key)
         if isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
             raise fail(node, f"Join key `{key}` does not exist")
         resolved.append(concept)
-    if resolved[0].address == resolved[1].address:
-        raise fail(
-            node,
-            f"Cannot join `{source_key}` to itself: both sides resolve to the same"
-            f" concept `{resolved[0].address}`, which degenerates to `1=1`. Join two"
-            " distinct concepts (e.g. separate rowset outputs).",
+    joins: list[SelectJoin] = []
+    for (lk, lc), (rk, rc) in zip(zip(keys, resolved), list(zip(keys, resolved))[1:]):
+        if lc.address == rc.address:
+            raise fail(
+                node,
+                f"Cannot join `{lk}` to itself (`{rk}` resolves to the same concept "
+                f"`{lc.address}`), which degenerates to `1=1`. Join distinct concepts"
+                " (e.g. separate rowset outputs).",
+            )
+        joins.append(
+            SelectJoin(
+                join_type=join_type,
+                source_address=lc.address,
+                target_address=rc.address,
+            )
         )
-    return SelectJoin(
-        join_type=join_type,
-        source_address=resolved[0].address,
-        target_address=resolved[1].address,
-    )
+    return joins
 
 
 def select_item(

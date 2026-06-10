@@ -202,7 +202,6 @@ def generate_source_map(
             matches = [
                 cte for cte in all_new_ctes if cte.source.safe_identifier in names
             ]
-
             if not matches and names:
                 raise SyntaxError(
                     f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.safe_identifier for cte in all_new_ctes]}"
@@ -215,8 +214,16 @@ def generate_source_map(
                     for x in cte.output_columns
                     if x.address not in [z.address for z in cte.partial_concepts]
                 ]
-                if qdk in output_address or (
-                    multi_source and qdk in [x.address for x in cte.output_columns]
+                # A derived-key FULL join sources the canonical key from a side
+                # that outputs it under a pseudonym column (da for the merged db);
+                # accept that side so the renderer coalesces both physical columns.
+                provides_pseudonym = multi_source and any(
+                    qdk in x.pseudonyms for x in cte.output_columns
+                )
+                if (
+                    qdk in output_address
+                    or (multi_source and qdk in [x.address for x in cte.output_columns])
+                    or provides_pseudonym
                 ):
                     source_map[qdk].append(cte.safe_identifier)
             # now do a pass that accepts partials

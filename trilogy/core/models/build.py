@@ -2265,11 +2265,67 @@ class Factory:
             if jt is JoinType.FULL
             for addr in (s, t)
         }
+
+        # Collapsed-away sources that get the merge-style source-identity +
+        # pseudonym handling below (so a *derived* join key stays sourceable from
+        # the collapsed side). INNER asserts source == target — a symmetric
+        # equality exactly like a global `merge` — so every INNER source
+        # qualifies. LEFT additionally needs it for a derived key that has no
+        # datasource binding (root/rowset LEFT keys already resolve via the
+        # column-partial / rowset machinery and must not be double-handled).
+        # FULL on a derived key behaves like INNER for sourcing; its both-sides
+        # coalesce of the canonical key is wired at the merge node. Root/rowset
+        # FULL keeps the canonical-column full-join-key machinery instead.
+        def _is_binding_keyed(addr: str) -> bool:
+            c = environment.concepts.get(addr)
+            return c is None or c.derivation in (Derivation.ROOT, Derivation.ROWSET)
+
+        self.scoped_merge_sources: set[str] = set()
+        for s, t, jt in self.scoped_joins:
+            if jt is JoinType.INNER:
+                self.scoped_merge_sources.add(s)
+            elif jt is JoinType.LEFT_OUTER and not _is_binding_keyed(t):
+                # LEFT collapses target->source; the target is the partial side.
+                # Only a derived target lacks a binding to carry partiality and
+                # needs the merge mechanism (a root/rowset target keeps the
+                # column-partial / rowset machinery).
+                self.scoped_merge_sources.add(t)
+            elif jt is JoinType.FULL and not _is_binding_keyed(s):
+                # FULL collapses source->target exactly like INNER, so the
+                # collapsed-away source needs the merge mechanism to stay
+                # sourceable from its own derivation (a derived key has no
+                # datasource binding). Gated to a derived key — root/rowset FULL
+                # keeps the existing canonical-column machinery. The both-sides
+                # coalesce of the FULL key is wired at the merge node.
+                self.scoped_merge_sources.add(s)
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
         self.local_non_build_concepts: dict[str, Concept] = {}
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
+        if self.scoped_merge_map:
+            # A scoped join collapses source->target like a global `merge`, but
+            # unlike `merge_concept` it never linked the source back onto the
+            # target as a pseudonym. Without that link discovery only knows the
+            # target's own lineage, so a *derived* join key (rowset output, basic
+            # transform, union, ...) becomes unsourceable from the source side and
+            # the query dead-ends. Mirror `merge_concept`: make source and target
+            # mutual pseudonyms so the merged concept can be sourced via either
+            # side's derivation, exactly as the global-merge path resolves it.
+            # Sub-factories inherit the already-augmented map, so skip the copy
+            # when the links are present.
+            pending = [
+                (s, self.scoped_merge_map[s])
+                for s in self.scoped_merge_sources
+                if s in self.scoped_merge_map
+                and s not in self.pseudonym_map.get(self.scoped_merge_map[s], ())
+            ]
+            if pending:
+                augmented = {k: set(v) for k, v in self.pseudonym_map.items()}
+                for source_addr, target_addr in pending:
+                    augmented.setdefault(target_addr, set()).add(source_addr)
+                    augmented.setdefault(source_addr, set()).add(target_addr)
+                self.pseudonym_map = augmented
         self.build_cache = build_cache or {}
         # Cross-factory cache for BuildGrain keyed on (frozenset(components),
         # id(where_clause)). Same lifecycle as build_cache — propagated to
@@ -3428,6 +3484,9 @@ class Factory:
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,
             scoped_partial_sources=set(self.scoped_partial_sources),
+            scoped_partial_derived=(
+                self.scoped_merge_sources & self.scoped_partial_sources
+            ),
             scoped_full_join_keys=set(self.scoped_full_join_keys),
         )
 
@@ -3457,7 +3516,22 @@ class Factory:
             src = base.concepts.data.get(source_addr)
             if src is None:
                 continue
-            alias_build = self.__build_concept(src)
+            # For a merge-style source (INNER, or a LEFT derived key), build the
+            # source as its OWN identity (its lineage + address), not the
+            # collapsed target, so the merged key can be sourced from the
+            # collapsed side (mirroring global merge). The main build loop
+            # already cached source_addr -> the collapsed target in
+            # local_concepts and __build_concept would early-exit on it; evict it
+            # across this build and restore the collapse mapping after. Other
+            # sources (root/rowset LEFT, FULL) keep the prior behavior (the
+            # partial / full-join machinery owns their resolution).
+            if source_addr in self.scoped_merge_sources:
+                collapsed = self.local_concepts.pop(source_addr, None)
+                alias_build = self.__build_concept(src)
+                if collapsed is not None:
+                    self.local_concepts[source_addr] = collapsed
+            else:
+                alias_build = self.__build_concept(src)
             if canonical_addr not in alias_build.pseudonyms:
                 alias_build = dc_replace(
                     alias_build,

@@ -8,8 +8,8 @@ const end_date <- '2000-04-10'::date;
 where
     catalog_sales.item.current_price between 0.99 and 1.49
     and catalog_sales.sold_date.date between start_date and end_date
-left join catalog_returns.item.id = catalog_sales.item.id
-left join catalog_returns.order_number = catalog_sales.order_number
+left join catalog_sales.item.id = catalog_returns.item.id
+left join catalog_sales.order_number = catalog_returns.order_number
 select
     catalog_sales.warehouse.state,
     catalog_sales.item.text_id,
