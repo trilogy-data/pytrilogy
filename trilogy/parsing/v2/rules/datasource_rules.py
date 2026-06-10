@@ -622,6 +622,19 @@ def datasource_node(
             if Modifier.PARTIAL not in pc.modifiers:
                 pc.modifiers.append(Modifier.PARTIAL)
 
+    if (
+        non_partial_for is not None
+        and not is_partial
+        and not column_level_partial_addresses
+    ):
+        raise fail(
+            node,
+            f"Datasource '{name}' has a `complete where` clause but is neither a "
+            "`partial datasource` nor declares any partial (`~`) columns, so the "
+            "clause has no effect. Mark the partial key(s) with `~`, declare it a "
+            "`partial datasource`, or remove the `complete where` clause.",
+        )
+
     datasource = Datasource(
         name=name,
         columns=columns,
