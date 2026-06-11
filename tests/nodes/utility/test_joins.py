@@ -4,7 +4,7 @@ import pytest
 
 from trilogy import parse
 from trilogy.core.enums import JoinType, Modifier
-from trilogy.core.models.build import BuildGrain
+from trilogy.core.models.build import BuildFunction, BuildGrain
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -82,6 +82,69 @@ address x_source;
     )
 
     assert rendered == "y + 1"
+
+
+def test_consumer_column_derived_pseudonym_fallback():
+    """A cross-namespace ``merge ... into ~key`` collapses both sides onto one
+    canonical concept. The requested concept (``p_last_name``) is not a raw
+    column of the far datasource, but the side-appropriate derivation survives
+    as a pseudonym output (``r_last_name <- split(full_name)``). ``consumer_column``
+    must return that derivation's lineage so the merge key renders the local
+    split instead of asserting on the absent raw column."""
+    env, _ = parse("""
+key rid int;
+property rid.full_name string;
+key pid int;
+property pid.p_last_name string;
+
+datasource rich (rid:rid, name:full_name) grain(rid) address rich;
+datasource passengers (pid:pid, last_name:p_last_name) grain(pid) address passengers;
+
+auto r_last_name <- split(full_name, ',')[-1];
+    """)
+    env = env.materialize_for_select()
+    rich_ds = env.datasources["rich"]
+    r_last = env.concepts["r_last_name"]
+    p_last = env.concepts["p_last_name"]
+
+    # Simulate the merge: the rich-side derivation rides as an output pseudonym
+    # of the canonical key.
+    node = CTE.from_datasource(rich_ds)
+    node.output_columns = node.output_columns + [r_last]
+    p_last.pseudonyms.add(r_last.address)
+
+    col = node.consumer_column(p_last)
+    assert isinstance(col, BuildFunction)
+    assert col is r_last.lineage
+
+    rendered = render_join_concept(
+        name=node.name,
+        node=node,
+        col=col,
+        render_expr=BaseDialect().render_expr,
+        quote_character=BaseDialect().QUOTE_CHARACTER,
+        concept=p_last,
+        use_map=defaultdict(set),
+    )
+    assert rendered == "split(`rich`.`name`, ',')[-1]"
+
+
+def test_consumer_column_absent_concept_asserts():
+    """A concept that is neither a raw column nor a derived pseudonym output is a
+    planning bug — ``consumer_column`` must still fail loudly rather than emit a
+    bogus reference."""
+    env, _ = parse("""
+key rid int;
+property rid.full_name string;
+key other int;
+
+datasource rich (rid:rid, name:full_name) grain(rid) address rich;
+datasource elsewhere (id:other) grain(other) address elsewhere;
+    """)
+    env = env.materialize_for_select()
+    node = CTE.from_datasource(env.datasources["rich"])
+    with pytest.raises(AssertionError):
+        node.consumer_column(env.concepts["other"])
 
 
 def test_reduce_concept_pair():
