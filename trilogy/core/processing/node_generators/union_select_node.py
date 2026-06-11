@@ -11,6 +11,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
+    SelectNode,
     StrategyNode,
     UnionNode,
 )
@@ -49,26 +50,51 @@ def gen_union_select_node(
         environment.concepts[item.aligned_concept] for item in lineage.align.items
     ]
 
+    # Each arm applies its own query-scoped joins (carried on the arm lineage),
+    # combined with any joins already in scope. Restored after so one arm's joins
+    # don't bleed into a sibling.
+    caches = history.build_caches
+    prior_scoped = list(caches.scoped_joins)
+
     arm_nodes: List[StrategyNode] = []
     for select in lineage.selects:
-        snode: StrategyNode = get_query_node(history.base_environment, select, history)
+        arm_scoped = prior_scoped + list(select.scoped_joins)
+        snode: StrategyNode = get_query_node(
+            history.base_environment,
+            select,
+            history,
+            scoped_joins=arm_scoped or None,
+        )
         if not snode:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} could not source union arm "
                 f"{select.output_components}"
             )
             return None
-        # Expose each arm's i-th column under the shared union output, then hide
-        # the per-arm internal columns so the rendered SELECT emits only the
-        # union outputs (k, v) — sourced from the hidden columns via find_source.
-        arm_own = [c.address for c in snode.output_concepts]
-        for x in list(snode.output_concepts):
-            merge_name = lineage.get_merge_concept(x)
-            if merge_name:
-                snode.output_concepts.append(environment.concepts[merge_name])
-        snode.hidden_concepts = set(arm_own)
-        snode.rebuild_cache()
-        arm_nodes.append(snode)
+        # Wrap the arm in a rename-only SELECT: it exposes the shared union
+        # outputs (sourced from the arm's columns via find_source) plus the arm's
+        # own columns (hidden), and does nothing else. Renaming in a separate
+        # SELECT — rather than mutating the arm node — keeps the arm's own
+        # grain/grouping intact. A GROUP arm would otherwise re-derive its grain
+        # from the union outputs and group by its own aggregate; a SELECT node
+        # never emits a GROUP BY, so the union output typing can't bleed through.
+        arm_cols = list(snode.output_concepts)
+        # Expose the union outputs in the canonical align order (identical for
+        # every arm), not the arm's own column order — a UNION ALL stacks by
+        # position, so an arm that happens to source its columns in a different
+        # order must still project them in the shared order. find_source maps each
+        # union output back to this arm's matching column via the align clause.
+        rename = SelectNode(
+            input_concepts=arm_cols,
+            output_concepts=arm_cols + list(ordered_outputs),
+            environment=environment,
+            depth=depth,
+            parents=[snode],
+            hidden_concepts={c.address for c in arm_cols},
+        )
+        rename.rebuild_cache()
+        arm_nodes.append(rename)
+    caches.scoped_joins = prior_scoped
 
     union_node = UnionNode(
         input_concepts=list(ordered_outputs),

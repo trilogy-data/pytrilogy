@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trilogy.core.enums import Modifier, Purpose
+from trilogy.constants import MAGIC_TVF_UNION_NAME
+from trilogy.core.enums import ConceptSource, Derivation, Modifier, Purpose
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
+    Concept,
+    ConceptRef,
     Metadata,
+    RowsetItem,
+    RowsetLineage,
 )
 from trilogy.core.models.core import DataType, TraitDataType
 from trilogy.core.statements.author import SelectStatement, UnionSelectStatement
@@ -90,11 +95,14 @@ def tvf_rel_arg(
     raise fail(node, "union(...) argument must be a parenthesized select")
 
 
-def tvf_union_invocation(
+def _lower_union(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
+    namespace: str,
 ) -> UnionSelectStatement:
+    """Lower a `union(...)` node to a UnionSelectStatement whose output concepts
+    are bound (and registered) under ``namespace``."""
     arm_nodes: list[SyntaxNode] = []
     output_node: SyntaxNode | None = None
     for child in node.child_nodes():
@@ -135,7 +143,6 @@ def tvf_union_invocation(
                 "column per output item, in order."
             )
 
-    namespace = context.environment.namespace
     align_items = [
         AlignItem(
             alias=out.name,
@@ -170,6 +177,14 @@ def tvf_union_invocation(
     )
 
 
+def tvf_union_invocation(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> UnionSelectStatement:
+    return _lower_union(node, context, hydrate, context.environment.namespace)
+
+
 def tvf_select_statement(
     node: SyntaxNode,
     context: RuleContext,
@@ -177,15 +192,10 @@ def tvf_select_statement(
 ):
     """Inline `from union(...) -> (...) select ...`.
 
-    Desugars to an anonymous (magic-named) rowset wrapping the union, then
-    hydrates the trailing select. The union outputs become rowset concepts and
-    bare names resolve to them as select-local bindings.
-    """
-    from trilogy.constants import DEFAULT_NAMESPACE, MAGIC_TVF_UNION_NAME
-    from trilogy.core.statements.author import RowsetDerivationStatement
-    from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
-    from trilogy.parsing.v2.select_finalize import finalize_select_tree
-
+    Lowers the union under a hidden magic namespace, then exposes its outputs
+    as bare ROWSET-derived local bindings (so they resolve in the trailing
+    select without leaking globally, and build via the rowset path rather than
+    recursing as a directly-selected multiselect concept)."""
     union_node: SyntaxNode | None = None
     select_node: SyntaxNode | None = None
     for child in node.child_nodes():
@@ -196,25 +206,45 @@ def tvf_select_statement(
     if union_node is None or select_node is None:
         raise fail(node, "inline union requires `from union(...) -> (...) select ...`")
 
-    name = MAGIC_TVF_UNION_NAME
-    with context.semantic_state.rowset_alias_scope(name):
-        union_stmt: UnionSelectStatement = hydrate(union_node)
-    finalize_select_tree(union_stmt, context)
-    rowset = RowsetDerivationStatement(
-        name=name,
-        select=union_stmt,
-        namespace=context.environment.namespace or DEFAULT_NAMESPACE,
+    union_stmt = _lower_union(
+        node=union_node,
+        context=context,
+        hydrate=hydrate,
+        namespace=MAGIC_TVF_UNION_NAME,
     )
-    result = rowset_to_concepts_v2(rowset, context)
-    # Expose the union outputs as bare select-local bindings (resolvable without
-    # the magic prefix) so the trailing select reads `dt`/`val` directly.
-    for new_concept in result.concepts:
-        context.add_rowset_concept(new_concept, meta=core_meta(node.meta), force=True)
-        bare = new_concept.with_namespace(context.environment.namespace)
-        context.add_select_concept(bare, meta=core_meta(node.meta))
-    if result.alias_updates:
-        context.semantic_state.stage_rowset_aliases(result.alias_updates)
-
+    union_lineage = union_stmt.as_lineage(context.environment)
+    env_ns = context.environment.namespace
+    derived = union_stmt.derived_concepts
+    # derived_concepts must reference the rowset OUTPUTS (the wrappers), not the
+    # inner union concepts — mirrors rowset_to_concepts_v2 (else the build cycles).
+    wrapper_refs = [
+        ConceptRef(address=f"{env_ns}.{uc.name}", datatype=uc.datatype)
+        for uc in derived
+    ]
+    for uc in derived:
+        wrapper = Concept(
+            name=uc.name,
+            datatype=uc.datatype,
+            purpose=uc.purpose,
+            namespace=env_ns,
+            # Keys (the per-arm internal columns) don't exist in the outer scope;
+            # mirror rowset_to_concepts, which clears them for combined outputs.
+            keys=set(),
+            grain=uc.grain,
+            modifiers=uc.modifiers,
+            granularity=uc.granularity,
+            derivation=Derivation.ROWSET,
+            metadata=Metadata(concept_source=ConceptSource.CTE),
+            lineage=RowsetItem(
+                content=uc.reference,
+                rowset=RowsetLineage(
+                    name=MAGIC_TVF_UNION_NAME,
+                    derived_concepts=wrapper_refs,
+                    select=union_lineage,
+                ),
+            ),
+        )
+        context.add_select_concept(wrapper, meta=core_meta(node.meta))
     return hydrate(select_node)
 
 

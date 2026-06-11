@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from trilogy.core.enums import Purpose
 from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
@@ -32,7 +33,6 @@ from trilogy.core.models.author import (
     WhereClause,
 )
 from trilogy.core.models.core import DataType, TraitDataType
-from trilogy.core.enums import Purpose
 from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.common import (
     align_item_to_concept,

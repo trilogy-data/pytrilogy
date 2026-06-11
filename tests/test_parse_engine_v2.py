@@ -772,3 +772,117 @@ address memory.s;
     engine = Dialects.DUCK_DB.default_executor(environment=env)
     sql = engine.generate_sql("select id, floor_space order by id limit 1;")[-1]
     assert "fs" in sql.lower()
+
+
+_TVF_UNION_PRELUDE = """
+key id int;
+property id.a int;
+property id.b int;
+"""
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_tvf_union_named(backend: ParserBackend) -> None:
+    # A named relational union(...) TVF parses on both backends to a rowset
+    # whose select is a UnionSelectStatement with positional output bindings.
+    from trilogy.core.enums import Derivation
+    from trilogy.core.statements.author import (
+        RowsetDerivationStatement,
+        UnionSelectStatement,
+    )
+
+    body = """
+with combined as union(
+    (select a -> k, b -> v),
+    (select b -> k, a -> v)
+) -> (k, v);
+"""
+    with _using_backend(backend):
+        env, parsed = parse_text(_TVF_UNION_PRELUDE + body, Environment())
+    rowset = parsed[-1]
+    assert isinstance(rowset, RowsetDerivationStatement)
+    assert isinstance(rowset.select, UnionSelectStatement)
+    # Two positional output bindings, distinct per-arm mangled inputs.
+    assert len(rowset.select.align.items) == 2
+    arm0 = {c.address for c in rowset.select.align.items[0].concepts}
+    assert len(arm0) == 2  # one mangled column per arm
+    assert env.concepts["combined.k"].derivation == Derivation.ROWSET
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_tvf_union_inline(backend: ParserBackend) -> None:
+    # Inline `from union(...) -> (...) select ...` parses to the trailing select
+    # with the union outputs exposed as bare ROWSET-derived local bindings.
+    from trilogy.core.enums import Derivation
+    from trilogy.core.statements.author import SelectStatement
+
+    body = """
+from union(
+    (select a -> k, b -> v),
+    (select b -> k, a -> v)
+) -> (k, v)
+select k, v;
+"""
+    with _using_backend(backend):
+        env, parsed = parse_text(_TVF_UNION_PRELUDE + body, Environment())
+    assert isinstance(parsed[-1], SelectStatement)
+    assert env.concepts["local.k"].derivation == Derivation.ROWSET
+
+
+def _tvf_union_output(env, name: str):
+    """Return the inner TVF_UNION output concept named ``name``."""
+    from trilogy.core.enums import Derivation
+
+    return next(
+        c
+        for c in env.concepts.values()
+        if c.derivation == Derivation.TVF_UNION and c.name == name
+    )
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_tvf_union_outputs_are_keys(
+    backend: ParserBackend,
+) -> None:
+    # The grain of stacking two selects (UNION ALL) is unknowable, so every union
+    # output is its own grain component: a KEY, never a metric — even one that
+    # fronts an aggregate arm column. (A metric output would be dropped from
+    # downstream grain and break a consumer that re-aggregates the stack.)
+    from trilogy.core.enums import Purpose
+
+    body = """
+with combined as union(
+    (select a -> k, sum(b) -> v),
+    (select b -> k, sum(a) -> v)
+) -> (k, v);
+"""
+    with _using_backend(backend):
+        env, _ = parse_text(_TVF_UNION_PRELUDE + body, Environment())
+
+    assert _tvf_union_output(env, "k").purpose == Purpose.KEY
+    assert _tvf_union_output(env, "v").purpose == Purpose.KEY
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_tvf_union_outputs_form_the_grain(
+    backend: ParserBackend,
+) -> None:
+    # Because every union output is a key, the stack's grain is all of them — the
+    # dimension AND the aggregate-fronting output both anchor the row identity.
+    body = """
+with combined as union(
+    (select a -> k, sum(b) -> v),
+    (select b -> k, sum(a) -> v)
+) -> (k, v);
+"""
+    with _using_backend(backend):
+        env, _ = parse_text(_TVF_UNION_PRELUDE + body, Environment())
+
+    build_env = env.materialize_for_select()
+    from trilogy.core.models.build import BuildGrain
+
+    k = build_env.concepts[_tvf_union_output(env, "k").address]
+    v = build_env.concepts[_tvf_union_output(env, "v").address]
+    grain = BuildGrain.from_concepts([k, v], environment=build_env)
+    assert k.address in grain.components
+    assert v.address in grain.components

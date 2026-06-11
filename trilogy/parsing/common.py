@@ -1305,6 +1305,11 @@ def union_item_to_concept(
         )
     merged_datatype = datatype if datatype is not None else inferred
 
+    # The grain of stacking two selects (UNION ALL) is unknowable in general, so
+    # every union output is its own grain component: a KEY, never a metric. (A
+    # metric output would be dropped from downstream grain and break consumers
+    # that re-aggregate the stacked result; an explicit grain clause could refine
+    # this later.) An explicit signature purpose still wins.
     new_selects = [x.as_lineage(environment) for x in selects]
     union_lineage = UnionSelectLineage(
         selects=new_selects,
@@ -1315,13 +1320,13 @@ def union_item_to_concept(
     new = Concept(
         name=align.alias,
         datatype=merged_datatype,
-        purpose=purpose or Purpose.PROPERTY,
+        purpose=purpose or Purpose.KEY,
         lineage=union_lineage,
         grain=Grain(),
         namespace=align.namespace,
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.TVF_UNION,
-        keys=set(x.address for x in align.concepts),
+        keys=None,
         modifiers=[Modifier.NULLABLE] if nullable else [],
     )
     return new

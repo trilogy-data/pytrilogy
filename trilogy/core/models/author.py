@@ -37,6 +37,7 @@ from trilogy.core.enums import (
     FunctionType,
     Granularity,
     InfiniteFunctionArgs,
+    JoinType,
     Modifier,
     Ordering,
     Purpose,
@@ -1493,6 +1494,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             BuildMultiSelectLineage,
             BuildRowsetItem,
             BuildSubselectItem,
+            BuildUnionSelectLineage,
             BuildWindowItem,
         )
 
@@ -1528,6 +1530,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             ),
         ):
             return Derivation.BASIC
+        elif lineage and isinstance(
+            lineage, (BuildUnionSelectLineage, UnionSelectLineage)
+        ):
+            return Derivation.TVF_UNION
         elif lineage and isinstance(
             lineage, (BuildMultiSelectLineage, MultiSelectLineage)
         ):
@@ -2962,6 +2968,11 @@ class SelectLineage(Mergeable, Namespaced):
     grain: Grain = dc_field(default_factory=Grain)
     where_clause: Optional[WhereClause] = None
     having_clause: Optional[HavingClause] = None
+    # Query-scoped JOINs declared on this select (`inner|left|full join a = b`).
+    # Carried through to discovery so a select built as a sub-node (e.g. a union
+    # arm) applies its own joins — the top-level build reads these off the
+    # statement, but a nested arm only sees its lineage.
+    scoped_joins: List[tuple[str, str, JoinType]] = dc_field(default_factory=list)
 
     @property
     def output_components(self) -> List[ConceptRef]:
@@ -2994,6 +3005,14 @@ class SelectLineage(Mergeable, Namespaced):
                 if self.having_clause
                 else None
             ),
+            scoped_joins=[
+                (
+                    target.address if s == source.address else s,
+                    target.address if t == source.address else t,
+                    jt,
+                )
+                for s, t, jt in self.scoped_joins
+            ],
         )
 
     def with_namespace(self, namespace):
@@ -3017,6 +3036,14 @@ class SelectLineage(Mergeable, Namespaced):
                 if self.having_clause
                 else None
             ),
+            scoped_joins=[
+                (
+                    address_with_namespace(s, namespace),
+                    address_with_namespace(t, namespace),
+                    jt,
+                )
+                for s, t, jt in self.scoped_joins
+            ],
         )
 
 

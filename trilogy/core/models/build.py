@@ -3392,7 +3392,7 @@ class Factory:
         return self._build_multi_select_lineage(base)
 
     @_build_dispatch.register
-    def _(self, base: UnionSelectLineage) -> BuildUnionSelectLineage:
+    def _(self, base: UnionSelectLineage) -> BuildMultiSelectLineage:
         return self._build_multi_select_lineage(
             base,
             build_cls=BuildUnionSelectLineage,

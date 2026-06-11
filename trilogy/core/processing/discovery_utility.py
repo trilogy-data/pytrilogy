@@ -452,6 +452,9 @@ def get_priority_concept(
         # then multiselects to remove them from scope
         [c for c in pass_one if c.derivation == Derivation.MULTISELECT]
         +
+        # union TVFs behave like multiselects (self-contained combined sources)
+        [c for c in pass_one if c.derivation == Derivation.TVF_UNION]
+        +
         # then rowsets to remove them from scope, as they cannot get partials
         [c for c in pass_one if c.derivation == Derivation.ROWSET]
         +

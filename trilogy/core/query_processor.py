@@ -750,6 +750,28 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     return output
 
 
+def _collect_unreachable_union_arms(
+    ctes: list[CTE | UnionCTE],
+) -> list[CTE | UnionCTE]:
+    """A union's arms live in ``internal_ctes``, not ``parent_ctes``, so
+    ``flatten_ctes`` only reaches an arm when something else references it (a
+    join, a shared base). An arm reachable ONLY through its union — e.g. a rename
+    projection sitting above a grouped arm — is otherwise never emitted, leaving
+    the union pointing at an undefined CTE. Add exactly those, by name (a
+    distinct same-named instance is already covered)."""
+    reachable = {c.name for c in ctes}
+    extra: list[CTE | UnionCTE] = []
+    for cte in ctes:
+        if not isinstance(cte, UnionCTE):
+            continue
+        for arm in cte.internal_ctes:
+            for node in flatten_ctes(arm):
+                if node.name not in reachable:
+                    reachable.add(node.name)
+                    extra.append(node)
+    return extra
+
+
 def process_auto(
     environment: Environment,
     statement: PersistStatement | SelectStatement,
@@ -944,7 +966,9 @@ def process_query(
 
     for hook in hooks:
         hook.process_root_cte(root_cte)
-    raw_ctes: List[CTE | UnionCTE] = list(reversed(flatten_ctes(root_cte)))
+    flattened = flatten_ctes(root_cte)
+    flattened = _collect_unreachable_union_arms(flattened) + flattened
+    raw_ctes: List[CTE | UnionCTE] = list(reversed(flattened))
     seen = dict()
     # we can have duplicate CTEs at this point
     # so merge them together
