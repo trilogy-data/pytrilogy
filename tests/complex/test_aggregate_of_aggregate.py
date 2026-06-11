@@ -106,13 +106,14 @@ order by (monthly_total - avg_monthly_overall) asc;
     assert "as `avg_sales`" in sql or 'as "avg_sales"' in sql
     order_by_section = sql.split("ORDER BY")[1]
     # The arithmetic must keep both operands distinct — no collapse to
-    # `monthly_total - monthly_total`. The HAVING folds onto the merge node, so
-    # the reference renders as the materialized aggregate column rather than the
-    # SELECT alias (an equivalent spelling of the same value).
+    # `monthly_total - monthly_total`. The second operand is the aggregate,
+    # spelled either as the materialized column `avg_monthly_overall` (v3, HAVING
+    # folded onto the merge node) or as its SELECT alias `avg_sales` (v4) — an
+    # equivalent spelling of the same value, NOT the collapsed inner arg.
     assert 'monthly_total" - "' in order_by_section.replace("`", '"')
-    assert "avg_monthly_overall" in order_by_section
-    # Outer WHERE (HAVING after pushdown) must filter on the aggregate, not the
-    # raw per-row monthly_total.
+    assert "avg_monthly_overall" in order_by_section or "avg_sales" in order_by_section
+    # Outer WHERE (HAVING after pushdown) must filter on the aggregate (either
+    # spelling), not the raw per-row monthly_total.
     where_section = sql.split("WHERE")[-1].split("ORDER BY")[0]
-    assert "avg_monthly_overall" in where_section
+    assert "avg_monthly_overall" in where_section or "avg_sales" in where_section
     assert '"monthly_total" > 0' not in where_section.replace("`", '"')

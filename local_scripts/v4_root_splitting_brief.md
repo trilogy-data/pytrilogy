@@ -123,6 +123,27 @@ clear "partitioned sources don't provably cover this query" error is acceptable.
 
 ## Status
 
-Open. Not started beyond this characterization. Low urgency (no known real query
-hits it; both planners already mishandle it, v4 at least loudly). The eligibility
-refactor it descends from is shipped and green.
+RESOLVED (2026-06-10) — but NOT via root-splitting. Investigation showed the brief
+mischaracterized the bug:
+
+- The repro is **mismodeled**: `complete where X` only sets `non_partial_for`; it
+  does NOT mark columns partial (that needs `~col` or `partial datasource`). With no
+  partial marker each summary looks fully complete, so the planner picks one slice.
+- The silent-one-slice is **shared by v4**, not v3-only: a structurally identical
+  model with a raw (non-aggregate) partial column has BOTH planners return one
+  partition. The original repro only diverged because `total_revenue=sum(revenue)`
+  had no base table, so v4 crashed deriving `revenue` rather than picking a slice.
+- The covering-union machinery **already exists and works** when the model is
+  correct: `~key` + a provably-exhaustive partition (date ranges, enums via
+  `simplify_conditions`/`reduce_expression`) → both planners UNION correctly. A
+  plain-string partition is NOT provably exhaustive, so the brief's claimed "correct
+  = union both rows" is unsound; both planners correctly raise instead.
+
+Fix (per maintainer direction — reject the contradiction at declaration, do not force
+global partiality): parse-time guard in `datasource_rules.py` — a datasource with
+`complete where` that is neither `partial datasource` nor has any `~` column is
+rejected (the clause has no effect). Both planners now reject the mismodeled input
+identically. Unit tests in `tests/test_partial_datasource.py`
+(`test_complete_where_without_partial_marker_rejected` + accepted-variants).
+`MODEL_COMPLETE_WHERE` in `test_v4_materialized_roots.py` updated to mark `~customer_id`.
+Sweeps: v3-default 811 pass; v4-on 796 pass (only the 3 pre-existing baseline fails).
