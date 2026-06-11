@@ -8,6 +8,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.common import unsatisfied_optionals
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -96,17 +97,16 @@ def gen_union_select_node(
         arm_nodes.append(rename)
     caches.scoped_joins = prior_scoped
 
+    # Union grain is the stacked output columns; reused by the pass-through wrap.
+    union_grain = BuildGrain.from_concepts(ordered_outputs, environment=environment)
     union_node = UnionNode(
         input_concepts=list(ordered_outputs),
         output_concepts=list(ordered_outputs),
         environment=environment,
         parents=arm_nodes,
         preexisting_conditions=conditions.conditional if conditions else None,
+        grain=union_grain,
     )
-    union_node.grain = BuildGrain.from_concepts(
-        union_node.output_concepts, environment=environment
-    )
-    union_node.rebuild_cache()
 
     # Wrap in a pass-through projection so a consumer (e.g. gen_rowset_node) can
     # re-project the outputs onto rowset handles without mutating the UnionNode,
@@ -118,13 +118,10 @@ def gen_union_select_node(
         environment=environment,
         depth=depth,
         parents=[union_node],
+        grain=union_grain,
     )
-    node.grain = BuildGrain.from_concepts(node.output_concepts, environment=environment)
-    node.rebuild_cache()
 
-    if not local_optional or all(
-        x.address in [y.address for y in node.output_concepts] for x in local_optional
-    ):
+    if not unsatisfied_optionals(local_optional, node):
         return node
 
     enrich_node = source_concepts(

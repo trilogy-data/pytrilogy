@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
+from trilogy.core.processing.node_generators.common import unsatisfied_optionals
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -216,9 +217,7 @@ def gen_multiselect_node(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for multiselect node; exiting early"
         )
         return node
-    if all(
-        [x.address in [y.address for y in node.output_concepts] for x in local_optional]
-    ):
+    if not unsatisfied_optionals(local_optional, node):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base multiselect node; exiting early"
         )

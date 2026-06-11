@@ -13,22 +13,11 @@ from trilogy.core.models.build import (
     Factory,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.common import unsatisfied_optionals
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
-
-
-def _optional_satisfied(
-    concept: BuildConcept, output_addresses: set[str], partial_addresses: set[str]
-) -> bool:
-    """An optional is already served by the rowset node if the node outputs it
-    directly (or a pseudonym of it) and that output is not partial."""
-    if concept.address in partial_addresses:
-        return False
-    return concept.address in output_addresses or any(
-        addr in concept.pseudonyms for addr in output_addresses
-    )
 
 
 def _pseudonym_bridge_keys(
@@ -176,13 +165,7 @@ def gen_rowset_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]} with grain {node.grain}"
     )
-    output_addresses = {x.address for x in node.output_concepts}
-    partial_addresses = {x.address for x in node.partial_concepts}
-    remaining = [
-        x
-        for x in local_optional
-        if not _optional_satisfied(x, output_addresses, partial_addresses)
-    ]
+    remaining = unsatisfied_optionals(local_optional, node)
     if not remaining:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."

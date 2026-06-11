@@ -41,6 +41,32 @@ FUNCTION_TYPES = (BuildFunction,)
 PROPERTY_PURPOSES = (Purpose.PROPERTY, Purpose.UNIQUE_PROPERTY)
 
 
+def optional_satisfied(
+    concept: BuildConcept, output_addresses: set[str], partial_addresses: set[str]
+) -> bool:
+    """An optional is already served by a node if the node outputs it directly
+    (or a pseudonym of it) and that output is not partial. A partial output can't
+    satisfy it — joining for the full column is what keeps unmatched rows."""
+    if concept.address in partial_addresses:
+        return False
+    return concept.address in output_addresses or any(
+        addr in concept.pseudonyms for addr in output_addresses
+    )
+
+
+def unsatisfied_optionals(
+    local_optional: List[BuildConcept], node: StrategyNode
+) -> List[BuildConcept]:
+    """The optionals a node does not already serve (pseudonym- and partial-aware)."""
+    output_addresses = {x.address for x in node.output_concepts}
+    partial_addresses = {x.address for x in node.partial_concepts}
+    return [
+        x
+        for x in local_optional
+        if not optional_satisfied(x, output_addresses, partial_addresses)
+    ]
+
+
 def _node_has_preexisting_conditions(
     node: StrategyNode,
     condition: BoolExpr,
