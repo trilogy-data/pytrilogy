@@ -7,8 +7,13 @@ from trilogy.core.processing.nodes import StrategyNode
 
 
 def parent_output_addresses(node: StrategyNode) -> set[str]:
+    # A hidden parent output is dropped from that parent's CTE SELECT, so a
+    # consumer cannot read it — exclude it from what's "available".
     return {
-        output.address for parent in node.parents for output in parent.output_concepts
+        output.address
+        for parent in node.parents
+        for output in parent.output_concepts
+        if output.address not in parent.hidden_concepts
     }
 
 

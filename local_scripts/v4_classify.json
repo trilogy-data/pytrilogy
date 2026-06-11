@@ -5,9 +5,9 @@
     "detail": "AssertionError: assert local.user_post_count@Grain<local.user_id> in [local.avg_user_post_count@Grain<Abstract>]"
   },
   {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm"
+    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_in_projection",
+    "bucket": "ROWS",
+    "detail": "assert 'SELECT\\n   ...s \"label\"\\n)' not in '\\nWITH \\nqu...ical\" on 1=1'"
   },
   {
     "node": "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining",
@@ -15,19 +15,9 @@
     "detail": "assert 'WITH' not in '\\nWITH \\nwa...   \"wakeful\"'"
   },
   {
-    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_in_projection",
-    "bucket": "ROWS",
-    "detail": "assert 'SELECT\\n   ...s \"label\"\\n)' not in '\\nWITH \\nqu...ical\" on 1=1'"
-  },
-  {
     "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
     "bucket": "SHAPE",
     "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...rful\" on 1=1'"
-  },
-  {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
   },
   {
     "node": "tests/optimization/test_merge_basic.py::test_inline_filter_basic",
@@ -40,44 +30,19 @@
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Query is unresolvable: no complete sources found for output concepts {'local.total_customer_revenue'}. These concepts could only be resolved from pa"
   },
   {
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm"
+  },
+  {
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
     "node": "tests/complex/test_rowset.py::test_rowset_alias_name_collision",
     "bucket": "SHAPE",
     "detail": "AssertionError: buyers_a.cust_id should project bill, sql was:"
-  },
-  {
-    "node": "tests/persistence/test_basic_persistence.py::test_persist_with_where",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: assert 'CASE' not in 'SELECT\\n\\tC...lse\\n\\tEND\\n'"
-  },
-  {
-    "node": "tests/stdlib/test_report.py::test_top_x_by_metric",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Expected amount 6.0"
-  },
-  {
-    "node": "tests/engine/demo/test_demo_duckdb.py::test_merge_basic",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert 26730 == 17"
-  },
-  {
-    "node": "tests/engine/demo/test_demo_duckdb.py::test_demo_e2e",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.NoDatasourceException: No datasource exists for root concept passenger.cabin@Grain<passenger.id>, and no resolvable pseudonyms found from set(). This query is unresolvable from"
-  },
-  {
-    "node": "tests/engine/demo/test_demo_duckdb_import.py::test_demo_merge_rowset_e2e",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert 7337 == 8"
-  },
-  {
-    "node": "tests/engine/demo/test_demo_duckdb.py::test_merge",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert 7337 == 8"
-  },
-  {
-    "node": "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having",
-    "bucket": "ROWS",
-    "detail": "assert 'CASE WHEN' not in '\\nWITH \\nqu..._orders\" asc'"
   },
   {
     "node": "tests/engine/test_sqlite.py::test_date_diff_rendering",
@@ -85,17 +50,22 @@
     "detail": "assert 'datetime(' in 'SELECT\\n    date(\\'now\\') as \"today\"\\n'"
   },
   {
-    "node": "tests/persistence/test_complex_persistence.py::test_complex",
+    "node": "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having",
     "bucket": "ROWS",
-    "detail": "assert 16 == 4"
+    "detail": "assert 'CASE WHEN' not in '\\nWITH \\nqu..._orders\" asc'"
+  },
+  {
+    "node": "tests/stdlib/test_report.py::test_top_x_by_metric",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: Expected amount 6.0"
+  },
+  {
+    "node": "tests/persistence/test_basic_persistence.py::test_persist_with_where",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: assert 'CASE' not in 'SELECT\\n\\tC...lse\\n\\tEND\\n'"
   },
   {
     "node": "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -105,24 +75,9 @@
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.ord_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model (v4 discovery)."
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_join",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Query is unresolvable: no complete sources found for output concepts {'vehicle.name'}. These concepts could only be resolved from partial sources."
-  },
-  {
-    "node": "tests/modeling/gcat/test_gcat.py::test_equals_comparison",
+    "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/gcat/gcat2/test_gcat_two.py::test_refresh",
-    "bucket": "CRASH",
-    "detail": "SyntaxError: Missing source map entry for org.code with pseudonyms {'local.first_org'}, have map: {'local.launch_tag': {BuildDatasource(name='raw_launch_info', columns=[BuildColumnAssignment(alias='La"
-  },
-  {
-    "node": "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two",
-    "bucket": "CRASH",
-    "detail": "ValueError: Invalid reference string found in query:"
   },
   {
     "node": "tests/engine/test_bigquery.py::test_date_diff_rendering",
@@ -130,14 +85,14 @@
     "detail": "AssertionError: assert 'DATE_ADD(current_date(), INTERVAL -30 day)' in 'SELECT\\n    current_date() as `today`\\n\\n'"
   },
   {
+    "node": "tests/modeling/gcat/test_gcat.py::test_join",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Query is unresolvable: no complete sources found for output concepts {'vehicle.name'}. These concepts could only be resolved from partial sources."
+  },
+  {
     "node": "tests/modeling/gcat/test_gcat.py::test_join_discovery",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc02",
-    "bucket": "CRASH",
-    "detail": "SyntaxError: Missing source map entry for root_parent.id with pseudonyms {'local.recursive_parent'}, have map: {'local.title': {BuildDatasource(name='full', columns=[BuildColumnAssignment(alias='title"
   },
   {
     "node": "tests/modeling/gcat/test_gcat.py::test_join_discovery_two",
@@ -145,19 +100,19 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc03",
+    "node": "tests/modeling/gcat/test_gcat.py::test_equals_comparison",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two",
+    "bucket": "CRASH",
+    "detail": "ValueError: Invalid reference string found in query:"
+  },
+  {
+    "node": "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc02",
     "bucket": "CRASH",
     "detail": "SyntaxError: Missing source map entry for root_parent.id with pseudonyms {'local.recursive_parent'}, have map: {'local.title': {BuildDatasource(name='full', columns=[BuildColumnAssignment(alias='title"
-  },
-  {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
-    "bucket": "ROWS",
-    "detail": "assert 4 == 3"
-  },
-  {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order",
-    "bucket": "ROWS",
-    "detail": "assert 6 == 5"
   },
   {
     "node": "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters",
@@ -165,19 +120,19 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc07",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: WITH"
+    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
+    "bucket": "ROWS",
+    "detail": "assert 4 == 3"
   },
   {
-    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc02",
+    "node": "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc03",
     "bucket": "CRASH",
-    "detail": "ValueError: Invalid reference string found in query:"
+    "detail": "SyntaxError: Missing source map entry for root_parent.id with pseudonyms {'local.recursive_parent'}, have map: {'local.title': {BuildDatasource(name='full', columns=[BuildColumnAssignment(alias='title"
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_no_duplicates",
-    "bucket": "XPASS",
-    "detail": ""
+    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order",
+    "bucket": "ROWS",
+    "detail": "assert 6 == 5"
   },
   {
     "node": "tests/modeling/rides_example/test_ride_example.py::test_example_model",
@@ -185,17 +140,12 @@
     "detail": "assert 1 == 4"
   },
   {
-    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc08",
+    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc07",
     "bucket": "SHAPE",
-    "detail": "AssertionError:"
+    "detail": "AssertionError: WITH"
   },
   {
-    "node": "tests/modeling/test_complex.py::test_window_clone",
-    "bucket": "CRASH",
-    "detail": "SyntaxError: Missing source map entry for local.nums with pseudonyms set(), have map: defaultdict(<class 'set'>, {'local.order_id': {orders_at_local_order_id@<Grain<local.order_id>>}, 'local.filtered'"
-  },
-  {
-    "node": "tests/modeling/stocks/test_stocks.py::test_provider_name",
+    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc08",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -210,7 +160,17 @@
     "detail": "AssertionError: 3"
   },
   {
+    "node": "tests/modeling/stocks/test_stocks.py::test_provider_name",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
     "node": "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/usa_names/test_names.py::test_group_by_with_existing",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -220,12 +180,22 @@
     "detail": "assert '< ( 0.1' in 'SELECT\\nFROM\\n    \"bigquery-public-data\".\"usa_names\".\"usa_1910_current\" as \"usa_names\"'"
   },
   {
-    "node": "tests/modeling/usa_names/test_names.py::test_group_by_with_existing",
+    "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -240,22 +210,22 @@
     "detail": "KeyError: 'ds~store_sales_unified'"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_nine",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -266,21 +236,6 @@
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty",
-    "bucket": "CRASH",
-    "detail": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\ethan\\\\coding_projects\\\\pytrilogy\\\\tests\\\\modeling\\\\tpc_ds_duckdb\\\\zquery_timing_amd64-intel64_family_6_model_183_stepping_1_genuineintel-16."
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_nine",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -300,9 +255,9 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_one",
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested",
     "bucket": "SHAPE",
-    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (540709, 286686, 171) != (540938, 286730, 171)"
+    "detail": "AssertionError: (2003, 2003, 534, 2003, 127)"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
@@ -310,14 +265,14 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_one",
     "bucket": "SHAPE",
-    "detail": "AssertionError:"
+    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (540709, 286686, 171) != (540938, 286730, 171)"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: (2003, 2003, 534, 2003, 127)"
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
+    "bucket": "CRASH",
+    "detail": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\ethan\\\\coding_projects\\\\pytrilogy\\\\tests\\\\modeling\\\\tpc_ds_duckdb\\\\zquery_timing_amd64-intel64_family_6_model_183_stepping_1_genuineintel-16."
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",
@@ -331,12 +286,12 @@
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (5270, 3.52, 2.2, 1.74, 1.6, 3.01, 3.89, 3.47) != (5270, 11.09, 4.14, 3.4, 2.7, 9.75, 15.47, 12.22)"
+    "bucket": "TIMEOUT",
+    "detail": ""
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (5270, 3.52, 2.2, 1.74, 1.6, 3.01, 3.89, 3.47) != (5270, 11.09, 4.14, 3.4, 2.7, 9.75, 15.47, 12.22)"
+    "bucket": "TIMEOUT",
+    "detail": ""
   }
 ]

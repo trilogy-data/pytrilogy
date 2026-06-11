@@ -561,10 +561,15 @@ def _widen_merge_join_keys(parents: list[StrategyNode]) -> None:
         if not available:
             continue
         parent_outputs = {concept.address for concept in parent.output_concepts}
+        existence = {concept.address for concept in parent.existence_concepts}
         carried: list[BuildConcept] = []
         input_candidates: list[BuildConcept] = []
         for concept in sibling_outputs.values():
             if concept.address in parent_outputs:
+                continue
+            # An existence concept is consumed via a subselect, not joined as a
+            # row column, so it can't be carried as a widenable output.
+            if concept.address in existence:
                 continue
             if not _merge_join_key_candidate(concept):
                 continue

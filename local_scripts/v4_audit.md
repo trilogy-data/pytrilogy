@@ -1,4 +1,4 @@
-# v4 compatibility audit (2026-06-09)
+# v4 compatibility audit (last refreshed 2026-06-11)
 
 Fresh re-classification of every entry in `tests/v4_known_failing.py`, run in
 isolation under `TRILOGY_V4_DISCOVERY=1 --runxfail`. Regenerate with
@@ -8,25 +8,40 @@ Supersedes the Jun-5 sweep snapshot (reasons/results/triage/SUMMARY + the
 root-cause-A / fanout / agg-source briefs), all deleted — those bugs are fixed
 and the data was stale.
 
-## Headline
+## Headline (2026-06-11 re-run)
 
-68 tracked entries:
+59 tracked entries (down from 68 — C1 merge fan-out, C3 demo_e2e, C4 ncaa
+adhoc02, C2 gcat test_refresh, and the window_clone source-map crash all fixed;
+window_clone + gcat test_no_duplicates removed from the list):
 
 | bucket | n | meaning |
 | --- | --- | --- |
-| **SHAPE** | 43 | correct rows, worse/different SQL — cosmetic, not a parity bug |
-| **CRASH** | 11* | v4 raises — genuine feature/coverage gap |
-| **ROWS**  | 8  | wrong rows / row count — genuine correctness gap |
-| **RENDER**| 2  | date arithmetic dropped from SQL — genuine gap (asserted via SQL text, lives in SHAPE-ish but is functional) |
-| **XPASS** | 1  | now passes in isolation — remove from list |
+| **SHAPE** | 41 | correct rows, worse/different SQL — cosmetic, not a parity bug |
+| **CRASH** | 8* | v4 raises — genuine feature/coverage gap |
+| **ROWS**  | 8  | wrong rows / row count — genuine correctness gap (incl. C7 render) |
+| **TIMEOUT** | 2 | tpc-ds q21/q22 exceed the classify budget |
 
-\* one more "CRASH" is environmental: `test_fifty` = `PermissionError` on a
-`zquery_timing_*` file (Windows file lock), not a v4 bug.
+\* the classifier mis-buckets `tpc_ds_duckdb::test_seventy_six` as CRASH; it's a
+SHAPE/size failure (`assert 16080 < 10000`, identical before/after the
+window_clone fix). So **7 genuine crashes**, not 8.
 
-So ~21 of 68 are genuine parity gaps; the other ~46 are SQL-shape/verbosity
-(TPC-DS size ceilings + inlining CTE-shape snapshots).
+So ~15 of 59 are genuine parity gaps (7 crash + 8 rows); the rest are
+SQL-shape/verbosity (TPC-DS size ceilings + inlining CTE-shape snapshots).
 
-**Remove now (stale):** `gcat/test_gcat.py::test_no_duplicates` — XPASSes in isolation.
+### FIXED 2026-06-11 — C2 window_clone source-map crash
+`test_complex.py::test_window_clone` (`SyntaxError: Missing source map entry for
+local.nums`). Two-part fix in the v4 merge-join-key widener:
+1. `parent_output_addresses` (projection.py) now excludes **hidden** parent
+   outputs — a hidden output is dropped from that parent's CTE SELECT, so it's
+   not readable by a consumer and must not count as "available".
+2. `_widen_merge_join_keys` (strategy_builder.py) now skips carrying any sibling
+   concept that is in the receiving parent's `existence_concepts` — an existence
+   concept is consumed via a subselect (`WHERE x in (select …)`), never joined
+   as a row column, so carrying it as a widenable output produced a dangling
+   un-joined CTE reference (`Referenced table "highfalutin" not found`).
+NOT the right axis: gating on `concept.derivation` (WINDOW/UNNEST/…) over-broadly
+broke `test_window_over_rollup_preserves_grouping_rows`, which legitimately
+carries a WINDOW result. The discriminator is existence-vs-row, not derivation.
 
 ## Genuine gaps, clustered by root cause
 
@@ -40,14 +55,18 @@ Big row blowups; v4's merge/multiselect dedup misses on the demo models.
 
 → **No distilled case.** Highest-value new parity case to add.
 
-### C2 — pseudonym / recursive source-map crash — 4
-`SyntaxError: Missing source map entry for <X> with pseudonyms {...}` at render.
+### C2 — recursive-CTE pseudonym source-map crash — 2 (was 4)
+`SyntaxError: Missing source map entry for root_parent.id with pseudonyms
+{'local.recursive_parent'}` at render — the recursive-CTE alias path.
 - `modeling/hackernews/test_hackernews_queries.py::test_adhoc02` (root_parent.id / recursive_parent)
 - `modeling/hackernews/test_hackernews_queries.py::test_adhoc03` (same)
-- `modeling/test_complex.py::test_window_clone` (local.nums)
-- `modeling/gcat/gcat2/test_gcat_two.py::test_refresh` (org.code / first_org)
 
-→ **No distilled case.** Cluster shares the source-map-with-pseudonym render path.
+FIXED & removed: `test_window_clone` (different root cause — existence-concept
+carried as a row output, see headline) and `test_refresh` (gcat, fixed earlier).
+The two remaining are a genuinely distinct bug: a recursive_parent pseudonym not
+mapped onto its `root_parent.id` source. **Next open issue.**
+
+→ **No distilled case.**
 
 ### C3 — partial-source / namespaced-property-without-key crash — 3
 `UnresolvableQueryException: … could only be resolved from partial sources` /
