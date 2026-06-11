@@ -255,21 +255,22 @@ limit 100;
         title="Blend two models in one query with a scoped inner/left join",
         summary=(
             "`inner|left join brought_in.key = anchor.key` (after WHERE, before SELECT) "
-            "blends a second model into ONE query; stack clauses for a multi-key blend — "
-            "the PREFERRED query-local alternative to `merge`"
+            "blends a second model into ONE query — the PREFERRED alternative to `merge`. "
+            "JOIN ON THE FULL GRAIN: one clause per key in the shared `@<k1, k2>` grain"
         ),
         body="""\
 # A query-scoped `join` blends a second model into ONE select without editing the
-# model files (the query-local equivalent of `merge`). Place the clause(s) AFTER
-# the optional `where` and BEFORE `select`. The LEFT key is the BROUGHT-IN
-# concept; the RIGHT key is the ANCHOR already in the query:
-#   inner join  -> strict equality; unmatched rows DROPPED  (like `merge a into b`)
-#   left  join  -> brought-in side optional/nullable         (like `merge a into ~b`)
+# model files (the DEFAULT way to blend; the query-local equivalent of `merge`).
+# Place the clause(s) AFTER the optional `where` and BEFORE `select`. The LEFT key
+# is the BROUGHT-IN concept; the RIGHT key is the ANCHOR already in the query:
+#   inner join  -> strict equality; unmatched rows DROPPED
+#   left  join  -> brought-in side optional/nullable (unmatched anchor rows kept)
+#   full  join  -> BOTH sides optional (unmatched rows from EITHER side kept)
 import enrollments as enroll;
 import students as students;
 
-# Bring students onto enrollments by the shared student key (students.id is the
-# brought-in LEFT key, enroll.student_id the anchor), then aggregate by major.
+# (1) SINGLE-KEY blend: bring students onto enrollments by the shared student key
+# (students.id is the brought-in LEFT key, enroll.student_id the anchor).
 inner join students.id = enroll.student_id
 select
     students.major,
@@ -278,9 +279,30 @@ order by enrollments desc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
-# SELF-PAIR across two periods/sets (period-over-period) — the PREFERRED shape for
-# "this year vs last year": build one rowset per period (each aggregated to the
-# SAME keys), then join them on those keys.
+# (2) MULTI-KEY blend — JOIN ON THE FULL GRAIN. When two facts share a COMPOSITE
+# grain, write ONE join clause per key. `trilogy explore` shows each fact's grain
+# as `@<k1, k2>` (e.g. a sales/returns fact keyed `@<department, course>`);
+# matching only ONE key fans out and DOUBLE-COUNTS. Two rowsets, joined on both
+# of their shared keys:
+rowset completed_by <- where enroll.completed = true
+    select enroll.department as dept, enroll.course as course, count(enroll.id) as completed_cnt;
+rowset incomplete_by <- where enroll.completed = false
+    select enroll.department as dept, enroll.course as course, count(enroll.id) as incomplete_cnt;
+
+inner join completed_by.dept = incomplete_by.dept
+inner join completed_by.course = incomplete_by.course
+select
+    completed_by.dept,
+    completed_by.course,
+    completed_by.completed_cnt,
+    incomplete_by.incomplete_cnt,
+order by completed_by.dept asc nulls first
+limit 100;
+
+# ---------------------------------------------------------------------------
+# (3) SELF-PAIR across two periods/sets (period-over-period) — the PREFERRED shape
+# for "this year vs last year": build one rowset per period (each aggregated to
+# the SAME keys), then join them on those keys.
 rowset y2020 <- where enroll.year = 2020 select enroll.department as dept, count(enroll.id) as cnt;
 rowset y2021 <- where enroll.year = 2021 select enroll.department as dept, count(enroll.id) as cnt;
 
@@ -294,15 +316,19 @@ order by yoy_diff desc nulls first
 limit 100;
 
 # NOTES:
-#  - Only `inner` and `left` are supported; one clause per shared key. Stack
-#    several clauses for a MULTI-KEY blend (`inner join a.k1 = b.k1` then
-#    `inner join a.k2 = b.k2`). Chain `= c` to also pull a base key into the join
+#  - JOIN ON THE FULL GRAIN: one `join` clause per key in the two facts' shared
+#    `@<...>` grain. Under-joining (one key of a multi-key grain) is a top cause of
+#    wrong, inflated results. Chain `= c` to also pull a base key into the join
 #    group so its properties stay reachable (`inner join a.k = b.k = base.k`).
-#  - `inner join` requires the key in BOTH sides (drops one-sided rows); `left
-#    join` keeps unmatched left rows with NULLs on the brought-in side. Do NOT
-#    `coalesce(x, 0)` a missing side just to force an inner-style pairing to run.
-#  - Prefer a scoped join over a separate `merge`; never edit model files to wire
-#    a query-local join.
+#  - `inner`, `left`, and `full` are supported (NOT `right` — swap the operands
+#    for a right join). `inner` requires the key in BOTH sides (drops one-sided
+#    rows); `left` keeps unmatched anchor rows; `full` keeps unmatched rows from
+#    BOTH sides. A `full` key-group must be ALL full (can't mix `full` with
+#    `inner`/`left` on the SAME key; `full join a = b = c` chains one full group);
+#    `inner` and `left` mix freely. Do NOT `coalesce(x, 0)` a missing side just to
+#    force an inner-style pairing to run.
+#  - Prefer a scoped join over a model-level `merge`; never edit model files to
+#    wire a query-local join.
 """,
     ),
     SyntaxExample(

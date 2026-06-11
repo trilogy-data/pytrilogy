@@ -4,30 +4,30 @@
 
 | category | passing | newly unlocked | regressions |
 |---|---|---|---|
-| ingest | 2/13 | q40, q82 | — |
-| enriched | 1/13 | q68 | q40, q82 |
+| ingest | 3/13 | q29, q40, q82 | — |
+| enriched | 4/13 | q44, q68, q75 | q29, q40 |
 
 ## Metrics
 
 | category | pass rate | total tokens |
 |---|---|---|
-| ingest | 0.15 | 16,268,165 |
-| enriched | 0.08 | 7,391,248 |
+| ingest | 0.23 | 12,471,510 |
+| enriched | 0.31 | 5,694,137 |
 
 ## Per-query matrix
 
 | query | ingest | enriched |
 |---|---|---|
-| q29 | ❌ fail | ❌ fail |
+| q29 | ✅ | ❌ fail |
 | q40 | ✅ | ❌ fail |
-| q44 | ❌ fail | ❌ fail |
+| q44 | ❌ fail | ✅ |
 | q46 | ❌ fail | ❌ fail |
 | q54 | ❌ fail | ❌ fail |
 | q64 | ❌ fail | ❌ fail |
 | q68 | ❌ fail | ✅ |
 | q72 | ❌ fail | ❌ fail |
-| q75 | ❌ fail | ❌ fail |
+| q75 | ❌ fail | ✅ |
 | q76 | ❌ fail | ❌ fail |
 | q77 | ❌ timeout | ❌ fail |
-| q82 | ✅ | ❌ fail |
+| q82 | ✅ | ✅ |
 | q84 | ❌ fail | ❌ fail |
