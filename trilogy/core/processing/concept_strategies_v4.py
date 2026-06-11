@@ -41,6 +41,7 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_additive_aggregate,
     get_additive_rollup_concepts,
 )
+from trilogy.core.processing.condition_utility import condition_implies
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
@@ -530,29 +531,67 @@ def _combine_conditions(
     return BuildWhereClause(conditional=combined)
 
 
+def _datasource_materializes(
+    concept: BuildConcept,
+    ds: BuildDatasource,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> bool:
+    """A datasource materializes `concept` iff it binds a COMPLETE column whose
+    canonical address matches — name-independent: a differently-named column with
+    the same underlying expression (`sum(x)` vs a bound `total`) satisfies it —
+    and can express the query's row-narrowing conditions.
+
+    Partialness is relative to the query, via the same `condition_implies` rule
+    source-planning's `partial_is_full` uses. Two partial mechanisms:
+    - Population (`complete where X`, `ds.non_partial_for`): the table holds only
+      the X-subset of rows, so it's a complete source only when the query implies
+      X. A `~key` merge column (`merge orid into ~orid_2`) is the degenerate case —
+      intrinsically one row per key, missing values that never appear as a key,
+      with no `non_partial_for` to recover it — so it never qualifies.
+    - Column (`Modifier.PARTIAL`): a `partial ... complete where X` table's columns
+      are individually partial but become complete once the query implies X.
+
+    Matching on `ds.columns` (genuine bindings), not `output_concepts`, is
+    deliberate: the latter includes merge-pseudonym-expanded entries that hide the
+    real PARTIAL marker."""
+    if not _conditions_supported(ds, where, environment.concepts):
+        return False
+    partial_covered = bool(
+        where
+        and ds.non_partial_for
+        and condition_implies(where.conditional, ds.non_partial_for.conditional)
+    )
+    if ds.non_partial_for is not None and not partial_covered:
+        return False
+    return any(
+        col.concept.canonical_address == concept.canonical_address
+        and (col.is_complete or partial_covered)
+        for col in ds.columns
+    )
+
+
 def _materialized_root_addresses(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
 ) -> frozenset[str]:
-    """Demanded derived concepts that a datasource materializes directly at the
-    exact target grain — a precomputed / pre-aggregated summary table. Stage 1
-    treats these as ROOT scans so v4 reads the table instead of re-deriving from
-    base. Gated by `_conditions_supported`: a row-narrowing filter the summary
-    can't express (e.g. a predicate below its grain) makes the precomputed value
-    wrong, so the concept stays derived and the filter is applied over base.
+    """Demanded derived concepts that a datasource materializes directly — a
+    precomputed / pre-aggregated summary table or a persisted derived column.
+    Stage 1 treats these as ROOT scans so v4 reads the table instead of
+    re-deriving from base.
 
-    Matching rule: an AGGREGATE matches a datasource column by `canonical_address`
-    so an inline `sum(x)` reuses the table that binds its named equivalent. Any
-    other derived concept must match by real `address` — a canonical match there
-    can be a merge-pseudonym (`merge orid into ~orid_2`) whose own lineage (e.g. an
-    unnest) the datasource does not actually materialize, which would drop rows.
+    Eligibility is one rule (`_datasource_materializes`): a datasource binds the
+    concept's canonical expression as a COMPLETE column (or a partial one the
+    query's conditions complete) and can express the conditions. EXACT-grain
+    AGGREGATE/BASIC additionally require `ds.grain == target_grain` so the scan's
+    row multiplicity matches; an UNNEST is exempt (a persisted unnest table's
+    declared grain is the coarser key, understating its per-value rows).
 
     Additive rollup: an additive AGGREGATE (sum/count) that no datasource has at
-    the exact grain, but a *finer*-grain table binds (by canonical address), is
-    also treated as a root scanned from that finer table — `_group_to_grain_if_required`
-    then re-aggregates it to the target grain (`sum(finer.col)`). Scoped to
-    address-bound aggregates so the SUM has a real source column to read."""
+    the exact grain, but a *finer*-grain table binds, is also treated as a root
+    scanned from that finer table — `_group_to_grain_if_required` then
+    re-aggregates it to the target grain (`sum(finer.col)`)."""
     if not mandatory_list:
         return frozenset()
     target_grain = BuildGrain.from_concepts(mandatory_list)
@@ -562,28 +601,32 @@ def _materialized_root_addresses(
     ]
     out: set[str] = set()
     for concept in mandatory_list:
-        # Only short-circuit derivations whose value is fully captured by a
-        # datasource row: a precomputed AGGREGATE or a scalar BASIC. Row-shaping
-        # derivations (UNNEST/ROWSET/RECURSIVE/FILTER/WINDOW/...) generate or
-        # drop rows the datasource scan wouldn't reproduce — e.g. an unnest
-        # merged onto a key (`merge orid into ~orid_2`) is exposed by the table
-        # as that key but really spans more rows.
+        # Short-circuit only derivations a datasource row fully reproduces: a
+        # precomputed AGGREGATE/scalar BASIC, or an UNNEST a table persists
+        # directly. The other row-shaping derivations (ROWSET/RECURSIVE/FILTER/
+        # WINDOW/...) generate or drop rows a scan wouldn't reproduce; enabling
+        # them would each need its own population-vs-conditions validation.
+        if concept.derivation == Derivation.UNNEST:
+            # No grain-equality gate: a `persist ... from select key, unnest_val`
+            # table declares the coarser key grain but physically holds one row
+            # per unnest value, so the scan reproduces them. The merge-onto-key
+            # shape is excluded by the partial-column check in the predicate.
+            if any(
+                _datasource_materializes(concept, ds, where, environment)
+                for ds in datasources
+            ):
+                out.add(concept.address)
+            continue
         if concept.derivation not in (Derivation.AGGREGATE, Derivation.BASIC):
             continue
         is_aggregate = concept.derivation == Derivation.AGGREGATE
-        # EXACT: a datasource at the target grain binds the concept itself.
+        # EXACT: a datasource at the target grain materializes the concept.
         exact = False
         if concept.canonical_address in environment.materialized_canonical_concepts:
             for ds in datasources:
                 if ds.grain != target_grain:
                     continue
-                if is_aggregate:
-                    matched = concept.canonical_address in {
-                        c.canonical_address for c in ds.output_concepts
-                    }
-                else:
-                    matched = concept.address in {c.address for c in ds.output_concepts}
-                if matched and _conditions_supported(ds, where, environment.concepts):
+                if _datasource_materializes(concept, ds, where, environment):
                     out.add(concept.address)
                     exact = True
                     break

@@ -1,3 +1,5 @@
+import pytest
+
 from trilogy import parse
 from trilogy.core.enums import Modifier
 from trilogy.parsing.render import Renderer
@@ -256,6 +258,58 @@ address store_returns_table;
     # item_id, nor a property of them. The intrinsic partials survive at the
     # union level (verified end-to-end by tpc_ds q78 / q80 which depend on
     # the resulting LEFT_OUTER sales→returns join).
+
+
+def test_complete_where_without_partial_marker_rejected():
+    """A `complete where` source with no `~` column and no `partial` keyword is
+    contradictory — it would look fully complete, so an unfiltered query would
+    silently read only its slice. The parser rejects it at declaration."""
+    src = """
+key customer_id int;
+property customer_id.region string;
+property customer_id.revenue float;
+
+datasource east (customer_id: customer_id, region: region, revenue: revenue)
+grain (customer_id)
+complete where region = 'east'
+query '''select 101 as customer_id, 'east' as region, 10.0 as revenue''';
+"""
+    with pytest.raises(Exception, match="complete where"):
+        parse(src)
+
+
+def test_complete_where_accepted_with_partial_keyword():
+    """The `partial datasource` keyword satisfies the partiality requirement."""
+    src = """
+key customer_id int;
+property customer_id.region string;
+property customer_id.revenue float;
+
+partial datasource east (customer_id: customer_id, region: region, revenue: revenue)
+grain (customer_id)
+complete where region = 'east'
+query '''select 101 as customer_id, 'east' as region, 10.0 as revenue''';
+"""
+    env, _ = parse(src)
+    assert env.datasources["east"].is_partial
+
+
+def test_complete_where_accepted_with_tilde_column():
+    """A single `~col` partial column satisfies the partiality requirement."""
+    src = """
+key customer_id int;
+property customer_id.region string;
+property customer_id.revenue float;
+
+datasource east (customer_id: ~customer_id, region: region, revenue: revenue)
+grain (customer_id)
+complete where region = 'east'
+query '''select 101 as customer_id, 'east' as region, 10.0 as revenue''';
+"""
+    env, _ = parse(src)
+    ds = env.datasources["east"]
+    assert not ds.is_partial
+    assert ds.column_level_partial_addresses == {"local.customer_id"}
 
 
 def test_column_level_partial_concepts_property():

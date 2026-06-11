@@ -1591,22 +1591,23 @@ def build_strategy_node(
             f"parents={[type(p).__name__ for p in parents]} "
             f"-> {type(node).__name__ if node else None}"
         )
-        if node is not None:
-            # Attach existence parents+concepts for any SubselectComparison
-            # atoms at this group. Done post-build so the generators stay
-            # ignorant of existence handling — the host node just learns it
-            # has extra side-channel parents whose concepts render as
-            # subselects rather than joins.
-            #
-            # The existence wiring must land on the node that actually emits
-            # the WHERE referencing the IN-RHS concept. For aggregating
-            # derivations we peeled the conditions off onto a SelectNode
-            # wrapper (above); that wrapper is the condition host, not the
-            # outer GroupNode whose `conditions=None`.
-            condition_hosts[gid] = (
-                condition_host_node if condition_host_node is not None else node
-            )
-            built[gid] = node
+        if node is None:
+            continue
+        # Attach existence parents+concepts for any SubselectComparison
+        # atoms at this group. Done post-build so the generators stay
+        # ignorant of existence handling — the host node just learns it
+        # has extra side-channel parents whose concepts render as
+        # subselects rather than joins.
+        #
+        # The existence wiring must land on the node that actually emits
+        # the WHERE referencing the IN-RHS concept. For aggregating
+        # derivations we peeled the conditions off onto a SelectNode
+        # wrapper (above); that wrapper is the condition host, not the
+        # outer GroupNode whose `conditions=None`.
+        condition_hosts[gid] = (
+            condition_host_node if condition_host_node is not None else node
+        )
+        built[gid] = node
 
     if not built:
         return None
@@ -1622,6 +1623,27 @@ def build_strategy_node(
         source_policy,
     )
     if final is not None:
+        if _has_unsourced_leaf(final):
+            # A parent-less, datasource-less node that outputs a ROOT concept (a
+            # base column that must come from a datasource) has no source for it —
+            # the renderer would emit `INVALID_REFERENCE_BUG`. This is an
+            # unresolvable query (e.g. a projection / aggregate over concepts from
+            # two unconnected namespaces); fail so it raises
+            # UnresolvableQueryException (matching v3) rather than invalid SQL.
+            # Unnest-of-literal / constant leaves output only derived concepts and
+            # are left alone.
+            return None
         for node in _strategy_nodes(final):
             _attach_existence_to_node(node, _node_existence_concepts(node), built)
     return final
+
+
+def _has_unsourced_leaf(final: StrategyNode) -> bool:
+    for node in _strategy_nodes(final):
+        if node.parents or getattr(node, "datasource", None) is not None:
+            continue
+        if any(
+            concept.derivation == Derivation.ROOT for concept in node.output_concepts
+        ):
+            return True
+    return False

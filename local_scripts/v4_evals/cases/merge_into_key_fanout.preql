@@ -1,0 +1,55 @@
+# MERGE x into ~y declares two concepts equivalent — a join key between two
+# datasources at different grains. Here `passengers` (grain p_id) and `rich`
+# (grain full_name) each derive a last_name; merging them INNER-JOINs the two ON
+# last_name, yielding only passengers whose last name matches a rich person
+# (2 rows). v4 used to (a) drop the merged join key and join `ON 1=1`
+# (cross-join fan-out — demo test_merge_basic returned 26730 vs 17) and (b) lose
+# the far-side `full_name` lineage → INVALID_REFERENCE_BUG (same root cause as
+# the "Invalid reference string" crashes). FIXED (v4-scoped) in
+# `_datasource_nodes_for_bridge`: the far datasource, reached by the Steiner
+# walk only via the BASIC merge key's reverse-lineage, was a graph node but
+# missing from the bridge's `.datasources` registry; re-point it from the source
+# graph (gap-filled, and stood down when a non-BASIC/recursive merge is in play),
+# plus an `.address`-vs-`.canonical_address` match so the derived merge key lands
+# on its scan. Writeup: local_scripts/v4_merge_fanout_brief.md. Distilled from
+# tests/engine/demo/test_demo_duckdb.py::test_merge_basic.
+key p_id int;
+property p_id.p_name string;
+property p_id.p_last <- split(p_name, ',')[1];
+
+key full_name string;
+property full_name.net_worth float;
+property full_name.r_last <- split(full_name, ' ')[2];
+
+datasource passengers (
+    p_id: p_id,
+    p_name: p_name,
+)
+grain (p_id)
+query '''
+select 1 as p_id, 'Smith, John' as p_name
+union all select 2 as p_id, 'Jones, Mary' as p_name
+union all select 3 as p_id, 'Brown, Sam' as p_name
+union all select 4 as p_id, 'Lee, Ann' as p_name
+''';
+
+datasource rich (
+    full_name: full_name,
+    net_worth: net_worth,
+)
+grain (full_name)
+query '''
+select 'Andrew Smith' as full_name, 100.0 as net_worth
+union all select 'Betty Jones' as full_name, 200.0 as net_worth
+''';
+
+merge r_last into ~p_last;
+
+WHERE
+    full_name is not null
+    and p_name is not null
+SELECT
+    p_name,
+    full_name
+ORDER BY
+    p_name asc;

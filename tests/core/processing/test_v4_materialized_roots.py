@@ -16,6 +16,7 @@ from trilogy.core.models.build import BuildConcept, BuildWhereClause, Factory
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
     _combine_conditions,
+    _datasource_materializes,
     _materialized_root_addresses,
 )
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
@@ -92,6 +93,73 @@ grain (customer_id)
 query '''select 101 as customer_id, 1 as order_count, 10.0 as total_amount''';
 """
 
+# A second BASIC concept (region_caps) with the SAME underlying expression as the
+# materialized region_upper but a different name — a canonical-address match must
+# let the customers dim satisfy it even though no column is literally named it.
+MODEL_CANONICAL_ALIAS = MODEL.rstrip() + "\nauto region_caps <- upper(region);\n"
+
+# Merge-onto-key: orid_2 is an unnest of a constant, merged onto a key the orders
+# table binds as a PARTIAL (`~orid`) column. The table holds one row per key, not
+# per unnest value, so it must NOT be a materialized source for orid_2.
+MODEL_MERGE_ONTO_KEY = """
+key orid int;
+auto orid_2 <- unnest([1,2,3,4,5]);
+property orid.val int;
+
+datasource orders (
+    orid: ~orid,
+    val: val,
+)
+grain (orid)
+query '''select 1 as orid, 10 as val union all select 2 as orid, 20 as val''';
+
+merge orid into ~orid_2;
+"""
+
+# A genuinely persisted unnest column: dim_split binds `split` as a complete
+# column at one row per unnest value, alongside the base array source.
+MODEL_PERSISTED_UNNEST = """
+key scalar int;
+property scalar.int_array list<int>;
+auto split <- unnest(int_array);
+
+datasource avalues (
+    int_array: int_array, scalar: scalar,
+)
+grain (scalar)
+query '''select [1,2,3,4] as int_array, 2 as scalar''';
+
+datasource dim_split (
+    scalar: scalar, split: split,
+)
+grain (scalar)
+query '''select 2 as scalar, 1 as split''';
+"""
+
+# A partial summary complete only where revenue_band = 'high': its bound aggregate
+# is a usable materialized source iff the query's conditions imply that predicate.
+# The key is marked partial (`~customer_id`) — a `complete where` source is partial
+# outside its predicate, so the parser requires that marker.
+MODEL_COMPLETE_WHERE = """
+key customer_id int;
+property customer_id.revenue_band string;
+property customer_id.revenue float;
+auto total_revenue <- sum(revenue);
+
+datasource customers (
+    customer_id: customer_id, revenue_band: revenue_band, revenue: revenue,
+)
+grain (customer_id)
+query '''select 101 as customer_id, 'high' as revenue_band, 10.0 as revenue''';
+
+datasource high_band_summary (
+    customer_id: ~customer_id, total_revenue: total_revenue,
+)
+grain (customer_id)
+complete where revenue_band = 'high'
+query '''select 101 as customer_id, 10.0 as total_revenue''';
+"""
+
 # Same facts, no summary tables: nothing is materialized to short-circuit to.
 MODEL_NO_SUMMARY = """
 key order_id int;
@@ -144,7 +212,7 @@ def test_inline_aggregate_matches_named_by_canonical():
     assert _roots("SELECT customer_id, sum(amount) -> t;") == {"local.t"}
 
 
-def test_exact_basic_matches_by_address():
+def test_exact_basic_matches_by_canonical():
     # region_upper is a BASIC concept materialized on the customers dim.
     assert "local.region_upper" in _roots("SELECT customer_id, region_upper;")
 
@@ -194,6 +262,74 @@ def test_grain_level_filter_still_uses_summary():
     # A predicate on the summary's own grain (customer_id) is expressible there.
     roots = _roots("WHERE customer_id = 101 SELECT customer_id, order_count;")
     assert "local.order_count" in roots
+
+
+# ---------- sourcing eligibility: canonical, completeness, partial ----------
+
+
+def test_basic_matches_differently_named_same_expression():
+    # region_caps shares region_upper's canonical expression (upper(region)) but no
+    # column is named region_caps; the canonical match satisfies it from customers.
+    roots = _roots("SELECT customer_id, region_caps;", MODEL_CANONICAL_ALIAS)
+    assert "local.region_caps" in roots
+
+
+def test_merge_onto_key_unnest_not_flagged():
+    # orders binds orid_2 only as a PARTIAL (~orid) merge column — one row per key,
+    # not per unnest value — so it is not a complete materialized source.
+    roots = _roots("SELECT orid_2, val;", MODEL_MERGE_ONTO_KEY)
+    assert "local.orid_2" not in roots
+
+
+def test_persisted_unnest_column_flagged():
+    # dim_split binds `split` as a complete column at the post-unnest grain.
+    roots = _roots("SELECT scalar, split;", MODEL_PERSISTED_UNNEST)
+    assert "local.split" in roots
+
+
+def test_complete_where_summary_used_when_condition_implied():
+    roots = _roots(
+        "WHERE revenue_band = 'high' SELECT customer_id, total_revenue;",
+        MODEL_COMPLETE_WHERE,
+    )
+    assert "local.total_revenue" in roots
+
+
+def test_complete_where_summary_skipped_without_condition():
+    # No filter implies the summary's complete-where predicate, so its partial
+    # aggregate column can't be trusted; total_revenue stays derived from base.
+    roots = _roots("SELECT customer_id, total_revenue;", MODEL_COMPLETE_WHERE)
+    assert "local.total_revenue" not in roots
+
+
+# ---------- _datasource_materializes (predicate, unit) ----------
+
+
+def test_datasource_materializes_complete_column():
+    be, _, _ = _build("SELECT customer_id, region_upper;")
+    assert _datasource_materializes(
+        be.concepts["local.region_upper"], be.datasources["customers"], None, be
+    )
+
+
+def test_datasource_materializes_rejects_partial_merge_column():
+    be, _, _ = _build("SELECT orid_2, val;", MODEL_MERGE_ONTO_KEY)
+    assert not _datasource_materializes(
+        be.concepts["local.orid_2"], be.datasources["orders"], None, be
+    )
+
+
+def test_datasource_materializes_partial_covered_by_condition():
+    be, _, conditions = _build(
+        "WHERE revenue_band = 'high' SELECT customer_id, total_revenue;",
+        MODEL_COMPLETE_WHERE,
+    )
+    where = _combine_conditions(conditions)
+    summary = be.datasources["high_band_summary"]
+    total = be.concepts["local.total_revenue"]
+    assert _datasource_materializes(total, summary, where, be)
+    # Without the implying condition the partial summary is not a complete source.
+    assert not _datasource_materializes(total, summary, None, be)
 
 
 # ---------- _combine_conditions ----------
