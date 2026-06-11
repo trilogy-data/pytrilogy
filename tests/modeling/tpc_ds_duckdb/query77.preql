@@ -25,6 +25,7 @@ rowset cr_totals <- select
 
 rowset ss_grouped <- where
     ss.date.date between period_start and period_end
+    and ss.store.id is not null
 select
     ss.store.id as ss_store_id,
     sum(ss.ext_sales_price) as ss_sales,
@@ -41,6 +42,7 @@ select
 
 rowset ws_grouped <- where
     ws.date.date between period_start and period_end
+    and ws.web_page.id is not null
 select
     ws.web_page.id as ws_wp_id,
     sum(ws.ext_sales_price) as ws_sales,

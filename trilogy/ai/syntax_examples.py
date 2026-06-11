@@ -192,82 +192,117 @@ order by enroll.year asc nulls first;
 """,
     ),
     SyntaxExample(
-        name="aligned-multi-select",
-        title="Combine / pair aggregations with a multi-select (merge … align … derive)",
+        name="union-stack-channels",
+        title="Stack rows from several sources/channels with the union(...) TVF",
         summary=(
-            "`merge … align … derive` stitches independent `select` blocks on a shared key — "
-            "use it to COMBINE two measures, SELF-PAIR one model across two periods/sets, or "
-            "STACK channels; `by rollup` adds subtotals. Read the GOTCHAS — agents misuse this a lot"
+            "`with combined as union((armA), (armB), ...) -> (o1, o2, ...)` row-STACKS "
+            "self-contained selects positionally (SQL UNION ALL) — the PREFERRED way to "
+            "combine channels/sources; reference outputs as `combined.o1`"
         ),
         body="""\
-# A multi-select runs several independent `select` blocks (arms) and stitches
-# them on a shared key. It is the tool for THREE shapes agents reach for:
-#   (1) COMBINE different measures over one population (total vs completed below);
-#   (2) SELF-PAIR one model against itself across two periods/sets — give each arm
-#       a different `where` over the SAME model and align on the (possibly shifted)
-#       key. This is how you compare "this period vs another period" of one fact;
-#   (3) STACK channels / sources — one arm per source, aligned on the common key.
-#  - prefix a projection with `--` to keep it for alignment but OUT of the printed
-#    rows (the printed columns come from `align` + `derive`).
-#  - `by rollup <dims>` adds subtotal + grand-total rows (the dim is NULL there).
-#  - `align <name>: <colA>, <colB>` ties one column from EACH arm together; chain
-#    more alignments with `and <name2>: <colA2>, <colB2>`.
-#  - `having <cond>` (after `derive`) filters on the COMBINED/derived outputs —
-#    this is the only way to compare one arm to another (e.g. `completed < enrolled`
-#    or "rows present in both periods"). There is no top-level `where` on a
-#    multi-select (a pre-combination filter lives inside each arm's own `where`).
+# `union(...)` is a relational table-valued function: it STACKS the rows of two
+# or more self-contained `select` arms, positionally (like SQL `UNION ALL`), into
+# one named result. Use it to combine CHANNELS / SOURCES / labeled populations —
+# one arm per source. It is a row STACK, NOT a key-join: arms are matched by
+# COLUMN POSITION, so every arm must project the same number of columns, in the
+# same order and types, as the trailing `-> (...)` output list. (In a real model
+# each arm is typically a DIFFERENT source/fact; here two subsets of one model
+# stand in for that.)
 import enrollments as enroll;
 
-where enroll.year = 2020
+# Each arm is fully independent (its own `where`, its own aggregation). The arms'
+# i-th column maps to the i-th name in the `-> (...)` output list; the surface
+# names inside each arm need not match — only POSITION does.
+with by_status as union(
+    (where enroll.completed = true
+     select
+        'completed' as status,
+        enroll.department as department,
+        count(enroll.id) as enrollments,
+    ),
+    (where enroll.completed = false
+     select
+        'incomplete' as status,
+        enroll.department as department,
+        count(enroll.id) as enrollments,
+    )
+) -> (status, department, enrollments);
+
+# Reference the stacked outputs as `<rowset>.<output>`.
 select
-    --enroll.course as a_course,
-    --count(enroll.id) by rollup enroll.course as enrolled_a,
-merge
-where enroll.completed = true
-select
-    --enroll.course as b_course,
-    --count(enroll.id) by rollup enroll.course as completed_b,
-align
-    course: a_course, b_course
-derive
-    coalesce(enrolled_a, 0) as enrolled,
-    coalesce(completed_b, 0) as completed,
-    round(coalesce(completed_b, 0) * 1.0 / coalesce(enrolled_a, 0), 2) as completion_rate
-having completed < enrolled
-order by course asc nulls first
+    by_status.status,
+    by_status.department,
+    by_status.enrollments,
+order by by_status.enrollments desc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
-# GOTCHAS (each of these is a real, repeated agent failure):
-#  - `derive` names each output with `as` or `->` (`coalesce(a,0) as x` ==
-#    `coalesce(a,0) -> x`); it takes only FUNCTIONS/CONDITIONALS (coalesce, round,
-#    case, arithmetic, +/-/*//). A bare column rename (`derive amt as x`) or a
-#    literal (`derive 2001 as y`) errors with "Invalid derive expression … must be
-#    a function or conditional". To pass a value through unchanged, make it an
-#    `align` key (aligned keys are output directly), or wrap it (`coalesce(amt,amt)`).
-#  - `derive` outputs are referenceable in `having` and `order by` (e.g.
-#    `having completed < enrolled`, `order by completion_rate desc`).
-#  - Every arm must contribute ONE column per `align` name, and the arms' selects
-#    should have matching shape. Output columns are the align keys + derive results.
-#  - The `align` group name must be DISTINCT from every arm column name (use
-#    `align course: a_course, b_course`, NOT `align a_course: a_course, b_course`).
-#    Reusing an arm name for the group collapses them and errors at parse.
-#  - Each arm has its OWN leading `where` (that is how self-pairing filters each
-#    side differently). There is NO top-level `where` after `derive` — to filter
-#    the combined result use `having`. A standalone `where …;` with no following
-#    `select` is a parse error.
-#  - To pair on a SHIFTED key (e.g. match a period to the next one), project the
-#    shifted value as a hidden `--<expr> as key_b` column in one arm and align it
-#    to the other arm's plain key. Do NOT rely on `lead/lag(N)` for this when the
-#    ordering key is sparse/non-contiguous — an N-row offset is not an N-period
-#    offset; pair on the explicit key instead.
-#  - Window functions (`rank/lead/lag … over (…)`) cannot live in `derive` or in a
-#    top-level `where`. Compute a window in an arm's `select` (hidden with `--`) and
-#    reference it, or filter it via a hidden select column + `having`.
-#  - Don't reference an alias inside its own definition (`x as foo` then reading
-#    `foo` in the same expression) — that is a recursive self-reference and is
-#    rejected. Name the upstream pieces as distinct `auto`s instead.
-#  - Every projection needs an explicit `as` alias (`min(x) as x_min`, not `min(x)`).
+# NOTES:
+#  - The trailing `-> (status, department, enrollments)` NAMES the positional
+#    outputs; column order / count / type must line up across every arm.
+#  - Every union output is treated as a KEY (grain component). To RE-AGGREGATE the
+#    stack (e.g. a grand total across statuses), wrap it in an outer aggregate:
+#        select sum(by_status.enrollments) by rollup by_status.status as total;
+#  - An arm may carry its OWN query-scoped join (`left join a = b` before its
+#    `select`) — localize each source's join to the arm that needs it.
+#  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
+#    `union(...)` function form — the cleanest way to stack rows from several
+#    sources.
+""",
+    ),
+    SyntaxExample(
+        name="scoped-join",
+        title="Blend two models in one query with a scoped inner/left join",
+        summary=(
+            "`inner|left join brought_in.key = anchor.key` (after WHERE, before SELECT) "
+            "blends a second model into ONE query; stack clauses for a multi-key blend — "
+            "the PREFERRED query-local alternative to `merge`"
+        ),
+        body="""\
+# A query-scoped `join` blends a second model into ONE select without editing the
+# model files (the query-local equivalent of `merge`). Place the clause(s) AFTER
+# the optional `where` and BEFORE `select`. The LEFT key is the BROUGHT-IN
+# concept; the RIGHT key is the ANCHOR already in the query:
+#   inner join  -> strict equality; unmatched rows DROPPED  (like `merge a into b`)
+#   left  join  -> brought-in side optional/nullable         (like `merge a into ~b`)
+import enrollments as enroll;
+import students as students;
+
+# Bring students onto enrollments by the shared student key (students.id is the
+# brought-in LEFT key, enroll.student_id the anchor), then aggregate by major.
+inner join students.id = enroll.student_id
+select
+    students.major,
+    count(enroll.id) as enrollments,
+order by enrollments desc nulls first
+limit 100;
+
+# ---------------------------------------------------------------------------
+# SELF-PAIR across two periods/sets (period-over-period) — the PREFERRED shape for
+# "this year vs last year": build one rowset per period (each aggregated to the
+# SAME keys), then join them on those keys.
+rowset y2020 <- where enroll.year = 2020 select enroll.department as dept, count(enroll.id) as cnt;
+rowset y2021 <- where enroll.year = 2021 select enroll.department as dept, count(enroll.id) as cnt;
+
+inner join y2020.dept = y2021.dept
+select
+    y2020.dept,
+    y2020.cnt as cnt_2020,
+    y2021.cnt as cnt_2021,
+    y2021.cnt - y2020.cnt as yoy_diff,
+order by yoy_diff desc nulls first
+limit 100;
+
+# NOTES:
+#  - Only `inner` and `left` are supported; one clause per shared key. Stack
+#    several clauses for a MULTI-KEY blend (`inner join a.k1 = b.k1` then
+#    `inner join a.k2 = b.k2`). Chain `= c` to also pull a base key into the join
+#    group so its properties stay reachable (`inner join a.k = b.k = base.k`).
+#  - `inner join` requires the key in BOTH sides (drops one-sided rows); `left
+#    join` keeps unmatched left rows with NULLs on the brought-in side. Do NOT
+#    `coalesce(x, 0)` a missing side just to force an inner-style pairing to run.
+#  - Prefer a scoped join over a separate `merge`; never edit model files to wire
+#    a query-local join.
 """,
     ),
     SyntaxExample(

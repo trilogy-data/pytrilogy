@@ -1,6 +1,38 @@
 # Bug: scoped `left join` with only coalesce-wrapped partial output renders INNER → drops unmatched left rows
 
-**Status:** OPEN (found 2026-06-11, during the q76/q77 multiselect→`union(...)` conversion).
+**Status:** FIXED 2026-06-11 (found same day, during the q76/q77 multiselect→`union(...)` conversion).
+
+## Fix
+
+Root cause was *not* a non-null proof demoting the join (the bug-report hypothesis):
+the partial flag never propagated at all. The LEFT-join target key (`rrs.r_store`) is a
+**ROWSET-derived** concept, so `Factory._is_binding_keyed` returns True → it's excluded
+from `scoped_merge_sources` → `scoped_partial_derived` (= `scoped_merge_sources &
+scoped_partial_sources`) is empty → `get_node_joins` never marks it partial. The other
+partiality path, `_scoped_join_targets` in `rowset_node.py`, only bridges rowsets that
+**share a base dimension** (the q44 self-join shape); two distinct rowsets joined
+explicitly (sales↔returns) fall through both, so the join resolved as INNER.
+
+Fix (`trilogy/core/processing/node_generators/rowset_node.py` `gen_rowset_node`): after
+`set_output_concepts`, mark any of the rowset's own output concepts whose address is in
+`environment.scoped_partial_sources` as partial. The two rowset keys canonicalize into one
+class in `build_canonical_address_map`, so `_collect_deep_partial_addresses` →
+`canon_node` lands the partial on the shared connecting key and `get_join_type` emits
+LEFT. coalesce-only references no longer demote it.
+
+q77 consequence: making the store/web sales↔returns joins correctly LEFT surfaced 2 extra
+rows (NULL-store-id / NULL-web-page-id sales groups, masked before by the INNER drop). The
+real TPC-DS q77 inner-joins `store_sales`/`web_sales` to the store/web_page dimension
+(`ss_store_sk = s_store_sk`), excluding NULL ids. Mirrored that in `query77.preql` by
+adding `and ss.store.id is not null` / `and ws.web_page.id is not null`. q77 now renders 2
+LEFT OUTER JOINs and matches `PRAGMA tpcds(77)` (44 rows) at sf=1.
+
+Tests: `tests/engine/test_duckdb_rowset.py::test_scoped_left_join_coalesce_keeps_unmatched`
+(deterministic repro), plus `test_seventy_seven` still green.
+
+---
+
+**Original report (found 2026-06-11, during the q76/q77 multiselect→`union(...)` conversion).**
 **Severity:** medium-high — silently wrong results (a LEFT join drops rows it must keep). Currently
 masked in the tpc_ds suite because at sf=0.01 q77's store/web joins have **0 unmatched rows**, so
 INNER == LEFT and `PRAGMA tpcds(77)` still matches. Any data with a left row lacking a right match

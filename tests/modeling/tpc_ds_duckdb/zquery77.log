@@ -1,7 +1,7 @@
 query_id = "77"
 generator = "v3"
-gen_length = 7328
-preql_size = 3084
+gen_length = 7397
+preql_size = 3151
 comp_size = 3129
 generated_sql = """
 
@@ -28,7 +28,7 @@ FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    cast(\"ws_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"ws_web_sales\".\"WS_WEB_PAGE_SK\" is not null
 
 GROUP BY
     1),
@@ -41,7 +41,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ss_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    cast(\"ss_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"ss_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1),
@@ -94,7 +94,7 @@ SELECT
     cast(coalesce(\"protective\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"___tvf_arm_2_u_returns\"
 FROM
     \"rambunctious\"
-    INNER JOIN \"protective\" on \"rambunctious\".\"ws_grouped_ws_wp_id\" = \"protective\".\"wr_grouped_wr_wp_id\"),
+    LEFT OUTER JOIN \"protective\" on \"rambunctious\".\"ws_grouped_ws_wp_id\" = \"protective\".\"wr_grouped_wr_wp_id\"),
 kaput as (
 SELECT
     \"abhorrent\".\"ss_grouped_ss_profit\" - cast(coalesce(\"scrawny\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"___tvf_arm_1_u_profit\",
@@ -103,13 +103,8 @@ SELECT
     cast(\"abhorrent\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"___tvf_arm_1_u_sales\",
     cast(coalesce(\"scrawny\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"___tvf_arm_1_u_returns\"
 FROM
-    \"scrawny\"
-    INNER JOIN \"abhorrent\" on \"scrawny\".\"sr_grouped_sr_store_id\" = \"abhorrent\".\"ss_grouped_ss_store_id\"
-GROUP BY
-    1,
-    2,
-    4,
-    5),
+    \"abhorrent\"
+    LEFT OUTER JOIN \"scrawny\" on \"abhorrent\".\"ss_grouped_ss_store_id\" = \"scrawny\".\"sr_grouped_sr_store_id\"),
 juicy as (
 SELECT
     cast(sum(\"wakeful\".\"cr_grouped_cr_returns_per_cc\") as numeric(15,2)) as \"___tvf_arm_0_u_returns\"

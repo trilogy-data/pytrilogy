@@ -1,4 +1,3 @@
-from dataclasses import replace as dc_replace
 from typing import List
 
 from trilogy.constants import logger
@@ -48,47 +47,6 @@ def _pseudonym_bridge_keys(
             if canonical is not None and canonical.derivation != Derivation.ROWSET:
                 pairs.append((fk, canonical))
     return pairs
-
-
-def _scoped_join_targets(
-    node: StrategyNode,
-    lineage: BuildRowsetItem,
-    environment: BuildEnvironment,
-) -> tuple[list[BuildConcept], set[str]]:
-    """When an in-query `join` collapses one of this rowset's derived keys onto a
-    sibling rowset's key (the join *target*), advertise that target join concept
-    sourced from a base column this rowset already exposes, so the outer merge
-    joins the two rowsets on the canonical target key — matching the join clause —
-    instead of dead-ending on the dropped source key.
-
-    Only bridges when the rowset's column for the collapsed key is a passthrough of
-    a base dimension it still outputs (e.g. two year-filtered copies of
-    `item.brand` both expose `item.brand`). When the key is freshly computed (q44's
-    rank), substitution has already labelled the rowset's own column with the
-    target address, so the join resolves without bridging and `shared` is empty.
-    Returns the target concepts plus the subset whose join is partial (LEFT)."""
-    node_output_addresses = {x.address for x in node.output_concepts}
-    targets: list[BuildConcept] = []
-    partial: set[str] = set()
-    seen: set[str] = set()
-    for source_address in lineage.rowset.derived_concepts:
-        canonical = environment.concepts.get(source_address)
-        if canonical is None or canonical.address == source_address:
-            continue  # not collapsed onto a scoped-join target
-        if not isinstance(canonical.lineage, BuildRowsetItem):
-            continue
-        base_addresses = set(canonical.lineage.content.pseudonyms)
-        shared = base_addresses & node_output_addresses
-        if not shared or canonical.address in seen:
-            continue
-        seen.add(canonical.address)
-        target = canonical
-        if not set(target.pseudonyms) & shared:
-            target = dc_replace(target, pseudonyms=set(target.pseudonyms) | shared)
-        targets.append(target)
-        if source_address in environment.scoped_partial_sources:
-            partial.add(canonical.address)
-    return targets, partial
 
 
 def gen_rowset_node(
@@ -153,10 +111,31 @@ def gen_rowset_node(
     rowset_relevant: list[BuildConcept] = [
         v for v in concept_pool if v.address in rowset_outputs
     ]
-    collapsed_targets, collapsed_partial = _scoped_join_targets(
-        node, lineage, environment
-    )
-    rowset_relevant += collapsed_targets
+    # A query-scoped `join` collapses one of this rowset's derived keys onto the
+    # join's canonical concept. A distinct-base key keeps its own address (with a
+    # pseudonym back to the canonical) and is already advertised above. But a key
+    # that's a passthrough of a base dimension *shared* with the other rowset has
+    # its address rewritten to the canonical, so it no longer matches its own
+    # derived address and drops out — leaving the rowset with no join key to merge
+    # on. For those, follow the collapse and advertise the canonical concept.
+    # `scoped_partial` collects the keys whose join is LEFT (the source side of a
+    # `left join`), keyed off the *original* derived address, marking whichever
+    # concept actually carries the key.
+    present_map: dict[str, BuildConcept] = {v.address: v for v in rowset_relevant}
+    scoped_partial: list[BuildConcept] = []
+    for derived_address in lineage.rowset.derived_concepts:
+        if derived_address in present_map:
+            advertised = present_map[derived_address]
+        else:
+            collapsed = environment.concepts.get(derived_address)
+            if collapsed is None:
+                continue
+            advertised = collapsed
+            if collapsed.address not in present_map:
+                rowset_relevant.append(collapsed)
+                present_map[collapsed.address] = collapsed
+        if derived_address in environment.scoped_partial_sources:
+            scoped_partial.append(advertised)
 
     additional_relevant = [
         factory.build(x) for x in select.output_components if x.address in enrichment
@@ -169,12 +148,15 @@ def gen_rowset_node(
                 f"{padding(depth)}{LOGGER_PREFIX} adding {item} to partial concepts"
             )
             node.partial_concepts.append(item)
-    # a LEFT in-query join contributes its target key only partially
-    for item in collapsed_targets:
-        if item.address in collapsed_partial and item.address not in {
-            c.address for c in node.partial_concepts
-        }:
+    # The LEFT-join key is partial against its anchor — neither the column-partial
+    # path (no Modifier.PARTIAL on a derived binding) nor get_node_joins
+    # (scoped_partial_derived excludes ROWSET keys) marks it. Mark it here so the
+    # outer merge keeps the anchor's unmatched rows (LEFT, not INNER).
+    existing_partial = {c.address for c in node.partial_concepts}
+    for item in scoped_partial:
+        if item.address not in existing_partial:
             node.partial_concepts.append(item)
+            existing_partial.add(item.address)
 
     node.grain = BuildGrain.from_concepts(
         [

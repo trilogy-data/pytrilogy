@@ -671,6 +671,17 @@ def get_query_node(
         if not hint:
             raise
         raise UnresolvableQueryException(f"Could not resolve query.{hint}") from e
+    except UnresolvableQueryException as e:
+        # The same scoped-join property-enrichment dead-end can also surface as a
+        # disjoint-models error once the renamed join key resolves (the property's
+        # base key, renamed away, leaves its model unconnected). Prefer the
+        # targeted "chain the base key" hint over the generic "merge their keys".
+        hint = _scoped_join_rename_hint(
+            build_statement.output_components, build_environment
+        )
+        if not hint:
+            raise
+        raise UnresolvableQueryException(f"Could not resolve query.{hint}") from e
     if not ods:
         raise ValueError(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"

@@ -570,3 +570,44 @@ order by combined.k asc, combined.net asc;
     # arm 0 (net of returns): store1 = 100-10 = 90, store2 = 200-20 = 180
     # arm 1 (raw sales):      store1 = 100,         store2 = 200
     assert results == [(1, 90), (1, 100), (2, 180), (2, 200)]
+
+
+_LEFT_JOIN_UNMATCHED_FIXTURE = """
+key store_id int;
+key return_store_id int;
+property store_id.sale_amt int;
+property return_store_id.return_amt int;
+
+datasource sales (store_id: store_id, sale_amt: sale_amt)
+grain (store_id)
+query '''
+select 1 as store_id, 100 as sale_amt union all
+select 2 as store_id, 200 as sale_amt
+''';
+
+datasource returns (return_store_id: return_store_id, return_amt: return_amt)
+grain (return_store_id)
+query '''select 1 as return_store_id, 10 as return_amt''';
+
+rowset srs <- select store_id as s_store, sum(sale_amt) as s_amt;
+rowset rrs <- select return_store_id as r_store, sum(return_amt) as r_amt;
+"""
+
+
+def test_scoped_left_join_coalesce_keeps_unmatched():
+    # A scoped `left join` where the partial (right) rowset is referenced ONLY
+    # through a non-null wrapper (coalesce). Returns covers store 1 only, so
+    # store 2 is unmatched on the left and must survive with coalesce(NULL,0)=0.
+    # Previously rendered INNER and dropped store 2.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_LEFT_JOIN_UNMATCHED_FIXTURE)
+    query = """
+left join srs.s_store = rrs.r_store
+select srs.s_store -> k, srs.s_amt - coalesce(rrs.r_amt, 0) -> net
+order by k asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "INNER JOIN" not in sql
+    assert "LEFT OUTER JOIN" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [(1, 90), (2, 200)]
