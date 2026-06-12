@@ -6,28 +6,28 @@ comp_size = 2441
 generated_sql = """
 
 WITH 
-concerned as (
+thoughtful as (
 SELECT
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+    \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
-    \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\"
+    \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-WHERE
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
-),
-questionable as (
+UNION ALL
 SELECT
-    \"sales_date_date\".\"D_DATE_SK\" as \"sales_date_id\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\",
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+    \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
+    \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
+    \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
-),
-sweltering as (
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+scrawny as (
 SELECT
     \"concerned\".\"sales_billing_customer_id\" as \"_best_customers_best_customer_id\",
     sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_overall\"
@@ -53,34 +53,119 @@ SELECT
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     SUBSTRING(\"sales_item_items\".\"I_ITEM_DESC\",1,30) as \"sales_item_desc_truncated\"
 FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"questionable\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"questionable\".\"sales_date_id\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"item\" as \"sales_item_items\"),
+macho as (
+SELECT
+    \"thoughtful\".\"sales_item_id\" as \"sales_item_id\",
+    \"thoughtful\".\"sales_order_id\" as \"sales_order_id\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-     'STORE'  = 'STORE'
+    \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
+),
+yummy as (
+SELECT
+    sum(\"thoughtful\".\"sales_quantity\" * \"thoughtful\".\"sales_sales_price\") as \"customer_total_in_window\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"thoughtful\".\"sales_billing_customer_id\" is not null and \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
 
+GROUP BY
+    \"thoughtful\".\"sales_billing_customer_id\"),
+cooperative as (
+SELECT
+    \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
+    sum(\"thoughtful\".\"sales_quantity\" * \"thoughtful\".\"sales_sales_price\") as \"customer_total_overall\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"thoughtful\".\"sales_billing_customer_id\" is not null and \"thoughtful\".\"sales_sales_channel\" = 'STORE'
+
+GROUP BY
+    1),
+kaput as (
+SELECT
+    \"macho\".\"sales_date_date\" as \"sales_date_date\",
+    \"macho\".\"sales_item_id\" as \"sales_item_id\",
+    \"macho\".\"sales_order_id\" as \"sales_order_id\",
+    \"scrawny\".\"sales_item_desc_truncated\" as \"sales_item_desc_truncated\"
+FROM
+    \"macho\"
+    LEFT OUTER JOIN \"scrawny\" on \"macho\".\"sales_item_id\" = \"scrawny\".\"_frequent_items_frequent_item_id\"
 GROUP BY
     1,
     2,
     3,
     4),
-abhorrent as (
+vacuous as (
 SELECT
-    max(\"young\".\"customer_total_in_window\") as \"max_total_cmax\"
+    max(\"yummy\".\"customer_total_in_window\") as \"_max_total_cmax\"
 FROM
-    \"young\"),
-yummy as (
+    \"yummy\"),
+abundant as (
 SELECT
-    \"uneven\".\"sales_item_id\" as \"_frequent_items_frequent_item_id\"
+    \"cooperative\".\"customer_total_overall\" as \"customer_total_overall\",
+    \"cooperative\".\"sales_billing_customer_id\" as \"_best_customers_best_customer_id\"
 FROM
-    \"uneven\"
+    \"cooperative\"),
+busy as (
+SELECT
+    \"kaput\".\"sales_item_id\" as \"sales_item_id\"
+FROM
+    \"kaput\"
 GROUP BY
     1,
-    \"uneven\".\"sales_date_date\",
-    \"uneven\".\"sales_item_desc_truncated\"
+    \"kaput\".\"sales_date_date\",
+    \"kaput\".\"sales_item_desc_truncated\"
 HAVING
-    count(\"uneven\".\"sales_order_id\") > 4
+    count(\"kaput\".\"sales_order_id\") > 4
 ),
+young as (
+SELECT
+    \"vacuous\".\"_max_total_cmax\" as \"max_total_cmax\"
+FROM
+    \"vacuous\"),
+charming as (
+SELECT
+    \"scrawny\".\"_frequent_items_frequent_item_id\" as \"_frequent_items_frequent_item_id\"
+FROM
+    \"busy\"
+    LEFT OUTER JOIN \"scrawny\" on \"busy\".\"sales_item_id\" = \"scrawny\".\"_frequent_items_frequent_item_id\"),
+sparkling as (
+SELECT
+    \"abundant\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
+FROM
+    \"abundant\"
+    INNER JOIN \"young\" on 1=1
+WHERE
+    \"abundant\".\"customer_total_overall\" > 0.5 * \"young\".\"max_total_cmax\"
+),
+protective as (
+SELECT
+    \"charming\".\"_frequent_items_frequent_item_id\" as \"_frequent_items_frequent_item_id\"
+FROM
+    \"charming\"),
+abhorrent as (
+SELECT
+    \"sparkling\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
+FROM
+    \"sparkling\"),
+premium as (
+SELECT
+    \"protective\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
+FROM
+    \"protective\"),
+sweltering as (
+SELECT
+    \"abhorrent\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
+FROM
+    \"abhorrent\"),
 late as (
 SELECT
     \"sweltering\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
@@ -155,7 +240,8 @@ SELECT
     \"thoughtful\".\"sales_quantity\" * \"thoughtful\".\"sales_list_price\" as \"_virt_func_multiply_8507033399516423\"
 FROM
     \"thoughtful\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
     \"thoughtful\".\"sales_item_id\" in (select vacuous.\"frequent_items_frequent_item_id\" from vacuous where vacuous.\"frequent_items_frequent_item_id\" is not null)
 
@@ -163,23 +249,30 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    \"thoughtful\".\"sales_item_id\",
-    \"thoughtful\".\"sales_order_id\")
+    \"puzzled\".\"sales_item_id\",
+    \"puzzled\".\"sales_order_id\",
+    \"puzzled\".\"sales_sales_channel\"),
+sedate as (
 SELECT
     \"macho\".\"sales_billing_customer_last_name\" as \"c_last_name\",
     \"macho\".\"sales_billing_customer_first_name\" as \"c_first_name\",
     sum(CASE WHEN \"macho\".\"sales_channel\" in ('WEB','CATALOG') THEN \"macho\".\"_virt_func_multiply_8507033399516423\" ELSE NULL END) as \"sales_total\"
 FROM
-    \"macho\"
+    \"puffy\"
 GROUP BY
     1,
     2
 HAVING
     \"sales_total\" > 0
-
+)
+SELECT
+    \"sedate\".\"sales_billing_customer_last_name\" as \"c_last_name\",
+    \"sedate\".\"sales_billing_customer_first_name\" as \"c_first_name\",
+    \"sedate\".\"sales_total\" as \"sales_total\"
+FROM
+    \"sedate\"
 ORDER BY 
     \"c_last_name\" asc nulls first,
     \"c_first_name\" asc nulls first,
-    \"sales_total\" asc nulls first
+    \"sedate\".\"sales_total\" asc nulls first
 LIMIT (100)"""

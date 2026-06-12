@@ -933,6 +933,12 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
     for ds in environment.datasources.values():
         if not isinstance(ds, BuildDatasource) or ds.non_partial_for is None:
             continue
+        # Only datasources exposed as a standalone scan in this graph are
+        # addressable here. A union *member* (e.g. `store_sales_unified`) lives
+        # in the environment but the graph only carries the union node, so
+        # scanning it directly would KeyError -- leave it to the union planner.
+        if f"ds~{ds.name}" not in request.graph.datasources:
+            continue
         if not condition_implies(
             conditions.conditional, ds.non_partial_for.conditional
         ):
@@ -940,7 +946,17 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
         if not output_canonicals.issubset(ds_canonicals):
             continue
-        if not condition_canonicals.issubset(ds_canonicals):
+        # The scan must still apply any residual predicate beyond
+        # `non_partial_for`, so its columns must be present -- UNLESS
+        # `non_partial_for` also implies the query condition (the two are
+        # equivalent). Then the datasource is pre-filtered to exactly the
+        # requested rows, there is no residual WHERE, and the filter columns
+        # (e.g. `name` for a `complete where name = 'Sarah'` source that only
+        # binds customer_id/revenue) need not be bound.
+        residual_free = condition_implies(
+            ds.non_partial_for.conditional, conditions.conditional
+        )
+        if not residual_free and not condition_canonicals.issubset(ds_canonicals):
             continue
         ds_grain_canonicals = {
             environment.concepts[c].canonical_address

@@ -1,4 +1,4 @@
-# v4 compatibility audit (last refreshed 2026-06-11)
+# v4 compatibility audit (last refreshed 2026-06-12)
 
 Fresh re-classification of every entry in `tests/v4_known_failing.py`, run in
 isolation under `TRILOGY_V4_DISCOVERY=1 --runxfail`. Regenerate with
@@ -8,25 +8,81 @@ Supersedes the Jun-5 sweep snapshot (reasons/results/triage/SUMMARY + the
 root-cause-A / fanout / agg-source briefs), all deleted — those bugs are fixed
 and the data was stale.
 
-## Headline (2026-06-11 re-run)
+## Headline (2026-06-12 re-run, post-C3+C6-fix)
 
-59 tracked entries (down from 68 — C1 merge fan-out, C3 demo_e2e, C4 ncaa
-adhoc02, C2 gcat test_refresh, and the window_clone source-map crash all fixed;
-window_clone + gcat test_no_duplicates removed from the list):
+52 tracked entries (down from 59 — gcat test_join + gcat2 test_extra_fields_two +
+ncaa adhoc02 + C5 array_inclusion_aggregate + C3 test_history fixed/removed; gcat
+test_join_discovery_two now XPASSes and was removed):
 
 | bucket | n | meaning |
 | --- | --- | --- |
-| **SHAPE** | 41 | correct rows, worse/different SQL — cosmetic, not a parity bug |
-| **CRASH** | 8* | v4 raises — genuine feature/coverage gap |
-| **ROWS**  | 8  | wrong rows / row count — genuine correctness gap (incl. C7 render) |
+| **SHAPE** | 42 | correct rows, worse/different SQL — cosmetic, not a parity bug |
+| **CRASH** | 0  | no genuine crashes remain |
+| **ROWS**  | 8  | classifier coarse bucket; ~4 genuine wrong-rows + 2 render + 2 SHAPE-ish |
 | **TIMEOUT** | 2 | tpc-ds q21/q22 exceed the classify budget |
 
-\* the classifier mis-buckets `tpc_ds_duckdb::test_seventy_six` as CRASH; it's a
-SHAPE/size failure (`assert 16080 < 10000`, identical before/after the
-window_clone fix). So **7 genuine crashes**, not 8.
+Counts are the raw `v4_classify.py` buckets. The `ROWS` bucket is coarse: only
+C8 (×2) + C9 (×2) are genuine wrong-rows, C7 (×2) are the date-render misses, and
+two (`test_select_literal_is_rendered_in_projection`, `test_aggregate_filter_uses_having`)
+are really SHAPE/`_INLINE` that the regex caught. **No genuine crashes remain**
+(C3 + C6, the last two, fixed below).
 
-So ~15 of 59 are genuine parity gaps (7 crash + 8 rows); the rest are
-SQL-shape/verbosity (TPC-DS size ceilings + inlining CTE-shape snapshots).
+Note: under the *parallel* classify run the file-lock flake can re-surface
+`tpc_ds_duckdb::test_seventy_three` as a spurious `PermissionError [WinError 32]`
+CRASH — in isolation it's `assert 5489 < 3000` (SHAPE/size), not a real crash.
+
+So ~6 of 52 are genuine parity gaps (~4 genuine wrong-rows + 2 render); the rest
+are SQL-shape/verbosity (TPC-DS size ceilings + inlining CTE-shape snapshots).
+
+### FIXED 2026-06-12 — C3 complete-where exact-match filter-column over-requirement
+`discovery/test_discovery.py::test_history_e2e_non_materialized_field`
+(`UnresolvableQueryException: no complete sources found for {'total_customer_revenue'}`).
+Query `where name='Sarah' select customer_id, total_customer_revenue`; the model
+has `partial datasource customer_revenue_for_sarah … complete where name='Sarah'`
+binding only customer_id/revenue (no `name`). `_plan_complete_where_source`
+(source_planning.py) required *every* filter column to be a source output so a
+residual predicate could be applied — but here the query condition is *equivalent*
+to `non_partial_for`, so there is no residual and `name` need not be bound. Fix:
+compute `residual_free = condition_implies(non_partial_for, conditions)` (the
+query condition is already implied to be implied the other way) and skip the
+filter-column requirement when residual_free. The matched scan then renders with
+`partial_is_full=True` (no WHERE), exactly the expected single-table SELECT.
+Passes identically under v3 and v4; removed from v4_known_failing. This was the
+last genuine crash → **0 crashes**.
+
+### FIXED 2026-06-12 — C6 union-member complete-where crash (tpc_ds q23)
+`tpc_ds_duckdb/test_queries.py::test_twenty_three` (`KeyError: 'ds~store_sales_unified'`).
+`_plan_complete_where_source` (source_planning.py) iterates `environment.datasources`
+and matched `store_sales_unified` — a *member* of a union datasource whose
+`non_partial_for` the query's WHERE implies. But a union member has no standalone
+node in the concept graph (the graph only carries the union node), so
+`create_select_node_candidate`'s `g.datasources[f"ds~{ds.name}"]` KeyErrored. Fix:
+the match loop now skips any datasource not present as a standalone scan in
+`request.graph.datasources`, leaving union members to the union planner. Crash →
+correct rows (now only the pre-existing TPC-DS size-ceiling miss, `9135 < 8500`,
+so it stays xfailed under `_TPCDS_SIZE`). Regression sweep
+(engine/filter + gcat + persistence + materialized-roots under v4): 88 passed,
+6 xfailed, 0 regressions. v4-only path.
+
+### FIXED 2026-06-12 — C5 agg-derivation crash (group-graph existence cycle)
+`test_duckdb_filter.py::test_array_inclusion_aggregate`
+(`UnresolvableQueryException: Could not resolve connections for … ord_count`).
+The comp query `where orid_2 in even_orders select count(orid_2)` has two
+independent unnests (`orid`, `orid_2`) that v4 merges into ONE unnest group node.
+The top-level existence WHERE creates concept edge `even_orders → orid_2` → lifted
+to group edge `filter(even_orders) → unnest` (EXISTENCE), while lineage already
+gives `unnest → filter` (even_orders descends from orid in that same unnest) — a
+2-cycle, so `_topological_dependency_order` returned None and the strategy build
+was abandoned (`group-graph cycle, abandoning strategy build`). An EXISTENCE edge
+ONLY orders the subselect source before its consumer; when the source group is a
+LINEAGE-descendant of the consumer group, that ordering is already implied and the
+edge is a pure cycle-forming back-edge. Fix (`group_graph.py`, after the
+concept→group edge lift): drop any EXISTENCE group edge `gu→gv` where `gv` is a
+LINEAGE-ancestor of `gu` (`nx.has_path(lineage_sub, gv, gu)`). Same
+existence-vs-row principle as the q08 / window_clone fixes; v4-only path. Sweep
+(engine+tpc_ds+tpc_h+usa_names+gcat under v4): 524 passed, 8 pre-existing baseline
+fails, 0 regressions (test_recursive + composite_rollup + 6 tpc_ds all fail on a
+clean `git stash` baseline too). Removed from v4_known_failing.
 
 ### FIXED 2026-06-11 — C2 window_clone source-map crash
 `test_complex.py::test_window_clone` (`SyntaxError: Missing source map entry for
@@ -85,15 +141,19 @@ clean baseline (`git stash`). Removed from v4_known_failing.
 
 ## Genuine gaps, clustered by root cause
 
-### C1 — merge / rowset fan-out (wrong rows) — 4
-Big row blowups; v4's merge/multiselect dedup misses on the demo models.
-- `engine/demo/test_demo_duckdb.py::test_merge` (7337 vs 8)
-- `engine/demo/test_demo_duckdb.py::test_merge_basic` (26730 vs 17)
-- `engine/demo/test_demo_duckdb_import.py::test_demo_merge_rowset_e2e` (7337 vs 8)
-- `persistence/test_complex_persistence.py::test_complex` (16 vs 4)
-- also `engine/demo/test_demo_duckdb.py::test_demo_e2e` crashes (NoDatasourceException, see C3)
-
-→ **No distilled case.** Highest-value new parity case to add.
+### C1 — merge / rowset fan-out (wrong rows) — FIXED (was 4 → 0)
+~~Big row blowups; v4's merge/multiselect dedup misses on the demo models.~~
+Re-verified 2026-06-12: the whole cluster passes under v4. None of these were
+ever in `v4_known_failing.py`, so the classifier never re-checked them and this
+section was carried over stale from a pre-fix snapshot. The fix landed earlier
+(see memory `project_v4_merge_into_key_fanout.md` + the `test_demo_e2e`
+persist-of-unnest fix in `project_v4_persist_unnest_reuse.md`).
+- ~~`engine/demo/test_demo_duckdb.py::test_merge`~~ passes
+- ~~`engine/demo/test_demo_duckdb.py::test_merge_basic`~~ passes
+- ~~`engine/demo/test_demo_duckdb_import.py::test_demo_merge_rowset_e2e`~~ passes
+- ~~`persistence/test_complex_persistence.py::test_complex`~~ passes
+- ~~`engine/demo/test_demo_duckdb.py::test_demo_e2e`~~ passes
+Full `demo` + `persistence` suites: 26 passed / 0 failed under v4.
 
 ### C2 — recursive-CTE pseudonym source-map crash — FIXED (was 4 → 0)
 `SyntaxError: Missing source map entry for root_parent.id with pseudonyms
@@ -115,17 +175,25 @@ through its recursive origin. Two bugs in `source_planning.py` (v4-only):
    Now always carries grain keys (the join column).
 adhoc02/03 assert WITH RECURSIVE + `"1=1" not in`; both removed from v4_known_failing.
 
-### C3 — partial-source / namespaced-property-without-key crash — 1 (was 3)
+### C3 — partial-source / namespaced-property-without-key crash — FIXED (was 3 → 0)
 `UnresolvableQueryException: … could only be resolved from partial sources` /
 `NoDatasourceException`. A namespaced property is bound but its key has no
 datasource. `cases/namespaced_property_without_key_datasource.preql` exists and
-passes, so the *base* shape is fixed — these are remaining triggers it doesn't cover.
+passes, so the *base* shape is fixed.
 - ~~`modeling/gcat/test_gcat.py::test_join` (vehicle.name)~~ FIXED — merge-key
   partial-output completion (see FIXED note above).
-- `discovery/test_discovery.py::test_history_e2e_non_materialized_field`
-  (total_customer_revenue) — STILL OPEN, different mechanism: a
-  `partial ... complete where customer_id=2` datasource under a `name='Sarah'`
-  filter; needs the planner to see Sarah⇒id=2 (implies the non_partial_for).
+- ~~`discovery/test_discovery.py::test_history_e2e_non_materialized_field`~~ FIXED.
+  The audit's prior "needs Sarah⇒id=2 implies-reasoning" framing was WRONG: the
+  query `where name='Sarah'` is served directly by the `customer_revenue_for_sarah`
+  source declared `complete where name='Sarah'` — an *exact* condition match, no
+  id-inference needed. The bug was in `_plan_complete_where_source`: it demanded
+  every filter column (`name`) be an output of the source, but that source only
+  binds customer_id/revenue. Fix: skip the filter-column requirement when
+  `non_partial_for` *also* implies the query condition (the two are equivalent), so
+  there is no residual WHERE to apply — the scan is already pre-filtered to exactly
+  the requested rows (`create_datasource_node` sets `partial_is_full=True` and emits
+  no WHERE, so `name` is never referenced). Removed from v4_known_failing (now
+  passes identically under v3 and v4). See FIXED note below.
 
 ### UNTRACKED pre-existing v4 baseline failures (found in 2026-06-11 sweep)
 Not in `v4_known_failing.py`, but fail on a clean baseline too (verified via
@@ -134,6 +202,8 @@ Not in `v4_known_failing.py`, but fail on a clean baseline too (verified via
   test_fifty_four, test_sixty_eight, test_seventy_seven, test_ninety_seven_two
 - `engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by`
   (the NULL-CASE-over-rollup-key dim baseline fail noted earlier)
+- `engine/test_duckdb.py::test_recursive` (`assert 2 == 4` — wrong rows; verified
+  pre-existing on clean baseline, NOT a regression of the C5 cycle fix)
 - `modeling/geography/test_landmark_updates.py::test_exact_match_resolution`,
   `…::test_exact_match_with_parenthetical_extra_filter`
 These should be added to the tracking list or fixed.
@@ -143,12 +213,16 @@ These should be added to the tracking list or fixed.
   derived-condition-arg lineage not sourced through the bridge (see FIXED note above).
 - `modeling/ncaa/test_ncaa.py::test_adhoc02`
 
-### C5 — aggregate-derivation unresolvable crash — 1
-- `engine/test_duckdb_filter.py::test_array_inclusion_aggregate`
-  (`ord_count<…AGGREGATE>` — could not resolve connections)
+### C5 — aggregate-derivation unresolvable crash — FIXED (was 1 → 0)
+- ~~`engine/test_duckdb_filter.py::test_array_inclusion_aggregate`~~ FIXED —
+  group-graph existence/lineage cycle (two merged unnests + top-level existence
+  WHERE). See FIXED note in the headline section.
 
-### C6 — KeyError `ds~store_sales_unified` crash — 1
-- `modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three`
+### C6 — KeyError `ds~store_sales_unified` crash — FIXED (was 1 → 0)
+- ~~`modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three`~~ FIXED —
+  `_plan_complete_where_source` matched a union *member* with no standalone graph
+  node. Now skips datasources absent from `request.graph.datasources`. See FIXED
+  note above. Remaining miss is the TPC-DS size ceiling (SHAPE), not a crash.
 
 ### C7 — date arithmetic dropped from render — 2
 Interval subtraction (`DATE_ADD(..., INTERVAL -30 day)` / `datetime(...)`) missing.
@@ -165,12 +239,12 @@ Interval subtraction (`DATE_ADD(..., INTERVAL -30 day)` / `datetime(...)`) missi
 
 ## Coverage-gap conclusion
 
-Only `top_x_by_metric` is distilled in `v4_evals/failing_cases/`. None of the
-genuine crash clusters (C2–C6) or the merge fan-out (C1) have a standalone
-parity repro. Those are the new cases to author, in priority order:
-**C1 (fan-out, wrong rows) → C2 (recursive/pseudonym crash) → C3 (partial-source
-triggers) → C4/C5/C6 (one-off crashes) → C7 (render) → C8/C9.**
+Only `top_x_by_metric` is distilled in `v4_evals/failing_cases/`. **All crash
+clusters are now fixed** (C2, C3, C4-gcat, C5, C6) and C1 (merge fan-out) turned
+out already-fixed/stale. The remaining genuine gaps are wrong-rows + render only.
+Remaining work, in priority order:
+**C8/C9 (wrong rows) → C7 (date render) → SHAPE/verbosity backlog.**
 
-The 43 SHAPE entries need no eval case; they're tracked verbosity/inlining
+The 42 SHAPE entries need no eval case; they're tracked verbosity/inlining
 regressions to close at the source-selection / render layer, gated on
 `CONFIG.use_v4_discovery` in their SQL assertions.

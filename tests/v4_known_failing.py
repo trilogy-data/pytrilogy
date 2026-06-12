@@ -41,8 +41,6 @@ _TPCDS_SIZE = (
 )
 
 V4_KNOWN_FAILING: dict[str, str] = {
-    # --- discovery: history/debug SQL snapshot diffs ---
-    "tests/discovery/test_discovery.py::test_history_e2e_non_materialized_field": _INLINE,
     # --- optimization: CTE-shape snapshot diffs ---
     "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining": _INLINE,
     "tests/optimization/test_inlining.py::test_select_literal_is_rendered_in_projection": _INLINE,
@@ -61,13 +59,11 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/engine/test_bigquery.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_sqlite.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
-    "tests/engine/test_duckdb_filter.py::test_array_inclusion_aggregate": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
     # --- modeling (non-TPC) sweep ---
     "tests/modeling/gcat/test_gcat.py::test_equals_comparison": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
-    "tests/modeling/gcat/test_gcat.py::test_join_discovery_two": _MODELING,
     "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _MODELING,
     "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join": _MODELING,
     "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order": _MODELING,

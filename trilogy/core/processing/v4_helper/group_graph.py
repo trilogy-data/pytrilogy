@@ -326,6 +326,18 @@ def _materialize_group_graph(
         else:
             add_edge(group_graph, group_edges, gu, gv, kind)
 
+    # An EXISTENCE edge only orders the subselect source before its consumer.
+    # When the source group is itself a LINEAGE-descendant of the consumer
+    # group, that ordering is already implied by lineage and the extra edge is
+    # a pure back-edge -- it forms a cycle with no new ordering. This happens
+    # when the gated row arg and the existence source's input share one node
+    # (two unnests merged into one group, then `orid_2 in even_orders` where
+    # even_orders descends from that same unnest). Drop those redundant edges.
+    lineage_sub = lineage_subgraph(group_graph, group_edges)
+    for gu, gv in edges_of_kind(group_edges, EdgeKind.EXISTENCE):
+        if gv in lineage_sub and gu in lineage_sub and nx.has_path(lineage_sub, gv, gu):
+            remove_edge(group_graph, group_edges, gu, gv)
+
     return group_graph, attrs, group_edges
 
 
