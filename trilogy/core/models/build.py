@@ -1906,8 +1906,17 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                     if c.address in cte.output_lcl:
                         return c
 
-        raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        # Reaching here is an internal planner error, not user syntax: the
+        # renderer asked to map a union/multiselect output column against a CTE
+        # that doesn't expose it (typically an outer aggregate grouped the column
+        # away before an ORDER BY / projection re-referenced it). Raise a plain
+        # RuntimeError — surfacing it as a "Syntax error" wrongly blames the query.
+        raise RuntimeError(
+            f"Internal planner error: could not resolve union/multiselect output "
+            f"'{concept.address}' against CTE '{cte.name}' (it is not in that CTE's "
+            f"outputs {sorted(cte.output_lcl.addresses)}). If this came from an "
+            f"ORDER BY on a union column, order by the projected output column "
+            f"instead."
         )
 
 

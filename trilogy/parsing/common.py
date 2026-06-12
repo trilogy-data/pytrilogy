@@ -40,6 +40,7 @@ from trilogy.core.models.author import (
     NavigationWindowItem,
     NumberingWindowItem,
     Parenthetical,
+    RowsetItem,
     SubselectComparison,
     SubselectItem,
     TupleWrapper,
@@ -833,6 +834,42 @@ def group_function_to_concept(
     )
 
 
+def _alias_target_cycles(
+    new_address: str,
+    source: ConceptRef,
+    environment: Environment,
+    _depth: int = 0,
+) -> bool:
+    """True if renaming ``source`` to ``new_address`` would close a reference
+    cycle — i.e. ``source`` already resolves (through a rowset wrapper or a
+    further rename) back to ``new_address``.
+
+    Trigger: a `union(...)`/rowset whose aligned output is named ``foo`` lives
+    at ``local.foo``; the rowset re-exposes it as ``rs.foo`` with lineage
+    ``Rowset(content=local.foo)``. An outer `rs.foo as foo` then redefines
+    ``local.foo`` as ``alias(rs.foo)`` → ``local.foo`` references ``rs.foo``
+    references ``local.foo``. Build-time recursion can't catch this (each union
+    arm re-materializes the environment under a fresh factory stack), so reject
+    it here with an actionable message."""
+    if _depth > 10:
+        return False
+    if source.address == new_address:
+        return True
+    concept = environment.concepts.get(source.address)
+    if concept is None or concept.lineage is None:
+        return False
+    lineage = concept.lineage
+    if isinstance(lineage, RowsetItem):
+        return _alias_target_cycles(
+            new_address, lineage.content, environment, _depth + 1
+        )
+    if isinstance(lineage, Function) and lineage.operator == FunctionType.ALIAS:
+        arg = lineage.arguments[0]
+        if isinstance(arg, ConceptRef):
+            return _alias_target_cycles(new_address, arg, environment, _depth + 1)
+    return False
+
+
 def function_to_concept(
     parent: Function,
     name: str,
@@ -843,6 +880,17 @@ def function_to_concept(
 
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
+    if parent.operator == FunctionType.ALIAS:
+        source = parent.arguments[0]
+        if isinstance(source, ConceptRef) and _alias_target_cycles(
+            f"{namespace}.{name}", source, environment
+        ):
+            raise InvalidSyntaxException(
+                f"Output column '{name}' aliases '{source.address}', which is "
+                f"itself the '{name}' output of a union(...)/rowset, so the "
+                "rename refers back to itself. Use a distinct output name "
+                f"(e.g. '{name}_out')."
+            )
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)
     concrete_args = [environment.concepts[c.address] for c in ref_args]

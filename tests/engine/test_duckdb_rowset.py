@@ -457,6 +457,28 @@ select combined.k;
 """)
 
 
+def test_tvf_union_output_alias_self_reference_errors():
+    # Aliasing a union output column back to its own aligned name
+    # (`combined.k as k`) closes a reference cycle: the rowset column `combined.k`
+    # wraps the union's `k` output (`local.k`), and `as k` redefines `local.k` as
+    # `alias(combined.k)`. This used to blow the stack with a RecursionError; it
+    # must now raise a clean, actionable error.
+    import pytest
+
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    with pytest.raises(InvalidSyntaxException, match="refers back to itself"):
+        executor.generate_sql("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as k, combined.v as v order by k asc;
+""")
+
+
 # Multiple rows per (item_id, yr) so an arm-level `sum(val)` is meaningful: a
 # GROUP BY that wrongly includes the aggregate would either error or miscount.
 _TVF_UNION_AGG_FIXTURE = """
@@ -611,3 +633,31 @@ order by k asc;
     assert "LEFT OUTER JOIN" in sql
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     assert results == [(1, 90), (2, 200)]
+
+
+def test_tvf_union_order_by_grouped_away_column():
+    # Regression: an outer aggregate consumes a `union(...)` with asymmetric
+    # measure arms (constant 0 vs sum), relabels a union sort column via CASE,
+    # and ORDERS BY that sort column — which is NOT in the projection (it only
+    # feeds the CASE). The aggregate groups the sort column away, so the renderer
+    # used to crash ("Could not find upstream map for multiselect ..."). The sort
+    # column must be carried into the grain so the ORDER BY resolves. Mirrors the
+    # full-99 TPC-DS q05 union shape.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id -> sort_k, val -> a, 0 -> b),
+    (where yr = 2002 select item_id -> sort_k, 0 -> a, val -> b)
+) -> (sort_k, a, b);
+select
+  case combined.sort_k when 1 then 'one' when 2 then 'two' end -> label,
+  sum(combined.a) -> total_a,
+  sum(combined.b) -> total_b
+order by combined.sort_k asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "UNION ALL" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # item 1: a=val@2001=10, b=val@2002=30; item 2: a=val@2001=5, b=val@2002=5
+    assert results == [("one", 10, 30), ("two", 5, 5)]

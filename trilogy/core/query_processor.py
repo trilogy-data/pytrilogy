@@ -33,6 +33,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildDatasource,
     BuildFunction,
+    BuildGrain,
     BuildMultiSelectLineage,
     BuildParamaterizedConceptReference,
     BuildRowsetItem,
@@ -477,6 +478,65 @@ def datasource_to_cte(
     return cte
 
 
+def _carry_order_by_concepts(
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+) -> None:
+    """Pull `union(...)`/multiselect ORDER BY columns into the query grain so a
+    single group node keeps them.
+
+    A plain order-by concept is rendered from whichever CTE already exposes it
+    (its source_map entry), so it needs no special handling. But a `union(...)` /
+    multiselect output column is rendered via `find_source`, which only resolves
+    at the union node itself — once an outer aggregate groups it away it is gone
+    from every downstream CTE, and the renderer crashes trying to map it
+    ("Could not find upstream map for multiselect ...").
+
+    Such a column is always an alias-source of a selected transform (the author
+    validation enforces order-by ⊆ outputs ∪ alias-sources), so it is 1:1 with a
+    grain key — adding it to the grain (and as a hidden output) keeps the group a
+    single node, rather than sourcing it as a finer optional that gets joined
+    back via a (broken) enrichment merge."""
+    if not isinstance(build_statement, BuildSelectLineage):
+        return
+    if not build_statement.order_by:
+        return
+    output_addresses = {c.address for c in build_statement.output_components}
+    carry: dict[str, BuildConcept] = {}
+    for item in build_statement.order_by.items:
+        for c in item.concept_arguments:
+            # Already projected (directly, or as the rowset handle the order-by
+            # names) — it renders from the output, no carry needed.
+            if c.address in output_addresses:
+                continue
+            target = _find_source_target(c)
+            if target is None or target.address in output_addresses:
+                continue
+            carry.setdefault(target.address, target)
+    if not carry:
+        return
+    build_statement.selection = build_statement.selection + list(carry.values())
+    build_statement.hidden_components = build_statement.hidden_components | set(carry)
+    build_statement.grain = build_statement.grain + BuildGrain.from_concepts(
+        list(carry.values())
+    )
+
+
+def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
+    """The union column an order-by concept ultimately renders from, or None.
+
+    A `union(...)`/multiselect output column is rendered through `find_source`,
+    which resolves only at the union node — unlike a plain column it can't be
+    referenced from a downstream CTE once grouped away. Walk through a rowset
+    handle to the union column it wraps and return that column (the thing to
+    carry into the grain); a plain concept returns None (no carry needed)."""
+    lineage = concept.lineage
+    if isinstance(lineage, BuildMultiSelectLineage):
+        return concept
+    if isinstance(lineage, BuildRowsetItem):
+        return _find_source_target(lineage.content)
+    return None
+
+
 def _get_query_node_v4(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -644,9 +704,11 @@ def get_query_node(
         scoped_joins=caches.scoped_joins,
     )
 
+    _carry_order_by_concepts(build_statement)
+
     graph = generate_graph(build_environment)
 
-    search_concepts: list[BuildConcept] = build_statement.output_components
+    search_concepts: list[BuildConcept] = list(build_statement.output_components)
     try:
         if CONFIG.use_v4_discovery:
             return _get_query_node_v4(
