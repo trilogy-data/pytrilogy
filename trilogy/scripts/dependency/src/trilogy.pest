@@ -164,8 +164,10 @@ full_persist = {
 // =============================================================================
 from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 
+// join_clause may appear before "select" (legacy) OR right after the select
+// list (preferred, SQL-like); both positions collect into the same join set.
 select_statement = {
-    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ where? ~ having? ~ order_by? ~ limit?
+    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ having? ~ order_by? ~ limit?
 }
 
 // query-scoped join: blends two otherwise-disjoint concepts on a shared key for
@@ -812,6 +814,9 @@ ORDER_BY_LA = @{
 SELECT_LIST_STOP = @{
     (   ORDER_BY_LA
       | (^"merge" | ^"align" | ^"derive") ~ !(ASCII_ALPHANUMERIC | "_" | ".")
+      // a trailing comma before a post-select `<type> join` must not swallow the
+      // join keyword as another select item.
+      | JOIN_TYPE ~ (" " | "\t" | "\r" | "\n")+ ~ ^"join" ~ !(ASCII_ALPHANUMERIC | "_" | ".")
     )
 }
 

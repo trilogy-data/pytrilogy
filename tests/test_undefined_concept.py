@@ -103,6 +103,42 @@ def test_find_similar_never_suggests_the_looked_up_address():
     assert "qual.ws.order_number" in sugg
 
 
+def test_find_similar_partial_path_subsequence_ranks_first():
+    """Dropping an intermediate namespace segment (`y1999.item_id` for the real
+    rowset path `y1999.agg.item_id`, where the column kept its source namespace)
+    must surface — and rank above — unrelated same-leaf/fuzzy candidates that don't
+    share the namespace prefix."""
+    d = _dict_with(
+        "y1999.agg.item_id",
+        "y1999.agg.product_name",
+        "ss.item.id",
+        "cs.item.id",
+        "cr.item.id",
+    )
+    sugg = d._find_similar_concepts("y1999.item_id")
+    assert "y1999.agg.item_id" in sugg
+    # the prefix-sharing path match leads the unrelated `*.item.id` fuzzy matches
+    assert sugg[0] == "y1999.agg.item_id"
+
+
+def test_find_similar_partial_path_via_extra_keys():
+    """The real path is often only STAGED (a rowset/CTE output not yet committed);
+    the partial-path match must still find it through `extra_keys`."""
+    d = _dict_with("ss.item.id", "cs.item.id", "cr.item.id")
+    sugg = d._find_similar_concepts(
+        "y1999.item_id", extra_keys=["y1999.agg.item_id", "y1999.agg.product_name"]
+    )
+    assert sugg[0] == "y1999.agg.item_id"
+
+
+def test_is_subsequence_is_ordered():
+    from trilogy.core.models.environment import _is_subsequence
+
+    assert _is_subsequence(["y1999", "item_id"], ["y1999", "agg", "item_id"])
+    assert not _is_subsequence(["item_id", "y1999"], ["y1999", "agg", "item_id"])
+    assert not _is_subsequence(["x"], ["y1999", "agg", "item_id"])
+
+
 def test_undefined_rowset_field_suggests_rowset_path(tmp_path):
     """A rowset column from an import namespace, selected WITHOUT `as`, keeps its
     full source path (`qual.ws.order_number`, not `qual.order_number`).

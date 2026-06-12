@@ -2,7 +2,12 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, FunctionType, SourceType
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConceptArgs,
+    BuildFunction,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
@@ -60,6 +65,25 @@ def gen_basic_node(
         parent_concepts = resolve_function_parent_concepts(
             concept, environment=environment
         )
+
+    # A membership comparison (`a in b`) over otherwise-unconnected models
+    # carries existence semantics: the RHS is checked via an existence
+    # subquery, not joined. resolve_function_parent_concepts returns both
+    # sides as row parents, which would (wrongly) demand a join. When such a
+    # comparison is itself a derived concept (auto / projected), split the
+    # existence side out and wire it as an existence parent, mirroring the
+    # inline-WHERE path in append_existence_check.
+    existence_concepts: list[BuildConcept] = []
+    if isinstance(concept.lineage, BuildConceptArgs):
+        existence_concepts = unique(
+            [c for tup in concept.lineage.existence_arguments for c in tup],
+            "address",
+        )
+    if existence_concepts:
+        existence_addresses = {c.address for c in existence_concepts}
+        parent_concepts = [
+            p for p in parent_concepts if p.address not in existence_addresses
+        ]
 
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} with lineage {concept.lineage} has parents {[x for x in parent_concepts]}"
@@ -167,6 +191,22 @@ def gen_basic_node(
             environment=environment,
             depth=depth,
         )
+
+    if existence_concepts:
+        existence_node = source_concepts(
+            mandatory_list=existence_concepts,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+        )
+        if not existence_node:
+            logger.info(
+                f"{depth_prefix}{LOGGER_PREFIX} could not resolve existence inputs {[x.address for x in existence_concepts]} for {concept}"
+            )
+            return None
+        parent_node.add_parents([existence_node])
+        parent_node.add_existence_concepts(existence_concepts)
 
     parent_node.add_output_concept(concept)
     for x in equivalent_optional:

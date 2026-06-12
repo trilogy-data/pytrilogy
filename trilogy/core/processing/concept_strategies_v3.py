@@ -1,11 +1,13 @@
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import List, Optional
 
-from trilogy.constants import DEFAULT_NAMESPACE, logger
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    UnresolvableQueryException,
+)
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     UndefinedConcept,
@@ -21,6 +23,8 @@ from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
+    disconnected_components,
+    format_disconnected_subgraphs_error,
     get_loop_iteration_targets,
     group_if_required_v2,
 )
@@ -527,21 +531,6 @@ def _search_concepts(
     return None
 
 
-def _disjoint_source_models(concepts: List[BuildConcept]) -> dict[str, list[str]]:
-    """Map each underlying model namespace to the output concepts that draw on
-    it. Used to explain why an unconnected-models query couldn't resolve."""
-    models: dict[str, set[str]] = defaultdict(set)
-    for c in concepts:
-        roots = {
-            (src.namespace or DEFAULT_NAMESPACE).split(".")[0]
-            for src in [c, *c.sources]
-        }
-        roots = {r for r in roots if r and r != DEFAULT_NAMESPACE}
-        for root in roots or {DEFAULT_NAMESPACE}:
-            models[root].add(c.address)
-    return {k: sorted(v) for k, v in models.items()}
-
-
 def source_query_concepts(
     output_concepts: List[BuildConcept],
     history: History,
@@ -566,22 +555,26 @@ def source_query_concepts(
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>" for c in output_concepts
         ]
-        detail = ""
-        models = _disjoint_source_models(output_concepts)
-        if len(models) > 1:
-            groups = "; ".join(
-                f"{m} (needed by {', '.join(addrs)})"
-                for m, addrs in sorted(models.items())
+        # Partition the full required set (outputs + filter row args, i.e. the
+        # resolver's `completion_mandatory`) by true join reachability in the
+        # reference graph. When it splits, name the groups and point at the
+        # join/merge fix. Reachability (not lineage anchors) means FK-joined
+        # concepts stay grouped, so the message never falsely splits joinable
+        # models.
+        required = output_concepts
+        if conditions:
+            required = unique(
+                list(output_concepts) + list(conditions.row_arguments), "address"
             )
-            names = sorted(models)
-            detail = (
-                f" The output draws on models that are not connected in the current"
-                f" graph: {groups}. If these should be related, bridge their keys with"
-                f" a merge, e.g. `merge {names[0]}.<key> into ~{names[1]}.<key>;`."
+        groups = disconnected_components(environment, required, g)
+        if len(groups) > 1:
+            raise DisconnectedConceptsException(
+                format_disconnected_subgraphs_error(groups),
+                subgraphs=[[c.address for c in group] for group in groups],
             )
         raise UnresolvableQueryException(
             "Could not resolve connections for query with output"
-            f" {error_strings} from current model.{detail}"
+            f" {error_strings} from current model."
         )
     final = [x for x in root.output_concepts if x.address not in root.hidden_concepts]
     logger.info(

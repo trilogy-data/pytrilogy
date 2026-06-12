@@ -12,6 +12,8 @@ import pytest
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.exceptions import ParseError
+from trilogy.parsing.v2.lark_backend import parse_lark
+from trilogy.parsing.v2.pest_backend import parse_pest
 
 ITEM = """
 key item_id int;
@@ -181,6 +183,39 @@ def test_join_merge_parity(engine: Executor, models: Path, name: str):
     join_rows = _run(engine, models, join_form)
     assert join_rows == expected_rows, f"{name}: join wrong: {join_rows}"
     assert join_rows == merge_rows
+
+
+# The query-scoped join may sit BEFORE `select` (legacy) or RIGHT AFTER the
+# select list (preferred, SQL-like). Both positions must parse on both backends
+# and execute identically. The post form carries a trailing comma before the
+# join to exercise the select-list/join-keyword disambiguation.
+_POS_HEAD = """
+import sales as sales;
+rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
+rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
+"""
+JOIN_PRE = (
+    _POS_HEAD
+    + "inner join c.brand = p.brand\nselect c.brand, c.c_qty, p.p_qty order by c.brand asc;\n"
+)
+JOIN_POST = (
+    _POS_HEAD
+    + "select c.brand, c.c_qty, p.p_qty,\ninner join c.brand = p.brand\norder by c.brand asc;\n"
+)
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+def test_post_select_join_parses_on_both_backends(backend):
+    backend(JOIN_POST)
+
+
+def test_post_select_join_position_matches_pre(engine: Executor, models: Path):
+    expected = [(10, 7, 7), (20, 15, 3)]
+    pre = _run(engine, models, JOIN_PRE)
+    post = _run(engine, models, JOIN_POST)
+    assert pre == expected, f"pre-select join wrong: {pre}"
+    assert post == expected, f"post-select join wrong: {post}"
+    assert pre == post
 
 
 # A scoped INNER join on a *derived* key (not a rowset, not a root column —

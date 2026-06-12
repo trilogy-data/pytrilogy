@@ -3,8 +3,10 @@ should raise a `DisconnectedConceptsException` naming the disconnected subgraphs
 and asking whether a join/merge is missing — not the opaque internal
 "No remaining priority concepts" candidate-set dump.
 
-Covers the pure subgraph partition helper plus an end-to-end query that two
-unrelated models (no merge) cannot resolve.
+Covers the message formatter plus end-to-end queries that two unrelated models
+(no merge) cannot resolve. The partition logic itself (`disconnected_components`,
+graph-reachability based) is exercised end-to-end here and in
+`test_disconnected_components_e2e.py`.
 """
 
 import pytest
@@ -17,7 +19,6 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.discovery_utility import (
     format_disconnected_subgraphs_error,
-    identify_disconnected_subgraphs,
 )
 
 
@@ -38,51 +39,6 @@ def _concept(
         grain=BuildGrain(components=set(grain or set())),
         pseudonyms=set(pseudonyms or set()),
     )
-
-
-def _addrs(subgraphs):
-    return [sorted(c.address for c in group) for group in subgraphs]
-
-
-def test_two_disconnected_models_partition():
-    a_id = _concept("a_id", grain={"local.a_id"})
-    sa = _concept("sa", grain={"local.a_id"}, derivation=Derivation.AGGREGATE)
-    sb = _concept("sb", grain={"local.b_id"}, derivation=Derivation.AGGREGATE)
-
-    subgraphs = identify_disconnected_subgraphs([a_id, sa, sb])
-
-    assert _addrs(subgraphs) == [["local.a_id", "local.sa"], ["local.sb"]]
-
-
-def test_single_connected_component():
-    a_id = _concept("a_id", grain={"local.a_id"})
-    sa = _concept("sa", grain={"local.a_id"}, derivation=Derivation.AGGREGATE)
-
-    subgraphs = identify_disconnected_subgraphs([a_id, sa])
-
-    assert _addrs(subgraphs) == [["local.a_id", "local.sa"]]
-
-
-def test_pseudonym_bridges_subgraphs():
-    # a merge surfaces as a pseudonym link; the two keys must collapse to one
-    # connected subgraph (not reported as a missing join/merge).
-    a_id = _concept("a_id", grain={"local.a_id"}, pseudonyms={"local.b_id"})
-    sa = _concept("sa", grain={"local.a_id"}, derivation=Derivation.AGGREGATE)
-    sb = _concept("sb", grain={"local.b_id"}, derivation=Derivation.AGGREGATE)
-
-    subgraphs = identify_disconnected_subgraphs([a_id, sa, sb])
-
-    assert len(subgraphs) == 1
-
-
-def test_three_way_disconnect():
-    a = _concept("a", grain={"local.a"})
-    b = _concept("b", grain={"local.b"})
-    c = _concept("c", grain={"local.c"})
-
-    subgraphs = identify_disconnected_subgraphs([a, b, c])
-
-    assert _addrs(subgraphs) == [["local.a"], ["local.b"], ["local.c"]]
 
 
 def test_format_message_lists_subgraphs_and_hint():
@@ -124,3 +80,29 @@ def test_disconnected_query_raises_typed_exception():
     groups = {frozenset(g) for g in exc.value.subgraphs}
     assert frozenset({"local.a_id", "local.sa"}) in groups
     assert frozenset({"local.sb"}) in groups
+
+
+_DISCONNECTED_ROOT_PROPERTIES = """
+key cust int;
+property cust.cname string;
+key prod int;
+property prod.pname string;
+datasource customers (cust: cust, cname: cname) grain (cust)
+query '''select 1 as cust, 'a' as cname''';
+datasource products (prod: prod, pname: pname) grain (prod)
+query '''select 1 as prod, 'b' as pname''';
+select cname, pname;
+"""
+
+
+def test_disconnected_root_properties_raise_typed_exception():
+    # Distinct surface from the aggregate case above: a plain ROOT-property select
+    # dead-ends in `source_query_concepts` (no priority exhaustion in
+    # get_priority_concept), which previously emitted a bare "Could not resolve
+    # connections" message. It must now name the disconnected subgraphs too.
+    eng = Dialects.DUCK_DB.default_executor(environment=Environment())
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        eng.generate_sql(_DISCONNECTED_ROOT_PROPERTIES)
+    assert "Are you missing a join or merge" in str(exc.value)
+    groups = {frozenset(g) for g in exc.value.subgraphs}
+    assert groups == {frozenset({"local.cname"}), frozenset({"local.pname"})}

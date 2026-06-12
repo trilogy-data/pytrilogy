@@ -281,6 +281,53 @@ def test_nested_filter_per_key_aggregate_membership_executes():
     assert [(r.o, float(r.total_profit)) for r in results] == [(100, 30.0)]
 
 
+_DERIVED_MEMBERSHIP_MODEL = """
+key sale_item int;
+property sale_item.amt float;
+datasource sales (id: sale_item, amt: amt) grain (sale_item)
+query '''select 1 id, 10.0 amt union all select 2 id, 20.0 amt''';
+
+key ret_item int;
+property ret_item.refund float;
+datasource returns (id: ret_item, refund: refund) grain (ret_item)
+query '''select 1 id, 5.0 refund''';
+"""
+
+
+@mark.parametrize(
+    "query,expected",
+    [
+        ("select amt where sale_item in ret_item;", [(10.0,)]),
+        ("select amt where sale_item not in ret_item;", [(20.0,)]),
+        (
+            "auto has_return <- sale_item in ret_item; select amt where has_return;",
+            [(10.0,)],
+        ),
+        (
+            "auto no_return <- sale_item not in ret_item; select amt where no_return;",
+            [(20.0,)],
+        ),
+        (
+            "select sale_item as s, sale_item in ret_item as has_return order by s asc;",
+            [(1, True), (2, False)],
+        ),
+    ],
+)
+def test_derived_membership_existence(query, expected):
+    """A cross-model membership (`a in b`) carries existence semantics whether it
+    is an inline WHERE atom OR a derived/projected boolean (`auto flag <- a in b`,
+    `select ... as flag`). The derived form must route the RHS through an
+    existence subquery, not demand a join between the unconnected models."""
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_DERIVED_MEMBERSHIP_MODEL)
+    sql = executor.generate_sql(query)[-1]
+    assert "in (select" in sql.lower(), f"membership not rendered as subquery:\n{sql}"
+    results = executor.execute_text(_DERIVED_MEMBERSHIP_MODEL + query)[-1].fetchall()
+    assert [
+        tuple(float(v) if isinstance(v, Decimal) else v for v in r) for r in results
+    ] == expected
+
+
 def test_window_over_rollup_preserves_grouping_rows():
     """A window with `partition by` over a `sum() by rollup` must run on the
     materialised rollup output, not be re-planned via a join-back on

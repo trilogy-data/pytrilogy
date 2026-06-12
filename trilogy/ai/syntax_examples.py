@@ -28,10 +28,10 @@ _EXAMPLES: list[SyntaxExample] = [
         name="query-structure",
         title="Full query structure — every clause and where it goes (+ rowsets)",
         summary=(
-            "the FIXED clause order of a query (`where` -> join(s) -> `select` -> "
+            "the clause order of a query (`where` -> `select` <cols> -> join(s) -> "
             "`having` -> `order by` -> `limit`) and how to define a rowset (a NAME "
-            "then a select); there is NO post-join `where` — filter a joined or "
-            "aggregated RESULT in `having`, not a second `where`"
+            "then a select); joins sit right after the select list — filter a "
+            "joined or aggregated RESULT in `having`, input rows in `where`"
         ),
         body="""\
 # Every Trilogy query has the SAME fixed skeleton. Top-level statements come
@@ -40,10 +40,11 @@ _EXAMPLES: list[SyntaxExample] = [
 #
 #   <top-level statements>;        # import / key / property / auto / metric /
 #                                  #   rowset / merge / def / datasource / parameter
-#   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation & joins)
-#   <inner|left|full join a = b>*  # 2. blend models (zero or more; after where, before select)
-#   select  <col>, <agg> as name,  # 3. the projection — grouping is AUTOMATIC by the
+#   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation)
+#   select  <col>, <agg> as name,  # 2. the projection — grouping is AUTOMATIC by the
 #                                  #      non-aggregated columns (never write GROUP BY)
+#   <inner|left|full join a = b>*  # 3. blend models (zero or more; RIGHT AFTER the
+#                                  #      select list — the SQL-like spot)
 #   having  <result condition>     # 4. filter on an AGGREGATED / joined RESULT
 #   order by <col> asc|desc        # 5. sort
 #   limit   <n>                    # 6. cap rows
@@ -65,11 +66,11 @@ rowset dept_totals <- select
 
 # --- THE QUERY — clauses in the fixed order above ---------------------------
 where enroll.year >= 2015                   # 1. WHERE: per-row filter, before aggregation
-inner join students.id = enroll.student_id  # 2. JOIN: blend students onto enrollments
-select                                      # 3. SELECT: grouped automatically by students.major
+select                                      # 2. SELECT: grouped automatically by students.major
     students.major,
     count(enroll.id) as enrollments,
     --completed_credits,                    #    a leading `--` HIDES a column from the output
+inner join students.id = enroll.student_id  # 3. JOIN: blend students onto enrollments (after the select list)
 having completed_credits > 0                # 4. HAVING: condition on an aggregated RESULT
 order by enrollments desc nulls first       # 5. ORDER BY
 limit 100;                                  # 6. LIMIT
@@ -83,11 +84,13 @@ limit 100;
 
 # ---------------------------------------------------------------------------
 # NOTES:
-#  - There is NO post-join or post-select `where`. `where` ALWAYS precedes the
-#    join(s) and filters INPUT rows. To filter on something only known AFTER the
-#    join / aggregation (e.g. comparing two joined rowsets' counts), select that
-#    value (hide it with `--`) and test it in `having` — `having` is the
-#    post-aggregation/output filter.
+#  - Joins sit RIGHT AFTER the select list (the SQL-like, preferred spot). They
+#    may also appear before `select` — both parse — but keep them after the
+#    select list for consistency.
+#  - `where` filters INPUT rows (before aggregation). To filter on something only
+#    known AFTER the join / aggregation (e.g. comparing two joined rowsets'
+#    counts), select that value (hide it with `--`) and test it in `having` —
+#    `having` is the post-aggregation/output filter. There is only ONE `where`.
 #  - No FROM, GROUP BY, DISTINCT, SELECT *, subqueries, or SQL-style set/JOIN
 #    operators. Grouping is automatic; blend with the scoped `join` above.
 """,
@@ -311,8 +314,8 @@ limit 100;
 #  - Every union output is treated as a KEY (grain component). To RE-AGGREGATE the
 #    stack (e.g. a grand total across statuses), wrap it in an outer aggregate:
 #        select sum(by_status.enrollments) by rollup by_status.status as total;
-#  - An arm may carry its OWN query-scoped join (`left join a = b` before its
-#    `select`) — localize each source's join to the arm that needs it.
+#  - An arm may carry its OWN query-scoped join (`select ... left join a = b`
+#    after its select list) — localize each source's join to the arm that needs it.
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
 #    `union(...)` function form — the cleanest way to stack rows from several
 #    sources.
@@ -322,15 +325,17 @@ limit 100;
         name="scoped-join",
         title="Blend two models in one query with a scoped inner/left join",
         summary=(
-            "`inner|left join brought_in.key = anchor.key` (after WHERE, before SELECT) "
-            "blends a second model into ONE query — the PREFERRED alternative to `merge`. "
-            "JOIN ON THE FULL GRAIN: one clause per key in the shared `@<k1, k2>` grain"
+            "`select <cols> inner|left join brought_in.key = anchor.key` (right after "
+            "the select list) blends a second model into ONE query — the PREFERRED "
+            "alternative to `merge`. JOIN ON THE FULL GRAIN: one clause per key in "
+            "the shared `@<k1, k2>` grain"
         ),
         body="""\
 # A query-scoped `join` blends a second model into ONE select without editing the
 # model files (the DEFAULT way to blend; the query-local equivalent of `merge`).
-# Place the clause(s) AFTER the optional `where` and BEFORE `select`. The LEFT key
-# is the BROUGHT-IN concept; the RIGHT key is the ANCHOR already in the query:
+# Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot; they may
+# also precede `select`, but prefer after). The LEFT key is the BROUGHT-IN
+# concept; the RIGHT key is the ANCHOR already in the query:
 #   inner join  -> strict equality; unmatched rows DROPPED
 #   left  join  -> brought-in side optional/nullable (unmatched anchor rows kept)
 #   full  join  -> BOTH sides optional (unmatched rows from EITHER side kept)
@@ -339,10 +344,10 @@ import students as students;
 
 # (1) SINGLE-KEY blend: bring students onto enrollments by the shared student key
 # (students.id is the brought-in LEFT key, enroll.student_id the anchor).
-inner join students.id = enroll.student_id
 select
     students.major,
     count(enroll.id) as enrollments,
+inner join students.id = enroll.student_id
 order by enrollments desc nulls first
 limit 100;
 
@@ -357,13 +362,13 @@ rowset completed_by <- where enroll.completed = true
 rowset incomplete_by <- where enroll.completed = false
     select enroll.department as dept, enroll.course as course, count(enroll.id) as incomplete_cnt;
 
-inner join completed_by.dept = incomplete_by.dept
-inner join completed_by.course = incomplete_by.course
 select
     completed_by.dept,
     completed_by.course,
     completed_by.completed_cnt,
     incomplete_by.incomplete_cnt,
+inner join completed_by.dept = incomplete_by.dept
+inner join completed_by.course = incomplete_by.course
 order by completed_by.dept asc nulls first
 limit 100;
 
@@ -374,12 +379,12 @@ limit 100;
 rowset y2020 <- where enroll.year = 2020 select enroll.department as dept, count(enroll.id) as cnt;
 rowset y2021 <- where enroll.year = 2021 select enroll.department as dept, count(enroll.id) as cnt;
 
-inner join y2020.dept = y2021.dept
 select
     y2020.dept,
     y2020.cnt as cnt_2020,
     y2021.cnt as cnt_2021,
     y2021.cnt - y2020.cnt as yoy_diff,
+inner join y2020.dept = y2021.dept
 order by yoy_diff desc nulls first
 limit 100;
 

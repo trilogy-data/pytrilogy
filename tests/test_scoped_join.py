@@ -325,7 +325,7 @@ def test_filter_after_join_gives_helpful_error(models: Path, tail: str):
     from trilogy.core.exceptions import InvalidSyntaxException
 
     text = "import orders as orders;\nimport customers as customers;\n" + tail
-    with pytest.raises(InvalidSyntaxException, match="may only be followed"):
+    with pytest.raises(InvalidSyntaxException, match="Filter input rows in `where`"):
         parse_text(text, root=models)
 
 

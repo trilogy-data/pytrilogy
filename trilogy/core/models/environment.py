@@ -123,6 +123,12 @@ class EnvironmentConfig:
         return new
 
 
+def _is_subsequence(needle: list[str], haystack: list[str]) -> bool:
+    """True if every element of `needle` appears in `haystack` in order (gaps ok)."""
+    it = iter(haystack)
+    return all(seg in it for seg in needle)
+
+
 class EnvironmentConceptDict(UserDict[str, Concept]):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -351,6 +357,24 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # it may be present in the candidate set).
         keys = [k for k in keys if k != concept_name]
 
+        # Partial-path match: a reference that drops an intermediate namespace
+        # segment (e.g. `y1999.item_id` for the real `y1999.agg.item_id`, where the
+        # rowset column kept its source namespace) shares the looked-up segments as
+        # an ordered subsequence of the candidate's. Gated to >=2 segments so a bare
+        # leaf doesn't match deep inside an unrelated path; ranked first because a
+        # shared namespace prefix is a strong relevance signal.
+        q_segs = strip_local(concept_name).split(".")
+        path_matches = (
+            [
+                strip_local(k)
+                for k in keys
+                if k != concept_name
+                and _is_subsequence(q_segs, strip_local(k).split("."))
+            ]
+            if len(q_segs) >= 2
+            else []
+        )
+
         # Leaf-name match: a bare reference like `first_name` (e.g. in ORDER BY,
         # where the full path is required) has no fuzzy match against the long
         # full-path keys, so difflib returns nothing. Surface every concept whose
@@ -365,9 +389,9 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         fuzzy = difflib.get_close_matches(
             strip_local(concept_name), [strip_local(x) for x in keys]
         )
-        # Prefer exact-leaf matches, then fuzzy, de-duplicated, capped.
+        # Prefer partial-path, then exact-leaf, then fuzzy, de-duplicated, capped.
         out: list[str] = []
-        for m in leaf_matches + fuzzy:
+        for m in path_matches + leaf_matches + fuzzy:
             if m not in out:
                 out.append(m)
         return out[:6]
