@@ -343,6 +343,26 @@ def _inject_union_datasources(
     graph.add_edges_from(union_edges)
 
 
+def _concept_has_non_basic_merge_origin(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> bool:
+    """`concept` is a merge key whose value comes from a non-BASIC (recursive /
+    aggregate) origin — its real lineage lives in `alias_origin_lookup` under the
+    concept's address or a pseudonym, while `environment.concepts` holds a demoted
+    lineage-less ROOT. Such a key is materialized by `_derived_connector_nodes`,
+    never a raw scan. A BASIC merge origin (`p_last <- split(p_name)`) computes
+    inline on the scan, so it is excluded."""
+    for alias in (concept.address, *concept.pseudonyms):
+        origin = environment.alias_origin_lookup.get(alias)
+        if (
+            origin is not None
+            and origin.lineage is not None
+            and origin.derivation != Derivation.BASIC
+        ):
+            return True
+    return False
+
+
 def _bridge_has_non_basic_merge(
     plan: BridgePlan, environment: BuildEnvironment
 ) -> bool:
@@ -351,16 +371,10 @@ def _bridge_has_non_basic_merge(
     Such a key is materialized by `_derived_connector_nodes`, not a raw scan, so
     the datasource-registration gap-fill must stand down for that bridge.
     """
-    for concept in plan.concepts:
-        for alias in (concept.address, *concept.pseudonyms):
-            origin = environment.alias_origin_lookup.get(alias)
-            if (
-                origin is not None
-                and origin.lineage is not None
-                and origin.derivation != Derivation.BASIC
-            ):
-                return True
-    return False
+    return any(
+        _concept_has_non_basic_merge_origin(concept, environment)
+        for concept in plan.concepts
+    )
 
 
 def _datasource_nodes_for_bridge(
@@ -502,15 +516,18 @@ def _derived_connector_nodes(
                 or origin.address in history.connectors_in_progress
             ):
                 continue
-            # Carry the connector's grain keys it still owes the bridge (e.g. a
-            # recursion keyed by `id` must emit `id`, not group it away) so the
-            # merge has the columns the consumer reads, not just the join key.
+            # Carry the connector's grain keys (e.g. a recursion keyed by `id`
+            # must emit `id`, not group it away) so the merge can join the
+            # connector back to the consumer on that key. The key must be emitted
+            # even when another parent already covers it — it IS the join column;
+            # dropping it leaves the merge with no shared key and a 1=1 cross join
+            # (hackernews: the recursion's `id` is also the post scan's `id`).
             mandatory = unique(
                 [origin]
                 + [
                     env.concepts[address]
                     for address in origin.grain.components
-                    if address in env.concepts and address not in covered
+                    if address in env.concepts
                 ],
                 "address",
             )
@@ -614,6 +631,7 @@ def _local_concept_nodes_for_datasource(
     bridge_addresses: set[str],
     environment: BuildEnvironment,
 ) -> list[str]:
+    datasource = graph.datasources.get(ds_node)
     queue: deque[str] = deque([ds_node])
     seen: set[str] = {ds_node}
     concepts: dict[str, str] = {}
@@ -629,6 +647,23 @@ def _local_concept_nodes_for_datasource(
                 continue
             address = _concept_node_address(neighbor)
             canonical = environment.canonical_concepts.get(address)
+            # A recursive/aggregate merge key (`recursive_parent` merged into a
+            # dimension key) is reachable from this scan only through its
+            # reverse-lineage (the scan provides its recursive INPUTS), but its
+            # value is materialized by `_derived_connector_nodes`, not the scan.
+            # Attach it here only when this datasource genuinely binds it as a
+            # column (the property-side re-import scan keyed on it); otherwise the
+            # bridge would emit it from the input scan and strand the connector.
+            if (
+                canonical is not None
+                and _concept_has_non_basic_merge_origin(canonical, environment)
+                and not (
+                    datasource is not None
+                    and _datasource_can_output(datasource, address)
+                )
+            ):
+                queue.append(neighbor)
+                continue
             # Bridge addresses are keyed by `.address`, but a derived concept's
             # graph node uses its `.canonical_address` (a `_virt_func_*` name) —
             # so a derived merge key (`p_last <- split(p_name)`) bound to this

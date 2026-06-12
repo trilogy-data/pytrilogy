@@ -55,18 +55,25 @@ Big row blowups; v4's merge/multiselect dedup misses on the demo models.
 
 → **No distilled case.** Highest-value new parity case to add.
 
-### C2 — recursive-CTE pseudonym source-map crash — 2 (was 4)
+### C2 — recursive-CTE pseudonym source-map crash — FIXED (was 4 → 0)
 `SyntaxError: Missing source map entry for root_parent.id with pseudonyms
 {'local.recursive_parent'}` at render — the recursive-CTE alias path.
-- `modeling/hackernews/test_hackernews_queries.py::test_adhoc02` (root_parent.id / recursive_parent)
-- `modeling/hackernews/test_hackernews_queries.py::test_adhoc03` (same)
 
-FIXED & removed: `test_window_clone` (different root cause — existence-concept
-carried as a row output, see headline) and `test_refresh` (gcat, fixed earlier).
-The two remaining are a genuinely distinct bug: a recursive_parent pseudonym not
-mapped onto its `root_parent.id` source. **Next open issue.**
+FIXED & removed: `test_window_clone` (existence-concept carried as a row output,
+see headline), `test_refresh` (gcat, fixed earlier), and the
+`merge recurse_edge(...) into root_parent.id` cluster (hackernews adhoc02/03).
 
-→ **No distilled case.**
+The recurse-merge fix was NOT the brief's concept-graph substitution (red herring)
+— the bridge/`_derived_connector_nodes` machinery already routes `root_parent.id`
+through its recursive origin. Two bugs in `source_planning.py` (v4-only):
+1. `_local_concept_nodes_for_datasource` attached the non-BASIC merge key to its
+   INPUT scan (reachable via reverse-lineage) → missing-source-map crash. Now
+   skipped unless the datasource binds it as a column (new
+   `_concept_has_non_basic_merge_origin` + `_datasource_can_output`).
+2. `_derived_connector_nodes` dropped the connector's grain/JOIN key when "covered"
+   → `FULL JOIN ... on 1=1` when the recursion's `id` is also the post scan's `id`.
+   Now always carries grain keys (the join column).
+adhoc02/03 assert WITH RECURSIVE + `"1=1" not in`; both removed from v4_known_failing.
 
 ### C3 — partial-source / namespaced-property-without-key crash — 3
 `UnresolvableQueryException: … could only be resolved from partial sources` /

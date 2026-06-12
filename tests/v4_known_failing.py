@@ -71,8 +71,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery_two": _MODELING,
     "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _MODELING,
-    "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc02": _MODELING,
-    "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc03": _MODELING,
     "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join": _MODELING,
     "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
