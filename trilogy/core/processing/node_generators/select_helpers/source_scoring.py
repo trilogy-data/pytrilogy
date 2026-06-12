@@ -332,6 +332,33 @@ def resolve_subgraphs(
 
     pruned_subgraphs = {}
 
+    # Datasource-level join adjacency via shared concept nodes (join keys),
+    # including structural keys that are NOT in the requested set. Used to keep
+    # a datasource that is the sole bridge to another datasource from being
+    # dropped as a mere concept-subset of a peer that can't reach it.
+    ds_join_nodes = {
+        ds: {n for n in subgraphs[ds] if n in concepts} for ds in datasources
+    }
+
+    def _bridge_targets(ds: str) -> set[str]:
+        mine = ds_join_nodes[ds]
+        return {o for o in datasources if o != ds and (mine & ds_join_nodes[o])}
+
+    # Datasources that uniquely provide some requested concept — pruning a join
+    # path to one of these would lose data, so a bridge to it is load-bearing.
+    # A bridge to a datasource whose concepts are all available elsewhere is a
+    # redundant alternative path and stays prunable (avoids re-introducing an
+    # ambiguous relationship).
+    _provider_count: dict[str, int] = {}
+    for _ds in datasources:
+        for _c in concept_map[_ds]:
+            _provider_count[_c] = _provider_count.get(_c, 0) + 1
+    sole_providers = {
+        ds
+        for ds in datasources
+        if any(_provider_count[c] == 1 for c in concept_map[ds])
+    }
+
     def _scorer(n: str) -> tuple[float, int, float, int, str]:
         return _score_node(
             n, g.datasources, grain_length, concept_map, exact_map, subgraphs, depth
@@ -350,6 +377,18 @@ def resolve_subgraphs(
                 and all_concepts.issubset(other_all_concepts)
             ):
                 if not condition_atom_map[key].issubset(condition_atom_map[other_key]):
+                    continue
+                # `key` may share fewer *requested* concepts than `other_key`
+                # yet still be the only join path to a datasource that uniquely
+                # supplies a needed concept (a dimension bridging a fact to a
+                # transitive attribute). Dropping it then severs that join and
+                # fans the result out, so keep it. A bridge to a datasource that
+                # is redundant elsewhere is NOT protected (it would re-introduce
+                # an ambiguous alternative path).
+                key_only_bridges = (
+                    _bridge_targets(key) - _bridge_targets(other_key) - {other_key}
+                )
+                if key_only_bridges & sole_providers:
                     continue
                 if len(value) < len(other_value):
                     is_subset = True

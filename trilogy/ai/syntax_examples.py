@@ -325,17 +325,16 @@ limit 100;
         name="scoped-join",
         title="Blend two models in one query with a scoped inner/left join",
         summary=(
-            "`select <cols> inner|left join brought_in.key = anchor.key` (right after "
+            "`select <cols> inner|left|full join anchor.key = brought_in.key (= other.key ...)?` (right after "
             "the select list) blends a second model into ONE query — the PREFERRED "
             "alternative to `merge`. JOIN ON THE FULL GRAIN: one clause per key in "
             "the shared `@<k1, k2>` grain"
         ),
         body="""\
 # A query-scoped `join` blends a second model into ONE select without editing the
-# model files (the DEFAULT way to blend; the query-local equivalent of `merge`).
-# Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot; they may
-# also precede `select`, but prefer after). The LEFT key is the BROUGHT-IN
-# concept; the RIGHT key is the ANCHOR already in the query:
+# model files (the query-local equivalent of `merge`).
+# Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot). 
+# The LEFT key is the BASE concept; the RIGHT key is the brought in, just like SQL
 #   inner join  -> strict equality; unmatched rows DROPPED
 #   left  join  -> brought-in side optional/nullable (unmatched anchor rows kept)
 #   full  join  -> BOTH sides optional (unmatched rows from EITHER side kept)
@@ -352,7 +351,7 @@ order by enrollments desc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
-# (2) MULTI-KEY blend — JOIN ON THE FULL GRAIN. When two facts share a COMPOSITE
+# (2) MULTI-KEY blend — JOIN ON THE FULL GRAIN. When facts share a COMPOSITE
 # grain, write ONE join clause per key. `trilogy explore` shows each fact's grain
 # as `@<k1, k2>` (e.g. a sales/returns fact keyed `@<department, course>`);
 # matching only ONE key fans out and DOUBLE-COUNTS. Two rowsets, joined on both
@@ -361,14 +360,17 @@ rowset completed_by <- where enroll.completed = true
     select enroll.department as dept, enroll.course as course, count(enroll.id) as completed_cnt;
 rowset incomplete_by <- where enroll.completed = false
     select enroll.department as dept, enroll.course as course, count(enroll.id) as incomplete_cnt;
+rowset null_completed <- where enroll.completed is null
+    select enroll.department as dept, enroll.course as course, count(enroll.id) as null_completed_cnt;
 
 select
     completed_by.dept,
     completed_by.course,
     completed_by.completed_cnt,
     incomplete_by.incomplete_cnt,
-inner join completed_by.dept = incomplete_by.dept
-inner join completed_by.course = incomplete_by.course
+    null_completed.null_completed_cnt,
+inner join completed_by.dept = incomplete_by.dept = null_completed.dept
+inner join completed_by.course = incomplete_by.course = null_completed.course
 order by completed_by.dept asc nulls first
 limit 100;
 
@@ -400,8 +402,6 @@ limit 100;
 #    `inner`/`left` on the SAME key; `full join a = b = c` chains one full group);
 #    `inner` and `left` mix freely. Do NOT `coalesce(x, 0)` a missing side just to
 #    force an inner-style pairing to run.
-#  - Prefer a scoped join over a model-level `merge`; never edit model files to
-#    wire a query-local join.
 """,
     ),
     SyntaxExample(

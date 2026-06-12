@@ -366,7 +366,7 @@
   {
     "id": 72,
     "grade": "hard",
-    "prompt": "For catalog sales in 1999 where the billing time recorded (not current) household demographic's buy potential is '>10000', the billing time recorded customer demographic (not current) marital status is 'D', and the sale took more than 5 days to ship, find all warehouse inventory for the same item in the same week sequence where the inventory quantity on hand was less than the catalog sales quantity. Return the item description, the warehouse name, the week sequence the item was sold in, and three counts of orders: those with no promotion, those with a promotion, and the total. Order the results by total orders descending (nulls first), then by item description, warehouse name, and week sequence (each nulls first). Limit to 100 rows."
+    "prompt": "For catalog sales in 1999 where the billing time recorded (not current) household demographic's buy potential is '>10000', the billing time recorded customer demographic (not current) marital status is 'D', and the sale took more than 5 days to ship, find all warehouse inventory for the same item in the same week sequence where the inventory quantity on hand was less than the catalog sales quantity. A sale is matched to inventory by item and week sequence only, regardless of which warehouse held the stock. Return the item description, the name of the warehouse that held the inventory, the week sequence the item was sold in, and three counts of order ids: those with no promotion, those with a promotion, and the total. Order the results by total orders descending (nulls first), then by item description, warehouse name, and week sequence (each nulls first). Limit to 100 rows."
   },
   {
     "id": 73,

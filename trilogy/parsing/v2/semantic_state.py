@@ -4,10 +4,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Never
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Modifier, Purpose
+from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
@@ -545,7 +546,23 @@ class ConceptLookup:
         deferred = self._deferred_placeholder(address)
         if deferred is not None:
             return deferred
-        return self._env.concepts[address]  # type: ignore[return-value]
+        try:
+            return self._env.concepts[address]  # type: ignore[return-value]
+        except UndefinedConceptException:
+            # The dict-level raise only sees concepts committed to
+            # ``environment.concepts``; named-statement (`rowset` / `with … as`)
+            # outputs staged this parse aren't committed until end-of-parse, so
+            # surface them via ``extra_keys`` — mirrors the select-finalize
+            # raise sites (`_staged_addresses`).
+            self._raise_undefined(address)
+
+    def _raise_undefined(self, address: str) -> Never:
+        staged = [c.address for c in self.values()]
+        matches = self._env.concepts._find_similar_concepts(address, extra_keys=staged)
+        message = f"Undefined concept: {address}."
+        if matches:
+            message += f" Suggestions: {matches}"
+        raise UndefinedConceptException(message, matches)
 
     def get(self, address: str) -> Concept | None:
         existing = self._existing_concept(address)

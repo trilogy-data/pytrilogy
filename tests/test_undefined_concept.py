@@ -166,3 +166,30 @@ def test_undefined_rowset_field_suggests_rowset_path(tmp_path):
     ), exc.value.suggestions
     # never echo the looked-up address itself
     assert "qual.order_number" not in exc.value.suggestions
+
+
+def test_undefined_cte_output_join_key_suggests_staged_path():
+    """A join-key reference that drops a CTE column's source namespace
+    (`y1999.item_id` for the staged `y1999.agg.item_id`) raises through the
+    dict-level lookup in `ConceptLookup.require`. The named-statement outputs are
+    staged (not yet committed) when the third statement fails, so the suggestion
+    must surface them via the staged candidate set — not just committed concepts."""
+    env = Environment()
+    env.parse(
+        "key id int;\n"
+        "property id.color string;\n"
+        "property id.name string;\n"
+        "datasource items (id:id, color:color, name:name) "
+        "grain (id) address items;"
+    )
+    with pytest.raises(UndefinedConceptException) as exc:
+        env.parse(
+            "with agg as select id as item_id, name as product_name "
+            "where color = 'red';\n"
+            "with y1999 as select agg.item_id, agg.product_name "
+            "where agg.item_id > 0;\n"
+            "select y1999.product_name "
+            "inner join y1999.item_id = y1999.item_id;\n"
+        )
+    assert exc.value.suggestions[0] == "y1999.agg.item_id", exc.value.suggestions
+    assert "y1999.item_id" not in exc.value.suggestions

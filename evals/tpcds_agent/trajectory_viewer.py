@@ -28,11 +28,12 @@ def _call_label(name: str, args: list[str]) -> str:
 
 
 def _extract_content(args: list[str]) -> str | None:
-    """The `--content` payload of a `trilogy file write`, if present."""
-    if "--content" in args:
-        i = args.index("--content")
-        if i + 1 < len(args):
-            return args[i + 1]
+    """The written payload of a `trilogy file write` — passed as `-c`/`--content`."""
+    for flag in ("--content", "-c"):
+        if flag in args:
+            i = args.index(flag)
+            if i + 1 < len(args):
+                return args[i + 1]
     return None
 
 
@@ -45,8 +46,22 @@ def _result_ok(output: str) -> bool:
     return True
 
 
+def _read_events(path: Path) -> list[dict]:
+    """Tolerant JSONL read — skip blank/half-written lines so a log that's still
+    being appended to (live run) parses cleanly up to the last complete record."""
+    events: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
 def parse_log(path: Path) -> dict:
-    events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    events = _read_events(path)
     meta: dict = {"task": "", "model": "", "provider": ""}
     timeline: list[dict] = []
     prompt = completion = total = iterations = tool_calls = 0
@@ -190,22 +205,34 @@ _HTML = r"""<!doctype html>
   .usage { font-size:11px; color:var(--muted); margin-top:6px; }
   .meta { color:var(--muted); font-size:13px; margin-bottom:14px; }
   .chev { color:var(--muted); font-size:11px; margin-left:auto; }
+  #live { font-size:10px; margin-left:6px; opacity:.5; transition:opacity .4s; }
+  #runbar { padding:12px 14px 4px; }
+  #runbar label { font-size:11px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
+  #runsel { width:100%; margin-top:5px; background:var(--panel2); color:var(--txt);
+            border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <div id="side"><h1>Runs</h1><div id="runs"></div></div>
+  <div id="side">
+    <div id="runbar"><label>Run<span id="live"></span></label><select id="runsel" onchange="onRunChange()"></select></div>
+    <div id="runs"></div>
+  </div>
   <div id="main"></div>
 </div>
 <script id="data" type="application/json">__DATA__</script>
 <script>
-const RUNS = JSON.parse(document.getElementById('data').textContent);
+let RUNS = JSON.parse(document.getElementById('data').textContent);
+let selectedName = RUNS.length ? RUNS[0].name : null;
+let lastPayload = null;
+let currentRun = null;   // which results dir we're viewing (null until runs.json loads)
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
 
-function renderRun(run){
+function renderRun(run, keepScroll){
   const m = run.metrics||{}, meta = run.meta||{};
   const main = document.getElementById('main');
+  const prevScroll = keepScroll ? main.scrollTop : 0;
   const rows = (m.ref_rows!=null||m.cand_rows!=null) ? `rows ${m.cand_rows??'?'}/${m.ref_rows??'?'} (cand/ref) · ` : '';
   let h = `<div class="meta">${badge(m.status)} &nbsp; <b>${esc(run.name)}</b> &nbsp;`
         + `${rows}iters ${m.iterations??'?'} · prompt_tok ${(m.prompt_tokens||0).toLocaleString()} · `
@@ -234,9 +261,13 @@ function renderRun(run){
     }
   }
   main.innerHTML = h;
-  main.scrollTop = 0;
+  main.scrollTop = prevScroll;
 }
 
+function markActive(){
+  document.querySelectorAll('.run').forEach(n=>
+    n.classList.toggle('active', RUNS[+n.dataset.i].name===selectedName));
+}
 function renderSide(){
   const el = document.getElementById('runs');
   el.innerHTML = RUNS.map((r,i)=>{
@@ -245,12 +276,61 @@ function renderSide(){
          + `<div class="sub">${m.iterations??'?'} iters · ${((m.prompt_tokens||0)/1e6).toFixed(2)}M tok</div></div>`;
   }).join('');
   el.querySelectorAll('.run').forEach(node=>{
-    node.onclick = ()=>{ el.querySelectorAll('.run').forEach(n=>n.classList.remove('active'));
-      node.classList.add('active'); renderRun(RUNS[+node.dataset.i]); };
+    node.onclick = ()=>{ selectedName = RUNS[+node.dataset.i].name; markActive();
+      renderRun(RUNS[+node.dataset.i], false); };
   });
+  markActive();
 }
-renderSide();
-if(RUNS.length){ document.querySelector('.run').classList.add('active'); renderRun(RUNS[0]); }
+// Swap in fresh data without losing the user's place: keep the selected run and
+// (for a background poll) its scroll position.
+function applyData(runs, keepScroll){
+  RUNS = runs;
+  if(!RUNS.some(r=>r.name===selectedName)) selectedName = RUNS.length ? RUNS[0].name : null;
+  renderSide();
+  const sel = RUNS.find(r=>r.name===selectedName);
+  if(sel) renderRun(sel, keepScroll);
+}
+function flashLive(){
+  const el = document.getElementById('live');
+  if(!el) return;
+  el.textContent = '● live'; el.style.color = 'var(--ok)'; el.style.opacity = '1';
+  setTimeout(()=>{ el.style.opacity = '.5'; }, 500);
+}
+async function loadData(){
+  try{
+    const q = currentRun ? ('?run=' + encodeURIComponent(currentRun)) : '';
+    const r = await fetch('data.json' + q, {cache:'no-store'});
+    if(!r.ok) return;
+    const txt = await r.text();
+    if(txt === lastPayload) return;   // unchanged — don't disrupt the view
+    lastPayload = txt;
+    flashLive();
+    applyData(JSON.parse(txt), true);
+  }catch(e){ /* opened as a static file or server gone — keep the baked snapshot */ }
+}
+// Populate the run-directory dropdown from sibling results dirs.
+async function loadRuns(){
+  try{
+    const r = await fetch('runs.json', {cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json();
+    if(currentRun === null) currentRun = j.current;
+    const sel = document.getElementById('runsel');
+    sel.innerHTML = j.runs.map(n =>
+      `<option value="${esc(n)}"${n===currentRun?' selected':''}>${esc(n)}</option>`).join('');
+    sel.value = currentRun;
+  }catch(e){ /* static file — hide the picker */
+    const bar = document.getElementById('runbar'); if(bar) bar.style.display='none'; }
+}
+function onRunChange(){
+  currentRun = document.getElementById('runsel').value;
+  selectedName = null; lastPayload = null;   // reset selection for the new run
+  loadData();
+}
+applyData(RUNS, false);
+loadRuns().then(loadData);
+setInterval(loadData, 4000);
+setInterval(loadRuns, 10000);
 </script>
 </body>
 </html>
@@ -279,10 +359,46 @@ def main() -> int:
         import functools
         import http.server
         import socketserver
+        import urllib.parse
 
-        handler = functools.partial(
-            http.server.SimpleHTTPRequestHandler, directory=str(args.results_dir)
-        )
+        results_dir = args.results_dir
+        root = results_dir.parent  # sibling run dirs live alongside us
+
+        def list_run_dirs() -> list[str]:
+            dirs = [
+                c
+                for c in root.iterdir()
+                if c.is_dir() and any(c.glob("agent_log.*.jsonl"))
+            ]
+            dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            return [p.name for p in dirs]
+
+        class _Handler(http.server.SimpleHTTPRequestHandler):
+            def _json(self, obj) -> None:
+                payload = json.dumps(obj).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def do_GET(self):
+                parsed = urllib.parse.urlparse(self.path)
+                if parsed.path == "/runs.json":
+                    self._json({"runs": list_run_dirs(), "current": results_dir.name})
+                    return
+                if parsed.path == "/data.json":
+                    # Re-read the chosen run's logs per request so a live (or
+                    # just-finished) run streams in — the page polls this.
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    name = (qs.get("run") or [results_dir.name])[0]
+                    target = root / name if name in list_run_dirs() else results_dir
+                    self._json(collect(target))
+                    return
+                super().do_GET()
+
+        handler = functools.partial(_Handler, directory=str(results_dir))
         with socketserver.TCPServer(("127.0.0.1", args.serve), handler) as httpd:
             print(f"serving http://127.0.0.1:{args.serve}/viewer.html  (ctrl-c to stop)")
             httpd.serve_forever()

@@ -1,7 +1,27 @@
 # Follow-up: undefined-concept suggestions can't see CTE / named-statement outputs
 
-**Status:** OPEN (found 2026-06-12, enriched eval q64 trajectory). A partial fix for
-the *ranking* half landed the same day; this doc is the remaining *candidate-set* half.
+**Status:** FIXED 2026-06-12 (both halves). The *ranking* half (partial-path
+subsequence match) and now the *candidate-set* half (this doc) are both done.
+
+## Fix (candidate-set half)
+
+The premise "the candidate is not in the candidate set" turned out to be a level
+deeper: named-statement (`rowset` / `with … as`) outputs ARE staged this parse — they
+live in `SemanticState._pending_by_address` and so are visible through
+`ConceptLookup.values()` (which merges pending + committed). They're just not yet
+*committed* to `environment.concepts`. The dict-level raise (`require`'s final fallback
+`self._env.concepts[address]` → `EnvironmentConceptDict.raise_undefined`) only consults
+committed `self.keys()`, so it never saw `y1999.agg.item_id`.
+
+Fix: `ConceptLookup.require` (`trilogy/parsing/v2/semantic_state.py`) now catches the
+dict-level `UndefinedConceptException` and re-raises via a new `_raise_undefined` that
+passes `extra_keys=[c.address for c in self.values()]` (the staged set) to
+`_find_similar_concepts` — exactly mirroring the `select_finalize` raise sites'
+`_staged_addresses` pattern. No back-ref-from-the-dict / incremental-commit needed; the
+parser-owned `ConceptLookup` already has the staged view.
+
+Tests: `tests/test_undefined_concept.py::test_undefined_cte_output_join_key_suggests_staged_path`
+(parse-level, the minimal repro below) plus the existing dict-level coverage.
 
 ## Symptom
 
