@@ -15,7 +15,7 @@ FROM
     INNER JOIN \"memory\".\"catalog_returns\" as \"cr_catalog_returns\" on \"cr_sales_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cr_catalog_returns\".\"CR_ORDER_NUMBER\"
 GROUP BY
     1),
-thoughtful as (
+questionable as (
 SELECT
     \"cr_sales_catalog_sales\".\"CS_ITEM_SK\" as \"cr_sales_item_id\",
     sum(\"cr_sales_catalog_sales\".\"CS_EXT_LIST_PRICE\") as \"cs_ui_sale\"
@@ -40,8 +40,8 @@ cooperative as (
 SELECT
     \"wakeful\".\"cr_sales_item_id\" as \"cs_ui_cs_ui_item_id\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"wakeful\" on \"thoughtful\".\"cr_sales_item_id\" = \"wakeful\".\"cr_sales_item_id\"
+    \"questionable\"
+    INNER JOIN \"wakeful\" on \"questionable\".\"cr_sales_item_id\" = \"wakeful\".\"cr_sales_item_id\"
 WHERE
     \"thoughtful\".\"cs_ui_sale\" > 2 * \"wakeful\".\"cs_ui_refund\"
 ),

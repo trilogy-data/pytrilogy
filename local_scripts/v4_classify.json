@@ -1,10 +1,5 @@
 [
   {
-    "node": "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: assert local.user_post_count@Grain<local.user_id> in [local.avg_user_post_count@Grain<Abstract>]"
-  },
-  {
     "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_in_projection",
     "bucket": "ROWS",
     "detail": "assert 'SELECT\\n   ...s \"label\"\\n)' not in '\\nWITH \\nqu...ical\" on 1=1'"
@@ -15,9 +10,14 @@
     "detail": "assert 'WITH' not in '\\nWITH \\nwa...   \"wakeful\"'"
   },
   {
-    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
+    "node": "tests/discovery/test_discovery.py::test_history_e2e_non_materialized_field",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Query is unresolvable: no complete sources found for output concepts {'local.total_customer_revenue'}. These concepts could only be resolved from pa"
+  },
+  {
+    "node": "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate",
     "bucket": "SHAPE",
-    "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...rful\" on 1=1'"
+    "detail": "AssertionError: assert local.user_post_count@Grain<local.user_id> in [local.avg_user_post_count@Grain<Abstract>]"
   },
   {
     "node": "tests/optimization/test_merge_basic.py::test_inline_filter_basic",
@@ -25,14 +25,9 @@
     "detail": "AssertionError: Expected no subquery, got:"
   },
   {
-    "node": "tests/discovery/test_discovery.py::test_history_e2e_non_materialized_field",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Query is unresolvable: no complete sources found for output concepts {'local.total_customer_revenue'}. These concepts could only be resolved from pa"
-  },
-  {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
     "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm"
+    "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...rful\" on 1=1'"
   },
   {
     "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
@@ -40,24 +35,14 @@
     "detail": "AssertionError:"
   },
   {
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm"
+  },
+  {
     "node": "tests/complex/test_rowset.py::test_rowset_alias_name_collision",
     "bucket": "SHAPE",
     "detail": "AssertionError: buyers_a.cust_id should project bill, sql was:"
-  },
-  {
-    "node": "tests/engine/test_sqlite.py::test_date_diff_rendering",
-    "bucket": "ROWS",
-    "detail": "assert 'datetime(' in 'SELECT\\n    date(\\'now\\') as \"today\"\\n'"
-  },
-  {
-    "node": "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having",
-    "bucket": "ROWS",
-    "detail": "assert 'CASE WHEN' not in '\\nWITH \\nqu..._orders\" asc'"
-  },
-  {
-    "node": "tests/stdlib/test_report.py::test_top_x_by_metric",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Expected amount 6.0"
   },
   {
     "node": "tests/persistence/test_basic_persistence.py::test_persist_with_where",
@@ -65,7 +50,27 @@
     "detail": "AssertionError: assert 'CASE' not in 'SELECT\\n\\tC...lse\\n\\tEND\\n'"
   },
   {
+    "node": "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having",
+    "bucket": "ROWS",
+    "detail": "assert 'CASE WHEN' not in '\\nWITH \\nqu..._orders\" asc'"
+  },
+  {
     "node": "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/stdlib/test_report.py::test_top_x_by_metric",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: Expected amount 6.0"
+  },
+  {
+    "node": "tests/engine/test_sqlite.py::test_date_diff_rendering",
+    "bucket": "ROWS",
+    "detail": "assert 'datetime(' in 'SELECT\\n    date(\\'now\\') as \"today\"\\n'"
+  },
+  {
+    "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -75,14 +80,9 @@
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.ord_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model (v4 discovery)."
   },
   {
-    "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
+    "node": "tests/modeling/gcat/test_gcat.py::test_join_discovery",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/engine/test_bigquery.py::test_date_diff_rendering",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert 'DATE_ADD(current_date(), INTERVAL -30 day)' in 'SELECT\\n    current_date() as `today`\\n\\n'"
   },
   {
     "node": "tests/modeling/gcat/test_gcat.py::test_join",
@@ -90,7 +90,7 @@
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Query is unresolvable: no complete sources found for output concepts {'vehicle.name'}. These concepts could only be resolved from partial sources."
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_join_discovery",
+    "node": "tests/modeling/gcat/test_gcat.py::test_equals_comparison",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -100,24 +100,14 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_equals_comparison",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two",
-    "bucket": "CRASH",
-    "detail": "ValueError: Invalid reference string found in query:"
-  },
-  {
-    "node": "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc02",
-    "bucket": "CRASH",
-    "detail": "SyntaxError: Missing source map entry for root_parent.id with pseudonyms {'local.recursive_parent'}, have map: {'local.title': {BuildDatasource(name='full', columns=[BuildColumnAssignment(alias='title"
-  },
-  {
     "node": "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order",
+    "bucket": "ROWS",
+    "detail": "assert 6 == 5"
   },
   {
     "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
@@ -125,14 +115,9 @@
     "detail": "assert 4 == 3"
   },
   {
-    "node": "tests/modeling/hackernews/test_hackernews_queries.py::test_adhoc03",
+    "node": "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two",
     "bucket": "CRASH",
-    "detail": "SyntaxError: Missing source map entry for root_parent.id with pseudonyms {'local.recursive_parent'}, have map: {'local.title': {BuildDatasource(name='full', columns=[BuildColumnAssignment(alias='title"
-  },
-  {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order",
-    "bucket": "ROWS",
-    "detail": "assert 6 == 5"
+    "detail": "ValueError: Invalid reference string found in query:"
   },
   {
     "node": "tests/modeling/rides_example/test_ride_example.py::test_example_model",
@@ -151,8 +136,13 @@
   },
   {
     "node": "tests/modeling/test_complex.py::test_in_select",
-    "bucket": "SHAPE",
-    "detail": "assert (4,) == (2,)"
+    "bucket": "XPASS",
+    "detail": ""
+  },
+  {
+    "node": "tests/engine/test_bigquery.py::test_date_diff_rendering",
+    "bucket": "ROWS",
+    "detail": "AssertionError: assert 'DATE_ADD(current_date(), INTERVAL -30 day)' in 'SELECT\\n    current_date() as `today`\\n\\n'"
   },
   {
     "node": "tests/modeling/stocks/test_stocks.py::test_calculated_field",
@@ -160,17 +150,12 @@
     "detail": "AssertionError: 3"
   },
   {
-    "node": "tests/modeling/stocks/test_stocks.py::test_provider_name",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
     "node": "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/usa_names/test_names.py::test_group_by_with_existing",
+    "node": "tests/modeling/stocks/test_stocks.py::test_provider_name",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -178,6 +163,11 @@
     "node": "tests/modeling/usa_names/test_names.py::test_filter_constant",
     "bucket": "SHAPE",
     "detail": "assert '< ( 0.1' in 'SELECT\\nFROM\\n    \"bigquery-public-data\".\"usa_names\".\"usa_1910_current\" as \"usa_names\"'"
+  },
+  {
+    "node": "tests/modeling/usa_names/test_names.py::test_group_by_with_existing",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
   },
   {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
@@ -195,9 +185,9 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three",
+    "bucket": "CRASH",
+    "detail": "KeyError: 'ds~store_sales_unified'"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twelve",
@@ -205,9 +195,9 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three",
-    "bucket": "CRASH",
-    "detail": "KeyError: 'ds~store_sales_unified'"
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt",
@@ -220,12 +210,12 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_nine",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -235,7 +225,7 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_nine",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -245,22 +235,17 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate",
-    "bucket": "ROWS",
-    "detail": "assert 0 == 2"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_four",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
     "bucket": "SHAPE",
-    "detail": "AssertionError: (2003, 2003, 534, 2003, 127)"
+    "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_four",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -270,9 +255,14 @@
     "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (540709, 286686, 171) != (540938, 286730, 171)"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
-    "bucket": "CRASH",
-    "detail": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\ethan\\\\coding_projects\\\\pytrilogy\\\\tests\\\\modeling\\\\tpc_ds_duckdb\\\\zquery_timing_amd64-intel64_family_6_model_183_stepping_1_genuineintel-16."
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate",
+    "bucket": "ROWS",
+    "detail": "assert 0 == 2"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: (2003, 2003, 534, 2003, 127)"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",

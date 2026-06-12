@@ -67,7 +67,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- modeling (non-TPC) sweep ---
     "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_equals_comparison": _MODELING,
-    "tests/modeling/gcat/test_gcat.py::test_join": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery_two": _MODELING,
     "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _MODELING,

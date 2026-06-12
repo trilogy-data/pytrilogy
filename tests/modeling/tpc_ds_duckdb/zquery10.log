@@ -14,10 +14,6 @@ SELECT
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_MOY\" in (1,2,3,4)
-
 UNION ALL
 SELECT
      'STORE'  as \"sales_channel\",
@@ -26,10 +22,6 @@ SELECT
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_MOY\" in (1,2,3,4)
-
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
@@ -76,27 +68,65 @@ WHERE
 GROUP BY
     1)
 SELECT
+    \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\" as \"sales_purchasing_customer_id\",
+    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"sales_purchasing_customer_demographics_credit_rating\",
+    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
+    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COUNT\" as \"sales_purchasing_customer_demographics_dependent_count\",
+    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
+    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"sales_purchasing_customer_demographics_education_status\",
     \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_GENDER\" as \"sales_purchasing_customer_demographics_gender\",
     \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"sales_purchasing_customer_demographics_marital_status\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"sales_purchasing_customer_demographics_education_status\",
-    count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt1\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" as \"sales_purchasing_customer_demographics_purchase_estimate\",
-    count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt2\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"sales_purchasing_customer_demographics_credit_rating\",
-    count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt3\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COUNT\" as \"sales_purchasing_customer_demographics_dependent_count\",
-    count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt4\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
-    count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt5\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
-    count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt6\"
+    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" as \"sales_purchasing_customer_demographics_purchase_estimate\"
 FROM
     \"memory\".\"customer\" as \"sales_purchasing_customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_purchasing_customer_address_customer_address\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"sales_purchasing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"sales_purchasing_customer_demographics_customer_demographics\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\" in (select questionable.\"store_buyers\" from questionable where questionable.\"store_buyers\" is not null) and \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"webcat_buyers\" from abundant where abundant.\"webcat_buyers\" is not null) and \"sales_purchasing_customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_GENDER\" is not null
+    \"sales_purchasing_customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_GENDER\" is not null and \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers\" from abundant where abundant.\"store_buyers\" is not null) and \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"webcat_buyers\" from abundant where abundant.\"webcat_buyers\" is not null)
+),
+vacuous as (
+SELECT
+    \"juicy\".\"sales_purchasing_customer_demographics_college_dependent_count\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
+    \"juicy\".\"sales_purchasing_customer_demographics_credit_rating\" as \"sales_purchasing_customer_demographics_credit_rating\",
+    \"juicy\".\"sales_purchasing_customer_demographics_dependent_count\" as \"sales_purchasing_customer_demographics_dependent_count\",
+    \"juicy\".\"sales_purchasing_customer_demographics_education_status\" as \"sales_purchasing_customer_demographics_education_status\",
+    \"juicy\".\"sales_purchasing_customer_demographics_employed_dependent_count\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
+    \"juicy\".\"sales_purchasing_customer_demographics_gender\" as \"sales_purchasing_customer_demographics_gender\",
+    \"juicy\".\"sales_purchasing_customer_demographics_marital_status\" as \"sales_purchasing_customer_demographics_marital_status\",
+    \"juicy\".\"sales_purchasing_customer_demographics_purchase_estimate\" as \"sales_purchasing_customer_demographics_purchase_estimate\",
+    \"juicy\".\"sales_purchasing_customer_id\" as \"sales_purchasing_customer_id\"
+FROM
+    \"juicy\"
+WHERE
+    \"juicy\".\"sales_purchasing_customer_id\" in (select abundant.\"store_buyers\" from abundant where abundant.\"store_buyers\" is not null) and \"juicy\".\"sales_purchasing_customer_id\" in (select abundant.\"webcat_buyers\" from abundant where abundant.\"webcat_buyers\" is not null)
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9)
+SELECT
+    \"vacuous\".\"sales_purchasing_customer_demographics_gender\" as \"sales_purchasing_customer_demographics_gender\",
+    \"vacuous\".\"sales_purchasing_customer_demographics_marital_status\" as \"sales_purchasing_customer_demographics_marital_status\",
+    \"vacuous\".\"sales_purchasing_customer_demographics_education_status\" as \"sales_purchasing_customer_demographics_education_status\",
+    count(\"vacuous\".\"sales_purchasing_customer_id\") as \"cnt1\",
+    \"vacuous\".\"sales_purchasing_customer_demographics_purchase_estimate\" as \"sales_purchasing_customer_demographics_purchase_estimate\",
+    count(\"vacuous\".\"sales_purchasing_customer_id\") as \"cnt2\",
+    \"vacuous\".\"sales_purchasing_customer_demographics_credit_rating\" as \"sales_purchasing_customer_demographics_credit_rating\",
+    count(\"vacuous\".\"sales_purchasing_customer_id\") as \"cnt3\",
+    \"vacuous\".\"sales_purchasing_customer_demographics_dependent_count\" as \"sales_purchasing_customer_demographics_dependent_count\",
+    count(\"vacuous\".\"sales_purchasing_customer_id\") as \"cnt4\",
+    \"vacuous\".\"sales_purchasing_customer_demographics_employed_dependent_count\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
+    count(\"vacuous\".\"sales_purchasing_customer_id\") as \"cnt5\",
+    \"vacuous\".\"sales_purchasing_customer_demographics_college_dependent_count\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
+    count(\"vacuous\".\"sales_purchasing_customer_id\") as \"cnt6\"
+FROM
+    \"vacuous\"
 GROUP BY
     1,
     2,
@@ -107,11 +137,11 @@ GROUP BY
     11,
     13
 ORDER BY 
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_GENDER\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COUNT\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" asc"""
+    \"vacuous\".\"sales_purchasing_customer_demographics_gender\" asc,
+    \"vacuous\".\"sales_purchasing_customer_demographics_marital_status\" asc,
+    \"vacuous\".\"sales_purchasing_customer_demographics_education_status\" asc,
+    \"vacuous\".\"sales_purchasing_customer_demographics_purchase_estimate\" asc,
+    \"vacuous\".\"sales_purchasing_customer_demographics_credit_rating\" asc,
+    \"vacuous\".\"sales_purchasing_customer_demographics_dependent_count\" asc,
+    \"vacuous\".\"sales_purchasing_customer_demographics_employed_dependent_count\" asc,
+    \"vacuous\".\"sales_purchasing_customer_demographics_college_dependent_count\" asc"""

@@ -43,6 +43,28 @@ NOT the right axis: gating on `concept.derivation` (WINDOW/UNNEST/…) over-broa
 broke `test_window_over_rollup_preserves_grouping_rows`, which legitimately
 carries a WINDOW result. The discriminator is existence-vs-row, not derivation.
 
+### FIXED 2026-06-11 — C3 merge-key partial output (gcat test_join)
+`UnresolvableQueryException: no complete sources found for output concepts
+{'vehicle.name'}`. `vehicle.name` is bound in `launch_info` only as the
+`~vehicle.name` merge key (partial column), so the v4 bridge carried it partially
+and the final-output guard (`query_processor.py:532`) rejected it. v3 *also*
+picks `launch_info` from the graph search but its outer sourcing loop then
+**completes** the partial key against its dimension home (`lv_info`) and joins.
+Mirrored that in v4: new `_complete_partial_requested` (source_planning.py) runs
+on a strict (non-partial) bridge attempt -- finds requested outputs still bound
+partially, sources them with `STRICT_SOURCE_POLICY`, and anchors the complete
+(and filter-carrying) dimension via an outer-join merge (v3's
+`lv_info LEFT JOIN launch_info` shape). Guards: only when a *complete* source
+exists (else unchanged -> genuinely-partial stays for the partial passes); the
+WHERE is carried to the completion only when all its columns are among the keys
+being completed (so the unfiltered dimension can't re-introduce excluded keys);
+and a `SourceRequest.complete_partials=False` flag on the completion sub-call
+prevents infinite re-entry when a concept has no complete source (caught a
+`test_filter_sector_two` RecursionError regression). Removed from
+v4_known_failing. NOTE: the *other* C3 crash (`test_history_e2e_non_materialized_field`)
+is a different mechanism (`partial ... complete where customer_id=2` datasource
+under a `name='Sarah'` filter -- needs implies-reasoning) and is still open.
+
 ## Genuine gaps, clustered by root cause
 
 ### C1 — merge / rowset fan-out (wrong rows) — 4
@@ -75,14 +97,28 @@ through its recursive origin. Two bugs in `source_planning.py` (v4-only):
    Now always carries grain keys (the join column).
 adhoc02/03 assert WITH RECURSIVE + `"1=1" not in`; both removed from v4_known_failing.
 
-### C3 — partial-source / namespaced-property-without-key crash — 3
+### C3 — partial-source / namespaced-property-without-key crash — 1 (was 3)
 `UnresolvableQueryException: … could only be resolved from partial sources` /
 `NoDatasourceException`. A namespaced property is bound but its key has no
 datasource. `cases/namespaced_property_without_key_datasource.preql` exists and
 passes, so the *base* shape is fixed — these are remaining triggers it doesn't cover.
-- `discovery/test_discovery.py::test_history_e2e_non_materialized_field` (total_customer_revenue)
-- `modeling/gcat/test_gcat.py::test_join` (vehicle.name)
-- `engine/demo/test_demo_duckdb.py::test_demo_e2e` (passenger.cabin@Grain<passenger.id>)
+- ~~`modeling/gcat/test_gcat.py::test_join` (vehicle.name)~~ FIXED — merge-key
+  partial-output completion (see FIXED note above).
+- `discovery/test_discovery.py::test_history_e2e_non_materialized_field`
+  (total_customer_revenue) — STILL OPEN, different mechanism: a
+  `partial ... complete where customer_id=2` datasource under a `name='Sarah'`
+  filter; needs the planner to see Sarah⇒id=2 (implies the non_partial_for).
+
+### UNTRACKED pre-existing v4 baseline failures (found in 2026-06-11 sweep)
+Not in `v4_known_failing.py`, but fail on a clean baseline too (verified via
+`git stash`) — so they are real v4 gaps the list is missing, NOT regressions:
+- `tpc_ds_duckdb/test_queries.py`: test_twenty_nine (ValueError), test_forty_six,
+  test_fifty_four, test_sixty_eight, test_seventy_seven, test_ninety_seven_two
+- `engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by`
+  (the NULL-CASE-over-rollup-key dim baseline fail noted earlier)
+- `modeling/geography/test_landmark_updates.py::test_exact_match_resolution`,
+  `…::test_exact_match_with_parenthetical_extra_filter`
+These should be added to the tracking list or fixed.
 
 ### C4 — "Invalid reference string" crash (ValueError) — 2
 - `modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two`

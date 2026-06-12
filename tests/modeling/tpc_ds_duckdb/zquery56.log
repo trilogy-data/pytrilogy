@@ -1,19 +1,21 @@
 query_id = "56"
-generator = "v3"
-gen_length = 3311
+generator = "v4"
+gen_length = 3666
 preql_size = 445
 comp_size = 1857
 generated_sql = """
 
 WITH 
-abundant as (
+uneven as (
 SELECT
-    \"sales_item_items\".\"I_ITEM_ID\" as \"color_ids\"
+    CASE WHEN \"sales_item_items\".\"I_COLOR\" in ('slate','blanched','burnished') THEN \"sales_item_items\".\"I_ITEM_ID\" ELSE NULL END as \"color_ids\"
 FROM
-    \"memory\".\"item\" as \"sales_item_items\"
-WHERE
-    \"sales_item_items\".\"I_COLOR\" in ('slate','blanched','burnished')
-
+    \"memory\".\"item\" as \"sales_item_items\"),
+yummy as (
+SELECT
+    \"uneven\".\"color_ids\" as \"color_ids\"
+FROM
+    \"uneven\"
 GROUP BY
     1),
 thoughtful as (
@@ -26,7 +28,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"color_ids\" from abundant where abundant.\"color_ids\" is not null)
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select yummy.\"color_ids\" from yummy where yummy.\"color_ids\" is not null)
 
 UNION ALL
 SELECT
@@ -38,7 +40,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"color_ids\" from abundant where abundant.\"color_ids\" is not null)
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select yummy.\"color_ids\" from yummy where yummy.\"color_ids\" is not null)
 
 UNION ALL
 SELECT
@@ -50,16 +52,25 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"color_ids\" from abundant where abundant.\"color_ids\" is not null)
-)
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select yummy.\"color_ids\" from yummy where yummy.\"color_ids\" is not null)
+),
+abundant as (
 SELECT
-    \"thoughtful\".\"sales_item_text_id\" as \"sales_item_text_id\",
-    sum(\"thoughtful\".\"sales_ext_sales_price\") as \"total_sales\"
+    \"thoughtful\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"thoughtful\".\"sales_item_text_id\" as \"sales_item_text_id\"
 FROM
-    \"thoughtful\"
+    \"thoughtful\")
+SELECT
+    \"abundant\".\"sales_item_text_id\" as \"sales_item_text_id\",
+    sum(\"abundant\".\"sales_ext_sales_price\") as \"total_sales\"
+FROM
+    \"abundant\"
+WHERE
+    \"abundant\".\"sales_item_text_id\" in (select yummy.\"color_ids\" from yummy where yummy.\"color_ids\" is not null)
+
 GROUP BY
     1
 ORDER BY 
     \"total_sales\" asc nulls first,
-    \"thoughtful\".\"sales_item_text_id\" asc nulls first
+    \"abundant\".\"sales_item_text_id\" asc nulls first
 LIMIT (100)"""

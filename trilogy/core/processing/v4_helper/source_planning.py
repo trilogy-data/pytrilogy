@@ -68,6 +68,10 @@ class SourceRequest:
     conditions: BuildWhereClause | None = None
     depth: int = 0
     source_policy: SourcePolicy = STRICT_SOURCE_POLICY
+    # False inside a partial-completion sub-call, so completing a partial output
+    # cannot re-enter `_complete_partial_requested` on itself (infinite loop when
+    # the concept has no complete source).
+    complete_partials: bool = True
 
 
 @dataclass(frozen=True)
@@ -729,6 +733,68 @@ def _merge_component_sources(
     )
 
 
+def _complete_partial_requested(
+    request: SourceRequest, node: StrategyNode
+) -> StrategyNode:
+    """Upgrade a requested output that the bridge could only bind *partially*.
+
+    On a strict (non-partial) pass a bridge can still carry a requested concept
+    as a partial column -- e.g. the `~vehicle.name` merge key on `launch_info`:
+    every launch has one, but the column is not vehicle.name's authoritative
+    domain, so it is flagged partial and the final-output guard rejects it. v3's
+    sourcing loop completes such a key against its dimension source (`lv_info`)
+    and joins; mirror that here. If no *complete* source exists the node is left
+    unchanged -- the genuinely-partial case stays for the partial passes / guard.
+    """
+    requested = {c.address for c in _requested_concepts(request)}
+    partial_requested = [c for c in node.partial_concepts if c.address in requested]
+    if not partial_requested:
+        return node
+    partial_addresses = {c.address for c in partial_requested}
+    # Carry the WHERE onto the completing dimension when every column it
+    # references is one we are completing (e.g. `vehicle.name like '%Falcon%'`);
+    # otherwise the unfiltered dimension would re-introduce keys the bridge's
+    # filter excluded. If the filter spans other columns the completion source
+    # cannot satisfy it, so leave it on the bridge side only.
+    completion_conditions = None
+    if (
+        request.conditions is not None
+        and {c.address for c in request.conditions.row_arguments} <= partial_addresses
+    ):
+        completion_conditions = request.conditions
+    completion = plan_source(
+        SourceRequest(
+            outputs=partial_requested,
+            environment=request.environment,
+            graph=request.graph,
+            history=request.history,
+            conditions=completion_conditions,
+            depth=request.depth + 1,
+            source_policy=STRICT_SOURCE_POLICY,
+            complete_partials=False,
+        )
+    )
+    if completion is None:
+        return node
+    completion_partial = {c.address for c in completion.partial_concepts}
+    if any(c.address in completion_partial for c in partial_requested):
+        return node
+    inputs = unique(
+        [c for parent in (completion, node) for c in parent.usable_outputs],
+        "address",
+    )
+    # Anchor the complete (and filtered) dimension and outer-join the bridge, so
+    # the requested key is non-partial and every surviving dimension value is
+    # kept -- matching v3's `lv_info LEFT JOIN launch_info` shape.
+    return MergeNode(
+        input_concepts=inputs,
+        output_concepts=node.output_concepts,
+        environment=request.environment,
+        parents=[completion, node],
+        depth=request.depth,
+    )
+
+
 def _bridge_parents_cover(parents: list[StrategyNode], required: set[str]) -> bool:
     """Every requested concept is actually emitted by some bridge datasource.
 
@@ -951,7 +1017,17 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 attempt.accepts_partial
                 or _bridge_parents_cover(parents, requested_addresses)
             ):
-                return _merge_component_sources(request, parents, bridge_plan.concepts)
+                merged = _merge_component_sources(
+                    request, parents, bridge_plan.concepts
+                )
+                if (
+                    merged is not None
+                    and not attempt.accepts_partial
+                    and request.complete_partials
+                ):
+                    merged = _complete_partial_requested(request, merged)
+                if merged is not None:
+                    return merged
         direct = _direct_source(request, attempt)
         if direct is not None:
             return direct
