@@ -486,6 +486,7 @@ def gen_enrichment_node(
     log_lambda,
     history: History,
     conditions: BuildWhereClause | None = None,
+    partial_concepts: List[BuildConcept] | None = None,
 ):
     local_opts = LooseBuildConceptList(concepts=local_optional)
 
@@ -550,6 +551,7 @@ def gen_enrichment_node(
         force_group=False,
         preexisting_conditions=conditions.conditional if conditions else None,
         depth=depth,
+        partial_concepts=partial_concepts,
     )
 
 

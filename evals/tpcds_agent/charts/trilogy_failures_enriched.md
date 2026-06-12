@@ -1,40 +1,149 @@
-# Trilogy failure analysis — 20260611-133359
+# Trilogy failure analysis — 20260611-141606
 
-- Run `20260611-133358_enriched` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 240 | failed: 35 (15%)
+- Run `20260611-141606_enriched` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 326 | failed: 68 (21%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 13 | 37% |
-| `syntax-parse` | 12 | 34% |
-| `undefined-concept` | 3 | 9% |
-| `cli-misuse` | 3 | 9% |
-| `syntax-missing-alias` | 2 | 6% |
-| `join-resolution` | 1 | 3% |
-| `type-error` | 1 | 3% |
+| `other` | 30 | 44% |
+| `syntax-parse` | 27 | 40% |
+| `undefined-concept` | 6 | 9% |
+| `join-resolution` | 2 | 3% |
+| `syntax-missing-alias` | 2 | 3% |
+| `file-not-found` | 1 | 1% |
 
 ## Detail
 
 ### `other`
 
+- `trilogy file read raw/catalog_store_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
 - `trilogy file read raw/physical_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run --import raw.physical_sales:sales auto ref_avg <- avg(sales.net_profit ? sales.store.id = 1 and sales.sale_address.id is null) by *; select count(sales.item.id) as num_items where sales.store.id = 1 and (avg(sales.net_profit ? sales.store.id = 1) by sales.item.id) > 0.9 * ref_avg;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.physical_sales:sales auto ref_avg <- avg(sales.net_profit ? sales.store.id = 1 and sales.sale_address.id is null) by * ; auto item_a…vg(sales.net_profit ? sales.store.id = 1) by sales.item.id; select count(sales.item.id) as cnt where sales.store.id = 1 and item_avg > 0.9 * ref_avg;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.physical_sales:sales auto ref_avg <- avg(sales.net_profit ? sales.store.id = 1 and sales.sale_address.id is null) by * ; auto item_a…avg asc) as rnk_asc, rank(sales.item.id) over (order by item_avg desc) as rnk_desc where sales.store.id = 1 having item_avg > 0.9 * ref_avg limit 20;`
+
+  ```text
+
   ```
 - `trilogy run query44.preql`
 
   ```text
 
   ```
-- `trilogy file read query46.preql`
+- `trilogy file read query44.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read query54.preql`
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+
+  ```
+- `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -42,14 +151,9 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 110 column 13 (char 3910). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 91 (char 90). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read query72.preql`
+- `trilogy file read query75.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -59,27 +163,7 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/all_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read query84.preql`
+- `trilogy file read raw/customer.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -87,41 +171,99 @@
 
 ### `syntax-parse`
 
-- `trilogy file write query44.preql --content import raw.physical_sales as physical_sales;
+- `trilogy file write query44.preql -e -c import raw.physical_sales as sales;
 
-# Store 1 only
-where physical_sales.store.id = 1
+# Reference average net profit at store 1 where sale's address key is null
+auto r…best_rn.rank = worst_rn.rank
+where best_rn.rank <= 10
+order by rank asc,
+         best_product_name desc,
+         worst_product_name desc
+limit 100;`
 
-# Define the thres…_avg_profit > 0.9 * address_null_avg_profit
+  ```text
+
+  ```
+- `trilogy file write query44.preql -e -c import raw.physical_sales as sales;
+
+# Reference average net profit at store 1 where sale's address key is null
+auto r…rn.rank <= 10
+inner join best_rn.rank = worst_rn.rank
+order by rank asc,
+         best_product_name desc,
+         worst_product_name desc
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.physical_sales:sales auto ref_avg <- avg(sales.net_profit ? sales.store.id = 1 and sales.sale_address.id is null) by *; auto item_av…item_avg where sales.store.id = 1 having item_avg > 0.9 * ref_avg; select best_rn.rank, best_rn.product_name from best_rn order by rank asc limit 15;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import raw.phys…lesale_cost) as total_wholesale_cost,
+  sum(ps.ext_list_price) as total_list_price,
+  sum(ps.coupon_amt) as total_coupon_amt
+order by 1, 2
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import raw.phys…lesale_cost) as total_wholesale_cost,
+  sum(ps.ext_list_price) as total_list_price,
+  sum(ps.coupon_amt) as total_coupon_amt
+order by 1, 2
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+# Build item-l…lesale_cost) as total_wholesale_cost,
+  sum(ps.ext_list_price) as total_list_price,
+  sum(ps.coupon_amt) as total_coupon_amt
+order by 1, 2
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+# Build item-l…lesale_cost) as total_wholesale_cost,
+  sum(ps.ext_list_price) as total_list_price,
+  sum(ps.coupon_amt) as total_coupon_amt
+order by 1, 2
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+# Build item-l…marital_status
+  
+inner join cat_sales_agg.item_id = cat_returns_agg.item_id
 
 select
-    physical_sales.item.product_name,
-    item_avg_profit
-order by item_avg_profit asc
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/item:item select item.category, item.class, count(item.id) as cnt by item.category, item.class where item.category='Women' and item.class='maternity' limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query54.preql --content import raw.catalog_sales as cat;
-import raw.web_sales as web;
-import raw.physical_sales as store;
-
-# Customers who…t_qualifying.cust_id is not null
-  union
-  select web_qualifying.cust_id as cust_id
-  from web_qualifying
-  where web_qualifying.cust_id is not null;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.physical_sales:store select store.customer.id, sum(store.ext_sales_price) as total where store.date.month_seq between 1188 and 1190 …atalog_sales.item.class='maternity') and store.store.county=store.customer.address.county and store.store.state=store.customer.address.state limit 5;`
+  year(ps.date.date) as sale_year,
+  count(*) as cnt
+order by 1;`
 
   ```text
 
@@ -129,10 +271,11 @@ import raw.physical_sales as store;
 - `trilogy file write query64.preql --content import raw.physical_sales as ps;
 import raw.catalog_sales as cs;
 import raw.catalog_returns as cr;
-import raw.phys…000,
-    y2000.line_cnt as cnt2000
-order by y1999.product_name, y1999.store_name, y2000.line_cnt, y1999.wholesale_sum, y2000.wholesale_sum
-limit 100;`
+
+# Build item-l…on as coup_2000,
+  2000 as yr_2000,
+  agg_2000.line_cnt as cnt_2000
+order by 1, 2, agg_2000.line_cnt, agg_1999.tot_wholesale, agg_2000.tot_wholesale;`
 
   ```text
 
@@ -140,10 +283,11 @@ limit 100;`
 - `trilogy file write query64.preql --content import raw.physical_sales as ps;
 import raw.catalog_sales as cs;
 import raw.catalog_returns as cr;
-import raw.phys…000,
-    y2000.line_cnt as cnt2000
-order by y1999.product_name, y1999.store_name, y2000.line_cnt, y1999.wholesale_sum, y2000.wholesale_sum
-limit 100;`
+
+# Build item-l…on as coup_2000,
+  2000 as yr_2000,
+  agg_2000.line_cnt as cnt_2000
+order by 1, 2, agg_2000.line_cnt, agg_1999.tot_wholesale, agg_2000.tot_wholesale;`
 
   ```text
 
@@ -151,64 +295,220 @@ limit 100;`
 - `trilogy file write query64.preql --content import raw.physical_sales as ps;
 import raw.catalog_sales as cs;
 import raw.catalog_returns as cr;
-import raw.phys…000,
-    y2000.line_cnt as cnt2000
-order by y1999.product_name, y1999.store_name, y2000.line_cnt, y1999.wholesale_sum, y2000.wholesale_sum
+
+# Build item-l…on as coup_2000,
+  2000 as yr_2000,
+  agg_2000.line_cnt as cnt_2000
+order by 1, 2, agg_2000.line_cnt, agg_1999.tot_wholesale, agg_2000.tot_wholesale;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+# Build item-l…on as coup_2000,
+  2000 as yr_2000,
+  agg_2000.line_cnt as cnt_2000
+order by 1, 2, agg_2000.line_cnt, agg_1999.tot_wholesale, agg_2000.tot_wholesale;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…agg_2000.tcoupon as coup_2000,
+  2000 as yr_2000,
+  agg_2000.lcnt as cnt_2000
+order by 1, 2, agg_2000.lcnt, agg_1999.twholesale, agg_2000.twholesale;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…agg_2000.tcoupon as coup_2000,
+  2000 as yr_2000,
+  agg_2000.lcnt as cnt_2000
+order by 1, 2, agg_2000.lcnt, agg_1999.twholesale, agg_2000.twholesale;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…agg_2000.tcoupon as coup_2000,
+  2000 as yr_2000,
+  agg_2000.lcnt as cnt_2000
+order by 1, 2, agg_2000.lcnt, agg_1999.twholesale, agg_2000.twholesale;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…000.tw as w00,
+  agg_2000.tl as l00,
+  agg_2000.tc as cp00,
+  2000 as y00,
+  agg_2000.lc as c00
+order by 1, 2, agg_2000.lc, agg_1999.tw, agg_2000.tw;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…000.tw as w00,
+  agg_2000.tl as l00,
+  agg_2000.tc as cp00,
+  2000 as y00,
+  agg_2000.lc as c00
+order by 1, 2, agg_2000.lc, agg_1999.tw, agg_2000.tw;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…w99,
+  agg_1999.tl as l99,
+  agg_1999.tc as cp99,
+  agg_2000.tw as w00,
+  agg_2000.tl as l00,
+  agg_2000.tc as cp00,
+  agg_2000.lc as c00
+order by 1;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…w99,
+  agg_1999.tl as l99,
+  agg_1999.tc as cp99,
+  agg_2000.tw as w00,
+  agg_2000.tl as l00,
+  agg_2000.tc as cp00,
+  agg_2000.lc as c00
+order by 1;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.physical_sales as ps;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+
+rowset cat_sal…;
+
+# Items in both years
+inner join items_1999.iid = items_2000.iid
+inner join items_1999.sn = items_2000.sn
+inner join items_1999.sz = items_2000.sz`
+
+  ```text
+
+  ```
+- `trilogy file write query72.preql --content import raw.catalog_sales as catalog_sales;
+import raw.inventory as inventory;
+
+where catalog_sales.sold_date.year …otal_orders desc nulls first,
+    item_description asc nulls first,
+    warehouse_name asc nulls first,
+    week_sequence asc nulls first
+
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query77.preql --content import raw.all_sales as all;
+- `trilogy file write query75.preql --content import raw.all_sales as all_sales;
 
-# Filter sales sold in the period, only include recorded outlets
-where all.date.date…te between '2000-08-23'::date and '2000-09-22'::date, 0)) as profit
-order by channel asc nulls first, outlet asc nulls first, returns desc
+# Only Books category
+where all_sales.item.category = 'Books'
+
+# Per-line net …_qty,
+    y2002.qty_2002 - y2001.qty_2001 as qty_diff,
+    y2002.amt_2002 - y2001.amt_2001 as amt_diff
+order by qty_diff asc, amt_diff asc
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query77.preql --content import raw.all_sales as all;
+- `trilogy file write query75.preql --content import raw.all_sales as all_sales;
 
-def rl(metric) -> sum(metric) by rollup
-    (case
-        when all.sales_channel = '…te between '2000-08-23'::date and '2000-09-22'::date, 0)) as profit
-order by channel asc nulls first, outlet asc nulls first, returns desc
+# Only Books category
+where all_sales.item.category = 'Books'
+
+# Per-line net …_qty,
+    y2002.qty_2002 - y2001.qty_2001 as qty_diff,
+    y2002.amt_2002 - y2001.amt_2001 as amt_diff
+order by qty_diff asc, amt_diff asc
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query77.preql --content import raw.all_sales as all;
+- `trilogy file write query75.preql --content import raw.all_sales as all_sales;
 
-def rl(metric) -> sum(metric) by rollup
-    (case
-        when all.sales_channel = '…te between '2000-08-23'::date and '2000-09-22'::date, 0)) as profit
-order by channel asc nulls first, outlet asc nulls first, returns desc
+# Per-line net sales (row level before aggregation)
+auto net_qty <- all_sales.…_qty,
+    y2002.qty_2002 - y2001.qty_2001 as qty_diff,
+    y2002.amt_2002 - y2001.amt_2001 as amt_diff
+order by qty_diff asc, amt_diff asc
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query77.preql --content import raw.all_sales as all;
+- `trilogy file write query75.preql --content import raw.all_sales as all_sales;
 
-# Filter sales sold in the period, only include recorded outlets
-where all.date.date…B' then 'web channel'
-        end),
-        all.outlet_id as profit
-order by channel asc nulls first, outlet asc nulls first, returns desc
+# Per-line net sales (concepts defined at row level, before aggregation)
+auto …_qty,
+    y2002.qty_2002 - y2001.qty_2001 as qty_diff,
+    y2002.amt_2002 - y2001.amt_2001 as amt_diff
+order by qty_diff asc, amt_diff asc
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query84.preql --content import raw.customer as customer;
-import raw.physical_returns as store_return;
+- `trilogy file write query75.preql --content import raw.all_sales as all_sales;
 
-# Match: customer's current demogra…stomer.text_id as customer_code,
-    concat(customer.last_name, ', ', customer.first_name) as full_name
-order by customer_code nulls first
+# Per-line net sales (concepts defined at row level, before aggregation)
+auto …_qty,
+    y2002.qty_2002 - y2001.qty_2001 as qty_diff,
+    y2002.amt_2002 - y2001.amt_2001 as amt_diff
+order by qty_diff asc, amt_diff asc
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query75.preql --content import raw.all_sales as all_sales;
+
+# Per-line net sales (concepts defined at row level, before aggregation)
+auto …2001 as amt_diff
+having cast(y2002.qty_2002 as float) / nullif(cast(y2001.qty_2001 as float), 0) < 0.9
+order by qty_diff asc, amt_diff asc
 limit 100;`
 
   ```text
@@ -217,12 +517,12 @@ limit 100;`
 
 ### `undefined-concept`
 
-- `trilogy run query29.preql`
+- `trilogy run query68.preql`
 
   ```text
 
   ```
-- `trilogy run query54.preql`
+- `trilogy run --import raw/catalog_sales:catalog_sales select catalog_sales.item.id, catalog_sales.order_number, promotion.id limit 5;`
 
   ```text
 
@@ -232,33 +532,17 @@ limit 100;`
   ```text
 
   ```
-
-### `cli-misuse`
-
-- `trilogy explore raw/store_sales.preql`
-
-  ```text
-  Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
-  ```
-- `trilogy explore raw/store_sales.preql`
-
-  ```text
-  Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
-  ```
-- `trilogy explore raw/store_sales.preql`
-
-  ```text
-  Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
-  ```
-
-### `syntax-missing-alias`
-
-- `trilogy run --import raw/item:item select item.category, item.class, count(item.id) by item.category, item.class where item.category='Women' and item.class='maternity' limit 10;`
+- `trilogy run query75.preql`
 
   ```text
 
   ```
-- `trilogy run --import raw.catalog_sales:cs select cs.promotion.id, count(cs.line_item) where cs.promotion.id is null and cs.sold_date.year = 1999 limit 5;`
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
 
   ```text
 
@@ -271,10 +555,28 @@ limit 100;`
   ```text
 
   ```
+- `trilogy run query84.preql duckdb`
 
-### `type-error`
+  ```text
 
-- `trilogy run query77.preql`
+  ```
+
+### `syntax-missing-alias`
+
+- `trilogy run --import raw.physical_sales:sales select sales.store.id, sales.store.name, count(sales.item.id) where sales.store.id = 1;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw/physical_sales:ps select ps.store.id, ps.date.year, ps.date.quarter, ps.item.category, count(ps.line_item), sum(ps.ext_sales_price) where ps.store.id is null limit 5;`
+
+  ```text
+
+  ```
+
+### `file-not-found`
+
+- `trilogy run query82.preql`
 
   ```text
 

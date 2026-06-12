@@ -8,7 +8,10 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.node_generators.common import unsatisfied_optionals
+from trilogy.core.processing.node_generators.common import (
+    gen_enrichment_node,
+    unsatisfied_optionals,
+)
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -16,7 +19,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
     UnionNode,
 )
-from trilogy.core.processing.utility import padding
+from trilogy.core.processing.utility import create_log_lambda, padding
 
 LOGGER_PREFIX = "[GEN_UNION_SELECT_NODE]"
 
@@ -124,25 +127,17 @@ def gen_union_select_node(
     if not unsatisfied_optionals(local_optional, node):
         return node
 
-    enrich_node = source_concepts(
-        mandatory_list=list(ordered_outputs) + local_optional,
+    # Enrich via the shared machinery: source the join keys (the union outputs)
+    # plus the missing optionals and FULL-merge them back onto the union.
+    return gen_enrichment_node(
+        node,
+        join_keys=list(ordered_outputs),
+        local_optional=local_optional,
         environment=environment,
         g=g,
-        depth=depth + 1,
+        depth=depth,
+        source_concepts=source_concepts,
+        log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
         history=history,
         conditions=conditions,
-    )
-    if not enrich_node:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} could not enrich union node; "
-            "returning base"
-        )
-        return node
-
-    return MergeNode(
-        input_concepts=enrich_node.output_concepts + node.output_concepts,
-        output_concepts=node.output_concepts + local_optional,
-        environment=environment,
-        depth=depth,
-        parents=[node, enrich_node],
     )
