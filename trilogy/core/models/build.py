@@ -3538,7 +3538,14 @@ class Factory:
         # entry is the source built as ITSELF (its own identity), pointed at the
         # canonical target as a pseudonym.
         for source_addr, canonical_addr in self.scoped_merge_map.items():
-            src = base.concepts.data.get(source_addr)
+            # Build the source as ITSELF. For a query-scoped join the author
+            # concepts dict still holds the source under its own address. For a
+            # GLOBAL merge, `merge_concept` rewrote `concepts[source] = target`,
+            # so concepts.data would hand back the target — the original source
+            # only survives in alias_origin_lookup; prefer that.
+            src = base.alias_origin_lookup.get(source_addr) or base.concepts.data.get(
+                source_addr
+            )
             if src is None:
                 continue
             # For a merge-style source (INNER, or a LEFT derived key), build the

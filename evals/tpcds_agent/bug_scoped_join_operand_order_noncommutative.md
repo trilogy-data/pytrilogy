@@ -27,9 +27,13 @@ datasource that is the *sole provider* of a requested concept (`key_only_bridges
 prunable, so the ambiguous-alternative-path resolution
 (`test_ambiguous_error_with_forced_join_order`) is preserved.
 
-NOTE: the explicit global-`merge` form of the same shape is a SEPARATE, still-open
-bug — it takes a different path (trailing `LEFT OUTER JOIN` on `week_seq` via a
-distinct CTE that doesn't constrain). Not addressed here.
+NOTE: the global-`merge` form of the same shape was ALSO fixed (2026-06-12) for
+INNER merges — `merge X into Y` (no `~`) now collapses at build time via the same
+`scoped_merge_map` path, so the bridge fix covers it too. The `~` (LEFT/
+enrichment, e.g. date spines) merges still use the pseudonym path (Phase 2).
+Critical distinction: `~` = LEFT, no-`~` = INNER — a naive "all merges INNER"
+regresses date-spine merges. Full design + phasing in
+`design_unify_global_merge_with_scoped_collapse.md`.
 
 ---
 (original report below)

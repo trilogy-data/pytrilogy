@@ -301,7 +301,13 @@ class MergeNode(StrategyNode):
             for x in final_datasets
             if all([y in self.existence_concepts for y in x.output_concepts])
         ]
-        if len(merged.keys()) == 1:
+        # ``force_group is True`` means this merge exists to regroup its (finer)
+        # parent to the output grain — a deliberate regroup requested upstream
+        # (e.g. group_if_required_v2 collapsing a fan-out enrichment back to the
+        # aggregate grain). Returning a parent that merely covers the output
+        # *columns* would silently drop that group, so skip the short-circuits.
+        can_drop_merge = self.force_group is not True
+        if can_drop_merge and len(merged.keys()) == 1:
             final: QueryDatasource | BuildDatasource = list(merged.values())[0]
             if (
                 set([c.address for c in final.output_concepts])
@@ -318,7 +324,7 @@ class MergeNode(StrategyNode):
                 return final
 
         # if we have multiple candidates, see if one is good enough
-        for dataset in final_datasets:
+        for dataset in final_datasets if can_drop_merge else []:
             if any(
                 other.identifier != dataset.identifier and _has_applied_condition(other)
                 for other in final_datasets

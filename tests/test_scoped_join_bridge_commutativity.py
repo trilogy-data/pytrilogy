@@ -120,3 +120,26 @@ def test_scoped_join_operand_order_commutative(engine: Executor, models: Path) -
     flipped = _run(engine, models, _flip(QUERY))
     assert forward == EXPECTED
     assert flipped == EXPECTED
+
+
+# An INNER global `merge` (no `~`) of a transitive attribute (week_seq) across two
+# dims must collapse at build time exactly like the scoped INNER join, otherwise
+# inventory joins on item alone and fans out. (`~` merges are LEFT enrichment and
+# stay on the pseudonym path — not exercised here.)
+MERGE_QUERY = (
+    "import sales as cs;\n"
+    "import inventory as inv;\n"
+    "merge cs.item.item_id into inv.item.item_id;\n"
+    "merge cs.sold_date.week_seq into inv.inv_date.week_seq;\n"
+    "where cs.sold_date.year = 1999 and inv.qoh < cs.qty\n"
+    "select cs.item.desc as item_desc, inv.warehouse.name as wh, "
+    "inv.inv_date.week_seq as wk, count(cs.order_id) as t\n"
+    "order by 1,2,3;"
+)
+
+
+def test_global_inner_merge_bridge_matches_scoped_join(
+    engine: Executor, models: Path
+) -> None:
+    rows = _run(engine, models, MERGE_QUERY)
+    assert rows == EXPECTED

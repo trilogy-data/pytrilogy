@@ -608,6 +608,16 @@ def get_query_node(
     # on caches so nested sub-selects inherit the same merges.
     if scoped_joins:
         caches.scoped_joins = scoped_joins
+    # INNER global `merge`s collapse concepts exactly like a scoped INNER join;
+    # fold them into the same build-time mechanism so both share one path (and the
+    # scoped-join discovery fixes cover merges too). `~` (LEFT/enrichment) merges
+    # are NOT in environment.merges — they stay on the pseudonym path. Idempotent:
+    # nested sub-selects inherit the same caches, so only absent pairs are added.
+    if environment.merges:
+        existing = set(caches.scoped_joins)
+        caches.scoped_joins = caches.scoped_joins + [
+            m for m in environment.merges if m not in existing
+        ]
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(environment)
     build_cache: dict[str, BuildConcept] = caches.build_cache

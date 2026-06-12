@@ -453,6 +453,13 @@ class Environment:
     version: str = field(default_factory=get_version)
     cte_name_map: Dict[str, str] = field(default_factory=dict)
     alias_origin_lookup: Dict[str, Concept] = field(default_factory=dict)
+    # INNER (non-`~`) global merges as build-time collapse pairs
+    # (source_address, target_address, INNER). These collapse to one node at
+    # build time via the same mechanism scoped `join`s use (Factory
+    # scoped_merge_map), rather than the pseudonym/weak-component path. `~`
+    # (PARTIAL) merges are LEFT-style enrichment (e.g. date spines) and are NOT
+    # recorded here — they stay on the pseudonym path.
+    merges: list[tuple[str, str, JoinType]] = field(default_factory=list)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | str | None = None
@@ -753,6 +760,18 @@ class Environment:
                 self.alias_origin_lookup[address_with_namespace(key, alias)] = (
                     val.with_namespace(alias)
                 )
+        for s_addr, t_addr, jt in source.merges:
+            pair = (
+                (s_addr, t_addr, jt)
+                if same_namespace
+                else (
+                    address_with_namespace(s_addr, alias),
+                    address_with_namespace(t_addr, alias),
+                    jt,
+                )
+            )
+            if pair not in self.merges:
+                self.merges.append(pair)
 
         for key, function in list(source.functions.items()):
             if same_namespace:
@@ -968,6 +987,16 @@ class Environment:
         for k, ds in self.datasources.items():
             if source_addr in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
+
+        # An INNER merge (`merge X into Y`) is a symmetric equivalence: record it
+        # as a build-time collapse pair so discovery folds the two concepts into
+        # one node (shared with scoped `join`). A `~` merge (`into ~Y`) is a
+        # LEFT-style enrichment (Y is the preserved base, e.g. a date spine) and
+        # keeps the pseudonym path — do NOT collapse it.
+        if Modifier.PARTIAL not in modifiers and source_addr != target_addr:
+            pair = (source_addr, target_addr, JoinType.INNER)
+            if pair not in self.merges:
+                self.merges.append(pair)
 
         return True
 
