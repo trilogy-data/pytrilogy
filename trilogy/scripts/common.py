@@ -616,13 +616,21 @@ def datetime_now_seconds() -> float:
 def handle_execution_exception(e: Exception, debug: bool = False) -> None:
     if isinstance(e, Exit):
         raise e
-    from trilogy.core.exceptions import InvalidSyntaxException
+    from trilogy.core.exceptions import (
+        DisconnectedConceptsException,
+        InvalidSyntaxException,
+        UnresolvableQueryException,
+    )
 
     # Syntax/validation errors carry actionable, user-facing guidance; label them
     # as such instead of "Unexpected error:" so the reader (or agent) treats them
     # as a fixable mistake rather than an internal crash.
     if isinstance(e, (SyntaxError, InvalidSyntaxException)):
         print_error(f"Syntax error: {e}")
+    elif isinstance(e, (DisconnectedConceptsException, UnresolvableQueryException)):
+        # A disconnected/unresolvable query is a fixable modeling mistake (a
+        # missing join/merge), not an internal crash.
+        print_error(f"Resolution error: {e}")
     else:
         print_error(f"Unexpected error: {e}")
     if debug:

@@ -25,6 +25,74 @@ class SyntaxExample:
 
 _EXAMPLES: list[SyntaxExample] = [
     SyntaxExample(
+        name="query-structure",
+        title="Full query structure — every clause and where it goes (+ rowsets)",
+        summary=(
+            "the FIXED clause order of a query (`where` -> join(s) -> `select` -> "
+            "`having` -> `order by` -> `limit`) and how to define a rowset (a NAME "
+            "then a select); there is NO post-join `where` — filter a joined or "
+            "aggregated RESULT in `having`, not a second `where`"
+        ),
+        body="""\
+# Every Trilogy query has the SAME fixed skeleton. Top-level statements come
+# first (each ends with `;`), then ONE query whose clauses appear in this exact
+# order — each clause is OPTIONAL except `select`:
+#
+#   <top-level statements>;        # import / key / property / auto / metric /
+#                                  #   rowset / merge / def / datasource / parameter
+#   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation & joins)
+#   <inner|left|full join a = b>*  # 2. blend models (zero or more; after where, before select)
+#   select  <col>, <agg> as name,  # 3. the projection — grouping is AUTOMATIC by the
+#                                  #      non-aggregated columns (never write GROUP BY)
+#   having  <result condition>     # 4. filter on an AGGREGATED / joined RESULT
+#   order by <col> asc|desc        # 5. sort
+#   limit   <n>                    # 6. cap rows
+import enrollments as enroll;
+import students as students;
+
+# --- TOP-LEVEL DEFINITIONS (reusable; all live ABOVE the query) -------------
+# An `auto`/`metric`/`property`/`key` defines a field. It expands inline wherever
+# referenced (a macro), re-evaluated in the referencing query's scope.
+auto completed_credits <- sum(enroll.credits ? enroll.completed = true);
+
+# A ROWSET is a NAMED select: `rowset <name> <- <a full select>;`. It runs as its
+# own scoped query (its own where/select/having) and exposes its outputs as
+# `<name>.<col>`. ALIAS every column you reuse downstream with `as`.
+rowset dept_totals <- select
+    enroll.department as department,
+    sum(enroll.credits) as total_credits,
+;
+
+# --- THE QUERY — clauses in the fixed order above ---------------------------
+where enroll.year >= 2015                   # 1. WHERE: per-row filter, before aggregation
+inner join students.id = enroll.student_id  # 2. JOIN: blend students onto enrollments
+select                                      # 3. SELECT: grouped automatically by students.major
+    students.major,
+    count(enroll.id) as enrollments,
+    --completed_credits,                    #    a leading `--` HIDES a column from the output
+having completed_credits > 0                # 4. HAVING: condition on an aggregated RESULT
+order by enrollments desc nulls first       # 5. ORDER BY
+limit 100;                                  # 6. LIMIT
+
+# Reference a rowset's outputs as `<rowset>.<output>` in a later query.
+select
+    dept_totals.department,
+    dept_totals.total_credits,
+order by dept_totals.total_credits desc nulls first
+limit 100;
+
+# ---------------------------------------------------------------------------
+# NOTES:
+#  - There is NO post-join or post-select `where`. `where` ALWAYS precedes the
+#    join(s) and filters INPUT rows. To filter on something only known AFTER the
+#    join / aggregation (e.g. comparing two joined rowsets' counts), select that
+#    value (hide it with `--`) and test it in `having` — `having` is the
+#    post-aggregation/output filter.
+#  - No FROM, GROUP BY, DISTINCT, SELECT *, subqueries, or SQL-style set/JOIN
+#    operators. Grouping is automatic; blend with the scoped `join` above.
+""",
+    ),
+    SyntaxExample(
         name="filtered-aggregate",
         title="Filtered aggregate — aggregate only the rows matching a condition",
         summary=(

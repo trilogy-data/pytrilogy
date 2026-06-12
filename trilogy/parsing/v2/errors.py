@@ -36,9 +36,14 @@ ERROR_CODES: dict[int, str] = {
     211: "Expression in `by` clause must be wrapped in parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.",
     220: (
         "Filter condition after a `join` clause? A query-scoped join "
-        "`inner|left join <a> = <b>` may only be followed by another `join` or "
-        "`select`. Put every filter in ONE `where` clause BEFORE the join(s) — "
-        "e.g. `where a = 1 and b = 2 inner join x.id = y.id select ...`."
+        "`inner|left|full join <a> = <b>` may only be followed by another `join` "
+        "or `select`. Clause order is fixed: `where` (row filter) -> join(s) -> "
+        "`select` -> `having` -> `order by` -> `limit`. A per-row filter goes in "
+        "the `where` BEFORE the join(s); to filter on a joined or aggregated "
+        "RESULT, select that field (hide it with a leading `--`) and test it in "
+        "`having` AFTER the select — there is no post-join `where`. Full "
+        "clause-placement reference: "
+        "`trilogy agent-info syntax example query-structure`."
     ),
     221: (
         "Align groups are separated by `and`, not commas. Each `align` group is "

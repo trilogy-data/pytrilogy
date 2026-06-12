@@ -125,7 +125,6 @@ def list_cmd(path: str, recursive: bool, long_format: bool, show_all: bool) -> N
             entries=[
                 {
                     "path": entry.path,
-                    "is_dir": entry.is_dir,
                     "size": entry.size,
                     "description": (
                         None

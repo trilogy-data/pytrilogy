@@ -57,6 +57,26 @@ def test_handle_execution_exception_labels_syntax_errors(capsys):
     assert "Syntax error:" not in combined, combined
 
 
+def test_handle_execution_exception_labels_resolution_errors(capsys):
+    """A disconnected/unresolvable query is a fixable modeling mistake, labelled
+    `Resolution error:` rather than `Unexpected error:`."""
+    from trilogy.core.exceptions import (
+        DisconnectedConceptsException,
+        UnresolvableQueryException,
+    )
+
+    errs = (
+        DisconnectedConceptsException("missing join", subgraphs=[["a"], ["b"]]),
+        UnresolvableQueryException("no path"),
+    )
+    for exc in errs:
+        with raises(Exit):
+            handle_execution_exception(exc)
+        combined = "".join(capsys.readouterr())
+        assert "Resolution error:" in combined, combined
+        assert "Unexpected error:" not in combined, combined
+
+
 def test_config_bootstrap():
     path = Path(__file__).parent / "config_directory"
     runner = CliRunner()

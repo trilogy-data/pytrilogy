@@ -67,7 +67,13 @@ def all_decls(concepts: dict) -> list[str]:
     out: list[str] = []
     for groups in concepts["namespaces"].values():
         for g in groups:
-            for field in ("keys", "properties", "metrics", "ungrouped"):
+            for field in (
+                "keys",
+                "properties",
+                "unique_properties",
+                "metrics",
+                "ungrouped",
+            ):
                 out.extend(g.get(field, []))
     return out
 
@@ -158,14 +164,36 @@ def test_explore_emits_concepts(runner, tmp_path):
     assert result.exit_code == 0, result.output
     events = parse_events(result.output)
     concepts = events_of(events, "concepts")[0]
-    # Local namespace surfaces under the empty-string key; keys lead, then the
-    # property nests under its grain with the redundant `id.` prefix stripped.
+    # Local namespace surfaces under the empty-string key; keys lead with the
+    # `key ` keyword stripped, then the property nests under its grain with the
+    # redundant `property id.` prefix stripped.
     assert "" in concepts["namespaces"]
     groups = concepts["namespaces"][""]
-    assert groups[0]["keys"] == ["key id int;"]
+    assert groups[0]["keys"] == ["id int;"]
     prop_group = next(g for g in groups if g.get("grain") == "id")
     assert prop_group["properties"] == ["carrier string;"]
     assert events_of(events, "datasources")[0]["count"] == 1
+
+
+def test_explore_json_groups_unique_properties_by_grain(runner, tmp_path):
+    f = tmp_path / "flights.preql"
+    f.write_text(
+        "key id int;\nunique property id.text_id string;\n"
+        "datasource flights (id, text_id) grain(id) "
+        "query '''select 1 as id, 'AA' as text_id''';\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(f), "--show", "all"]
+    )
+    assert result.exit_code == 0, result.output
+    groups = events_of(parse_events(result.output), "concepts")[0]["namespaces"][""]
+    # Unique properties nest under a grain like properties, with the redundant
+    # `unique property id.` prefix stripped — not in ungrouped.
+    uniq_group = next(g for g in groups if "unique_properties" in g)
+    assert uniq_group["grain"] == "id"
+    assert uniq_group["unique_properties"] == ["text_id string;"]
+    assert not any("ungrouped" in g for g in groups)
 
 
 def test_explore_json_groups_metrics_by_aggregation(runner, tmp_path):
@@ -213,7 +241,7 @@ def test_explore_json_collapses_imported_namespaces(runner, tmp_path):
     concepts = events_of(parse_events(result.output), "concepts")[0]
     # Imported namespace collapses to a comma-joined leaf list, local stays full.
     assert "dem" in concepts["imported"]
-    assert "edu" in concepts["imported"]["dem"]
+    assert "edu" in concepts["imported"]["dem"]["concepts"]
 
 
 def test_explore_json_hides_underscore_imports(runner, tmp_path):
@@ -231,7 +259,7 @@ def test_explore_json_hides_underscore_imports(runner, tmp_path):
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
-    leaves = concepts["imported"]["dem"]
+    leaves = concepts["imported"]["dem"]["concepts"]
     assert "edu" in leaves
     assert "_raw_edu" not in leaves
 

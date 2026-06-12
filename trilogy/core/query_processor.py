@@ -15,7 +15,10 @@ from trilogy.core.enums import (
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    UnresolvableQueryException,
+)
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     ConceptRef,
@@ -659,18 +662,17 @@ def get_query_node(
             conditions=build_statement.where_clause,
             history=history,
         )
-    except ValueError as e:
-        # The discovery dead-end "No remaining priority concepts" is opaque; if it
-        # is the scoped-join property-enrichment shape, point at the fix (chain the
-        # base key into the join group) rather than dumping internal candidate sets.
-        if "No remaining priority concepts" not in str(e):
-            raise
+    except DisconnectedConceptsException as e:
+        # The discovery dead-end is opaque; if it is the scoped-join
+        # property-enrichment shape, point at the fix (chain the base key into the
+        # join group). Otherwise surface the disconnected-subgraph message, which
+        # already names the unconnected concept groups and the join/merge fix.
         hint = _scoped_join_rename_hint(
             build_statement.output_components, build_environment
         )
-        if not hint:
-            raise
-        raise UnresolvableQueryException(f"Could not resolve query.{hint}") from e
+        if hint:
+            raise UnresolvableQueryException(f"Could not resolve query.{hint}") from e
+        raise
     except UnresolvableQueryException as e:
         # The same scoped-join property-enrichment dead-end can also surface as a
         # disjoint-models error once the renamed join key resolves (the property's

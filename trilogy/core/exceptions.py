@@ -43,6 +43,20 @@ class NoDatasourceException(UnresolvableQueryException):
     pass
 
 
+class DisconnectedConceptsException(ValueError):
+    """Discovery dead-ended because the requested concepts split into multiple
+    unconnected subgraphs — no declared join/merge relates their models.
+
+    Subclasses ValueError so existing `except ValueError` discovery handlers keep
+    catching it; `subgraphs` carries the partition (each entry a sorted list of
+    concept addresses) so callers can render a targeted message."""
+
+    def __init__(self, message: str, subgraphs: Sequence[Sequence[str]]):
+        super().__init__(message)
+        self.message = message
+        self.subgraphs = [list(s) for s in subgraphs]
+
+
 class ModelValidationError(Exception):
     def __init__(
         self,

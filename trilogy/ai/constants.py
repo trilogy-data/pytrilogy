@@ -17,6 +17,7 @@ Semantic model statements:
 - datasource statements define a datasource, which is a mapping of fields to a SQL database table. The left side is the SQL column name, the right side is the field name.
 
 SELECT RULES:
+- CLAUSE ORDER is fixed: top-level definitions (each `;`-terminated) -> `where` (per-row filter) -> `inner|left|full join`(s) -> `select` -> `having` -> `order by` -> `limit`. `where` ALWAYS precedes the join(s) and filters INPUT rows; there is NO post-join or post-select `where`. To filter on a joined or aggregated RESULT (e.g. comparing two joined rowsets), select that field, hide it with a leading `--`, and test it in `having`. For the full annotated skeleton + how to define a rowset (a NAME then a select), fetch `trilogy agent-info syntax example query-structure`.
 - No FROM, GROUP BY, SUB SELECTS, DISTINCT, SELECT *, or SQL-style set operators / table joins (a bare `UNION` keyword or `JOIN X on Y=Z` between tables). To STACK rows use the `union(...)` TVF; to BLEND models use a scoped `inner|left join a = b` — both documented above.
   * Wrong (SQL-style subselect): `where enrollments.student_id in (select student_id where student.state = 'TN')`
   * Right (dot-path on the related dim): `where enrollments.student.state = 'TN'`

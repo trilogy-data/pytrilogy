@@ -7,6 +7,7 @@ from trilogy.core.enums import (
     Granularity,
     Purpose,
 )
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -513,8 +514,73 @@ def get_priority_concept(
             final.append(x2)
     if final:
         return final[0]
-    raise ValueError(
-        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}"
+    subgraphs = identify_disconnected_subgraphs(all_concepts)
+    if len(subgraphs) > 1:
+        raise DisconnectedConceptsException(
+            format_disconnected_subgraphs_error(subgraphs),
+            subgraphs=[[c.address for c in group] for group in subgraphs],
+        )
+    raise DisconnectedConceptsException(
+        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}",
+        subgraphs=[[c.address for c in all_concepts]],
+    )
+
+
+def _concept_anchor_addresses(concept: BuildConcept) -> set[str]:
+    """Addresses that tie a concept to a model: its own address, its grain keys,
+    its direct source arguments, and any pseudonym (merge) links."""
+    addresses = {concept.address}
+    addresses |= set(concept.grain.components)
+    addresses |= set(concept.pseudonyms)
+    for arg in concept.concept_arguments:
+        addresses.add(arg.address)
+    return addresses
+
+
+def identify_disconnected_subgraphs(
+    concepts: List[BuildConcept],
+) -> List[List[BuildConcept]]:
+    """Partition concepts into connected components by shared anchor addresses.
+    Two concepts with no shared anchor land in different subgraphs — the
+    signature of a missing join/merge between their models."""
+    parent: dict[int, int] = {i: i for i in range(len(concepts))}
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    first_seen: dict[str, int] = {}
+    for i, concept in enumerate(concepts):
+        for addr in _concept_anchor_addresses(concept):
+            if addr in first_seen:
+                union(first_seen[addr], i)
+            else:
+                first_seen[addr] = i
+
+    groups: dict[int, List[BuildConcept]] = {}
+    for i, concept in enumerate(concepts):
+        groups.setdefault(find(i), []).append(concept)
+    return sorted(groups.values(), key=lambda group: min(c.address for c in group))
+
+
+def format_disconnected_subgraphs_error(
+    subgraphs: List[List[BuildConcept]],
+) -> str:
+    rendered = "; ".join(
+        "{" + ", ".join(sorted(c.address for c in group)) + "}" for group in subgraphs
+    )
+    return (
+        "Discovery error: cannot merge all concepts into one connected query. "
+        f"The requested concepts split into {len(subgraphs)} disconnected "
+        f"subgraphs: {rendered}. Are you missing a join or merge statement to "
+        "relate them?"
     )
 
 
