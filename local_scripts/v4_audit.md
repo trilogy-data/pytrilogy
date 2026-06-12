@@ -65,6 +65,24 @@ v4_known_failing. NOTE: the *other* C3 crash (`test_history_e2e_non_materialized
 is a different mechanism (`partial ... complete where customer_id=2` datasource
 under a `name='Sarah'` filter -- needs implies-reasoning) and is still open.
 
+### FIXED 2026-06-12 — C4 derived-condition-arg not sourced (gcat2 test_extra_fields_two)
+`ValueError: Invalid reference string` at render. Query: `where date_part(launch_date,
+year)=2010 select vehicle.stage.engine.fuel`. `launch_date <- launch_jd` is a
+`launch_info` column; launch_info is joined only for the `vehicle.name` key, so the
+WHERE's derived row-arg `launch_date` decomposes to `launch_jd` which the
+launch_info scan never carried → final WHERE rendered `INVALID_REFERENCE_BUG` for
+`launch_jd`. Root cause: the v4 bridge's `filter_downstream` Steiner pass drops a
+BASIC condition arg (`launch_date`), so its ROOT lineage (`launch_jd`) was never
+added to the launch_info scan. Fix: `_search_concepts_for_bridge`
+(source_planning.py) now also includes `_condition_arg_lineage_roots` — the ROOT
+`.sources` of any *derived* condition row-arg. Narrowly scoped: raw/ROOT condition
+args have `lineage is None` and are unaffected. NOTE: a dead-end first attempt
+(letting BASIC groups host a WHERE on their own output via `_reachable_input`)
+*dropped* the filter+joins entirely — the condition-placement layer was a red
+herring; the bug is purely in bridge sourcing. Sweeps: filter/condition suites
+301 passed/0 failed; tpc-ds/tpc-h/modeling sweep's 8 fails all pre-existing on a
+clean baseline (`git stash`). Removed from v4_known_failing.
+
 ## Genuine gaps, clustered by root cause
 
 ### C1 — merge / rowset fan-out (wrong rows) — 4
@@ -120,8 +138,9 @@ Not in `v4_known_failing.py`, but fail on a clean baseline too (verified via
   `…::test_exact_match_with_parenthetical_extra_filter`
 These should be added to the tracking list or fixed.
 
-### C4 — "Invalid reference string" crash (ValueError) — 2
-- `modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two`
+### C4 — "Invalid reference string" crash (ValueError) — 1 (was 2)
+- ~~`modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two`~~ FIXED —
+  derived-condition-arg lineage not sourced through the bridge (see FIXED note above).
 - `modeling/ncaa/test_ncaa.py::test_adhoc02`
 
 ### C5 — aggregate-derivation unresolvable crash — 1

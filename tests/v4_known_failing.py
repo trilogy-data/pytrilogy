@@ -65,7 +65,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
     # --- modeling (non-TPC) sweep ---
-    "tests/modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_equals_comparison": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery_two": _MODELING,

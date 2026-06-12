@@ -160,8 +160,32 @@ def _direct_source(
     )
 
 
+def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
+    """ROOT lineage sources of any *derived* condition row-arg.
+
+    A derived WHERE arg (e.g. `launch_date <- launch_jd`) is dropped by the
+    `filter_downstream` Steiner pass, so without its sourceable root in the
+    search the datasource that supplies it (`launch_info`) is scanned only for
+    join keys and the rendered WHERE references an unscanned column
+    (INVALID_REFERENCE). Pull those roots into the bridge search explicitly."""
+    roots: list[BuildConcept] = []
+    for concept in _condition_row_concepts(request.conditions):
+        if concept.lineage is None:
+            continue
+        roots.extend(
+            source for source in concept.sources if source.derivation == Derivation.ROOT
+        )
+    return roots
+
+
 def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
-    return _concepts_with_grain_keys(_requested_concepts(request), request.environment)
+    return _concepts_with_grain_keys(
+        unique(
+            _requested_concepts(request) + _condition_arg_lineage_roots(request),
+            "address",
+        ),
+        request.environment,
+    )
 
 
 def _single_source_covers_completely(request: SourceRequest) -> bool:
