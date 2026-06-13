@@ -1,4 +1,4 @@
-# v4 compatibility audit (last refreshed 2026-06-12)
+# v4 compatibility audit (last refreshed 2026-06-13)
 
 Fresh re-classification of every entry in `tests/v4_known_failing.py`, run in
 isolation under `TRILOGY_V4_DISCOVERY=1 --runxfail`. Regenerate with
@@ -8,30 +8,91 @@ Supersedes the Jun-5 sweep snapshot (reasons/results/triage/SUMMARY + the
 root-cause-A / fanout / agg-source briefs), all deleted — those bugs are fixed
 and the data was stale.
 
-## Headline (2026-06-12 re-run, post C7/C11/q29/q54/q77 fixes)
+## Headline (2026-06-13 re-run, post C7 + filter-only-RECURSIVE + C8 fixes)
 
-57 tracked entries. **No crashes, no runaways remain** — the q29 crash (C10), the
-q2.1/q2.2 fan-out runaway (C11), and the q54/q77 wrong-rows all landed this round
-(see "FIXED" notes + memory), and C7 (the date-render misses) is fixed below:
+54 tracked entries. **No crashes, no runaways remain** — the q29 crash (C10), the
+q2.1/q2.2 fan-out runaway (C11), and the q54/q77 wrong-rows all landed earlier,
+C7 (the "date-render" misses), `test_recursive` (filter-only RECURSIVE), and now
+**C8 (ambiguous forced-join off-by-one, ×2)** landed this round (see "FIXED"
+notes + memory):
 
 | bucket | n | meaning |
 | --- | --- | --- |
 | **SHAPE** | 47 | correct rows, worse/different SQL — cosmetic, not a parity bug |
-| **ROWS**  | 8  | classifier coarse bucket; ~6 genuine wrong-rows + 2 SHAPE-ish |
+| **ROWS**  | 5  | classifier coarse bucket; ~3 genuine wrong-rows + 2 SHAPE-ish |
 | **XPASS** | 2  | q97_1/q97_2 — pass in isolation; pre-existing cross-file pollution, left in |
 
 Counts are the raw `v4_classify.py` buckets. The `ROWS` bucket is coarse: only
-C8 (×2: ambiguous forced-join), C9 (×2: rides + def_wrapped), `test_recursive`,
-and `composite_rollup` are genuine wrong-rows; the two
+C9 (×2: rides + def_wrapped) and
+`composite_rollup` are genuine wrong-rows; the two
 (`test_select_literal_is_rendered_in_projection`, `test_aggregate_filter_uses_having`)
 are really SHAPE/`_INLINE` that the regex caught.
 
-Note: under the *parallel* classify run the file-lock flake can re-surface
+Note: under the *parallel* classify run the buckets read 46 SHAPE / 7 ROWS / 3
+XPASS — `modeling/test_complex.py::test_in_select` flips to XPASS from cross-file
+pollution but is a genuine SHAPE entry in isolation (hence 47 SHAPE / 2 XPASS
+above). The file-lock flake can likewise re-surface
 `tpc_ds_duckdb::test_seventy_three` as a spurious `PermissionError [WinError 32]`
 CRASH — in isolation it's `assert 5489 < 3000` (SHAPE/size), not a real crash.
 
-So ~6 of 57 are genuine parity gaps (all wrong-rows); the rest are SQL-shape/
+So ~3 of 54 are genuine parity gaps (all wrong-rows); the rest are SQL-shape/
 verbosity (TPC-DS size ceilings + inlining CTE-shape snapshots).
+
+### FIXED 2026-06-13 — C8 ambiguous forced-join off-by-one (group-property + unrelated key)
+`join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join`
+(was 4 vs 3) + `::test_ambiguous_error_with_forced_join_order` (was 6 vs 5).
+`select store_by_warehouse, product_id` where `store_by_warehouse <- group(store_id)
+by wh_id` (a group-property used as a forced-join disambiguator) alongside an
+unrelated key. Two stacked bugs in the v4 FINAL-node assembly:
+1. **Cross-join (the spurious extra row, e.g. (store2,product1)).** `_wrap_for_grain`
+   bucketed the re-sourced ROOT scan's own grain keys (`product_id`/`store_id`/
+   `wh_id`) into per-key singleton GroupNodes; sharing no join key, the FINAL merge
+   cross-joined them `ON 1=1`. Fix: when a needed concept is NOT FD-determined by
+   the merge grain (a finer/orthogonal row key), keep the parent whole at its row
+   grain (`strategy_builder._wrap_for_grain`). Caller at line 724 only ever passes
+   FD concepts, so it's unaffected.
+2. **Missing dedup (duplicate rows).** With the scan kept whole, the multi-
+   contributor FINAL merge sat at `{store,wh,product}` and leaked dups when `wh`
+   dropped out of the output grain `(store_by_warehouse, product)`. The multi-
+   contributor path never applied `group_if_required` (unlike single-contributor).
+   Fix: `_assemble_final_node` now passes its assembled MergeNode through
+   `_group_to_grain_if_required`. That set `force_group=True` but was **silently
+   defeated** by two single-source passthrough shortcuts in `merge_node.py` that
+   return the lone datasource ignoring force_group — guarded both with
+   `and not self.force_group` (SHARED v3+v4 code; a merge explicitly told to group
+   must not short-circuit). DEAD ENDS (don't repeat): (a) splitting only the finer
+   concept and emitting a union-grain bucket — `from_concepts` re-expands the
+   group-property's grain back to `(store,wh)`, re-introducing `wh`; the dedup must
+   GROUP BY the output concepts as atoms (v3's `GROUP BY 1,2`); (b) preventing the
+   product source's harmless 4-table over-join — its `(store,product)` projection
+   is already correct, the wrong rows came purely from the cross-join + dedup gap.
+   Validation: join_resolution 3/3; v3 (shared merge_node) optimization/complex/
+   engine/processing/persistence 942 + modeling 333, 0 fail; v4 same suites 1012 +
+   modeling 291, 0 fail/0 regression (only the 2 C8 tests flip to pass). See memory
+   `project_v4_c8_forced_join_dedup.md`.
+
+### FIXED 2026-06-13 — filter-only RECURSIVE inlined as a one-step CASE (test_recursive)
+`engine/test_duckdb.py::test_recursive`. `where first_parent = 1 select id, label`
+with `first_parent <- recurse_edge(id, parent)` returned 2 rows {1,2} instead of 4
+{1,2,3,4}: v4 inlined the RECURSIVE arg as `CASE WHEN parent IS NULL THEN id ELSE
+parent END = 1` instead of a `WITH RECURSIVE` CTE. FILTER-ONLY bug (selecting
+first_parent built the CTE fine). Root cause: `_condition_arg_lineage_roots`
+(source_planning.py) pulled the ROOT `.sources` of EVERY derived condition arg into
+the bridge so the renderer could recompute it — correct for a BASIC arg
+(gcat2 launch_date, the case it was added for), wrong for a row-shape barrier (the
+recursion collapses to one step). Fix: skip args whose `derivation in
+ROW_SHAPE_BARRIER_DERIVATIONS`. The bridge then can't source the barrier arg, the
+strict `plan_source` attempt fails for it, and `gen_root`'s existing
+`_resolve_root_condition_sources` fallback builds the recursive node via
+`search_concepts` and merges it on the grain key with a terminal `first_parent=1`
+filter — exactly v3's shape. DEAD ENDS (don't repeat): (a) making the recursive
+GROUP host the filter — `gen_recursive` ignores the passed conditions (v3 too); the
+CONSUMER applies the filter, so this dropped it entirely; (b) the
+`_fold_passthrough_parents` guard — the recursive wrapper isn't a SelectNode/
+MergeNode so the fold never touched it. Validation: engine+gcat 384 passed,
+processing/optimization/complex/persistence/discovery 666 passed, modeling 291
+passed, all 0 fail; v3 unchanged. Removed from v4_known_failing. See memory
+`project_v4_recursive_filter_only.md`.
 
 ### FIXED 2026-06-12 — C7 constant-only WHERE dropped from render (the "date" misses)
 `engine/test_sqlite.py::test_date_diff_rendering` +
@@ -240,18 +301,12 @@ not quick wins:
   `parents=[] -> None`, cascading to an empty rowset node and parent-less
   aggregate GroupNodes whose columns all render as the invalid sentinel. Root
   cause is v4 multi-fact correlated-grain ROOT sourcing returning None. Deep.
-- **ROWS** `engine test_recursive` (`assert 2 == 4`). `where first_parent = 1`
-  where `first_parent <- recurse_edge(id, parent)`. v4 DOES build a RECURSIVE
-  condition node (`grp:[@condition]recursive:d1` outputs first_parent), but the
-  resolved CTE tree has NO recursive CTE: the final MERGE re-derives first_parent
-  inline as the single-step `CASE WHEN parent IS NULL THEN id ELSE parent` (one
-  level up, not the full traversal), so `=1` matches ids {1,2} not {1,2,3,4}. The
-  recurse_edge virtual concept isn't carried from the recursive node into the
-  final merge's path graph (`Node not found: c~local._virt_func_recurse_edge_…`)
-  — a RECURSIVE concept used FILTER-ONLY (not a selected output) is inlined
-  instead of sourced via its recursive node. NOT `_fold_passthrough_parents`
-  (tested: generalizing its `crosses_unsourced_aggregate` barrier guard to the
-  full `ROW_SHAPE_BARRIER_DERIVATIONS` set did not fix it; reverted). Deep.
+- ~~**ROWS** `engine test_recursive`~~ FIXED 2026-06-13 (see headline). The
+  inlining was in the source_planning bridge: `_condition_arg_lineage_roots`
+  pulled the RECURSIVE arg's ROOT lineage so the renderer recomputed it as the
+  one-step CASE. Skipping ROW_SHAPE_BARRIER args there routes it through
+  `gen_root`'s recursive-node fallback. (The earlier "carried into the final merge
+  path graph" framing was a symptom, not the cause.)
 - **ROWS** `tpc_ds q54` (1 vs 100), `q77` (44 vs 46), `q46` (different rows),
   `q97_2` (counts 540709 vs 540938 — note `q97_1`, tracked as `_TPCDS_SIZE`, is
   actually the SAME wrong-rows bug, mis-bucketed). Not yet diagnosed.
@@ -282,9 +337,12 @@ the FIXED note in the headline (`partition_constants`).
 - ~~`engine/test_bigquery.py::test_date_diff_rendering`~~ FIXED
 - ~~`engine/test_sqlite.py::test_date_diff_rendering`~~ FIXED
 
-### C8 — ambiguous forced-join off-by-one rows — 2
-- `modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join` (4 vs 3)
-- `…::test_ambiguous_error_with_forced_join_order` (6 vs 5)
+### C8 — ambiguous forced-join off-by-one rows — FIXED (was 2 → 0)
+- ~~`modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join` (4 vs 3)~~ FIXED
+- ~~`…::test_ambiguous_error_with_forced_join_order` (6 vs 5)~~ FIXED
+Both: `_wrap_for_grain` per-key split → FINAL `ON 1=1` cross-join, plus a missing
+multi-contributor FINAL dedup defeated by `merge_node.py`'s force_group-ignoring
+single-source shortcuts. See the FIXED note in the headline.
 
 ### C9 — misc wrong rows — 2
 - `modeling/rides_example/test_ride_example.py::test_example_model` (1 vs 4)
@@ -327,19 +385,13 @@ guards, repro recipes): `local_scripts/v4_c11_multifact_aggregate_runaway_brief.
 ## Coverage-gap conclusion
 
 Only `top_x_by_metric` is distilled in `v4_evals/failing_cases/`. **All crash and
-runaway clusters are now fixed** (C2–C6, plus q29/C10, the C11 runaway, and C7
-this round). No crashes, no runaways remain. Remaining genuine work is all
-wrong-rows, in priority order:
-**C10 test_recursive (filter-only RECURSIVE inlined as a single-step CASE) → C8
-ambiguous forced-join off-by-one (×2) → C9 rides test_example_model +
-def_wrapped_filtered_aggregate → C10 q46/q97_2 wrong-rows → composite_rollup
-(NULL CASE over rollup key) → geography exact_match source-selection (×2) → q68
-tie-break → SHAPE/verbosity backlog.**
+runaway clusters are now fixed** (C2–C6, C8, plus q29/C10, the C11 runaway, C7, and
+the filter-only-RECURSIVE wrong-rows). No crashes, no runaways remain. Remaining
+genuine work is all wrong-rows, in priority order:
+**C9 rides test_example_model + def_wrapped_filtered_aggregate → C10 q46/q97_2
+wrong-rows → composite_rollup (NULL CASE over rollup key) → geography exact_match
+source-selection (×2) → q68 tie-break → SHAPE/verbosity backlog.**
 
-The test_recursive diagnosis (above) localizes the bug but the fix is deep v4
-planner surgery (condition placement routing a barrier-derived filter arg through
-its recursive node) — high regression risk against the 900+ passing tests, so it
-warrants a focused, full-suite-validated change rather than a rushed edit. The 47
-SHAPE entries need no eval case; they're tracked verbosity/inlining regressions to
+The 47 SHAPE entries need no eval case; they're tracked verbosity/inlining regressions to
 close at the source-selection / render layer, gated on `CONFIG.use_v4_discovery`
 in their SQL assertions.

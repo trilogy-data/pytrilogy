@@ -1,6 +1,6 @@
 query_id = "44"
 generator = "v4"
-gen_length = 3206
+gen_length = 3345
 preql_size = 1006
 comp_size = 1462
 generated_sql = """
@@ -70,46 +70,57 @@ SELECT
     rank() over (order by \"vacuous\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
     \"vacuous\"),
-sweltering as (
+macho as (
 SELECT
-    \"abhorrent\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\",
     \"abhorrent\".\"_descending_rnk_d\" as \"_descending_rnk_d\",
-    \"quizzical\".\"_ascending_best_performing\" as \"_ascending_best_performing\",
     \"quizzical\".\"_descending_worst_performing\" as \"_descending_worst_performing\"
 FROM
     \"abhorrent\"
-    INNER JOIN \"quizzical\" on \"abhorrent\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"),
-macho as (
+    INNER JOIN \"quizzical\" on \"abhorrent\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
+GROUP BY
+    1,
+    2),
+sweltering as (
 SELECT
-    \"sweltering\".\"_descending_rnk_d\" as \"rnk\",
-    \"sweltering\".\"_descending_worst_performing\" as \"descending_worst_performing\"
+    \"abhorrent\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\",
+    \"quizzical\".\"_ascending_best_performing\" as \"_ascending_best_performing\"
 FROM
-    \"sweltering\"),
+    \"abhorrent\"
+    INNER JOIN \"quizzical\" on \"abhorrent\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
+GROUP BY
+    1,
+    2),
+scrawny as (
+SELECT
+    \"macho\".\"_descending_rnk_d\" as \"rnk\",
+    \"macho\".\"_descending_worst_performing\" as \"descending_worst_performing\"
+FROM
+    \"macho\"),
 late as (
 SELECT
     \"sweltering\".\"_ascending_best_performing\" as \"ascending_best_performing\",
     \"sweltering\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
 FROM
     \"sweltering\"),
-friendly as (
+kaput as (
 SELECT
     \"late\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"macho\".\"descending_worst_performing\" as \"descending_worst_performing\",
-    \"macho\".\"rnk\" as \"rnk\"
+    \"scrawny\".\"descending_worst_performing\" as \"descending_worst_performing\",
+    \"scrawny\".\"rnk\" as \"rnk\"
 FROM
-    \"macho\"
-    INNER JOIN \"late\" on \"macho\".\"rnk\" = \"late\".\"ascending_rnk_a\"
+    \"scrawny\"
+    INNER JOIN \"late\" on \"scrawny\".\"rnk\" = \"late\".\"ascending_rnk_a\"
 WHERE
-    \"macho\".\"rnk\" < 11
+    \"scrawny\".\"rnk\" < 11
 )
 SELECT
-    \"friendly\".\"rnk\" as \"rnk\",
-    \"friendly\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"friendly\".\"descending_worst_performing\" as \"descending_worst_performing\"
+    \"kaput\".\"rnk\" as \"rnk\",
+    \"kaput\".\"ascending_best_performing\" as \"ascending_best_performing\",
+    \"kaput\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"friendly\"
+    \"kaput\"
 ORDER BY 
-    \"friendly\".\"rnk\" asc nulls first,
-    \"friendly\".\"ascending_best_performing\" desc nulls first,
-    \"friendly\".\"descending_worst_performing\" desc nulls first
+    \"kaput\".\"rnk\" asc nulls first,
+    \"kaput\".\"ascending_best_performing\" desc nulls first,
+    \"kaput\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""

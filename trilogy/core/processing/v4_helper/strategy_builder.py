@@ -991,6 +991,18 @@ def _wrap_for_grain(
     if not needed_concepts:
         return [parent_node]
 
+    # A needed concept that is NOT functionally determined by the merge grain is
+    # a finer/orthogonal row key (e.g. `product_id` next to a `group(store_id) by
+    # wh_id` whose merge grain is {store_id, wh_id}). Bucketing it to its own
+    # natural grain shatters the scan into per-key GroupNodes that share no join
+    # key, so the FINAL merge cross-joins them ON 1=1 (a forced-join disambiguator
+    # selecting a group property alongside an unrelated key). Keep the parent
+    # whole at its row grain; the FINAL dedup groups it down to the output grain.
+    if merge_grain_components and any(
+        not _fd_at_grain(concept, merge_grain_components) for concept in needed_concepts
+    ):
+        return [parent_node]
+
     parent_grain_components = (
         frozenset(parent_node.grain.components) if parent_node.grain else frozenset()
     )
@@ -1388,7 +1400,7 @@ def _assemble_final_node(
         if grouping_grain_components
         else None
     )
-    return MergeNode(
+    merged = MergeNode(
         input_concepts=merge_inputs,
         output_concepts=outputs,
         environment=environment,
@@ -1397,6 +1409,14 @@ def _assemble_final_node(
         conditions=final_conditions.conditional if final_conditions else None,
         hidden_concepts=hidden or None,
     )
+    # Dedup the assembled merge to the requested output grain (mirrors v3's
+    # group_if_required_v2 and the single-contributor path above). A contributor
+    # left whole at a finer row grain — e.g. a root scan kept at {store,wh,product}
+    # to preserve a join key — otherwise leaks duplicate rows when its internal
+    # keys (wh) drop out of the output grain (store_by_warehouse, product).
+    # No-op when the merge already sits at the mandatory grain (the common
+    # aggregate+dim case force_groups to merge_grain == output grain).
+    return _group_to_grain_if_required(merged, mandatory_list, environment)
 
 
 def build_strategy_node(

@@ -1,0 +1,13 @@
+......................s......x........x...........................xx.x.. [ 21%]
+.................xx.........xx......x....x.....x........X............... [ 43%]
+....................x....x.xx......xxx.......x.x.......x..x.......x..... [ 64%]
+..........xx..x......x....x.....xx...x..x....x............x...XX........ [ 86%]
+...x...............................x..x....x..                           [100%]
+============================== warnings summary ===============================
+tests/modeling/ncaa/test_ncaa.py::test_adhoc03
+tests/modeling/the_look/test_the_look.py::test_wrapped_aggregate_with_dependent_by_grain
+  C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\google\cloud\bigquery\client.py:613: UserWarning: Cannot create BigQuery Storage client, the dependency google-cloud-bigquery-storage is not installed.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+291 passed, 1 skipped, 39 xfailed, 3 xpassed, 2 warnings in 842.27s (0:14:02)

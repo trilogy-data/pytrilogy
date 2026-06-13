@@ -313,6 +313,7 @@ class MergeNode(StrategyNode):
                 set([c.address for c in final.output_concepts])
                 == set([c.address for c in self.output_concepts])
                 and not self.conditions
+                and not self.force_group
                 and isinstance(final, QueryDatasource)
             ):
                 logger.info(
@@ -340,6 +341,7 @@ class MergeNode(StrategyNode):
             if (
                 all([c.address in output_set for c in self.all_concepts])
                 and not self.conditions
+                and not self.force_group
                 and isinstance(dataset, QueryDatasource)
             ):
                 logger.info(

@@ -60,8 +60,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/gcat/test_gcat.py::test_equals_comparison": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
     "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _MODELING,
-    "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join": _MODELING,
-    "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc08": _MODELING,
     "tests/modeling/rides_example/test_ride_example.py::test_example_model": _MODELING,
@@ -99,7 +97,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,
     # --- previously-untracked v4 baseline fails (all pass under v3) ---
     # wrong rows:
-    "tests/engine/test_duckdb.py::test_recursive": _RESULT,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_six": _RESULT,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two": _RESULT,
     # source-selection / ordering / rollup shape:

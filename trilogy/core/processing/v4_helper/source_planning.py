@@ -51,6 +51,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
     finalize_select_node,
 )
 from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
 from trilogy.core.processing.v4_helper.source_policy import (
     STRICT_SOURCE_POLICY,
     SourceAttempt,
@@ -167,10 +168,19 @@ def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
     `filter_downstream` Steiner pass, so without its sourceable root in the
     search the datasource that supplies it (`launch_info`) is scanned only for
     join keys and the rendered WHERE references an unscanned column
-    (INVALID_REFERENCE). Pull those roots into the bridge search explicitly."""
+    (INVALID_REFERENCE). Pull those roots into the bridge search explicitly.
+
+    A row-shape-barrier arg (RECURSIVE/AGGREGATE/WINDOW/...) is deliberately
+    NOT inlined this way: pulling its roots lets the renderer recompute it from
+    lineage (a RECURSIVE collapses to a single-step CASE), giving wrong rows.
+    Such an arg must be sourced through its own node and joined — left to
+    `gen_root`'s `_resolve_root_condition_sources` fallback, which the bridge
+    triggers by failing to source the arg here."""
     roots: list[BuildConcept] = []
     for concept in _condition_row_concepts(request.conditions):
         if concept.lineage is None:
+            continue
+        if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
             continue
         roots.extend(
             source for source in concept.sources if source.derivation == Derivation.ROOT

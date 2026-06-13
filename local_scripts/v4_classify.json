@@ -10,24 +10,9 @@
     "detail": "assert 'SELECT\\n   ...s \"label\"\\n)' not in '\\nWITH \\nqu...ical\" on 1=1'"
   },
   {
-    "node": "tests/optimization/test_merge_basic.py::test_inline_filter_basic",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Expected no subquery, got:"
-  },
-  {
     "node": "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining",
     "bucket": "SHAPE",
     "detail": "assert 'WITH' not in '\\nWITH \\nwa...   \"wakeful\"'"
-  },
-  {
-    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
-    "bucket": "SHAPE",
-    "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...rful\" on 1=1'"
-  },
-  {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
   },
   {
     "node": "tests/complex/test_rowset.py::test_rowset_alias_name_collision",
@@ -35,19 +20,29 @@
     "detail": "AssertionError: buyers_a.cust_id should project bill, sql was:"
   },
   {
+    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
+    "bucket": "SHAPE",
+    "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...rful\" on 1=1'"
+  },
+  {
     "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
     "bucket": "SHAPE",
     "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm"
   },
   {
+    "node": "tests/optimization/test_merge_basic.py::test_inline_filter_basic",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: Expected no subquery, got:"
+  },
+  {
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
     "node": "tests/persistence/test_basic_persistence.py::test_persist_with_where",
     "bucket": "SHAPE",
     "detail": "AssertionError: assert 'CASE' not in 'SELECT\\n\\tC...lse\\n\\tEND\\n'"
-  },
-  {
-    "node": "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having",
-    "bucket": "ROWS",
-    "detail": "assert 'CASE WHEN' not in '\\nWITH \\nqu..._orders\" asc'"
   },
   {
     "node": "tests/stdlib/test_report.py::test_top_x_by_metric",
@@ -60,14 +55,14 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
+    "node": "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having",
+    "bucket": "ROWS",
+    "detail": "assert 'CASE WHEN' not in '\\nWITH \\nqu..._orders\" asc'"
   },
   {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
-    "bucket": "ROWS",
-    "detail": "assert 4 == 3"
+    "node": "tests/modeling/gcat/test_gcat.py::test_join_discovery",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
   },
   {
     "node": "tests/modeling/gcat/test_gcat.py::test_equals_comparison",
@@ -75,7 +70,7 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_join_discovery",
+    "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -85,19 +80,14 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order",
-    "bucket": "ROWS",
-    "detail": "assert 6 == 5"
+    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc07",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: WITH"
   },
   {
     "node": "tests/modeling/rides_example/test_ride_example.py::test_example_model",
     "bucket": "ROWS",
     "detail": "assert 1 == 4"
-  },
-  {
-    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc07",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: WITH"
   },
   {
     "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc08",
@@ -110,14 +100,19 @@
     "detail": "assert (4,) == (2,)"
   },
   {
+    "node": "tests/modeling/stocks/test_stocks.py::test_calculated_field",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: 3"
+  },
+  {
     "node": "tests/modeling/stocks/test_stocks.py::test_provider_name",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/stocks/test_stocks.py::test_calculated_field",
+    "node": "tests/modeling/usa_names/test_names.py::test_filter_constant",
     "bucket": "SHAPE",
-    "detail": "AssertionError: 3"
+    "detail": "assert '< ( 0.1' in 'SELECT\\nFROM\\n    \"bigquery-public-data\".\"usa_names\".\"usa_1910_current\" as \"usa_names\"'"
   },
   {
     "node": "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous",
@@ -130,11 +125,6 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/usa_names/test_names.py::test_filter_constant",
-    "bucket": "SHAPE",
-    "detail": "assert '< ( 0.1' in 'SELECT\\nFROM\\n    \"bigquery-public-data\".\"usa_names\".\"usa_1910_current\" as \"usa_names\"'"
-  },
-  {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
@@ -145,27 +135,12 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twelve",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -175,22 +150,22 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -205,9 +180,19 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate",
-    "bucket": "ROWS",
-    "detail": "assert 0 == 2"
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three",
@@ -220,14 +205,14 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate",
+    "bucket": "ROWS",
+    "detail": "assert 0 == 2"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
     "bucket": "SHAPE",
-    "detail": "AssertionError: (2003, 2003, 534, 2003, 127)"
+    "detail": "AssertionError:"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_one",
@@ -240,9 +225,9 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_recursive",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert 2 == 4"
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
   },
   {
     "node": "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by",
@@ -250,7 +235,17 @@
     "detail": "AssertionError: assert [('aa', 'xp',...60.0'), None)] == [('aa', 'xp',..., 60.0, None)]"
   },
   {
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: (2003, 2003, 534, 2003, 127)"
+  },
+  {
     "node": "tests/modeling/geography/test_landmark_updates.py::test_exact_match_resolution",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -265,23 +260,13 @@
     "detail": ""
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_eight",
     "bucket": "SHAPE",
-    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (None, None, 'Unionville', 'Woodlawn', 70, Decimal('15617.02'), Decimal('1059.20'), Decimal('35200.10')) != (None, None, 'Union Hill', 'Woodl"
+    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (None, None, 'Unionville', 'Woodlawn', 70, Decimal('15617.02'), Decimal('1059.20'), Decimal('35200.10')) != (None, None, 'Ashley', 'Woodlawn'"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_six",
     "bucket": "SHAPE",
     "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (None, None, 'Antioch', 'Belmont', 149232, Decimal('2866.05'), Decimal('-12526.96')) != (None, None, 'Aberdeen', 'Adrian', 121098, Decimal('1"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
   }
 ]

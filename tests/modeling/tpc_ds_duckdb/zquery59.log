@@ -1,6 +1,6 @@
 query_id = "59"
 generator = "v4"
-gen_length = 7185
+gen_length = 7463
 preql_size = 2243
 comp_size = 2234
 generated_sql = """
@@ -110,6 +110,10 @@ SELECT
     \"vacuous\".\"fri_sales\" / \"vacuous\".\"_virt_window_lead_2781518767952423\" as \"fri_sales_ratio\",
     \"vacuous\".\"mon_sales\" / \"vacuous\".\"_virt_window_lead_2528494396952318\" as \"mon_sales_ratio\",
     \"vacuous\".\"sat_sales\" / \"vacuous\".\"_virt_window_lead_1424385664204750\" as \"sat_sales_ratio\",
+    \"vacuous\".\"ss_date_week_seq\" - (CASE
+	WHEN \"vacuous\".\"year_flag\" = 2 THEN 52
+	ELSE 0
+	END) as \"normalized_week\",
     \"vacuous\".\"ss_date_week_seq\" as \"d_week_seq1\",
     \"vacuous\".\"ss_store_id\" as \"ss_store_id\",
     \"vacuous\".\"sun_sales\" / \"vacuous\".\"_virt_window_lead_6227340597452426\" as \"sun_sales_ratio\",
@@ -139,7 +143,21 @@ FROM
     INNER JOIN \"sparkling\" on \"young\".\"ss_store_id\" = \"sparkling\".\"ss_store_id\"
 WHERE
     \"young\".\"year_flag\" = 1
-)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    \"young\".\"normalized_week\",
+    \"young\".\"ss_store_id\",
+    \"young\".\"year_flag\")
 SELECT
     \"sweltering\".\"s_store_name1\" as \"s_store_name1\",
     \"sweltering\".\"s_store_id1\" as \"s_store_id1\",
