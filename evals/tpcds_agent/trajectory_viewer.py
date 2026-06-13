@@ -48,6 +48,17 @@ def _result_ok(output: str) -> bool:
     return True
 
 
+def _reviewer_input(e: dict) -> str:
+    """The exact input the reviewer saw: system prompt + agent-only transcript
+    (older logs predate these fields and render an empty input)."""
+    parts = []
+    if e.get("system_prompt"):
+        parts.append("SYSTEM PROMPT:\n" + e["system_prompt"])
+    if e.get("transcript"):
+        parts.append("AGENT'S RECENT MESSAGES:\n" + e["transcript"])
+    return "\n\n".join(parts)
+
+
 def _read_events(path: Path) -> list[dict]:
     """Tolerant JSONL read — skip blank/half-written lines so a log that's still
     being appended to (live run) parses cleanly up to the last complete record."""
@@ -119,6 +130,7 @@ def parse_log(path: Path) -> dict:
                     "ok": done,
                     "note": e.get("note") or "",
                     "kickback": e.get("kickback_count", 0),
+                    "input": _reviewer_input(e),
                 }
             )
         elif t == "reviewer_bypassed":
@@ -283,6 +295,13 @@ function renderRun(run, keepScroll){
       const kb = ev.kickback ? ` (kickback ${ev.kickback})` : '';
       h += `<div class="turn reviewer"><div class="who">reviewer · <span class="${ev.ok?'vok':'verr'}">${esc(ev.verdict)}</span>${esc(kb)}</div><div class="bubble">`;
       if(ev.note) h += `<div class="text">${esc(ev.note)}</div>`;
+      if(ev.input){
+        const k = 'r'+i, show = expanded.has(k) ? ' show' : '';
+        h += `<div class="head" data-key="${k}" onclick="toggleOut(this)">`
+           + `<span class="name">reviewer input (what we sent)</span>`
+           + `<span class="chev">▼ click to toggle</span></div>`
+           + `<pre class="out${show}">${esc(ev.input)}</pre>`;
+      }
       h += `</div></div>`;
     } else {
       // Stable per-position key so an expanded block stays expanded across the

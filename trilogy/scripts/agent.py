@@ -556,6 +556,9 @@ def _run_turn(
                 ):
                     with with_status("Reviewer checking submit"):
                         is_done, note = _validate_completion(provider, conv.messages)
+                    # Log the exact input the reviewer saw (system prompt + the
+                    # agent-only transcript, rendered the same way
+                    # _validate_completion sent it) so a bad verdict is auditable.
                     _log_event(
                         log_path,
                         {
@@ -563,6 +566,8 @@ def _run_turn(
                             "is_done": is_done,
                             "note": note,
                             "kickback_count": state.submit_kickbacks,
+                            "system_prompt": REVIEWER_SYSTEM_PROMPT,
+                            "transcript": _render_reviewer_transcript(conv.messages),
                         },
                     )
                     if not is_done:
@@ -747,6 +752,7 @@ def agent(
             provider=llm_provider,
             original_task=command,
             require_tool=cfg.force_tool_choice,
+            validate_completion=not cfg.disable_reviewer,
             handlers=handlers,
         )
     finally:
@@ -783,6 +789,7 @@ def agent(
                 provider=llm_provider,
                 original_task=next_command,
                 require_tool=cfg.force_tool_choice,
+                validate_completion=not cfg.disable_reviewer,
                 handlers=handlers,
             )
         finally:

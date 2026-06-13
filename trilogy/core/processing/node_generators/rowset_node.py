@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, JoinType
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
@@ -18,6 +18,25 @@ from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
+
+
+def _scoped_joins_for_rowset(
+    scoped_joins: list[tuple[str, str, JoinType]],
+    derived_concepts: list[str],
+) -> list[tuple[str, str, JoinType]]:
+    """A query-scoped `join`/`merge` relates the rowset's *output* to an outer
+    concept; it must not be applied inside the rowset's own (independent-scope)
+    build. Such a join collapses the outer concept onto the rowset output via
+    the merge map/pseudonym — so if the rowset's WHERE references that outer
+    concept (e.g. a membership existence feeder), sourcing the feeder redirects
+    back to the rowset's own output and the rowset depends on itself (infinite
+    recursion). Drop any join referencing a concept this rowset derives."""
+    derived = set(derived_concepts)
+    return [
+        (s, t, jt)
+        for (s, t, jt) in scoped_joins
+        if s not in derived and t not in derived
+    ]
 
 
 def _pseudonym_bridge_keys(
@@ -68,7 +87,19 @@ def gen_rowset_node(
     if cached is not None:
         node = cached.copy()
     else:
-        node = get_query_node(history.base_environment, select, history)
+        # The outer query's scoped joins live on the shared build caches; strip
+        # those touching this rowset's own outputs before the inner build so the
+        # rowset doesn't get welded onto itself (see _scoped_joins_for_rowset),
+        # then restore so outer sourcing is unaffected.
+        caches = history.build_caches
+        saved_scoped_joins = caches.scoped_joins
+        caches.scoped_joins = _scoped_joins_for_rowset(
+            saved_scoped_joins, lineage.rowset.derived_concepts
+        )
+        try:
+            node = get_query_node(history.base_environment, select, history)
+        finally:
+            caches.scoped_joins = saved_scoped_joins
         if node is not None:
             history.rowset_history[rowset.name] = node.copy()
 

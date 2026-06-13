@@ -98,6 +98,11 @@ class AgentConfig:
     # ``file list`` still works. Query-generation evals turn this off — the model
     # is meant to discover schema via ``explore``, not by reading raw files.
     allow_file_read: bool = True
+    # When True, skip the post-submit reviewer gate (the one-shot LLM check that
+    # the agent didn't self-signal "still working" before return_control_to_user).
+    # Off by default; an A/B knob to measure whether the gate helps or just adds
+    # false kickbacks.
+    disable_reviewer: bool = False
 
 
 @dataclass
@@ -159,6 +164,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
         "force_tool_choice",
         "allow_database_introspection",
         "allow_file_read",
+        "disable_reviewer",
     },
 }
 
@@ -301,6 +307,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
             agent_raw.get("allow_database_introspection", True)
         ),
         allow_file_read=bool(agent_raw.get("allow_file_read", True)),
+        disable_reviewer=bool(agent_raw.get("disable_reviewer", False)),
     )
 
     # Canonical location is [engine].parallelism (matches docs and `trilogy init`

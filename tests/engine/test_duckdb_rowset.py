@@ -1,6 +1,9 @@
 from logging import INFO
 
+import pytest
+
 from trilogy import Dialects
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.hooks.query_debugger import DebuggingHook
 
 _CONFLICTING_FILTER_FIXTURE = """
@@ -57,6 +60,62 @@ order by item_id asc;
     # (2000 only) and item 40 (1999 only) drop out. Each count reflects its
     # own year scope independently.
     assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
+
+
+_SELF_WELD_FIXTURE = """
+key sale_id int;
+property sale_id.wk int;
+property sale_id.yr int;
+property sale_id.chan string;
+property sale_id.amt float;
+
+datasource sales (
+    sale_id: sale_id,
+    wk: wk,
+    yr: yr,
+    chan: chan,
+    amt: amt,
+)
+grain (sale_id)
+query '''
+select 1 as sale_id, 1 as wk, 2001 as yr, 'WEB' as chan, 10.0 as amt union all
+select 2 as sale_id, 2 as wk, 2001 as yr, 'WEB' as chan, 20.0 as amt union all
+select 3 as sale_id, 54 as wk, 2002 as yr, 'WEB' as chan, 30.0 as amt
+''';
+"""
+
+
+def test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion():
+    # The TPC-DS q02 shape an agent stumbled into. A feeder rowset (`weeks`)
+    # defines week keys plus their +53 counterparts; two sum rowsets each filter
+    # their rows to a membership in a `weeks` column (`wk in weeks.ws` /
+    # `wk in weeks.nxt`) AND the outer query scoped-joins each sum's own output
+    # key back onto that same `weeks` column. The outer scoped join collapses the
+    # feeder key onto the rowset's own output and adds it as a pseudonym; that
+    # pseudonym used to leak into the rowset's independent-scope WHERE sourcing, so
+    # building a sum rowset's membership existence resolved back to the rowset
+    # itself — it depended on itself and the planner blew the Python stack
+    # (`RecursionError`) instead of erroring cleanly. The fix strips scoped joins
+    # touching a rowset's own outputs from that rowset's inner build, so the
+    # self-weld no longer recurses. This bridge-via-a-third-rowset shape still
+    # isn't resolvable (a separate scoped-join-to-rowset limitation), but now
+    # surfaces as a clean, catchable error rather than a stack overflow.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_SELF_WELD_FIXTURE)
+    with pytest.raises(DisconnectedConceptsException):
+        executor.generate_sql("""
+rowset weeks <- select wk as ws, wk + 53 as nxt where yr = 2001;
+rowset cur_sums <-
+    where chan = 'WEB' and wk in weeks.ws
+    select wk as src_ws, sum(amt) as cur;
+rowset nxt_sums <-
+    where chan = 'WEB' and wk in weeks.nxt
+    select wk as nxt_ws, sum(amt) as nxt;
+select cur_sums.src_ws, cur_sums.cur, nxt_sums.nxt
+left join cur_sums.src_ws = weeks.ws
+inner join weeks.nxt = nxt_sums.nxt_ws
+order by cur_sums.src_ws asc;
+""")
 
 
 _PER_ARM_FILTER_FIXTURE = """

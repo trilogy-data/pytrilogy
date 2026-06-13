@@ -115,6 +115,9 @@ def test_run_displayed_rows_truncation_reported(runner):
     assert payload["displayed"] == 4
     assert payload["truncated"] is True
     assert payload["omitted"] == 6
+    # The middle cut is marked inline so the agent doesn't read the head/tail
+    # join as a contiguous run. `displayed` counts data rows only, not the marker.
+    assert payload["rows"] == [[1], [2], "<redacted 6 rows>", [9], [10]]
 
 
 def test_run_error_emits_error_event_and_nonzero_exit(runner):

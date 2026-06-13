@@ -292,13 +292,19 @@ def _emit_results_json(results: ResultSet, cap: int) -> None:
     total = len(rows)
     hit_fetch_ceiling = total >= _core.DISPLAY_FETCH_CEILING
     head, tail, omitted = _slice_for_middle_truncation(rows, cap)
-    shown = [list(r) for r in head] + [list(r) for r in tail]
+    shown: list = [list(r) for r in head]
+    # Inject a visible marker where the middle was cut so the agent doesn't
+    # mistake the head/tail join for a contiguous run (e.g. read a gap in a
+    # sorted sequence as missing data).
+    if omitted:
+        shown.append(f"<redacted {omitted} rows>")
+    shown += [list(r) for r in tail]
     emit_event(
         "result",
         columns=list(results.columns),
         rows=shown,
         row_count=total,
-        displayed=len(shown),
+        displayed=len(head) + len(tail),
         truncated=omitted > 0 or None,
         omitted=omitted or None,
         fetch_ceiling_hit=hit_fetch_ceiling or None,
