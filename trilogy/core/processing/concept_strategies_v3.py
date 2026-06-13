@@ -17,7 +17,11 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import condition_implies
+from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    condition_implies,
+    decompose_condition,
+)
 from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
@@ -32,6 +36,7 @@ from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     _is_independent_scope,
     _is_scalar_only,
+    _node_condition_implies,
     validate_stack,
 )
 from trilogy.core.processing.nodes import (
@@ -300,6 +305,49 @@ def check_for_early_exit(
     return False
 
 
+def _restrict_completion_conditions(
+    conditions: BuildWhereClause,
+    non_virtual: list[BuildConcept],
+    stack: list[StrategyNode],
+    original_addresses: set[str],
+) -> tuple[BuildWhereClause, list[BuildConcept]]:
+    """Re-apply at the completion merge only the WHERE atoms not already applied
+    to *every* parent. An atom is dropped solely when each parent has genuinely
+    applied it (its preexisting_conditions imply it, or the node is a scalar /
+    independent-scope source) — never merely because its column is absent from
+    the merge's outputs. A filter parent that consumed a column while a sibling
+    parent did *not* filter on it still needs that atom re-applied; keeping it
+    means its row args stay projected, and if a column is genuinely unavailable
+    the downstream input validation fails loudly rather than silently dropping a
+    filter. Returns the residual where clause and ``non_virtual`` trimmed of any
+    row args that belonged only to dropped (already-applied) atoms.
+    """
+    atoms = decompose_condition(conditions.conditional)
+    kept = [
+        a
+        for a in atoms
+        if not all(
+            _is_scalar_only(n)
+            or _is_independent_scope(n, a)
+            or _node_condition_implies(n, a)
+            for n in stack
+        )
+    ]
+    if len(kept) == len(atoms):
+        return conditions, non_virtual
+    residual = combine_condition_atoms(kept)
+    kept_row_args = {r.address for a in kept for r in a.row_arguments}
+    reduced = [
+        c
+        for c in non_virtual
+        if c.address in original_addresses or c.address in kept_row_args
+    ]
+    where = (
+        BuildWhereClause(conditional=residual) if residual is not None else conditions
+    )
+    return where, reduced
+
+
 def generate_loop_completion(context: LoopContext, virtual: set[str]) -> StrategyNode:
     condition_required = True
     non_virtual = [c for c in context.completion_mandatory if c.address not in virtual]
@@ -339,6 +387,23 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             f"Condition {context.conditions} not required, parents included filtering! {parent_map}"
         )
 
+    # When re-applying conditions at this merge, drop atoms already applied to
+    # every parent (e.g. a scalar `state = 'GA'` filtered in all arms) so we do
+    # not demand their now-consumed columns as merge outputs. Atoms not applied
+    # to all parents (e.g. an existence `order_number in feeder` filtered in one
+    # arm only) stay and are re-applied here.
+    reapply_conditions = context.conditions
+    if condition_required and context.conditions:
+        reapply_conditions, non_virtual = _restrict_completion_conditions(
+            context.conditions,
+            non_virtual,
+            context.stack,
+            {x.address for x in context.original_mandatory},
+        )
+        non_virtual_difference_values = set(x.address for x in non_virtual).difference(
+            set(x.address for x in context.original_mandatory)
+        )
+
     if len(context.stack) == 1:
         output: StrategyNode = context.stack[0]
         if non_virtual_different:
@@ -359,16 +424,22 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
 
     # ensure we can resolve our final merge
     output.resolve()
-    if condition_required and context.conditions:
-        output.add_condition(context.conditions.conditional)
-        if context.conditions.existence_arguments:
+    if condition_required and reapply_conditions:
+        output.add_condition(reapply_conditions.conditional)
+        if reapply_conditions.existence_arguments:
             append_existence_check(
                 output,
                 context.environment,
                 context.g,
-                where=context.conditions,
+                where=reapply_conditions,
                 history=context.history,
             )
+        # If we re-applied only a residual subset, the dropped atoms are still
+        # guaranteed (every parent applied them), so advertise the FULL condition
+        # as satisfied — otherwise a higher-level search sees this node as
+        # missing those atoms and re-filters or fails as incomplete.
+        if reapply_conditions is not context.conditions and context.conditions:
+            output.set_preexisting_conditions(context.conditions.conditional)
     elif context.conditions:
         output.preexisting_conditions = context.conditions.conditional
     logger.info(

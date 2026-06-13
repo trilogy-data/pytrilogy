@@ -426,7 +426,7 @@
   {
     "id": 84,
     "grade": "medium",
-    "prompt": "List the customer code (the stable business identifier) and full name (formatted as 'last name, first name', using empty strings for missing parts) for each all demographic matches between any customer with a current home address in the city of Edgewood and any store return on the customers customer-demographic profile type equals the (point in time) demographic profile from the return (not just the customer associated with the return; any demographic matching customer); the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128;. Report one row per non-null qualifying (customer, store return) pair - do not deduplicate or aggregate by customer. Order by customer code with nulls first; limit 100 rows."
+    "prompt": "List the customer code (the stable business identifier) and full name (formatted as 'last name, first name', using empty strings for missing parts) for each all demographic matches between any customer with a current home address in the city of Edgewood and any store return on the customers customer-demographic profile type equals the (point in time) demographic profile from the return (not just the customer associated with the return; any demographic matching customer); the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128;. Report one row per non-null qualifying (customer, ticket_number, item_id) combo, but only return the customer code and full name. Order by customer code with nulls first; limit 100 rows."
   },
   {
     "id": 85,

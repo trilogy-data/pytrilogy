@@ -1,4 +1,4 @@
-"""OPEN BUG repro (TPC-DS q14 inline-avg shape).
+"""Regression (TPC-DS q14 inline-avg shape) — was an open completion bug, now fixed.
 
 A `by *` global aggregate that carries its own embedded `? ...` filter, projected
 alongside a grouped body, under an outer WHERE with **two** row-conditions (plus a
@@ -18,8 +18,6 @@ embedded gate; the second condition (`mo`) has no such cover. Fix lives in the
 completion path: an agg-consumed condition row-arg that no parent can output (but
 is applied below) must not be required as a completion output.
 """
-
-import pytest
 
 from trilogy import Dialects, Environment
 
@@ -74,10 +72,9 @@ def test_single_outer_condition_resolves():
     ) == [("A", 10.0, 35 / 3), ("B", 20.0, 35 / 3), ("C", 5.0, 35 / 3)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="OPEN: completion requires the agg-consumed outer row-arg `mo` as an "
-    "output; the Abstract-grain agg can't surface it -> MergeNode validate_inputs.",
-)
 def test_global_agg_with_two_outer_conditions():
+    # FIXED (completion now restricts the re-applied WHERE to atoms the stack can
+    # produce; `mo` is consumed in the agg's scan, so it is dropped from
+    # re-application rather than demanded as a merge output). avg over the mo=11
+    # rows = (10+5)/2 = 7.5; body A=10, C=5.
     assert _run(MULTI_CONDITION_QUERY) == [("A", 10.0, 7.5), ("C", 5.0, 7.5)]
