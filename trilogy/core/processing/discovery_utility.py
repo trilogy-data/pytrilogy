@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, List
 
-from trilogy.constants import logger
+from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -529,7 +529,7 @@ def get_priority_concept(
             subgraphs=[[c.address for c in group] for group in subgraphs],
         )
     raise DisconnectedConceptsException(
-        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}",
+        format_unresolved_concepts_error(all_concepts, found_concepts),
         subgraphs=[[c.address for c in all_concepts]],
     )
 
@@ -614,6 +614,36 @@ def format_disconnected_subgraphs_error(
         f"The requested concepts split into {len(subgraphs)} disconnected "
         f"subgraphs: {rendered}. Are you missing a join or merge statement to "
         "relate them?"
+    )
+
+
+def format_unresolved_concepts_error(
+    all_concepts: List[BuildConcept], found_concepts: set[str]
+) -> str:
+    """Terminal-fallback message when discovery exhausts its candidates without
+    building one connected source. Unlike the >1-subgraph case the model graph
+    looks connected, so we can't name subgraphs — but the likely cause is still a
+    missing join/merge to relate concepts across models. List what we did and
+    didn't source, dropping internal `_virt_*` scaffolding."""
+    requested = {c.address for c in all_concepts}
+
+    def clean(addresses: set[str]) -> list[str]:
+        return sorted(a for a in addresses if VIRTUAL_CONCEPT_PREFIX not in a)
+
+    sourced = clean(found_concepts & requested)
+    unresolved = clean(requested - found_concepts)
+
+    def fmt(items: list[str]) -> str:
+        return "{" + ", ".join(items) + "}"
+
+    if unresolved:
+        detail = f"Sourced: {fmt(sourced)}; still unresolved: {fmt(unresolved)}"
+    else:
+        # everything resolved individually but couldn't be combined
+        detail = f"Sourced individually but not joinable from model: {fmt(sourced)}"
+    return (
+        "Discovery error: couldn't source all these concepts into one query; you "
+        "may need a join or merge to relate them across models. " + detail
     )
 
 
