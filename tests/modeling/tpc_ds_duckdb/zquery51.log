@@ -72,19 +72,13 @@ uneven as (
 SELECT
     \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
     \"cooperative\".\"sales_item_id\" as \"sales_item_id\",
-    max(CASE
-	WHEN \"cooperative\".\"sales_sales_channel\" = 'STORE' THEN 1
-	ELSE 0
-	END) as \"store_has_row\",
-    max(CASE
-	WHEN \"cooperative\".\"sales_sales_channel\" = 'WEB' THEN 1
-	ELSE 0
-	END) as \"web_has_row\"
+    \"cooperative\".\"sales_sales_channel\" as \"sales_sales_channel\"
 FROM
     \"cooperative\"
 GROUP BY
     1,
-    2),
+    2,
+    3),
 questionable as (
 SELECT
     \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
@@ -96,6 +90,23 @@ FROM
 GROUP BY
     1,
     2),
+vacuous as (
+SELECT
+    \"juicy\".\"sales_date_date\" as \"sales_date_date\",
+    \"juicy\".\"sales_item_id\" as \"sales_item_id\",
+    max(CASE
+	WHEN \"juicy\".\"sales_sales_channel\" = 'STORE' THEN 1
+	ELSE 0
+	END) as \"store_has_row\",
+    max(CASE
+	WHEN \"juicy\".\"sales_sales_channel\" = 'WEB' THEN 1
+	ELSE 0
+	END) as \"web_has_row\"
+FROM
+    \"juicy\"
+GROUP BY
+    1,
+    2),
 yummy as (
 SELECT
     \"questionable\".\"sales_date_date\" as \"sales_date_date\",
@@ -104,34 +115,34 @@ SELECT
     sum(\"questionable\".\"web_daily\") over (partition by \"questionable\".\"sales_item_id\" order by \"questionable\".\"sales_date_date\" asc ) as \"web_cume\"
 FROM
     \"questionable\"),
-vacuous as (
+concerned as (
 SELECT
-    \"juicy\".\"sales_date_date\" as \"sales_date_date\",
-    \"juicy\".\"sales_item_id\" as \"sales_item_id\",
-    \"juicy\".\"store_has_row\" as \"store_has_row\",
-    \"juicy\".\"web_has_row\" as \"web_has_row\",
+    \"vacuous\".\"sales_date_date\" as \"sales_date_date\",
+    \"vacuous\".\"sales_item_id\" as \"sales_item_id\",
+    \"vacuous\".\"store_has_row\" as \"store_has_row\",
+    \"vacuous\".\"web_has_row\" as \"web_has_row\",
     \"yummy\".\"store_cume\" as \"store_cume\",
     \"yummy\".\"web_cume\" as \"web_cume\"
 FROM
-    \"juicy\"
-    LEFT OUTER JOIN \"yummy\" on \"juicy\".\"sales_date_date\" = \"yummy\".\"sales_date_date\" AND \"juicy\".\"sales_item_id\" = \"yummy\".\"sales_item_id\")
+    \"vacuous\"
+    LEFT OUTER JOIN \"yummy\" on \"vacuous\".\"sales_date_date\" = \"yummy\".\"sales_date_date\" AND \"vacuous\".\"sales_item_id\" = \"yummy\".\"sales_item_id\")
 SELECT
-    \"vacuous\".\"sales_item_id\" as \"item_sk\",
-    \"vacuous\".\"sales_date_date\" as \"d_date\",
+    \"concerned\".\"sales_item_id\" as \"item_sk\",
+    \"concerned\".\"sales_date_date\" as \"d_date\",
     CASE
-	WHEN \"vacuous\".\"web_has_row\" = 1 THEN \"vacuous\".\"web_cume\"
+	WHEN \"concerned\".\"web_has_row\" = 1 THEN \"concerned\".\"web_cume\"
 	ELSE null
 	END as \"web_sales\",
     CASE
-	WHEN \"vacuous\".\"store_has_row\" = 1 THEN \"vacuous\".\"store_cume\"
+	WHEN \"concerned\".\"store_has_row\" = 1 THEN \"concerned\".\"store_cume\"
 	ELSE null
 	END as \"store_sales\",
-    \"vacuous\".\"web_cume\" as \"web_cumulative\",
-    \"vacuous\".\"store_cume\" as \"store_cumulative\"
+    \"concerned\".\"web_cume\" as \"web_cumulative\",
+    \"concerned\".\"store_cume\" as \"store_cumulative\"
 FROM
-    \"vacuous\"
+    \"concerned\"
 WHERE
-    \"vacuous\".\"web_cume\" > \"vacuous\".\"store_cume\"
+    \"concerned\".\"web_cume\" > \"concerned\".\"store_cume\"
 
 ORDER BY 
     \"item_sk\" asc nulls first,

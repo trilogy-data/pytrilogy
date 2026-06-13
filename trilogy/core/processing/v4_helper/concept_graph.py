@@ -23,6 +23,7 @@ from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConceptArgs,
     BuildFilterItem,
     BuildRowsetItem,
     BuildWhereClause,
@@ -286,13 +287,33 @@ def _aggregate_input_grain(
         return frozenset()
     input_grain: set[str] = set(out_grain)
     for arg in concept.lineage.function.arguments:
-        if not isinstance(arg, BuildConcept):
+        # Descend into inline expressions: `sum(case when ... then
+        # web_sales.price else 0)` arrives as a Function, not a BuildConcept, so
+        # walking only top-level concept args would miss its fact inputs. Two
+        # aggregates over different facts at the same output grain would then
+        # look identical and co-source into one raw fact-to-fact join before
+        # aggregating (q2.1/q2.2 fan-out). A referenced concept that is itself a
+        # row-shape barrier (inner aggregate / rowset) has already collapsed to
+        # its own grain and is consumed opaquely — pulling its grain here would
+        # force a spurious regroup of the outer aggregate's input (q97: a
+        # grand-total sum over rowset outputs would dedup the rowset rows).
+        if isinstance(arg, BuildConcept):
+            sub_args = [arg]
+        elif isinstance(arg, BuildConceptArgs):
+            sub_args = [
+                c
+                for c in arg.concept_arguments
+                if isinstance(c, BuildConcept)
+                and c.derivation not in ROW_SHAPE_BARRIER_DERIVATIONS
+            ]
+        else:
             continue
-        grain_inputs = _walk_aggregate_grain_inputs(arg, environment)
-        if grain_inputs:
-            input_grain.update(c.address for c in grain_inputs)
-        elif arg.grain:
-            input_grain.update(arg.grain.components)
+        for sub in sub_args:
+            grain_inputs = _walk_aggregate_grain_inputs(sub, environment)
+            if grain_inputs:
+                input_grain.update(c.address for c in grain_inputs)
+            elif sub.grain:
+                input_grain.update(sub.grain.components)
     return frozenset(input_grain)
 
 

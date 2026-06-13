@@ -8,31 +8,62 @@ Supersedes the Jun-5 sweep snapshot (reasons/results/triage/SUMMARY + the
 root-cause-A / fanout / agg-source briefs), all deleted — those bugs are fixed
 and the data was stale.
 
-## Headline (2026-06-12 re-run, post-C3+C6-fix)
+## Headline (2026-06-12 re-run, post C7/C11/q29/q54/q77 fixes)
 
-52 tracked entries (down from 59 — gcat test_join + gcat2 test_extra_fields_two +
-ncaa adhoc02 + C5 array_inclusion_aggregate + C3 test_history fixed/removed; gcat
-test_join_discovery_two now XPASSes and was removed):
+57 tracked entries. **No crashes, no runaways remain** — the q29 crash (C10), the
+q2.1/q2.2 fan-out runaway (C11), and the q54/q77 wrong-rows all landed this round
+(see "FIXED" notes + memory), and C7 (the date-render misses) is fixed below:
 
 | bucket | n | meaning |
 | --- | --- | --- |
-| **SHAPE** | 42 | correct rows, worse/different SQL — cosmetic, not a parity bug |
-| **CRASH** | 0  | no genuine crashes remain |
-| **ROWS**  | 8  | classifier coarse bucket; ~4 genuine wrong-rows + 2 render + 2 SHAPE-ish |
-| **TIMEOUT** | 2 | tpc-ds q21/q22 exceed the classify budget |
+| **SHAPE** | 47 | correct rows, worse/different SQL — cosmetic, not a parity bug |
+| **ROWS**  | 8  | classifier coarse bucket; ~6 genuine wrong-rows + 2 SHAPE-ish |
+| **XPASS** | 2  | q97_1/q97_2 — pass in isolation; pre-existing cross-file pollution, left in |
 
 Counts are the raw `v4_classify.py` buckets. The `ROWS` bucket is coarse: only
-C8 (×2) + C9 (×2) are genuine wrong-rows, C7 (×2) are the date-render misses, and
-two (`test_select_literal_is_rendered_in_projection`, `test_aggregate_filter_uses_having`)
-are really SHAPE/`_INLINE` that the regex caught. **No genuine crashes remain**
-(C3 + C6, the last two, fixed below).
+C8 (×2: ambiguous forced-join), C9 (×2: rides + def_wrapped), `test_recursive`,
+and `composite_rollup` are genuine wrong-rows; the two
+(`test_select_literal_is_rendered_in_projection`, `test_aggregate_filter_uses_having`)
+are really SHAPE/`_INLINE` that the regex caught.
 
 Note: under the *parallel* classify run the file-lock flake can re-surface
 `tpc_ds_duckdb::test_seventy_three` as a spurious `PermissionError [WinError 32]`
 CRASH — in isolation it's `assert 5489 < 3000` (SHAPE/size), not a real crash.
 
-So ~6 of 52 are genuine parity gaps (~4 genuine wrong-rows + 2 render); the rest
-are SQL-shape/verbosity (TPC-DS size ceilings + inlining CTE-shape snapshots).
+So ~6 of 57 are genuine parity gaps (all wrong-rows); the rest are SQL-shape/
+verbosity (TPC-DS size ceilings + inlining CTE-shape snapshots).
+
+### FIXED 2026-06-12 — C7 constant-only WHERE dropped from render (the "date" misses)
+`engine/test_sqlite.py::test_date_diff_rendering` +
+`engine/test_bigquery.py::test_date_diff_rendering`. NOT a date-render bug: a
+**constant-only WHERE was dropped entirely**. Query `select today where
+date_add(current_date(), day, -30) < today` (today = const) emitted
+`SELECT date('now')` with NO WHERE. The const `today` builds as two concept-graph
+nodes — a d* SELECT-phase node and a d1 `@condition`-phase node — and the default
+partition rule (`partition_by_depth_and_grain`, keyed on depth) split them into
+two constant groups. Condition placement chose the upstream-most (d1) group, but
+`gen_constant` ignores parents, so the downstream d* output ConstantNode just
+rebuilt the constant and dropped the d1 group's WHERE. Fix: new
+`partition_constants` rule (`group_rules.py` GROUPING_RULES) keyed on
+`(scope, grain, grouping_mode)` — never depth, and on scope so the `@condition`
+suffix doesn't re-split — merging the phases into one STAR group that carries the
+WHERE (exact mirror of `partition_rowsets`). Removed both from v4_known_failing
+(`_RENDER` reason now unused, deleted). Unit locks:
+`test_partition_constants_*` in test_v4_group_behaviors.py. Validation: engine+
+processing+optimization+complex 918 passed/0 fail; modeling 291 passed/0 fail; v3
+unchanged. See memory `project_v4_c7_constant_condition_dropped.md`.
+
+### FIXED earlier this round — q29 crash, q54/q77 rows, q2.1/q2.2 runaway
+- **q29** (`test_twenty_nine`) — the LAST crash. `_get_query_node_v4` forked a
+  fresh `V4History` that dropped the outer `build_caches.scoped_joins` (in-query
+  JOIN merges), so the rowset's cross-fact inner select couldn't resolve →
+  INVALID_REFERENCE_BUG. Fix: thread `build_caches=history.build_caches`. Same fix
+  cleared **q54/q77** wrong-rows. See `project_v4_scoped_joins_rowset_threading`.
+- **q2.1/q2.2** (`test_two_one`/`test_two_two`, C11 runaway) — `_aggregate_input_grain`
+  skipped inline-expression args, so two per-fact aggregates collapsed to one
+  bucket and joined RAW facts → soft cross-join. Fix: descend inline args to row
+  identity (skip row-shape-barrier refs). Reclassified `_TPCDS_SIZE` (correct
+  rows, verbose). See `project_v4_c11_multifact_aggregate_input_grain`.
 
 ### FIXED 2026-06-12 — C3 complete-where exact-match filter-column over-requirement
 `discovery/test_discovery.py::test_history_e2e_non_materialized_field`
@@ -195,18 +226,39 @@ passes, so the *base* shape is fixed.
   no WHERE, so `name` is never referenced). Removed from v4_known_failing (now
   passes identically under v3 and v4). See FIXED note below.
 
-### UNTRACKED pre-existing v4 baseline failures (found in 2026-06-11 sweep)
-Not in `v4_known_failing.py`, but fail on a clean baseline too (verified via
-`git stash`) — so they are real v4 gaps the list is missing, NOT regressions:
-- `tpc_ds_duckdb/test_queries.py`: test_twenty_nine (ValueError), test_forty_six,
-  test_fifty_four, test_sixty_eight, test_seventy_seven, test_ninety_seven_two
-- `engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by`
-  (the NULL-CASE-over-rollup-key dim baseline fail noted earlier)
-- `engine/test_duckdb.py::test_recursive` (`assert 2 == 4` — wrong rows; verified
-  pre-existing on clean baseline, NOT a regression of the C5 cycle fix)
-- `modeling/geography/test_landmark_updates.py::test_exact_match_resolution`,
-  `…::test_exact_match_with_parenthetical_extra_filter`
-These should be added to the tracking list or fixed.
+### C10 — folded-in baseline fails (were untracked; all pass v3, fail v4) — 10
+Folded into `v4_known_failing.py` 2026-06-12 (previously untracked but failing on
+a clean baseline). All confirmed v4-only (the 10 pass under v3). Diagnoses for the
+two highest-priority failures investigated in depth — both are deep planner gaps,
+not quick wins:
+
+- **CRASH** `tpc_ds q29 test_twenty_nine` (`ValueError: Invalid reference string`,
+  `INVALID_REFERENCE_BUG` in the final SELECT). The `correlated` rowset's
+  row-level source — the cross-fact join `physical_sales ⋈ returns ⋈
+  catalog_sales` on (customer, item), pinned by the query's explicit `inner join`
+  hints — fails to source: the v4 ROOT node `grp:root:root:∅` builds with
+  `parents=[] -> None`, cascading to an empty rowset node and parent-less
+  aggregate GroupNodes whose columns all render as the invalid sentinel. Root
+  cause is v4 multi-fact correlated-grain ROOT sourcing returning None. Deep.
+- **ROWS** `engine test_recursive` (`assert 2 == 4`). `where first_parent = 1`
+  where `first_parent <- recurse_edge(id, parent)`. v4 DOES build a RECURSIVE
+  condition node (`grp:[@condition]recursive:d1` outputs first_parent), but the
+  resolved CTE tree has NO recursive CTE: the final MERGE re-derives first_parent
+  inline as the single-step `CASE WHEN parent IS NULL THEN id ELSE parent` (one
+  level up, not the full traversal), so `=1` matches ids {1,2} not {1,2,3,4}. The
+  recurse_edge virtual concept isn't carried from the recursive node into the
+  final merge's path graph (`Node not found: c~local._virt_func_recurse_edge_…`)
+  — a RECURSIVE concept used FILTER-ONLY (not a selected output) is inlined
+  instead of sourced via its recursive node. NOT `_fold_passthrough_parents`
+  (tested: generalizing its `crosses_unsourced_aggregate` barrier guard to the
+  full `ROW_SHAPE_BARRIER_DERIVATIONS` set did not fix it; reverted). Deep.
+- **ROWS** `tpc_ds q54` (1 vs 100), `q77` (44 vs 46), `q46` (different rows),
+  `q97_2` (counts 540709 vs 540938 — note `q97_1`, tracked as `_TPCDS_SIZE`, is
+  actually the SAME wrong-rows bug, mis-bucketed). Not yet diagnosed.
+- **SHAPE/source** `geography exact_match` ×2 (picks `full_tree_info` over the
+  partial source), `q68` (tie-break ordering — numeric values match, only the
+  LIMIT-tie city name differs), `composite_rollup` (NULL CASE over rollup key).
+  Not yet diagnosed; lower priority.
 
 ### C4 — "Invalid reference string" crash (ValueError) — 1 (was 2)
 - ~~`modeling/gcat/gcat2/test_gcat_two.py::test_extra_fields_two`~~ FIXED —
@@ -224,10 +276,11 @@ These should be added to the tracking list or fixed.
   node. Now skips datasources absent from `request.graph.datasources`. See FIXED
   note above. Remaining miss is the TPC-DS size ceiling (SHAPE), not a crash.
 
-### C7 — date arithmetic dropped from render — 2
-Interval subtraction (`DATE_ADD(..., INTERVAL -30 day)` / `datetime(...)`) missing.
-- `engine/test_bigquery.py::test_date_diff_rendering`
-- `engine/test_sqlite.py::test_date_diff_rendering`
+### C7 — date arithmetic dropped from render — FIXED (was 2 → 0)
+Was mis-named: not a date-render miss but a **constant-only WHERE dropped**. See
+the FIXED note in the headline (`partition_constants`).
+- ~~`engine/test_bigquery.py::test_date_diff_rendering`~~ FIXED
+- ~~`engine/test_sqlite.py::test_date_diff_rendering`~~ FIXED
 
 ### C8 — ambiguous forced-join off-by-one rows — 2
 - `modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join` (4 vs 3)
@@ -237,14 +290,56 @@ Interval subtraction (`DATE_ADD(..., INTERVAL -30 day)` / `datetime(...)`) missi
 - `modeling/rides_example/test_ride_example.py::test_example_model` (1 vs 4)
 - `modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate` (0 vs 2)
 
+### C11 — fan-out RUNAWAY (the "timeout" cases, mis-labeled) — FIXED (was 2 → 0)
+FIXED via aggregate input-grain derivation over inline-expression args (see the
+headline FIXED note + `project_v4_c11_multifact_aggregate_input_grain`). The brief
+below is retained for the original diagnosis; the actual fix was NOT the
+fact-based split it proposed — it was `_aggregate_input_grain` ignoring inline
+`BuildFunction` args (`sum(case ... web.price ...)`), which collapsed the two
+per-fact aggregates into one bucket. Reclassified `_TPCDS_SIZE` (correct rows,
+verbose SQL).
+
+`tpc_ds_duckdb/test_queries.py::test_two_one` / `test_two_two` run the q2 variants
+`query02-one.preql` / `query02-two.preql` (labels 2.1/2.2) — NOT q21/q22. The
+classifier bucketed them TIMEOUT/OTHER; investigation shows they are a genuine v4
+**fan-out runaway**, the soft-cross-join class flagged by the user (no literal
+`1=1`). The v4 SQL joins **raw, un-aggregated** `web_sales` and `catalog_sales`
+scans on `date_id` (= sold_date_sk, a non-unique key) BEFORE summing each to the
+date grain:
+```
+wakeful (raw web_sales rows)  FULL JOIN  quizzical (raw catalog_sales rows)
+    on web.date_id is not distinct from catalog.date_id
+```
+At sf=1 (web_sales ~7.2M, catalog_sales ~14.4M rows over ~1823 dates) this is a
+per-date many-to-many product — billions of intermediate rows — so EXEC takes
+~70s (q2.1) / ~103s (q2.2) for 53 correct output rows. The reference/v3 plan
+aggregates `sum(ext_sales_price)` by `date_id` WITHIN each fact first, then joins
+1-row-per-date. **Fix direction:** push the per-fact date-grain aggregation below
+the union/join so the cross-fact join is 1:1 on the date key. NOTE: generation is
+fast (~0.5s) and the SIZE/ROWS asserts pass — only EXEC is pathological — so this
+never surfaced as a normal failure; it only shows as a timeout under the parallel
+classifier (and bloats the suite's wall-clock). Reclassified in
+`v4_known_failing.py` from `_TPCDS_SIZE` to `_RUNAWAY`. Mirrors the q29 (C10)
+multi-fact-sourcing family: v4 under-aggregates before a cross-fact join. Full
+handoff brief (root cause, fix direction in `partition_aggregates`, regression
+guards, repro recipes): `local_scripts/v4_c11_multifact_aggregate_runaway_brief.md`.
+
 ## Coverage-gap conclusion
 
-Only `top_x_by_metric` is distilled in `v4_evals/failing_cases/`. **All crash
-clusters are now fixed** (C2, C3, C4-gcat, C5, C6) and C1 (merge fan-out) turned
-out already-fixed/stale. The remaining genuine gaps are wrong-rows + render only.
-Remaining work, in priority order:
-**C8/C9 (wrong rows) → C7 (date render) → SHAPE/verbosity backlog.**
+Only `top_x_by_metric` is distilled in `v4_evals/failing_cases/`. **All crash and
+runaway clusters are now fixed** (C2–C6, plus q29/C10, the C11 runaway, and C7
+this round). No crashes, no runaways remain. Remaining genuine work is all
+wrong-rows, in priority order:
+**C10 test_recursive (filter-only RECURSIVE inlined as a single-step CASE) → C8
+ambiguous forced-join off-by-one (×2) → C9 rides test_example_model +
+def_wrapped_filtered_aggregate → C10 q46/q97_2 wrong-rows → composite_rollup
+(NULL CASE over rollup key) → geography exact_match source-selection (×2) → q68
+tie-break → SHAPE/verbosity backlog.**
 
-The 42 SHAPE entries need no eval case; they're tracked verbosity/inlining
-regressions to close at the source-selection / render layer, gated on
-`CONFIG.use_v4_discovery` in their SQL assertions.
+The test_recursive diagnosis (above) localizes the bug but the fix is deep v4
+planner surgery (condition placement routing a barrier-derived filter arg through
+its recursive node) — high regression risk against the 900+ passing tests, so it
+warrants a focused, full-suite-validated change rather than a rushed edit. The 47
+SHAPE entries need no eval case; they're tracked verbosity/inlining regressions to
+close at the source-selection / render layer, gated on `CONFIG.use_v4_discovery`
+in their SQL assertions.

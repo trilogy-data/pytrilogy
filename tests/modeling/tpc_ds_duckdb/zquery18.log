@@ -1,6 +1,6 @@
 query_id = "18"
 generator = "v4"
-gen_length = 6299
+gen_length = 7009
 preql_size = 1379
 comp_size = 1593
 generated_sql = """
@@ -82,26 +82,41 @@ SELECT
 FROM
     \"yummy\"
     LEFT OUTER JOIN \"abundant\" on \"yummy\".\"cs_item_id\" = \"abundant\".\"cs_item_id\" AND \"yummy\".\"cs_order_number\" = \"abundant\".\"cs_order_number\"
-    LEFT OUTER JOIN \"questionable\" on \"yummy\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
+    LEFT OUTER JOIN \"questionable\" on \"yummy\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"),
+vacuous as (
 SELECT
-    \"juicy\".\"cs_item_text_id\" as \"cs_item_text_id\",
     \"juicy\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
-    \"juicy\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
     \"juicy\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
-    avg(cast(\"juicy\".\"cs_quantity\" as numeric(12,2))) as \"agg1\",
-    avg(cast(\"juicy\".\"cs_list_price\" as numeric(12,2))) as \"agg2\",
-    avg(cast(\"juicy\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3\",
-    avg(cast(\"juicy\".\"cs_sales_price\" as numeric(12,2))) as \"agg4\",
-    avg(cast(\"juicy\".\"cs_net_profit\" as numeric(12,2))) as \"agg5\",
-    avg(cast(\"juicy\".\"row_birth_year\" as numeric(12,2))) as \"agg6\",
-    avg(cast(\"juicy\".\"row_dep_count\" as numeric(12,2))) as \"agg7\"
+    \"juicy\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"juicy\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
+    \"juicy\".\"cs_item_text_id\" as \"cs_item_text_id\",
+    \"juicy\".\"cs_list_price\" as \"cs_list_price\",
+    \"juicy\".\"cs_net_profit\" as \"cs_net_profit\",
+    \"juicy\".\"cs_quantity\" as \"cs_quantity\",
+    \"juicy\".\"cs_sales_price\" as \"cs_sales_price\",
+    \"juicy\".\"row_birth_year\" as \"row_birth_year\",
+    \"juicy\".\"row_dep_count\" as \"row_dep_count\"
 FROM
-    \"juicy\"
+    \"juicy\")
+SELECT
+    \"vacuous\".\"cs_item_text_id\" as \"cs_item_text_id\",
+    \"vacuous\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"vacuous\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"vacuous\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
+    avg(cast(\"vacuous\".\"cs_quantity\" as numeric(12,2))) as \"agg1\",
+    avg(cast(\"vacuous\".\"cs_list_price\" as numeric(12,2))) as \"agg2\",
+    avg(cast(\"vacuous\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3\",
+    avg(cast(\"vacuous\".\"cs_sales_price\" as numeric(12,2))) as \"agg4\",
+    avg(cast(\"vacuous\".\"cs_net_profit\" as numeric(12,2))) as \"agg5\",
+    avg(cast(\"vacuous\".\"row_birth_year\" as numeric(12,2))) as \"agg6\",
+    avg(cast(\"vacuous\".\"row_dep_count\" as numeric(12,2))) as \"agg7\"
+FROM
+    \"vacuous\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
 ORDER BY 
-    \"juicy\".\"cs_bill_customer_address_country\" asc nulls first,
-    \"juicy\".\"cs_bill_customer_address_state\" asc nulls first,
-    \"juicy\".\"cs_bill_customer_address_county\" asc nulls first,
-    \"juicy\".\"cs_item_text_id\" asc nulls first
+    \"vacuous\".\"cs_bill_customer_address_country\" asc nulls first,
+    \"vacuous\".\"cs_bill_customer_address_state\" asc nulls first,
+    \"vacuous\".\"cs_bill_customer_address_county\" asc nulls first,
+    \"vacuous\".\"cs_item_text_id\" asc nulls first
 LIMIT (100)"""

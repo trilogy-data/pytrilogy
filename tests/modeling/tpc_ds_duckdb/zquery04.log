@@ -169,24 +169,24 @@ WHERE
     \"questionable\".\"store_first_year\" > 0
 )
 SELECT
-    \"yummy\".\"sales_billing_customer_text_id\" as \"customer_id\",
-    \"yummy\".\"sales_billing_customer_first_name\" as \"customer_first_name\",
-    \"yummy\".\"sales_billing_customer_last_name\" as \"customer_last_name\",
-    \"yummy\".\"sales_billing_customer_preferred_cust_flag\" as \"customer_preferred_cust_flag\"
+    \"juicy\".\"sales_billing_customer_text_id\" as \"customer_id\",
+    \"juicy\".\"sales_billing_customer_first_name\" as \"customer_first_name\",
+    \"juicy\".\"sales_billing_customer_last_name\" as \"customer_last_name\",
+    \"juicy\".\"sales_billing_customer_preferred_cust_flag\" as \"customer_preferred_cust_flag\"
 FROM
-    \"yummy\"
+    \"juicy\"
 WHERE
-    \"yummy\".\"catalog_first_year\" > 0 and \"yummy\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"yummy\".\"catalog_first_year\" > 0 THEN \"yummy\".\"catalog_second_year\" / \"yummy\".\"catalog_first_year\"
+    \"juicy\".\"catalog_first_year\" > 0 and \"juicy\".\"web_first_year\" > 0 and ( CASE
+	WHEN \"juicy\".\"catalog_first_year\" > 0 THEN \"juicy\".\"catalog_second_year\" / \"juicy\".\"catalog_first_year\"
 	ELSE null
 	END ) > ( CASE
-	WHEN \"yummy\".\"store_first_year\" > 0 THEN \"yummy\".\"store_second_year\" / \"yummy\".\"store_first_year\"
+	WHEN \"juicy\".\"store_first_year\" > 0 THEN \"juicy\".\"store_second_year\" / \"juicy\".\"store_first_year\"
 	ELSE null
 	END ) and ( CASE
-	WHEN \"yummy\".\"catalog_first_year\" > 0 THEN \"yummy\".\"catalog_second_year\" / \"yummy\".\"catalog_first_year\"
+	WHEN \"juicy\".\"catalog_first_year\" > 0 THEN \"juicy\".\"catalog_second_year\" / \"juicy\".\"catalog_first_year\"
 	ELSE null
 	END ) > ( CASE
-	WHEN \"yummy\".\"web_first_year\" > 0 THEN \"yummy\".\"web_second_year\" / \"yummy\".\"web_first_year\"
+	WHEN \"juicy\".\"web_first_year\" > 0 THEN \"juicy\".\"web_second_year\" / \"juicy\".\"web_first_year\"
 	ELSE null
 	END )
 

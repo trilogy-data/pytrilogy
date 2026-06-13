@@ -1,6 +1,6 @@
 query_id = "59"
 generator = "v4"
-gen_length = 6909
+gen_length = 7185
 preql_size = 2243
 comp_size = 2234
 generated_sql = """
@@ -35,7 +35,7 @@ WHERE
 GROUP BY
     1,
     2),
-young as (
+sparkling as (
 SELECT
     \"ss_store_store\".\"S_STORE_ID\" as \"s_store_id1\",
     \"ss_store_store\".\"S_STORE_NAME\" as \"s_store_name1\",
@@ -45,12 +45,8 @@ FROM
 abundant as (
 SELECT
     \"questionable\".\"ss_store_id\" as \"ss_store_id\",
-    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
-    max(CASE
-	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1212 AND 1223 THEN 1
-	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1224 AND 1235 THEN 2
-	ELSE 0
-	END) as \"year_flag\"
+    \"ss_date_date\".\"D_MONTH_SEQ\" as \"ss_date_month_seq\",
+    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\"
 FROM
     \"questionable\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"questionable\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -59,20 +55,37 @@ WHERE
 
 GROUP BY
     1,
-    2),
+    2,
+    3,
+    \"questionable\".\"ss_date_id\"),
 yummy as (
 SELECT
-    \"abundant\".\"ss_date_week_seq\" - (CASE
-	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
-	ELSE 0
-	END) as \"normalized_week\",
     \"abundant\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
     \"abundant\".\"ss_store_id\" as \"ss_store_id\",
-    \"abundant\".\"year_flag\" as \"year_flag\"
+    max(CASE
+	WHEN \"abundant\".\"ss_date_month_seq\" BETWEEN 1212 AND 1223 THEN 1
+	WHEN \"abundant\".\"ss_date_month_seq\" BETWEEN 1224 AND 1235 THEN 2
+	ELSE 0
+	END) as \"year_flag\"
 FROM
-    \"abundant\"),
+    \"abundant\"
+GROUP BY
+    1,
+    2),
 juicy as (
 SELECT
+    \"yummy\".\"ss_date_week_seq\" - (CASE
+	WHEN \"yummy\".\"year_flag\" = 2 THEN 52
+	ELSE 0
+	END) as \"normalized_week\",
+    \"yummy\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
+    \"yummy\".\"ss_store_id\" as \"ss_store_id\",
+    \"yummy\".\"year_flag\" as \"year_flag\"
+FROM
+    \"yummy\"),
+vacuous as (
+SELECT
+    \"juicy\".\"year_flag\" as \"year_flag\",
     \"wakeful\".\"fri_sales\" as \"fri_sales\",
     \"wakeful\".\"mon_sales\" as \"mon_sales\",
     \"wakeful\".\"sat_sales\" as \"sat_sales\",
@@ -82,70 +95,69 @@ SELECT
     \"wakeful\".\"thu_sales\" as \"thu_sales\",
     \"wakeful\".\"tue_sales\" as \"tue_sales\",
     \"wakeful\".\"wed_sales\" as \"wed_sales\",
-    \"yummy\".\"year_flag\" as \"year_flag\",
-    lead(\"wakeful\".\"fri_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"yummy\".\"normalized_week\" order by \"yummy\".\"year_flag\" asc ) as \"_virt_window_lead_2781518767952423\",
-    lead(\"wakeful\".\"mon_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"yummy\".\"normalized_week\" order by \"yummy\".\"year_flag\" asc ) as \"_virt_window_lead_2528494396952318\",
-    lead(\"wakeful\".\"sat_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"yummy\".\"normalized_week\" order by \"yummy\".\"year_flag\" asc ) as \"_virt_window_lead_1424385664204750\",
-    lead(\"wakeful\".\"sun_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"yummy\".\"normalized_week\" order by \"yummy\".\"year_flag\" asc ) as \"_virt_window_lead_6227340597452426\",
-    lead(\"wakeful\".\"thu_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"yummy\".\"normalized_week\" order by \"yummy\".\"year_flag\" asc ) as \"_virt_window_lead_644735902284924\",
-    lead(\"wakeful\".\"tue_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"yummy\".\"normalized_week\" order by \"yummy\".\"year_flag\" asc ) as \"_virt_window_lead_1092584691553364\",
-    lead(\"wakeful\".\"wed_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"yummy\".\"normalized_week\" order by \"yummy\".\"year_flag\" asc ) as \"_virt_window_lead_8976818883664558\"
-FROM
-    \"yummy\"
-    INNER JOIN \"wakeful\" on \"yummy\".\"ss_date_week_seq\" = \"wakeful\".\"ss_date_week_seq\" AND \"yummy\".\"ss_store_id\" = \"wakeful\".\"ss_store_id\"),
-concerned as (
-SELECT
-    \"juicy\".\"fri_sales\" / \"juicy\".\"_virt_window_lead_2781518767952423\" as \"fri_sales_ratio\",
-    \"juicy\".\"mon_sales\" / \"juicy\".\"_virt_window_lead_2528494396952318\" as \"mon_sales_ratio\",
-    \"juicy\".\"sat_sales\" / \"juicy\".\"_virt_window_lead_1424385664204750\" as \"sat_sales_ratio\",
-    \"juicy\".\"ss_date_week_seq\" as \"d_week_seq1\",
-    \"juicy\".\"ss_store_id\" as \"ss_store_id\",
-    \"juicy\".\"sun_sales\" / \"juicy\".\"_virt_window_lead_6227340597452426\" as \"sun_sales_ratio\",
-    \"juicy\".\"thu_sales\" / \"juicy\".\"_virt_window_lead_644735902284924\" as \"thu_sales_ratio\",
-    \"juicy\".\"tue_sales\" / \"juicy\".\"_virt_window_lead_1092584691553364\" as \"tue_sales_ratio\",
-    \"juicy\".\"wed_sales\" / \"juicy\".\"_virt_window_lead_8976818883664558\" as \"wed_sales_ratio\",
-    \"juicy\".\"year_flag\" as \"year_flag\"
+    lead(\"wakeful\".\"fri_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"juicy\".\"normalized_week\" order by \"juicy\".\"year_flag\" asc ) as \"_virt_window_lead_2781518767952423\",
+    lead(\"wakeful\".\"mon_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"juicy\".\"normalized_week\" order by \"juicy\".\"year_flag\" asc ) as \"_virt_window_lead_2528494396952318\",
+    lead(\"wakeful\".\"sat_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"juicy\".\"normalized_week\" order by \"juicy\".\"year_flag\" asc ) as \"_virt_window_lead_1424385664204750\",
+    lead(\"wakeful\".\"sun_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"juicy\".\"normalized_week\" order by \"juicy\".\"year_flag\" asc ) as \"_virt_window_lead_6227340597452426\",
+    lead(\"wakeful\".\"thu_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"juicy\".\"normalized_week\" order by \"juicy\".\"year_flag\" asc ) as \"_virt_window_lead_644735902284924\",
+    lead(\"wakeful\".\"tue_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"juicy\".\"normalized_week\" order by \"juicy\".\"year_flag\" asc ) as \"_virt_window_lead_1092584691553364\",
+    lead(\"wakeful\".\"wed_sales\", 1) over (partition by \"wakeful\".\"ss_store_id\",\"juicy\".\"normalized_week\" order by \"juicy\".\"year_flag\" asc ) as \"_virt_window_lead_8976818883664558\"
 FROM
     \"juicy\"
-WHERE
-    \"juicy\".\"year_flag\" = 1
-),
-abhorrent as (
+    INNER JOIN \"wakeful\" on \"juicy\".\"ss_date_week_seq\" = \"wakeful\".\"ss_date_week_seq\" AND \"juicy\".\"ss_store_id\" = \"wakeful\".\"ss_store_id\"),
+young as (
 SELECT
-    \"concerned\".\"d_week_seq1\" as \"d_week_seq1\",
-    \"concerned\".\"fri_sales_ratio\" as \"fri_sales_ratio\",
-    \"concerned\".\"mon_sales_ratio\" as \"mon_sales_ratio\",
-    \"concerned\".\"sat_sales_ratio\" as \"sat_sales_ratio\",
-    \"concerned\".\"sun_sales_ratio\" as \"sun_sales_ratio\",
-    \"concerned\".\"thu_sales_ratio\" as \"thu_sales_ratio\",
-    \"concerned\".\"tue_sales_ratio\" as \"tue_sales_ratio\",
-    \"concerned\".\"wed_sales_ratio\" as \"wed_sales_ratio\",
-    \"young\".\"s_store_id1\" as \"s_store_id1\",
-    \"young\".\"s_store_name1\" as \"s_store_name1\"
+    \"vacuous\".\"fri_sales\" / \"vacuous\".\"_virt_window_lead_2781518767952423\" as \"fri_sales_ratio\",
+    \"vacuous\".\"mon_sales\" / \"vacuous\".\"_virt_window_lead_2528494396952318\" as \"mon_sales_ratio\",
+    \"vacuous\".\"sat_sales\" / \"vacuous\".\"_virt_window_lead_1424385664204750\" as \"sat_sales_ratio\",
+    \"vacuous\".\"ss_date_week_seq\" as \"d_week_seq1\",
+    \"vacuous\".\"ss_store_id\" as \"ss_store_id\",
+    \"vacuous\".\"sun_sales\" / \"vacuous\".\"_virt_window_lead_6227340597452426\" as \"sun_sales_ratio\",
+    \"vacuous\".\"thu_sales\" / \"vacuous\".\"_virt_window_lead_644735902284924\" as \"thu_sales_ratio\",
+    \"vacuous\".\"tue_sales\" / \"vacuous\".\"_virt_window_lead_1092584691553364\" as \"tue_sales_ratio\",
+    \"vacuous\".\"wed_sales\" / \"vacuous\".\"_virt_window_lead_8976818883664558\" as \"wed_sales_ratio\",
+    \"vacuous\".\"year_flag\" as \"year_flag\"
 FROM
-    \"concerned\"
-    INNER JOIN \"young\" on \"concerned\".\"ss_store_id\" = \"young\".\"ss_store_id\"
+    \"vacuous\"
 WHERE
-    \"concerned\".\"year_flag\" = 1
+    \"vacuous\".\"year_flag\" = 1
+),
+sweltering as (
+SELECT
+    \"sparkling\".\"s_store_id1\" as \"s_store_id1\",
+    \"sparkling\".\"s_store_name1\" as \"s_store_name1\",
+    \"young\".\"d_week_seq1\" as \"d_week_seq1\",
+    \"young\".\"fri_sales_ratio\" as \"fri_sales_ratio\",
+    \"young\".\"mon_sales_ratio\" as \"mon_sales_ratio\",
+    \"young\".\"sat_sales_ratio\" as \"sat_sales_ratio\",
+    \"young\".\"sun_sales_ratio\" as \"sun_sales_ratio\",
+    \"young\".\"thu_sales_ratio\" as \"thu_sales_ratio\",
+    \"young\".\"tue_sales_ratio\" as \"tue_sales_ratio\",
+    \"young\".\"wed_sales_ratio\" as \"wed_sales_ratio\"
+FROM
+    \"young\"
+    INNER JOIN \"sparkling\" on \"young\".\"ss_store_id\" = \"sparkling\".\"ss_store_id\"
+WHERE
+    \"young\".\"year_flag\" = 1
 )
 SELECT
-    \"abhorrent\".\"s_store_name1\" as \"s_store_name1\",
-    \"abhorrent\".\"s_store_id1\" as \"s_store_id1\",
-    \"abhorrent\".\"d_week_seq1\" as \"d_week_seq1\",
-    \"abhorrent\".\"sun_sales_ratio\" as \"sun_sales_ratio\",
-    \"abhorrent\".\"mon_sales_ratio\" as \"mon_sales_ratio\",
-    \"abhorrent\".\"tue_sales_ratio\" as \"tue_sales_ratio\",
-    \"abhorrent\".\"wed_sales_ratio\" as \"wed_sales_ratio\",
-    \"abhorrent\".\"thu_sales_ratio\" as \"thu_sales_ratio\",
-    \"abhorrent\".\"fri_sales_ratio\" as \"fri_sales_ratio\",
-    \"abhorrent\".\"sat_sales_ratio\" as \"sat_sales_ratio\"
+    \"sweltering\".\"s_store_name1\" as \"s_store_name1\",
+    \"sweltering\".\"s_store_id1\" as \"s_store_id1\",
+    \"sweltering\".\"d_week_seq1\" as \"d_week_seq1\",
+    \"sweltering\".\"sun_sales_ratio\" as \"sun_sales_ratio\",
+    \"sweltering\".\"mon_sales_ratio\" as \"mon_sales_ratio\",
+    \"sweltering\".\"tue_sales_ratio\" as \"tue_sales_ratio\",
+    \"sweltering\".\"wed_sales_ratio\" as \"wed_sales_ratio\",
+    \"sweltering\".\"thu_sales_ratio\" as \"thu_sales_ratio\",
+    \"sweltering\".\"fri_sales_ratio\" as \"fri_sales_ratio\",
+    \"sweltering\".\"sat_sales_ratio\" as \"sat_sales_ratio\"
 FROM
-    \"abhorrent\"
+    \"sweltering\"
 WHERE
-    \"abhorrent\".\"sun_sales_ratio\" is not null
+    \"sweltering\".\"sun_sales_ratio\" is not null
 
 ORDER BY 
-    \"abhorrent\".\"s_store_name1\" asc nulls first,
-    \"abhorrent\".\"s_store_id1\" asc nulls first,
-    \"abhorrent\".\"d_week_seq1\" asc nulls first
+    \"sweltering\".\"s_store_name1\" asc nulls first,
+    \"sweltering\".\"s_store_id1\" asc nulls first,
+    \"sweltering\".\"d_week_seq1\" asc nulls first
 LIMIT (100)"""

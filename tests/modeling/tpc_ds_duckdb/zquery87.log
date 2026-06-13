@@ -65,13 +65,37 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 GROUP BY
-    \"sales_billing_customer_customers\".\"C_FIRST_NAME\",
-    \"sales_billing_customer_customers\".\"C_LAST_NAME\",
-    cast(\"sales_date_date\".\"D_DATE\" as date))
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"thoughtful\".\"sales_date_id\"),
+uneven as (
 SELECT
     sum(CASE
-	WHEN \"questionable\".\"store_in_window\" > 0 and \"questionable\".\"catalog_in_window\" = 0 and \"questionable\".\"web_in_window\" = 0 THEN 1
+	WHEN \"questionable\".\"sales_sales_channel\" = 'CATALOG' and \"questionable\".\"sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 and \"questionable\".\"sales_billing_customer_id\" is not null THEN 1
+	ELSE 0
+	END) as \"catalog_in_window\",
+    sum(CASE
+	WHEN \"questionable\".\"sales_sales_channel\" = 'STORE' and \"questionable\".\"sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 and \"questionable\".\"sales_billing_customer_id\" is not null THEN 1
+	ELSE 0
+	END) as \"store_in_window\",
+    sum(CASE
+	WHEN \"questionable\".\"sales_sales_channel\" = 'WEB' and \"questionable\".\"sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 and \"questionable\".\"sales_billing_customer_id\" is not null THEN 1
+	ELSE 0
+	END) as \"web_in_window\"
+FROM
+    \"questionable\"
+GROUP BY
+    \"questionable\".\"sales_billing_customer_first_name\",
+    \"questionable\".\"sales_billing_customer_last_name\",
+    \"questionable\".\"sales_date_date\")
+SELECT
+    sum(CASE
+	WHEN \"uneven\".\"store_in_window\" > 0 and \"uneven\".\"catalog_in_window\" = 0 and \"uneven\".\"web_in_window\" = 0 THEN 1
 	ELSE 0
 	END) as \"cnt\"
 FROM
-    \"questionable\""""
+    \"uneven\""""

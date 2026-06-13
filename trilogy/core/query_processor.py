@@ -553,7 +553,16 @@ def _get_query_node_v4(
     not overwritten."""
     info = search_concepts_v4(
         mandatory_list=list(build_statement.output_components),
-        history=V4History(base_environment=history.base_environment),
+        # Inherit the outer resolution's build caches — chiefly `scoped_joins`,
+        # the query-scoped JOIN merges. Sub-selects (rowsets, multiselect arms)
+        # materialize their own build env via these caches; a fresh BuildCaches
+        # would drop the merges, leaving a cross-fact rowset join unresolvable
+        # (q29: `inner join catalog_sales.* = physical_sales.*` on the outer
+        # select feeds the rowset's combined source).
+        history=V4History(
+            base_environment=history.base_environment,
+            build_caches=history.build_caches,
+        ),
         environment=build_environment,
         depth=0,
         g=graph,

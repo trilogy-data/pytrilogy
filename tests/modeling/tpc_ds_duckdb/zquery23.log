@@ -27,7 +27,7 @@ SELECT
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-scrawny as (
+kaput as (
 SELECT
     \"concerned\".\"sales_billing_customer_id\" as \"_best_customers_best_customer_id\",
     sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_overall\"
@@ -54,7 +54,7 @@ SELECT
     SUBSTRING(\"sales_item_items\".\"I_ITEM_DESC\",1,30) as \"sales_item_desc_truncated\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"),
-macho as (
+friendly as (
 SELECT
     \"thoughtful\".\"sales_item_id\" as \"sales_item_id\",
     \"thoughtful\".\"sales_order_id\" as \"sales_order_id\",
@@ -65,7 +65,7 @@ FROM
 WHERE
     \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
 ),
-yummy as (
+juicy as (
 SELECT
     sum(\"thoughtful\".\"sales_quantity\" * \"thoughtful\".\"sales_sales_price\") as \"customer_total_in_window\"
 FROM
@@ -89,83 +89,68 @@ WHERE
 
 GROUP BY
     1),
-kaput as (
+busy as (
 SELECT
-    \"macho\".\"sales_date_date\" as \"sales_date_date\",
-    \"macho\".\"sales_item_id\" as \"sales_item_id\",
-    \"macho\".\"sales_order_id\" as \"sales_order_id\",
-    \"scrawny\".\"sales_item_desc_truncated\" as \"sales_item_desc_truncated\"
+    \"friendly\".\"sales_date_date\" as \"sales_date_date\",
+    \"friendly\".\"sales_item_id\" as \"sales_item_id\",
+    \"friendly\".\"sales_order_id\" as \"sales_order_id\",
+    \"kaput\".\"sales_item_desc_truncated\" as \"sales_item_desc_truncated\"
 FROM
-    \"macho\"
-    LEFT OUTER JOIN \"scrawny\" on \"macho\".\"sales_item_id\" = \"scrawny\".\"_frequent_items_frequent_item_id\"
+    \"friendly\"
+    LEFT OUTER JOIN \"kaput\" on \"friendly\".\"sales_item_id\" = \"kaput\".\"_frequent_items_frequent_item_id\"
 GROUP BY
     1,
     2,
     3,
     4),
-vacuous as (
+young as (
 SELECT
-    max(\"yummy\".\"customer_total_in_window\") as \"_max_total_cmax\"
+    max(\"juicy\".\"customer_total_in_window\") as \"_max_total_cmax\"
 FROM
-    \"yummy\"),
-abundant as (
+    \"juicy\"),
+uneven as (
 SELECT
     \"cooperative\".\"customer_total_overall\" as \"customer_total_overall\",
     \"cooperative\".\"sales_billing_customer_id\" as \"_best_customers_best_customer_id\"
 FROM
     \"cooperative\"),
-busy as (
-SELECT
-    \"kaput\".\"sales_item_id\" as \"sales_item_id\"
-FROM
-    \"kaput\"
-GROUP BY
-    1,
-    \"kaput\".\"sales_date_date\",
-    \"kaput\".\"sales_item_desc_truncated\"
-HAVING
-    count(\"kaput\".\"sales_order_id\") > 4
-),
-young as (
-SELECT
-    \"vacuous\".\"_max_total_cmax\" as \"max_total_cmax\"
-FROM
-    \"vacuous\"),
-charming as (
-SELECT
-    \"scrawny\".\"_frequent_items_frequent_item_id\" as \"_frequent_items_frequent_item_id\"
-FROM
-    \"busy\"
-    LEFT OUTER JOIN \"scrawny\" on \"busy\".\"sales_item_id\" = \"scrawny\".\"_frequent_items_frequent_item_id\"),
-sparkling as (
-SELECT
-    \"abundant\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
-FROM
-    \"abundant\"
-    INNER JOIN \"young\" on 1=1
-WHERE
-    \"abundant\".\"customer_total_overall\" > 0.5 * \"young\".\"max_total_cmax\"
-),
 protective as (
 SELECT
-    \"charming\".\"_frequent_items_frequent_item_id\" as \"_frequent_items_frequent_item_id\"
+    \"busy\".\"sales_item_id\" as \"sales_item_id\"
 FROM
-    \"charming\"),
+    \"busy\"
+GROUP BY
+    1,
+    \"busy\".\"sales_date_date\",
+    \"busy\".\"sales_item_desc_truncated\"
+HAVING
+    count(\"busy\".\"sales_order_id\") > 4
+),
 abhorrent as (
 SELECT
-    \"sparkling\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
+    \"young\".\"_max_total_cmax\" as \"max_total_cmax\"
 FROM
-    \"sparkling\"),
+    \"young\"),
 premium as (
 SELECT
-    \"protective\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
+    \"kaput\".\"_frequent_items_frequent_item_id\" as \"_frequent_items_frequent_item_id\"
 FROM
-    \"protective\"),
+    \"protective\"
+    LEFT OUTER JOIN \"kaput\" on \"protective\".\"sales_item_id\" = \"kaput\".\"_frequent_items_frequent_item_id\"),
 sweltering as (
 SELECT
-    \"abhorrent\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
+    \"uneven\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
 FROM
-    \"abhorrent\"),
+    \"uneven\"
+    INNER JOIN \"abhorrent\" on 1=1
+WHERE
+    \"uneven\".\"customer_total_overall\" > 0.5 * \"abhorrent\".\"max_total_cmax\"
+),
+puzzled as (
+SELECT
+    \"premium\".\"_frequent_items_frequent_item_id\" as \"_frequent_items_frequent_item_id\"
+FROM
+    \"premium\"),
 late as (
 SELECT
     \"sweltering\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
@@ -249,16 +234,16 @@ GROUP BY
     1,
     2,
     3,
-    \"puzzled\".\"sales_item_id\",
-    \"puzzled\".\"sales_order_id\",
-    \"puzzled\".\"sales_sales_channel\"),
-sedate as (
+    \"rambunctious\".\"sales_item_id\",
+    \"rambunctious\".\"sales_order_id\",
+    \"rambunctious\".\"sales_sales_channel\"),
+resonant as (
 SELECT
     \"macho\".\"sales_billing_customer_last_name\" as \"c_last_name\",
     \"macho\".\"sales_billing_customer_first_name\" as \"c_first_name\",
     sum(CASE WHEN \"macho\".\"sales_channel\" in ('WEB','CATALOG') THEN \"macho\".\"_virt_func_multiply_8507033399516423\" ELSE NULL END) as \"sales_total\"
 FROM
-    \"puffy\"
+    \"sedate\"
 GROUP BY
     1,
     2
@@ -266,13 +251,13 @@ HAVING
     \"sales_total\" > 0
 )
 SELECT
-    \"sedate\".\"sales_billing_customer_last_name\" as \"c_last_name\",
-    \"sedate\".\"sales_billing_customer_first_name\" as \"c_first_name\",
-    \"sedate\".\"sales_total\" as \"sales_total\"
+    \"resonant\".\"sales_billing_customer_last_name\" as \"c_last_name\",
+    \"resonant\".\"sales_billing_customer_first_name\" as \"c_first_name\",
+    \"resonant\".\"sales_total\" as \"sales_total\"
 FROM
-    \"sedate\"
+    \"resonant\"
 ORDER BY 
     \"c_last_name\" asc nulls first,
     \"c_first_name\" asc nulls first,
-    \"sedate\".\"sales_total\" asc nulls first
+    \"resonant\".\"sales_total\" asc nulls first
 LIMIT (100)"""

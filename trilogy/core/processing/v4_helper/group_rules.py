@@ -680,6 +680,53 @@ def partition_rowsets(
     return list(by_key.values())
 
 
+def partition_constants(
+    items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    primary_group: dict[str, str],
+    ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
+) -> list[GroupBucket]:
+    """A constant is the same value at every grain and phase, so a constant
+    referenced in both the SELECT (d*) and a WHERE (d1) is one population.
+
+    The default rule keys on depth, which splits those into two groups; a
+    constant-only WHERE then strands on the upstream d1 condition-feeder group
+    whose filtered output the downstream SELECT constant simply rebuilds
+    (`gen_constant` ignores parents), dropping the filter entirely
+    (`select today where date_add(current_date(), day, -30) < today`). Key on
+    `(scope, grain, grouping_mode)` — never depth, and on the scope rather than
+    the full label so the `@condition` phase suffix doesn't re-split them — and
+    surface the bucket at its most-downstream member depth so it produces the
+    SELECT output AND carries the WHERE. Mirrors `partition_rowsets`."""
+    by_key: dict[tuple[str, frozenset[str], str | None], GroupBucket] = {}
+    members_by_key: dict[tuple[str, frozenset[str], str | None], list[NodeItem]] = (
+        defaultdict(list)
+    )
+    for node, data in items:
+        scope = _scope_and_phase(data.label)[0]
+        members_by_key[(scope, data.grain_components, data.grouping_mode)].append(
+            (node, data)
+        )
+    for key, members in members_by_key.items():
+        scope, grain, grouping_mode = key
+        depths = {d.depth_label for _, d in members}
+        depth_label = (
+            DepthLabel.STAR
+            if DepthLabel.STAR in depths
+            else DepthLabel.D0 if DepthLabel.D0 in depths else DepthLabel.D1
+        )
+        bucket = _bucket_for(depth_label, Derivation.CONSTANT, grain, label=scope)
+        if grouping_mode and grouping_mode != "standard":
+            bucket.discriminator = f"grp:{grouping_mode}"
+        for node, data in members:
+            _add_member(bucket, node, data)
+        by_key[key] = bucket
+    return list(by_key.values())
+
+
 # Per-derivation registry. Any derivation not in here uses the default rule.
 GROUPING_RULES: dict[Derivation, PartitionFn] = {
     Derivation.ROOT: partition_roots,
@@ -687,6 +734,7 @@ GROUPING_RULES: dict[Derivation, PartitionFn] = {
     Derivation.FILTER: partition_filters_by_signature,
     Derivation.ROWSET: partition_rowsets,
     Derivation.AGGREGATE: partition_aggregates,
+    Derivation.CONSTANT: partition_constants,
 }
 
 DEFAULT_RULE: PartitionFn = partition_by_depth_and_grain

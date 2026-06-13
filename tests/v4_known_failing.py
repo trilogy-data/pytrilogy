@@ -27,10 +27,8 @@ from __future__ import annotations
 
 # Reason strings are deliberately coarse: they name the v4 capability gap, not a
 # per-test diff. Group edits when a whole class of tests shares one root cause.
-_CRASH = "v4 crash during build/render"
 _INLINE = "v4 inlining/merge produces a different CTE shape than v3"
 _RESULT = "v4 result regression (wrong rows) -- repro in v4_evals/failing_cases"
-_RENDER = "v4 drops/mis-renders date arithmetic (interval subtraction missing)"
 _MODELING = (
     "v4 modeling-sweep regression (row-count / CTE-shape / assertion diff vs v3) "
     "-- pending per-test classification into result vs structure"
@@ -39,7 +37,6 @@ _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
     "exceeds the v3-tuned length ceiling (more CTEs / less compact)"
 )
-
 V4_KNOWN_FAILING: dict[str, str] = {
     # --- optimization: CTE-shape snapshot diffs ---
     "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining": _INLINE,
@@ -56,8 +53,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- stdlib: result regression (distilled to failing_cases/top_x_by_metric) ---
     "tests/stdlib/test_report.py::test_top_x_by_metric": _RESULT,
     # --- engine: rendering / source-selection / crashes ---
-    "tests/engine/test_bigquery.py::test_date_diff_rendering": _RENDER,
-    "tests/engine/test_sqlite.py::test_date_diff_rendering": _RENDER,
     "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
@@ -82,10 +77,10 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twelve": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two": _TPCDS_SIZE,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty": _TPCDS_SIZE,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty": _TPCDS_SIZE,
@@ -102,4 +97,14 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested": _MODELING,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _MODELING,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,
+    # --- previously-untracked v4 baseline fails (all pass under v3) ---
+    # wrong rows:
+    "tests/engine/test_duckdb.py::test_recursive": _RESULT,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_six": _RESULT,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two": _RESULT,
+    # source-selection / ordering / rollup shape:
+    "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by": _MODELING,
+    "tests/modeling/geography/test_landmark_updates.py::test_exact_match_resolution": _MODELING,
+    "tests/modeling/geography/test_landmark_updates.py::test_exact_match_with_parenthetical_extra_filter": _MODELING,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_eight": _MODELING,
 }

@@ -1,6 +1,6 @@
 query_id = "72"
 generator = "v4"
-gen_length = 7615
+gen_length = 6896
 preql_size = 955
 comp_size = 1360
 generated_sql = """
@@ -27,7 +27,7 @@ FROM
 WHERE
     \"cs_sold_date_date\".\"D_YEAR\" = 1999
 ),
-late as (
+macho as (
 SELECT
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_item_items\".\"I_ITEM_DESC\" as \"cs_item_desc\",
@@ -74,34 +74,20 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    \"cs_bill_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\",
-    \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\",
-    \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\",
-    \"cs_catalog_sales\".\"CS_BILL_HDEMO_SK\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
-    \"cs_catalog_sales\".\"CS_QUANTITY\",
-    \"cs_sold_date_date\".\"D_YEAR\",
-    \"inv_date_date\".\"D_DATE_SK\",
-    \"inv_date_date\".\"D_WEEK_SEQ\",
-    \"inv_warehouse_inventory\".\"inv_quantity_on_hand\",
-    \"inv_warehouse_inventory\".\"inv_warehouse_sk\",
-    coalesce(\"cs_catalog_sales\".\"CS_SHIP_DATE_SK\",\"vacuous\".\"cs_ship_date_id\"),
-    coalesce(\"cs_catalog_sales\".\"CS_SOLD_DATE_SK\",\"vacuous\".\"cs_sold_date_id\")),
-kaput as (
+    4),
+divergent as (
 SELECT
-    \"late\".\"cs_item_desc\" as \"cs_item_desc\",
-    \"late\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
-    \"late\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
-    count(\"late\".\"cs_order_number\") as \"total_cnt\"
+    \"macho\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"macho\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
+    \"macho\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
+    count(\"macho\".\"cs_order_number\") as \"total_cnt\"
 FROM
-    \"late\"
+    \"macho\"
 GROUP BY
     1,
     2,
     3),
-young as (
+sweltering as (
 SELECT
     \"uneven\".\"cs_item_desc\" as \"cs_item_desc\",
     \"uneven\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
@@ -120,31 +106,31 @@ GROUP BY
     1,
     2,
     3),
-sweltering as (
+late as (
 SELECT
-    \"young\".\"cs_item_desc\" as \"cs_item_desc\",
-    \"young\".\"cs_item_desc\" as \"item_desc\",
-    \"young\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
-    \"young\".\"cs_sold_date_week_seq\" as \"week_seq\",
-    \"young\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
-    \"young\".\"inv_warehouse_name\" as \"warehouse_name\",
-    \"young\".\"no_promo\" as \"no_promo\",
-    \"young\".\"promo\" as \"promo\"
-FROM
-    \"young\")
-SELECT
-    \"sweltering\".\"item_desc\" as \"item_desc\",
-    \"sweltering\".\"warehouse_name\" as \"warehouse_name\",
-    \"sweltering\".\"week_seq\" as \"week_seq\",
+    \"sweltering\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"sweltering\".\"cs_item_desc\" as \"item_desc\",
+    \"sweltering\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
+    \"sweltering\".\"cs_sold_date_week_seq\" as \"week_seq\",
+    \"sweltering\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
+    \"sweltering\".\"inv_warehouse_name\" as \"warehouse_name\",
     \"sweltering\".\"no_promo\" as \"no_promo\",
-    \"sweltering\".\"promo\" as \"promo\",
-    coalesce(\"kaput\".\"total_cnt\",0) as \"total_cnt\"
+    \"sweltering\".\"promo\" as \"promo\"
 FROM
-    \"kaput\"
-    FULL JOIN \"sweltering\" on \"kaput\".\"cs_item_desc\" is not distinct from \"sweltering\".\"cs_item_desc\" AND \"kaput\".\"cs_sold_date_week_seq\" = \"sweltering\".\"cs_sold_date_week_seq\" AND \"kaput\".\"inv_warehouse_name\" is not distinct from \"sweltering\".\"inv_warehouse_name\"
+    \"sweltering\")
+SELECT
+    \"late\".\"item_desc\" as \"item_desc\",
+    \"late\".\"warehouse_name\" as \"warehouse_name\",
+    \"late\".\"week_seq\" as \"week_seq\",
+    \"late\".\"no_promo\" as \"no_promo\",
+    \"late\".\"promo\" as \"promo\",
+    coalesce(\"divergent\".\"total_cnt\",0) as \"total_cnt\"
+FROM
+    \"divergent\"
+    FULL JOIN \"late\" on \"divergent\".\"cs_item_desc\" is not distinct from \"late\".\"cs_item_desc\" AND \"divergent\".\"cs_sold_date_week_seq\" = \"late\".\"cs_sold_date_week_seq\" AND \"divergent\".\"inv_warehouse_name\" is not distinct from \"late\".\"inv_warehouse_name\"
 ORDER BY 
-    coalesce(\"kaput\".\"total_cnt\",0) desc nulls first,
-    \"sweltering\".\"item_desc\" asc nulls first,
-    \"sweltering\".\"warehouse_name\" asc nulls first,
-    \"sweltering\".\"week_seq\" asc nulls first
+    coalesce(\"divergent\".\"total_cnt\",0) desc nulls first,
+    \"late\".\"item_desc\" asc nulls first,
+    \"late\".\"warehouse_name\" asc nulls first,
+    \"late\".\"week_seq\" asc nulls first
 LIMIT (100)"""

@@ -49,6 +49,7 @@ from trilogy.core.processing.v4_helper.group_graph import (
 from trilogy.core.processing.v4_helper.group_rules import (
     partition_aggregates,
     partition_basics_by_signature,
+    partition_constants,
     partition_roots,
 )
 from trilogy.core.processing.v4_helper.models import (
@@ -948,3 +949,48 @@ def test_virtual_filter_scoped_columns_empty_without_filter_group():
         ),
     }
     assert _virtual_filter_scoped_columns(gg, attrs, cg, ce, ca, "root_d1") == set()
+
+
+def test_partition_constants_merges_select_and_condition_phases():
+    """A constant referenced in both the SELECT (d*) and a constant-only WHERE
+    (d1) is one population: `partition_constants` must merge the two phase nodes
+    into a single STAR bucket so the WHERE rides on the SELECT output instead of
+    stranding on a discarded upstream condition-feeder (the date_diff render
+    regression)."""
+    select_item = (
+        "local.today",
+        _attrs("local.today", {"derivation": Derivation.CONSTANT}),
+    )
+    cond_item = (
+        "local.today@condition",
+        _attrs(
+            "local.today",
+            {
+                "derivation": Derivation.CONSTANT,
+                "label": "@condition",
+                "depth_label": DepthLabel.D1,
+            },
+        ),
+    )
+    buckets = partition_constants(
+        [select_item, cond_item], nx.DiGraph(), {}, {}, {}, lambda d: None
+    )
+    assert len(buckets) == 1
+    bucket = buckets[0]
+    assert bucket.depth_label == DepthLabel.STAR
+    assert list(bucket.primary_members) == ["local.today", "local.today"]
+
+
+def test_partition_constants_splits_distinct_grain():
+    """Distinct grains still split: a constant is grain-agnostic but the key
+    must keep different-grain populations apart (mirrors the default rule)."""
+    a = (
+        "local.a",
+        _attrs("local.a", {"derivation": Derivation.CONSTANT, "grain": {"x"}}),
+    )
+    b = (
+        "local.b",
+        _attrs("local.b", {"derivation": Derivation.CONSTANT, "grain": {"y"}}),
+    )
+    buckets = partition_constants([a, b], nx.DiGraph(), {}, {}, {}, lambda d: None)
+    assert len(buckets) == 2

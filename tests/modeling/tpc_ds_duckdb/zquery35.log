@@ -8,6 +8,7 @@ generated_sql = """
 WITH 
 uneven as (
 SELECT
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
      'CATALOG'  as \"sales_sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"sales_ship_customer_id\",
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\"
@@ -19,6 +20,7 @@ WHERE
 
 UNION ALL
 SELECT
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
      'STORE'  as \"sales_sales_channel\",
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_ship_customer_id\",
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\"
@@ -35,6 +37,7 @@ SELECT
     \"uneven\".\"sales_billing_customer_id\" as \"_web_buyers_web_cust_id\"
 FROM
     \"uneven\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"uneven\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"uneven\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
