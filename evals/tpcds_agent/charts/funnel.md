@@ -4,84 +4,74 @@
 
 | category | passing | newly unlocked | regressions |
 |---|---|---|---|
-| ingest | 17/67 | q04, q10, q25, q29, q32, q39, q41, q47, q49, q52, q56, q68, q72, q74, q94, q95, q97 | — |
-| enriched | 27/67 | q02, q06, q16, q24, q27, q34, q44, q45, q46, q58, q60, q70, q88, q89, q90, q96, q99 | q41, q47, q49, q56, q94, q95, q97 |
+| ingest | 12/57 | q01, q27, q44, q45, q47, q58, q59, q65, q70, q83, q90, q95 | — |
+| enriched | 22/57 | q06, q16, q34, q49, q53, q60, q62, q88, q89, q93, q94, q96, q97 | q44, q83, q95 |
 
 ## Metrics
 
 | category | pass rate | total tokens |
 |---|---|---|
-| ingest | 0.25 | 66,115,434 |
-| enriched | 0.40 | 38,495,918 |
+| ingest | 0.21 | 56,971,110 |
+| enriched | 0.39 | 35,522,841 |
 
 ## Per-query matrix
 
 | query | ingest | enriched |
 |---|---|---|
-| q01 | ❌ fail | ❌ fail |
-| q02 | ❌ exhausted | ✅ |
-| q04 | ✅ | ✅ |
-| q05 | ❌ timeout | ❌ timeout |
+| q01 | ✅ | ✅ |
+| q02 | ❌ exhausted | ❌ fail |
+| q05 | ❌ fail | ❌ exhausted |
 | q06 | ❌ fail | ✅ |
-| q10 | ✅ | ✅ |
 | q14 | ❌ fail | ❌ fail |
 | q15 | ❌ fail | ❌ fail |
 | q16 | ❌ fail | ✅ |
 | q18 | ❌ fail | ❌ fail |
 | q23 | ❌ fail | ❌ fail |
-| q24 | ❌ fail | ✅ |
-| q25 | ✅ | ✅ |
-| q27 | ❌ fail | ✅ |
-| q29 | ✅ | ✅ |
+| q24 | ❌ fail | ❌ fail |
+| q27 | ✅ | ✅ |
 | q30 | ❌ fail | ❌ fail |
 | q31 | ❌ fail | ❌ fail |
-| q32 | ✅ | ✅ |
 | q34 | ❌ fail | ✅ |
 | q35 | ❌ fail | ❌ fail |
 | q38 | ❌ fail | ❌ fail |
-| q39 | ✅ | ✅ |
-| q41 | ✅ | ❌ fail |
-| q44 | ❌ fail | ✅ |
-| q45 | ❌ fail | ✅ |
-| q46 | ❌ fail | ✅ |
-| q47 | ✅ | ❌ fail |
-| q49 | ✅ | ❌ fail |
+| q41 | ❌ fail | ❌ fail |
+| q44 | ✅ | ❌ exhausted |
+| q45 | ✅ | ✅ |
+| q46 | ❌ fail | ❌ fail |
+| q47 | ✅ | ✅ |
+| q49 | ❌ fail | ✅ |
 | q50 | ❌ fail | ❌ fail |
 | q51 | ❌ fail | ❌ fail |
-| q52 | ✅ | ✅ |
-| q53 | ❌ fail | ❌ fail |
+| q53 | ❌ fail | ✅ |
 | q54 | ❌ fail | ❌ fail |
-| q56 | ✅ | ❌ exhausted |
-| q58 | ❌ timeout | ✅ |
-| q59 | ❌ fail | ❌ fail |
+| q56 | ❌ fail | ❌ fail |
+| q58 | ✅ | ✅ |
+| q59 | ✅ | ✅ |
 | q60 | ❌ fail | ✅ |
-| q62 | ❌ fail | ❌ fail |
-| q64 | ❌ timeout | ❌ fail |
-| q65 | ❌ error | ❌ fail |
-| q66 | ❌ fail | ❌ fail |
-| q67 | ❌ error | ❌ fail |
-| q68 | ✅ | ✅ |
+| q62 | ❌ fail | ✅ |
+| q64 | ❌ exhausted | ❌ fail |
+| q65 | ✅ | ✅ |
+| q66 | ❌ exhausted | ❌ fail |
+| q67 | ❌ fail | ❌ fail |
 | q69 | ❌ fail | ❌ fail |
-| q70 | ❌ fail | ✅ |
-| q72 | ✅ | ✅ |
+| q70 | ✅ | ✅ |
 | q73 | ❌ fail | ❌ fail |
-| q74 | ✅ | ✅ |
-| q75 | ❌ exhausted | ❌ fail |
+| q75 | ❌ fail | ❌ fail |
 | q76 | ❌ fail | ❌ fail |
 | q77 | ❌ exhausted | ❌ fail |
 | q78 | ❌ fail | ❌ fail |
 | q79 | ❌ fail | ❌ fail |
-| q80 | ❌ timeout | ❌ fail |
-| q81 | ❌ error | ❌ fail |
-| q83 | ❌ timeout | ❌ fail |
-| q84 | ❌ timeout | ❌ fail |
-| q87 | ❌ timeout | ❌ fail |
-| q88 | ❌ timeout | ✅ |
+| q80 | ❌ exhausted | ❌ fail |
+| q81 | ❌ fail | ❌ fail |
+| q83 | ✅ | ❌ fail |
+| q84 | ❌ fail | ❌ fail |
+| q87 | ❌ exhausted | ❌ fail |
+| q88 | ❌ fail | ✅ |
 | q89 | ❌ fail | ✅ |
-| q90 | ❌ fail | ✅ |
-| q93 | ❌ fail | ❌ fail |
-| q94 | ✅ | ❌ fail |
+| q90 | ✅ | ✅ |
+| q93 | ❌ fail | ✅ |
+| q94 | ❌ fail | ✅ |
 | q95 | ✅ | ❌ fail |
 | q96 | ❌ fail | ✅ |
-| q97 | ✅ | ❌ exhausted |
-| q99 | ❌ fail | ✅ |
+| q97 | ❌ fail | ✅ |
+| q99 | ❌ fail | ❌ fail |

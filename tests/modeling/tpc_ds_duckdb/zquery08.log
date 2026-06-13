@@ -1,6 +1,6 @@
 query_id = "08"
 generator = "v3"
-gen_length = 2502
+gen_length = 2870
 preql_size = 7493
 comp_size = 19155
 generated_sql = """
@@ -21,20 +21,36 @@ SELECT
 ),
 questionable as (
 SELECT
-    SUBSTRING(CASE WHEN \"cheerful\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+    \"cheerful\".\"zip_p_count\" as \"zip_p_count\",
+    \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"),
+abundant as (
+SELECT
+    CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"questionable\".\"customer_address_zip\" ELSE NULL END as \"p_cust_zip\"
+FROM
+    \"questionable\"),
+uneven as (
+SELECT
+    SUBSTRING(\"abundant\".\"p_cust_zip\",1,5) as \"_virt_func_substring_4293448550966409\"
+FROM
+    \"abundant\"
 GROUP BY
     1),
 juicy as (
 SELECT
-    SUBSTRING(SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
+    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) as \"_virt_filter_zips_2159288073185462\"
 FROM
     \"quizzical\"
 WHERE
-    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) in (select questionable.\"_virt_func_substring_4293448550966409\" from questionable where questionable.\"_virt_func_substring_4293448550966409\" is not null)
-
+    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) in (select uneven.\"_virt_func_substring_4293448550966409\" from uneven where uneven.\"_virt_func_substring_4293448550966409\" is not null)
+),
+vacuous as (
+SELECT
+    SUBSTRING(\"juicy\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
+FROM
+    \"juicy\"
 GROUP BY
     1),
 sweltering as (
@@ -46,7 +62,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_QOY\" = 2 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,2) in (select juicy.\"final_zips\" from juicy where juicy.\"final_zips\" is not null)
+    \"physical_sales_date_date\".\"D_QOY\" = 2 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,2) in (select vacuous.\"final_zips\" from vacuous where vacuous.\"final_zips\" is not null)
 
 GROUP BY
     1,

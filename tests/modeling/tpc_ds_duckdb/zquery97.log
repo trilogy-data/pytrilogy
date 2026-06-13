@@ -1,7 +1,7 @@
 query_id = "97"
 generator = "v3"
-gen_length = 2307
-preql_size = 1227
+gen_length = 2283
+preql_size = 1209
 comp_size = 1159
 generated_sql = """
 
@@ -9,9 +9,9 @@ WITH
 cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
-     'CATALOG'  as \"sales_sales_channel\"
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -21,9 +21,9 @@ WHERE
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-     'STORE'  as \"sales_sales_channel\"
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -33,11 +33,11 @@ WHERE
 cooperative as (
 SELECT
     max(CASE
-	WHEN \"cheerful\".\"sales_sales_channel\" = 'CATALOG' THEN \"cheerful\".\"sales_order_id\"
+	WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' THEN \"cheerful\".\"sales_order_id\"
 	ELSE 0
 	END) as \"pair_presence_catalog_present\",
     max(CASE
-	WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_order_id\"
+	WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_order_id\"
 	ELSE 0
 	END) as \"pair_presence_store_present\"
 FROM

@@ -1,6 +1,6 @@
 query_id = "75"
 generator = "v3"
-gen_length = 7783
+gen_length = 7723
 preql_size = 1815
 comp_size = 2939
 generated_sql = """
@@ -8,38 +8,38 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"sales_return_amount\",
-    \"sales_catalog_returns_unified\".\"CR_RETURN_QUANTITY\" as \"sales_return_quantity\",
-     'CATALOG'  as \"sales_sales_channel\"
+    \"sales_catalog_returns_unified\".\"CR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
 UNION ALL
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_returns_unified\".\"SR_RETURN_AMT\" as \"sales_return_amount\",
-    \"sales_store_returns_unified\".\"SR_RETURN_QUANTITY\" as \"sales_return_quantity\",
-     'STORE'  as \"sales_sales_channel\"
+    \"sales_store_returns_unified\".\"SR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_returns_unified\".\"WR_RETURN_AMT\" as \"sales_return_amount\",
-    \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\",
-     'WEB'  as \"sales_sales_channel\"
+    \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
 abundant as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
-     'CATALOG'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
@@ -50,11 +50,11 @@ WHERE
 
 UNION ALL
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
-     'STORE'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -65,11 +65,11 @@ WHERE
 
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
-     'WEB'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -88,7 +88,7 @@ SELECT
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"deduped_sales_item_manufacturer_id\"
 FROM
     \"abundant\"
-    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"abundant\".\"sales_date_year\" = 2002
@@ -111,7 +111,7 @@ SELECT
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"deduped_sales_item_manufacturer_id\"
 FROM
     \"abundant\"
-    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"abundant\".\"sales_date_year\" = 2001

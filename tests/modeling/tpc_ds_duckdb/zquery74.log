@@ -1,7 +1,7 @@
 query_id = "74"
 generator = "v3"
-gen_length = 3570
-preql_size = 1432
+gen_length = 3504
+preql_size = 1396
 comp_size = 2151
 generated_sql = """
 
@@ -9,9 +9,9 @@ WITH
 thoughtful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
-     'STORE'  as \"sales_sales_channel\"
+    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 WHERE
@@ -20,9 +20,9 @@ WHERE
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
-     'WEB'  as \"sales_sales_channel\"
+    \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
@@ -35,7 +35,7 @@ FROM
     \"thoughtful\"
 GROUP BY
     1,
-    \"thoughtful\".\"sales_sales_channel\"),
+    \"thoughtful\".\"sales_channel\"),
 uneven as (
 SELECT
     \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\"
@@ -45,11 +45,11 @@ FROM
 GROUP BY
     1
 HAVING
-    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
+    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END ) > ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END )
 ),

@@ -8,6 +8,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConceptArgs,
     BuildRowsetItem,
     BuildWindowItem,
 )
@@ -55,6 +56,25 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
     if has_basic_derivation(cte):
         return MergeMode.BASIC
     return None
+
+
+def lineage_contains_aggregate(concept: BuildConcept, seen: set[str]) -> bool:
+    """True if `concept`'s lineage tree contains an aggregate anywhere — directly
+    (`sum(x)`), or wrapped in a filter/function/rowset (`sum(x) ? cond`,
+    `coalesce(sum(x), 0)`). Used to detect a parent column that renders an
+    aggregate inline; folding it into an AGGREGATE child's `sum(...)` would
+    nest aggregates ("aggregate function calls cannot be nested")."""
+    if concept.address in seen:
+        return False
+    seen.add(concept.address)
+    lineage = concept.lineage
+    if isinstance(lineage, BuildAggregateWrapper):
+        return True
+    if isinstance(lineage, BuildConceptArgs):
+        return any(
+            lineage_contains_aggregate(arg, seen) for arg in lineage.concept_arguments
+        )
+    return False
 
 
 def has_nonstandard_aggregate_grouping(concept: BuildConcept) -> bool:
@@ -216,12 +236,18 @@ class CollapseSingleParent(OptimizationRule):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
         if merge_mode == MergeMode.AGGREGATE:
+            # An AGGREGATE merge wraps the parent's exposed columns in the child's
+            # aggregates. A parent column that is rendered inline (no source_map
+            # entry — not materialized by a grouping below) and whose lineage
+            # contains an aggregate would be folded *inside* the child's `sum(...)`,
+            # producing illegal nested aggregates. This covers a direct aggregate
+            # column and one wrapped in a filter/function (`sum(x) ? cond`).
             for x in parent.output_columns:
-                if x.derivation == Derivation.AGGREGATE and not parent.source_map.get(
-                    x.address
+                if not parent.source_map.get(x.address) and lineage_contains_aggregate(
+                    x, set()
                 ):
                     self.log(
-                        f"Parent {parent.name} has aggregate derivations without source map, skipping"
+                        f"Parent {parent.name} renders inline aggregate {x.address}, skipping"
                     )
                     return False, None
 

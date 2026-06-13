@@ -1,6 +1,6 @@
 query_id = "14"
 generator = "v3"
-gen_length = 5653
+gen_length = 5726
 preql_size = 1701
 comp_size = 4229
 generated_sql = """
@@ -96,7 +96,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and (cast(\"sales_item_items\".\"I_BRAND_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CLASS_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CATEGORY_ID\" as string)) in (select uneven.\"cross_tuples_ci_tuple_key\" from uneven where uneven.\"cross_tuples_ci_tuple_key\" is not null)
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and (cast(\"sales_item_items\".\"I_BRAND_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CLASS_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CATEGORY_ID\" as string)) in (select uneven.\"cross_tuples_ci_tuple_key\" from uneven where uneven.\"cross_tuples_ci_tuple_key\" is not null)
 
 GROUP BY
     1,

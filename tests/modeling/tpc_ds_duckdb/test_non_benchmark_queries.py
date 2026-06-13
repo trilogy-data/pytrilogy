@@ -151,6 +151,28 @@ def _out_of_scope_join_aliases(sql: str) -> list[tuple[str, str]]:
     return bad
 
 
+_AGG_FNS = ("sum", "avg", "count", "min", "max", "stddev", "median")
+
+
+def _has_nested_aggregate(sql: str) -> bool:
+    """True if any aggregate call's argument span contains another aggregate call
+    — e.g. `sum(CASE WHEN ... THEN sum(x) END)`. DuckDB rejects this with
+    'aggregate function calls cannot be nested'."""
+    low = sql.lower()
+    agg_open = re.compile(r"\b(?:%s)\(" % "|".join(_AGG_FNS))
+    for m in agg_open.finditer(low):
+        depth, i = 1, m.end()
+        while i < len(low) and depth > 0:
+            if low[i] == "(":
+                depth += 1
+            elif low[i] == ")":
+                depth -= 1
+            i += 1
+        if agg_open.search(low, m.end(), i):
+            return True
+    return False
+
+
 def test_or_membership_with_projected_aggregate(engine):
     """Regression for bug B2 + its two co-sourcing siblings, using the full
     documented repro (feeder filters include a ``date.year`` join):
@@ -581,3 +603,50 @@ def test_or_filter_over_differently_filtered_aggregates_no_recursion(engine):
     ), sql
     # and the query resolves and executes end-to-end against real data
     engine.execute_text(query)[0].fetchall()
+
+
+def test_pivot_over_filtered_rowset_aggregate_no_nested_aggregate():
+    # Enriched q02 shape: a rowset aggregates a measure at a fine grain
+    # (`day_sales <- sum(ext_sales_price) by week_seq, dow, year`), then a second
+    # rowset pivots it with per-day inline filters (`sum(day_sales ? dow = N)`)
+    # under a membership filter on week_seq. The membership filter forms a FILTER
+    # node carrying the `day_sales ? dow=N` expression (an inline filter over the
+    # un-materialized daily aggregate) between the two GROUP BYs. CollapseSingleParent
+    # folded that FILTER parent into the pivot's GROUP, inlining the daily aggregate
+    # inside the pivot's sum() -> `sum(CASE WHEN dow=N THEN sum(ext_sales_price) END)`,
+    # which DuckDB rejects ("aggregate function calls cannot be nested"). The daily
+    # aggregate must stay materialized in its own CTE.
+    query = """
+import all_sales as s;
+
+with daily_sales as
+where s.channel in ('WEB', 'CATALOG')
+select
+    s.date.week_seq as week_seq,
+    s.date.day_of_week as dow,
+    s.date.year as year,
+    sum(s.ext_sales_price) as day_sales
+;
+
+with weeks_2001 as
+where s.channel in ('WEB', 'CATALOG') and s.date.year = 2001
+select s.date.week_seq as week_seq
+;
+
+with pivoted as
+where daily_sales.week_seq in weeks_2001.week_seq
+select
+    daily_sales.week_seq,
+    sum(daily_sales.day_sales ? daily_sales.dow = 0) as sun_sales,
+    sum(daily_sales.day_sales ? daily_sales.dow = 1) as mon_sales
+;
+
+select
+    pivoted.daily_sales.week_seq as week_seq,
+    round(pivoted.sun_sales / lead(pivoted.sun_sales, 53) over (order by pivoted.daily_sales.week_seq), 2) as sun_ratio,
+    round(pivoted.mon_sales / lead(pivoted.mon_sales, 53) over (order by pivoted.daily_sales.week_seq), 2) as mon_ratio
+order by pivoted.daily_sales.week_seq nulls first;
+"""
+    env = Environment(working_path=working_path)
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    assert not _has_nested_aggregate(sql), sql

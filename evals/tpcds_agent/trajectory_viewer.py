@@ -225,6 +225,7 @@ _HTML = r"""<!doctype html>
 let RUNS = JSON.parse(document.getElementById('data').textContent);
 let selectedName = RUNS.length ? RUNS[0].name : null;
 let lastPayload = null;
+let expanded = new Set();   // keys of tool-result blocks the user expanded (current run)
 let currentRun = null;   // which results dir we're viewing (null until runs.json loads)
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
@@ -239,7 +240,8 @@ function renderRun(run, keepScroll){
         + `${meta.provider||''} ${meta.model||''} ${m.duration_seconds?('· '+m.duration_seconds+'s'):''}</div>`;
   if(m.detail) h += `<div class="meta" style="color:var(--err)">${esc(m.detail)}</div>`;
   h += `<div id="task">${esc(meta.task)}</div>`;
-  for(const ev of run.timeline){
+  for(let i=0;i<run.timeline.length;i++){
+    const ev = run.timeline[i];
     if(ev.role==='assistant'){
       h += `<div class="turn assistant"><div class="who">assistant</div><div class="bubble">`;
       if(ev.text) h += `<div class="text">${esc(ev.text)}</div>`;
@@ -252,16 +254,23 @@ function renderRun(run, keepScroll){
       if(u.total_tokens) h += `<div class="usage">prompt ${u.prompt_tokens} · completion ${u.completion_tokens} · total ${u.total_tokens}</div>`;
       h += `</div></div>`;
     } else {
-      const oid = 'o'+Math.random().toString(36).slice(2);
+      // Stable per-position key so an expanded block stays expanded across the
+      // auto-refresh re-render (timeline only grows; existing indices are fixed).
+      const k = 't'+i, show = expanded.has(k) ? ' show' : '';
       h += `<div class="turn tool"><div class="bubble">`
-         + `<div class="head" onclick="document.getElementById('${oid}').classList.toggle('show')">`
+         + `<div class="head" data-key="${k}" onclick="toggleOut(this)">`
          + `<span class="dot ${ev.ok?'ok':'err'}"></span><span class="name">${esc(ev.name)} result</span>`
          + `<span class="chev">▼ click to toggle</span></div>`
-         + `<pre id="${oid}" class="out">${esc(ev.output)}</pre></div></div>`;
+         + `<pre class="out${show}">${esc(ev.output)}</pre></div></div>`;
     }
   }
   main.innerHTML = h;
   main.scrollTop = prevScroll;
+}
+
+function toggleOut(head){
+  const pre = head.nextElementSibling, k = head.dataset.key;
+  if(pre.classList.toggle('show')) expanded.add(k); else expanded.delete(k);
 }
 
 function markActive(){
@@ -276,8 +285,8 @@ function renderSide(){
          + `<div class="sub">${m.iterations??'?'} iters · ${((m.prompt_tokens||0)/1e6).toFixed(2)}M tok</div></div>`;
   }).join('');
   el.querySelectorAll('.run').forEach(node=>{
-    node.onclick = ()=>{ selectedName = RUNS[+node.dataset.i].name; markActive();
-      renderRun(RUNS[+node.dataset.i], false); };
+    node.onclick = ()=>{ selectedName = RUNS[+node.dataset.i].name; expanded = new Set();
+      markActive(); renderRun(RUNS[+node.dataset.i], false); };
   });
   markActive();
 }
@@ -324,7 +333,7 @@ async function loadRuns(){
 }
 function onRunChange(){
   currentRun = document.getElementById('runsel').value;
-  selectedName = null; lastPayload = null;   // reset selection for the new run
+  selectedName = null; lastPayload = null; expanded = new Set();   // reset for the new run
   loadData();
 }
 applyData(RUNS, false);
