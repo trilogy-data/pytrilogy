@@ -8,7 +8,6 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
-    Derivation,
     FunctionType,
     JoinType,
     SourceType,
@@ -16,7 +15,6 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
-    DisconnectedConceptsException,
     UnresolvableQueryException,
 )
 from trilogy.core.graph_models import ReferenceGraph
@@ -603,50 +601,6 @@ def _get_query_node_v4(
     return ds
 
 
-def _scoped_join_rename_hint(
-    output_concepts: list[BuildConcept], environment: BuildEnvironment
-) -> str | None:
-    """If an output property can't be sourced because its key exists only as a
-    renamed scoped-join key (e.g. `store_id as sk_a`/`sk_b` joined to each other,
-    so the group excludes `store_id`), suggest chaining the base key into the
-    join group. Best-effort: returns None on any uncertainty."""
-    output_addresses = {c.address for c in output_concepts}
-    # base key address -> rowset-renamed concepts that alias it
-    renamed: dict[str, list[str]] = {}
-    for c in environment.concepts.values():
-        if c.derivation != Derivation.ROWSET or not isinstance(
-            c.lineage, BuildRowsetItem
-        ):
-            continue
-        for base in c.lineage.content.pseudonyms:
-            base_concept = environment.concepts.get(base)
-            if base_concept is None or base_concept.derivation == Derivation.ROWSET:
-                continue
-            renamed.setdefault(base, [])
-            if c.address not in renamed[base]:
-                renamed[base].append(c.address)
-    prefix = f"{DEFAULT_NAMESPACE}."
-
-    def show(addr: str) -> str:
-        return addr[len(prefix) :] if addr.startswith(prefix) else addr
-
-    for p in output_concepts:
-        # a property is keyed on something other than itself; its grain (a set of
-        # key addresses) names that key.
-        for key in p.grain.components:
-            if key == p.address or key in output_addresses:
-                continue
-            keys = sorted(renamed.get(key, []))
-            if keys:
-                return (
-                    f" `{show(p.address)}` is a property of `{show(key)}`, which is"
-                    f" present only as the renamed scoped-join key(s)"
-                    f" {', '.join(show(k) for k in keys)}. Add the base key to the"
-                    f" join group, e.g. `inner join {show(keys[0])} = ... = {show(key)}`."
-                )
-    return None
-
-
 def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
@@ -709,53 +663,30 @@ def get_query_node(
     graph = generate_graph(build_environment)
 
     search_concepts: list[BuildConcept] = list(build_statement.output_components)
-    try:
-        if CONFIG.use_v4_discovery:
-            return _get_query_node_v4(
-                build_statement=build_statement,
-                build_environment=build_environment,
-                graph=graph,
-                conditions=build_statement.where_clause,
-                history=history,
-            )
-
-        logger.info(
-            f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
-        )
-
-        # A tautological `X IS NOT NULL` (X provably non-null given the actual join
-        # tree) is dropped later by the StripRedundantNotNull optimization rule,
-        # which operates on the built CTEs where join types and nullability are
-        # known — pre-resolution we can't tell whether an outer join pads X.
-        ods: StrategyNode = source_query_concepts(
-            output_concepts=search_concepts,
-            environment=build_environment,
-            g=graph,
+    if CONFIG.use_v4_discovery:
+        return _get_query_node_v4(
+            build_statement=build_statement,
+            build_environment=build_environment,
+            graph=graph,
             conditions=build_statement.where_clause,
             history=history,
         )
-    except DisconnectedConceptsException as e:
-        # The discovery dead-end is opaque; if it is the scoped-join
-        # property-enrichment shape, point at the fix (chain the base key into the
-        # join group). Otherwise surface the disconnected-subgraph message, which
-        # already names the unconnected concept groups and the join/merge fix.
-        hint = _scoped_join_rename_hint(
-            build_statement.output_components, build_environment
-        )
-        if hint:
-            raise UnresolvableQueryException(f"Could not resolve query.{hint}") from e
-        raise
-    except UnresolvableQueryException as e:
-        # The same scoped-join property-enrichment dead-end can also surface as a
-        # disjoint-models error once the renamed join key resolves (the property's
-        # base key, renamed away, leaves its model unconnected). Prefer the
-        # targeted "chain the base key" hint over the generic "merge their keys".
-        hint = _scoped_join_rename_hint(
-            build_statement.output_components, build_environment
-        )
-        if not hint:
-            raise
-        raise UnresolvableQueryException(f"Could not resolve query.{hint}") from e
+
+    logger.info(
+        f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
+    )
+
+    # A tautological `X IS NOT NULL` (X provably non-null given the actual join
+    # tree) is dropped later by the StripRedundantNotNull optimization rule,
+    # which operates on the built CTEs where join types and nullability are
+    # known — pre-resolution we can't tell whether an outer join pads X.
+    ods: StrategyNode = source_query_concepts(
+        output_concepts=search_concepts,
+        environment=build_environment,
+        g=graph,
+        conditions=build_statement.where_clause,
+        history=history,
+    )
     if not ods:
         raise ValueError(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"

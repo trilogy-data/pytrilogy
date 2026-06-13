@@ -758,13 +758,13 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             snippet = ", ".join(f"--{a}" for a in missing)
             raise SyntaxError(
                 f"HAVING references {refs}, which {verb} not in the SELECT "
-                f"projection (line {line_no}). Add {obj} to SELECT, each prefixed "
-                f"with `--` so {subj} {stay} out of the output rows — keep your "
-                f"HAVING as-is:\n"
+                f"projection (line {line_no}). To filter output rows, add {obj} to "
+                f"SELECT — prefix each with `--` so {subj} {stay} out of the output "
+                f"rows, keeping your HAVING as-is:\n"
                 f"    select <your existing columns>, {snippet}\n"
-                f"Alternatively move a row-level filter to WHERE; for an aggregate "
-                f"condition on a non-output grain, write `agg(x) by grain` inline "
-                f"in WHERE."
+                f"Or move {obj} to WHERE to filter before aggregation; for an "
+                f"aggregate condition on a non-output grain, write `agg(x) by grain` "
+                f"inline in WHERE."
             )
         _validate_having_aggregates_match_select(select, context, line_no)
     if select.order_by:

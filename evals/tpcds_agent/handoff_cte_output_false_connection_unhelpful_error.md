@@ -1,8 +1,55 @@
 # Handoff: cross-CTE aggregate dead-ends with unhelpful "No remaining priority concepts"
 
-**Status:** OPEN (2026-06-13). Diagnosis + reproduction confirmed; fix is a
-design call (see "Owner's thesis" / "Decision points"). Surfaced by the q31
-agent leg.
+**Status:** FIXED (2026-06-13). The query is genuinely unresolvable (unbridgeable —
+two separate import namespaces, no merge); the bug was only that the *unhelpful*
+fallback fired instead of the helpful disconnected-subgraph error. Surfaced by the
+q31 agent leg.
+
+## RESOLUTION (2026-06-13) — corrected root cause
+
+The original diagnosis below ("`_anchor_nodes` collapses CTE outputs to base nodes";
+"owner's thesis: give CTE outputs their own nodes → separate components") is **WRONG**
+and was disproven by instrumentation:
+
+- With query scaffolding included, the WHOLE schema is one 970-node weakly-connected
+  component, so giving CTE outputs their own nodes would NOT split them.
+- With the per-query `~local._virt_*` scaffolding stripped, `store_sales` and
+  `web_sales` are already in **separate** model components (separate import
+  namespaces, no merge) — there is no real bridge concept to inject.
+
+The actual bridge is a single aggregate: `web_q1 = sum(web_by_q.web_ext_sales ? q=1)
+by store_by_q.county`. Its `concept_arguments` carry the web measure **and** the
+`store_by_q.county` grain key; `add_concept` adds a graph edge for every
+`concept_argument`, so the aggregate's **grain-only `by` key** alone welds the
+(otherwise disconnected) web and store subgraphs. The same aggregate appears as two
+graph nodes (resolved-grain + abstract-grain), so the fix keys off the concept's true
+grain from `environment.concepts`.
+
+This is exactly the rule `calculate_graph_relevance` already applies in weak node
+discovery ("an aggregate up to an arbitrary grain can be joined in later") — that path
+just never had the spurious edge because it builds from the datasource→concept
+`found_map`, not the reference graph.
+
+**Fix** (`trilogy/core/processing/discovery_utility.py`):
+- `_aggregate_grain_only_parents(environment)` — aggregate address → grain components
+  minus measure functional inputs (`lineage.function.concept_arguments` for wrappers).
+- `disconnected_components` computes connectivity on an undirected COPY of the graph
+  (no mutation of the shared resolution graph) with those grain-only edges dropped →
+  the repro splits into 2 components → `format_disconnected_subgraphs_error` fires.
+- `format_disconnected_subgraphs_error` now strips `_virt_*` scaffolding from the
+  message (falls back to raw if a group would empty).
+
+Both `disconnected_components` callers are failure-path-only, so this cannot regress a
+resolving query. Regression test: `tests/core/processing/test_disconnected_subgraphs.py
+::test_cross_cte_aggregate_grain_only_bridge_raises`. Full sweep green (608 passed).
+
+Message now:
+`…split into 2 disconnected subgraphs: {web_by_q.web_ext_sales}; {store_by_q.county}.
+Are you missing a join or merge statement to relate them?`
+
+---
+
+_Original (partly-incorrect) analysis preserved below for context._
 
 ## Symptom
 

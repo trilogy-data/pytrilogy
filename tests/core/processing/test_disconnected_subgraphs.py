@@ -82,6 +82,41 @@ def test_disconnected_query_raises_typed_exception():
     assert frozenset({"local.sb"}) in groups
 
 
+_DISCONNECTED_CROSS_CTE_AGG = """
+key a_id int;
+property a_id.av int;
+datasource a (id: a_id, v: av) grain (a_id)
+query '''select 1 id, 10 v union all select 2 id, 20 v''';
+
+key b_id int;
+property b_id.bv int;
+datasource b (id: b_id, v: bv) grain (b_id)
+query '''select 1 id, 100 v union all select 2 id, 200 v''';
+
+with a_agg as select a_id, sum(av) as sa;
+with b_agg as select b_id, sum(bv) as sb;
+with combined as
+select a_agg.a_id as id, sum(a_agg.sa) as ta, sum(b_agg.sb) as tb;
+select combined.id, combined.ta, combined.tb;
+"""
+
+
+def test_cross_cte_aggregate_grain_only_bridge_raises():
+    # `combined` groups by a_agg.a_id but aggregates b_agg.sb — whose only tie to
+    # a_agg.a_id is that the aggregate is grouped `by` it. That grain edge must not
+    # bridge the (unrelated) a and b models, so this raises the helpful subgraph
+    # error rather than dead-ending in the raw "No remaining priority concepts" dump.
+    eng = Dialects.DUCK_DB.default_executor(environment=Environment())
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        eng.generate_sql(_DISCONNECTED_CROSS_CTE_AGG)
+    message = str(exc.value)
+    assert "Are you missing a join or merge" in message
+    assert "_virt" not in message
+    groups = {frozenset(g) for g in exc.value.subgraphs}
+    assert frozenset({"a_agg.a_id"}) in groups
+    assert frozenset({"b_agg.b_id", "b_agg.sb"}) in groups
+
+
 _DISCONNECTED_ROOT_PROPERTIES = """
 key cust int;
 property cust.cname string;

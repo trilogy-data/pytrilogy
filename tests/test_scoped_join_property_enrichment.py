@@ -11,10 +11,8 @@ then sources naturally. (Auto-sourcing it without the chain would be wrong: the
 rename exists precisely to break the self-join identity.)
 
 `test_*_chained` is the supported idiom and must stay green. `test_*_unchained`
-documents that the un-chained form does not resolve. The only open *planner*
-nicety would be a clearer error on the un-chained form (today it raises the
-internal "No remaining priority concepts") suggesting the `= store_id` chain —
-see evals/tpcds_agent/handoff_scoped_join_property_enrichment.md.
+documents that the un-chained form does not resolve (it surfaces the general
+disconnected/unresolvable-query error).
 """
 
 import pytest
@@ -84,7 +82,5 @@ def test_enrich_property_off_scoped_join_key_chained():
 
 def test_enrich_property_off_scoped_join_key_unchained_unresolvable():
     eng = Dialects.DUCK_DB.default_executor(environment=Environment())
-    # The dead-end raises a targeted hint naming the property, its key, and the
-    # renamed scoped-join key(s) to chain — not the opaque internal candidate sets.
-    with pytest.raises(UnresolvableQueryException, match="property of `store_id`"):
+    with pytest.raises(UnresolvableQueryException, match="Could not resolve"):
         eng.generate_sql(UNCHAINED)

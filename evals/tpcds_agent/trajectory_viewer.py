@@ -41,7 +41,9 @@ def _result_ok(output: str) -> bool:
     low = output.lower()
     if "exit_code: 0" in low:
         return True
-    if any(k in low for k in ("error", "traceback", "exit_code: 1", '"event": "error"')):
+    if any(
+        k in low for k in ("error", "traceback", "exit_code: 1", '"event": "error"')
+    ):
         return False
     return True
 
@@ -106,6 +108,27 @@ def parse_log(path: Path) -> dict:
                     "name": e.get("name", ""),
                     "ok": _result_ok(out),
                     "output": out,
+                }
+            )
+        elif t == "reviewer_verdict":
+            done = bool(e.get("is_done"))
+            timeline.append(
+                {
+                    "role": "reviewer",
+                    "verdict": "DONE" if done else "NOT_DONE",
+                    "ok": done,
+                    "note": e.get("note") or "",
+                    "kickback": e.get("kickback_count", 0),
+                }
+            )
+        elif t == "reviewer_bypassed":
+            timeline.append(
+                {
+                    "role": "reviewer",
+                    "verdict": "BYPASSED",
+                    "ok": True,
+                    "note": e.get("reason") or "force=true",
+                    "kickback": 0,
                 }
             )
     derived = {
@@ -193,6 +216,9 @@ _HTML = r"""<!doctype html>
   .bubble { border:1px solid var(--border); border-radius:8px; padding:10px 14px; }
   .assistant .bubble { background:var(--asst); }
   .tool .bubble { background:var(--tool); }
+  .reviewer .bubble { background:#2a2410; border-color:#5c4a12; }
+  .reviewer .vok { color:var(--ok); }
+  .reviewer .verr { color:var(--err); }
   .text { white-space:pre-wrap; }
   .call { margin-top:8px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:12.5px; }
   .call .cmd { color:var(--accent); font-weight:600; }
@@ -252,6 +278,11 @@ function renderRun(run, keepScroll){
       }
       const u = ev.usage||{};
       if(u.total_tokens) h += `<div class="usage">prompt ${u.prompt_tokens} · completion ${u.completion_tokens} · total ${u.total_tokens}</div>`;
+      h += `</div></div>`;
+    } else if(ev.role==='reviewer'){
+      const kb = ev.kickback ? ` (kickback ${ev.kickback})` : '';
+      h += `<div class="turn reviewer"><div class="who">reviewer · <span class="${ev.ok?'vok':'verr'}">${esc(ev.verdict)}</span>${esc(kb)}</div><div class="bubble">`;
+      if(ev.note) h += `<div class="text">${esc(ev.note)}</div>`;
       h += `</div></div>`;
     } else {
       // Stable per-position key so an expanded block stays expanded across the
@@ -409,7 +440,9 @@ def main() -> int:
 
         handler = functools.partial(_Handler, directory=str(results_dir))
         with socketserver.TCPServer(("127.0.0.1", args.serve), handler) as httpd:
-            print(f"serving http://127.0.0.1:{args.serve}/viewer.html  (ctrl-c to stop)")
+            print(
+                f"serving http://127.0.0.1:{args.serve}/viewer.html  (ctrl-c to stop)"
+            )
             httpd.serve_forever()
     return 0
 

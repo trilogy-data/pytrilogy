@@ -560,6 +560,40 @@ def _anchor_nodes(concept: BuildConcept) -> List[str]:
     return nodes
 
 
+def _aggregate_grain_only_parents(
+    environment: BuildEnvironment,
+) -> dict[str, set[str]]:
+    """Map each aggregate concept address -> the addresses of its grain-only
+    ``by`` keys: grain components that are NOT functional inputs of the measure.
+
+    An aggregate can be regrouped to any grain, so an edge from it to its ``by``
+    key is not a join relationship and must not bridge otherwise-unconnected
+    components. ``add_concept`` adds a graph edge for every ``concept_argument``,
+    and an aggregate's ``concept_arguments`` include its ``by`` keys — so without
+    this, ``sum(web.measure) by store.county`` would connect the (separate) web
+    and store subgraphs through ``store.county``. Mirrors the
+    "aggregate up to an arbitrary grain can be joined in later" rule in
+    ``calculate_graph_relevance``.
+    """
+    out: dict[str, set[str]] = {}
+    for c in environment.concepts.values():
+        if not isinstance(c, BuildConcept):
+            continue
+        if c.derivation != Derivation.AGGREGATE or not c.grain.components:
+            continue
+        if isinstance(c.lineage, BuildAggregateWrapper):
+            measure = c.lineage.function.concept_arguments
+        elif c.lineage is not None:
+            measure = c.lineage.concept_arguments
+        else:
+            measure = []
+        measure_addrs = {a.address for a in measure if isinstance(a, BuildConcept)}
+        grain_only = set(c.grain.components) - measure_addrs
+        if grain_only:
+            out[c.address] = grain_only
+    return out
+
+
 def disconnected_components(
     environment: BuildEnvironment,
     concepts: List[BuildConcept],
@@ -572,14 +606,31 @@ def disconnected_components(
 
     Pass the resolution's graph as ``g`` to reuse it; otherwise one is built from
     ``environment``. Crossjoinable (single-row/constant) concepts are skipped.
+    Aggregate grain-only ``by`` edges are dropped first (see
+    ``_aggregate_grain_only_parents``) so a regroupable aggregate never bridges
+    two otherwise-disconnected models through its grouping key.
     """
     from trilogy.core import graph as gx
     from trilogy.core.env_processor import generate_graph
 
     g = g if g is not None else generate_graph(environment)
 
+    # Compute connectivity on an undirected copy so we can drop aggregate
+    # grain-only edges without mutating the shared resolution graph.
+    cg = g.to_undirected()
+    grain_only = _aggregate_grain_only_parents(environment)
+    if grain_only:
+        for node, concept in g.concepts.items():
+            keys = grain_only.get(concept.address)
+            if not keys or node not in cg:
+                continue
+            for neighbor in list(gx.neighbors(cg, node)):
+                neighbor_concept = g.concepts.get(neighbor)
+                if neighbor_concept is not None and neighbor_concept.address in keys:
+                    cg.remove_edge(node, neighbor)
+
     comp_of: dict[str, int] = {}
-    for i, component in enumerate(gx.connected_components(g)):
+    for i, component in enumerate(gx.connected_components(cg)):
         for node in component:
             comp_of[node] = i
 
@@ -606,9 +657,13 @@ def disconnected_components(
 def format_disconnected_subgraphs_error(
     subgraphs: List[List[BuildConcept]],
 ) -> str:
-    rendered = "; ".join(
-        "{" + ", ".join(sorted(c.address for c in group)) + "}" for group in subgraphs
-    )
+    def render(group: List[BuildConcept]) -> str:
+        addrs = sorted(c.address for c in group)
+        # drop internal _virt_* scaffolding, but keep raw if that empties a group
+        cleaned = [a for a in addrs if VIRTUAL_CONCEPT_PREFIX not in a]
+        return "{" + ", ".join(cleaned or addrs) + "}"
+
+    rendered = "; ".join(render(group) for group in subgraphs)
     return (
         "Discovery error: cannot merge all concepts into one connected query. "
         f"The requested concepts split into {len(subgraphs)} disconnected "
