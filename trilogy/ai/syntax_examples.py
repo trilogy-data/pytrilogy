@@ -43,7 +43,7 @@ _EXAMPLES: list[SyntaxExample] = [
 #   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation)
 #   select  <col>, <agg> as name,  # 2. the projection — grouping is AUTOMATIC by the
 #                                  #      non-aggregated columns (never write GROUP BY)
-#   <inner|left|full join a = b>*  # 3. blend models (zero or more; RIGHT AFTER the
+#   <inner|left|full join a = b (=c)?>*  # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
 #                                  #      select list — the SQL-like spot)
 #   having  <result condition>     # 4. filter on an AGGREGATED / joined RESULT
 #   order by <col> asc|desc        # 5. sort

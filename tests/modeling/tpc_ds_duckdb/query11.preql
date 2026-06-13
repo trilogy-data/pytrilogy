@@ -4,29 +4,29 @@ const first_year <- 2001;
 const second_year <- 2002;
 
 def channel_year_total(channel, year) -> sum(
-    sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = channel and sales.date.year = year
+    sales.ext_list_price - sales.ext_discount_amount ? sales.channel = channel and sales.date.year = year
 )
     by sales.billing_customer.id;
 
 auto store_first_year <- sum(
-    sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'STORE' and sales.date.year = first_year
+    sales.ext_list_price - sales.ext_discount_amount ? sales.channel = 'STORE' and sales.date.year = first_year
 )
     by sales.billing_customer.id;
 auto web_first_year <- sum(
-    sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'WEB' and sales.date.year = first_year
+    sales.ext_list_price - sales.ext_discount_amount ? sales.channel = 'WEB' and sales.date.year = first_year
 )
     by sales.billing_customer.id;
 auto store_second_year <- sum(
-    sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'STORE' and sales.date.year = second_year
+    sales.ext_list_price - sales.ext_discount_amount ? sales.channel = 'STORE' and sales.date.year = second_year
 )
     by sales.billing_customer.id;
 auto web_second_year <- sum(
-    sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'WEB' and sales.date.year = second_year
+    sales.ext_list_price - sales.ext_discount_amount ? sales.channel = 'WEB' and sales.date.year = second_year
 )
     by sales.billing_customer.id;
 
 where
-    sales.sales_channel in ('STORE', 'WEB')
+    sales.channel in ('STORE', 'WEB')
     and sales.date.year in (first_year, second_year)
     and sales.billing_customer.id is not null
     and store_first_year > 0

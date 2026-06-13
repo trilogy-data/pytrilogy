@@ -169,9 +169,9 @@ def test_or_membership_with_projected_aggregate(engine):
     query = """
 import all_sales as s;
 
-auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG' and s.date.year = 1998;
-auto web_qual <- s.billing_customer.id ? s.sales_channel = 'WEB'     and s.date.year = 1998;
-auto cust_total <- sum(s.ext_sales_price ? s.sales_channel = 'STORE') by s.billing_customer.id;
+auto cat_qual <- s.billing_customer.id ? s.channel = 'CATALOG' and s.date.year = 1998;
+auto web_qual <- s.billing_customer.id ? s.channel = 'WEB'     and s.date.year = 1998;
+auto cust_total <- sum(s.ext_sales_price ? s.channel = 'STORE') by s.billing_customer.id;
 
 where s.billing_customer.id in cat_qual
    or s.billing_customer.id in web_qual
@@ -506,7 +506,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
     # the window output into the select grain. The abstract sums then resolved
     # their `by` against that grain — grouping by the rank, whose order_by
     # rebuilt the sums — a build-time RecursionError. The grain must instead use
-    # the window's keys (item, sales_channel).
+    # the window's keys (item, channel).
     query = """
     import all_sales as s;
     where s.return_amount > 10000
@@ -514,7 +514,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
         s.item.id as item,
         sum(s.return_quantity) / sum(s.quantity) as return_quantity_ratio,
         rank(s.item.id) over (
-            partition by s.sales_channel
+            partition by s.channel
             order by sum(s.return_quantity) / sum(s.quantity) asc
         ) as rank_a
     limit 100;
@@ -522,7 +522,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
     env = Environment(working_path=working_path)
     _, statements = parse_text(query, env)
     select_grain = statements[-1].grain
-    assert select_grain.components == {"s.item.id", "s.sales_channel"}, select_grain
+    assert select_grain.components == {"s.item.id", "s.channel"}, select_grain
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert re.search(r"rank\(\) over \(partition by", sql), sql
 

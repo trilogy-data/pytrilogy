@@ -3,19 +3,19 @@ import all_sales as sales;
 const first_year <- 2001;
 const second_year <- 2002;
 
-def channel_year_total(channel, year) -> sum(sales.net_paid ? sales.sales_channel = channel and sales.date.year = year) by sales.billing_customer.id;
+def channel_year_total(channel, year) -> sum(sales.net_paid ? sales.channel = channel and sales.date.year = year) by sales.billing_customer.id;
 
-auto store_first_year <- sum(sales.net_paid ? sales.sales_channel = 'STORE' and sales.date.year = first_year)
+auto store_first_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.date.year = first_year)
     by sales.billing_customer.id;
-auto web_first_year <- sum(sales.net_paid ? sales.sales_channel = 'WEB' and sales.date.year = first_year)
+auto web_first_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.date.year = first_year)
     by sales.billing_customer.id;
-auto store_second_year <- sum(sales.net_paid ? sales.sales_channel = 'STORE' and sales.date.year = second_year)
+auto store_second_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.date.year = second_year)
     by sales.billing_customer.id;
-auto web_second_year <- sum(sales.net_paid ? sales.sales_channel = 'WEB' and sales.date.year = second_year)
+auto web_second_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.date.year = second_year)
     by sales.billing_customer.id;
 
 where
-    sales.sales_channel in ('STORE', 'WEB')
+    sales.channel in ('STORE', 'WEB')
     and sales.billing_customer.id is not null
     and store_first_year > 0
     and web_first_year > 0

@@ -51,7 +51,7 @@ Full example: trilogy agent-info syntax example union-stack-channels.
 WHERE?            # filter rows BEFORE aggregation
 SELECT
   <EXPR> [AS <ALIAS>], ...
-  INNER|LEFT|FULL JOIN <a> = <b> [= <c>] ...   # join concepts beyond model defaults
+  INNER|LEFT|FULL JOIN <a> = <b> [= <c>] ...   # one or more join concepts beyond model defaults
 HAVING?           # filter AFTER aggregation
 ORDER BY?
 LIMIT?

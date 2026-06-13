@@ -1,43 +1,123 @@
-# Trilogy failure analysis — 20260612-180707
+# Trilogy failure analysis — 20260612-203221
 
-- Run `20260612-180707_ingest` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 2458 | failed: 512 (21%)
+- Run `20260612-203218_ingest` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 1993 | failed: 579 (29%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 315 | 62% |
-| `syntax-parse` | 83 | 16% |
-| `undefined-concept` | 68 | 13% |
-| `join-resolution` | 20 | 4% |
-| `syntax-missing-alias` | 15 | 3% |
-| `cli-misuse` | 8 | 2% |
-| `file-not-found` | 3 | 1% |
+| `other` | 439 | 76% |
+| `syntax-parse` | 59 | 10% |
+| `undefined-concept` | 49 | 8% |
+| `file-not-found` | 12 | 2% |
+| `syntax-missing-alias` | 8 | 1% |
+| `cli-misuse` | 7 | 1% |
+| `join-resolution` | 5 | 1% |
 
 ## Detail
 
 ### `other`
 
-- `trilogy file read raw/store_returns.preql`
+- `trilogy run query01.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+
   ```
 - `trilogy run query01.preql`
 
   ```text
 
   ```
-- `trilogy file read query01.preql`
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+
+  ```
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy explore query02.preql`
+- `trilogy run query04.preql`
 
   ```text
-  Cannot render type <class 'trilogy.core.models.author.UnionSelectLineage'>
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+
   ```
 - `trilogy file read raw/store_sales.preql`
 
@@ -54,253 +134,105 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run --import raw/store_sales:ss --import raw/catalog_sales:cs --import raw/web_sales:ws 
-with store_2001 as
-where ss.date_dim.year = 2001 and ss.cust… store_2001.cust_id = catalog_2002.cust_id
-inner join store_2001.cust_id = web_2001.cust_id
-inner join store_2001.cust_id = web_2002.cust_id
-limit 5;`
+- `trilogy run query05.preql`
 
   ```text
 
   ```
-- `trilogy run --import raw/store_sales:ss --import raw/catalog_sales:cs --import raw/web_sales:ws 
-# Check a specific customer from the results - pick 'AAAAAAA…ner join store_2001.cust_id = catalog_2002.cust_id
-inner join store_2001.cust_id = web_2001.cust_id
-inner join store_2001.cust_id = web_2002.cust_id;`
+- `trilogy run query05.preql`
 
   ```text
 
   ```
-- `trilogy run query04.preql`
+- `trilogy run query05.preql`
 
   ```text
 
   ```
-- `trilogy file read raw/catalog_returns.preql`
+- `trilogy run --import raw/catalog_sales:cs --import raw/catalog_returns:cr select 'cat' as ch, concat('cp_', coalesce(cs.catalog_page.catalog_page_id, cr.cata…null having sum(coalesce(sum(cs.net_paid ? cs.sold_date.date between '2000-08-23'::date and '2000-09-06'::date), 0)) by rollup ch, ent != 0 limit 30;`
+
+  ```text
+
+  ```
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-
   ```
 - `trilogy file read raw/customer.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read query06.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query10.preql`
+
+  ```text
+
+  ```
+- `trilogy run query10.preql`
+
+  ```text
+
+  ```
+- `trilogy run query10.preql`
+
+  ```text
+
+  ```
+- `trilogy run query10.preql`
+
+  ```text
+
+  ```
+- `trilogy run query10.preql`
+
+  ```text
+
+  ```
+- `trilogy run query10.preql`
+
+  ```text
+
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query07.preql`
+- `trilogy run query14.preql duckdb`
 
   ```text
 
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run query14.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query14.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query14.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy file read query14.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy explore query14.preql`
 
   ```text
-
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-
-  ```
-- `trilogy file read query08.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read query09.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy file read query11.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
+  Cannot render type <class 'trilogy.core.models.author.UnionSelectLineage'>
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
@@ -312,22 +244,22 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query16.preql`
+- `trilogy run query16.preql duckdb`
 
   ```text
 
   ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr --import raw/catalog_sales:cs select ss.item.item_id, ss.item.item_desc, ss.store.state, ss.quantity, sr.return_quantity, cs.quantity as cs_quantity where ss.date_dim.fy_year = 2001 and ss.date_dim.qoy = 1 limit 5;`
+- `trilogy run query16.preql duckdb`
 
   ```text
 
   ```
-- `trilogy file read query17.preql`
+- `trilogy run query18.preql`
+
+  ```text
+
+  ```
+- `trilogy file read raw/customer_demographics.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -337,55 +269,15 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
 
   ```
-- `trilogy file read query20.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query22.preql`
-
-  ```text
-
-  ```
-- `trilogy run query23.preql`
-
-  ```text
-
-  ```
-- `trilogy run query23.preql`
-
-  ```text
-
-  ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query24.preql`
+- `trilogy run query23.preql --config trilogy.toml`
 
   ```text
 
-  ```
-- `trilogy run query25.preql`
-
-  ```text
-
-  ```
-- `trilogy file read query25.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query26.preql`
-
-  ```text
-
-  ```
-- `trilogy file read query27.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/store_sales.preql`
 
@@ -397,7 +289,7 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read query29.preql`
+- `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -406,6 +298,31 @@ inner join store_2001.cust_id = web_2002.cust_id;`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query30.preql`
+
+  ```text
+
+  ```
+- `trilogy file read query30.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query31.preql`
+
+  ```text
+
   ```
 - `trilogy run query31.preql`
 
@@ -422,57 +339,12 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
 
   ```
-- `trilogy file read query34.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query37.preql`
-
-  ```text
-
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read query42.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run --import raw.store_sales:store_sales select store_sales.item.item_sk, avg(store_sales.net_profit) as item_avg_profit where store_sales.store.stor…g item_avg_profit > 0.9 * avg(store_sales.net_profit ? store_sales.customer_address.address_sk is null) by * order by item_avg_profit asc limit 1000;`
-
-  ```text
-
-  ```
-- `trilogy run query44.preql`
+- `trilogy run query39.preql`
 
   ```text
 
@@ -482,52 +354,57 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query47.preql`
+- `trilogy run query44.preql duckdb`
 
   ```text
 
   ```
-- `trilogy file read raw\store_sales.preql`
+- `trilogy run query44.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query44.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query44.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query44.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query44.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query44.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy file read query46.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run --import raw/catalog_sales:cs --import raw/catalog_returns:cr select cs.item.item_sk, cs.order_number, cs.net_paid, cs.net_profit, cs.quantity, cr.return_amount, cr.return_quantity where cs.sold_date.year = 2001 and cs.sold_date.moy = 12 limit 5;`
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query49.preql`
 
   ```text
 
   ```
-- `trilogy run test49c.preql duckdb`
-
-  ```text
-
-  ```
-- `trilogy run test49c.preql duckdb`
-
-  ```text
-
-  ```
-- `trilogy run test49g.preql duckdb`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk as item_sk, sum(sr.return_quantity) as rq, sum(ss.quantity) as s…ear = 2001 and ss.date_dim.moy = 12 and ss.net_profit > 0 and ss.net_paid > 0 and ss.quantity > 0 and sr.return_amt > 10000 and ss.item.item_sk = 31;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk as item_sk, sum(sr.return_quantity) as rq, sum(ss.quantity) as s…01 and ss.date_dim.moy = 12 and ss.net_profit > 0 and ss.net_paid > 0 and ss.quantity > 0 and sr.return_amt > 10000 and ss.item.item_sk = 31 limit 5;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk as item_sk, sum(sr.return_quantity) as rq, sum(ss.quantity) as s…ere ss.date_dim.year = 2001 and ss.date_dim.moy = 12 and ss.net_profit > 0 and ss.net_paid > 0 and ss.quantity > 0 and sr.return_amt > 10000 limit 5;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk as item_sk, sum(sr.return_quantity) / sum(ss.quantity) as rr inn…re ss.date_dim.year = 2001 and ss.date_dim.moy = 12 and ss.net_profit > 0 and ss.net_paid > 0 and ss.quantity > 0 and sr.return_amt > 10000 limit 20;`
+- `trilogy run query49.preql`
 
   ```text
 
@@ -542,10 +419,15 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database list`
+- `trilogy run --import raw/store_sales:s --import raw/store_returns:r select s.date_dim.date, r.date_dim.date, s.ticket_number, s.item.item_sk, r.item.item_sk, s.store.store_name, s.customer.customer_sk, r.customer.customer_sk limit 5;`
 
   ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+
+  ```
+- `trilogy run query51.preql`
+
+  ```text
+
   ```
 - `trilogy run query51.preql`
 
@@ -557,80 +439,10 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
 
   ```
-- `trilogy file read query51.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database describe store_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe catalog_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe web_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run query56.preql`
+- `trilogy run query51.preql`
 
   ```text
 
-  ```
-- `trilogy run query56.preql`
-
-  ```text
-
-  ```
-- `trilogy run query56.preql`
-
-  ```text
-
-  ```
-- `trilogy run query56.preql`
-
-  ```text
-
-  ```
-- `trilogy run query56.preql`
-
-  ```text
-
-  ```
-- `trilogy run query56.preql`
-
-  ```text
-
-  ```
-- `trilogy run query56.preql`
-
-  ```text
-
-  ```
-- `trilogy file read test49.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read trilogy.toml`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/store_sales.preql`
 
@@ -667,57 +479,57 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
 
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run query58.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+
+  ```
+- `trilogy run query58.preql`
+
+  ```text
+  trilogy error: subprocess timed out after 600s.
+  ```
+- `trilogy run query58.preql`
+
+  ```text
+
+  ```
+- `trilogy run query58.preql`
+
+  ```text
+
+  ```
+- `trilogy run query58.preql`
+
+  ```text
+
+  ```
+- `trilogy run query58.preql`
+
+  ```text
+
   ```
 - `trilogy file read query59.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query60.preql`
-
-  ```text
-
-  ```
-- `trilogy run query60.preql`
-
-  ```text
-
-  ```
-- `trilogy run query60.preql`
-
-  ```text
-
-  ```
-- `trilogy run query60.preql`
-
-  ```text
-
-  ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query61.preql`
+- `trilogy run query60.preql`
 
   ```text
 
   ```
-- `trilogy run query61.preql`
+- `trilogy run query60.preql`
 
   ```text
 
   ```
-- `trilogy file read query61.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read query63.preql`
+- `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -730,67 +542,7 @@ inner join store_2001.cust_id = web_2002.cust_id;`
 - `trilogy run query64.preql`
 
   ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy file read test49.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
+  trilogy error: subprocess timed out after 600s.
   ```
 - `trilogy run query64.preql`
 
@@ -822,12 +574,57 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
 
   ```
-- `trilogy file read query65.preql`
+- `trilogy run query65.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy run query65.preql`
+
+  ```text
+
+  ```
+- `trilogy run query65.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query65.preql`
+
+  ```text
+
+  ```
+- `trilogy run query65.preql`
+
+  ```text
+
+  ```
+- `trilogy --debug run query65.preql`
+
+  ```text
+
+  ```
+- `trilogy run query65.preql`
+
+  ```text
+
+  ```
+- `trilogy run query65.preql`
+
+  ```text
+
+  ```
+- `trilogy run query65.preql`
+
+  ```text
+
+  ```
+- `trilogy file read raw/time_dim.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -837,35 +634,280 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read query67.preql`
+- `trilogy run --import raw.warehouse:wh --import raw.date_dim:dd select wh.warehouse_name, dd.moy where dd.year = 2001 limit 20;`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+
+  ```
+- `trilogy run query66.preql`
+
+  ```text
+
+  ```
+- `trilogy run query66.preql`
+
+  ```text
+
+  ```
+- `trilogy run query66.preql`
+
+  ```text
+
+  ```
+- `trilogy run query66.preql`
+
+  ```text
+
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run --import raw.store_sales:store_sales select date_dim.date_sk, store_sales.ticket_number, store_sales.quantity limit 5;`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb tpcds.duckdb?readonly=true`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy unit query67.preql`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run --config trilogy.toml query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query67.preql duckdb ./tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query67.preql duckdb tpcds.duckdb.tmp`
+
+  ```text
+
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy integration raw/store_sales.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run --config trilogy.toml --env TRILOGY_DUCKDB_PATH=tpcds.duckdb query67.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb tpcds.duckdb.tmp`
+
+  ```text
+
+  ```
+- `trilogy run query67.preql duckdb`
+
+  ```text
+
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/web_sales.preql`
+- `trilogy run query68.preql`
+
+  ```text
+
+  ```
+- `trilogy run query68.preql`
+
+  ```text
+
+  ```
+- `trilogy run query68.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query68.preql`
+
+  ```text
+
+  ```
+- `trilogy run query68.preql`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy run query68.preql`
+
+  ```text
+
+  ```
+- `trilogy run query68.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run --config trilogy.toml query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
+  ```
+- `trilogy run query69.preql`
+
+  ```text
+
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
@@ -877,67 +919,237 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
 
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql duckdb --config trilogy.toml`
+
+  ```text
+
   ```
 - `trilogy database list`
 
   ```text
   trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy run query73.preql`
+- `trilogy run query72.preql`
 
   ```text
 
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql duckdb --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+
+  ```
+- `trilogy run query72.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
   ```
 - `trilogy run query73.preql`
 
   ```text
 
   ```
-- `trilogy file read test49.preql`
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy run query74.preql`
+
+  ```text
+
+  ```
+- `trilogy file read query74.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy explore test49.preql`
-
-  ```text
-  Cannot render type <class 'trilogy.core.models.author.UnionSelectLineage'>
-  ```
-- `trilogy database describe store_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe web_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run query74.preql`
-
-  ```text
-
-  ```
-- `trilogy run query74.preql`
-
-  ```text
-
-  ```
-- `trilogy run query74.preql`
-
-  ```text
-
-  ```
-- `trilogy run query74.preql`
-
-  ```text
-
-  ```
 - `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -952,159 +1164,642 @@ inner join store_2001.cust_id = web_2002.cust_id;`
   ```text
 
   ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query75.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy file read trilogy.toml`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query75.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql duckdb tpcds.duckdb.tmp`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy file write tpcds_copy.duckdb --from-file tpcds.duckdb`
+
+  ```text
+  [Errno 13] Permission denied: 'tpcds.duckdb'
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query75.preql duckdb --env TRILOGY_DUCKDB_PATH=tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql duckdb :memory:`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy unit query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query75.preql --config tmp_config.toml`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query75.preql --config tmp_config.toml`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy run query77.preql`
-
-  ```text
-
-  ```
-- `trilogy file read test49.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy explore test49.preql`
+- `trilogy `
 
   ```text
-  Cannot render type <class 'trilogy.core.models.author.UnionSelectLineage'>
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 52 column 12 (char 2714). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.item:item --import raw.customer:customer --import raw.date_dim:dd select s…l and concat(ss.item.item_sk::string, '-', ss.ticket_number::string) not in (concat(sr.item.item_sk::string, '-', sr.ticket_number::string)) limit 5;`
+- `trilogy `
 
   ```text
-
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 58 column 12 (char 3038). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run query78.preql`
-
-  ```text
-
-  ```
-- `trilogy run query78.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy file read test49m.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.web_sales:ws --import raw.web_returns:wr --import raw.catalog_sales:cs --i…  ss.customer.customer_sk,
-  ss_qty as store_qty,
-  ws_qty as web_qty
-where ss.date_dim.year = 2000 and ss.customer.customer_sk is not null
-limit 10;`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run --import raw.web_sales:ws --import raw.web_returns:wr --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.item:item --impo…ag as catalog_qty,
-  web_qty_ag + catalog_qty_ag as other_total
-where ws.sold_date.year = 2000 and ws.bill_customer.customer_sk is not null
-limit 10;`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy explore test49r.preql`
+- `trilogy run query77.preql`
 
   ```text
-  Cannot render type <class 'trilogy.core.models.author.UnionSelectLineage'>
+
+  ```
+- `trilogy run query77.preql`
+
+  ```text
+
+  ```
+- `trilogy run query77.preql`
+
+  ```text
+
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query80.preql`
+- `trilogy run query78.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb ./tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb --config trilogy.toml --env DUCKDB_PATH=tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb --env db_location=./tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb --param db_location=./tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql duckdb :memory:`
+
+  ```text
+
+  ```
+- `trilogy unit query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql --config ..\trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run ..\_worker_1\query78.preql --config ..\trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query78.preql --config ..\trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql --config ..\trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query78.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query79.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy file read trilogy.toml`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql duckdb ./tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query79.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql duckdb tpcds.duckdb?readonly=true`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy run query79.preql --debug`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql duckdb _worker_1/tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+
+  ```
+- `trilogy run query79.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query79.preql duckdb tpcds.duckdb?threads=1`
 
   ```text
 
@@ -1164,7 +1859,17 @@ limit 10;`
   ```text
 
   ```
-- `trilogy file read raw/catalog_returns.preql`
+- `trilogy run query80.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -1174,15 +1879,100 @@ limit 10;`
   ```text
 
   ```
-- `trilogy file read query81.preql`
+- `trilogy database list`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy run query82.preql`
+- `trilogy run query81.preql`
 
   ```text
 
+  ```
+- `trilogy run --config trilogy.toml query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql duckdb ./tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql duckdb tpcds.duckdb?mode=ro`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query81.preql duckdb --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+
+  ```
+- `trilogy run query81.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
   ```
 - `trilogy file read raw/store_returns.preql`
 
@@ -1199,412 +1989,227 @@ limit 10;`
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database describe store_returns`
+- `trilogy run --import raw/date_dim:date_dim select date_dim.date, date_dim.week_seq where date_dim.date in ('2000-06-30'::date, '2000-09-27'::date, '2000-11-17'::date) limit 10;`
 
   ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe catalog_returns`
 
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy database describe web_returns`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/store_returns.preql`
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query84.preql duckdb`
+- `trilogy run --import raw/date_dim:date_dim select date_dim.week_seq, date_dim.date where date_dim.date = '2000-06-30'::date limit 5;`
 
   ```text
 
   ```
-- `trilogy file read query84.preql`
+- `trilogy run --import raw/date_dim:date_dim select date_dim.week_seq, date_dim.date where date_dim.date = '2000-06-30'::date limit 5;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw/date_dim:date_dim select date_dim.week_seq, date_dim.date where date_dim.date = '2000-06-30'::date limit 5;`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 5 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 6 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 7 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 8 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query83.preql`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql duckdb ./tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy run query89.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql --config trilogy.toml`
+
+  ```text
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query89.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql duckdb :memory:`
+
+  ```text
+
+  ```
+- `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read query85.preql`
+- `trilogy file delete tpcds.duckdb.tmp`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql --config trilogy.toml`
+
+  ```text
+
+  ```
+- `trilogy run query89.preql duckdb tpcds.duckdb`
+
+  ```text
+
+  ```
+- `trilogy file read query89.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query88.preql`
+- `trilogy file read raw/web_sales.preql`
 
   ```text
-
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read query90.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/catalog_returns.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy file read trilogy.toml`
+- `trilogy file read raw/store_returns.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query92.preql duckdb tpcds.duckdb`
+- `trilogy file read raw/web_sales.preql`
 
   ```text
-
-  ```
-- `trilogy run query92.preql duckdb tpcds.duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql duckdb tpcds.duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql duckdb ..\_worker_0\tpcds.duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql duckdb ..\_worker_1\tpcds.duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql duckdb tpcds.duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query92.preql`
-
-  ```text
-
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database describe reason`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run query93.preql`
-
-  ```text
-
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy file read trilogy.toml`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-  [guidance] You have issued this identical call 5 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy file read trilogy.toml`
+- `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run --config trilogy.toml query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.web_sales:ws --import raw.web_returns:wr select count(ws.order_number) as order_count, sum(ws.ext_ship_cost) as total_ext_ship_cost,…'pri' and count_distinct(ws.warehouse.warehouse_sk) by ws.order_number > 1 and ws.order_number not in wr.order_number order by order_count limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file read trilogy.toml`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query94.preql`
-
-  ```text
-
-  ```
-- `trilogy run query95.preql duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query95.preql duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query97.preql`
-
-  ```text
-
-  ```
-- `trilogy run query97.preql`
-
-  ```text
-
-  ```
-- `trilogy file read query97.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql --config trilogy.toml`
-
-  ```text
-
-  ```
-- `trilogy file read trilogy.toml`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query98.preql duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run --import raw.store_sales:store_sales select store_sales.item.item_id limit 5;`
-
-  ```text
-
-  ```
-- `trilogy unit query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql duckdb --config trilogy.toml`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql duckdb tpcds.duckdb?readonly=true`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql duckdb tpcds.duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy init .`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy --format json run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy run query98.preql`
-
-  ```text
-
-  ```
-- `trilogy file read query99.preql`
+- `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -1612,298 +2217,207 @@ limit 10;`
 
 ### `syntax-parse`
 
-- `trilogy run --import raw/date_dim:date_dim select date_dim.week_seq, date_dim.year, count(date_dim.date_sk) as days_in_week from date_dim group by date_dim.week_seq, date_dim.year order by date_dim.week_seq limit 20;`
+- `trilogy file write query01.preql --content import raw.store_returns as sr;
 
-  ```text
-
-  ```
-- `trilogy run --import raw/date_dim:date_dim select date_dim.week_seq, date_dim.year, date_dim.date, date_dim.day_name from date_dim where date_dim.year >= 2000 and date_dim.year <= 2002 order by date_dim.date limit 30;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/date_dim:date_dim WHERE date_dim.year = 2001 SELECT date_dim.week_seq GROUP BY date_dim.week_seq ORDER BY date_dim.week_seq;`
-
-  ```text
-
-  ```
-- `trilogy file write query02.preql --content import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Stack raw sales data from both channels
-with raw_co…oach with window functions
-
-# Let me use raw_combined directly with a sub-approach
-# Actually, let me rethink the approach
-
-select 1 as test limit 1;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws with channel_totals as union((select cs.sold_date.week_seq as week_seq, cs.sold_date.dow …annel_totals.year, sum(channel_totals.total_sales) as total_sales order by channel_totals.week_seq, channel_totals.year, channel_totals.dow limit 30;`
-
-  ```text
-
-  ```
-- `trilogy file write query04.preql -e -c import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Annual value per customer…by
-    customer_id asc nulls first,
-    first_name asc nulls first,
-    last_name asc nulls first,
-    preferred_cust_flag asc nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/catalog_sales:cs select cs.bill_customer.customer_id as cid, cs.sold_date.year as yr, sum(cs.ext_list_price) as val where cs.bill_customer.customer_id = 'AAAAAAAAAAABAAAA' group by 1, 2 order by 2 limit 10;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/store_sales:ss select ss.customer.customer_id as cid, ss.date_dim.year as yr limit 5 where ss.customer.customer_id = 'AAAAAAAAAABCBAAAA';`
-
-  ```text
-
-  ```
-- `trilogy file write query05.preql --content # Store channel: compute sales per store
-rowset store_sales_by_store as
-    where store_sales.date_dim.date betwee…mbined.channel, combined.entity_id, 0) as net_profit
-order by
-    combined.channel asc nulls first,
-    combined.entity_id asc nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query05.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…l_data.channel, all_data.entity_id, 0) as net_profit
-order by
-    all_data.channel asc nulls first,
-    all_data.entity_id asc nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query06.preql --content import raw.store_sales as store_sales;
-
-# Average distinct item current price by category (each item once)
-auto it…state,
-    count(store_sales.ticket_number) as line_item_count
-order by
-    line_item_count asc nulls first,
-    ca_state asc nulls first
+# Per customer per store total returns
+auto cust_store_tot <- sum(sr.return_amt) … qualifying.sr.customer.customer_id, count(qualifying.sr.customer.customer_sk) as --dummy
+order by qualifying.sr.customer.customer_id asc
 limit 100;
 `
 
   ```text
 
   ```
-- `trilogy file write query11.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
+- `trilogy file write query02.preql -e -c import raw.catalog_sales as cs;
+import raw.web_sales as ws;
 
-with store_rev as
+# Combine catalog and web sales, get per-year per-week pe… value for the same dow
 select
-    store_sale…order by
-    billing_customer_code nulls first,
-    first_name nulls first,
-    last_name nulls first,
-    preferred_cust_flag nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Overall average sale …sales > overall_avg_sale
-order by
-    channel nulls first,
-    brand_id nulls first,
-    class_id nulls first,
-    category_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Overall average sale …sales > overall_avg_sale
-order by
-    channel nulls first,
-    brand_id nulls first,
-    class_id nulls first,
-    category_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Step 1: Compute the o…ollup > overall_avg_sale
-order by
-    channel nulls first,
-    brand_id nulls first,
-    class_id nulls first,
-    category_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Overall average sale …sales > overall_avg_sale
-order by
-    channel nulls first,
-    brand_id nulls first,
-    class_id nulls first,
-    category_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Overall average sale …sales > overall_avg_sale
-order by
-    channel nulls first,
-    brand_id nulls first,
-    class_id nulls first,
-    category_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Overall average sale …sales > overall_avg_sale
-order by
-    channel nulls first,
-    brand_id nulls first,
-    class_id nulls first,
-    category_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_id, sr.return_quantity where ss.date_dim.fy_year = 2001 and ss.date…s.customer.customer_sk = sr.customer.customer_sk inner join ss.item.item_sk = sr.item.item_sk inner join ss.ticket_number = sr.ticket_number limit 5;`
-
-  ```text
-
-  ```
-- `trilogy file write query23.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…sale_amount) as total_sales
-order by combined.last_name asc nulls first, combined.first_name asc nulls first, total_sales asc nulls first
-limit 100;
+    wk_dow_sums.wk,
+    sum(wk_dow_sums.amt) as total_sales,
+    wk_dow_sums.dn
+    -- etc
+from wk_dow_sums
+limit 10;
 `
 
   ```text
 
   ```
-- `trilogy file write query23.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…sale_amount) as total_sales
-order by combined.last_name asc nulls first, combined.first_name asc nulls first, total_sales asc nulls first
-limit 100;
-`
+- `trilogy file write query04.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+
+# Store values per cust….cid
+inner join store_annual.yr = catalog_annual.yr
+inner join store_annual.cid = web_annual.cid
+inner join store_annual.yr = web_annual.yr
+limit 20;`
 
   ```text
 
   ```
-- `trilogy run --import raw.store_returns:sr select sr.store.date_dim.year, sr.store.date_dim.moy, count(sr.ticket_number) as cnt where sr.store.date_dim.year = 2001 group by 1,2;`
+- `trilogy file write query04.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
 
-  ```text
-
-  ```
-- `trilogy file write test_join4.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-
-select
-    ss.ticket_number as tn,
-    ss.item.i….ticket_number = sr.ticket_number
-inner join ss.item.item_sk = sr.item.item_sk
-inner join ss.customer.customer_sk = sr.customer.customer_sk
+# Store: annual value p…l s2 = store_annual s1
+inner join s2.cid = s1.cid
+inner join store_annual c2 = catalog_annual c1
+inner join store_annual w2 = web_annual w1
 limit 10;`
 
   ```text
 
   ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr select ss.item.item_id, ss.store.store_id, ss.date_dim.year, ss.date_dim.moy, sum(ss.qu…er join ss.ticket_number = sr.ticket_number inner join ss.item.item_sk = sr.item.item_sk group by ss.item.item_id, ss.store.store_id limit 10; duckdb`
+- `trilogy run --import raw/store_sales:store_sales --import raw/store_returns:store_returns select store.store_id, sum(net_paid) as gross_sales, sum(return_amt… sum(net_profit) - sum(net_loss) as net_profit where date_dim.date between '2000-08-23'::date and '2000-09-06'::date group by store.store_id limit 5;`
 
   ```text
 
   ```
-- `trilogy file write query31.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
+- `trilogy file write query05.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
+import raw.catalog_sales as cs;
+import raw.catalog_r…# web_returns doesn't import web_site, only web_page. So there might be no web_site on returns.
+# Let me check web_returns more carefully.
 
-# Store sales: total ext_sales_price by…nty,
-    coalesce(store_by_county_q.q, web_by_county_q.q) as q,
-    store_by_county_q.store_total,
-    web_by_county_q.web_total
-order by county, q;
-`
+select 1;`
 
   ```text
 
   ```
-- `trilogy file write query33.preql --content import raw.item as item;
+- `trilogy run --import raw/web_sales:ws select ws.web_site.site_id, ws.web_site.name, sum(ws.net_paid) as gross_sales where ws.sold_date.date between '2000-08-23'::date and '2000-09-06'::date and ws.web_site.site_id is not null group by ws.web_site.site_id, ws.web_site.name limit 5;`
 
-# Set of manufacturer IDs from items in the Electronics category
-auto electronics_manufa…      sum(all_sales.total_sales) as combined_total
-order by combined_total asc nulls first,
-         all_sales.manufact_id asc nulls first
+  ```text
+
+  ```
+- `trilogy file write query05.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
+import raw.catalog_sales as cs;
+import raw.catalog_r…ofit
+by rollup combined.channel_type, combined.entity_id
+order by combined.channel_type asc nulls last, combined.entity_id asc nulls first
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query33.preql --content import raw.item as item;
-import raw.store_sales as s;
+- `trilogy run --import raw/web_sales:ws --import raw/web_returns:wr select 'web channel' as channel_type, ws.web_site.site_id as entity, sum(ws.net_paid ? ws.s…m(wr.net_loss ? wr.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as net_profit where wr.web_page.web_page_id is not null limit 10;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw/web_sales:ws --import raw/web_returns:wr select 'web channel' as ch, concat('web_site', ws.web_site.site_id) as ent, sum(ws.net_paid…, 0 - sum(wr.net_loss ? wr.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as np where wr.web_page.web_page_id is not null limit 20;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw/web_sales:ws --import raw/web_returns:wr with web_parts as union(
+    (where ws.web_site.site_id is not null
+     select
+        'we…t) by rollup web_parts.channel_type, web_parts.entity != 0
+order by web_parts.channel_type asc nulls last, web_parts.entity asc nulls first
+limit 20;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw/web_sales:ws --import raw/web_returns:wr with web_parts as union(
+    (where ws.web_site.site_id is not null
+     select
+        'we…t) by rollup web_parts.channel_type, web_parts.entity != 0
+order by web_parts.channel_type asc nulls last, web_parts.entity asc nulls first
+limit 20;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.web_sales:ws select ss.customer.customer_address.county as co, count(ss.ticket_number) as cnt where ss.c…on County', 'Dona Ana County', 'La Porte County') and year(ss.date_dim.date) = 2002 and month(ss.date_dim.date) between 1 and 4 group by co limit 10;`
+
+  ```text
+
+  ```
+- `trilogy file write query10.preql --content import raw.store_sales as ss;
+import raw.web_sales as ws;
+import raw.catalog_sales as cs;
+
+# Customers who were bi…y
+    gender, marital_status, education_status,
+    purchase_estimate, credit_rating, dep_count,
+    dep_employed_count, dep_college_count
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query10.preql --content import raw.store_sales as ss;
+import raw.web_sales as ws;
+import raw.catalog_sales as cs;
+
+# Customers who were bi…y
+    gender, marital_status, education_status,
+    purchase_estimate, credit_rating, dep_count,
+    dep_employed_count, dep_college_count
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query14.preql --content import raw.store_sales as store_sales;
+import raw.catalog_sales as catalog_sales;
+import raw.web_sales as web_sale…tered_agg.all_data.brand_id nulls first,
+    filtered_agg.all_data.class_id nulls first,
+    filtered_agg.all_data.category_id nulls first
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query23.preql -e -c import raw.store_sales as ss;
 import raw.catalog_sales as cs;
 import raw.web_sales as ws;
-…      sum(all_sales.sales_price) as combined_total
-order by combined_total asc nulls first,
-         all_sales.manufact_id asc nulls first
+
+# Frequent items: first 30 …otal_sales
+order by combined.last_name asc nulls first,
+         combined.first_name asc nulls first,
+         total_sales asc nulls first
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query35.preql --content import raw.store_sales as ss;
+- `trilogy file write query25.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
+import raw.catalog_sales as cs;
 
-with store_customers as
-where ss.date_dim.year = 2002 and ss.date_dim.qoy in (1, 2,…,
-  marital_status asc nulls first,
-  dep_count asc nulls first,
-  dep_employed_count asc nulls first,
-  dep_college_count asc nulls first
+where ss.date_dim.y…er.customer_sk
+inner join ss.ticket_number = sr.ticket_number
+order by
+    item_code,
+    item_description,
+    store_code,
+    store_name
 limit 100;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.web_returns:wr select wr.returning_customer.customer_id, count_distinct(wr.returning_addr.state) as num_states, sum(wr.return_amt) a…r.date_dim.year=2002 and wr.returning_customer.customer_address.state='GA' group by wr.returning_customer.customer_id having num_states > 1 limit 10;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.web_returns:wr select wr.returning_customer.customer_id, wr.returning_addr.state, sum(wr.return_amt) as total_ret where wr.date_dim.year=2002 and wr.returning_customer.customer_id = 'AAAAAAAAAAILAAAA' group by wr.returning_customer.customer_id, wr.returning_addr.state;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.web_returns:wr select wr.returning_customer.customer_id, --wr.date_dim.year, sum(wr.return_amt) as total where wr.date_dim.year=2002 and wr.returning_customer.customer_id in ('AAAAAAAAAAILAAAA', 'AAAAAAAAAABFBAAA') group by wr.returning_customer.customer_id;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.store_sales:store_sales select store_sales.date_dim.year, store_sales.date_dim.qoy, sum(store_sales.ext_sales_price) as total where store_sales.date_dim.year = 2000 group by 1,2 order by 1,2 limit 5;`
 
   ```text
 
@@ -1912,78 +2426,91 @@ limit 100;`
 import raw.catalog_sales as cs;
 import raw.web_sales as ws;
 
-# Distinct (last_name, …uples.first_name = cs_tuples.first_name = ws_tuples.first_name
+# Rowset: store_sales (…tuples.first_name = cs_tuples.first_name = ws_tuples.first_name
 inner join ss_tuples.sale_date = cs_tuples.sale_date = ws_tuples.sale_date
-limit 100;
-`
+limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query38.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
+- `trilogy file write query39.preql --content import raw.inventory as inv;
 
-# Distinct (last_name, …uples.first_name = cs_tuples.first_name = ws_tuples.first_name
-inner join ss_tuples.sale_date = cs_tuples.sale_date = ws_tuples.sale_date
-limit 100;
-`
+# Compute aggregates per (warehouse_sk, item_sk, moy) for year 2001
+# and keep only …jan.mean_qoh asc nulls first,
+    jan.cv asc nulls first,
+    feb.moy asc nulls first,
+    feb.mean_qoh asc nulls first,
+    feb.cv asc nulls first
+;`
 
   ```text
 
   ```
 - `trilogy file write query41.preql --content import raw.item as item;
 
-# Find items matching any of the 8 attribute profiles
-auto profile_item_sk <- item.item_…t_id between 1 and 500
-  and item.manufact in profile_manufact
+# Profile condition: items matching any of the 8 attribute profiles
+auto is_profile_item…here
+    item.manufact_id between 1 and 500
+    and item.item_sk in qualifies
 select
-  item.product_name as product_name
-distinct
+    item.product_name
 order by
-  product_name
-limit 100;`
+    item.product_name
+limit 100;
+`
 
   ```text
 
   ```
-- `trilogy run --import raw.store_sales:store_sales select store_sales.store.store_sk, count(store_sales.item.item_sk) as cnt where store_sales.store.store_sk = 1 group by store_sales.store.store_sk limit 10;`
+- `trilogy file write query44.preql --content import raw.store_sales as store_sales;
 
-  ```text
+# Threshold: avg net profit at store 1 where address is null
+auto no_addr_…aving
+    avg_net_profit > 0.9 * no_addr_avg
+order by
+    avg_net_profit desc;
 
-  ```
-- `trilogy file write test49o.preql -e -c import raw.store_sales as ss;
-import raw.store_returns as sr;
-
-rowset store_agg as
+# Pair them by rank position (using row_number window)
 select
-    ss.item.item_sk as item_… ss.quantity > 0
-  and sr.return_amt > 10000;
-
-select store_agg.item_sk, store_agg.ret_qty, store_agg.sold_qty
-where store_agg.item_sk = 31
-limit 10;`
+    1;
+`
 
   ```text
 
   ```
-- `trilogy file write query51.preql --content import raw.store_sales as ss;
-import raw.web_sales as ws;
+- `trilogy file write query44.preql --content import raw.store_sales as store_sales;
 
-# Per-item, per-day sum of unit price (sales_price) for…ily.sale_date = web_daily.sale_date
-having web_running_max > store_running_max
-order by item_sk asc nulls first, sale_date asc nulls first
+# Threshold: avg net profit at store 1 where address is null
+auto no_addr_…here ranked_items.rnk_desc <= 10
+) -> (rank, best_performer, worst_performer)
+order by rank asc, best_performer desc, worst_performer desc
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query51.preql --content import raw.store_sales as ss;
-import raw.web_sales as ws;
+- `trilogy file write query44.preql --content import raw.store_sales as store_sales;
 
-# Per-item, per-day sum of unit price (sales_price) for…ily.sale_date = web_daily.sale_date
-having web_running_max > store_running_max
-order by item_sk asc nulls first, sale_date asc nulls first
+# Compute threshold: avg net profit at store 1 where address is null
+auto …  best10.rnk <= 10 and worst10.rnk <= 10
+inner join best10.rnk = worst10.rnk
+order by rank asc, best_performer desc, worst_performer desc
+limit 100;
+`
+
+  ```text
+
+  ```
+- `trilogy file write query50.preql --content import raw.store_sales as s;
+import raw.store_returns as r;
+
+# Join store_sales and store_returns on ticket_number…e.street_name,
+    s.store.street_type,
+    s.store.suite_number,
+    s.store.city,
+    s.store.county,
+    s.store.state,
+    s.store.zip
 limit 100;`
 
   ```text
@@ -1991,72 +2518,49 @@ limit 100;`
   ```
 - `trilogy file write query54.preql --content import raw.store_sales as store_sales;
 import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…omer_sk as cust_sk,
-    sum(store_sales.ext_sales_price) as total_sales
-;
-
-# That doesn't work - can't use union like that directly. Let me rethink.
-`
+import raw.web_sales as web_sale…stomers as
+union((select catalog_customers.customer_sk as sk), (select web_customers.customer_sk as sk)) -> (sk)
+select
+    qualifying_customers.sk
+;`
 
   ```text
 
   ```
-- `trilogy file write query56.preql -e -c import raw.item as item;
-import raw.store_sales as ss;
+- `trilogy file write query59.preql --content import raw.store_sales as ss;
+
+# Filtered aggregates for each day of week - at (store, week_seq) grain
+def sun_sum…inner join this_year.store_name = next_year.store_name
+order by this_year.store_name, this_year.store_code, this_year.week_seq nulls first
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query60.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+import raw.item as item;… total numeric)
+
+select
+  all_sales.item_code,
+  sum(all_sales.total) as total
+order by all_sales.item_code nulls first, total nulls first
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query60.preql --content import raw.store_sales as ss;
 import raw.catalog_sales as cs;
 import raw.web_sales as ws;
 
-# …ffset = -5), 0) as combined_total
-    left join ss.item.item_sk = item.item_sk
-order by combined_total nulls first, item_code nulls first
-limit 110;
-`
+# Sales across all chan…em_code, total)
 
-  ```text
-
-  ```
-- `trilogy file write query59.preql --content import raw.store_sales as ss;
-
-# Filtered aggregates for each day of the week
-# Sum of unit prices for each day, g…order by this_year.store_name asc nulls first,
-         this_year.store_code asc nulls first,
-         this_year.week_seq asc nulls first
-limit 100;
-`
-
-  ```text
-
-  ```
-- `trilogy file write query59.preql --content import raw.store_sales as ss;
-
-# Filtered aggregates for each day of the week
-def sun_sum(p) -> sum(p ? ss.date_di…order by this_year.store_name asc nulls first,
-         this_year.store_code asc nulls first,
-         this_year.week_seq asc nulls first
-limit 100;
-`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_sales:ss select ss.date_dim.year, count(*) as cnt group by ss.date_dim.year order by ss.date_dim.year;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_sales:ss select ss.date_dim.week_seq, count(ss.ticket_number) as cnt where ss.date_dim.year = 2001 and ss.date_dim.week_seq + …ate_dim.week_seq where ss2.date_dim.year = 2002) ... actually let me just check what the date_dim table looks like for the week around the transition`
-
-  ```text
-
-  ```
-- `trilogy file write query62.preql --content import raw.web_sales as ws;
-
-# Filter: ship date year = 2000, and warehouse, ship_mode, web_site all non-null
-wher…e, DAY) > 120) as ship_lag_gt_120_days
-order by
-  warehouse_name_20 nulls first,
-  ship_mode_type nulls first,
-  web_site_name nulls first
+select
+  all_sales.item_code,
+  sum(all_sales.total) as total
+order by all_sales.item_code nulls first, total nulls first
 limit 100;`
 
   ```text
@@ -2064,12 +2568,12 @@ limit 100;`
   ```
 - `trilogy file write query62.preql --content import raw.web_sales as ws;
 
-# Filter: ship date year = 2000, and warehouse, ship_mode, web_site all non-null
-wher…r ? ship_lag > 120) as ship_lag_gt_120
+# Filter: ship date in year 2000, and warehouse/ship_mode/web_site all recorded
+where…end) as lag_over_120
 order by
-  warehouse_name_20 nulls first,
-  ship_mode_type nulls first,
-  web_site_name nulls first
+    warehouse_name_20 asc nulls first,
+    ship_mode_type asc nulls first,
+    web_site_name asc nulls first
 limit 100;`
 
   ```text
@@ -2078,334 +2582,232 @@ limit 100;`
 - `trilogy file write query64.preql --content import raw.store_sales as ss;
 import raw.catalog_sales as cs;
 import raw.catalog_returns as cr;
-import raw.store_r….item.current_price between 65 and 74
-    and ss.customer.customer_demographics.marital_status != ss.customer_demographics.marital_status
-limit 100;
-`
-
-  ```text
-
-  ```
-- `trilogy file write query64.preql --content import raw.catalog_sales as cs;
-import raw.catalog_returns as cr;
-import raw.store_sales as ss;
 import raw.store_r…
-    y1999.ss_agg.store_name asc,
-    y2000.ss_agg.sale_count asc,
-    y1999.ss_agg.wholesale_sum asc,
-    y2000.ss_agg.wholesale_sum asc
+  yr2000.ca,
+  yr2000.sale_year,
+  yr2000.cnt
+order by
+  yr1999.product_name,
+  yr1999.store_name,
+  yr2000.cnt,
+  yr1999.ws,
+  yr2000.ws
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import raw.store_r…s.ext_wholesale_cost) as ws,
+  sum(ss.ext_list_price) as lp,
+  sum(ss.coupon_amt) as ca
+order by
+  product_name,
+  store_name,
+  sale_year
+limit 200;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import raw.store_r…_zip = y2000.store_zip
+where y2000.cnt <= y1999.cnt
+order by
+  y1999.product_name,
+  y1999.store_name,
+  y2000.cnt,
+  y1999.ws,
+  y2000.ws
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query64.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import raw.store_r…_zip = y2000.store_zip
+where y2000.cnt <= y1999.cnt
+order by
+  y1999.product_name,
+  y1999.store_name,
+  y2000.cnt,
+  y1999.ws,
+  y2000.ws
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query66.preql --content import raw.web_sales as web_sales;
+import raw.catalog_sales as catalog_sales;
+
+# Union of web and catalog sales
+wi…
+    sum(combined.monthly_net_amt) as monthly_net
+order by
+    combined.wh_name nulls first,
+    combined.yr nulls first,
+    combined.mth
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query66.preql --content import raw.web_sales as web_sales;
+import raw.catalog_sales as catalog_sales;
+
+with months as (
+    select unnest(…r
+    and months.mth = agg_data.mth
+order by
+    warehouse_groups.wh_name nulls first,
+    warehouse_groups.yr nulls first,
+    months.mth
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query66.preql --content import raw.web_sales as web_sales;
+import raw.catalog_sales as catalog_sales;
+import raw.warehouse as warehouse;
+
+…g_data.yr = 2001
+    and months.mth = agg_data.mth
+order by
+    warehouse.warehouse_name nulls first,
+    2001 nulls first,
+    months.mth
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query66.preql --content import raw.web_sales as web_sales;
+import raw.catalog_sales as catalog_sales;
+import raw.warehouse as warehouse;
+
+…data.yr = 2001
+left join months.mth = agg_data.mth
+order by
+    warehouse.warehouse_name nulls first,
+    2001 nulls first,
+    months.mth
+limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query74.preql --content import raw.store_sales as ss;
+import raw.web_sales as ws;
+
+# Store sales totals by customer by year
+with store_tot…
+         / (sum(store_totals.store_total ? store_totals.year = 2001) by store_totals.customer_id)
+order by c_customer_id asc nulls first
 limit 100;
 `
 
   ```text
 
   ```
-- `trilogy file write query64.preql --content import raw.catalog_sales as cs;
-import raw.catalog_returns as cr;
-import raw.store_sales as ss;
-import raw.store_r…
-    y1999.all_ss.store_name asc,
-    y2000.all_ss.sale_count asc,
-    y1999.all_ss.wholesale_sum asc,
-    y2000.all_ss.wholesale_sum asc
+- `trilogy file write query75.preql --content import raw/store_sales as ss;
+import raw/store_returns as sr;
+import raw/catalog_sales as cs;
+import raw/catalog_r…manufact_id
+where yr2001.qty_2001 > 0 and (yr2002.qty_2002::numeric / yr2001.qty_2001::numeric) < 0.9
+order by qty_diff asc, amt_diff asc
 limit 100;
 `
 
   ```text
 
   ```
-- `trilogy run --import raw.web_sales:ws select ws.time_dim.second as sec, count(ws.order_number) as cnt where ws.sold_date.year = 2001 group by ws.time_dim.second order by sec limit 20;`
+- `trilogy file write query75.preql --content import store_sales as ss;
+import store_returns as sr;
+import catalog_sales as cs;
+import catalog_returns as cr;
+im…manufact_id
+where yr2001.qty_2001 > 0 and (yr2002.qty_2002::numeric / yr2001.qty_2001::numeric) < 0.9
+order by qty_diff asc, amt_diff asc
+limit 100;
+`
 
   ```text
 
   ```
-- `trilogy run --import raw.date_dim:dd select dd.moy as month, count(dd.date_sk) as cnt group by dd.moy;`
+- `trilogy file write query77.preql`
 
   ```text
 
   ```
-- `trilogy file write query67.preql --content import raw.store_sales as ss;
-
-where ss.date_dim.year = 2000
-
-# Compute the sum of sales_price * quantity with nul…irst,
-    ss.date_dim.moy asc nulls first,
-    ss.store.store_id asc nulls first,
-    total_sales asc nulls first,
-    rnk asc nulls first
-limit 100;`
+- `trilogy file write query77.preql`
 
   ```text
 
   ```
-- `trilogy file write query70.preql --content import raw.store_sales as store_sales;
-
-# Only sales in year 2000
-where store_sales.date_dim.year = 2000
-  and sto…es.store.county) desc) as within_parent_rank
-order by hierarchy_level desc, store_sales.store.state asc nulls last, within_parent_rank asc
-limit 100;`
+- `trilogy file write query77.preql`
 
   ```text
 
   ```
-- `trilogy file write query71.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
-import raw.catalog_sales as catalog_sale…rice
-order by
-  total_ext_sales_price desc nulls first,
-  combined.brand_id nulls first,
-  combined.hour nulls first,
-  combined.minute nulls first
-;`
+- `trilogy file write query77.preql`
 
   ```text
 
   ```
-- `trilogy file write query71.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
-import raw.catalog_sales as catalog_sale…rice
-order by
-  total_ext_sales_price desc nulls first,
-  combined.brand_id nulls first,
-  combined.hour nulls first,
-  combined.minute nulls first
-;`
+- `trilogy file write query77.preql`
 
   ```text
 
   ```
-- `trilogy run --import raw.catalog_sales:cs select cs.promotion.promo_sk, count(cs.order_number) as cnt group by 1 order by 2 desc limit 10;`
+- `trilogy file write query77.preql`
 
   ```text
 
   ```
-- `trilogy file write query76.preql --content import raw.store_sales as ss;
-import raw.web_sales as ws;
+- `trilogy file write query77.preql`
+
+  ```text
+
+  ```
+- `trilogy file write query77.preql`
+
+  ```text
+
+  ```
+- `trilogy file write query77.preql`
+
+  ```text
+
+  ```
+- `trilogy file write query77.preql`
+
+  ```text
+
+  ```
+- `trilogy file write query80.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
 import raw.catalog_sales as cs;
-
-with combined as union(…c nulls first,
-    combined.year asc nulls first,
-    combined.quarter_of_year asc nulls first,
-    combined.item_category asc nulls first
+import raw.catalog_r…is not null
+left join ss.ticket_number = sr_by_key.ticket
+left join ss.item.item_sk = sr_by_key.item
+order by 1 nulls first, 2 nulls first
 limit 100;`
 
   ```text
 
   ```
-- `trilogy file write query77.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…as returns,
-    sum(combined.profit) as profit
-order by combined.channel asc nulls first, combined.outlet_id asc nulls first, returns desc
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query77.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…turns,
-    sum(stacked.profit) as profit
-order by stacked.channel asc nulls first, stacked.outlet_id asc nulls first, stacked.returns desc
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query77.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-
-# Store sales (per store)
-with …    coalesce(sr.returns, 0) as returns,
-    coalesce(sr.r_loss, 0) as r_loss
-left join ss.outlet = sr.outlet
-;
-
-select * from store_combined
-limit 5;`
-
-  ```text
-
-  ```
-- `trilogy file write query77.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…let_id) as grouping_level
-order by all_channels.channel asc nulls first, all_channels.outlet_id asc nulls first, all_channels.returns desc
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.item:item --import raw.customer:customer --import raw.date_dim:dd select s…ty where ss.date_dim.year = 2000 and ss.customer.customer_sk is not null group by ss.date_dim.year, ss.item.item_sk, ss.customer.customer_sk limit 5;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.web_sales:ws --import raw.web_returns:wr --import raw.catalog_sales:cs --i…ost, sales_price)
-
-select
-  combined.channel,
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.web_sales:ws --import raw.web_returns:wr --import raw.catalog_sales:cs --i…es_price numeric)
-
-select
-  combined.channel,
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.web_sales:ws --import raw.web_returns:wr --import raw.catalog_sales:cs --i…ost, sales_price)
-
-select
-  combined.channel,
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.store_sales as ss;
+- `trilogy file write query80.preql --content import raw.store_sales as ss;
 import raw.store_returns as sr;
-import raw.web_sales as ws;
-import raw.web_returns a…ost, sales_price)
-
-select
-  combined.channel,
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.store_returns as sr;
-import raw.web_returns as wr;
-import raw.catalog_returns as cr;
-
-# Returned keys
-a…sk, qty, wholesale_cost, sales_price)
-
-select
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.web_sales as ws;
-import raw.web_returns a…le_cost numeric, sales_price numeric)
-
-select
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.web_sales as ws;
-import raw.web_returns a…sk, qty, wholesale_cost, sales_price)
-
-select
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.web_sales as ws;
-import raw.web_returns a…sk, qty, wholesale_cost, sales_price)
-
-select
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.item as item;
-
-with combined as union(
-  (select item.item_sk as sk, item.item_id as id limit 5),
-  (select item.item_sk as sk, item.item_id as id limit 5)
-) -> (sk, id)
-
-select combined.sk, combined.id limit 5;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.item as item;
-
-with combined as union(
-  (select item.item_sk as sk, item.item_id as id limit 5),
-  (select item.item_sk as sk, item.item_id as id limit 5)
-) -> (sk bigint, id string)
-
-select combined.sk, combined.id limit 5;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.web_sales:ws --import raw.catalog_sales:cs with w as select ws.sold_date.year as y, ws.item.item_sk as i, ws.bill_customer.customer_sk as c, sum(ws.quantity) as q where ws.sold_date.year = 2000 and ws.bill_customer.customer_sk is not null group by y, i, c limit 5;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.web_sales as ws;
-import raw.web_returns as wr;
 import raw.catalog_sales as cs;
-import raw.catalog_retur…omer_sk, qty, wholesale, sales_price)
-
-select
-  combined.year,
-  combined.item_sk,
-  combined.customer_sk,
-  sum(combined.qty) as total_qty
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query80.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…sum(combined.returns) as returns,
+import raw.catalog_r…sum(combined.returns) as returns,
     sum(combined.profit) as profit
 order by combined.channel nulls first, combined.outlet_id nulls first
 limit 100;`
@@ -2413,110 +2815,21 @@ limit 100;`
   ```text
 
   ```
-- `trilogy file write query80.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…et_id,
-    all_data.sales,
-    all_data.returns,
-    all_data.profit
-order by all_data.channel nulls first, all_data.outlet_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query80.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…ata.profit) by rollup all_data.channel, all_data.outlet_id as profit
-order by all_data.channel nulls first, all_data.outlet_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query80.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…ned.profit) by rollup combined.channel, combined.outlet_id as profit
-order by combined.channel nulls first, combined.outlet_id nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query80.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…turns.return_amt) as return_amt,
-    sum(store_returns.net_loss) as net_loss_amt
-;
-
-select st_all.outlet_code, st_all.sales_amt from st_all limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query80.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata… - case when store_ch.sr.net_loss_amt is null then 0 else store_ch.sr.net_loss_amt end)
-) -> (channel, outlet_id, sales, returns, profit);
-
-select 1;`
-
-  ```text
-
-  ```
-- `trilogy run - duckdb`
-
-  ```text
-
-  ```
-- `trilogy file write query83.preql`
-
-  ```text
-
-  ```
-- `trilogy file write query89.preql --content import raw.store_sales as store_sales;
-
-# Filter to year 1999
-where date_dim.year = 1999
-  # Items in specified ca…   item_class asc,
-    item_brand asc,
-    store_company_name asc,
-    month_of_year asc,
-    monthly_total asc,
-    avg_monthly_total asc
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query90.preql --content import raw.web_sales as ws;
-
-# Count web sale lines for ship-to households with dep_count = 6,
-# on web pages with….hour between 8 and 9) / 
-        nullif(count(ws.order_number ? ws.time_dim.hour between 19 and 20)::numeric, 0) as ratio
-limit 100
-order by ratio
-;`
+- `trilogy run --import raw.store_sales:store_sales --import raw.store_returns:store_returns select store_sales.customer.customer_id, sum(case when store_sales.…tem_sk = store_returns.item.item_sk where store_returns.reason.desc = 'reason 28' order by 2 asc nulls first, 1 asc nulls first limit 110 offset 100;`
 
   ```text
 
   ```
 - `trilogy file write query96.preql --content import raw.store_sales as store_sales;
 
-select 
-    count(*) as line_item_count
-where 
-    store_sales.store.store…    and store_sales.time_dim.minute >= 30
-    and store_sales.customer.household_demographics.dep_count = 7
-order by 
-    line_item_count
-limit 100;
-`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.catalog_sales:cs select cs.warehouse.warehouse_name as wn, cs.ship_mode.type as sm, lower(cs.call_center.name) as cc, date_diff(cs.s…warehouse_name is not null and cs.ship_mode.type is not null and cs.call_center.name is not null group by wn, sm, cc, lag order by lag desc limit 10;`
+where
+  store_sales.store.store_name = 'ese'
+  and store_sales.time_dim.ho…mographics.dep_count = 7
+select
+  count(store_sales.item.item_sk, store_sales.ticket_number) as line_item_count
+order by
+  line_item_count
+limit 100;`
 
   ```text
 
@@ -2524,12 +2837,22 @@ limit 100;
 
 ### `undefined-concept`
 
+- `trilogy run query01.preql`
+
+  ```text
+
+  ```
+- `trilogy run query01.preql`
+
+  ```text
+
+  ```
 - `trilogy run query02.preql`
 
   ```text
 
   ```
-- `trilogy explore query02.preql`
+- `trilogy run query02.preql`
 
   ```text
 
@@ -2539,72 +2862,37 @@ limit 100;
   ```text
 
   ```
-- `trilogy run query06.preql`
+- `trilogy run query04.preql`
 
   ```text
 
   ```
-- `trilogy run query11.preql`
+- `trilogy run query04.preql`
 
   ```text
 
   ```
-- `trilogy run query11.preql`
+- `trilogy run query14.preql duckdb`
 
   ```text
 
   ```
-- `trilogy run query11.preql`
+- `trilogy run query14.preql duckdb`
 
   ```text
 
   ```
-- `trilogy run query11.preql`
+- `trilogy run query16.preql duckdb`
 
   ```text
 
   ```
-- `trilogy run query11.preql`
+- `trilogy run query18.preql`
 
   ```text
 
   ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-
-  ```
-- `trilogy run query24.preql`
-
-  ```text
-
-  ```
-- `trilogy run query24.preql`
-
-  ```text
-
-  ```
-- `trilogy run query31.preql`
-
-  ```text
-
-  ```
-- `trilogy explore query31.preql`
+- `trilogy run query30.preql`
 
   ```text
 
@@ -2619,47 +2907,57 @@ limit 100;
   ```text
 
   ```
-- `trilogy run query33.preql`
-
-  ```text
-
-  ```
-- `trilogy run query36.preql`
-
-  ```text
-
-  ```
 - `trilogy run query39.preql`
 
   ```text
 
   ```
-- `trilogy run query39.preql`
+- `trilogy run test_explore2.preql`
 
   ```text
 
   ```
-- `trilogy run query39.preql`
+- `trilogy run query41.preql`
 
   ```text
 
   ```
-- `trilogy run query39.preql`
+- `trilogy run query41.preql`
 
   ```text
 
   ```
-- `trilogy run query44.preql`
+- `trilogy explore query41.preql`
 
   ```text
 
   ```
-- `trilogy run query45.preql`
+- `trilogy run query41.preql`
 
   ```text
 
   ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk as item_sk, ss.ticket_number, ss.net_paid, ss.net_profit, ss.qua…join ss.ticket_number = sr.ticket_number inner join ss.item.item_sk = sr.item.item_sk where ss.date_dim.year = 2001 and ss.date_dim.moy = 12 limit 5;`
+- `trilogy explore query41.preql`
+
+  ```text
+
+  ```
+- `trilogy run query44.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query47.preql`
+
+  ```text
+
+  ```
+- `trilogy run query47.preql`
+
+  ```text
+
+  ```
+- `trilogy run query47.preql`
 
   ```text
 
@@ -2674,57 +2972,17 @@ limit 100;
   ```text
 
   ```
-- `trilogy run query56.preql`
+- `trilogy run query54.preql`
 
   ```text
 
   ```
-- `trilogy run query57.preql`
-
-  ```text
-
-  ```
-- `trilogy run query58.preql`
+- `trilogy run query54.preql`
 
   ```text
 
   ```
 - `trilogy run query58.preql`
-
-  ```text
-
-  ```
-- `trilogy run query58.preql`
-
-  ```text
-
-  ```
-- `trilogy run query58.preql`
-
-  ```text
-
-  ```
-- `trilogy run query58.preql`
-
-  ```text
-
-  ```
-- `trilogy run query60.preql`
-
-  ```text
-
-  ```
-- `trilogy run query60.preql`
-
-  ```text
-
-  ```
-- `trilogy run query63.preql`
-
-  ```text
-
-  ```
-- `trilogy explore query63.preql`
 
   ```text
 
@@ -2744,22 +3002,22 @@ limit 100;
   ```text
 
   ```
-- `trilogy run query64.preql`
+- `trilogy run query66.preql`
 
   ```text
 
   ```
-- `trilogy run query64.preql`
+- `trilogy run query73.preql`
 
   ```text
 
   ```
-- `trilogy run query70.preql`
+- `trilogy run query74.preql`
 
   ```text
 
   ```
-- `trilogy run query70.preql`
+- `trilogy run query75.preql --config tmp_config.toml`
 
   ```text
 
@@ -2779,42 +3037,22 @@ limit 100;
   ```text
 
   ```
-- `trilogy explore query77.preql`
+- `trilogy run query77.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr select st.out, st.s, st_ret.out, st_ret.r limit 5;`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr select st.out, st.s limit 5;`
 
   ```text
 
   ```
-- `trilogy run query80.preql`
-
-  ```text
-
-  ```
-- `trilogy run query80.preql`
-
-  ```text
-
-  ```
-- `trilogy explore query80.preql --regex store_sales_grp|store_returns_grp|store_combined`
-
-  ```text
-
-  ```
-- `trilogy run query80.preql`
-
-  ```text
-
-  ```
-- `trilogy explore query80.preql --regex web_combined`
+- `trilogy run query78.preql --config ..\trilogy.toml`
 
   ```text
 
@@ -2829,80 +3067,50 @@ limit 100;
   ```text
 
   ```
-- `trilogy run query81.preql`
+- `trilogy run query80.preql`
 
   ```text
 
   ```
-- `trilogy run query82.preql`
+- `trilogy run query80.preql`
 
   ```text
 
   ```
-- `trilogy run query82.preql`
-
-  ```text
-
-  ```
-- `trilogy run - duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query89.preql`
-
-  ```text
-
-  ```
-- `trilogy run query91.preql`
-
-  ```text
-
-  ```
-- `trilogy run query95.preql duckdb`
+- `trilogy run query95.preql`
 
   ```text
 
   ```
 
-### `join-resolution`
+### `file-not-found`
 
-- `trilogy run query05.preql`
-
-  ```text
-
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy run query04.preql`
 
   ```text
 
   ```
-- `trilogy run query14.preql`
+- `trilogy run query39.preql`
 
   ```text
 
   ```
-- `trilogy run query21.preql`
+- `trilogy explore query39.preql`
 
   ```text
 
   ```
-- `trilogy run query49.preql duckdb`
+- `trilogy run query39.preql`
 
   ```text
 
   ```
-- `trilogy run test49o.preql duckdb`
+- `trilogy run query39.preql`
 
   ```text
 
   ```
-- `trilogy run test49q.preql duckdb`
-
-  ```text
-
-  ```
-- `trilogy run query56.preql`
+- `trilogy explore query39.preql`
 
   ```text
 
@@ -2912,57 +3120,27 @@ limit 100;
   ```text
 
   ```
-- `trilogy run query58.preql`
+- `trilogy run query75.preql --config tmp_config.toml`
 
   ```text
 
   ```
-- `trilogy run query58.preql`
+- `trilogy run query75.preql --config tmp_config.toml`
 
   ```text
 
   ```
-- `trilogy run query58.preql`
+- `trilogy run query75.preql --config tmp_config.toml`
 
   ```text
 
   ```
-- `trilogy run query60.preql`
+- `trilogy run query78.preql --config ..\trilogy.toml`
 
   ```text
 
   ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-
-  ```
-- `trilogy run test49o.preql`
-
-  ```text
-
-  ```
-- `trilogy run test49q.preql`
+- `trilogy run query78.preql --config ..\trilogy.toml`
 
   ```text
 
@@ -2970,132 +3148,83 @@ limit 100;
 
 ### `syntax-missing-alias`
 
-- `trilogy run --import raw/catalog_sales:cs select cs.bill_customer.customer_id, cs.sold_date.year limit 5 where cs.bill_customer.customer_id ilike '%AAAB%';`
+- `trilogy run --import raw.store_sales:ss select ss.customer.customer_address.county, count(ss.ticket_number) limit 5;`
 
   ```text
 
   ```
-- `trilogy file write query04.preql -e -c import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-merge ss.customer.customer_…by
-    customer_id asc nulls first,
-    first_name asc nulls first,
-    last_name asc nulls first,
-    preferred_cust_flag asc nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy file write query11.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
-
-# Store revenue per customer per year
-w…order by
-    billing_customer_code nulls first,
-    first_name nulls first,
-    last_name nulls first,
-    preferred_cust_flag nulls first
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/date_dim:date_dim select distinct date_dim.fy_year, date_dim.qoy, date_dim.fy_quarter_seq, date_dim.quarter_name from raw/date_dim.preql limit 20;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_returns:sr select sr.store.date_dim.year, count(sr.ticket_number) where sr.store.date_dim.year = 2001;`
-
-  ```text
-
-  ```
-- `trilogy file write query41.preql --content import raw.item as item;
-
-# Items matching any of the 8 attribute profiles
-auto profile_items <- item.item_sk ? (
-…em.manufact_id between 1 and 500
-  and item.manufact in profile_manufacts
-select distinct
-  item.product_name
-order by
-  item.product_name
-limit 100;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk as item_sk, sum(sr.return_quantity), sum(ss.quantity), sum(sr.re…ear = 2001 and ss.date_dim.moy = 12 and ss.net_profit > 0 and ss.net_paid > 0 and ss.quantity > 0 and sr.return_amt > 10000 and ss.item.item_sk = 31;`
-
-  ```text
-
-  ```
-- `trilogy file write query56.preql -e -c import raw.item as item;
-
-select distinct item.color as colors
-limit 20;
-`
-
-  ```text
-
-  ```
-- `trilogy file write query64.preql --content import raw.catalog_sales as cs;
+- `trilogy file write query16.preql --content import raw.catalog_sales as cs;
 import raw.catalog_returns as cr;
-import raw.store_sales as ss;
-import raw.store_r…
-    y1999.ss_agg.store_name asc,
-    y2000.ss_agg.sale_count asc,
-    y1999.ss_agg.wholesale_sum asc,
-    y2000.ss_agg.wholesale_sum asc
+
+# Find orders that ship from >1 warehouse
+with …ique_orders,
+    sum(cs.ext_ship_cost) as total_ext_ship_cost,
+    sum(cs.net_profit) as total_net_profit
+order by
+    unique_orders desc
 limit 100;
 `
 
   ```text
 
   ```
-- `trilogy run --import raw.ship_mode:ship_mode select distinct ship_mode.carrier;`
+- `trilogy file write query41.preql --content import raw.item as item;
 
-  ```text
-
-  ```
-- `trilogy run --import raw.web_sales:ws select ws.sold_date.year, count(ws.order_number) limit 10;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store:store select distinct store.county order by store.county limit 100;`
-
-  ```text
-
-  ```
-- `trilogy run --import raw.store_sales:store_sales --import raw.store_returns:store_returns select store_sales.store.date_dim.year, count(store_sales.ticket_number) limit 5;`
-
-  ```text
-
-  ```
-- `trilogy file write query78.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.web_sales as ws;
-import raw.web_returns a…k = web_catalog_agg.item_sk
-inner join store_agg.customer_sk = web_catalog_agg.customer_sk
-inner join store_agg.year = web_catalog_agg.year
-limit 10;`
-
-  ```text
-
-  ```
-- `trilogy file write query86.preql --content import raw.web_sales as ws;
-
-# For web sales in year 2000, report total net paid rolled up by item category and cl…r by sum(ws.net_paid) desc
-    ) as rn
+# Items matching any of the 8 detailed attribute profiles
+with profile_items as
+select
+ …fact_id between 1 and 500
+    and item.manufact in profile_manufacts
+select distinct
+    item.product_name
 order by
-    hierarchy_level desc nulls first,
-    ws.item.category nulls first,
-    rn nulls first
+    item.product_name
+limit 100;
+`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.ship_mode:ship_mode select distinct ship_mode.carrier where ship_mode.carrier is not null limit 100;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.date_dim:date_dim select distinct date_dim.year where date_dim.year between 1990 and 2010 limit 20;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw.time_dim:time_dim select distinct time_dim.second where time_dim.second between 30838 and 59638 limit 20;`
+
+  ```text
+
+  ```
+- `trilogy file write query80.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
+import raw.catalog_sales as cs;
+import raw.catalog_r…d.ch,
+    combined.oid,
+    sum(combined.sales),
+    sum(combined.returns),
+    sum(combined.profit)
+order by 1 nulls first, 2 nulls first
 limit 100;`
+
+  ```text
+
+  ```
+- `trilogy file write query95.preql -c import raw.web_sales as ws;
+
+# Step 1: Orders with at least one web return
+with orders_with_returns as
+select distinct ws…mber) as order_count,
+  sum(ws.ext_ship_cost) as total_extended_ship_cost,
+  sum(ws.net_profit) as total_net_profit
+order by order_count
+limit 100
+;
+`
 
   ```text
 
@@ -3103,64 +3232,72 @@ limit 100;`
 
 ### `cli-misuse`
 
-- `trilogy run query02.preql --format json`
+- `trilogy run query47.preql --format json`
 
   ```text
   '--format' is not a valid dialect. The dialect argument comes after the input file and any options.
     Try: trilogy run <input> [<dialect>]
   ```
-- `trilogy run query06.preql --format json`
+- `trilogy run query49.preql --format rich`
 
   ```text
   '--format' is not a valid dialect. The dialect argument comes after the input file and any options.
     Try: trilogy run <input> [<dialect>]
   ```
-- `trilogy run --import raw.store_sales:ss import raw.store_returns:sr select ss.customer.customer_sk, ss.item.item_id, ss.ticket_number, ss.item.item_sk, sr.it….item.item_sk = sr.item.item_sk inner join ss.ticket_number = sr.ticket_number inner join ss.customer.customer_sk = sr.customer.customer_sk limit 10;`
-
-  ```text
-  'select ss.customer.customer_sk, ss.item.item_id, ss.ticket_number, ss.item.item_sk, sr.item.item_sk, sr.ticket_number, sr.customer.customer_sk, sr.net_loss where ss.date_dim.year = 2001 and ss.date_dim.moy = 4 inner join ss.item.item_sk = sr.item.item_sk inner join ss.ticket_number = sr.ticket_number inner join ss.customer.customer_sk = sr.customer.customer_sk limit 10;' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
-  ```
-- `trilogy syntax example union-stack-channels`
-
-  ```text
-  No such command 'syntax'.
-  ```
-- `trilogy trilogy agent-info syntax example filtered-aggregate`
-
-  ```text
-  No such command 'trilogy'.
-  ```
-- `trilogy run query77.preql --format json`
-
-  ```text
-  '--format' is not a valid dialect. The dialect argument comes after the input file and any options.
-    Try: trilogy run <input> [<dialect>]
-  ```
-- `trilogy run query92.preql --format json`
-
-  ```text
-  '--format' is not a valid dialect. The dialect argument comes after the input file and any options.
-    Try: trilogy run <input> [<dialect>]
-  ```
-- `trilogy run --format json query98.preql`
+- `trilogy run --import raw.web_sales:ws --format json select ws.sold_date.date, ws.item.item_sk, ws.sales_price limit 5;`
 
   ```text
   'json' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
   ```
+- `trilogy run --import raw.store_sales:ss --format json select ss.date_dim.date, ss.item.item_sk, ss.sales_price limit 5;`
 
-### `file-not-found`
+  ```text
+  'json' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  ```
+- `trilogy run --format json query66.preql`
 
-- `trilogy run query58.preql`
+  ```text
+  'json' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  ```
+- `trilogy run - --import raw.store_sales:ss --import raw.store_returns:sr select ss.item.category, ss.quantity, sr.return_quantity left join ss.ticket_number = sr.ticket_number left join ss.item.item_sk = sr.item.item_sk where ss.item.category = 'Books' limit 5;`
+
+  ```text
+  'select ss.item.category, ss.quantity, sr.return_quantity left join ss.ticket_number = sr.ticket_number left join ss.item.item_sk = sr.item.item_sk where ss.item.category = 'Books' limit 5;' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  ```
+- `trilogy run query76.preql --format json`
+
+  ```text
+  '--format' is not a valid dialect. The dialect argument comes after the input file and any options.
+    Try: trilogy run <input> [<dialect>]
+  ```
+
+### `join-resolution`
+
+- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select 'store channel' as channel_type, ss.store.store_id as entity, coalesce(sum(ss.ne…re ss.date_dim.date between '2000-08-23'::date and '2000-09-06'::date and sr.date_dim.date between '2000-08-23'::date and '2000-09-06'::date limit 5;`
 
   ```text
 
   ```
-- `trilogy run query58.preql`
+- `trilogy run query05.preql`
 
   ```text
 
   ```
-- `trilogy run query78.preql`
+- `trilogy run --import raw/catalog_sales:cs --import raw/catalog_returns:cr with cat_ch as
+where cs.catalog_page.catalog_page_id is not null or cr.catalog_page…tal_returns,
+    sum(cat_ch.np) by rollup cat_ch.ch, cat_ch.ent as net_profit
+order by cat_ch.ch asc nulls last, cat_ch.ent asc nulls first
+limit 30;`
+
+  ```text
+
+  ```
+- `trilogy run query25.preql`
+
+  ```text
+
+  ```
+- `trilogy run query66.preql`
 
   ```text
 

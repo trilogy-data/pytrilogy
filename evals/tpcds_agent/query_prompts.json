@@ -2,7 +2,7 @@
   {
     "id": 1,
     "grade": "medium",
-    "prompt": "For returns to physical stores in Tennessee in 2000, find the billing customers whose total returns for a store were more than 1.2 times what the average billing customer returns for that store were in that period. Print only the alphanumeric billing customer id, order by that; limit 100 rows."
+    "prompt": "For returns to physical stores in Tennessee in 2000, find the billing customers whose total returns for a store were more than 1.2 times what the average billing customer returns for that store were in that period. Print one row per alphanumeric billing customer id and store_id combo that meet the criteria, but do not return the store_id in results; order by billing customer id; limit 100 rows."
   },
   {
     "id": 2,

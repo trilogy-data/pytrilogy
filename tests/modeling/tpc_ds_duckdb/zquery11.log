@@ -1,7 +1,7 @@
 query_id = "11"
 generator = "v3"
-gen_length = 5119
-preql_size = 1883
+gen_length = 5041
+preql_size = 1847
 comp_size = 3006
 generated_sql = """
 
@@ -9,9 +9,9 @@ WITH
 thoughtful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_store_sales_unified\".\"SS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
-     'STORE'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -22,9 +22,9 @@ WHERE
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_web_sales_unified\".\"WS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
-     'WEB'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -35,8 +35,8 @@ WHERE
 cooperative as (
 SELECT
     \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    \"thoughtful\".\"sales_date_year\" as \"sales_date_year\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"thoughtful\".\"sales_channel\" as \"sales_channel\",
+    \"thoughtful\".\"sales_date_year\" as \"sales_date_year\"
 FROM
     \"thoughtful\"
 GROUP BY
@@ -51,11 +51,11 @@ FROM
 GROUP BY
     1
 HAVING
-    sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and ( CASE
-	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
+    sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
 	ELSE 0.0
 	END ) > ( CASE
-	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
+	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
 	ELSE 0.0
 	END )
 ),
@@ -75,8 +75,8 @@ GROUP BY
     3,
     4,
     5,
-    \"cooperative\".\"sales_date_year\",
-    \"cooperative\".\"sales_sales_channel\")
+    \"cooperative\".\"sales_channel\",
+    \"cooperative\".\"sales_date_year\")
 SELECT
     \"abundant\".\"sales_billing_customer_text_id\" as \"sales_billing_customer_text_id\",
     \"abundant\".\"sales_billing_customer_first_name\" as \"sales_billing_customer_first_name\",

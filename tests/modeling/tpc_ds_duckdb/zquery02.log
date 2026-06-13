@@ -1,7 +1,7 @@
 query_id = "02"
 generator = "v3"
-gen_length = 4643
-preql_size = 917
+gen_length = 4625
+preql_size = 911
 comp_size = 2566
 generated_sql = """
 
@@ -18,9 +18,9 @@ GROUP BY
     1),
 cheerful as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-     'CATALOG'  as \"sales_sales_channel\"
+    \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -29,9 +29,9 @@ WHERE
 
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-     'WEB'  as \"sales_sales_channel\"
+    \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -52,7 +52,7 @@ FROM
     \"cheerful\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('WEB','CATALOG')
+    \"cheerful\".\"sales_channel\" in ('WEB','CATALOG')
 
 GROUP BY
     1),

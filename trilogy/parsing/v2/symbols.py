@@ -84,6 +84,32 @@ def find_select_transform_targets(element: SyntaxElement) -> list[str]:
     return result
 
 
+def find_tvf_output_names(element: SyntaxElement) -> list[str]:
+    """Find the output names declared by a TVF signature `-> (name, ...)`.
+
+    Each ``tvf_output_item`` leads with its name IDENTIFIER (grammar:
+    ``select_hide_modifier? ~ IDENTIFIER ~ ...``). Unlike arm columns these
+    names are renames that don't appear as concept literals, so they must be
+    collected here for forward references to a `with X as union(...)` output.
+    """
+    result: list[str] = []
+    stack: list[SyntaxElement] = [element]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, SyntaxNode):
+            if node.kind == SyntaxNodeKind.TVF_OUTPUT_ITEM:
+                for child in node.children:
+                    if (
+                        isinstance(child, SyntaxToken)
+                        and child.kind == SyntaxTokenKind.IDENTIFIER
+                    ):
+                        result.append(child.value)
+                        break
+            else:
+                stack.extend(node.children)
+    return result
+
+
 def collect_inline_concept_addresses(
     element: SyntaxElement, namespace: str
 ) -> list[str]:

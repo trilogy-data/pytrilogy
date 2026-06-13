@@ -1,15 +1,15 @@
 import all_sales as sales;
 
 auto channel_label <- case
-    when sales.sales_channel = 'STORE' then 'store channel'
-    when sales.sales_channel = 'CATALOG' then 'catalog channel'
-    when sales.sales_channel = 'WEB' then 'web channel'
+    when sales.channel = 'STORE' then 'store channel'
+    when sales.channel = 'CATALOG' then 'catalog channel'
+    when sales.channel = 'WEB' then 'web channel'
     else null
 end;
 auto id_label <- case
-    when sales.sales_channel = 'STORE' then concat('store', sales.channel_dim_text_id)
-    when sales.sales_channel = 'CATALOG' then concat('catalog_page', sales.channel_dim_text_id)
-    when sales.sales_channel = 'WEB' then concat('web_site', sales.channel_dim_text_id)
+    when sales.channel = 'STORE' then concat('store', sales.channel_dim_text_id)
+    when sales.channel = 'CATALOG' then concat('catalog_page', sales.channel_dim_text_id)
+    when sales.channel = 'WEB' then concat('web_site', sales.channel_dim_text_id)
     else null
 end;
 auto profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss, 0);

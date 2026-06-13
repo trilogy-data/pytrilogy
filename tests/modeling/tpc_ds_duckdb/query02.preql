@@ -6,7 +6,7 @@ def weekday_sum(weekday) -> sum(sales.ext_sales_price ? sales.date.day_of_week =
 def round_lag(amt) -> round(amt / (lead(amt, 53) over (order by sales.date.week_seq asc)), 2);
 
 where
-    sales.sales_channel in ('WEB', 'CATALOG') and sales.date.week_seq in relevent_week_seq
+    sales.channel in ('WEB', 'CATALOG') and sales.date.week_seq in relevent_week_seq
 select
     sales.date.week_seq,
     @round_lag(@weekday_sum(0)) as sunday_increase,

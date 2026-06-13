@@ -661,3 +661,57 @@ order by combined.sort_k asc;
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     # item 1: a=val@2001=10, b=val@2002=30; item 2: a=val@2001=5, b=val@2002=5
     assert results == [("one", 10, 30), ("two", 5, 5)]
+
+
+def test_tvf_union_signature_renamed_output_forward_reference():
+    # Regression: a `union(...) -> (k, v)` whose arms project bare concept
+    # literals (`item_id`, `val`) renamed ONLY by the output signature. A later
+    # derived concept (`auto ... by combined.k`) forward-references those outputs
+    # during BIND. collect_symbols declared the arm literals (combined.item_id)
+    # and `as`-aliases but missed the signature renames, so combined.k was
+    # undefined ("Suggestions: ['combined.v']"). The signature names must be
+    # declared as forward-reference symbols.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id, val),
+    (where yr = 2002 select item_id, val)
+) -> (k, v);
+
+auto total <- sum(combined.v) by combined.k;
+
+select combined.k, total
+order by combined.k asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "UNION ALL" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # k=1: 10+30=40; k=2: 5+5=10
+    assert results == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_binds_only_signature_outputs():
+    # Negative of the above: a union(...) TVF rowset's outputs are EXACTLY its
+    # `-> (...)` signature. The arm-internal names (`item_id`, `val`, the WHERE
+    # column `yr`) must NOT leak as `combined.<name>` — collect_symbols used to
+    # declare them as resolvable forward-reference placeholders, masking what
+    # should be an undefined-reference error.
+    from trilogy.core.models.environment import Environment
+    from trilogy.parsing.parse_engine_v2 import TopLevelStatementParser, parse_syntax
+
+    environment = Environment()
+    environment.parse(_TVF_UNION_FIXTURE)
+    parser = TopLevelStatementParser(environment=environment, import_keys=["root"])
+    parser.parse(parse_syntax("""
+with combined as union(
+    (where yr = 2001 select item_id, val),
+    (where yr = 2002 select item_id, val)
+) -> (k, v);
+"""))
+    bound = {
+        addr
+        for addr in parser.hydrator.symbol_table.global_scope.definitions
+        if "combined" in addr
+    }
+    assert bound == {"combined.k", "combined.v"}

@@ -1595,12 +1595,20 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
 
     @classmethod
     def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):
-        from trilogy.core.models.build import BuildFunction
+        from trilogy.core.models.build import BuildFilterItem, BuildFunction
 
         if derivation == Derivation.CONSTANT:
             return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
             if all([x.endswith(ALL_ROWS_CONCEPT) for x in grain.components]):
+                return Granularity.SINGLE_ROW
+        elif derivation == Derivation.FILTER and isinstance(lineage, BuildFilterItem):
+            # Filtering rows never changes single-row-ness; inherit the filtered
+            # content's granularity, ignoring the (multi-row) where-condition args.
+            content_args = lineage.content_concept_arguments
+            if content_args and all(
+                x.granularity == Granularity.SINGLE_ROW for x in content_args
+            ):
                 return Granularity.SINGLE_ROW
         elif (
             lineage
