@@ -1648,3 +1648,43 @@ def test_column_assignment_in_datasource():
 grain (user_id)
 address dim_users;"""
     assert rendered == expected, f"Got:\n{rendered}\n\nExpected:\n{expected}"
+
+
+def test_render_nullable_typed_declaration_round_trip():
+    """`fmt` must keep the trailing `?` on typed key/property declarations —
+    dropping it silently flips a concept from nullable to non-nullable."""
+    src = """key kid int?;
+property kid.name string?;
+"""
+    env = Environment(working_path=".")
+    _, queries = env.parse(src)
+    rendered = Renderer(environment=env).render_statement_string(queries)
+    assert "key kid int?;" in rendered, rendered
+    assert "property kid.name string?;" in rendered, rendered
+
+    env2 = Environment(working_path=".")
+    env2.parse(rendered)
+    for addr in ("local.kid", "local.name"):
+        assert (Modifier.NULLABLE in env.concepts[addr].modifiers) == (
+            Modifier.NULLABLE in env2.concepts[addr].modifiers
+        )
+
+
+def test_render_date_trunc_round_trip():
+    """The `date_truncate` enum value isn't the parseable keyword; render the
+    canonical `date_trunc` so output round-trips."""
+    env = Environment(working_path=".")
+    _, queries = env.parse("auto t <- date_trunc('2020-01-01'::date, month);\n")
+    rendered = Renderer(environment=env).render_statement_string(queries)
+    assert "date_trunc(" in rendered, rendered
+    assert "date_truncate(" not in rendered, rendered
+    Environment(working_path=".").parse(rendered)
+
+
+def test_render_hash_round_trip():
+    """The hash algorithm is a bare keyword (md5/sha256/...), not a string."""
+    env = Environment(working_path=".")
+    _, queries = env.parse("const s <- 'x';\nauto h <- hash(s, sha256);\n")
+    rendered = Renderer(environment=env).render_statement_string(queries)
+    assert "hash(s, sha256)" in rendered, rendered
+    Environment(working_path=".").parse(rendered)

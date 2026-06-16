@@ -128,6 +128,12 @@ def safe_address(address: str) -> str:
 
 DEFAULT_MAX_LINE_LENGTH = 100
 
+# FunctionType.value isn't always a keyword the parser accepts; map those to
+# their canonical parseable spelling so rendered output round-trips.
+_FUNCTION_NAME_OVERRIDES = {
+    FunctionType.DATE_TRUNCATE: "date_trunc",
+}
+
 
 def _purpose_keyword(purpose: Purpose) -> str:
     """Grammar keyword for a Purpose — ``unique property`` not ``unique_property``."""
@@ -767,10 +773,14 @@ class Renderer:
         ):
             ns_for_emit = ""
         if not concept.lineage:
+            # The grammar accepts a trailing ``?`` nullable marker on typed
+            # key/property declarations; drop it and the concept silently
+            # becomes non-nullable on reparse.
+            nullable = "?" if Modifier.NULLABLE in concept.modifiers else ""
             if key_prefix:
-                output = f"{purpose_kw} {key_prefix}{concept.name} {self.to_string(concept.datatype)};"
+                output = f"{purpose_kw} {key_prefix}{concept.name} {self.to_string(concept.datatype)}{nullable};"
             else:
-                output = f"{purpose_kw} {namespace}{concept.name} {self.to_string(concept.datatype)};"
+                output = f"{purpose_kw} {namespace}{concept.name} {self.to_string(concept.datatype)}{nullable};"
         else:
             # Any lineage-bearing concept renders as `auto`; the parser
             # re-infers purpose and keys. `property`/`metric` keywords
@@ -1166,11 +1176,22 @@ class Renderer:
             return f"struct(\n{inputs}\n{self.indent_context.current_indent})"
         if arg.operator == FunctionType.ALIAS:
             return f"{self.to_string(arg.arguments[0])}"
+        if arg.operator == FunctionType.HASH:
+            # The algorithm is a bare HASH_TYPE keyword (md5/sha1/...), not a
+            # string literal — quoting it breaks reparse.
+            with self.indented():
+                head = self.to_string(arg.arguments[0])
+            algo = arg.arguments[1]
+            algo_str = algo if isinstance(algo, str) else self.to_string(algo)
+            return self._render_call("hash", [head, algo_str])
         # Re-render args at +1 indent so multi-line atoms (e.g. wrapped
         # array literals) line up under the call's wrapped open-paren.
         with self.indented():
             indented_args = [self.to_string(c) for c in arg.arguments]
-        return self._render_call(arg.operator.value, indented_args)
+        # A few FunctionType values don't match a parseable keyword; the
+        # enum's ``date_truncate`` isn't the canonical ``date_trunc`` spelling.
+        name = _FUNCTION_NAME_OVERRIDES.get(arg.operator, arg.operator.value)
+        return self._render_call(name, indented_args)
 
     @to_string.register
     def _(self, arg: "OrderItem"):
