@@ -285,7 +285,7 @@ _LIST_FILES_SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules"}
 _LIST_FILES_SKIP_PREFIXES = ("_worker_",)
 _LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
 _LIST_FILES_MAX_ENTRIES = 500
-
+_LIST_FILES_DESC_LIMIT = preql_description.LIST_FILES_DESC_LIMIT
 
 
 def _should_skip_entry(name: str) -> bool:

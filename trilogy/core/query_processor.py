@@ -1024,27 +1024,6 @@ def process_query(
         full_join_keys=full_join_keys,
     )
 
-    join_clauses = getattr(statement, "join_clauses", None) or []
-    scoped_merge_map, _ = _build_scoped_merge_index(
-        [(j.source_address, j.target_address, j.join_type) for j in join_clauses]
-    )
-    # Canonical keys of query-scoped FULL joins — flagged so the outer-join
-    # upgrade optimization never collapses an explicit FULL back to INNER.
-    full_join_keys = {
-        scoped_merge_map.get(addr, addr)
-        for j in join_clauses
-        if j.join_type is JoinType.FULL
-        for addr in (j.source_address, j.target_address)
-    }
-
-    final_ctes = optimize_ctes(
-        deduped_ctes,
-        root_cte,
-        statement,
-        having_alias=having_alias,
-        full_join_keys=full_join_keys,
-    )
-
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
