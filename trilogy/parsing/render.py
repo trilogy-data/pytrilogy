@@ -38,6 +38,7 @@ from trilogy.core.models.author import (
     Function,
     FunctionCallWrapper,
     Grain,
+    MultiSelectLineage,
     NavigationWindowItem,
     NumberingWindowItem,
     OrderBy,
@@ -46,6 +47,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     SubselectComparison,
+    SubselectItem,
     WhereClause,
 )
 from trilogy.core.models.core import (
@@ -795,7 +797,11 @@ class Renderer:
             # when the parser classified the derivation as fully static
             # — round-trips, and reads clearer for literal/constant defs.
             kw = "const" if concept.purpose == Purpose.CONSTANT else "auto"
-            output = f"{kw} {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
+            if isinstance(concept.lineage, MultiSelectLineage):
+                lineage_str = self._multiselect_output_expr(concept, concept.lineage)
+            else:
+                lineage_str = self.to_string(concept.lineage)
+            output = f"{kw} {ns_for_emit}{concept.name} <- {lineage_str};"
         if concept.metadata and concept.metadata.hidden:
             output = f"--{output}"
         if base_description:
@@ -949,6 +955,30 @@ class Renderer:
         )
 
     @to_string.register
+    def _(self, arg: MultiSelectLineage):
+        # A merge output's lineage is the whole multiselect, which has no
+        # `auto x <- ...` assignment form; render a compact, descriptive
+        # summary (the arms' outputs + align/derive/where) for explore rather
+        # than the full multi-line statement.
+        arms = " | ".join(
+            ", ".join(self.to_string(c) for c in s.selection) for s in arg.selects
+        )
+        parts = [f"merge({arms})"]
+        if arg.where_clause:
+            parts.append(f"where {self.to_string(arg.where_clause)}")
+        if arg.align and arg.align.items:
+            parts.append(
+                "align " + " and ".join(self.to_string(i) for i in arg.align.items)
+            )
+        if arg.derive:
+            parts.append(
+                "derive " + ", ".join(self.to_string(i) for i in arg.derive.items)
+            )
+        if arg.having_clause:
+            parts.append(f"having {self.to_string(arg.having_clause)}")
+        return " ".join(parts)
+
+    @to_string.register
     def _(self, arg: MultiSelectStatement):
         # Each select gets its own indentation
         select_parts = []
@@ -1068,6 +1098,20 @@ class Renderer:
         )
 
     @to_string.register
+    def _(self, arg: "SubselectItem"):
+        # ``subselect(<content>[ where ...][ order by ...][ limit n])`` — same
+        # clause order the grammar accepts so the render round-trips.
+        parts = [self.to_string(arg.content)]
+        if arg.where is not None:
+            parts.append(f"where {self.to_string(arg.where)}")
+        if arg.order_by:
+            items = ", ".join(self.to_string(o) for o in arg.order_by)
+            parts.append(f"order by {items}")
+        if arg.limit is not None:
+            parts.append(f"limit {arg.limit}")
+        return f"subselect({' '.join(parts)})"
+
+    @to_string.register
     def _(self, arg: "RowsetItem"):
         # Render the underlying derivation of the rowset's output concept (the
         # ``<- expr`` an agent cares about), unmangling rowset-local names. The
@@ -1081,6 +1125,22 @@ class Renderer:
                 if target is not None and target.lineage is not None:
                     return self.to_string(target.lineage)
         return f"{arg.rowset.name}.{field}"
+
+    def _multiselect_output_expr(
+        self, concept: "Concept", ms: "MultiSelectLineage"
+    ) -> str:
+        """Concept-specific render for a merge output: its derive expression or
+        just the aligned arm columns it merges — not the whole multiselect
+        (which is identical, and huge, for every output of the merge)."""
+        if ms.derive:
+            for derive_item in ms.derive.items:
+                if derive_item.derived_concept == concept.address:
+                    return self.to_string(derive_item.expr)
+        for align_item in ms.align.items:
+            if align_item.aligned_concept == concept.address:
+                cols = ", ".join(self.to_string(c) for c in align_item.concepts)
+                return f"merge({cols})"
+        return self.to_string(ms)
 
     def _rowset_filter_comment(self, item: "RowsetItem") -> str:
         """A trailing ``# from rowset <name> where ...`` note surfacing the

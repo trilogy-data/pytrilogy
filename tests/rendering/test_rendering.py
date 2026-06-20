@@ -29,6 +29,7 @@ from trilogy.core.models.author import (
     Conditional,
     Function,
     Grain,
+    MultiSelectLineage,
     OrderBy,
     OrderItem,
     RowsetItem,
@@ -354,6 +355,42 @@ rowset totals <- where value > 0 select
     assert rendered["totals.order_id"] == (
         "auto totals.order_id <- totals.order_id;\n# from rowset totals where value > 0"
     )
+
+
+def test_render_subselect_item():
+    # A `subselect(...)` concept's lineage is a SubselectItem; it round-trips.
+    env, _ = Environment().parse("""
+key id int;
+property id.val float;
+datasource nums (id: id, val: val) grain (id) address memory.nums;
+auto top2 <- subselect(val order by val desc limit 2);
+""")
+    rendered = Renderer(environment=env).to_string(
+        ConceptDeclarationStatement(concept=env.concepts["local.top2"])
+    )
+    assert rendered == "auto top2 <- subselect(val order by val desc limit 2);"
+
+
+def test_render_multiselect_lineage_per_output():
+    # A merge output's lineage is a MultiSelectLineage shared by every output;
+    # the declaration renders each output concept-specifically — the derive
+    # expression, or just the aligned arm columns it merges.
+    env, _ = Environment().parse("""key a int;
+key b int;
+select a
+merge
+select b
+align c: a, b
+derive c + 1 -> d
+;""")
+    renderer = Renderer(environment=env)
+    rendered = {
+        addr: renderer.to_string(ConceptDeclarationStatement(concept=concept))
+        for addr, concept in env.concepts.items()
+        if isinstance(concept.lineage, MultiSelectLineage)
+    }
+    assert rendered["local.c"] == "auto c <- merge(a, b);"
+    assert rendered["local.d"] == "auto d <- c + 1;"
 
 
 def test_render_case(test_environment: Environment):
