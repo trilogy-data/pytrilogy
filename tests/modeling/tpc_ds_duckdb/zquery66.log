@@ -169,13 +169,15 @@ WHERE
 ),
 young as (
 SELECT
+    \"yummy\".\"sales_date_year\" as \"sales_date_year\",
     \"yummy\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
     \"yummy\".\"sales_warehouse_square_feet\" as \"sales_warehouse_square_feet\"
 FROM
     \"yummy\"
 GROUP BY
     1,
-    2),
+    2,
+    3),
 juicy as (
 SELECT
     \"yummy\".\"sales_date_year\" as \"sales_date_year\",
@@ -235,7 +237,7 @@ GROUP BY
     2),
 sparkling as (
 SELECT
-    \"juicy\".\"sales_date_year\" as \"year_\",
+    \"young\".\"sales_date_year\" as \"year_\",
     \"young\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
     ( coalesce(\"juicy\".\"_virt_agg_sum_1390508309586151\",0) / \"young\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"juicy\".\"_virt_agg_sum_8249258081069440\",0) / \"young\".\"sales_warehouse_square_feet\" ) as \"oct_sales_per_sq_foot\",
     ( coalesce(\"juicy\".\"_virt_agg_sum_2677729335671306\",0) / \"young\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"juicy\".\"_virt_agg_sum_8705688610121203\",0) / \"young\".\"sales_warehouse_square_feet\" ) as \"jun_sales_per_sq_foot\",
@@ -275,7 +277,7 @@ SELECT
     coalesce(\"juicy\".\"_virt_agg_sum_9573906931545777\",0) + coalesce(\"juicy\".\"_virt_agg_sum_2520745984741884\",0) as \"dec_net\"
 FROM
     \"young\"
-    INNER JOIN \"juicy\" on \"young\".\"sales_warehouse_id\" = \"juicy\".\"sales_warehouse_id\")
+    INNER JOIN \"juicy\" on \"young\".\"sales_date_year\" = \"juicy\".\"sales_date_year\" AND \"young\".\"sales_warehouse_id\" = \"juicy\".\"sales_warehouse_id\")
 SELECT
     \"sweltering\".\"w_warehouse_name\" as \"w_warehouse_name\",
     \"sweltering\".\"w_warehouse_sq_ft\" as \"w_warehouse_sq_ft\",

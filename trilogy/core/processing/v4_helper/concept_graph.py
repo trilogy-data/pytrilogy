@@ -128,12 +128,32 @@ def _upstream_aggregate(
 ) -> list[BuildConcept]:
     """AGGREGATE: lineage args plus row-identity concepts of each function
     arg (property keys, rowset grain). Stops at inner aggregate boundaries
-    via `_walk_aggregate_grain_inputs`."""
+    via `_walk_aggregate_grain_inputs`.
+
+    An arg that is itself an inner aggregate (`avg(daily_rides) by
+    start_station.id`, daily_rides = `count(...) by ride_date`) contributes its
+    OUTPUT grain (ride_date) as a row-level input: that grain key is the join
+    bridge between the outer aggregate's grouping dimension (start_station.id)
+    and the inner aggregate's value. Without it the dimension is row-sourced
+    alone and the input merge cross-joins ON 1=1. Mirrors `_aggregate_input_grain`
+    (which already includes it) so the graph edges and the computed input grain
+    agree."""
     base = list(_lineage_args(concept, environment))
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
             if isinstance(arg, BuildConcept):
-                base.extend(_walk_aggregate_grain_inputs(arg, environment))
+                grain_inputs = _walk_aggregate_grain_inputs(arg, environment)
+                if grain_inputs:
+                    base.extend(grain_inputs)
+                elif arg.derivation == Derivation.AGGREGATE and arg.grain:
+                    # The arg is itself an inner aggregate; its output grain is the
+                    # join bridge (see docstring). A non-aggregate arg's grain is
+                    # NOT added — its own row identity already flows via the walk.
+                    base.extend(
+                        environment.concepts[g]
+                        for g in arg.grain.components
+                        if g in environment.concepts
+                    )
     return base
 
 

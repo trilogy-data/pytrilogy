@@ -10,20 +10,21 @@ and the data was stale.
 
 ## Headline (2026-06-13 re-run, post C7 + filter-only-RECURSIVE + C8 fixes)
 
-54 tracked entries. **No crashes, no runaways remain** — the q29 crash (C10), the
+53 tracked entries. **No crashes, no runaways remain** — the q29 crash (C10), the
 q2.1/q2.2 fan-out runaway (C11), and the q54/q77 wrong-rows all landed earlier,
-C7 (the "date-render" misses), `test_recursive` (filter-only RECURSIVE), and now
-**C8 (ambiguous forced-join off-by-one, ×2)** landed this round (see "FIXED"
-notes + memory):
+C7 (the "date-render" misses), `test_recursive` (filter-only RECURSIVE),
+**C8 (ambiguous forced-join off-by-one, ×2)**, and now **C9 rides
+(aggregate-over-aggregate cross-join)** landed this round (see "FIXED" notes +
+memory):
 
 | bucket | n | meaning |
 | --- | --- | --- |
 | **SHAPE** | 47 | correct rows, worse/different SQL — cosmetic, not a parity bug |
-| **ROWS**  | 5  | classifier coarse bucket; ~3 genuine wrong-rows + 2 SHAPE-ish |
+| **ROWS**  | 4  | classifier coarse bucket; ~2 genuine wrong-rows + 2 SHAPE-ish |
 | **XPASS** | 2  | q97_1/q97_2 — pass in isolation; pre-existing cross-file pollution, left in |
 
 Counts are the raw `v4_classify.py` buckets. The `ROWS` bucket is coarse: only
-C9 (×2: rides + def_wrapped) and
+C9 def_wrapped and
 `composite_rollup` are genuine wrong-rows; the two
 (`test_select_literal_is_rendered_in_projection`, `test_aggregate_filter_uses_having`)
 are really SHAPE/`_INLINE` that the regex caught.
@@ -35,7 +36,7 @@ above). The file-lock flake can likewise re-surface
 `tpc_ds_duckdb::test_seventy_three` as a spurious `PermissionError [WinError 32]`
 CRASH — in isolation it's `assert 5489 < 3000` (SHAPE/size), not a real crash.
 
-So ~3 of 54 are genuine parity gaps (all wrong-rows); the rest are SQL-shape/
+So ~2 of 53 are genuine parity gaps (all wrong-rows); the rest are SQL-shape/
 verbosity (TPC-DS size ceilings + inlining CTE-shape snapshots).
 
 ### FIXED 2026-06-13 — C8 ambiguous forced-join off-by-one (group-property + unrelated key)
@@ -344,9 +345,23 @@ Both: `_wrap_for_grain` per-key split → FINAL `ON 1=1` cross-join, plus a miss
 multi-contributor FINAL dedup defeated by `merge_node.py`'s force_group-ignoring
 single-source shortcuts. See the FIXED note in the headline.
 
-### C9 — misc wrong rows — 2
-- `modeling/rides_example/test_ride_example.py::test_example_model` (1 vs 4)
-- `modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate` (0 vs 2)
+### C9 — misc wrong rows — 1 (was 2)
+- ~~`modeling/rides_example/test_ride_example.py::test_example_model`~~ FIXED 2026-06-13.
+  `avg(daily_rides) by start_station.id` (daily_rides = `count(ride_id) by ride_date`)
+  cross-joined ON 1=1: the outer aggregate's grouping dimension (start_station.id)
+  was row-sourced from the standalone `stations` table, decoupled from the inner
+  aggregate's grain key `ride_date`, so every station got `avg(all daily_rides)`.
+  TWO graph-layer fixes (NO node-build re-sourcing): (1) concept graph —
+  `_upstream_aggregate` now adds an inner-AGGREGATE arg's output grain (ride_date)
+  as a row-input edge, mirroring `_aggregate_input_grain` (the edges and the
+  computed input grain were inconsistent); this wires ride_date into the dimension's
+  source so start_station.id is sourced from rides. (2) projection —
+  `_project_dimension_parents_to_group_grain` keeps that bridge key when projecting
+  the dimension to the group grain (else it strips ride_date and the post-projection
+  merge has nothing to join on), GUARDED on `fd_needed.isdisjoint(other_outputs)` so
+  it only fires in the genuine no-shared-key cross-join case (the_look multi-key
+  aggregate is untouched). See memory `project_v4_c9_aggregate_over_aggregate_crossjoin`.
+- `modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate` (0 vs 2) — SEPARATE root cause (a `@weekday_sum(0)/@weekday_sum(1)` filtered-aggregate-in-arithmetic that v4's final group CTE keeps as 0 aggregate outputs instead of 2). Not yet fixed.
 
 ### C11 — fan-out RUNAWAY (the "timeout" cases, mis-labeled) — FIXED (was 2 → 0)
 FIXED via aggregate input-grain derivation over inline-expression args (see the
@@ -385,12 +400,12 @@ guards, repro recipes): `local_scripts/v4_c11_multifact_aggregate_runaway_brief.
 ## Coverage-gap conclusion
 
 Only `top_x_by_metric` is distilled in `v4_evals/failing_cases/`. **All crash and
-runaway clusters are now fixed** (C2–C6, C8, plus q29/C10, the C11 runaway, C7, and
-the filter-only-RECURSIVE wrong-rows). No crashes, no runaways remain. Remaining
-genuine work is all wrong-rows, in priority order:
-**C9 rides test_example_model + def_wrapped_filtered_aggregate → C10 q46/q97_2
-wrong-rows → composite_rollup (NULL CASE over rollup key) → geography exact_match
-source-selection (×2) → q68 tie-break → SHAPE/verbosity backlog.**
+runaway clusters are now fixed** (C2–C6, C8, C9 rides, plus q29/C10, the C11
+runaway, C7, and the filter-only-RECURSIVE wrong-rows). No crashes, no runaways
+remain. Remaining genuine work is all wrong-rows, in priority order:
+**C9 def_wrapped_filtered_aggregate → C10 q46/q97_2 wrong-rows → composite_rollup
+(NULL CASE over rollup key) → geography exact_match source-selection (×2) → q68
+tie-break → SHAPE/verbosity backlog.**
 
 The 47 SHAPE entries need no eval case; they're tracked verbosity/inlining regressions to
 close at the source-selection / render layer, gated on `CONFIG.use_v4_discovery`

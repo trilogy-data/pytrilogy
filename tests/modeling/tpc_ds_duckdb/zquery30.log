@@ -1,6 +1,6 @@
 query_id = "30"
 generator = "v4"
-gen_length = 11605
+gen_length = 11870
 preql_size = 2007
 comp_size = 1507
 generated_sql = """
@@ -105,7 +105,8 @@ SELECT
     \"questionable\".\"web_returns_billing_customer_login\" as \"web_returns_billing_customer_login\",
     \"questionable\".\"web_returns_billing_customer_preferred_cust_flag\" as \"web_returns_billing_customer_preferred_cust_flag\",
     \"questionable\".\"web_returns_billing_customer_salutation\" as \"web_returns_billing_customer_salutation\",
-    \"questionable\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\"
+    \"questionable\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\",
+    \"questionable\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
     \"questionable\"
 GROUP BY
@@ -121,7 +122,8 @@ GROUP BY
     10,
     11,
     12,
-    13),
+    13,
+    14),
 sweltering as (
 SELECT
     \"sparkling\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
@@ -139,6 +141,7 @@ FROM
 macho as (
 SELECT
     \"questionable\".\"web_returns_billing_customer_id\" as \"web_returns_billing_customer_id\",
+    \"questionable\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
     \"uneven\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"questionable\"
@@ -150,7 +153,7 @@ WHERE
 GROUP BY
     1,
     2,
-    \"questionable\".\"web_returns_return_address_state\")
+    3)
 SELECT
     \"abundant\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\",
     \"abundant\".\"web_returns_billing_customer_salutation\" as \"web_returns_billing_customer_salutation\",
@@ -167,7 +170,7 @@ SELECT
     \"macho\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"macho\"
-    INNER JOIN \"abundant\" on \"macho\".\"web_returns_billing_customer_id\" = \"abundant\".\"web_returns_billing_customer_id\"
+    LEFT OUTER JOIN \"abundant\" on \"macho\".\"web_returns_billing_customer_id\" = \"abundant\".\"web_returns_billing_customer_id\" AND \"macho\".\"web_returns_return_address_state\" is not distinct from \"abundant\".\"web_returns_return_address_state\"
 ORDER BY 
     \"abundant\".\"web_returns_billing_customer_text_id\" asc nulls first,
     \"abundant\".\"web_returns_billing_customer_salutation\" asc nulls first,

@@ -720,6 +720,40 @@ def _project_dimension_parents_to_group_grain(
         if not concepts or non_fd_needed:
             projected.append(parent)
             continue
+        # When the dimension's projected grain (fd_needed) shares NO key with the
+        # barrier sibling, the post-projection merge has nothing to join on and
+        # cross-joins ON 1=1 — the bridge between the two is a projection-grain key
+        # the sibling outputs but fd_needed dropped (an aggregate's input-grain
+        # key, `ride_date` linking `start_station.id` to the inner `daily_rides`
+        # aggregate). Keep that bridge by grouping to the combined grain (mirrors
+        # v3's per-(dim,key) dedup CTE). Guarded on disjointness so the normal case
+        # — a dimension that already shares its keys with the aggregate — is left
+        # to `_wrap_for_grain` untouched. The bridge may only be DERIVABLE here
+        # (the dimension carries `ride_start_time`, from which `ride_date`
+        # projects), so test satisfiability.
+        join_keys = {
+            addr
+            for addr in group_grain_components
+            if addr not in fd_needed
+            and addr in other_outputs
+            and (c := _concept_at(environment, addr)) is not None
+            and concept_satisfiable(c, outputs_by_parent[idx])
+        }
+        if join_keys and fd_needed.isdisjoint(other_outputs):
+            grain_concepts = [
+                c
+                for addr in sorted(fd_needed | join_keys)
+                if (c := _concept_at(environment, addr)) is not None
+            ]
+            projected.append(
+                GroupNode(
+                    output_concepts=grain_concepts,
+                    input_concepts=grain_concepts,
+                    environment=environment,
+                    parents=[parent],
+                )
+            )
+            continue
         projected.extend(
             _wrap_for_grain(parent, concepts, environment, group_grain_components)
         )

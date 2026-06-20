@@ -62,7 +62,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc08": _MODELING,
-    "tests/modeling/rides_example/test_ride_example.py::test_example_model": _MODELING,
     "tests/modeling/stocks/test_stocks.py::test_calculated_field": _MODELING,
     "tests/modeling/stocks/test_stocks.py::test_provider_name": _MODELING,
     "tests/modeling/test_complex.py::test_in_select": _MODELING,

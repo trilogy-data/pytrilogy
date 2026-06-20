@@ -1,6 +1,6 @@
 query_id = "73"
 generator = "v4"
-gen_length = 5486
+gen_length = 5665
 preql_size = 1344
 comp_size = 1437
 generated_sql = """
@@ -50,7 +50,8 @@ SELECT
     \"questionable\".\"physical_sales_customer_id\" as \"physical_sales_customer_id\",
     \"questionable\".\"physical_sales_customer_last_name\" as \"physical_sales_customer_last_name\",
     \"questionable\".\"physical_sales_customer_preferred_cust_flag\" as \"physical_sales_customer_preferred_cust_flag\",
-    \"questionable\".\"physical_sales_customer_salutation\" as \"physical_sales_customer_salutation\"
+    \"questionable\".\"physical_sales_customer_salutation\" as \"physical_sales_customer_salutation\",
+    \"questionable\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\"
 FROM
     \"questionable\"
 GROUP BY
@@ -58,7 +59,8 @@ GROUP BY
     2,
     3,
     4,
-    5),
+    5,
+    6),
 abundant as (
 SELECT
     \"questionable\".\"physical_sales_customer_id\" as \"physical_sales_customer_id\",
@@ -80,8 +82,8 @@ SELECT
     \"abundant\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\",
     \"abundant\".\"ticket_cnt\" as \"ticket_cnt\"
 FROM
-    \"abundant\"
-    INNER JOIN \"yummy\" on \"abundant\".\"physical_sales_customer_id\" = \"yummy\".\"physical_sales_customer_id\"
+    \"yummy\"
+    INNER JOIN \"abundant\" on \"yummy\".\"physical_sales_customer_id\" = \"abundant\".\"physical_sales_customer_id\" AND \"yummy\".\"physical_sales_ticket_number\" = \"abundant\".\"physical_sales_ticket_number\"
 ORDER BY 
     \"abundant\".\"ticket_cnt\" desc,
     \"yummy\".\"physical_sales_customer_last_name\" asc,
