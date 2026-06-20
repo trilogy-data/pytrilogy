@@ -213,7 +213,7 @@ def raise_collected_undefined(
         hint = f"; did you mean: {', '.join(matches)}?" if matches else ""
         lines.append(f"  - {rec.address}{_format_location(rec)}{hint}")
     message = (
-        f"Undefined concepts ({len(deduped)} references); fix all before "
+        f"{len(deduped)} undefined concept references; fix all before "
         f"re-running:\n" + "\n".join(lines)
     )
     raise UndefinedConceptException(message, all_matches)

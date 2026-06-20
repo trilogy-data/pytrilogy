@@ -699,7 +699,22 @@ def get_query_node(
         # than wrapping it in a fresh SelectNode. The wrapper adds a CTE level
         # that masks the node's join-key grain anchors and triggers a spurious
         # regroup in a downstream consumer (e.g. a rowset's outer select, q68).
+        having_existence = {
+            c.address for group in having.existence_arguments for c in group
+        }
         if isinstance(ds, (MergeNode, SelectNode)):
+            ds.add_condition(having)
+        elif having_existence and having_existence <= {
+            c.address for c in ds.existence_concepts
+        }:
+            # A HAVING membership (`x in <set>`) carries an existence concept
+            # sourced as a subselect. The fresh-SelectNode wrapper below would
+            # drop that wiring — its lone parent `ds` exposes the existence
+            # concept only internally (not as an output), so the subselect
+            # renders a dangling CTE reference. When `ds` already sources every
+            # existence concept the predicate needs — e.g. a WhereSafetyNode that
+            # padded a window output and sourced the set to compute a projected
+            # membership flag — fold onto it to reuse that wiring instead.
             ds.add_condition(having)
         else:
             final = having

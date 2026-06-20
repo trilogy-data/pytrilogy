@@ -1,6 +1,30 @@
 # Bug: "Invalid reference string" codegen crash (dangling CTE) on membership-in-HAVING + window
 
-**Status:** OPEN (found 2026-06-06)
+**Status:** FIXED 2026-06-19 (found 2026-06-06)
+
+## Fix (2026-06-19)
+
+`query_processor.get_query_node` (v3 path): the top-level HAVING was folded onto the output
+node only when it was a `MergeNode`/`SelectNode`; otherwise it wrapped the node in a fresh
+`SelectNode`. For the membership-in-HAVING + window shape, the output node is a `WhereSafetyNode`
+(padding the window output) that ALREADY sources the membership set (to compute the projected
+`in_2001` flag) in its `existence_concepts`. The wrapper's lone parent exposes that set only
+internally (not as an output column), so the HAVING's existence subselect rendered a dangling CTE
+reference -> `INVALID_REFERENCE_BUG`. Fix: when the HAVING carries existence args that the node
+already sources (`having_existence and having_existence <= node.existence_concepts`), fold via
+`add_condition` to reuse the wiring instead of wrapping. Guarded to the existence case so plain
+HAVINGs keep the old wrapper path (folding all HAVINGs onto a WhereSafetyNode restructures CTEs and
+regressed `test_rowset_arithmetic_argument_keeps_precedence`). Regression test:
+`tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_membership_in_having_over_window_renders_valid_subselect`.
+
+Note: the deterministic rowset-form repro below now degrades to a separate, pre-existing clean
+`ValueError` ("Invalid input concepts to node! ['local.ws']" — the self-referential output-alias
+limitation) rather than the codegen crash. The `with`-CTE + `auto` membership form (the actual
+agent query) is fully fixed.
+
+---
+
+**Original status:** OPEN (found 2026-06-06)
 **Severity:** medium — an internal invariant fires ("this should never occur"); a valid-looking
 query crashes at SQL render instead of being cleanly rejected or run.
 **Area:** `trilogy/dialect/base.py` (compile_statement, ~line 2315) — generated SQL references a

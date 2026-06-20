@@ -522,6 +522,44 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
 
 
+def test_membership_in_having_over_window_renders_valid_subselect():
+    """A `x in <set>` membership used in HAVING, over a select that also has a
+    window function and projects the membership as a flag, must source its
+    existence subselect from the real CTE that produces <set> — not a dangling
+    reference. The HAVING folds onto the WhereSafetyNode that padded the window
+    output (which already sourced <set> to compute the flag) instead of wrapping
+    in a fresh SelectNode that drops the wiring (-> INVALID_REFERENCE_BUG)."""
+    query = """
+import all_sales as all_sales;
+
+auto ws_2001 <- all_sales.date.week_seq ? all_sales.date.year = 2001;
+
+with weekly_dow as
+where all_sales.channel in ('WEB', 'CATALOG')
+select
+    all_sales.date.week_seq as ws,
+    sum(all_sales.ext_sales_price ? all_sales.date.day_of_week = 0) as sun
+;
+
+select
+    weekly_dow.ws as week_sequence,
+    round(weekly_dow.sun / (lead(weekly_dow.sun, 53) over (order by weekly_dow.ws asc)), 2) as sun_ratio,
+    --weekly_dow.ws in ws_2001 as in_2001
+having
+    weekly_dow.ws in ws_2001
+order by weekly_dow.ws asc nulls first
+;
+"""
+    env = Environment(working_path=working_path)
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    # the membership subselect must read from a CTE present in the WITH list
+    defined_ctes = set(re.findall(r"\n(\w+) as \(", sql))
+    referenced = re.search(r"in \(select (\w+)\.", sql)
+    assert referenced is not None, sql
+    assert referenced.group(1) in defined_ctes, sql
+
+
 def test_rank_over_projected_aggregate_ratio_no_recursion():
     # Bug B1: a rank() whose order_by is the same sum(a)/sum(b) ratio that is
     # also projected, with a partition key not in the projection, used to push

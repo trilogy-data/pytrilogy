@@ -613,26 +613,34 @@ def datetime_now_seconds() -> float:
     return datetime.now().timestamp()
 
 
-def handle_execution_exception(e: Exception, debug: bool = False) -> None:
+def handle_execution_exception(
+    e: Exception, debug: bool = False, source: str | None = None
+) -> None:
     if isinstance(e, Exit):
         raise e
     from trilogy.core.exceptions import (
         DisconnectedConceptsException,
         InvalidSyntaxException,
+        UndefinedConceptException,
         UnresolvableQueryException,
     )
 
+    location = f" in {source}" if source else ""
     # Syntax/validation errors carry actionable, user-facing guidance; label them
     # as such instead of "Unexpected error:" so the reader (or agent) treats them
     # as a fixable mistake rather than an internal crash.
-    if isinstance(e, (SyntaxError, InvalidSyntaxException)):
-        print_error(f"Syntax error: {e}")
+    if isinstance(e, UndefinedConceptException):
+        # An undefined concept is an authoring mistake; use `.message` to avoid
+        # the `(self, message)` tuple repr that `str(e)` produces.
+        print_error(f"Syntax error{location}: {e.message}")
+    elif isinstance(e, (SyntaxError, InvalidSyntaxException)):
+        print_error(f"Syntax error{location}: {e}")
     elif isinstance(e, (DisconnectedConceptsException, UnresolvableQueryException)):
         # A disconnected/unresolvable query is a fixable modeling mistake (a
         # missing join/merge), not an internal crash.
-        print_error(f"Resolution error: {e}")
+        print_error(f"Resolution error{location}: {e}")
     else:
-        print_error(f"Unexpected error: {e}")
+        print_error(f"Unexpected error{location}: {e}")
     if debug:
         print_error(f"Full traceback:\n{traceback.format_exc()}")
     raise Exit(1) from e

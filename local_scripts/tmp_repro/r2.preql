@@ -1,0 +1,7 @@
+import all_sales as all_sales;
+rowset ws_2001 <- select all_sales.date.week_seq where all_sales.date.year = 2001;
+select
+    all_sales.date.week_seq as ws,
+    sum(all_sales.ext_sales_price) as sun
+having ws in ws_2001.all_sales.date.week_seq
+;

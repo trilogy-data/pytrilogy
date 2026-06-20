@@ -1,0 +1,15 @@
+import all_sales as all_sales;
+rowset ws_2001 <- select all_sales.date.week_seq
+    where all_sales.channel != 'STORE' and all_sales.date.year = 2001;
+auto wk_sun <- sum(all_sales.ext_sales_price ? all_sales.date.day_of_week = 0);
+select
+    all_sales.date.week_seq as ws,
+    --ws in ws_2001.all_sales.date.week_seq as in_2001,
+    wk_sun as sun,
+    lead(wk_sun, 53) over (order by all_sales.date.week_seq) as next_sun
+where all_sales.channel != 'STORE'
+    and (all_sales.date.week_seq in ws_2001.all_sales.date.week_seq
+         or all_sales.date.week_seq - 53 in ws_2001.all_sales.date.week_seq)
+having ws in ws_2001.all_sales.date.week_seq
+order by ws nulls first
+limit 55;
