@@ -58,7 +58,10 @@ from trilogy.core.models.execute import (
     UnnestJoin,
 )
 from trilogy.core.optimization import optimize_ctes
-from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.processing.concept_strategies_v3 import (
+    append_existence_check,
+    source_query_concepts,
+)
 from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
@@ -699,22 +702,7 @@ def get_query_node(
         # than wrapping it in a fresh SelectNode. The wrapper adds a CTE level
         # that masks the node's join-key grain anchors and triggers a spurious
         # regroup in a downstream consumer (e.g. a rowset's outer select, q68).
-        having_existence = {
-            c.address for group in having.existence_arguments for c in group
-        }
         if isinstance(ds, (MergeNode, SelectNode)):
-            ds.add_condition(having)
-        elif having_existence and having_existence <= {
-            c.address for c in ds.existence_concepts
-        }:
-            # A HAVING membership (`x in <set>`) carries an existence concept
-            # sourced as a subselect. The fresh-SelectNode wrapper below would
-            # drop that wiring — its lone parent `ds` exposes the existence
-            # concept only internally (not as an output), so the subselect
-            # renders a dangling CTE reference. When `ds` already sources every
-            # existence concept the predicate needs — e.g. a WhereSafetyNode that
-            # padded a window output and sourced the set to compute a projected
-            # membership flag — fold onto it to reuse that wiring instead.
             ds.add_condition(having)
         else:
             final = having
@@ -732,6 +720,13 @@ def get_query_node(
                 partial_concepts=ds.partial_concepts,
                 conditions=final,
             )
+        # Source any existence (`x in <set>`) args onto the node now carrying the
+        # HAVING, mirroring the WHERE path — the predicate's subselect must read
+        # from a real producer CTE, not a dangling reference. Idempotent, so the
+        # fold branch (which may already carry the set) is a no-op.
+        append_existence_check(
+            ds, build_environment, graph, build_statement.having_clause, history
+        )
     ds.hidden_concepts = build_statement.hidden_components
     ds.ordering = build_statement.order_by
     # TODO: avoid this

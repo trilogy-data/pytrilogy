@@ -402,7 +402,10 @@ def _substitute_having_aggregates(
             return ref
         return node
     if isinstance(node, Comparison):
-        return Comparison(
+        # Preserve the concrete class (e.g. SubselectComparison) — a plain
+        # Comparison rebuild would strip a membership's existence semantics,
+        # leaving the HAVING set-concept to render as a bare column.
+        return type(node)(
             left=_substitute_having_aggregates(node.left, sig_to_ref),
             right=_substitute_having_aggregates(node.right, sig_to_ref),
             operator=node.operator,
@@ -741,11 +744,12 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                 )
         _validate_where_aggregate_matches_select(select, line_no)
     if select.having_clause:
-        # Report ALL missing refs at once (deduped, in order). Raising on the
-        # first one makes an agent fix it, re-run, hit the next, and loop — one
-        # message listing every missing ref collapses those rewrite cycles.
+        # Report ALL missing refs at once (deduped, in order). Use row_arguments,
+        # not concept_arguments: an `x in <set>` membership's existence RHS (the
+        # set) is sourced as a subselect at plan time (mirroring WHERE) and need
+        # not be projected — only the row side (`x`) must be a SELECT output.
         missing: list[str] = []
-        for cref in select.having_clause.concept_arguments:
+        for cref in select.having_clause.row_arguments:
             if cref.address not in allowed_addresses and cref.address not in missing:
                 missing.append(cref.address)
         if missing:

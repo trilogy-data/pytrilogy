@@ -522,14 +522,24 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
 
 
+def _assert_having_membership_subselect_valid(query: str) -> None:
+    """A HAVING `x in <set>` must source its existence subselect from a real
+    producer CTE present in the WITH list — not a dangling reference. The HAVING
+    application routes through `append_existence_check` (mirroring the WHERE
+    path), so the predicate's subselect is wired regardless of node shape."""
+    env = Environment(working_path=working_path)
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    defined_ctes = set(re.findall(r"\n(\w+) as \(", sql))
+    referenced = re.search(r"in \(select (\w+)\.", sql)
+    assert referenced is not None, sql
+    assert referenced.group(1) in defined_ctes, sql
+
+
 def test_membership_in_having_over_window_renders_valid_subselect():
-    """A `x in <set>` membership used in HAVING, over a select that also has a
-    window function and projects the membership as a flag, must source its
-    existence subselect from the real CTE that produces <set> — not a dangling
-    reference. The HAVING folds onto the WhereSafetyNode that padded the window
-    output (which already sourced <set> to compute the flag) instead of wrapping
-    in a fresh SelectNode that drops the wiring (-> INVALID_REFERENCE_BUG)."""
-    query = """
+    # CTE-handle form: the HAVING-carrying node is a WhereSafetyNode padding the
+    # window output.
+    _assert_having_membership_subselect_valid("""
 import all_sales as all_sales;
 
 auto ws_2001 <- all_sales.date.week_seq ? all_sales.date.year = 2001;
@@ -549,15 +559,48 @@ having
     weekly_dow.ws in ws_2001
 order by weekly_dow.ws asc nulls first
 ;
-"""
-    env = Environment(working_path=working_path)
-    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
-    assert "INVALID_REFERENCE_BUG" not in sql, sql
-    # the membership subselect must read from a CTE present in the WITH list
-    defined_ctes = set(re.findall(r"\n(\w+) as \(", sql))
-    referenced = re.search(r"in \(select (\w+)\.", sql)
-    assert referenced is not None, sql
-    assert referenced.group(1) in defined_ctes, sql
+""")
+
+
+def test_membership_in_having_auto_concept_renders_valid_subselect():
+    # Auto-concept form: the HAVING-carrying node is a GroupNode that does NOT
+    # itself source the set (it lands on the inner flag node), so the existence
+    # must be sourced at the HAVING site. The narrow WhereSafetyNode fold missed
+    # this; the general append_existence_check covers it.
+    _assert_having_membership_subselect_valid("""
+import all_sales as all_sales;
+
+auto ws_2001 <- all_sales.date.week_seq ? all_sales.date.year = 2001;
+
+select
+    all_sales.date.week_seq as ws,
+    --ws in ws_2001 as in_2001,
+    sum(all_sales.ext_sales_price) as sun
+having ws in ws_2001
+;
+""")
+
+
+def test_membership_in_having_no_projected_flag_renders_valid_subselect():
+    # The membership's set need not be projected as a hidden flag: the validator
+    # uses row_arguments (existence RHS exempt), and the HAVING site sources the
+    # set directly. This rowset + window + filtered-aggregate shape used to crash
+    # in DISCOVERY building the forced hidden flag's output node ('local.ws'
+    # missing parent); with no flag required, that node is never built.
+    _assert_having_membership_subselect_valid("""
+import all_sales as all_sales;
+
+rowset ws_2001 <- select all_sales.date.week_seq
+    where all_sales.channel != 'STORE' and all_sales.date.year = 2001;
+auto wk_sun <- sum(all_sales.ext_sales_price ? all_sales.date.day_of_week = 0);
+
+select
+    all_sales.date.week_seq as ws,
+    wk_sun as sun,
+    lead(wk_sun, 53) over (order by all_sales.date.week_seq) as next_sun
+having ws in ws_2001.all_sales.date.week_seq
+;
+""")
 
 
 def test_rank_over_projected_aggregate_ratio_no_recursion():

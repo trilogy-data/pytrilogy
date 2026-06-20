@@ -17,6 +17,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     Metadata,
     NumberingWindowItem,
+    SubselectComparison,
     UndefinedConcept,
 )
 from trilogy.core.models.environment import (
@@ -285,6 +286,71 @@ def test_parse_text_v2_rejects_property_on_missing_parent() -> None:
 def test_parse_text_v2_rejects_auto_with_missing_dependency() -> None:
     with pytest.raises(UndefinedConceptException):
         parse_text("auto bad <- missing_ref + 1;", Environment())
+
+
+def test_membership_classified_as_subselect_in_having_like_where() -> None:
+    # A SELECT aggregate makes finalize walk the HAVING tree to substitute
+    # matching aggregates; that walk used to rebuild every Comparison as a plain
+    # one, stripping the SubselectComparison subclass off a membership and losing
+    # its existence semantics. The same `id in big_ids` must classify identically
+    # in WHERE and HAVING.
+    model = """
+key id int;
+property id.val int;
+datasource nums (id: id, val: val) grain (id) address nums;
+
+auto big_ids <- filter id where val > 10;
+
+select
+    id,
+    sum(val) as total,
+    --id in big_ids as flag
+where id in big_ids
+having id in big_ids
+;
+"""
+    _, parsed = parse_text(model, Environment())
+    stmt = parsed[-1]
+    assert isinstance(stmt.where_clause.conditional, SubselectComparison)
+    assert isinstance(stmt.having_clause.conditional, SubselectComparison)
+
+
+def test_having_membership_does_not_require_set_in_projection() -> None:
+    # The membership's existence RHS (the set) is sourced as a subselect at plan
+    # time and need not be projected; only the row side must be a SELECT output.
+    model = """
+key id int;
+property id.val int;
+datasource nums (id: id, val: val) grain (id) address nums;
+
+auto big_ids <- filter id where val > 10;
+
+select id, sum(val) as total
+having id in big_ids
+;
+"""
+    _, parsed = parse_text(model, Environment())
+    assert isinstance(parsed[-1].having_clause.conditional, SubselectComparison)
+
+
+def test_having_membership_still_requires_row_side_in_projection() -> None:
+    # Only the existence RHS is exempt — the row side (here `other`, neither a
+    # SELECT output nor an alias source) is a plain HAVING ref and must still be
+    # projected.
+    model = """
+key id int;
+property id.val int;
+property id.other int;
+datasource nums (id: id, val: val, other: other) grain (id) address nums;
+
+auto big_ids <- filter id where val > 10;
+
+select id, sum(val) as total
+having other in big_ids
+;
+"""
+    with pytest.raises(InvalidSyntaxException, match="not in the SELECT projection"):
+        parse_text(model, Environment())
 
 
 def test_parse_text_v2_allows_function_parameter_dotted_access() -> None:

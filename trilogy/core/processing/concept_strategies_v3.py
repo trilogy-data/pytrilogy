@@ -57,10 +57,13 @@ def append_existence_check(
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
     if where.existence_arguments:
+        already_sourced = {c.address for c in node.input_concepts} | {
+            c.address for c in node.existence_concepts
+        }
         for subselect in where.existence_arguments:
             if not subselect:
                 continue
-            if all([x.address in node.input_concepts for x in subselect]):
+            if all(x.address in already_sourced for x in subselect):
                 logger.info(
                     f"{LOGGER_PREFIX} existance clause inputs already found {[str(c) for c in subselect]}"
                 )
