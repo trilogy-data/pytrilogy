@@ -272,6 +272,28 @@ def categorize_failure(result: str) -> str:
 _ERROR_ANCHORS = ("^---", "Location:", "-->")
 
 
+def _structured_error_message(text: str) -> str | None:
+    """The `message` of a `{"event": "error", ...}` JSON line, if one is present.
+
+    `trilogy run` reports errors as a stream of concatenated (pretty-printed)
+    JSON events rather than plain text.
+    """
+    decoder = json.JSONDecoder()
+    idx = text.find("{")
+    while idx != -1:
+        try:
+            obj, end = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            idx = text.find("{", idx + 1)
+            continue
+        if isinstance(obj, dict) and obj.get("event") == "error":
+            msg = obj.get("message")
+            if isinstance(msg, str):
+                return msg
+        idx = text.find("{", end)
+    return None
+
+
 def _error_snippet(result: str, limit: int = 1200) -> str:
     """The meaningful error text from a `trilogy` tool result.
 
@@ -282,8 +304,14 @@ def _error_snippet(result: str, limit: int = 1200) -> str:
     """
     text = result
     if "--- stderr ---" in text:
-        text = text.split("--- stderr ---", 1)[1]
+        head, _, stderr = result.partition("--- stderr ---")
+        # `trilogy run` emits structured errors as a JSON event on stdout and
+        # leaves stderr empty, so fall back to stdout when stderr is bare.
+        text = stderr.strip() or head.partition("--- stdout ---")[2]
     text = text.strip()
+    msg = _structured_error_message(text)
+    if msg is not None:
+        return msg
     for marker in ("Unexpected error:", "Syntax error:", "Error:"):
         if marker in text:
             text = text.split(marker, 1)[1].lstrip()
