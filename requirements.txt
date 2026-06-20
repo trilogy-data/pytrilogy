@@ -3,7 +3,7 @@ jinja2
 sqlalchemy>=2.0.0
 pydantic
 # temporary until extensions catch up
-duckdb
+duckdb<1.4.5
 pyarrow
 duckdb-engine
 click
