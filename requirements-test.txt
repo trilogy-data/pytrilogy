@@ -1,7 +1,7 @@
 pytest
 pytest-cov
 pytest-mock
-duckdb<1.4.5
+duckdb
 duckdb-engine
 mypy
 ruff

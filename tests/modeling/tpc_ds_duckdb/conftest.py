@@ -47,9 +47,9 @@ def _make_engine(sf: float, subdir: str) -> Executor:
     )
     engine.execute_raw_sql(f"IMPORT DATABASE '{import_path}';")
     engine.execute_raw_sql("SET enable_progress_bar=false;")
-    # Cap memory so a pathological plan (e.g. a wide null-safe self-join) errors
-    # out instead of taking the machine down.
-    engine.execute_raw_sql("SET memory_limit='3GB';")
+    if not os.environ.get("CI"):
+        # Cap memory so a pathological plan errors instead of taking the machine down.
+        engine.execute_raw_sql("SET memory_limit='3GB';")
     return engine
 
 
