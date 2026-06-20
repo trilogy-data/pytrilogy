@@ -199,6 +199,32 @@ def test_explore_json_groups_unique_properties_by_grain(runner, tmp_path):
     assert not any("ungrouped" in g for g in groups)
 
 
+def test_explore_json_strips_mixed_namespace_compound_grain_prefix(runner, tmp_path):
+    """A compound grain mixing an imported key with local keys is the case where
+    the group label (keys sorted by full address, so ``item.id`` leads) and the
+    renderer's prefix (keys sorted by display string, so ``channel`` leads)
+    diverge. The prefix must still be stripped — it's taken from the renderer,
+    not reconstructed from the label."""
+    (tmp_path / "item.preql").write_text(
+        "key id int;\nproperty id.name string;\n", encoding="utf-8"
+    )
+    parent = tmp_path / "sales.preql"
+    parent.write_text(
+        "import item as item;\nkey channel int;\nkey order_id int;\n"
+        "properties <channel, item.id, order_id> (\n"
+        "  quantity int,\n  amount float,\n);\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(parent), "--show", "concepts"]
+    )
+    assert result.exit_code == 0, result.output
+    groups = events_of(parse_events(result.output), "concepts")[0]["namespaces"][""]
+    prop_group = next(g for g in groups if "properties" in g)
+    assert prop_group["grain"] == "<item.id, channel, order_id>"
+    assert prop_group["properties"] == ["amount float;", "quantity int;"]
+
+
 def test_explore_json_groups_metrics_by_aggregation(runner, tmp_path):
     f = tmp_path / "agg.preql"
     f.write_text(

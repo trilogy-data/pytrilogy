@@ -304,7 +304,7 @@ def _emit_imported_summary(
         if not leaves:
             continue
         click.echo()
-        header = f"# {ns}.* ({len(leaves)} concepts) — reach as {ns}.<leaf>"
+        header = f"# {ns}.* ({len(leaves)} - replace * with <leaf> to access)"
         desc = (import_descriptions or {}).get(ns)
         if desc:
             header += f"  — {desc.strip()}"
@@ -386,20 +386,26 @@ def _strip_prefix(decl: str, prefix: str) -> str:
 def _grain_grouped(
     concepts: list[Concept],
     decl: Callable[[Concept], str],
+    key_prefix: Callable[[Concept], str],
     keyword: str,
     field: str,
 ) -> list[dict]:
     """Bucket property-like concepts by grain key-set, one group dict per grain
     (``grain`` labels it) under ``field``, with the redundant
-    ``<keyword> <grain>.`` declaration prefix stripped."""
+    ``<keyword> <grain>.`` declaration prefix stripped. The prefix to strip is
+    taken from the renderer itself (``key_prefix``) rather than reconstructed
+    from the group label — the renderer is the authority on key ordering and
+    bracket form, so re-deriving it here would silently drift out of sync."""
     by_grain: dict[tuple[str, ...], list[Concept]] = defaultdict(list)
     for c in concepts:
         by_grain[tuple(sorted(c.keys or []))].append(c)
     groups: list[dict] = []
     for grain in sorted(by_grain, key=lambda g: (len(g), g)):
         label = _keyset_label(grain)
-        prefix = f"{keyword} {label}."
-        decls = [_strip_prefix(decl(c), prefix) for c in by_grain[grain]]
+        decls = [
+            _strip_prefix(decl(c), f"{keyword} {key_prefix(c)}")
+            for c in by_grain[grain]
+        ]
         groups.append({"grain": label, field: decls})
     return groups
 
@@ -458,8 +464,16 @@ def _grouped_decls(
 
         # (Unique) properties grouped by grain key-set; each sheds the
         # ``[unique ]property <grain>.`` prefix the group label already carries.
-        groups += _grain_grouped(props, decl, "property", "properties")
-        groups += _grain_grouped(uniques, decl, "unique property", "unique_properties")
+        groups += _grain_grouped(
+            props, decl, renderer.property_key_prefix, "property", "properties"
+        )
+        groups += _grain_grouped(
+            uniques,
+            decl,
+            renderer.property_key_prefix,
+            "unique property",
+            "unique_properties",
+        )
 
         # Metrics grouped by aggregation key-set; grain-free ones are
         # query-responsive and bucket under "<responsive>".

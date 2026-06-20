@@ -31,6 +31,7 @@ from trilogy.core.models.author import (
     Grain,
     OrderBy,
     OrderItem,
+    RowsetItem,
     WhereClause,
 )
 from trilogy.core.models.core import (
@@ -324,6 +325,35 @@ def test_render_rowset(test_environment: Environment):
 order by
     order_id asc
 ;"""
+
+
+def test_render_rowset_item():
+    # A rowset-output concept's lineage is a RowsetItem. Rendering its
+    # declaration (e.g. via `trilogy explore`) must surface the underlying
+    # derivation plus a `# from rowset ... where ...` note for the filter the
+    # bare expression drops; passthrough outputs with no derivation fall back
+    # to the `<rowset>.<field>` reference.
+    env, _ = Environment().parse("""
+key order_id int;
+property order_id.value float;
+
+rowset totals <- where value > 0 select
+    order_id,
+    sum(value) -> total_value,
+;
+""")
+    renderer = Renderer(environment=env)
+    rendered = {
+        addr: renderer.to_string(ConceptDeclarationStatement(concept=concept))
+        for addr, concept in env.concepts.items()
+        if isinstance(concept.lineage, RowsetItem)
+    }
+    assert rendered["totals.total_value"] == (
+        "auto totals.total_value <- sum(value);\n# from rowset totals where value > 0"
+    )
+    assert rendered["totals.order_id"] == (
+        "auto totals.order_id <- totals.order_id;\n# from rowset totals where value > 0"
+    )
 
 
 def test_render_case(test_environment: Environment):

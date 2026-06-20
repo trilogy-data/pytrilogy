@@ -60,6 +60,8 @@ LIMIT?
 A named query - a rowset is defined by a select with a preceding `WITH <name>`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
 A select without WITH is an anonymous query whose outputs are not reusable by name. 
 
+A rowset creates a "new" model; use joins to merge the rowset outputs back into the global namespace if needed.
+
 
 Full annotated example: `trilogy agent-info syntax example query-structure`.
 
@@ -82,9 +84,9 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 
 ## Filtering
 
-WHERE filters before aggregates and windows compute; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).
+WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).
 
-WHERE pushdown. WHERE conditions push into aggregates in the select, NOT into aggregates written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
+WHERE pushdown scoping. WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
 ```
 where x = 3
 select --sum(x.y) as total_y
