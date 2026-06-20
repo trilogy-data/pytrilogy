@@ -380,11 +380,17 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     for x in derived_concepts:
         if x.derivation in SENSITIVE_DERIVATIONS:
             return None
-    for x in parent_derived_concepts:
-        if x.address not in condition_arguments:
-            continue
-        if x.derivation in SENSITIVE_DERIVATIONS:
-            return None
+    # `cte`'s condition collapses into the parent's SELECT scope. If the parent
+    # derives a window (or other sensitive derivation), the predicate would then
+    # evaluate in the same scope as that window — and SQL applies WHERE before
+    # window functions, so a lead/lag/rank would see only the surviving rows
+    # instead of the full series. Keep the scopes separate so the predicate
+    # filters the window's OUTPUT (a HAVING applies after the window), whether or
+    # not the predicate references the window itself.
+    if cte.condition is not None:
+        for x in parent_derived_concepts:
+            if x.derivation in SENSITIVE_DERIVATIONS:
+                return None
     for x in condition_arguments:
         # if it's derived in the parent
         if x.address in parent_derived_concepts:
