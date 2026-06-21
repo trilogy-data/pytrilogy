@@ -12,6 +12,7 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_LIST_PRICE\" as \"sales_list_price\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
      1  as \"sales_row_one\"
 FROM
@@ -22,6 +23,7 @@ SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
      1  as \"sales_row_one\"
 FROM
@@ -32,13 +34,14 @@ SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
      1  as \"sales_row_one\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-cooperative as (
+vacuous as (
 SELECT
-    avg(\"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\") as \"_avg_sales_average_sales\"
+    avg(\"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\") as \"avg_sales_average_sales\"
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -79,7 +82,6 @@ SELECT
     \"cheerful\".\"sales_list_price\" as \"sales_list_price\",
     \"cheerful\".\"sales_quantity\" as \"sales_quantity\",
     \"cheerful\".\"sales_row_one\" as \"sales_row_one\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
     \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
@@ -156,103 +158,18 @@ SELECT
     \"juicy\".\"sales_item_category_id\" as \"_l0_filtered_category_l0\",
     \"juicy\".\"sales_item_class_id\" as \"_l0_filtered_class_l0\",
     CASE
-	WHEN \"juicy\".\"sales_sales_channel\" = 'STORE' THEN 'store'
-	WHEN \"juicy\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"juicy\".\"sales_sales_channel\" = 'WEB' THEN 'web'
-	ELSE null
-	END as \"_l0_filtered_channel_l0\"
-FROM
-    \"juicy\"),
-vacuous as (
-SELECT
-    \"juicy\".\"sales_item_brand_id\" as \"sales_item_brand_id\",
-    \"juicy\".\"sales_item_category_id\" as \"sales_item_category_id\",
-    \"juicy\".\"sales_item_class_id\" as \"sales_item_class_id\",
-    \"juicy\".\"sales_list_price\" as \"sales_list_price\",
-    \"juicy\".\"sales_quantity\" as \"sales_quantity\",
-    \"juicy\".\"sales_row_one\" as \"sales_row_one\",
-    (cast(\"juicy\".\"sales_item_brand_id\" as string) || '|' || cast(\"juicy\".\"sales_item_class_id\" as string) || '|' || cast(\"juicy\".\"sales_item_category_id\" as string)) as \"tuple_key\",
-    CASE
-	WHEN \"juicy\".\"sales_sales_channel\" = 'STORE' THEN 'store'
-	WHEN \"juicy\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"juicy\".\"sales_sales_channel\" = 'WEB' THEN 'web'
+	WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN 'store'
+	WHEN \"cheerful\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
+	WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN 'web'
 	ELSE null
 	END as \"channel_label\"
 FROM
-    \"juicy\"),
-sweltering as (
-SELECT
-    (cast(\"concerned\".\"sales_item_brand_id\" as string) || '|' || cast(\"concerned\".\"sales_item_class_id\" as string) || '|' || cast(\"concerned\".\"sales_item_category_id\" as string)) as \"_cross_tuples_ci_tuple_key\"
-FROM
-    \"concerned\"),
-young as (
-SELECT
-    \"concerned\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    (cast(\"concerned\".\"sales_item_brand_id\" as string) || '|' || cast(\"concerned\".\"sales_item_class_id\" as string) || '|' || cast(\"concerned\".\"sales_item_category_id\" as string)) as \"tuple_key\"
-FROM
-    \"concerned\"
-GROUP BY
-    1,
-    2),
-abhorrent as (
-SELECT
-    \"young\".\"tuple_key\" as \"tuple_key\",
-    count(distinct \"young\".\"sales_sales_channel\") as \"cross_channel_count\"
-FROM
-    \"young\"
-GROUP BY
-    1
-HAVING
-    \"cross_channel_count\" = 3
-),
-late as (
-SELECT
-    \"sweltering\".\"_cross_tuples_ci_tuple_key\" as \"_cross_tuples_ci_tuple_key\"
-FROM
-    \"sweltering\"
-    RIGHT OUTER JOIN \"abhorrent\" on \"sweltering\".\"_cross_tuples_ci_tuple_key\" is not distinct from \"abhorrent\".\"tuple_key\"
-GROUP BY
-    1,
-    \"abhorrent\".\"cross_channel_count\"),
-macho as (
-SELECT
-    \"late\".\"_cross_tuples_ci_tuple_key\" as \"_cross_tuples_ci_tuple_key\"
-FROM
-    \"late\"),
-scrawny as (
-SELECT
-    \"macho\".\"_cross_tuples_ci_tuple_key\" as \"cross_tuples_ci_tuple_key\"
-FROM
-    \"macho\"),
-friendly as (
-SELECT
-    \"vacuous\".\"channel_label\" as \"channel_label\",
-    \"vacuous\".\"sales_item_brand_id\" as \"sales_item_brand_id\",
-    \"vacuous\".\"sales_item_category_id\" as \"sales_item_category_id\",
-    \"vacuous\".\"sales_item_class_id\" as \"sales_item_class_id\",
-    sum(\"vacuous\".\"sales_quantity\" * \"vacuous\".\"sales_list_price\") as \"_l0_filtered_bucket_sum_l0\",
-    sum(\"vacuous\".\"sales_row_one\") as \"_l0_filtered_bucket_count_l0\"
-FROM
-    \"vacuous\"
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"vacuous\".\"tuple_key\" in (select scrawny.\"cross_tuples_ci_tuple_key\" from scrawny where scrawny.\"cross_tuples_ci_tuple_key\" is not null)
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and (cast(\"sales_item_items\".\"I_BRAND_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CLASS_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CATEGORY_ID\" as string)) in (select uneven.\"cross_tuples_ci_tuple_key\" from uneven where uneven.\"cross_tuples_ci_tuple_key\" is not null)
 
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-charming as (
-SELECT
-    \"busy\".\"_l0_filtered_brand_l0\" as \"_l0_filtered_brand_l0\",
-    \"busy\".\"_l0_filtered_category_l0\" as \"_l0_filtered_category_l0\",
-    \"busy\".\"_l0_filtered_channel_l0\" as \"_l0_filtered_channel_l0\",
-    \"busy\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\",
-    \"friendly\".\"_l0_filtered_bucket_count_l0\" as \"_l0_filtered_bucket_count_l0\",
-    \"friendly\".\"_l0_filtered_bucket_sum_l0\" as \"_l0_filtered_bucket_sum_l0\"
-FROM
-    \"friendly\"
-    FULL JOIN \"busy\" on \"friendly\".\"channel_label\" is not distinct from \"busy\".\"_l0_filtered_channel_l0\" AND \"friendly\".\"sales_item_brand_id\" = \"busy\".\"_l0_filtered_brand_l0\" AND \"friendly\".\"sales_item_category_id\" is not distinct from \"busy\".\"_l0_filtered_category_l0\" AND \"friendly\".\"sales_item_class_id\" is not distinct from \"busy\".\"_l0_filtered_class_l0\"
 GROUP BY
     1,
     2,
@@ -266,47 +183,42 @@ GROUP BY
     \"cheerful\".\"sales_order_id\"),
 juicy as (
 SELECT
-    \"charming\".\"_l0_filtered_brand_l0\" as \"_l0_filtered_brand_l0\",
-    \"charming\".\"_l0_filtered_bucket_count_l0\" as \"_l0_filtered_bucket_count_l0\",
-    \"charming\".\"_l0_filtered_bucket_sum_l0\" as \"_l0_filtered_bucket_sum_l0\",
-    \"charming\".\"_l0_filtered_category_l0\" as \"_l0_filtered_category_l0\",
-    \"charming\".\"_l0_filtered_channel_l0\" as \"_l0_filtered_channel_l0\",
-    \"charming\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\"
+    \"yummy\".\"channel_label\" as \"_l0_filtered_channel_l0\",
+    \"yummy\".\"sales_item_brand_id\" as \"_l0_filtered_brand_l0\",
+    \"yummy\".\"sales_item_category_id\" as \"_l0_filtered_category_l0\",
+    \"yummy\".\"sales_item_class_id\" as \"_l0_filtered_class_l0\",
+    sum(\"yummy\".\"sales_quantity\" * \"yummy\".\"sales_list_price\") as \"_l0_filtered_bucket_sum_l0\",
+    sum(\"yummy\".\"sales_row_one\") as \"_l0_filtered_bucket_count_l0\"
 FROM
-    \"uneven\"
-    INNER JOIN \"charming\" on 1=1
+    \"yummy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+young as (
+SELECT
+    \"juicy\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
+    \"juicy\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
+    \"juicy\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
+    \"juicy\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
+    \"juicy\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
+    \"juicy\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
+FROM
+    \"vacuous\"
+    INNER JOIN \"juicy\" on 1=1
 WHERE
-    \"charming\".\"_l0_filtered_bucket_sum_l0\" > \"uneven\".\"avg_sales_average_sales\"
-),
-premium as (
+    \"juicy\".\"_l0_filtered_bucket_sum_l0\" > \"vacuous\".\"avg_sales_average_sales\"
+)
 SELECT
-    \"protective\".\"_l0_filtered_brand_l0\" as \"_l0_filtered_brand_l0\",
-    \"protective\".\"_l0_filtered_bucket_count_l0\" as \"_l0_filtered_bucket_count_l0\",
-    \"protective\".\"_l0_filtered_bucket_sum_l0\" as \"_l0_filtered_bucket_sum_l0\",
-    \"protective\".\"_l0_filtered_category_l0\" as \"_l0_filtered_category_l0\",
-    \"protective\".\"_l0_filtered_channel_l0\" as \"_l0_filtered_channel_l0\",
-    \"protective\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\"
+    \"young\".\"l0_filtered_channel_l0\" as \"channel\",
+    \"young\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
+    \"young\".\"l0_filtered_class_l0\" as \"i_class_id\",
+    \"young\".\"l0_filtered_category_l0\" as \"i_category_id\",
+    sum(\"young\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
+    sum(\"young\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
 FROM
-    \"protective\"),
-puzzled as (
-SELECT
-    \"premium\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
-    \"premium\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
-    \"premium\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
-    \"premium\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
-    \"premium\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
-    \"premium\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
-FROM
-    \"premium\")
-SELECT
-    \"puzzled\".\"l0_filtered_channel_l0\" as \"channel\",
-    \"puzzled\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
-    \"puzzled\".\"l0_filtered_class_l0\" as \"i_class_id\",
-    \"puzzled\".\"l0_filtered_category_l0\" as \"i_category_id\",
-    sum(\"puzzled\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
-    sum(\"puzzled\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
-FROM
-    \"puzzled\"
+    \"young\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
 ORDER BY 

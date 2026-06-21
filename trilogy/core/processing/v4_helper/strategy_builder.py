@@ -1063,6 +1063,7 @@ def _fresh_final_root_projection(
     graph: ReferenceGraph,
     history: History,
     source_policy: SourcePolicy,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     projected = _projection_root_concepts(concepts, environment)
     if not projected:
@@ -1073,7 +1074,7 @@ def _fresh_final_root_projection(
             environment=environment,
             graph=graph,
             history=history,
-            conditions=None,
+            conditions=conditions,
             source_policy=source_policy,
         )
     )
@@ -1511,6 +1512,10 @@ def _assemble_final_node(
                 graph,
                 history,
                 source_policy,
+                # The fresh re-source must keep the root group's own WHERE
+                # (e.g. `x = 1`); dropping it silently widened the scan and the
+                # constant sibling's `1=1` merge returned the unfiltered rows.
+                conditions=_wrap_atoms(_atoms_at(attrs, gid)),
             )
             if fresh is not None:
                 node = fresh
@@ -1661,6 +1666,19 @@ def build_strategy_node(
         if injected is not None:
             for arg in condition_row_args(injected):
                 _add_needed_concept(needed, arg)
+        # Honor the group-planning contract's declared join keys: a bridge key
+        # (e.g. `order` linking a window-derived dimension to the fact scan) is
+        # not an aggregate input, so it isn't in `needed` and `_parent_nodes_for`
+        # would slice it off the root scan -- leaving the merge with no shared
+        # key (ON 1=1). Pull in only the EXTRA bridge keys -- those not already in
+        # the group's grain/outputs -- so a grouping key (e.g. a `by rollup`
+        # dimension) is never re-added to `needed` and forced into the SELECT
+        # outside its GROUP BY (aligned-multi-select).
+        needed |= (
+            set(_input_contract_join_keys(a))
+            - set(a.grain_components)
+            - set(a.output_concepts)
+        )
         parent_builds = _parent_nodes_for(
             group_graph,
             group_edges,

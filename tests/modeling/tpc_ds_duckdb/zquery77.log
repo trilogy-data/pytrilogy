@@ -97,13 +97,60 @@ WHERE
 
 GROUP BY
     1),
-late as (
+busy as (
 SELECT
-    :_l0_union_u_channel_c as \"_l0_union_u_channel_c\",
-    :_l0_union_u_channel_s as \"_l0_union_u_channel_s\",
-    :_l0_union_u_channel_w as \"_l0_union_u_channel_w\"
-),
-concerned as (
+    \"wr_web_returns\".\"WR_WEB_PAGE_SK\" as \"wr_grouped_wr_wp_id\",
+    sum(\"wr_web_returns\".\"WR_NET_LOSS\") as \"wr_grouped_wr_loss\",
+    sum(\"wr_web_returns\".\"WR_RETURN_AMT\") as \"wr_grouped_wr_returns\"
+FROM
+    \"memory\".\"web_returns\" as \"wr_web_returns\"
+    INNER JOIN \"memory\".\"date_dim\" as \"wr_return_date_date\" on \"wr_web_returns\".\"WR_RETURNED_DATE_SK\" = \"wr_return_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"wr_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+puzzled as (
+SELECT
+    \"ws_web_sales\".\"WS_WEB_PAGE_SK\" as \"ws_grouped_ws_wp_id\",
+    sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"ws_grouped_ws_sales\",
+    sum(\"ws_web_sales\".\"WS_NET_PROFIT\") as \"ws_grouped_ws_profit\"
+FROM
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"ws_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+sparkling as (
+SELECT
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_grouped_ss_store_id\",
+    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"ss_grouped_ss_sales\",
+    sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"ss_grouped_ss_profit\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"ss_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+macho as (
+SELECT
+    \"ss_store_returns\".\"SR_STORE_SK\" as \"sr_grouped_sr_store_id\",
+    sum(\"ss_store_returns\".\"SR_NET_LOSS\") as \"sr_grouped_sr_loss\",
+    sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"sr_grouped_sr_returns\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"ss_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+abundant as (
 SELECT
     \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     sum(\"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\") as \"_virt_agg_sum_6520591768854391\",

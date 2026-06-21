@@ -6,19 +6,14 @@ comp_size = 2250
 generated_sql = """
 
 WITH 
-highfalutin as (
+quizzical as (
 SELECT
     \"date_date\".\"D_WEEK_SEQ\" as \"target_week_seq\"
 FROM
     \"memory\".\"date_dim\" as \"date_date\"
 WHERE
     \"date_date\".\"D_DATE\" = '2000-01-03'
-),
-wakeful as (
-SELECT
-    \"highfalutin\".\"target_week_seq\" as \"target_week_seq\"
-FROM
-    \"highfalutin\"
+
 GROUP BY
     1),
 questionable as (
@@ -31,7 +26,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_WEEK_SEQ\" in (select wakeful.\"target_week_seq\" from wakeful where wakeful.\"target_week_seq\" is not null)
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
 
 UNION ALL
 SELECT
@@ -43,7 +38,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_WEEK_SEQ\" in (select wakeful.\"target_week_seq\" from wakeful where wakeful.\"target_week_seq\" is not null)
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
 
 UNION ALL
 SELECT
@@ -55,7 +50,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_WEEK_SEQ\" in (select wakeful.\"target_week_seq\" from wakeful where wakeful.\"target_week_seq\" is not null)
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
 ),
 yummy as (
 SELECT
@@ -65,10 +60,12 @@ SELECT
 FROM
     \"questionable\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"questionable\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
-WHERE
-    \"questionable\".\"sales_date_week_seq\" in (select wakeful.\"target_week_seq\" from wakeful where wakeful.\"target_week_seq\" is not null)
-),
-juicy as (
+GROUP BY
+    1,
+    2,
+    3,
+    \"questionable\".\"sales_item_id\",
+    \"questionable\".\"sales_order_id\")
 SELECT
     \"yummy\".\"sales_item_text_id\" as \"item_id\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ss_item_rev\",
@@ -84,19 +81,8 @@ GROUP BY
     1
 HAVING
     \"ss_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\" and \"ss_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\"
-)
-SELECT
-    \"juicy\".\"sales_item_text_id\" as \"item_id\",
-    \"juicy\".\"ss_item_rev\" as \"ss_item_rev\",
-    ( \"juicy\".\"ss_item_rev\" / ( (( \"juicy\".\"ss_item_rev\" + \"juicy\".\"cs_item_rev\" ) + \"juicy\".\"ws_item_rev\") / 3 ) ) * 100 as \"ss_dev\",
-    \"juicy\".\"cs_item_rev\" as \"cs_item_rev\",
-    ( \"juicy\".\"cs_item_rev\" / ( (( \"juicy\".\"ss_item_rev\" + \"juicy\".\"cs_item_rev\" ) + \"juicy\".\"ws_item_rev\") / 3 ) ) * 100 as \"cs_dev\",
-    \"juicy\".\"ws_item_rev\" as \"ws_item_rev\",
-    ( \"juicy\".\"ws_item_rev\" / ( (( \"juicy\".\"ss_item_rev\" + \"juicy\".\"cs_item_rev\" ) + \"juicy\".\"ws_item_rev\") / 3 ) ) * 100 as \"ws_dev\",
-    (( \"juicy\".\"ss_item_rev\" + \"juicy\".\"cs_item_rev\" ) + \"juicy\".\"ws_item_rev\") / 3 as \"avg_rev\"
-FROM
-    \"juicy\"
+
 ORDER BY 
     \"item_id\" asc nulls first,
-    \"juicy\".\"ss_item_rev\" asc nulls first
+    \"ss_item_rev\" asc nulls first
 LIMIT (100)"""

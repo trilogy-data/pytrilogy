@@ -402,7 +402,15 @@ def test_input_contract_declares_projection_grain_with_barrier_sibling():
     add_edge(group_graph, group_edges, "agg_parent", "consumer", EdgeKind.LINEAGE)
     add_edge(group_graph, group_edges, "dim_parent", "consumer", EdgeKind.LINEAGE)
 
-    _refresh_input_contracts(group_graph, group_edges, attrs)
+    concept_attrs = {
+        store_id.address: _attrs(store_id.address, {"purpose": Purpose.KEY}),
+        ride_date.address: _attrs(ride_date.address, {"purpose": Purpose.KEY}),
+        station_name.address: _attrs(
+            station_name.address, {"purpose": Purpose.PROPERTY}
+        ),
+        "daily_rides": _attrs("daily_rides", {"purpose": Purpose.METRIC}),
+    }
+    _refresh_input_contracts(group_graph, group_edges, attrs, concept_attrs, {})
 
     dim_contract = next(
         item
@@ -413,6 +421,67 @@ def test_input_contract_declares_projection_grain_with_barrier_sibling():
     assert dim_contract.may_project_dimension is True
     assert dim_contract.required_grain == {store_id.address, ride_date.address}
     assert dim_contract.preserve_keys == {store_id.address, ride_date.address}
+
+
+def test_input_contract_declares_shared_row_parent_join_key():
+    """Two row parents of a joining consumer share a KEY output (`order`) that is
+    the lineage source of the consumer's grouping grain (`top_orders <- order`):
+    it is declared a preserved join key so the parent merge joins on it instead
+    of ON 1=1 (top_x_by_metric)."""
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs = {
+        "fact": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            output_concepts=("local.amount", "local.order", "local.order_item"),
+        ),
+        "dim": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.BASIC,
+            output_concepts=("local.order", "local.top_orders"),
+        ),
+        "consumer": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({"local.top_orders"}),
+            input_concepts=("local.amount", "local.order_item", "local.top_orders"),
+        ),
+    }
+    group_graph.add_nodes_from(attrs)
+    add_edge(group_graph, group_edges, "fact", "consumer", EdgeKind.LINEAGE)
+    add_edge(group_graph, group_edges, "dim", "consumer", EdgeKind.LINEAGE)
+
+    concept_attrs = {
+        "local.order": _attrs("local.order", {"purpose": Purpose.KEY}),
+        "local.order_item": _attrs("local.order_item", {"purpose": Purpose.KEY}),
+        "local.amount": _attrs("local.amount", {"purpose": Purpose.PROPERTY}),
+        "local.top_orders": _attrs("local.top_orders", {"purpose": Purpose.PROPERTY}),
+    }
+    # `top_orders` is derived from `order`, so `order` is a lineage ancestor of
+    # the consumer's grouping grain — the precondition for it to be a bridge key.
+    concept_graph = nx.DiGraph()
+    concept_edges: EdgeMap = {}
+    concept_graph.add_nodes_from(concept_attrs)
+    add_edge(
+        concept_graph,
+        concept_edges,
+        "local.order",
+        "local.top_orders",
+        EdgeKind.LINEAGE,
+    )
+    _refresh_input_contracts(
+        group_graph, group_edges, attrs, concept_attrs, concept_edges
+    )
+
+    for contract in attrs["consumer"].input_contracts:
+        assert "local.order" in contract.preserve_keys
+    # `amount` is a shared-but-non-key measure (only on the fact side anyway):
+    # never a bridge key. `top_orders` is not shared by both parents.
+    fact_contract = next(
+        c for c in attrs["consumer"].input_contracts if c.parent_group_id == "fact"
+    )
+    assert "local.amount" not in fact_contract.preserve_keys
 
 
 def test_input_contract_keeps_existence_parent_side_channel():
@@ -433,7 +502,7 @@ def test_input_contract_keeps_existence_parent_side_channel():
     group_graph.add_nodes_from(attrs)
     add_edge(group_graph, group_edges, "existence_src", "consumer", EdgeKind.EXISTENCE)
 
-    _refresh_input_contracts(group_graph, group_edges, attrs)
+    _refresh_input_contracts(group_graph, group_edges, attrs, {}, {})
 
     contract = attrs["consumer"].input_contracts[0]
     assert contract.channel == InputChannel.EXISTENCE

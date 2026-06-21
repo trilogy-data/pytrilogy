@@ -49,8 +49,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/complex/test_rowset.py::test_rowset_alias_name_collision": _INLINE,
     # --- persistence / etl: persisted-source reuse + shape diffs ---
     "tests/persistence/test_basic_persistence.py::test_persist_with_where": _INLINE,
-    # --- stdlib: result regression (distilled to failing_cases/top_x_by_metric) ---
-    "tests/stdlib/test_report.py::test_top_x_by_metric": _RESULT,
     # --- engine: rendering / source-selection / crashes ---
     "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,

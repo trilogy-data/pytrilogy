@@ -5,19 +5,9 @@
     "detail": "AssertionError: assert local.user_post_count@Grain<local.user_id> in [local.avg_user_post_count@Grain<Abstract>]"
   },
   {
-    "node": "tests/persistence/test_basic_persistence.py::test_persist_with_where",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: assert 'CASE' not in 'SELECT\\n\\tC...lse\\n\\tEND\\n'"
-  },
-  {
     "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_in_projection",
     "bucket": "ROWS",
     "detail": "assert 'SELECT\\n   ...s \"label\"\\n)' not in '\\nWITH \\nqu...ical\" on 1=1'"
-  },
-  {
-    "node": "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining",
-    "bucket": "SHAPE",
-    "detail": "assert 'WITH' not in '\\nWITH \\nwa...   \"wakeful\"'"
   },
   {
     "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
@@ -25,14 +15,9 @@
     "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...rful\" on 1=1'"
   },
   {
-    "node": "tests/complex/test_rowset.py::test_rowset_alias_name_collision",
+    "node": "tests/persistence/test_basic_persistence.py::test_persist_with_where",
     "bucket": "SHAPE",
-    "detail": "AssertionError: buyers_a.cust_id should project bill, sql was:"
-  },
-  {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm"
+    "detail": "AssertionError: assert 'CASE' not in 'SELECT\\n\\tC...lse\\n\\tEND\\n'"
   },
   {
     "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
@@ -40,9 +25,19 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/stdlib/test_report.py::test_top_x_by_metric",
+    "node": "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining",
     "bucket": "SHAPE",
-    "detail": "AssertionError: Expected amount 6.0"
+    "detail": "assert 'WITH' not in '\\nWITH \\nwa...   \"wakeful\"'"
+  },
+  {
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm"
+  },
+  {
+    "node": "tests/complex/test_rowset.py::test_rowset_alias_name_collision",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: buyers_a.cust_id should project bill, sql was:"
   },
   {
     "node": "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having",
@@ -55,14 +50,14 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc07",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: WITH"
-  },
-  {
     "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc07",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: WITH"
   },
   {
     "node": "tests/modeling/ncaa/test_ncaa.py::test_adhoc08",
@@ -75,14 +70,14 @@
     "detail": "AssertionError:"
   },
   {
+    "node": "tests/modeling/test_complex.py::test_in_select",
+    "bucket": "SHAPE",
+    "detail": "assert (4,) == (2,)"
+  },
+  {
     "node": "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/test_complex.py::test_in_select",
-    "bucket": "XPASS",
-    "detail": ""
   },
   {
     "node": "tests/modeling/stocks/test_stocks.py::test_provider_name",
@@ -115,17 +110,22 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twelve",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -140,12 +140,17 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): ('AAAAAAAAADMABAAA', 'Sir', 'Rory', 'Smiley', 'N', 9, 8, 1989, 'MONGOLIA', '', 'Rory.Smiley@xRmNvF3BSborAXB.com', 2452636, Decimal('3008.81')"
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_two",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -160,27 +165,17 @@
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_two",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_nine",
     "bucket": "XPASS",
     "detail": ""
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
   },
@@ -200,11 +195,6 @@
     "detail": ""
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:"
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_four",
     "bucket": "SHAPE",
     "detail": "AssertionError:"
@@ -218,5 +208,10 @@
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two",
     "bucket": "XPASS",
     "detail": ""
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:"
   }
 ]

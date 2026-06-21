@@ -22,7 +22,7 @@ from typing import Literal, overload
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import BuildConcept, BuildGrain, BuildWhereClause
 
 from .condition_placement import plan_condition_placements
@@ -757,16 +757,109 @@ def _consumer_required_input_grain(
     return frozenset(grain)
 
 
+# Consumers that JOIN their row parents (vs. stack/expand them). Only these need
+# a bridge join key declared; UNION arms stack and UNNEST/RECURSIVE expand, so a
+# shared key there is not a join condition.
+_ROW_JOIN_CONSUMER_DERIVATIONS: set[Derivation] = {
+    Derivation.AGGREGATE,
+    Derivation.WINDOW,
+    Derivation.GROUP_TO,
+    Derivation.BASIC,
+}
+
+
+def _transitive_lineage_ancestors(
+    seeds: frozenset[str], lineage_parents: dict[str, set[str]]
+) -> set[str]:
+    """All addresses reachable upward from `seeds` through concept lineage."""
+    ancestors: set[str] = set()
+    stack = list(seeds)
+    while stack:
+        addr = stack.pop()
+        for parent in lineage_parents.get(addr, ()):
+            if parent not in ancestors:
+                ancestors.add(parent)
+                stack.append(parent)
+    return ancestors
+
+
+def _shared_row_parent_join_keys(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    key_addresses: frozenset[str],
+    lineage_parents: dict[str, set[str]],
+) -> frozenset[str]:
+    """Keys carried by >=2 row-stream parents of `gid` that bridge a fixed-grain
+    dimension CTE to the fact scan — the join key their merge must use. A
+    dimension derived from the source of the consumer's grouping key (top_x's
+    `top_orders <- rank(order)` over the `order`-bearing fact; bound_conversion's
+    `date_converted <- date_string` over the `date_string`-bearing scan) is its
+    own CTE whose only link to the fact rows is that shared source key. Without
+    declaring it, `_consumer_required_input_grain` yields only the consumer grain
+    (which the fact parent lacks) and the merge degrades to ON 1=1 (top_x) or
+    cross-joins (bound_conversion).
+
+    A key counts only when it is BOTH a lineage ancestor of the consumer's own
+    grouping grain (the column the group key is derived from) AND not held by any
+    parent as that parent's own grain. A grain-owning parent is the canonical
+    dimension at the key and folds with the others, and a key unrelated to the
+    grouping grain is co-carried by plain projections of a common scan — declaring
+    either a preserve_key over-constrains sourcing (tpc_h q22 / gcat
+    parenthetical)."""
+    if attrs[gid].derivation not in _ROW_JOIN_CONSUMER_DERIVATIONS:
+        return frozenset()
+    row_parents = [
+        pred
+        for pred in group_graph.predecessors(gid)
+        if pred != FINAL_NODE_ID
+        and pred in attrs
+        and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
+    ]
+    if len(row_parents) < 2:
+        return frozenset()
+    grain_ancestors = _transitive_lineage_ancestors(
+        attrs[gid].grain_components, lineage_parents
+    )
+    if not grain_ancestors:
+        return frozenset()
+    counts: dict[str, int] = defaultdict(int)
+    grain_owners: set[str] = set()
+    for pred in row_parents:
+        for addr in set(attrs[pred].output_concepts):
+            counts[addr] += 1
+            if addr in attrs[pred].grain_components:
+                grain_owners.add(addr)
+    return frozenset(
+        addr
+        for addr, n in counts.items()
+        if n >= 2
+        and addr in key_addresses
+        and addr in grain_ancestors
+        and addr not in grain_owners
+    )
+
+
 def _refresh_input_contracts(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    concept_attrs: dict[str, ConceptAttrs],
+    concept_edges: EdgeMap,
 ) -> None:
+    key_addresses = frozenset(
+        a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
+    )
+    lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID or gid not in attrs:
             continue
         required_grain = _consumer_required_input_grain(
             group_graph, group_edges, attrs, gid
+        )
+        bridge_keys = _shared_row_parent_join_keys(
+            group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
@@ -783,7 +876,9 @@ def _refresh_input_contracts(
                     consumer_group_id=gid,
                     required_outputs=required_outputs,
                     required_grain=frozenset() if is_existence else required_grain,
-                    preserve_keys=frozenset() if is_existence else required_grain,
+                    preserve_keys=(
+                        frozenset() if is_existence else required_grain | bridge_keys
+                    ),
                     channel=(
                         InputChannel.EXISTENCE
                         if is_existence
@@ -911,6 +1006,36 @@ def _apply_grouping_parent_grain_overrides(
             fact.native_grain = grouping_grain
 
 
+def _widen_window_grain_to_grouping_parent(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, GroupFacts],
+) -> None:
+    """A WINDOW runs pointwise over its parent's rows -- it never reduces grain.
+    Its bucket grain is the partition-by key, which can be coarser than the rows
+    it actually emits: a `rank() over (partition by g1)` over a `sum() by rollup
+    g1, g2` produces one row per rollup row (grain g1, g2), not one per g1. Left
+    at the partition grain, the window node exposes only g1, so the FINAL merge
+    joins it back to the dims on that single non-unique key and fans out the
+    ROLLUP subtotal rows (test_window_over_rollup_preserves_grouping_rows). Widen
+    to the grouping parent's grain so the window carries the full join key."""
+    for gid, fact in facts.items():
+        if gid == FINAL_NODE_ID or fact.derivation != Derivation.WINDOW:
+            continue
+        grouping_grains = {
+            facts[pred].grain
+            for pred in group_graph.predecessors(gid)
+            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+            and facts[pred].derivation in GROUPING_DERIVATIONS
+        }
+        if len(grouping_grains) != 1:
+            continue
+        parent_grain = next(iter(grouping_grains))
+        if fact.grain < parent_grain:
+            fact.grain = parent_grain
+            fact.native_grain = parent_grain
+
+
 def _topological_dependency_order(
     group_graph: nx.DiGraph, group_edges: EdgeMap
 ) -> list[str] | None:
@@ -972,6 +1097,7 @@ def _compute_concept_sets(
     _apply_grouping_parent_grain_overrides(
         group_graph, group_edges, facts, lineage_parents
     )
+    _widen_window_grain_to_grouping_parent(group_graph, group_edges, facts)
     topo = _topological_dependency_order(group_graph, group_edges)
     if topo is None:
         return
@@ -1252,7 +1378,9 @@ def build_group_graph(
             buckets,
             mandatory_list,
         )
-        _refresh_input_contracts(group_graph, group_edges, attrs)
+        _refresh_input_contracts(
+            group_graph, group_edges, attrs, concept_attrs, concept_edges
+        )
         _refresh_final_contract(group_graph, attrs, mandatory_list)
     if return_merged_graph:
         return group_graph, group_edges, attrs, merged_group_graph, merged_group_edges
