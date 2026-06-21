@@ -239,7 +239,7 @@ SET VARIABLE __trilogy_uv_call_id = '{unique_id}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 WITH __build AS MATERIALIZED (
 SELECT a.name
-FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' 2>> C:/Users/ethan/uvdebug.log > {base_dir}' || md5(script || args) || '_' || getvariable('__trilogy_uv_call_id') || '.arrow && echo {{"name": "done"}} |') AS a
+FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' 2> {base_dir}' || md5(script || args) || '_' || getvariable('__trilogy_uv_call_id') || '.err > {base_dir}' || md5(script || args) || '_' || getvariable('__trilogy_uv_call_id') || '.arrow && echo {{"name": "done"}} |') AS a
 LIMIT 1
 )
 -- __build writes the .arrow file as a side effect. It MUST be referenced (the
