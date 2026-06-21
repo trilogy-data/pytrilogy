@@ -1,15 +1,20 @@
-"""v4 discovery: a three-stage prototype planner.
+"""v4 discovery: a staged planner with explicit phase boundaries.
 
-    Stage 1 (concept_graph): walk lineage from the mandatory list back to
-    roots, producing a per-concept DAG with depth labels (d0/d1/d*).
+    Stage 1 (concept_graph): walk lineage from the mandatory list and
+    conditions back to roots, producing a per-concept DAG with depth labels
+    (d0/d1/d*) and typed row/existence edges. This is concept demand only.
 
-    Stage 2 (group_graph): collapse compatible concepts into shared-scan
-    groups, inject filter clauses at the furthest-upstream group that can
-    serve them, and append a FINAL sink.
+    Stage 2 (group_graph): collapse compatible concepts into groups that can
+    be sourced together, inject filter clauses at the furthest-upstream group
+    that can serve them, compute group IO, and append a FINAL sink.
 
-    Stage 3 (strategy_builder): walk groups topologically, dispatching each
-    one to its derivation factory and stitching parent groups through a
-    source-concepts callback.
+    Stage 3 (strategy_builder + source_planning): materialize each group in
+    topological order. ROOT groups pick concrete datasource plans here; other
+    groups dispatch to their derivation generators.
+
+    Stage 4 (_assemble_final_node): zip the materialized groups into the final
+    query node, carrying join keys only as needed and deduping to the requested
+    output grain.
 
 The stage implementations live in `v4_helper/`; this file is just the public
 API and the History cache wiring.

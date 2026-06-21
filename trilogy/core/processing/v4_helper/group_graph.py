@@ -1090,6 +1090,13 @@ def _regraft_group_sources(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
 ) -> bool:
+    """Topology-only repair for groups whose best row source is already built.
+
+    This is still a grouping-phase concern: it may add group edges or a
+    synthetic dimension ROOT bucket so IO demand flows through the right parent,
+    but concrete datasource selection remains in `source_planning` and
+    StrategyNode construction remains in `strategy_builder`.
+    """
     changed = False
     for gid in list(group_graph.nodes):
         if gid == FINAL_NODE_ID:

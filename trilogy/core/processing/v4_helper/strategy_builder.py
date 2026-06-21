@@ -1,5 +1,12 @@
-"""Stage 3: walk the group graph in topological order, hand each group's
-already-built parents to its v4 generator, and stash the resulting node.
+"""Stage 3/4 materialization for v4 discovery.
+
+Stage 3 walks the group graph in topological order, hands each group's
+already-built parents to its v4 generator, and stashes the resulting node.
+ROOT groups delegate concrete datasource selection to `source_planning`.
+
+Stage 4 assembles the FINAL sink by merging the minimum materialized
+contributors that cover the mandatory outputs, then applies final-only
+filters and output-grain deduping.
 
 No source-concepts callback: parents are explicit, derived from the group
 graph's lineage edges. Generators that haven't been ported to the v4 flat
