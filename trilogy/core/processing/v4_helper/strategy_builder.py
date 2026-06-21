@@ -1355,7 +1355,11 @@ def _assemble_final_node(
     # downstream's). Q17 surfaced both pathologies when this was generalized.
     # Merge grain is defined by the grouping (aggregate/window) contributors;
     # compute it up front so root-scan wrapping can project an FD dimension at
-    # this grain (keeping the join key) instead of its own key-grain.
+    # this grain (keeping the join key) instead of its own key-grain. A ROWSET
+    # boundary is a fixed-grain barrier too -- its select grain is the key set a
+    # merging dimension must join on (q46: the `bought` rowset's grain carries
+    # `customer.id`, so the customer-address scan rides it instead of deduping to
+    # its own `address.id` grain and cross-joining ON 1=1).
     grouping_grain_components: set[str] = set()
     for gid in contributing:
         if attrs[gid].derivation in GROUPING_DERIVATIONS:
@@ -1363,6 +1367,8 @@ def _assemble_final_node(
             for concept in per_group[gid]:
                 if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
                     grouping_grain_components |= set(concept.grain.components)
+        elif attrs[gid].derivation == Derivation.ROWSET:
+            grouping_grain_components |= set(attrs[gid].grain_components)
 
     parents: list[StrategyNode] = []
     for gid in contributing:
@@ -1371,11 +1377,18 @@ def _assemble_final_node(
         group_concepts = list(per_group[gid])
         if is_root and grouping_grain_components:
             seen_group_concepts = {concept.address for concept in group_concepts}
+            # Carry the merge grain's join KEYS onto the root scan, but never a
+            # rowset's own handle outputs (`even_orders.order_id`) -- a root that
+            # can derive those (it shares the rowset's base key) would absorb the
+            # whole rowset and drop its internal filter (rowset_outer_addition).
+            # Those handles aren't join keys; the rowset stays a separate merge
+            # contributor.
             group_concepts.extend(
                 c
                 for address in sorted(grouping_grain_components)
                 if (c := _concept_at(environment, address)) is not None
                 and address not in seen_group_concepts
+                and c.derivation != Derivation.ROWSET
             )
         if is_root:
             fresh = _fresh_final_root_projection(

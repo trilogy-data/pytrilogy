@@ -92,7 +92,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,
     # --- previously-untracked v4 baseline fails (all pass under v3) ---
     # wrong rows:
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_six": _RESULT,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two": _RESULT,
     # source-selection / ordering / rollup shape:
     "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by": _MODELING,

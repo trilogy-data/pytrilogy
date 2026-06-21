@@ -31,8 +31,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_QOY\" in (1,2,3)
-),
-questionable as (
+)
 SELECT
     \"sales_bill_address_customer_address\".\"CA_COUNTY\" as \"sales_bill_address_county\",
     \"thoughtful\".\"sales_date_year\" as \"sales_date_year\",
@@ -60,15 +59,6 @@ HAVING
 	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
 	ELSE null
 	END )
-)
-SELECT
-    \"questionable\".\"sales_bill_address_county\" as \"sales_bill_address_county\",
-    \"questionable\".\"sales_date_year\" as \"sales_date_year\",
-    \"questionable\".\"ws_q2\" / \"questionable\".\"ws_q1\" as \"web_q1_q2_increase\",
-    \"questionable\".\"ss_q2\" / \"questionable\".\"ss_q1\" as \"store_q1_q2_increase\",
-    \"questionable\".\"ws_q3\" / \"questionable\".\"ws_q2\" as \"web_q2_q3_increase\",
-    \"questionable\".\"ss_q3\" / \"questionable\".\"ss_q2\" as \"store_q2_q3_increase\"
-FROM
-    \"questionable\"
+
 ORDER BY 
-    \"questionable\".\"sales_bill_address_county\" asc nulls first"""
+    \"sales_bill_address_customer_address\".\"CA_COUNTY\" asc nulls first"""

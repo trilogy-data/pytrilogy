@@ -6,7 +6,7 @@ comp_size = 1159
 generated_sql = """
 
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
      'CATALOG'  as \"sales_channel\",
@@ -14,7 +14,6 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
@@ -27,38 +26,37 @@ SELECT
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
 ),
-questionable as (
+cooperative as (
 SELECT
     max(CASE
 	WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' THEN \"cheerful\".\"sales_order_id\"
 	ELSE 0
-	END) as \"_pair_presence_catalog_present\",
+	END) as \"pair_presence_catalog_present\",
     max(CASE
 	WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_order_id\"
 	ELSE 0
-	END) as \"_pair_presence_store_present\"
+	END) as \"pair_presence_store_present\"
 FROM
-    \"thoughtful\"
+    \"cheerful\"
 GROUP BY
-    \"thoughtful\".\"sales_billing_customer_id\",
-    \"thoughtful\".\"sales_item_id\")
+    \"cheerful\".\"sales_billing_customer_id\",
+    \"cheerful\".\"sales_item_id\")
 SELECT
     sum(CASE
-	WHEN \"questionable\".\"_pair_presence_store_present\" >= 1 and \"questionable\".\"_pair_presence_catalog_present\" = 0 THEN 1
+	WHEN \"cooperative\".\"pair_presence_store_present\" >= 1 and \"cooperative\".\"pair_presence_catalog_present\" = 0 THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"questionable\".\"_pair_presence_store_present\" = 0 and \"questionable\".\"_pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"cooperative\".\"pair_presence_store_present\" = 0 and \"cooperative\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"questionable\".\"_pair_presence_store_present\" >= 1 and \"questionable\".\"_pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"cooperative\".\"pair_presence_store_present\" >= 1 and \"cooperative\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"questionable\""""
+    \"cooperative\""""

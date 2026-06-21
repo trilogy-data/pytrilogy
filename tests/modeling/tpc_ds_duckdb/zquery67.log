@@ -1,6 +1,6 @@
 query_id = "67"
-generator = "v4"
-gen_length = 4746
+generator = "v3"
+gen_length = 3631
 preql_size = 848
 comp_size = 1224
 generated_sql = """
@@ -35,11 +35,12 @@ SELECT
     \"thoughtful\".\"ss_item_category\" as \"ss_item_category\",
     \"thoughtful\".\"ss_item_class\" as \"ss_item_class\",
     \"thoughtful\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"thoughtful\".\"ss_quantity\" as \"ss_quantity\",
-    \"thoughtful\".\"ss_sales_price\" as \"ss_sales_price\",
-    \"thoughtful\".\"ss_store_text_id\" as \"ss_store_text_id\"
+    \"thoughtful\".\"ss_store_text_id\" as \"ss_store_text_id\",
+    sum(coalesce(\"thoughtful\".\"ss_sales_price\" * \"thoughtful\".\"ss_quantity\",0)) as \"sumsales\"
 FROM
-    \"thoughtful\"),
+    \"thoughtful\"
+GROUP BY
+    ROLLUP (5, 6, 4, 7, 3, 2, 1, 8)),
 questionable as (
 SELECT
     \"cooperative\".\"ss_date_month_of_year\" as \"ss_date_month_of_year\",
@@ -49,65 +50,36 @@ SELECT
     \"cooperative\".\"ss_item_category\" as \"ss_item_category\",
     \"cooperative\".\"ss_item_class\" as \"ss_item_class\",
     \"cooperative\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"cooperative\".\"ss_quantity\" as \"ss_quantity\",
-    \"cooperative\".\"ss_sales_price\" as \"ss_sales_price\",
-    \"cooperative\".\"ss_store_text_id\" as \"ss_store_text_id\"
+    \"cooperative\".\"ss_store_text_id\" as \"ss_store_text_id\",
+    \"cooperative\".\"sumsales\" as \"sumsales\",
+    rank() over (partition by \"cooperative\".\"ss_item_category\" order by \"cooperative\".\"sumsales\" desc ) as \"rk\"
 FROM
-    \"cooperative\"),
-abundant as (
+    \"cooperative\")
 SELECT
-    \"questionable\".\"ss_date_month_of_year\" as \"ss_date_month_of_year\",
-    \"questionable\".\"ss_date_quarter\" as \"ss_date_quarter\",
-    \"questionable\".\"ss_date_year\" as \"ss_date_year\",
-    \"questionable\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
     \"questionable\".\"ss_item_category\" as \"ss_item_category\",
     \"questionable\".\"ss_item_class\" as \"ss_item_class\",
+    \"questionable\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
     \"questionable\".\"ss_item_product_name\" as \"ss_item_product_name\",
+    \"questionable\".\"ss_date_year\" as \"ss_date_year\",
+    \"questionable\".\"ss_date_quarter\" as \"ss_date_quarter\",
+    \"questionable\".\"ss_date_month_of_year\" as \"ss_date_month_of_year\",
     \"questionable\".\"ss_store_text_id\" as \"ss_store_text_id\",
-    sum(coalesce(\"questionable\".\"ss_sales_price\" * \"questionable\".\"ss_quantity\",0)) as \"sumsales\"
+    \"questionable\".\"sumsales\" as \"sumsales\",
+    \"questionable\".\"rk\" as \"rk\"
 FROM
     \"questionable\"
-GROUP BY
-    ROLLUP (5, 6, 4, 7, 3, 2, 1, 8)),
-uneven as (
-SELECT
-    \"abundant\".\"ss_date_month_of_year\" as \"ss_date_month_of_year\",
-    \"abundant\".\"ss_date_quarter\" as \"ss_date_quarter\",
-    \"abundant\".\"ss_date_year\" as \"ss_date_year\",
-    \"abundant\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
-    \"abundant\".\"ss_item_category\" as \"ss_item_category\",
-    \"abundant\".\"ss_item_class\" as \"ss_item_class\",
-    \"abundant\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"abundant\".\"ss_store_text_id\" as \"ss_store_text_id\",
-    \"abundant\".\"sumsales\" as \"sumsales\",
-    rank() over (partition by \"abundant\".\"ss_item_category\" order by \"abundant\".\"sumsales\" desc ) as \"rk\"
-FROM
-    \"abundant\")
-SELECT
-    \"uneven\".\"ss_item_category\" as \"ss_item_category\",
-    \"uneven\".\"ss_item_class\" as \"ss_item_class\",
-    \"uneven\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
-    \"uneven\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"uneven\".\"ss_date_year\" as \"ss_date_year\",
-    \"uneven\".\"ss_date_quarter\" as \"ss_date_quarter\",
-    \"uneven\".\"ss_date_month_of_year\" as \"ss_date_month_of_year\",
-    \"uneven\".\"ss_store_text_id\" as \"ss_store_text_id\",
-    \"uneven\".\"sumsales\" as \"sumsales\",
-    \"uneven\".\"rk\" as \"rk\"
-FROM
-    \"uneven\"
 WHERE
-    \"uneven\".\"rk\" <= 100
+    \"questionable\".\"rk\" <= 100
 
 ORDER BY 
-    \"uneven\".\"ss_item_category\" asc nulls first,
-    \"uneven\".\"ss_item_class\" asc nulls first,
-    \"uneven\".\"ss_item_brand_name\" asc nulls first,
-    \"uneven\".\"ss_item_product_name\" asc nulls first,
-    \"uneven\".\"ss_date_year\" asc nulls first,
-    \"uneven\".\"ss_date_quarter\" asc nulls first,
-    \"uneven\".\"ss_date_month_of_year\" asc nulls first,
-    \"uneven\".\"ss_store_text_id\" asc nulls first,
-    \"uneven\".\"sumsales\" asc nulls first,
-    \"uneven\".\"rk\" asc nulls first
+    \"questionable\".\"ss_item_category\" asc nulls first,
+    \"questionable\".\"ss_item_class\" asc nulls first,
+    \"questionable\".\"ss_item_brand_name\" asc nulls first,
+    \"questionable\".\"ss_item_product_name\" asc nulls first,
+    \"questionable\".\"ss_date_year\" asc nulls first,
+    \"questionable\".\"ss_date_quarter\" asc nulls first,
+    \"questionable\".\"ss_date_month_of_year\" asc nulls first,
+    \"questionable\".\"ss_store_text_id\" asc nulls first,
+    \"questionable\".\"sumsales\" asc nulls first,
+    \"questionable\".\"rk\" asc nulls first
 LIMIT (100)"""

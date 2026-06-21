@@ -1,5 +1,34 @@
 # v4 compatibility audit (last refreshed 2026-06-20)
 
+### FIXED 2026-06-20 — q46 wrong-rows: FD dimension cross-joined `ON 1=1` (rowset not in merge grain)
+`tpc_ds_duckdb/test_queries.py::test_forty_six` (was genuine wrong-rows, the
+classifier mis-bucketed it SHAPE because the captured planner log contains
+"datasource"). The query selects `customer.address.city` (the customer's
+home-address city, grain `address.id`, itself FD by `customer.id`) alongside the
+customer's name, INNER-joined to a `bought` rowset on `customer.id`. All three
+customer attributes correctly land in one root scan (`wakeful`, at `customer.id`
+grain). Bug: in `_assemble_final_node` (strategy_builder.py) the "merge grain"
+driving `_wrap_for_grain` was computed only from AGGREGATE/WINDOW/GROUP_TO
+contributors -- it EXCLUDED the ROWSET boundary. With an empty merge grain,
+`_wrap_for_grain` deduped `city` to its own native `address.id` grain (a separate
+`thoughtful` GroupNode), dropping `customer.id`; the FINAL merge then shared no
+join key and cross-joined `ON 1=1`, pairing every customer with every distinct
+city. Fix (two parts): (1) include a ROWSET contributor's grain in
+`grouping_grain_components` -- a rowset is a fixed-grain barrier whose select
+grain (`{bought_city, ticket, customer.id}`) is the key set a merging dimension
+must join on; (2) when carrying merge-grain keys onto a ROOT scan, exclude the
+rowset's own handle outputs (`even_orders.order_id`, derivation ROWSET) -- a root
+that can derive those would absorb the whole rowset and drop its internal filter
+(caught by `rowset_outer_addition` parity case: the `order_id % 2 = 0` rowset must
+stay a LEFT-merge). q46 now returns correct rows + 1 GROUP BY (its size/shape
+asserts pass), removed from v4_known_failing. Lock:
+`tests/core/processing/test_v4_fd_dimension_merge_grain.py` (distilled: a property
+whose grain key is FD by a query key, joined to a rowset; reproduces the 4-row
+cross-join when reverted). 0 regressions: v4 core/processing+tpc_ds+optimization+
+complex 694 passed / 31 xpassed, modeling+engine+discovery+persistence+stdlib 553
+passed (the one transient fail was cross-test pollution, clean on re-run). v4-only
+path (v3 untouched).
+
 ### FIXED 2026-06-20 — q76 crash: aggregate-over-aggregate dimension projection adds a non-output row key to the group grain
 `tpc_ds_duckdb/test_queries.py::test_seventy_six` was mis-bucketed `_TPCDS_SIZE`
 (SHAPE) but actually **CRASHED** under v4 in isolation (`ValueError: Invalid
@@ -364,12 +393,12 @@ not quick wins:
   one-step CASE. Skipping ROW_SHAPE_BARRIER args there routes it through
   `gen_root`'s recursive-node fallback. (The earlier "carried into the final merge
   path graph" framing was a symptom, not the cause.)
-- **ROWS** `tpc_ds q46` (different rows — genuine wrong-rows; the classifier
-  mis-buckets it SHAPE because the captured planner log contains "datasource").
-  q54/q77 landed earlier (scoped_joins threading). `q97_1`/`q97_2` now **PASS in
-  isolation** under the current planner (re-confirmed 2026-06-20 via
+- ~~**ROWS** `tpc_ds q46`~~ FIXED 2026-06-20 (FD dimension cross-joined ON 1=1
+  because the rowset boundary was absent from the merge grain — see top FIXED
+  note). q54/q77 landed earlier (scoped_joins threading). `q97_1`/`q97_2` now
+  **PASS in isolation** under the current planner (re-confirmed 2026-06-20 via
   `v4_classify.py` + direct run) — the XPASS in full-suite runs is cross-file
-  pollution; they remain tracked non-strict. Not yet diagnosed: q46.
+  pollution; they remain tracked non-strict.
 - **SHAPE/source** `geography exact_match` ×2 (picks `full_tree_info` over the
   partial source), `q68` (tie-break ordering — numeric values match, only the
   LIMIT-tie city name differs), `composite_rollup` (NULL CASE over rollup key).
@@ -464,8 +493,9 @@ runaway, C7, the filter-only-RECURSIVE wrong-rows, and the q76 hidden crash
 surfaced + fixed 2026-06-20). No crashes, no runaways remain (re-confirmed by a
 fresh `v4_classify.py` run: 43 SHAPE / 3 ROWS / 2 XPASS / 0 genuine CRASH).
 C9 def_wrapped turned out to be SHAPE (extra CTE), FIXED 2026-06-20. q97_1/q97_2
-now pass in isolation. Remaining genuine wrong-rows work, in priority order:
-**q46 wrong-rows → composite_rollup (NULL CASE over rollup key) →
+now pass in isolation. q46 wrong-rows FIXED 2026-06-20 (rowset merge-grain).
+Remaining genuine wrong-rows work, in priority order:
+**composite_rollup (NULL CASE over rollup key) → q97_2 (counts) →
 geography exact_match source-selection (×2) → q68 tie-break → SHAPE/verbosity
 backlog (the BASIC-into-GROUP fold trims CTE counts across this backlog).**
 

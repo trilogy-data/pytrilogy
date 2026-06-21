@@ -1,77 +1,115 @@
 query_id = "09"
-generator = "v4"
-gen_length = 2342
+generator = "v3"
+gen_length = 3089
 preql_size = 1133
 comp_size = 2446
 generated_sql = """
+
+WITH 
+quizzical as (
 SELECT
-    CASE
-	WHEN sum(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN 1
-	ELSE 0
-	END) > 74129 THEN avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END)
-	ELSE avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END)
-	END as \"bucket1\",
-    CASE
-	WHEN sum(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN 1
-	ELSE 0
-	END) > 122840 THEN avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END)
-	ELSE avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END)
-	END as \"bucket2\",
-    CASE
-	WHEN sum(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN 1
-	ELSE 0
-	END) > 56580 THEN avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END)
-	ELSE avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END)
-	END as \"bucket3\",
-    CASE
-	WHEN sum(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN 1
-	ELSE 0
-	END) > 10097 THEN avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END)
-	ELSE avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END)
-	END as \"bucket4\",
-    CASE
-	WHEN sum(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN 1
-	ELSE 0
-	END) > 165306 THEN avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END)
-	ELSE avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END)
-	END as \"bucket5\"
+    \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\" as \"physical_sales_ext_discount_amount\",
+    \"physical_sales_store_sales\".\"SS_NET_PAID\" as \"physical_sales_net_paid\",
+    \"physical_sales_store_sales\".\"SS_QUANTITY\" as \"physical_sales_quantity\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
 WHERE
     \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 100
-"""
+),
+cooperative as (
+SELECT
+    CASE
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 81 AND 100 THEN 1
+	ELSE 0
+	END) > 165306 THEN avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 81 AND 100 THEN \"quizzical\".\"physical_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 81 AND 100 THEN \"quizzical\".\"physical_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket5\"
+FROM
+    \"quizzical\"),
+thoughtful as (
+SELECT
+    CASE
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 61 AND 80 THEN 1
+	ELSE 0
+	END) > 10097 THEN avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 61 AND 80 THEN \"quizzical\".\"physical_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 61 AND 80 THEN \"quizzical\".\"physical_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket4\"
+FROM
+    \"quizzical\"),
+cheerful as (
+SELECT
+    CASE
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 41 AND 60 THEN 1
+	ELSE 0
+	END) > 56580 THEN avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 41 AND 60 THEN \"quizzical\".\"physical_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 41 AND 60 THEN \"quizzical\".\"physical_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket3\"
+FROM
+    \"quizzical\"),
+wakeful as (
+SELECT
+    CASE
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 21 AND 40 THEN 1
+	ELSE 0
+	END) > 122840 THEN avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 21 AND 40 THEN \"quizzical\".\"physical_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 21 AND 40 THEN \"quizzical\".\"physical_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket2\"
+FROM
+    \"quizzical\"),
+highfalutin as (
+SELECT
+    CASE
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 1 AND 20 THEN 1
+	ELSE 0
+	END) > 74129 THEN avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 1 AND 20 THEN \"quizzical\".\"physical_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"physical_sales_quantity\" BETWEEN 1 AND 20 THEN \"quizzical\".\"physical_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket1\"
+FROM
+    \"quizzical\")
+SELECT
+    \"highfalutin\".\"bucket1\" as \"bucket1\",
+    \"wakeful\".\"bucket2\" as \"bucket2\",
+    \"cheerful\".\"bucket3\" as \"bucket3\",
+    \"thoughtful\".\"bucket4\" as \"bucket4\",
+    \"cooperative\".\"bucket5\" as \"bucket5\"
+FROM
+    \"highfalutin\"
+    FULL JOIN \"wakeful\" on 1=1
+    FULL JOIN \"cheerful\" on 1=1
+    FULL JOIN \"thoughtful\" on 1=1
+    FULL JOIN \"cooperative\" on 1=1"""

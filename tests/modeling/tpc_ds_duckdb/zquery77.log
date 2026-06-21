@@ -73,9 +73,9 @@ GROUP BY
     1),
 scrawny as (
 SELECT
-    coalesce(\"cr_catalog_returns\".\"CR_CALL_CENTER_SK\",-1) as \"_cr_grouped_cr_cc_key\",
-    sum(\"cr_catalog_returns\".\"CR_NET_LOSS\") as \"_cr_grouped_cr_loss_per_cc\",
-    sum(\"cr_catalog_returns\".\"CR_RETURN_AMOUNT\") as \"_cr_grouped_cr_returns_per_cc\"
+    coalesce(\"cr_catalog_returns\".\"CR_CALL_CENTER_SK\",-1) as \"cr_grouped_cr_cc_key\",
+    sum(\"cr_catalog_returns\".\"CR_NET_LOSS\") as \"cr_grouped_cr_loss_per_cc\",
+    sum(\"cr_catalog_returns\".\"CR_RETURN_AMOUNT\") as \"cr_grouped_cr_returns_per_cc\"
 FROM
     \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
