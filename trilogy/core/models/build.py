@@ -2207,10 +2207,11 @@ def materialize_constant(x):
 def _build_scoped_merge_index(
     joins: list[tuple[str, str, JoinType]],
 ) -> tuple[dict[str, str], set[str]]:
-    """Collapse query-scoped merges into a union-find map (source address ->
+    """Collapse build-scoped joins into a union-find map (source address ->
     canonical target address) plus the set of partial source addresses.
-    `merge a into b` makes b the root, matching a chained global merge, so an
-    N-way blend collapses every member to a single canonical concept.
+    Non-partial `merge a into b` is represented as an INNER join pair and makes
+    b the root, so an N-way blend collapses every member to one canonical
+    concept.
 
     Partiality drives the eventual datasource-join type. Direction matches SQL
     `A LEFT JOIN B`: in `LEFT JOIN a = b` the LEFT operand `a` is preserved and the
@@ -2261,16 +2262,25 @@ class Factory:
     ):
         self.grain = grain or Grain()
         self.environment = environment
-        # Query-scoped merges applied during the build (in-query JOINs). They are
-        # collapsed here the way a global `merge` collapses concepts: every
-        # source address is mapped to its canonical target (scoped_merge_map) so
-        # `_build_concept` returns the target instead of the source (and so the
-        # grain/lineage of dependents collapse too). scoped_partial_sources marks
-        # the LEFT/FULL-join sides whose datasource binding must be partial.
+        # Build-scoped joins (query JOIN clauses plus environment MERGE
+        # statements) collapse here: every source address is mapped to its
+        # canonical target (scoped_merge_map) so `_build_concept` returns the
+        # target instead of the source. scoped_partial_sources marks the
+        # LEFT-join side whose datasource binding must be partial.
         self.scoped_joins: list[tuple[str, str, JoinType]] = scoped_joins or []
         self.scoped_merge_map, self.scoped_partial_sources = _build_scoped_merge_index(
             self.scoped_joins
         )
+        full_join_sources = {
+            source
+            for source, _, join_type in self.scoped_joins
+            if join_type is JoinType.FULL
+        }
+        self.scoped_key_merge_map = {
+            source: target
+            for source, target in self.scoped_merge_map.items()
+            if source not in full_join_sources
+        }
         # Canonical keys of FULL joins: partial against every side pre-resolution,
         # but complete (coalesced) in the resolved FULL JOIN output.
         # Registry of FULL-join canonical keys. The key stays complete; this set
@@ -2373,6 +2383,13 @@ class Factory:
         # self-referential metric out of an abstract aggregate's resolution
         # grain (see `_abstract_resolution_grain`).
         self._building: list[str] = []
+
+    def _build_keys(self, keys: set[str] | None) -> set[str] | None:
+        if keys is None:
+            return None
+        if not self.scoped_key_merge_map:
+            return keys
+        return {self.scoped_key_merge_map.get(key, key) for key in keys}
 
     def instantiate_concept(
         self,
@@ -2653,11 +2670,10 @@ class Factory:
         return Grain(components=set(out), component_order=out)
 
     def _build_concept(self, base: Concept) -> BuildConcept:
-        # Query-scoped merge collapse: build the canonical target instead of a
+        # Build-scoped merge collapse: build the canonical target instead of a
         # merged-away source. Every concept lookup (refs, grain components,
         # lineage args) funnels through here, so this collapses the source
-        # everywhere — the build-time equivalent of `concepts[source] = target`
-        # plus the with_merge cascade.
+        # everywhere.
         if self.scoped_merge_map:
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
@@ -2698,7 +2714,7 @@ class Factory:
             if (
                 base.granularity == Granularity.SINGLE_ROW
                 and base.purpose == Purpose.PROPERTY
-                and base.keys
+                and self._build_keys(base.keys)
                 == {
                     f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
                 }
@@ -2722,7 +2738,7 @@ class Factory:
                 lineage=None,
                 grain=new_grain,
                 namespace=base.namespace,
-                keys=base.keys,
+                keys=self._build_keys(base.keys),
                 modifiers=base.modifiers,
                 pseudonyms=base_pseudonyms,
                 derivation=derivation,
@@ -2814,7 +2830,7 @@ class Factory:
             lineage=build_lineage,
             grain=new_grain,
             namespace=base.namespace,
-            keys=base.keys,
+            keys=self._build_keys(base.keys),
             modifiers=base.modifiers,
             pseudonyms=base_pseudonyms,
             ## instantiated values
@@ -3442,7 +3458,7 @@ class Factory:
                     derivation=derivation,
                     lineage=None,
                     grain=final_grain,
-                    keys=base_concept.keys,
+                    keys=self._build_keys(base_concept.keys),
                     namespace=base_concept.namespace,
                 )
                 local_build_cache[k] = x
@@ -3539,19 +3555,15 @@ class Factory:
             a_build = self._build_concept(a)
             new.alias_origin_lookup[k] = a_build
             new.canonical_concepts[a_build.canonical_address] = a_build
-        # Query-scoped merges collapse each source to its canonical target in
-        # new.concepts. A global merge would also have left the source in
-        # alias_origin_lookup (populated at authoring time); for a build-time
-        # scoped merge we repopulate it ONLY for the joined sources, so that
+        # Build-scoped joins collapse each source to its canonical target in
+        # new.concepts. Populate alias_origin_lookup for joined sources so
         # references / output aliases to a merged-away source still resolve. The
         # entry is the source built as ITSELF (its own identity), pointed at the
         # canonical target as a pseudonym.
         for source_addr, canonical_addr in self.scoped_merge_map.items():
-            # Build the source as ITSELF. For a query-scoped join the author
-            # concepts dict still holds the source under its own address. For a
-            # GLOBAL merge, `merge_concept` rewrote `concepts[source] = target`,
-            # so concepts.data would hand back the target — the original source
-            # only survives in alias_origin_lookup; prefer that.
+            # Build the source as ITSELF. Legacy direct merge_concept calls may
+            # have rewritten concepts[source] = target, so prefer the original
+            # source from alias_origin_lookup when present.
             src = base.alias_origin_lookup.get(source_addr) or base.concepts.data.get(
                 source_addr
             )

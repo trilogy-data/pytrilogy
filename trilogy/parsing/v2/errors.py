@@ -37,7 +37,9 @@ ERROR_CODES: dict[int, str] = {
     220: (
         "Filter or stray clause after a `join`? A query-scoped join "
         "`inner|left|full join <a> = <b>` takes only key equalities — to join on "
-        "multiple keys, STACK another `join` clause (or chain `= c`), never `and`. "
+        "multiple keys, chain `= c` (one equivalence group) or separate distinct "
+        "groups with `and` (`a = b and c = d`); STACK another `join` clause for a "
+        "different join type. Note `and` joins KEY EQUALITIES only, not filters. "
         "Joins go right after the `select` list (preferred, SQL-like) or before "
         "`select`; the order is `where` -> `select` <cols> -> join(s) -> `having` "
         "-> `order by` -> `limit`. Filter input rows in `where` (before `select`); "
@@ -150,7 +152,11 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
     joins = list(_JOIN_CLAUSE_RE.finditer(text, stmt_start, pos))
     if not joins:
         return None
-    window = text[max(stmt_start, pos - 2) : pos + 8]
+    # The failure may land ON the continuation keyword (`where`/`or`) or, now
+    # that `and` separates distinct join groups, just AFTER an `and` that
+    # introduced a filter rather than another key equality — so scan a little
+    # before pos as well to catch the preceding `and`/`where`/`or`/`having`.
+    window = text[max(stmt_start, pos - 6) : pos + 8]
     if _POST_JOIN_CONTINUATION_RE.search(window) is None:
         return None
     return joins[-1].start()

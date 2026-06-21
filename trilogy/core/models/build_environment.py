@@ -101,8 +101,9 @@ class BuildEnvironment:
     materialized_canonical_concepts: set[str] = field(default_factory=set)
     non_partial_materialized_canonical_concepts: set[str] = field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = field(default_factory=dict)
-    # Source addresses of LEFT (partial) in-query joins — the rowset node uses
-    # this to mark the advertised target join key partial (drives LEFT-OUTER).
+    # Source addresses of LEFT (partial) build-scoped joins — the rowset node
+    # uses this to mark the advertised target join key partial (drives
+    # LEFT-OUTER).
     scoped_partial_sources: set[str] = field(default_factory=set)
     # The subset of scoped_partial_sources whose key is a *derived* concept (no
     # datasource column binding) and is therefore resolved via the merge
@@ -110,7 +111,7 @@ class BuildEnvironment:
     # join resolution marks it partial there (a root/rowset partial key collapses
     # away and is handled by the column-partial / rowset machinery instead).
     scoped_partial_derived: set[str] = field(default_factory=set)
-    # Registry of canonical keys of query-scoped FULL joins. The key is complete
+    # Registry of canonical keys of build-scoped FULL joins. The key is complete
     # (both sides bind it; the FULL JOIN coalesces it). join resolution consults
     # this to emit a FULL JOIN for the key, instead of inferring it from a
     # (falsely-)partial binding — so the gate and rowset enrichment are unaffected.

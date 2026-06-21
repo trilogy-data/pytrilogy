@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from trilogy import Dialects, Executor
+from trilogy.core.enums import JoinType
 from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -167,9 +168,11 @@ merge p2.lastname  into p1.lastname;
 """)
 
     c2 = base.concepts["p1.firstname"]
-    assert c2.pseudonyms == {"p2.firstname"}
+    assert c2.pseudonyms == set()
+    assert ("p2.firstname", "p1.firstname", JoinType.INNER) in base.merges
+    assert ("p2.lastname", "p1.lastname", JoinType.INNER) in base.merges
     merge = base.merge_concept(c1, c2, [])
-    assert merge is False
+    assert merge is True
     assert base.concepts["p1.firstname"].pseudonyms == {"p2.firstname"}
     assert base.alias_origin_lookup["p2.firstname"].pseudonyms == {"p1.firstname"}
     # assert not merge

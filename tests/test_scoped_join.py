@@ -1020,3 +1020,179 @@ ORDER BY customer.customer_id asc;
         (3, "Carol", 30.0),
         (4, "Dave", None),
     ]
+
+
+# --- `and` sugar: `JOIN a = b and c = d` is exactly two stacked join clauses of
+# the same type (two DISTINCT equivalence groups), saving a repeated prefix. The
+# canonical render is the split (stacked) form. These pin parity between the two
+# spellings, across both grammar backends, and that rendering normalizes to split.
+# ----------------------------------------------------------------------------
+
+
+def _join_tuples(stmt: SelectStatement) -> list[tuple]:
+    return [
+        (j.join_type, j.source_address, j.target_address) for j in stmt.join_clauses
+    ]
+
+
+def _parse_with_backend(text: str, root: Path, backend):
+    from trilogy.constants import CONFIG
+    from trilogy.parsing.parse_engine_v2 import clear_parse_cache
+
+    prior = CONFIG.parser_backend
+    CONFIG.parser_backend = backend
+    clear_parse_cache()
+    try:
+        return parse_text(text, root=root)
+    finally:
+        CONFIG.parser_backend = prior
+        clear_parse_cache()
+
+
+@pytest.mark.parametrize("jointype", ["INNER", "LEFT", "FULL"])
+def test_and_sugar_matches_stacked_clauses(multi_models: Path, jointype: str):
+    sugar = f"""
+import orders as orders;
+import customers as customers;
+import shipments as shipments;
+
+{jointype} JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
+"""
+    stacked = f"""
+import orders as orders;
+import customers as customers;
+import shipments as shipments;
+
+{jointype} JOIN orders.customer_id = customers.customer_id
+{jointype} JOIN shipments.customer_id = customers.customer_id
+SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
+"""
+    _, sugar_parsed = parse_text(sugar, root=multi_models)
+    _, stacked_parsed = parse_text(stacked, root=multi_models)
+    assert _join_tuples(sugar_parsed[-1]) == _join_tuples(stacked_parsed[-1])
+    assert len(sugar_parsed[-1].join_clauses) == 2
+
+
+def test_and_sugar_two_groups_matches_stacked(two_key_engine: Executor, tmp_path: Path):
+    # `a = b and c = d` is two distinct one-pair groups, identical to two stacked
+    # FULL JOIN clauses (which collapse to one composite-key FULL JOIN either way).
+    sugar = """
+import left as l;
+import right as r;
+
+FULL JOIN l.k1 = r.k1 and l.k2 = r.k2
+SELECT r.k1, r.k2, sum(l.m1) -> sm1, sum(r.m2) -> sm2
+ORDER BY r.k1 asc, r.k2 asc;
+"""
+    stacked = """
+import left as l;
+import right as r;
+
+FULL JOIN l.k1 = r.k1
+FULL JOIN l.k2 = r.k2
+SELECT r.k1, r.k2, sum(l.m1) -> sm1, sum(r.m2) -> sm2
+ORDER BY r.k1 asc, r.k2 asc;
+"""
+    _, sugar_parsed = parse_text(sugar, root=tmp_path)
+    _, stacked_parsed = parse_text(stacked, root=tmp_path)
+    assert _join_tuples(sugar_parsed[-1]) == _join_tuples(stacked_parsed[-1])
+    # and they execute to the same rows (one composite-key FULL JOIN either way).
+    assert _exec_rows(two_key_engine, tmp_path, sugar) == _exec_rows(
+        two_key_engine, tmp_path, stacked
+    )
+
+
+def test_and_sugar_combines_with_chained_group(tmp_path: Path):
+    # a `=`-chain and an `and`-separated group compose: `a = b = c and p = q` is
+    # one 3-key group (two adjacent pairs) plus a separate one-pair group, exactly
+    # equivalent to a chained clause stacked with a second clause.
+    for nm in ["a", "b", "c", "p", "q"]:
+        (tmp_path / f"{nm}.preql").write_text(
+            f"key {nm}_id int;\nproperty {nm}_id.m_{nm} float;\n"
+            f"datasource {nm}t (k: {nm}_id, m: m_{nm}) grain ({nm}_id) address {nm}_tbl;\n"
+        )
+    imports = "".join(f"import {nm} as {nm};\n" for nm in ["a", "b", "c", "p", "q"])
+    sugar = (
+        imports + "INNER JOIN a.a_id = b.b_id = c.c_id and p.p_id = q.q_id\n"
+        "SELECT a.a_id, sum(a.m_a) -> sm;"
+    )
+    stacked = (
+        imports + "INNER JOIN a.a_id = b.b_id = c.c_id\n"
+        "INNER JOIN p.p_id = q.q_id\n"
+        "SELECT a.a_id, sum(a.m_a) -> sm;"
+    )
+    _, sugar_parsed = parse_text(sugar, root=tmp_path)
+    _, stacked_parsed = parse_text(stacked, root=tmp_path)
+    assert _join_tuples(sugar_parsed[-1]) == _join_tuples(stacked_parsed[-1])
+    assert len(sugar_parsed[-1].join_clauses) == 3
+
+
+def test_and_sugar_parity_across_backends(multi_models: Path):
+    from trilogy.constants import ParserBackend
+
+    text = """
+import orders as orders;
+import customers as customers;
+import shipments as shipments;
+
+INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
+"""
+    _, lark_parsed = _parse_with_backend(text, multi_models, ParserBackend.LARK)
+    _, pest_parsed = _parse_with_backend(text, multi_models, ParserBackend.PEST)
+    assert _join_tuples(lark_parsed[-1]) == _join_tuples(pest_parsed[-1])
+
+
+def test_and_sugar_renders_as_split_joins(multi_models: Path):
+    from trilogy.parsing.render import render_query
+
+    text = """
+import orders as orders;
+import customers as customers;
+import shipments as shipments;
+
+INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+SELECT customers.region, sum(orders.order_amount) -> amt;
+"""
+    _, parsed = parse_text(text, root=multi_models)
+    rendered = render_query(parsed[-1])
+    # canonical form is split: one `inner join` line per group, no `and`.
+    assert "inner join orders.customer_id = customers.customer_id" in rendered
+    assert "inner join shipments.customer_id = customers.customer_id" in rendered
+    assert " and " not in rendered.split("select")[0]
+    reimport = (
+        "import orders as orders;\nimport customers as customers;\n"
+        "import shipments as shipments;\n"
+    )
+    _, reparsed = parse_text(reimport + rendered, root=multi_models)
+    assert _join_tuples(reparsed[-1]) == _join_tuples(parsed[-1])
+
+
+def test_and_sugar_execution_parity(multi_models: Path):
+    eng = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=multi_models)
+    )
+    eng.execute_raw_sql("create table orders_tbl (cid int, amt float)")
+    eng.execute_raw_sql("insert into orders_tbl values (1,100.0),(2,200.0)")
+    eng.execute_raw_sql("create table customers_tbl (cid int, reg varchar)")
+    eng.execute_raw_sql("insert into customers_tbl values (1,'east'),(2,'west')")
+    eng.execute_raw_sql("create table shipments_tbl (cid int, sc int)")
+    eng.execute_raw_sql("insert into shipments_tbl values (1,5),(2,7)")
+    sugar = """
+import orders as orders;
+import customers as customers;
+import shipments as shipments;
+
+INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships
+ORDER BY customers.region asc;
+"""
+    stacked = sugar.replace(
+        "INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id",
+        "INNER JOIN orders.customer_id = customers.customer_id\n"
+        "INNER JOIN shipments.customer_id = customers.customer_id",
+    )
+    assert _exec_rows(eng, multi_models, sugar) == _exec_rows(
+        eng, multi_models, stacked
+    )

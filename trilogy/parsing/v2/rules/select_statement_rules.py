@@ -123,6 +123,15 @@ def _validate_join_groups(node: SyntaxNode, joins: list[SelectJoin]) -> None:
             )
 
 
+def join_group(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> list[str]:
+    """One `=`-chained key group (`a = b = c`) within a join clause."""
+    return [a for a in hydrated_children(node, hydrate) if isinstance(a, str)]
+
+
 def join_clause(
     node: SyntaxNode,
     context: RuleContext,
@@ -136,11 +145,28 @@ def join_clause(
             f"`{join_type.value}` join is not yet supported in query-scoped joins;"
             " use INNER, LEFT, or FULL",
         )
+    # Each `join_group` is one `=`-chained equivalence group. Multiple groups
+    # arise from the `a = b and c = d` sugar, which is exactly equivalent to two
+    # separate `JOIN_TYPE join` clauses (distinct groups, same type).
+    joins: list[SelectJoin] = []
+    flat_keys = [a for a in args if isinstance(a, str)]
+    if flat_keys:
+        joins.extend(_resolve_join_group(node, context, join_type, flat_keys))
+    for keys in (a for a in args if isinstance(a, list)):
+        joins.extend(_resolve_join_group(node, context, join_type, keys))
+    return joins
+
+
+def _resolve_join_group(
+    node: SyntaxNode,
+    context: RuleContext,
+    join_type: JoinType,
+    keys: list[str],
+) -> list[SelectJoin]:
     # Positional direction: the first key is the anchor, each subsequent key is a
     # brought-in (source) concept. `a = b = c` chains into ONE equivalence group:
     # adjacent pairs (a,b),(b,c) all share this join type. Both sides are
     # fully-addressed concepts, so no model token is needed to disambiguate.
-    keys = [a for a in args if isinstance(a, str)]
     resolved: list[Concept] = []
     for key in keys:
         concept = context.concepts.require(key)
@@ -280,6 +306,7 @@ def from_clause(
 SELECT_STATEMENT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.SELECT_STATEMENT: select_statement,
     SyntaxNodeKind.JOIN_CLAUSE: join_clause,
+    SyntaxNodeKind.JOIN_GROUP: join_group,
     SyntaxNodeKind.SELECT_ITEM: select_item,
     SyntaxNodeKind.SELECT_TRANSFORM: select_transform,
     SyntaxNodeKind.SELECT_LIST: select_list,

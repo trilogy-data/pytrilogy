@@ -1,8 +1,8 @@
 """Parity: a query-scoped `join` must produce outcomes identical to the
 equivalent global `merge`. The join clause is handled at build time (more
-performant) but is intended to be semantically equivalent to merge, which goes
-through the established author-level pseudonym path. Each case below pairs a
-`join` form with the equivalent `merge` form and asserts identical results.
+performant) and global merge statements now feed the same build-time machinery.
+Each case below pairs a `join` form with the equivalent `merge` form and asserts
+identical results.
 """
 
 from pathlib import Path
@@ -90,7 +90,7 @@ select c.brand, c.c_qty, p.p_qty order by c.brand asc;
 import sales as sales;
 rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
 rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
-merge c.brand into ~p.brand;
+merge c.brand into p.brand;
 select c.brand, c.c_qty, p.p_qty order by c.brand asc;
 """,
         [(10, 7, 7), (20, 15, 3)],
@@ -108,7 +108,7 @@ select customer.name, bought.qty order by customer.name asc;
 import sales as sales;
 import customer as customer;
 rowset bought <- where sales.year = 2002 select sales.customer.customer_id, sum(sales.qty) as qty;
-merge bought.sales.customer.customer_id into ~customer.customer_id;
+merge bought.sales.customer.customer_id into customer.customer_id;
 select customer.name, bought.qty order by customer.name asc;
 """,
         [("alice", 17), ("bob", 9)],
@@ -133,7 +133,7 @@ import sales as sales;
 rowset base <- where sales.year in (2001, 2002) select sales.sale_id, sales.item.brand, sales.year, sales.qty;
 rowset c <- where base.sales.year = 2002 select base.sales.item.brand as brand, sum(base.sales.qty) as c_qty;
 rowset p <- where base.sales.year = 2001 select base.sales.item.brand as brand, sum(base.sales.qty) as p_qty;
-merge c.brand into ~p.brand;
+merge c.brand into p.brand;
 select c.brand, c.c_qty, p.p_qty order by c.brand asc;
 """,
         [(10, 7, 7), (20, 15, 3)],
@@ -157,7 +157,7 @@ import sales as sales;
 rowset deduped <- where sales.year in (2001, 2002) select sales.item.brand, sales.year, sum(sales.qty) as qty;
 rowset c <- where deduped.sales.year = 2002 select deduped.sales.item.brand as brand, sum(deduped.qty) as c_qty;
 rowset p <- where deduped.sales.year = 2001 select deduped.sales.item.brand as brand, sum(deduped.qty) as p_qty;
-merge c.brand into ~p.brand;
+merge c.brand into p.brand;
 select c.brand, c.c_qty, p.p_qty order by c.brand asc;
 """,
         [(10, 7, 7), (20, 15, 3)],
@@ -245,7 +245,7 @@ inner join da = db
 select da, sum(o.oid) as n_orders, sum(c.cid) as n_costs order by da asc;
 """
 DERIVED_MERGE = _DERIVED_HEAD + """
-merge da into ~db;
+merge da into db;
 select da, sum(o.oid) as n_orders, sum(c.cid) as n_costs order by da asc;
 """
 
@@ -278,6 +278,11 @@ left join da = db
 select da, sum(o.oid) as n_orders, sum(c.cid) as n_costs order by da asc;
 """
 
+DERIVED_LEFT_MERGE = _DERIVED_HEAD + """
+merge db into ~da;
+select da, sum(o.oid) as n_orders, sum(c.cid) as n_costs order by da asc;
+"""
+
 
 @pytest.fixture
 def derived_left_engine(tmp_path: Path) -> Executor:
@@ -302,6 +307,8 @@ def test_scoped_left_join_on_nonrowset_derived_key(
     expected = [(10, 1, 10), (20, 2, 20), (99, 3, None)]
     rows = _run(derived_left_engine, tmp_path, DERIVED_LEFT_JOIN)
     assert rows == expected, f"left join wrong: {rows}"
+    merge_rows = _run(derived_left_engine, tmp_path, DERIVED_LEFT_MERGE)
+    assert merge_rows == expected, f"partial merge wrong: {merge_rows}"
     sql = derived_left_engine.generate_sql(DERIVED_LEFT_JOIN)[-1]
     assert "LEFT OUTER JOIN" in sql, f"expected a LEFT OUTER JOIN, sql:\n{sql}"
 
@@ -386,26 +393,25 @@ def multi_engine(tmp_path: Path) -> Executor:
     return eng
 
 
-# join_clause, merge_clause, select, expected. Pure-INNER N-way has a `merge`
-# reference (the canonical key is complete on every side -> INNER-shaped), so
-# join and merge must both equal expected.
+# join_clause, merge_clause, select, expected. Pure-INNER N-way has a non-partial
+# `merge` reference, so join and merge must both equal expected.
 MULTI_INNER_CASES: dict[str, tuple[str, str, str, list[tuple]]] = {
     "2way": (
         "inner join ka = kb",
-        "merge ka into ~kb;",
+        "merge ka into kb;",
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb order by ka asc;",
         [(10, 8, 1), (20, 2, 2), (40, 4, 4), (50, 5, 5)],
     ),
     "3way": (
         "inner join ka = kb\ninner join ka = kc",
-        "merge ka into ~kb;\nmerge ka into ~kc;",
+        "merge ka into kb;\nmerge ka into kc;",
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
         "sum(c.c_id) as nc order by ka asc;",
         [(10, 8, 1, 1), (20, 2, 2, 2), (50, 5, 5, 5)],
     ),
     "4way": (
         "inner join ka = kb\ninner join ka = kc\ninner join ka = kd",
-        "merge ka into ~kb;\nmerge ka into ~kc;\nmerge ka into ~kd;",
+        "merge ka into kb;\nmerge ka into kc;\nmerge ka into kd;",
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
         "sum(c.c_id) as nc, sum(d.d_id) as nd order by ka asc;",
         [(10, 8, 1, 1, 1), (20, 2, 2, 2, 2)],
@@ -473,7 +479,8 @@ def test_chained_full_join_all_buckets(multi_engine: Executor, tmp_path: Path):
 # with required + optional sources is well-defined; INNER drops non-matching
 # buckets, LEFT keeps the inner result with NULLs). FULL may NOT be mixed with
 # another type on the same group (ambiguous) — see the rejection test below.
-# `merge` can't express LEFT, so this is a hand-computed expectation.
+# `merge x into ~y` expresses `LEFT JOIN y = x`; this case keeps the direct
+# join form because it mixes INNER and LEFT in one key group.
 def test_mixed_inner_left_on_one_group(multi_engine: Executor, tmp_path: Path):
     # INNER drops a-only bucket 30; LEFT keeps the a∩b result with nc NULL at 40.
     expected = [(10, 8, 1, 1), (20, 2, 2, 2), (40, 4, 4, None), (50, 5, 5, 5)]

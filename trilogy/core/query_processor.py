@@ -628,17 +628,13 @@ def get_query_node(
     # Caches live on History so every sub-select (rowsets, multiselect arms)
     # in this resolution reuses the base environment's materialized concepts.
     caches = history.build_caches
-    # Query-scoped JOINs are applied during the build, not by cloning the author
-    # env: each Factory collapses merged-away source concepts to their canonical
-    # target in `_build_concept` (and marks partial datasource bindings). Stored
-    # on caches so nested sub-selects inherit the same merges.
+    # Query-scoped JOINs and environment-level MERGEs are applied during the
+    # build, not by cloning/mutating the author env: each Factory collapses
+    # merged-away source concepts to their canonical target in `_build_concept`
+    # and marks partial datasource bindings. Stored on caches so nested
+    # sub-selects inherit the same merges.
     if scoped_joins:
         caches.scoped_joins = scoped_joins
-    # INNER global `merge`s collapse concepts exactly like a scoped INNER join;
-    # fold them into the same build-time mechanism so both share one path (and the
-    # scoped-join discovery fixes cover merges too). `~` (LEFT/enrichment) merges
-    # are NOT in environment.merges — they stay on the pseudonym path. Idempotent:
-    # nested sub-selects inherit the same caches, so only absent pairs are added.
     if environment.merges:
         existing = set(caches.scoped_joins)
         caches.scoped_joins = caches.scoped_joins + [
@@ -1023,16 +1019,20 @@ def process_query(
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
     )
-    scoped_merge_map, _ = _build_scoped_merge_index(
-        [(j.source_address, j.target_address, j.join_type) for j in join_clauses]
+    build_scoped_joins = [
+        (j.source_address, j.target_address, j.join_type) for j in join_clauses
+    ]
+    build_scoped_joins.extend(
+        merge for merge in environment.merges if merge not in build_scoped_joins
     )
-    # Canonical keys of query-scoped FULL joins — flagged so the outer-join
-    # upgrade optimization never collapses an explicit FULL back to INNER.
+    scoped_merge_map, _ = _build_scoped_merge_index(build_scoped_joins)
+    # Canonical keys of explicit FULL joins — flagged so the outer-join upgrade
+    # optimization never collapses an explicit FULL back to INNER.
     full_join_keys = {
         scoped_merge_map.get(addr, addr)
-        for j in join_clauses
-        if j.join_type is JoinType.FULL
-        for addr in (j.source_address, j.target_address)
+        for source, target, join_type in build_scoped_joins
+        if join_type is JoinType.FULL
+        for addr in (source, target)
     }
 
     final_ctes = optimize_ctes(
