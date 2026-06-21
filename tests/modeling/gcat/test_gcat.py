@@ -940,13 +940,12 @@ def test_date_spine(gcat_env: Executor):
     queries = base.parse_text("""import satcat;
 const target_company <- 'PLAN';
 
-auto launches <- count(jcat ? owner.code = target_company) by launch_date;
+auto launches <- count(jcat ? owner.code = target_company and launch.org.name like '%Rocket%') by launch_date;
 
 key chart_spine <- date_spine(date_add(current_date(), day, -60), current_date());
 
 merge launch_date into ~chart_spine;
 
-where launch.org.name like '%Rocket%'
 select
     chart_spine,
     launches

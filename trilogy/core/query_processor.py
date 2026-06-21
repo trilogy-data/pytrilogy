@@ -1038,10 +1038,14 @@ def process_query(
     scoped_merge_map, _ = _build_scoped_merge_index(build_scoped_joins)
     # Canonical keys of explicit OUTER joins: flagged so the outer-join upgrade
     # optimization never collapses author-requested preservation back to INNER.
+    # LEFT/merge join typing is carried by the partial flag (set on the optional
+    # side at resolution) and needs no veto. FULL deliberately keeps its key
+    # complete (registry-driven, not partial), so the outer-join upgrade can't
+    # see it's preserving disjoint populations — protect FULL keys explicitly.
     protected_outer_join_keys = {
         scoped_merge_map.get(addr, addr)
         for source, target, join_type in build_scoped_joins
-        if join_type is not JoinType.INNER
+        if join_type is JoinType.FULL
         for addr in (source, target)
     }
 
