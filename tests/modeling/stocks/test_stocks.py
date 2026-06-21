@@ -3,6 +3,7 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Dialects
+from trilogy.core.enums import JoinType
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import BuildColumnAssignment, BuildDatasource, Factory
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -35,18 +36,18 @@ def test_import():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
 
     assert env.concepts["holdings.cost_basis"].grain.components == {
-        "provider.id",
-        "symbol.id",
+        "holdings.provider.id",
+        "holdings.symbol.id",
     }
     assert env.concepts["holdings.profitable"].grain.components == {
-        "provider.id",
-        "symbol.id",
+        "holdings.provider.id",
+        "holdings.symbol.id",
     }
     profitable = env.concepts["holdings.profitable"]
     for x in profitable.lineage.concept_arguments:
         assert env.concepts[x.address].grain.components == {
-            "provider.id",
-            "symbol.id",
+            "holdings.provider.id",
+            "holdings.symbol.id",
         }, profitable.lineage
 
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
@@ -144,10 +145,13 @@ def test_provider_name():
     assert (
         "dividend.symbol.sector" in build_env.materialized_concepts
     ), build_env.materialized_concepts
+    # merge statements now record join pairs on the author env rather than
+    # mutating concept pseudonyms / alias_origin_lookup
     assert (
-        "provider.id"
-        in build_env.alias_origin_lookup["dividend.provider.id"].pseudonyms
-    ), build_env.alias_origin_lookup["dividend.provider.id"].pseudonyms
+        "provider.id",
+        "dividend.provider.id",
+        JoinType.LEFT_OUTER,
+    ) in env.merges, env.merges
     test_concepts = [
         build_env.concepts["dividend.amount"],
         build_env.concepts["dividend.id"],

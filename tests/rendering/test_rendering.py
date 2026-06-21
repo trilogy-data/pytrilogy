@@ -1608,7 +1608,7 @@ const zips_pre <- unnest(['24128',
         ]);
         """)
     expected = [
-        """const zips_pre <- unnest(['24128', '35576']);""",
+        """auto zips_pre <- unnest(['24128', '35576']);""",
     ]
     for idx, cmd in enumerate(commands):
         rendered = Renderer(environment=env).to_string(cmd)
