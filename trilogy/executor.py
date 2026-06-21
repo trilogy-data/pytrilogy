@@ -137,6 +137,8 @@ class Executor(object):
             dict[str, Datasource | BuildDatasource] | None
         ) = None
         self._validation_temp_tables: list[str] = []
+        # When True, each uv_run query gets a fresh output path (see _bump_uv_call_id).
+        self._uv_run_path_isolation = False
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
@@ -163,6 +165,9 @@ class Executor(object):
             and self.config.enable_python_datasources
         )
         is_windows = sys.platform == "win32"
+        # Only the Windows temp-file macro reuses a per-script path, so only it
+        # needs per-query path isolation to avoid overwriting a mmapped .arrow file.
+        self._uv_run_path_isolation = enabled and is_windows
         self.execute_raw_sql(
             get_python_datasource_setup_sql(
                 enabled, is_windows, self._instance_id, self.staging
@@ -847,6 +852,7 @@ class Executor(object):
         while True:
             attempt += 1
             try:
+                self._bump_uv_call_id(command)
                 if final_params:
                     return self.connection.execute(text(command), final_params)
                 else:
@@ -861,6 +867,27 @@ class Executor(object):
                     f"retrying in {delay:.1f}s: {e}"
                 )
                 time.sleep(delay)
+
+    def _bump_uv_call_id(self, command: str) -> None:
+        """Point the next uv_run query at a fresh .arrow path.
+
+        The Windows uv_run macro reuses one path per script. read_arrow memory-maps
+        that file, and Windows refuses to overwrite a mmapped file, so re-running the
+        same script while a prior read is still mapped fails the shell redirect. A
+        per-query id makes each path unique, so we never overwrite a mapped file.
+        """
+        from sqlalchemy import text
+
+        if not self._uv_run_path_isolation:
+            return
+        if "uv_run(" not in command or "MACRO uv_run" in command:
+            return
+        self.connection.execute(
+            text(
+                "SET VARIABLE __trilogy_uv_call_id = "
+                "(SELECT replace(gen_random_uuid()::VARCHAR, '-', ''));"
+            )
+        )
 
     def execute_raw_sql(
         self,

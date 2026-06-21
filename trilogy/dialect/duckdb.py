@@ -235,13 +235,21 @@ INSTALL arrow FROM community;
 LOAD shellfs;
 LOAD arrow;
 SET VARIABLE __trilogy_uv_temp_dir = '{base_dir}';
+SET VARIABLE __trilogy_uv_call_id = '{unique_id}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-WITH __build AS (
+WITH __build AS MATERIALIZED (
 SELECT a.name
-FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' > {base_dir}' || md5(script || args) || '.arrow && echo {{"name": "done"}} |') AS a
+FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' 2>> C:/Users/ethan/uvdebug.log > {base_dir}' || md5(script || args) || '_' || getvariable('__trilogy_uv_call_id') || '.arrow && echo {{"name": "done"}} |') AS a
 LIMIT 1
 )
-SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow');
+-- __build writes the .arrow file as a side effect. It MUST be referenced (the
+-- cross-join below) or some duckdb versions prune the unreferenced CTE and never
+-- run the write. AS MATERIALIZED forces the CTE to execute to completion before
+-- the outer read_arrow scan, so the file is fully written before it is read.
+-- The call id (bumped per query by the executor) makes the path unique per query
+-- so we never overwrite a .arrow file that a prior read_arrow still has
+-- memory-mapped, which fails on Windows. Both refs read the same getvariable value.
+SELECT r.* FROM __build b, read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '_' || getvariable('__trilogy_uv_call_id') || '.arrow') AS r;
 """
     else:
         return """

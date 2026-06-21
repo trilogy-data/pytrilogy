@@ -1,3 +1,4 @@
+import dataclasses
 import sys
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -391,6 +392,42 @@ derive c + 1 -> d
     }
     assert rendered["local.c"] == "auto c <- merge(a, b);"
     assert rendered["local.d"] == "auto d <- c + 1;"
+
+
+def test_render_multiselect_lineage_direct():
+    # Rendering a MultiSelectLineage directly (not via a concept declaration)
+    # yields a compact `merge(arms) [where] align [derive] [having]` summary.
+    env, _ = Environment().parse("""key a int;
+key b int;
+select a
+merge
+select b
+align c: a, b
+derive c + 1 -> d
+;""")
+    renderer = Renderer(environment=env)
+    minimal = next(
+        c.lineage
+        for c in env.concepts.values()
+        if isinstance(c.lineage, MultiSelectLineage) and not c.lineage.derive
+    )
+    assert renderer.to_string(minimal) == "merge(a | b) align c: a, b"
+
+    with_derive = next(
+        c.lineage
+        for c in env.concepts.values()
+        if isinstance(c.lineage, MultiSelectLineage) and c.lineage.derive
+    )
+    # The parser consumes where/having off the multiselect, so graft them on to
+    # exercise those rendering branches too.
+    _, q = env.parse("select a where a > 0 having sum(a) > 1;")
+    sel = q[-1]
+    full = dataclasses.replace(
+        with_derive, where_clause=sel.where_clause, having_clause=sel.having_clause
+    )
+    assert renderer.to_string(full) == (
+        "merge(a | b) where a > 0 align c: a, b derive c + 1 as d having sum(a) > 1"
+    )
 
 
 def test_render_case(test_environment: Environment):

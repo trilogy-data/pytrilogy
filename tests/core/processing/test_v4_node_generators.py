@@ -135,6 +135,27 @@ datasource d2 (two:two) grain (two) query '''select 1 as two''';
 auto u <- union(one, two);
 """
 
+# Relational `union((select...),(select...)) -> (k, v)` TVF: a column-positional
+# row stack whose arms are independent sub-selects. This is the form routed
+# through `_resolve_union_select` (distinct from the inline `union(one, two)`
+# concept-stack above, which the dispatch generator handles).
+RELATIONAL_UNION_MODEL = """
+key id int;
+property id.val int;
+key id2 int;
+property id2.val2 int;
+
+datasource d1 (id: id, val: val) grain (id) query '''select 1 as id, 10 as val''';
+datasource d2 (id2: id2, val2: val2) grain (id2) query '''select 2 as id2, 20 as val2''';
+
+with combined as union(
+    (select id as k, val as v),
+    (select id2 as k, val2 as v)
+) -> (k, v);
+
+select combined.k, combined.v order by combined.k asc;
+"""
+
 
 class TestUnion:
     def test_union_resolves_to_union_node(self):
@@ -142,6 +163,30 @@ class TestUnion:
         info = _search(env, benv, ["local.u"])
         assert info.strategy_node is not None
         assert _find(info.strategy_node, UnionNode)
+
+    def test_relational_union_resolves_to_union_node(self):
+        env, benv = _build(RELATIONAL_UNION_MODEL)
+        info = _search(env, benv, ["combined.k", "combined.v"])
+        assert info.strategy_node is not None
+        assert _find(info.strategy_node, UnionNode)
+        # One arm per select, each stacked under the union.
+        union_node = next(
+            n for n in _walk(info.strategy_node) if isinstance(n, UnionNode)
+        )
+        assert len(union_node.parents) == 2
+
+    def test_relational_union_end_to_end(self):
+        prior = CONFIG.use_v4_discovery
+        CONFIG.use_v4_discovery = True
+        try:
+            rows = (
+                Dialects.DUCK_DB.default_executor()
+                .execute_query(RELATIONAL_UNION_MODEL)
+                .fetchall()
+            )
+        finally:
+            CONFIG.use_v4_discovery = prior
+        assert [tuple(r) for r in rows] == [(1, 10), (2, 20)]
 
 
 # ----- root source planning -------------------------------------------
