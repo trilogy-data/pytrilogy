@@ -93,8 +93,4 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- previously-untracked v4 baseline fails (all pass under v3) ---
     # wrong rows:
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two": _RESULT,
-    # source-selection / ordering / rollup shape:
-    "tests/modeling/geography/test_landmark_updates.py::test_exact_match_resolution": _MODELING,
-    "tests/modeling/geography/test_landmark_updates.py::test_exact_match_with_parenthetical_extra_filter": _MODELING,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_eight": _MODELING,
 }

@@ -42,6 +42,9 @@ from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     extract_concept,
 )
+from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    covered_conditions,
+)
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
@@ -226,15 +229,32 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
         return None
     search_concepts = _search_concepts_for_bridge(request)
     requested = {c.address for c in _requested_concepts(request)}
-    condition_options = (request.conditions, None) if request.conditions else (None,)
+    # (search_conditions, allow_intersection), most-specific first. The covered
+    # option mirrors v3's complete-where retry: when the full condition spans
+    # datasources (e.g. `city='USSFO' AND native_status IS NOT NULL`, with city
+    # owned by a `complete where` partial and native_status by a joined table),
+    # pruning on the full condition disconnects the joined table. Retrying on
+    # only the *covered* atoms (those implied by some datasource's
+    # `non_partial_for`) with `allow_intersection` keeps the foreign table and
+    # promotes the complete-where partial over the full union.
+    condition_options: list[tuple[BuildWhereClause | None, bool]]
+    if request.conditions is not None:
+        condition_options = [(request.conditions, False)]
+        covered = covered_conditions(request.conditions, request.environment)
+        if covered is not None:
+            condition_options.append((covered, True))
+        condition_options.append((None, False))
+    else:
+        condition_options = [(None, False)]
     for filter_downstream in (True, False):
-        for search_conditions in condition_options:
+        for search_conditions, allow_intersection in condition_options:
             graph = _resolve_bridge_graph(
                 search_concepts,
                 request,
                 attempt=attempt,
                 filter_downstream=filter_downstream,
                 search_conditions=search_conditions,
+                allow_intersection=allow_intersection,
             )
             if graph is None:
                 continue
@@ -248,11 +268,42 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             # through a single partial datasource, dropping the complete-key
             # merge `_direct_source` would otherwise build (refresh of a
             # count-by-X persist whose output also carries a `data_through`).
-            if ({c.address for c in bridged} - requested) or _has_union_datasource(
-                graph
+            # ...or when it selected a `complete where` partial whose predicate
+            # the query implies (an exact-match source). `_direct_source` would
+            # otherwise fall through to the full table, since the partial is
+            # rejected by the strict attempt and the full condition disconnects
+            # the partial's join partner from the graph (q geography exact-match).
+            if (
+                ({c.address for c in bridged} - requested)
+                or _has_union_datasource(graph)
+                or _graph_has_condition_matched_partial(
+                    graph, request.conditions, request.environment
+                )
             ):
                 return BridgePlan(concepts=bridged, graph=graph)
     return None
+
+
+def _graph_has_condition_matched_partial(
+    graph: ReferenceGraph,
+    conditions: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> bool:
+    """A `complete where <c>` partial datasource in `graph` whose predicate the
+    query conditions imply — pre-filtered to exactly the requested rows, so it
+    is the authoritative (and smaller) source over a full table."""
+    if conditions is None:
+        return False
+    for ds in graph.datasources.values():
+        if (
+            isinstance(ds, BuildDatasource)
+            and ds.non_partial_for is not None
+            and condition_implies(
+                conditions.conditional, ds.non_partial_for.conditional
+            )
+        ):
+            return True
+    return False
 
 
 def _has_union_datasource(graph: ReferenceGraph) -> bool:
@@ -269,6 +320,7 @@ def _resolve_bridge_graph(
     attempt: SourceAttempt,
     filter_downstream: bool,
     search_conditions: BuildWhereClause | None,
+    allow_intersection: bool = False,
 ) -> ReferenceGraph | None:
     search_graph = request.graph.copy()
     _inject_union_datasources(search_graph, concepts, request.environment)
@@ -276,6 +328,7 @@ def _resolve_bridge_graph(
         search_graph,
         attempt.criteria,
         conditions=search_conditions,
+        allow_intersection=allow_intersection,
     )
     # Single-row / abstract-grain concepts (a `<*>` watermark, a constant) join
     # by cross product, never by a key, so they must not drive the connectivity
@@ -485,6 +538,24 @@ def _datasource_nodes_for_bridge(
         concept_nodes = sorted(set(concept_nodes))
         if not concept_nodes:
             continue
+        # Pass the WHERE only to a `complete where` partial the query implies, so
+        # `create_select_node_candidate` clears its partial flag (partial_is_full)
+        # and applies the predicate on the scan -- otherwise its outputs stay
+        # partial and `_complete_partial_requested` joins the full table back in
+        # (geography exact-match). Other sources get the condition post-merge.
+        ds_obj = plan.graph.datasources.get(ds_node)
+        ds_conditions = (
+            request.conditions
+            if (
+                isinstance(ds_obj, BuildDatasource)
+                and ds_obj.non_partial_for is not None
+                and request.conditions is not None
+                and condition_implies(
+                    request.conditions.conditional, ds_obj.non_partial_for.conditional
+                )
+            )
+            else None
+        )
         candidate = create_select_node_candidate(
             ds_node,
             concept_nodes,
@@ -492,7 +563,7 @@ def _datasource_nodes_for_bridge(
             g=plan.graph,
             environment=request.environment,
             depth=request.depth + 1,
-            conditions=None,
+            conditions=ds_conditions,
         )
         parents.append(
             finalize_select_node(
