@@ -724,7 +724,7 @@ class UnionDimPushdown(OptimizationRule):
         if cte.condition is not None:
             addrs |= {x.address for x in cte.condition.concept_arguments}
         for j in cte.joins or []:
-            for pair in getattr(j, "joinkey_pairs", None) or []:
+            for pair in (j.joinkey_pairs or []) if isinstance(j, Join) else []:
                 addrs |= {pair.left.address, pair.right.address}
         return addrs
 

@@ -12,7 +12,7 @@ import re
 import textwrap
 from collections import defaultdict
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 import click
 
@@ -78,8 +78,8 @@ def _concept_description(concept: Concept) -> str:
     """Pull a one-line description off ``concept.metadata`` if set. Whitespace
     is collapsed so multi-line authoring comments still display cleanly in
     the explore output."""
-    meta = getattr(concept, "metadata", None)
-    raw = getattr(meta, "description", None) if meta is not None else None
+    meta = concept.metadata
+    raw = meta.description if meta is not None else None
     if not raw:
         return ""
     return " ".join(raw.split())
@@ -304,7 +304,7 @@ def _emit_imported_summary(
         if not leaves:
             continue
         click.echo()
-        header = f"# {ns}.* ({len(leaves)} concepts) — reach as {ns}.<leaf>"
+        header = f"# {ns}.* ({len(leaves)} - replace * with <leaf> to access)"
         desc = (import_descriptions or {}).get(ns)
         if desc:
             header += f"  — {desc.strip()}"
@@ -379,22 +379,56 @@ def _keyset_label(key_addrs: tuple[str, ...]) -> str:
     return "<" + ", ".join(_grain_display(a) for a in key_addrs) + ">"
 
 
+def _strip_prefix(decl: str, prefix: str) -> str:
+    return decl[len(prefix) :] if decl.startswith(prefix) else decl
+
+
+def _grain_grouped(
+    concepts: list[Concept],
+    decl: Callable[[Concept], str],
+    key_prefix: Callable[[Concept], str],
+    keyword: str,
+    field: str,
+) -> list[dict]:
+    """Bucket property-like concepts by grain key-set, one group dict per grain
+    (``grain`` labels it) under ``field``, with the redundant
+    ``<keyword> <grain>.`` declaration prefix stripped. The prefix to strip is
+    taken from the renderer itself (``key_prefix``) rather than reconstructed
+    from the group label — the renderer is the authority on key ordering and
+    bracket form, so re-deriving it here would silently drift out of sync."""
+    by_grain: dict[tuple[str, ...], list[Concept]] = defaultdict(list)
+    for c in concepts:
+        by_grain[tuple(sorted(c.keys or []))].append(c)
+    groups: list[dict] = []
+    for grain in sorted(by_grain, key=lambda g: (len(g), g)):
+        label = _keyset_label(grain)
+        decls = [
+            _strip_prefix(decl(c), f"{keyword} {key_prefix(c)}")
+            for c in by_grain[grain]
+        ]
+        groups.append({"grain": label, field: decls})
+    return groups
+
+
 def _grouped_decls(
     env: Environment, items: list[tuple[str, Concept]]
 ) -> dict[str, list[dict]]:
     """Group concepts by namespace and, within each, by role + grain:
 
-      * one ``keys`` object listing the namespace's key declarations;
-      * one ``properties`` object per grain key-set (``grain`` labels it),
-        with the redundant ``<grain>.`` prefix stripped from single-key
-        properties since the object already names the grain;
+      * one ``keys`` object listing the namespace's key declarations, with
+        the redundant leading ``key `` keyword stripped;
+      * one ``properties`` (and one ``unique_properties``) object per grain
+        key-set (``grain`` labels it), with the redundant
+        ``[unique ]property <grain>.`` prefix stripped since the object
+        already names the grain;
       * one ``metrics`` object per aggregation key-set — the same ``grain``
         label, since a metric's aggregation keys are conceptually its grain —
         with grain-free responsive metrics under ``<responsive>``.
 
-    Anything that isn't a key/property/metric lands in a trailing ``ungrouped``
-    object so nothing is dropped. The local namespace surfaces under the
-    empty-string key because bare references are what the agent writes."""
+    Anything that isn't a key/(unique-)property/metric lands in a trailing
+    ``ungrouped`` object so nothing is dropped. The local namespace surfaces
+    under the empty-string key because bare references are what the agent
+    writes."""
     from trilogy.core.statements.author import ConceptDeclarationStatement
     from trilogy.parsing.render import Renderer
 
@@ -409,13 +443,15 @@ def _grouped_decls(
 
     out: dict[str, list[dict]] = {}
     for ns in sorted(by_ns):
-        keys, props, metrics, others = [], [], [], []
+        keys, props, uniques, metrics, others = [], [], [], [], []
         for addr, c in sorted(by_ns[ns], key=lambda ac: ac[0]):
             purpose = c.purpose.value
             if purpose == "key":
                 keys.append(c)
             elif purpose == "property":
                 props.append(c)
+            elif purpose == "unique_property":
+                uniques.append(c)
             elif purpose == "metric":
                 metrics.append(c)
             else:
@@ -423,21 +459,21 @@ def _grouped_decls(
 
         groups: list[dict] = []
         if keys:
-            groups.append({"keys": [decl(c) for c in keys]})
+            # Shed the leading ``key `` keyword the group label implies.
+            groups.append({"keys": [_strip_prefix(decl(c), "key ") for c in keys]})
 
-        # Properties grouped by grain key-set; single-key props shed the
-        # ``property <grain>.`` prefix the group label already carries.
-        by_grain: dict[tuple[str, ...], list[Concept]] = defaultdict(list)
-        for c in props:
-            by_grain[tuple(sorted(c.keys or []))].append(c)
-        for grain in sorted(by_grain, key=lambda g: (len(g), g)):
-            label = _keyset_label(grain)
-            prefix = f"property {label}." if len(grain) == 1 else None
-            decls = []
-            for c in by_grain[grain]:
-                d = decl(c)
-                decls.append(d[len(prefix) :] if prefix and d.startswith(prefix) else d)
-            groups.append({"grain": label, "properties": decls})
+        # (Unique) properties grouped by grain key-set; each sheds the
+        # ``[unique ]property <grain>.`` prefix the group label already carries.
+        groups += _grain_grouped(
+            props, decl, renderer.property_key_prefix, "property", "properties"
+        )
+        groups += _grain_grouped(
+            uniques,
+            decl,
+            renderer.property_key_prefix,
+            "unique property",
+            "unique_properties",
+        )
 
         # Metrics grouped by aggregation key-set; grain-free ones are
         # query-responsive and bucket under "<responsive>".
@@ -481,9 +517,11 @@ def build_concepts_payload(
     """Build the JSON-serializable concept dump: local namespaces rendered in
     full Trilogy declaration syntax, imported namespaces collapsed to a
     name-only list (unless ``expand_imports``) so a fact file's dozens of
-    inherited dimensions don't drown the local declarations. ``None``-valued
-    keys are dropped so the payload stays compact whether emitted as a JSON
-    event or embedded in an agent prompt."""
+    inherited dimensions don't drown the local declarations. Each imported
+    namespace is one object pairing its ``concepts`` list with its optional
+    import ``description``. ``None``-valued keys are dropped so the payload
+    stays compact whether emitted as a JSON event or embedded in an agent
+    prompt."""
     if expand_imports:
         local_items, imported_items = concept_items, []
     else:
@@ -507,14 +545,24 @@ def build_concepts_payload(
         if leaf.startswith("_"):  # internal/intermediate concept — hide
             continue
         imported[c.namespace].append(leaf)
-    imported_joined = {
-        ns: ", ".join(imported[ns]) for ns in sorted(imported) if imported[ns]
-    }
+    # Each imported namespace is one object carrying its (optional) import
+    # description alongside its comma-joined concept list, so the two aren't
+    # split across top-level dicts the agent has to cross-reference.
+    descriptions = import_descriptions or {}
+    imported_merged: dict[str, dict[str, str]] = {}
+    for ns in sorted(imported):
+        if not imported[ns]:
+            continue
+        entry: dict[str, str] = {}
+        desc = (descriptions.get(ns) or "").strip()
+        if desc:
+            entry["description"] = desc
+        entry["concepts"] = ", ".join(imported[ns])
+        imported_merged[ns] = entry
     payload = {
         "count": len(concept_items),
         "namespaces": _grouped_decls(env, local_items) or None,
-        "imported": imported_joined or None,
-        "import_descriptions": import_descriptions or None,
+        "imported": imported_merged or None,
     }
     return {k: v for k, v in payload.items() if v is not None}
 

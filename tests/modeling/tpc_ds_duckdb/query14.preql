@@ -29,16 +29,16 @@ select
     avg(sales.quantity * sales.list_price) as average_sales,
 ;
 
-# One per fact row (all_sales grain is (sales_channel, order_id, item.id)).
+# One per fact row (all_sales grain is (channel, order_id, item.id)).
 auto channel_label <- case
-    when sales.sales_channel = 'STORE' then 'store'
-    when sales.sales_channel = 'CATALOG' then 'catalog'
-    when sales.sales_channel = 'WEB' then 'web'
+    when sales.channel = 'STORE' then 'store'
+    when sales.channel = 'CATALOG' then 'catalog'
+    when sales.channel = 'WEB' then 'web'
     else null
 end;
 
 # Map all_sales' uppercase channel codes to the reference's lowercase labels.
-auto cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
+auto cross_channel_count <- count_distinct(sales.channel) by tuple_key;
 
 # Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in
 # cross_tuples, HAVING sum(quantity*list_price) > avg_sales.

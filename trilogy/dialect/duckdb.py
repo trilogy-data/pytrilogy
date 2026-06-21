@@ -236,12 +236,18 @@ LOAD shellfs;
 LOAD arrow;
 SET VARIABLE __trilogy_uv_temp_dir = '{base_dir}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-WITH __build AS (
+WITH __build AS MATERIALIZED (
 SELECT a.name
-FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' > {base_dir}' || md5(script || args) || '.arrow && echo {{"name": "done"}} |') AS a
+FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' 2> {base_dir}' || md5(script || args) || '.err > {base_dir}' || md5(script || args) || '.arrow && echo {{"name": "done"}} |') AS a
 LIMIT 1
 )
-SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow');
+-- __build writes the .arrow file as a side effect. It MUST be referenced (the
+-- cross-join below) or some duckdb versions prune the unreferenced CTE and never
+-- run the write. AS MATERIALIZED forces the CTE to execute to completion before
+-- the outer read_arrow scan, so the file is fully written before it is read.
+-- uv's stderr is redirected to a sidecar .err file: left on the shellfs pipe it
+-- intermittently fails the process with code=2 on Windows (duckdb 1.5 pipe handling).
+SELECT r.* FROM __build b, read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow') AS r;
 """
     else:
         return """

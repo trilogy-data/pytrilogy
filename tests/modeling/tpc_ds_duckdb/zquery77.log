@@ -1,25 +1,12 @@
 query_id = "77"
 generator = "v3"
-gen_length = 7523
-preql_size = 3218
+gen_length = 7397
+preql_size = 3151
 comp_size = 3129
 generated_sql = """
 
 WITH 
-wakeful as (
-SELECT
-    coalesce(\"cr_catalog_returns\".\"CR_CALL_CENTER_SK\",-1) as \"cr_grouped_cr_cc_key\",
-    sum(\"cr_catalog_returns\".\"CR_NET_LOSS\") as \"cr_grouped_cr_loss_per_cc\",
-    sum(\"cr_catalog_returns\".\"CR_RETURN_AMOUNT\") as \"cr_grouped_cr_returns_per_cc\"
-FROM
-    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
-WHERE
-    cast(\"cr_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
-
-GROUP BY
-    1),
-busy as (
+protective as (
 SELECT
     \"wr_web_returns\".\"WR_WEB_PAGE_SK\" as \"wr_grouped_wr_wp_id\",
     sum(\"wr_web_returns\".\"WR_NET_LOSS\") as \"wr_grouped_wr_loss\",
@@ -32,7 +19,7 @@ WHERE
 
 GROUP BY
     1),
-puzzled as (
+rambunctious as (
 SELECT
     \"ws_web_sales\".\"WS_WEB_PAGE_SK\" as \"ws_grouped_ws_wp_id\",
     sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"ws_grouped_ws_sales\",
@@ -41,11 +28,11 @@ FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    cast(\"ws_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"ws_web_sales\".\"WS_WEB_PAGE_SK\" is not null
 
 GROUP BY
     1),
-sparkling as (
+abhorrent as (
 SELECT
     \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_grouped_ss_store_id\",
     sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"ss_grouped_ss_sales\",
@@ -54,11 +41,11 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ss_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    cast(\"ss_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"ss_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1),
-macho as (
+scrawny as (
 SELECT
     \"ss_store_returns\".\"SR_STORE_SK\" as \"sr_grouped_sr_store_id\",
     sum(\"ss_store_returns\".\"SR_NET_LOSS\") as \"sr_grouped_sr_loss\",
@@ -69,6 +56,19 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"ss_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+wakeful as (
+SELECT
+    coalesce(\"cr_catalog_returns\".\"CR_CALL_CENTER_SK\",-1) as \"cr_grouped_cr_cc_key\",
+    sum(\"cr_catalog_returns\".\"CR_NET_LOSS\") as \"cr_grouped_cr_loss_per_cc\",
+    sum(\"cr_catalog_returns\".\"CR_RETURN_AMOUNT\") as \"cr_grouped_cr_returns_per_cc\"
+FROM
+    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"cr_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
 
 GROUP BY
     1),
@@ -85,9 +85,29 @@ WHERE
 
 GROUP BY
     1),
+hard as (
+SELECT
+    \"rambunctious\".\"ws_grouped_ws_profit\" - cast(coalesce(\"protective\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"___tvf_arm_2_u_profit\",
+    \"rambunctious\".\"ws_grouped_ws_wp_id\" as \"___tvf_arm_2_u_id\",
+    :___tvf_arm_2_u_channel as \"___tvf_arm_2_u_channel\",
+    cast(\"rambunctious\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"___tvf_arm_2_u_sales\",
+    cast(coalesce(\"protective\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"___tvf_arm_2_u_returns\"
+FROM
+    \"rambunctious\"
+    LEFT OUTER JOIN \"protective\" on \"rambunctious\".\"ws_grouped_ws_wp_id\" = \"protective\".\"wr_grouped_wr_wp_id\"),
+kaput as (
+SELECT
+    \"abhorrent\".\"ss_grouped_ss_profit\" - cast(coalesce(\"scrawny\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"___tvf_arm_1_u_profit\",
+    \"abhorrent\".\"ss_grouped_ss_store_id\" as \"___tvf_arm_1_u_id\",
+    :___tvf_arm_1_u_channel as \"___tvf_arm_1_u_channel\",
+    cast(\"abhorrent\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"___tvf_arm_1_u_sales\",
+    cast(coalesce(\"scrawny\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"___tvf_arm_1_u_returns\"
+FROM
+    \"abhorrent\"
+    LEFT OUTER JOIN \"scrawny\" on \"abhorrent\".\"ss_grouped_ss_store_id\" = \"scrawny\".\"sr_grouped_sr_store_id\"),
 juicy as (
 SELECT
-    cast(sum(\"wakeful\".\"cr_grouped_cr_returns_per_cc\") as numeric(15,2)) as \"_l0_union_u_returns_c\"
+    cast(sum(\"wakeful\".\"cr_grouped_cr_returns_per_cc\") as numeric(15,2)) as \"___tvf_arm_0_u_returns\"
 FROM
     \"wakeful\"),
 thoughtful as (
@@ -96,79 +116,69 @@ SELECT
     sum(\"wakeful\".\"cr_grouped_cr_loss_per_cc\") as \"cr_totals_cr_total_loss\"
 FROM
     \"wakeful\"),
-rambunctious as (
-SELECT
-    \"puzzled\".\"ws_grouped_ws_profit\" - cast(coalesce(\"busy\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"u_profit\",
-    \"puzzled\".\"ws_grouped_ws_wp_id\" as \"u_id\",
-    :_l0_union_u_channel_w as \"u_channel\",
-    cast(\"puzzled\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"u_sales\",
-    cast(coalesce(\"busy\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"u_returns\"
-FROM
-    \"puzzled\"
-    INNER JOIN \"busy\" on \"puzzled\".\"ws_grouped_ws_wp_id\" = \"busy\".\"wr_grouped_wr_wp_id\"),
-friendly as (
-SELECT
-    \"sparkling\".\"ss_grouped_ss_profit\" - cast(coalesce(\"macho\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"u_profit\",
-    \"sparkling\".\"ss_grouped_ss_store_id\" as \"u_id\",
-    :_l0_union_u_channel_s as \"u_channel\",
-    cast(\"sparkling\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"u_sales\",
-    cast(coalesce(\"macho\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"u_returns\"
-FROM
-    \"macho\"
-    INNER JOIN \"sparkling\" on \"macho\".\"sr_grouped_sr_store_id\" = \"sparkling\".\"ss_grouped_ss_store_id\"
-GROUP BY
-    1,
-    2,
-    4,
-    5),
 yummy as (
 SELECT
-    \"abundant\".\"_virt_agg_sum_6520591768854391\" * cast(\"thoughtful\".\"cr_totals_cr_n_groups\" as numeric(15,2)) as \"_l0_union_u_sales_c\",
-    \"abundant\".\"cs_call_center_id\" as \"_l0_union_u_id_c\",
-    ( \"abundant\".\"_virt_agg_sum_6226990944561419\" * \"thoughtful\".\"cr_totals_cr_n_groups\" ) - cast(\"thoughtful\".\"cr_totals_cr_total_loss\" as numeric(15,2)) as \"_l0_union_u_profit_c\",
-    :_l0_union_u_channel_c as \"_l0_union_u_channel_c\"
+    \"abundant\".\"_virt_agg_sum_6520591768854391\" * cast(\"thoughtful\".\"cr_totals_cr_n_groups\" as numeric(15,2)) as \"___tvf_arm_0_u_sales\",
+    \"abundant\".\"cs_call_center_id\" as \"___tvf_arm_0_u_id\",
+    ( \"abundant\".\"_virt_agg_sum_6226990944561419\" * \"thoughtful\".\"cr_totals_cr_n_groups\" ) - cast(\"thoughtful\".\"cr_totals_cr_total_loss\" as numeric(15,2)) as \"___tvf_arm_0_u_profit\",
+    :___tvf_arm_0_u_channel as \"___tvf_arm_0_u_channel\"
 FROM
     \"thoughtful\"
     FULL JOIN \"abundant\" on 1=1),
 vacuous as (
 SELECT
-    \"juicy\".\"_l0_union_u_returns_c\" as \"u_returns\",
-    \"yummy\".\"_l0_union_u_channel_c\" as \"u_channel\",
-    \"yummy\".\"_l0_union_u_id_c\" as \"u_id\",
-    \"yummy\".\"_l0_union_u_profit_c\" as \"u_profit\",
-    \"yummy\".\"_l0_union_u_sales_c\" as \"u_sales\"
+    \"juicy\".\"___tvf_arm_0_u_returns\" as \"___tvf_arm_0_u_returns\",
+    \"yummy\".\"___tvf_arm_0_u_channel\" as \"___tvf_arm_0_u_channel\",
+    \"yummy\".\"___tvf_arm_0_u_id\" as \"___tvf_arm_0_u_id\",
+    \"yummy\".\"___tvf_arm_0_u_profit\" as \"___tvf_arm_0_u_profit\",
+    \"yummy\".\"___tvf_arm_0_u_sales\" as \"___tvf_arm_0_u_sales\"
 FROM
     \"yummy\"
     FULL JOIN \"juicy\" on 1=1),
-puffy as (
+yellow as (
 SELECT
-    coalesce(\"friendly\".\"u_channel\",\"rambunctious\".\"u_channel\",\"vacuous\".\"u_channel\") as \"u_channel\",
-    coalesce(\"friendly\".\"u_id\",\"rambunctious\".\"u_id\",\"vacuous\".\"u_id\") as \"u_id\",
-    coalesce(\"friendly\".\"u_profit\",\"rambunctious\".\"u_profit\",\"vacuous\".\"u_profit\") as \"u_profit\",
-    coalesce(\"friendly\".\"u_returns\",\"rambunctious\".\"u_returns\",\"vacuous\".\"u_returns\") as \"u_returns\",
-    coalesce(\"friendly\".\"u_sales\",\"rambunctious\".\"u_sales\",\"vacuous\".\"u_sales\") as \"u_sales\"
+    \"vacuous\".\"___tvf_arm_0_u_channel\" as \"u_channel\",
+    \"vacuous\".\"___tvf_arm_0_u_id\" as \"u_id\",
+    \"vacuous\".\"___tvf_arm_0_u_sales\" as \"u_sales\",
+    \"vacuous\".\"___tvf_arm_0_u_returns\" as \"u_returns\",
+    \"vacuous\".\"___tvf_arm_0_u_profit\" as \"u_profit\"
 FROM
     \"vacuous\"
-    FULL JOIN \"friendly\" on \"vacuous\".\"u_channel\" is not distinct from \"friendly\".\"u_channel\" AND \"vacuous\".\"u_id\" is not distinct from \"friendly\".\"u_id\" AND \"vacuous\".\"u_profit\" is not distinct from \"friendly\".\"u_profit\" AND \"vacuous\".\"u_returns\" is not distinct from \"friendly\".\"u_returns\" AND \"vacuous\".\"u_sales\" is not distinct from \"friendly\".\"u_sales\"
-    FULL JOIN \"rambunctious\" on coalesce(\"vacuous\".\"u_channel\", \"friendly\".\"u_channel\") = \"rambunctious\".\"u_channel\" AND coalesce(\"vacuous\".\"u_id\", \"friendly\".\"u_id\") = \"rambunctious\".\"u_id\" AND coalesce(\"vacuous\".\"u_profit\", \"friendly\".\"u_profit\") = \"rambunctious\".\"u_profit\" AND coalesce(\"vacuous\".\"u_returns\", \"friendly\".\"u_returns\") = \"rambunctious\".\"u_returns\" AND coalesce(\"vacuous\".\"u_sales\", \"friendly\".\"u_sales\") = \"rambunctious\".\"u_sales\"),
-hard as (
+UNION ALL
 SELECT
-    \"puffy\".\"u_channel\" as \"l0_union_u_channel\",
-    \"puffy\".\"u_id\" as \"l0_union_u_id\",
-    \"puffy\".\"u_profit\" as \"l0_union_u_profit\",
-    \"puffy\".\"u_returns\" as \"l0_union_u_returns\",
-    \"puffy\".\"u_sales\" as \"l0_union_u_sales\"
+    \"kaput\".\"___tvf_arm_1_u_channel\" as \"u_channel\",
+    \"kaput\".\"___tvf_arm_1_u_id\" as \"u_id\",
+    \"kaput\".\"___tvf_arm_1_u_sales\" as \"u_sales\",
+    \"kaput\".\"___tvf_arm_1_u_returns\" as \"u_returns\",
+    \"kaput\".\"___tvf_arm_1_u_profit\" as \"u_profit\"
 FROM
-    \"puffy\"
-    FULL JOIN \"juicy\" on 1=1)
+    \"kaput\"
+UNION ALL
 SELECT
-    \"hard\".\"l0_union_u_channel\" as \"channel\",
-    \"hard\".\"l0_union_u_id\" as \"id\",
-    sum(\"hard\".\"l0_union_u_sales\") as \"sales\",
-    sum(\"hard\".\"l0_union_u_returns\") as \"returns_\",
-    sum(\"hard\".\"l0_union_u_profit\") as \"profit\"
+    \"hard\".\"___tvf_arm_2_u_channel\" as \"u_channel\",
+    \"hard\".\"___tvf_arm_2_u_id\" as \"u_id\",
+    \"hard\".\"___tvf_arm_2_u_sales\" as \"u_sales\",
+    \"hard\".\"___tvf_arm_2_u_returns\" as \"u_returns\",
+    \"hard\".\"___tvf_arm_2_u_profit\" as \"u_profit\"
 FROM
-    \"hard\"
+    \"hard\"),
+resonant as (
+SELECT
+    \"yellow\".\"u_channel\" as \"l0_union_u_channel\",
+    \"yellow\".\"u_id\" as \"l0_union_u_id\",
+    \"yellow\".\"u_profit\" as \"l0_union_u_profit\",
+    \"yellow\".\"u_returns\" as \"l0_union_u_returns\",
+    \"yellow\".\"u_sales\" as \"l0_union_u_sales\"
+FROM
+    \"yellow\")
+SELECT
+    \"resonant\".\"l0_union_u_channel\" as \"channel\",
+    \"resonant\".\"l0_union_u_id\" as \"id\",
+    sum(\"resonant\".\"l0_union_u_sales\") as \"sales\",
+    sum(\"resonant\".\"l0_union_u_returns\") as \"returns_\",
+    sum(\"resonant\".\"l0_union_u_profit\") as \"profit\"
+FROM
+    \"resonant\"
 GROUP BY
     ROLLUP (1, 2)
 ORDER BY 

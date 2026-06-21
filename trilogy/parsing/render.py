@@ -38,13 +38,16 @@ from trilogy.core.models.author import (
     Function,
     FunctionCallWrapper,
     Grain,
+    MultiSelectLineage,
     NavigationWindowItem,
     NumberingWindowItem,
     OrderBy,
     Ordering,
     OrderItem,
     Parenthetical,
+    RowsetItem,
     SubselectComparison,
+    SubselectItem,
     WhereClause,
 )
 from trilogy.core.models.core import (
@@ -707,6 +710,47 @@ class Renderer:
     def _(self, arg: "RawColumnExpr"):
         return f"raw('''{arg.text}''')"
 
+    def property_key_prefix(self, concept: Concept) -> str:
+        """The ``<a, b>.`` / ``key.`` grain prefix a (unique-)property
+        declaration renders before its own name, or ``""`` when none applies.
+        The prefix is only emitted when the implied namespace on reparse matches
+        the concept's own namespace — single-key form takes its namespace from
+        the key's parent, multi-key form from the environment default. Exposed
+        so callers that strip the prefix (e.g. the explore command) strip
+        exactly what was rendered rather than re-deriving the key ordering and
+        bracket form here."""
+        if (
+            concept.purpose not in (Purpose.PROPERTY, Purpose.UNIQUE_PROPERTY)
+            or not concept.keys
+        ):
+            return ""
+        env_default_ns = (
+            self.environment.namespace
+            if self.environment and self.environment.namespace
+            else DEFAULT_NAMESPACE
+        )
+        concept_ns = concept.namespace or DEFAULT_NAMESPACE
+        key_namespaces = {safe_address(addr).rsplit(".", 1)[0] for addr in concept.keys}
+        sorted_keys = sorted(
+            self.to_string(ConceptRef(address=safe_address(x))) for x in concept.keys
+        )
+        if len(concept.keys) == 1:
+            only_key_ns = next(iter(key_namespaces))
+            if only_key_ns == concept_ns:
+                # IDENTIFIER form `key.name`: parser sets ns = key's ns.
+                return f"{sorted_keys[0]}."
+            if concept_ns == env_default_ns:
+                # prop_ident form `<key>.name`: parser sets ns = env default.
+                # Required when the key lives in an imported namespace but the
+                # property belongs to the local file.
+                return f"<{sorted_keys[0]}>."
+            return ""
+        # Multi-key form has no IDENTIFIER spelling; parser always sets
+        # ns = env default for `<...>.name`.
+        if concept_ns == env_default_ns:
+            return f"<{', '.join(sorted_keys)}>."
+        return ""
+
     @to_string.register
     def _(self, arg: "ConceptDeclarationStatement"):
         concept = arg.concept
@@ -720,44 +764,8 @@ class Renderer:
             namespace = ""
         # Grammar accepts ``unique property``, not ``unique_property``.
         purpose_kw = _purpose_keyword(concept.purpose)
-        is_propertyish = concept.purpose in (Purpose.PROPERTY, Purpose.UNIQUE_PROPERTY)
-        # Build the ``<a, b>.`` or ``a.`` key prefix shared by typed and
-        # derived property declarations. We only emit the prefix when the
-        # implied namespace on reparse matches the concept's own namespace
-        # — single-key form takes its namespace from the key's parent, and
-        # multi-key form takes it from the environment default.
-        key_prefix = ""
-        env_default_ns = (
-            self.environment.namespace
-            if self.environment and self.environment.namespace
-            else DEFAULT_NAMESPACE
-        )
+        key_prefix = self.property_key_prefix(concept)
         concept_ns = concept.namespace or DEFAULT_NAMESPACE
-        if is_propertyish and concept.keys:
-            key_namespaces: set[str] = set()
-            for addr in concept.keys:
-                safe = safe_address(addr)
-                key_ns = safe.rsplit(".", 1)[0]
-                key_namespaces.add(key_ns)
-            sorted_keys = sorted(
-                self.to_string(ConceptRef(address=safe_address(x)))
-                for x in concept.keys
-            )
-            if len(concept.keys) == 1:
-                only_key_ns = next(iter(key_namespaces))
-                if only_key_ns == concept_ns:
-                    # IDENTIFIER form `key.name`: parser sets ns = key's ns.
-                    key_prefix = f"{sorted_keys[0]}."
-                elif concept_ns == env_default_ns:
-                    # prop_ident form `<key>.name`: parser sets ns = env
-                    # default. Required when the key lives in an imported
-                    # namespace but the property belongs to the local file.
-                    key_prefix = f"<{sorted_keys[0]}>."
-            else:
-                # Multi-key form has no IDENTIFIER spelling; parser always
-                # sets ns = env default for `<...>.name`.
-                if concept_ns == env_default_ns:
-                    key_prefix = f"<{', '.join(sorted_keys)}>."
         # For derived concepts whose namespace is an import alias rather
         # than a real concept (e.g. ``import unified_sales as sales``),
         # emitting ``sales.X`` would make the parser treat ``sales`` as a
@@ -789,12 +797,18 @@ class Renderer:
             # when the parser classified the derivation as fully static
             # — round-trips, and reads clearer for literal/constant defs.
             kw = "const" if concept.purpose == Purpose.CONSTANT else "auto"
-            output = f"{kw} {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
+            if isinstance(concept.lineage, MultiSelectLineage):
+                lineage_str = self._multiselect_output_expr(concept, concept.lineage)
+            else:
+                lineage_str = self.to_string(concept.lineage)
+            output = f"{kw} {ns_for_emit}{concept.name} <- {lineage_str};"
         if concept.metadata and concept.metadata.hidden:
             output = f"--{output}"
         if base_description:
             lines = "\n#".join(base_description.split("\n"))
             output += f" #{lines}"
+        if isinstance(concept.lineage, RowsetItem):
+            output += self._rowset_filter_comment(concept.lineage)
         return output
 
     @to_string.register
@@ -941,6 +955,30 @@ class Renderer:
         )
 
     @to_string.register
+    def _(self, arg: MultiSelectLineage):
+        # A merge output's lineage is the whole multiselect, which has no
+        # `auto x <- ...` assignment form; render a compact, descriptive
+        # summary (the arms' outputs + align/derive/where) for explore rather
+        # than the full multi-line statement.
+        arms = " | ".join(
+            ", ".join(self.to_string(c) for c in s.selection) for s in arg.selects
+        )
+        parts = [f"merge({arms})"]
+        if arg.where_clause:
+            parts.append(f"where {self.to_string(arg.where_clause)}")
+        if arg.align and arg.align.items:
+            parts.append(
+                "align " + " and ".join(self.to_string(i) for i in arg.align.items)
+            )
+        if arg.derive:
+            parts.append(
+                "derive " + ", ".join(self.to_string(i) for i in arg.derive.items)
+            )
+        if arg.having_clause:
+            parts.append(f"having {self.to_string(arg.having_clause)}")
+        return " ".join(parts)
+
+    @to_string.register
     def _(self, arg: MultiSelectStatement):
         # Each select gets its own indentation
         select_parts = []
@@ -1058,6 +1096,65 @@ class Renderer:
         return self._pretty(
             [content, Break(priority=8, indent=1, flat=" "), f"? {where}"]
         )
+
+    @to_string.register
+    def _(self, arg: "SubselectItem"):
+        # ``subselect(<content>[ where ...][ order by ...][ limit n])`` — same
+        # clause order the grammar accepts so the render round-trips.
+        parts = [self.to_string(arg.content)]
+        if arg.where is not None:
+            parts.append(f"where {self.to_string(arg.where)}")
+        if arg.order_by:
+            items = ", ".join(self.to_string(o) for o in arg.order_by)
+            parts.append(f"order by {items}")
+        if arg.limit is not None:
+            parts.append(f"limit {arg.limit}")
+        return f"subselect({' '.join(parts)})"
+
+    @to_string.register
+    def _(self, arg: "RowsetItem"):
+        # Render the underlying derivation of the rowset's output concept (the
+        # ``<- expr`` an agent cares about), unmangling rowset-local names. The
+        # rowset's WHERE context is surfaced separately by the declaration
+        # renderer (see ``_rowset_filter_comment``). Fall back to the
+        # ``<rowset>.<field>`` reference when the expression is opaque.
+        with self._rowset_scope(arg.rowset.name):
+            field = self.to_string(arg.content)
+            if self.environment:
+                target = self.environment.concepts.get(arg.content.address)
+                if target is not None and target.lineage is not None:
+                    return self.to_string(target.lineage)
+        return f"{arg.rowset.name}.{field}"
+
+    def _multiselect_output_expr(
+        self, concept: "Concept", ms: "MultiSelectLineage"
+    ) -> str:
+        """Concept-specific render for a merge output: its derive expression or
+        just the aligned arm columns it merges — not the whole multiselect
+        (which is identical, and huge, for every output of the merge)."""
+        if ms.derive:
+            for derive_item in ms.derive.items:
+                if derive_item.derived_concept == concept.address:
+                    return self.to_string(derive_item.expr)
+        for align_item in ms.align.items:
+            if align_item.aligned_concept == concept.address:
+                cols = ", ".join(self.to_string(c) for c in align_item.concepts)
+                return f"merge({cols})"
+        return self.to_string(ms)
+
+    def _rowset_filter_comment(self, item: "RowsetItem") -> str:
+        """A trailing ``# from rowset <name> where ...`` note surfacing the
+        rowset's filter context, which the bare expression render drops."""
+        name = item.rowset.name
+        where = item.rowset.select.where_clause
+        if where is None:
+            return f"\n# from rowset {name}"
+        with self._rowset_scope(name):
+            cond = self.to_string(where)
+        if "\n" not in cond:
+            return f"\n# from rowset {name} where {cond}"
+        body = "\n".join(f"#   {ln}" for ln in cond.split("\n"))
+        return f"\n# from rowset {name} where\n{body}"
 
     @to_string.register
     def _(self, arg: "ConceptRef"):

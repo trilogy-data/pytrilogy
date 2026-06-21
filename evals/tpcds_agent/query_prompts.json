@@ -2,7 +2,7 @@
   {
     "id": 1,
     "grade": "medium",
-    "prompt": "For returns to physical stores in Tennessee in 2000, find the billing customers whose total returns for a store were more than 1.2 times what the average billing customer returns for that store were in that period. Print only the alphanumeric billing customer id, order by that; limit 100 rows."
+    "prompt": "For returns to physical stores in Tennessee in 2000, find the billing customers whose total returns for a store were more than 1.2 times what the average billing customer returns for that store were in that period. Print one row per alphanumeric billing customer id and store_id combo that meet the criteria, but do not return the store_id in results; order by billing customer id; limit 100 rows."
   },
   {
     "id": 2,
@@ -206,7 +206,7 @@
   {
     "id": 40,
     "grade": "medium",
-    "prompt": "For catalog sales of items whose current price is between 0.99 and 1.49, sold on dates between 2000-02-10 and 2000-04-10, and only for sales where the warehouse is recorded, report two figures grouped by warehouse state and item code (the item's stable business identifier, not the surrogate key): the total of (the unit price (not the total price) minus any refunded cash from a matching catalog return) for sales before 2000-03-11, and the same unit-price-based total for sales on or after 2000-03-11. Match catalog returns to catalog sales by order number and item; treat a missing refunded cash amount as 0, and report 0 (not null) for a period with no qualifying sales. Order by warehouse state then item code; limit 100 rows."
+    "prompt": "For catalog sales of items whose current price is between 0.99 and 1.49, sold on dates between 2000-02-10 and 2000-04-10, and only for sales where the warehouse is recorded, report two figures grouped by warehouse state and item code (the item's stable business identifier, not the surrogate key): the total of (the unit price (not the total price) minus any refunded cash from a matching catalog return for the same order and item) for sales before 2000-03-11, and the same unit-price-based total for sales on or after 2000-03-11. Match catalog returns to catalog sales by order number and item; treat a missing refunded cash amount as 0, and report 0 (not null) for a period with no qualifying sales. Order by warehouse state then item code; limit 100 rows."
   },
   {
     "id": 41,
@@ -366,7 +366,7 @@
   {
     "id": 72,
     "grade": "hard",
-    "prompt": "For catalog sales in 1999 where the billing time recorded (not current) household demographic's buy potential is '>10000', the billing time recorded customer demographic (not current) marital status is 'D', and the sale took more than 5 days to ship, find all warehouse inventory for the same item in the same week sequence where the inventory quantity on hand was less than the catalog sales quantity. Return the item description, the warehouse name, the week sequence the item was sold in, and three counts of orders: those with no promotion, those with a promotion, and the total. Order the results by total orders descending (nulls first), then by item description, warehouse name, and week sequence (each nulls first). Limit to 100 rows."
+    "prompt": "For catalog sales in 1999 where the billing time recorded (not current) household demographic's buy potential is '>10000', the billing time recorded customer demographic (not current) marital status is 'D', and the sale took more than 5 days to ship, find all warehouse inventory for the same item in the same week sequence where the inventory quantity on hand was less than the catalog sales quantity. A sale is matched to inventory by item and week sequence only, regardless of which warehouse held the stock. Return the item description, the name of the warehouse that held the inventory, the week sequence the item was sold in, and three counts of order ids: those with no promotion, those with a promotion, and the total. Order the results by total orders descending (nulls first), then by item description, warehouse name, and week sequence (each nulls first). Limit to 100 rows."
   },
   {
     "id": 73,
@@ -421,12 +421,12 @@
   {
     "id": 83,
     "grade": "medium",
-    "prompt": "For each item, compute three return quantities - total store-return quantity, total catalog-return quantity, and total web-return quantity - restricted to returns whose returned date falls in any of the calendar weeks that contain 2000-06-30, 2000-09-27, or 2000-11-17. Keep only items that have at least one return record (a return row, regardless of quantity) in each of the three channels. For each such item, report the item code, the store-return quantity, the store-return quantity as a percentage of the three-channel total averaged across channels (the formula is store qty divided by the three-channel sum, divided by 3, times 100), the catalog-return quantity with its analogous percentage, the web-return quantity with its analogous percentage, and the three-channel average (sum divided by 3). Order by item code then store-return quantity, both with nulls first; limit 100 rows."
+    "prompt": "For each item, compute three return quantities - total store-return quantity, total catalog-return quantity, and total web-return quantity - restricted to returns whose returned date falls in any of the calendar weeks that contain 2000-06-30, 2000-09-27, or 2000-11-17. Keep only items that have at least one return record (a return row, regardless of quantity) in each of the three channels. When a channel has a return row but its quantity was not recorded, treat that quantity as unknown rather than zero: its percentage, and that item's three-channel average, are likewise unknown. For each such item, report the item code, the store-return quantity, the store-return quantity as a percentage of the three-channel total averaged across channels (the formula is store qty divided by the three-channel sum, divided by 3, times 100), the catalog-return quantity with its analogous percentage, the web-return quantity with its analogous percentage, and the three-channel average (sum divided by 3). Order by item code then store-return quantity, both with nulls first; limit 100 rows."
   },
   {
     "id": 84,
     "grade": "medium",
-    "prompt": "List the customer code (the stable business identifier) and full name (formatted as 'last name, first name', using empty strings for missing parts) for each all demographic matches between any customer with a current home address in the city of Edgewood and any store return on the customers customer-demographic profile type equals the (point in time) demographic profile from the return (not just the customer associated with the return; any demographic matching customer); the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128;. Report one row per non-null qualifying (customer, store return) pair - do not deduplicate or aggregate by customer. Order by customer code with nulls first; limit 100 rows."
+    "prompt": "List the customer code (the stable business identifier) and full name (formatted as 'last name, first name', using empty strings for missing parts) for each all demographic matches between any customer with a current home address in the city of Edgewood and any store return on the customers customer-demographic profile type equals the (point in time) demographic profile from the return (not just the customer associated with the return; any demographic matching customer); the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128;. Report one row per non-null qualifying (customer, ticket_number, item_id) combo, but only return the customer code and full name. Order by customer code with nulls first; limit 100 rows."
   },
   {
     "id": 85,

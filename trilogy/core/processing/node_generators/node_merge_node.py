@@ -574,12 +574,27 @@ def gen_merge_node(
         all_search_concepts = all_concepts
     all_search_concepts = sorted(all_search_concepts, key=lambda x: x.address)
     break_set = set([x.address for x in all_search_concepts])
-    for filter_downstream in [True, False]:
-        # Skip condition pruning only when conditions are "owned" by a partial datasource;
-        # otherwise retain normal pruning so regular WHERE conditions still gate resolution.
-        resolved_search_conditions = (
-            None if effective_search_conditions is not None else search_conditions
-        )
+    # Skip condition pruning only when conditions are "owned" by a partial datasource;
+    # otherwise retain normal pruning so regular WHERE conditions still gate resolution.
+    base_search_conditions = (
+        None if effective_search_conditions is not None else search_conditions
+    )
+    # Pruning by a non-partial-owned WHERE is only an optimization to prefer a
+    # source that already satisfies it — the predicate is still applied on top by
+    # the caller (this node is returned without preexisting conditions). So if
+    # pruning disconnects the graph (it strands a join-partner dimension that
+    # lacks the condition's columns — e.g. a date dim needed only as a
+    # post-aggregate gate, under a fact filtered on item), fall back to an
+    # unpruned pass: inject the join key, source everything, let the caller
+    # filter. The condition stays live for the aggregate's own input upstream;
+    # this only stops the gate dimension's merge from over-pruning.
+    condition_attempts: list[BuildWhereClause | None] = (
+        [base_search_conditions]
+        if base_search_conditions is None
+        else [base_search_conditions, None]
+    )
+    attempts = [(sc, fd) for sc in condition_attempts for fd in (True, False)]
+    for resolved_search_conditions, filter_downstream in attempts:
         weak_resolve = resolve_weak_components(
             all_search_concepts,
             environment,
@@ -590,7 +605,7 @@ def gen_merge_node(
         )
         if not weak_resolve:
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} wasn't able to resolve graph through intermediate concept injection with accept_partial {accept_partial}, filter_downstream {filter_downstream}"
+                f"{padding(depth)}{LOGGER_PREFIX} wasn't able to resolve graph through intermediate concept injection with accept_partial {accept_partial}, filter_downstream {filter_downstream}, pruning {resolved_search_conditions is not None}"
             )
             continue
 

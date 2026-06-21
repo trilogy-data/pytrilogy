@@ -151,6 +151,28 @@ def _out_of_scope_join_aliases(sql: str) -> list[tuple[str, str]]:
     return bad
 
 
+_AGG_FNS = ("sum", "avg", "count", "min", "max", "stddev", "median")
+
+
+def _has_nested_aggregate(sql: str) -> bool:
+    """True if any aggregate call's argument span contains another aggregate call
+    — e.g. `sum(CASE WHEN ... THEN sum(x) END)`. DuckDB rejects this with
+    'aggregate function calls cannot be nested'."""
+    low = sql.lower()
+    agg_open = re.compile(r"\b(?:%s)\(" % "|".join(_AGG_FNS))
+    for m in agg_open.finditer(low):
+        depth, i = 1, m.end()
+        while i < len(low) and depth > 0:
+            if low[i] == "(":
+                depth += 1
+            elif low[i] == ")":
+                depth -= 1
+            i += 1
+        if agg_open.search(low, m.end(), i):
+            return True
+    return False
+
+
 def test_or_membership_with_projected_aggregate(engine):
     """Regression for bug B2 + its two co-sourcing siblings, using the full
     documented repro (feeder filters include a ``date.year`` join):
@@ -169,9 +191,9 @@ def test_or_membership_with_projected_aggregate(engine):
     query = """
 import all_sales as s;
 
-auto cat_qual <- s.billing_customer.id ? s.sales_channel = 'CATALOG' and s.date.year = 1998;
-auto web_qual <- s.billing_customer.id ? s.sales_channel = 'WEB'     and s.date.year = 1998;
-auto cust_total <- sum(s.ext_sales_price ? s.sales_channel = 'STORE') by s.billing_customer.id;
+auto cat_qual <- s.billing_customer.id ? s.channel = 'CATALOG' and s.date.year = 1998;
+auto web_qual <- s.billing_customer.id ? s.channel = 'WEB'     and s.date.year = 1998;
+auto cust_total <- sum(s.ext_sales_price ? s.channel = 'STORE') by s.billing_customer.id;
 
 where s.billing_customer.id in cat_qual
    or s.billing_customer.id in web_qual
@@ -500,13 +522,94 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
 
 
+def _assert_having_membership_subselect_valid(query: str) -> None:
+    """A HAVING `x in <set>` must source its existence subselect from a real
+    producer CTE present in the WITH list — not a dangling reference. The HAVING
+    application routes through `append_existence_check` (mirroring the WHERE
+    path), so the predicate's subselect is wired regardless of node shape."""
+    env = Environment(working_path=working_path)
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    defined_ctes = set(re.findall(r"\n(\w+) as \(", sql))
+    referenced = re.search(r"in \(select (\w+)\.", sql)
+    assert referenced is not None, sql
+    assert referenced.group(1) in defined_ctes, sql
+
+
+def test_membership_in_having_over_window_renders_valid_subselect():
+    # CTE-handle form: the HAVING-carrying node is a WhereSafetyNode padding the
+    # window output.
+    _assert_having_membership_subselect_valid("""
+import all_sales as all_sales;
+
+auto ws_2001 <- all_sales.date.week_seq ? all_sales.date.year = 2001;
+
+with weekly_dow as
+where all_sales.channel in ('WEB', 'CATALOG')
+select
+    all_sales.date.week_seq as ws,
+    sum(all_sales.ext_sales_price ? all_sales.date.day_of_week = 0) as sun
+;
+
+select
+    weekly_dow.ws as week_sequence,
+    round(weekly_dow.sun / (lead(weekly_dow.sun, 53) over (order by weekly_dow.ws asc)), 2) as sun_ratio,
+    --weekly_dow.ws in ws_2001 as in_2001
+having
+    weekly_dow.ws in ws_2001
+order by weekly_dow.ws asc nulls first
+;
+""")
+
+
+def test_membership_in_having_auto_concept_renders_valid_subselect():
+    # Auto-concept form: the HAVING-carrying node is a GroupNode that does NOT
+    # itself source the set (it lands on the inner flag node), so the existence
+    # must be sourced at the HAVING site. The narrow WhereSafetyNode fold missed
+    # this; the general append_existence_check covers it.
+    _assert_having_membership_subselect_valid("""
+import all_sales as all_sales;
+
+auto ws_2001 <- all_sales.date.week_seq ? all_sales.date.year = 2001;
+
+select
+    all_sales.date.week_seq as ws,
+    --ws in ws_2001 as in_2001,
+    sum(all_sales.ext_sales_price) as sun
+having ws in ws_2001
+;
+""")
+
+
+def test_membership_in_having_no_projected_flag_renders_valid_subselect():
+    # The membership's set need not be projected as a hidden flag: the validator
+    # uses row_arguments (existence RHS exempt), and the HAVING site sources the
+    # set directly. This rowset + window + filtered-aggregate shape used to crash
+    # in DISCOVERY building the forced hidden flag's output node ('local.ws'
+    # missing parent); with no flag required, that node is never built.
+    _assert_having_membership_subselect_valid("""
+import all_sales as all_sales;
+
+rowset ws_2001 <- select all_sales.date.week_seq
+    where all_sales.channel != 'STORE' and all_sales.date.year = 2001;
+auto wk_sun <- sum(all_sales.ext_sales_price ? all_sales.date.day_of_week = 0);
+
+select
+    all_sales.date.week_seq as ws,
+    wk_sun as sun,
+    lead(wk_sun, 53) over (order by all_sales.date.week_seq) as next_sun
+having ws in ws_2001.all_sales.date.week_seq
+;
+""")
+
+
 def test_rank_over_projected_aggregate_ratio_no_recursion():
     # Bug B1: a rank() whose order_by is the same sum(a)/sum(b) ratio that is
     # also projected, with a partition key not in the projection, used to push
     # the window output into the select grain. The abstract sums then resolved
     # their `by` against that grain — grouping by the rank, whose order_by
     # rebuilt the sums — a build-time RecursionError. The grain must instead use
-    # the window's keys (item, sales_channel).
+    # the window's keys (item, channel).
     query = """
     import all_sales as s;
     where s.return_amount > 10000
@@ -514,7 +617,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
         s.item.id as item,
         sum(s.return_quantity) / sum(s.quantity) as return_quantity_ratio,
         rank(s.item.id) over (
-            partition by s.sales_channel
+            partition by s.channel
             order by sum(s.return_quantity) / sum(s.quantity) asc
         ) as rank_a
     limit 100;
@@ -522,7 +625,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
     env = Environment(working_path=working_path)
     _, statements = parse_text(query, env)
     select_grain = statements[-1].grain
-    assert select_grain.components == {"s.item.id", "s.sales_channel"}, select_grain
+    assert select_grain.components == {"s.item.id", "s.channel"}, select_grain
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert re.search(r"rank\(\) over \(partition by", sql), sql
 
@@ -581,3 +684,50 @@ def test_or_filter_over_differently_filtered_aggregates_no_recursion(engine):
     ), sql
     # and the query resolves and executes end-to-end against real data
     engine.execute_text(query)[0].fetchall()
+
+
+def test_pivot_over_filtered_rowset_aggregate_no_nested_aggregate():
+    # Enriched q02 shape: a rowset aggregates a measure at a fine grain
+    # (`day_sales <- sum(ext_sales_price) by week_seq, dow, year`), then a second
+    # rowset pivots it with per-day inline filters (`sum(day_sales ? dow = N)`)
+    # under a membership filter on week_seq. The membership filter forms a FILTER
+    # node carrying the `day_sales ? dow=N` expression (an inline filter over the
+    # un-materialized daily aggregate) between the two GROUP BYs. CollapseSingleParent
+    # folded that FILTER parent into the pivot's GROUP, inlining the daily aggregate
+    # inside the pivot's sum() -> `sum(CASE WHEN dow=N THEN sum(ext_sales_price) END)`,
+    # which DuckDB rejects ("aggregate function calls cannot be nested"). The daily
+    # aggregate must stay materialized in its own CTE.
+    query = """
+import all_sales as s;
+
+with daily_sales as
+where s.channel in ('WEB', 'CATALOG')
+select
+    s.date.week_seq as week_seq,
+    s.date.day_of_week as dow,
+    s.date.year as year,
+    sum(s.ext_sales_price) as day_sales
+;
+
+with weeks_2001 as
+where s.channel in ('WEB', 'CATALOG') and s.date.year = 2001
+select s.date.week_seq as week_seq
+;
+
+with pivoted as
+where daily_sales.week_seq in weeks_2001.week_seq
+select
+    daily_sales.week_seq,
+    sum(daily_sales.day_sales ? daily_sales.dow = 0) as sun_sales,
+    sum(daily_sales.day_sales ? daily_sales.dow = 1) as mon_sales
+;
+
+select
+    pivoted.daily_sales.week_seq as week_seq,
+    round(pivoted.sun_sales / lead(pivoted.sun_sales, 53) over (order by pivoted.daily_sales.week_seq), 2) as sun_ratio,
+    round(pivoted.mon_sales / lead(pivoted.mon_sales, 53) over (order by pivoted.daily_sales.week_seq), 2) as mon_ratio
+order by pivoted.daily_sales.week_seq nulls first;
+"""
+    env = Environment(working_path=working_path)
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    assert not _has_nested_aggregate(sql), sql

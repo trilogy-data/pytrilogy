@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 from datetime import date, datetime, timedelta
+from decimal import Decimal
+from enum import Enum
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from trilogy.constants import MagicConstants
@@ -502,12 +504,19 @@ def drop_covered_conditions(
     return result
 
 
+# Only genuine literals have an enumerable allowed-value set. Anything else
+# (a concept, or an expression node like BuildFunction) is not reasoned over.
+_LITERAL_TYPES = (str, bytes, bool, int, float, Decimal, date, timedelta, Enum)
+
+
 def _literal_values(value: object) -> set[object] | None:
-    if isinstance(value, BuildConcept):
-        return None
     if isinstance(value, (TupleWrapper, ListWrapper, tuple, list, set)):
-        return set(value)
-    return {value}
+        if all(isinstance(v, _LITERAL_TYPES) for v in value):
+            return set(value)
+        return None
+    if isinstance(value, _LITERAL_TYPES):
+        return {value}
+    return None
 
 
 def _build_allowed_map(

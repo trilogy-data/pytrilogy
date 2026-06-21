@@ -35,10 +35,15 @@ ERROR_CODES: dict[int, str] = {
     210: "Missing order direction? Order by must be explicit about direction - specify `asc` or `desc`.",
     211: "Expression in `by` clause must be wrapped in parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.",
     220: (
-        "Filter condition after a `join` clause? A query-scoped join "
-        "`inner|left join <a> = <b>` may only be followed by another `join` or "
-        "`select`. Put every filter in ONE `where` clause BEFORE the join(s) — "
-        "e.g. `where a = 1 and b = 2 inner join x.id = y.id select ...`."
+        "Filter or stray clause after a `join`? A query-scoped join "
+        "`inner|left|full join <a> = <b>` takes only key equalities — to join on "
+        "multiple keys, STACK another `join` clause (or chain `= c`), never `and`. "
+        "Joins go right after the `select` list (preferred, SQL-like) or before "
+        "`select`; the order is `where` -> `select` <cols> -> join(s) -> `having` "
+        "-> `order by` -> `limit`. Filter input rows in `where` (before `select`); "
+        "filter a joined or aggregated RESULT in `having` (select the field, hide "
+        "it with a leading `--`). Full reference: "
+        "`trilogy agent-info syntax example query-structure`."
     ),
     221: (
         "Align groups are separated by `and`, not commas. Each `align` group is "

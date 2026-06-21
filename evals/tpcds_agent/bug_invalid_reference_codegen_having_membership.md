@@ -1,6 +1,40 @@
 # Bug: "Invalid reference string" codegen crash (dangling CTE) on membership-in-HAVING + window
 
-**Status:** OPEN (found 2026-06-06)
+**Status:** FIXED 2026-06-19 (found 2026-06-06)
+
+## Fix (2026-06-19)
+
+Root cause: `query_processor.get_query_node` (v3 path) applies the top-level HAVING AFTER discovery
+(`add_condition`/wrapper) and never sourced the predicate's existence (`x in <set>`) args — unlike
+the WHERE path, which routes them through `append_existence_check` inside discovery. So the node
+carrying the HAVING had no `existence_source_map` entry for the set, and its subselect rendered a
+dangling CTE reference -> `INVALID_REFERENCE_BUG`.
+
+This interacted with two sibling bugs and was fixed in three coordinated steps:
+1. **Classification** (`bug_membership_in_having_misclassified.md`): `_substitute_having_aggregates`
+   was downgrading the HAVING `SubselectComparison` to a plain `Comparison`, so it had no existence
+   args at all. Fixed by preserving the concrete class (`type(node)`).
+2. **Existence sourcing** (this bug): after applying the HAVING (fold onto a Merge/Select node, else
+   wrap), call `append_existence_check(ds, build_environment, graph, having_clause, history)` —
+   the same helper the WHERE path uses — to source the set onto whichever node carries the
+   predicate. Made `append_existence_check` idempotent (skip if the set is already in
+   `input_concepts` OR `existence_concepts`) so it is safe to call uniformly.
+3. This replaced an earlier narrow special-case (folding onto a `WhereSafetyNode` that happened to
+   already carry the set). The general helper subsumes it and also fixes the auto-concept /
+   GroupNode shapes the narrow fix missed (e.g. `auto set <- …; select x as a … having a in set`).
+
+Regression tests in `test_non_benchmark_queries.py`:
+`test_membership_in_having_over_window_renders_valid_subselect` (CTE-handle/WhereSafetyNode shape) and
+`test_membership_in_having_auto_concept_renders_valid_subselect` (auto-concept/GroupNode shape).
+
+Still open: the rowset + window + filtered-aggregate shape degrades to a DIFFERENT discovery-side
+crash (`['local.ws']`) that fires BEFORE the HAVING block — tracked in
+`bug_membership_in_having_hidden_flag_discovery_crash.md` (#3). It needs the validator to stop
+forcing the membership into the projection (so no hidden flag), which is the next step.
+
+---
+
+**Original status:** OPEN (found 2026-06-06)
 **Severity:** medium — an internal invariant fires ("this should never occur"); a valid-looking
 query crashes at SQL render instead of being cleanly rejected or run.
 **Area:** `trilogy/dialect/base.py` (compile_statement, ~line 2315) — generated SQL references a

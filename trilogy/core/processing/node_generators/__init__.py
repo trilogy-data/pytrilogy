@@ -11,6 +11,7 @@ from .select_node import gen_select_node
 from .subselect_node import gen_subselect_node
 from .synonym_node import gen_synonym_node
 from .union_node import gen_union_node
+from .union_select_node import gen_union_select_node
 from .unnest_node import gen_unnest_node
 from .window_node import gen_window_node
 
@@ -30,4 +31,5 @@ __all__ = [
     "gen_recursive_node",
     "gen_constant_node",
     "gen_subselect_node",
+    "gen_union_select_node",
 ]

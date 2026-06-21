@@ -103,6 +103,42 @@ def test_find_similar_never_suggests_the_looked_up_address():
     assert "qual.ws.order_number" in sugg
 
 
+def test_find_similar_partial_path_subsequence_ranks_first():
+    """Dropping an intermediate namespace segment (`y1999.item_id` for the real
+    rowset path `y1999.agg.item_id`, where the column kept its source namespace)
+    must surface — and rank above — unrelated same-leaf/fuzzy candidates that don't
+    share the namespace prefix."""
+    d = _dict_with(
+        "y1999.agg.item_id",
+        "y1999.agg.product_name",
+        "ss.item.id",
+        "cs.item.id",
+        "cr.item.id",
+    )
+    sugg = d._find_similar_concepts("y1999.item_id")
+    assert "y1999.agg.item_id" in sugg
+    # the prefix-sharing path match leads the unrelated `*.item.id` fuzzy matches
+    assert sugg[0] == "y1999.agg.item_id"
+
+
+def test_find_similar_partial_path_via_extra_keys():
+    """The real path is often only STAGED (a rowset/CTE output not yet committed);
+    the partial-path match must still find it through `extra_keys`."""
+    d = _dict_with("ss.item.id", "cs.item.id", "cr.item.id")
+    sugg = d._find_similar_concepts(
+        "y1999.item_id", extra_keys=["y1999.agg.item_id", "y1999.agg.product_name"]
+    )
+    assert sugg[0] == "y1999.agg.item_id"
+
+
+def test_is_subsequence_is_ordered():
+    from trilogy.core.models.environment import _is_subsequence
+
+    assert _is_subsequence(["y1999", "item_id"], ["y1999", "agg", "item_id"])
+    assert not _is_subsequence(["item_id", "y1999"], ["y1999", "agg", "item_id"])
+    assert not _is_subsequence(["x"], ["y1999", "agg", "item_id"])
+
+
 def test_undefined_rowset_field_suggests_rowset_path(tmp_path):
     """A rowset column from an import namespace, selected WITHOUT `as`, keeps its
     full source path (`qual.ws.order_number`, not `qual.order_number`).
@@ -130,3 +166,30 @@ def test_undefined_rowset_field_suggests_rowset_path(tmp_path):
     ), exc.value.suggestions
     # never echo the looked-up address itself
     assert "qual.order_number" not in exc.value.suggestions
+
+
+def test_undefined_cte_output_join_key_suggests_staged_path():
+    """A join-key reference that drops a CTE column's source namespace
+    (`y1999.item_id` for the staged `y1999.agg.item_id`) raises through the
+    dict-level lookup in `ConceptLookup.require`. The named-statement outputs are
+    staged (not yet committed) when the third statement fails, so the suggestion
+    must surface them via the staged candidate set — not just committed concepts."""
+    env = Environment()
+    env.parse(
+        "key id int;\n"
+        "property id.color string;\n"
+        "property id.name string;\n"
+        "datasource items (id:id, color:color, name:name) "
+        "grain (id) address items;"
+    )
+    with pytest.raises(UndefinedConceptException) as exc:
+        env.parse(
+            "with agg as select id as item_id, name as product_name "
+            "where color = 'red';\n"
+            "with y1999 as select agg.item_id, agg.product_name "
+            "where agg.item_id > 0;\n"
+            "select y1999.product_name "
+            "inner join y1999.item_id = y1999.item_id;\n"
+        )
+    assert exc.value.suggestions[0] == "y1999.agg.item_id", exc.value.suggestions
+    assert "y1999.item_id" not in exc.value.suggestions

@@ -1,41 +1,41 @@
 query_id = "14"
 generator = "v3"
-gen_length = 5713
-preql_size = 1725
+gen_length = 5653
+preql_size = 1701
 comp_size = 4229
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
-     'CATALOG'  as \"sales_sales_channel\",
      1  as \"sales_row_one\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
 UNION ALL
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
-     'STORE'  as \"sales_sales_channel\",
      1  as \"sales_row_one\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
-     'WEB'  as \"sales_sales_channel\",
      1  as \"sales_row_one\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
@@ -50,7 +50,7 @@ WHERE
 ),
 questionable as (
 SELECT
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    \"cheerful\".\"sales_channel\" as \"sales_channel\",
     (cast(\"sales_item_items\".\"I_BRAND_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CLASS_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CATEGORY_ID\" as string)) as \"tuple_key\"
 FROM
     \"cheerful\"
@@ -70,7 +70,7 @@ FROM
 GROUP BY
     1
 HAVING
-    count(distinct \"questionable\".\"sales_sales_channel\") = 3
+    count(distinct \"questionable\".\"sales_channel\") = 3
 ),
 uneven as (
 SELECT
@@ -86,9 +86,9 @@ SELECT
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
     \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
     CASE
-	WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN 'store'
-	WHEN \"cheerful\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN 'web'
+	WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN 'store'
+	WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' THEN 'catalog'
+	WHEN \"cheerful\".\"sales_channel\" = 'WEB' THEN 'web'
 	ELSE null
 	END as \"channel_label\"
 FROM
@@ -106,9 +106,9 @@ GROUP BY
     5,
     6,
     7,
+    \"cheerful\".\"sales_channel\",
     \"cheerful\".\"sales_item_id\",
-    \"cheerful\".\"sales_order_id\",
-    \"cheerful\".\"sales_sales_channel\"),
+    \"cheerful\".\"sales_order_id\"),
 juicy as (
 SELECT
     \"yummy\".\"channel_label\" as \"_l0_filtered_channel_l0\",

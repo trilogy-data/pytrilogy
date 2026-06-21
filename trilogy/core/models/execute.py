@@ -1566,10 +1566,22 @@ class UnionCTE:
             new if x.safe_identifier == old.safe_identifier else x
             for x in self.parent_ctes
         ]
-        self.internal_ctes = [
-            new if x.safe_identifier == old.safe_identifier else x
-            for x in self.internal_ctes
-        ]
+        new_internal: list[CTE | UnionCTE] = []
+        for branch in self.internal_ctes:
+            if branch.safe_identifier == old.safe_identifier:
+                new_internal.append(new)
+                continue
+            # An arm renders inline against its own base (``FROM <arm-source>``);
+            # if that source is the CTE being replaced, repoint the arm too —
+            # otherwise the arm dangles at a CTE that was merged away. The arm
+            # object lives only here (it is not in the optimizer's working set),
+            # so the consumer-level repoint never reaches it.
+            if any(
+                p.safe_identifier == old.safe_identifier for p in branch.parent_ctes
+            ):
+                branch.replace_dependency(old, new)
+            new_internal.append(branch)
+        self.internal_ctes = new_internal
 
     @property
     def identifier(self) -> str:

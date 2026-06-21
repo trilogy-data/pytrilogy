@@ -7,11 +7,8 @@ import web_returns as wr;
 const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;
 
-# Catalog returns aggregated per call_center (NULL group included via
-# coalesce sentinel), then folded to a 1-row scalar so the catalog branch
-# can broadcast: per-id sales/profit get multiplied by N_cr_groups, per-id
-# returns/loss broadcast as the total. This replicates the reference's
-# `FROM cs , cr` (CROSS JOIN with no key) catalog branch.
+# Catalog returns aggregated per call_center, folded to a 1-row scalar so the
+# catalog branch can broadcast (replicates the reference's `FROM cs , cr`).
 rowset cr_grouped <- where
     cr.date.date between period_start and period_end
 select
@@ -26,9 +23,9 @@ rowset cr_totals <- select
     sum(cr_grouped.cr_loss_per_cc) as cr_total_loss,
 ;
 
-# Store-side per-store_sk aggregations.
 rowset ss_grouped <- where
     ss.date.date between period_start and period_end
+    and ss.store.id is not null
 select
     ss.store.id as ss_store_id,
     sum(ss.ext_sales_price) as ss_sales,
@@ -43,9 +40,9 @@ select
     sum(ss.return_net_loss) as sr_loss,
 ;
 
-# Web-side per-web_page_sk aggregations.
 rowset ws_grouped <- where
     ws.date.date between period_start and period_end
+    and ws.web_page.id is not null
 select
     ws.web_page.id as ws_wp_id,
     sum(ws.ext_sales_price) as ws_sales,
@@ -60,44 +57,39 @@ select
     sum(wr.net_loss) as wr_loss,
 ;
 
-# UNION the 3 branches via multi-select with align. The catalog branch is
-# inlined (rather than wrapped in its own rowset) to keep the force_group
-# flag uniform across all multi-select branches — wrapping the cross-join
-# in a rowset hits "can only merge two datasources if the force_group
-# flag is the same" during planning.
-rowset l0_union <- where
-    cs.date.date between period_start and period_end
-select
-    'catalog channel' as u_channel_c,
-    cs.call_center.id as u_id_c,
-    sum(cs.ext_sales_price) * cr_totals.cr_n_groups::numeric(15,2) as u_sales_c,
-    cr_totals.cr_total_returns::numeric(15,2) as u_returns_c,
-    sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss::numeric(15,2) as u_profit_c,
-merge
-select
-    'store channel' as u_channel_s,
-    ss_grouped.ss_store_id as u_id_s,
-    ss_grouped.ss_sales::numeric(15,2) as u_sales_s,
-    coalesce(sr_grouped.sr_returns, 0)::numeric(15,2) as u_returns_s,
-    ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0)::numeric(15,2) as u_profit_s,
-merge
-select
-    'web channel' as u_channel_w,
-    ws_grouped.ws_wp_id as u_id_w,
-    ws_grouped.ws_sales::numeric(15,2) as u_sales_w,
-    coalesce(wr_grouped.wr_returns, 0)::numeric(15,2) as u_returns_w,
-    ws_grouped.ws_profit - coalesce(wr_grouped.wr_loss, 0)::numeric(15,2) as u_profit_w,
-align
-    u_channel: u_channel_c, u_channel_s, u_channel_w
-    and u_id: u_id_c, u_id_s, u_id_w
-    and u_sales: u_sales_c, u_sales_s, u_sales_w
-    and u_returns: u_returns_c, u_returns_s, u_returns_w
-    and u_profit: u_profit_c, u_profit_s, u_profit_w
-;
+# UNION the 3 channel branches via the relational union(...) TVF. Each arm is a
+# self-contained select; the store/web sales<-returns join is localized to the
+# arm that needs it (vs the old multiselect where the joins lived in the outer
+# select).
+with l0_union as union(
+    (where cs.date.date between period_start and period_end
+     select
+        'catalog channel' as u_channel,
+        cs.call_center.id as u_id,
+        sum(cs.ext_sales_price) * cr_totals.cr_n_groups::numeric(15,2) as u_sales,
+        cr_totals.cr_total_returns::numeric(15,2) as u_returns,
+        sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss::numeric(15,2) as u_profit,
+    ),
+    (left join ss_grouped.ss_store_id = sr_grouped.sr_store_id
+     select
+        'store channel' as u_channel,
+        ss_grouped.ss_store_id as u_id,
+        ss_grouped.ss_sales::numeric(15,2) as u_sales,
+        coalesce(sr_grouped.sr_returns, 0)::numeric(15,2) as u_returns,
+        ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0)::numeric(15,2) as u_profit,
+    ),
+    (left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id
+     select
+        'web channel' as u_channel,
+        ws_grouped.ws_wp_id as u_id,
+        ws_grouped.ws_sales::numeric(15,2) as u_sales,
+        coalesce(wr_grouped.wr_returns, 0)::numeric(15,2) as u_returns,
+        ws_grouped.ws_profit - coalesce(wr_grouped.wr_loss, 0)::numeric(15,2) as u_profit,
+    )
+) -> (u_channel, u_id, u_sales, u_returns, u_profit);
 
-# Final ROLLUP(channel, id) over the unioned L0.
-left join ss_grouped.ss_store_id = sr_grouped.sr_store_id
-left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id
+# Final ROLLUP(channel, id) over the unioned L0. The sales<-returns joins are
+# now declared inside each arm (arm-local query-scoped joins).
 select
     l0_union.u_channel as channel,
     l0_union.u_id as id,

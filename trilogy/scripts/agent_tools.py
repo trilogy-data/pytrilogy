@@ -136,13 +136,12 @@ TRILOGY_TOOL = LLMToolDefinition(
     name="trilogy",
     description=(
         "Invoke the trilogy CLI as a subprocess. Returns captured stdout, stderr, "
-        "and exit code. stdout is a stream of pretty-printed JSON event objects "
+        "and exit code. stdout typically JSONL "
         "(newline-separated, parse successively), e.g. "
         '{"event":"result","columns":[...],"rows":[...],"row_count":N} for query '
         'output, {"type":"concepts","namespaces":{...}} for explore, '
-        '{"event":"error","message":...} for failures. Read the events; there is '
-        "no decorative formatting. Oversized output is capped on event "
-        "boundaries (a trailing output_truncated event flags it)."
+        '{"event":"error","message":...} for failures. Oversized output is capped and middle truncated '
+        "with a warning."
     ),
     input_schema={
         "type": "object",
@@ -170,8 +169,7 @@ LIST_FILES_TOOL = LLMToolDefinition(
     name="list_files",
     description=(
         "List files in the workspace (default: current directory, recursive). "
-        "Use this when unsure what files exist — for example, before assuming "
-        "a path like './store_sales.preql' (the model files live under raw/). "
+        "Use this to understand available files before running explore. "
         "Returns a JSON `files` event with an `entries` array; each .preql "
         "entry carries a `description` from its leading `#` comment block."
     ),
@@ -229,7 +227,7 @@ TODO_TOOL = LLMToolDefinition(
 RETURN_CONTROL_TOOL = LLMToolDefinition(
     name="return_control_to_user",
     description=(
-        "Hand control back to the user when a task is finished, with an"
+        "Hand control back to the user when a task is complete, with an"
         " optional message. Any open TODOs are auto-discarded. Note: a"
         " reviewer pass runs on submit; if you weren't actually done, you"
         " will be kicked back to keep working. If you ARE done and a kickback"
@@ -287,20 +285,7 @@ _LIST_FILES_SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules"}
 _LIST_FILES_SKIP_PREFIXES = ("_worker_",)
 _LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
 _LIST_FILES_MAX_ENTRIES = 500
-
-# Description-rendering constants live in the shared helper so ``trilogy
-# file list`` and the agent's ``list_files`` use identical truncation. The
-# `_`-prefixed re-exports below preserve the names existing agent tests
-# already reference.
 _LIST_FILES_DESC_LIMIT = preql_description.LIST_FILES_DESC_LIMIT
-_LIST_FILES_DESC_PREFIX = preql_description.LIST_FILES_DESC_PREFIX
-
-# Description-rendering constants live in the shared helper so ``trilogy
-# file list`` and the agent's ``list_files`` use identical truncation. The
-# `_`-prefixed re-exports below preserve the names existing agent tests
-# already reference.
-_LIST_FILES_DESC_LIMIT = preql_description.LIST_FILES_DESC_LIMIT
-_LIST_FILES_DESC_PREFIX = preql_description.LIST_FILES_DESC_PREFIX
 
 
 def _should_skip_entry(name: str) -> bool:

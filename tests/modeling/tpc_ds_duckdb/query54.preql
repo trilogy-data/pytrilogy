@@ -5,7 +5,7 @@ import store as store;
 # my_customers: customers who bought i_category='Women' & i_class='maternity'
 # from catalog or web in Dec 1998
 rowset my_customers <- where
-    sales.sales_channel in ('CATALOG', 'WEB')
+    sales.channel in ('CATALOG', 'WEB')
     and sales.item.category = 'Women'
     and sales.item.class = 'maternity'
     and sales.date.year = 1998

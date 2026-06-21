@@ -5,22 +5,22 @@ import all_sales as sales;
 # daily total. The (item, date) grain naturally spans every (item, date) tuple
 # where EITHER web or store had a sale, giving us the FULL JOIN union without
 # explicit merge.
-auto web_daily <- sum(sales.sales_price ? sales.sales_channel = 'WEB') by sales.item.id, sales.date.date;
-auto store_daily <- sum(sales.sales_price ? sales.sales_channel = 'STORE') by sales.item.id, sales.date.date;
+auto web_daily <- sum(sales.sales_price ? sales.channel = 'WEB') by sales.item.id, sales.date.date;
+auto store_daily <- sum(sales.sales_price ? sales.channel = 'STORE') by sales.item.id, sales.date.date;
 
 # Per-channel row-presence flag. The reference's per-channel CTE has a row
 # whenever a sale exists on this (item, date), even if sales_price is NULL —
 # can't use `daily IS NOT NULL` since SUM of NULL prices yields NULL.
 auto web_has_row <- max(
     case
-        when sales.sales_channel = 'WEB' then 1
+        when sales.channel = 'WEB' then 1
         else 0
     end
 )
     by sales.item.id, sales.date.date;
 auto store_has_row <- max(
     case
-        when sales.sales_channel = 'STORE' then 1
+        when sales.channel = 'STORE' then 1
         else 0
     end
 )
@@ -46,7 +46,7 @@ end;
 where
     sales.date.month_seq between 1200 and 1211
     and sales.item.id is not null
-    and sales.sales_channel in ('WEB', 'STORE')
+    and sales.channel in ('WEB', 'STORE')
 select
     sales.item.id as item_sk,
     sales.date.date as d_date,

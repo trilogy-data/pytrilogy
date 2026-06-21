@@ -1,6 +1,6 @@
 query_id = "33"
 generator = "v3"
-gen_length = 4264
+gen_length = 4240
 preql_size = 494
 comp_size = 1670
 generated_sql = """
@@ -18,10 +18,10 @@ GROUP BY
     1),
 abundant as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
-     'CATALOG'  as \"sales_sales_channel\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
@@ -33,10 +33,10 @@ WHERE
 
 UNION ALL
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-     'STORE'  as \"sales_sales_channel\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -48,10 +48,10 @@ WHERE
 
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
-     'WEB'  as \"sales_sales_channel\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -70,9 +70,9 @@ FROM
 GROUP BY
     1,
     2,
+    \"abundant\".\"sales_channel\",
     \"abundant\".\"sales_item_id\",
-    \"abundant\".\"sales_order_id\",
-    \"abundant\".\"sales_sales_channel\")
+    \"abundant\".\"sales_order_id\")
 SELECT
     \"juicy\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
     sum(\"juicy\".\"sales_ext_sales_price\") as \"total_sales\"

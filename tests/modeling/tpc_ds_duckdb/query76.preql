@@ -2,8 +2,7 @@ import physical_sales as ss;
 import catalog_sales as cs;
 import web_sales as ws;
 
-# Row-grain 0/1 flag that sums to the row count without count()'s COALESCE-to-0 wrapping
-# (which breaks the multi-branch coalesce(cnt_a, cnt_b, cnt_c) derive).
+# Row-grain 0/1 flag that sums to the row count without count()'s COALESCE-to-0 wrapping.
 auto ss_row_flag <- sum(
     case
         when ss.store.id is null then 1
@@ -26,48 +25,41 @@ auto cs_row_flag <- sum(
 )
     by cs.order_number, cs.item.id;
 
-rowset q76_results <- where
-    ss.store.id is null and ss.ticket_number is not null and ss.date.id is not null
-select
-    'store' as channel_a,
-    'ss_store_sk' as col_name_a,
-    ss.date.year as year_a,
-    ss.date.quarter as qoy_a,
-    ss.item.category as category_a,
-    sum(ss_row_flag) as cnt_a,
-    sum(ss.ext_sales_price) as amt_a,
-merge
-where
-    ws.ship_customer.id is null and ws.order_number is not null and ws.date.id is not null
-select
-    'web' as channel_b,
-    'ws_ship_customer_sk' as col_name_b,
-    ws.date.year as year_b,
-    ws.date.quarter as qoy_b,
-    ws.item.category as category_b,
-    sum(ws_row_flag) as cnt_b,
-    sum(ws.ext_sales_price) as amt_b,
-merge
-where
-    cs.customer_address.id is null and cs.order_number is not null and cs.date.id is not null
-select
-    'catalog' as channel_c,
-    'cs_ship_addr_sk' as col_name_c,
-    cs.date.year as year_c,
-    cs.date.quarter as qoy_c,
-    cs.item.category as category_c,
-    sum(cs_row_flag) as cnt_c,
-    sum(cs.ext_sales_price) as amt_c,
-align
-    channel: channel_a, channel_b, channel_c
-    and col_name: col_name_a, col_name_b, col_name_c
-    and d_year: year_a, year_b, year_c
-    and d_qoy: qoy_a, qoy_b, qoy_c
-    and i_category: category_a, category_b, category_c
-derive
-    coalesce(q76_results.cnt_a, q76_results.cnt_b, q76_results.cnt_c) -> sales_cnt,
-    coalesce(q76_results.amt_a, q76_results.amt_b, q76_results.amt_c) -> sales_amt
-;
+# UNION the 3 channels via the relational union(...) TVF. A row-stack means cnt
+# and amt are just additional positional outputs (no coalesce/derive needed, as
+# the old FULL-JOIN multiselect required to fold per-arm columns together).
+with q76_results as union(
+    (where ss.store.id is null and ss.ticket_number is not null and ss.date.id is not null
+     select
+        'store' as channel,
+        'ss_store_sk' as col_name,
+        ss.date.year as d_year,
+        ss.date.quarter as d_qoy,
+        ss.item.category as i_category,
+        sum(ss_row_flag) as sales_cnt,
+        sum(ss.ext_sales_price) as sales_amt,
+    ),
+    (where ws.ship_customer.id is null and ws.order_number is not null and ws.date.id is not null
+     select
+        'web' as channel,
+        'ws_ship_customer_sk' as col_name,
+        ws.date.year as d_year,
+        ws.date.quarter as d_qoy,
+        ws.item.category as i_category,
+        sum(ws_row_flag) as sales_cnt,
+        sum(ws.ext_sales_price) as sales_amt,
+    ),
+    (where cs.customer_address.id is null and cs.order_number is not null and cs.date.id is not null
+     select
+        'catalog' as channel,
+        'cs_ship_addr_sk' as col_name,
+        cs.date.year as d_year,
+        cs.date.quarter as d_qoy,
+        cs.item.category as i_category,
+        sum(cs_row_flag) as sales_cnt,
+        sum(cs.ext_sales_price) as sales_amt,
+    )
+) -> (channel, col_name, d_year, d_qoy, i_category, sales_cnt, sales_amt);
 
 select
     q76_results.channel,

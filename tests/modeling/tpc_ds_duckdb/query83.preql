@@ -5,15 +5,15 @@ auto target_week_seqs <- date.week_seq ? date.date in ('2000-06-30'::date, '2000
 
 # Per-channel return quantities by item.text_id; the week_seq filter applies to
 # the return date.
-def channel_qty(channel) -> sum(sales.return_quantity ? sales.sales_channel = channel) by sales.item.text_id;
-def channel_present(channel) -> count(sales.order_id ? sales.sales_channel = channel) by sales.item.text_id;
+def channel_qty(channel) -> sum(sales.return_quantity ? sales.channel = channel) by sales.item.text_id;
+def channel_present(channel) -> count(sales.order_id ? sales.channel = channel) by sales.item.text_id;
 
-auto sr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'STORE') by sales.item.text_id;
-auto cr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'CATALOG') by sales.item.text_id;
-auto wr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'WEB') by sales.item.text_id;
-auto sr_item_present <- count(sales.order_id ? sales.sales_channel = 'STORE') by sales.item.text_id;
-auto cr_item_present <- count(sales.order_id ? sales.sales_channel = 'CATALOG') by sales.item.text_id;
-auto wr_item_present <- count(sales.order_id ? sales.sales_channel = 'WEB') by sales.item.text_id;
+auto sr_item_qty <- sum(sales.return_quantity ? sales.channel = 'STORE') by sales.item.text_id;
+auto cr_item_qty <- sum(sales.return_quantity ? sales.channel = 'CATALOG') by sales.item.text_id;
+auto wr_item_qty <- sum(sales.return_quantity ? sales.channel = 'WEB') by sales.item.text_id;
+auto sr_item_present <- count(sales.order_id ? sales.channel = 'STORE') by sales.item.text_id;
+auto cr_item_present <- count(sales.order_id ? sales.channel = 'CATALOG') by sales.item.text_id;
+auto wr_item_present <- count(sales.order_id ? sales.channel = 'WEB') by sales.item.text_id;
 auto total_qty <- sr_item_qty + cr_item_qty + wr_item_qty;
 auto avg_qty <- total_qty / 3.0;
 auto sr_dev <- (sr_item_qty * 1.0) / total_qty / 3.0 * 100;

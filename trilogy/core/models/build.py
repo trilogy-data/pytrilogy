@@ -74,6 +74,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     SubselectItem,
     UndefinedConcept,
+    UnionSelectLineage,
     WhereClause,
     WindowItem,
 )
@@ -1905,9 +1906,26 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                     if c.address in cte.output_lcl:
                         return c
 
-        raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        # Reaching here is an internal planner error, not user syntax: the
+        # renderer asked to map a union/multiselect output column against a CTE
+        # that doesn't expose it (typically an outer aggregate grouped the column
+        # away before an ORDER BY / projection re-referenced it). Raise a plain
+        # RuntimeError — surfacing it as a "Syntax error" wrongly blames the query.
+        raise RuntimeError(
+            f"Internal planner error: could not resolve union/multiselect output "
+            f"'{concept.address}' against CTE '{cte.name}' (it is not in that CTE's "
+            f"outputs {sorted(cte.output_lcl.addresses)}). If this came from an "
+            f"ORDER BY on a union column, order by the projected output column "
+            f"instead."
         )
+
+
+class BuildUnionSelectLineage(BuildMultiSelectLineage):
+    """Build form of a relational `union(...)` TVF: a positional column-stack
+    (SQL UNION) of arm selects. Same arm/align machinery as the multiselect
+    build lineage; the distinct type routes the planner to the union combiner
+    (`UnionNode`) instead of the FULL-JOIN merge. `build_output_components` holds
+    only the bound union columns."""
 
 
 @dataclass(slots=True)
@@ -3382,8 +3400,21 @@ class Factory:
     def _(self, base: MultiSelectLineage) -> BuildMultiSelectLineage:
         return self._build_multi_select_lineage(base)
 
+    @_build_dispatch.register
+    def _(self, base: UnionSelectLineage) -> BuildMultiSelectLineage:
+        return self._build_multi_select_lineage(
+            base,
+            build_cls=BuildUnionSelectLineage,
+            derivation=Derivation.TVF_UNION,
+            outputs_only=True,
+        )
+
     def _build_multi_select_lineage(
-        self, base: MultiSelectLineage
+        self,
+        base: MultiSelectLineage,
+        build_cls: type[BuildMultiSelectLineage] = BuildMultiSelectLineage,
+        derivation: Derivation = Derivation.MULTISELECT,
+        outputs_only: bool = False,
     ) -> BuildMultiSelectLineage:
         local_build_cache: dict[str, BuildConcept] = {}
 
@@ -3408,7 +3439,7 @@ class Factory:
                     datatype=base_concept.datatype,
                     purpose=base_concept.purpose,
                     build_is_aggregate=False,
-                    derivation=Derivation.MULTISELECT,
+                    derivation=derivation,
                     lineage=None,
                     grain=final_grain,
                     keys=base_concept.keys,
@@ -3427,9 +3458,12 @@ class Factory:
             item.aligned_concept for item in base.align.items if item.hidden
         }
         select_hidden = base.hidden_components - align_hidden
-        final: list[BuildConcept] = [
-            x for x in all_output if x.address not in select_hidden
-        ]
+        if outputs_only:
+            # A union TVF exposes only its bound output columns; the arms'
+            # internal (per-arm mangled) columns must not surface.
+            final: list[BuildConcept] = list(derived_base)
+        else:
+            final = [x for x in all_output if x.address not in select_hidden]
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
@@ -3446,7 +3480,7 @@ class Factory:
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
         )
-        lineage = BuildMultiSelectLineage(
+        lineage = build_cls(
             # we don't build selects here; they'll be built automatically in query discovery
             selects=base.selects,
             grain=final_grain,
@@ -3513,7 +3547,14 @@ class Factory:
         # entry is the source built as ITSELF (its own identity), pointed at the
         # canonical target as a pseudonym.
         for source_addr, canonical_addr in self.scoped_merge_map.items():
-            src = base.concepts.data.get(source_addr)
+            # Build the source as ITSELF. For a query-scoped join the author
+            # concepts dict still holds the source under its own address. For a
+            # GLOBAL merge, `merge_concept` rewrote `concepts[source] = target`,
+            # so concepts.data would hand back the target — the original source
+            # only survives in alias_origin_lookup; prefer that.
+            src = base.alias_origin_lookup.get(source_addr) or base.concepts.data.get(
+                source_addr
+            )
             if src is None:
                 continue
             # For a merge-style source (INNER, or a LEFT derived key), build the
@@ -3754,5 +3795,6 @@ _CONCEPT_NAME_GENERATORS.update(
         BuildParenthetical: _gen_paren_name,
         BuildComparison: _gen_comp_name,
         BuildMultiSelectLineage: _gen_msl_name,
+        BuildUnionSelectLineage: _gen_msl_name,
     }
 )

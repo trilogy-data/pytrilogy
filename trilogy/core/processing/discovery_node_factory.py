@@ -27,6 +27,7 @@ from trilogy.core.processing.node_generators import (
     gen_subselect_node,
     gen_synonym_node,
     gen_union_node,
+    gen_union_select_node,
     gen_unnest_node,
     gen_window_node,
 )
@@ -267,6 +268,20 @@ def _generate_rowset_node(ctx: NodeGenerationContext) -> StrategyNode | None:
 def _generate_subselect_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("subselect")
     return gen_subselect_node(
+        ctx.concept,
+        ctx.local_optional,
+        ctx.environment,
+        ctx.g,
+        ctx.next_depth,
+        ctx.source_concepts,
+        ctx.history,
+        conditions=ctx.conditions,
+    )
+
+
+def _generate_union_select_node(ctx: NodeGenerationContext) -> StrategyNode | None:
+    ctx.log_generation("union select")
+    return gen_union_select_node(
         ctx.concept,
         ctx.local_optional,
         ctx.environment,
@@ -529,6 +544,7 @@ def generate_node(
         Derivation.ROWSET: lambda: _generate_rowset_node(context),
         Derivation.SUBSELECT: lambda: _generate_subselect_node(context),
         Derivation.MULTISELECT: lambda: _generate_multiselect_node(context),
+        Derivation.TVF_UNION: lambda: _generate_union_select_node(context),
         Derivation.GROUP_TO: lambda: _generate_group_to_node(context),
         Derivation.BASIC: lambda: _generate_basic_node(context),
         Derivation.ROOT: lambda: RootNodeHandler(context).generate(),

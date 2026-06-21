@@ -1038,6 +1038,12 @@ class BaseDialect:
                             break
                 else:
                     rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
+            elif isinstance(c.lineage, SUBSELECT_COMPARISON_ITEMS):
+                # A named/projected membership (`auto flag <- a in b`) renders
+                # via render_expr so its RHS becomes an existence subquery
+                # rather than a bare (unjoinable) column reference. Parenthesize
+                # for the same precedence reason as BuildComparison below.
+                rval = f"({self.render_expr(c.lineage, cte=cte, raise_invalid=raise_invalid)})"
             elif isinstance(c.lineage, BuildComparison):
                 # Route through render_comparison so dialect operator overrides
                 # apply (e.g. SQLite has no native ILIKE). Parenthesize: an
@@ -1677,7 +1683,7 @@ class BaseDialect:
             # plain column) must not drive this CTE's grouping mode — re-emitting
             # its ROLLUP would double-aggregate. Only locally-computed grouped
             # aggregates set the mode.
-            and not getattr(cte, "source_map", {}).get(c.address)
+            and not cte.source_map.get(c.address)
         ]
         if not grouped:
             return AggregateGroupingMode.STANDARD, [], []

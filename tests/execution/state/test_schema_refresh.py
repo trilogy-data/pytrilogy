@@ -1,12 +1,27 @@
 import os
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
+from packaging.version import Version
 
 from trilogy import Dialects
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.state_store import refresh_stale_assets
+
+# fakesnow >= 0.11.4 regressed multi-statement persist execution. A refresh
+# persists via a single `CREATE OR REPLACE TABLE ...; INSERT INTO ...` string,
+# but fakesnow's execute() parses it with sqlglot.parse_one() (only the first
+# statement survives — the INSERT is silently dropped), then SQLAlchemy reads
+# cursor.description, which fakesnow computes as `DESCRIBE {last_sql}`. With the
+# trailing statement a DDL/DML rather than a SELECT this yields invalid SQL
+# (`DESCRIBE CREATE OR REPLACE TABLE ...` -> ParserException). Worked on the
+# previously-pinned fakesnow 0.11.3; the version cap was relaxed in 4f4a6899.
+# This is a fakesnow limitation, not a trilogy bug — real Snowflake is exercised
+# by the (skipped) BigQuery/e2e paths. Re-activates automatically if fakesnow is
+# re-pinned below 0.11.4 or fixes multi-statement description handling.
+_FAKESNOW_MULTISTATEMENT_BROKEN = Version(version("fakesnow")) >= Version("0.11.4")
 
 V1_PATH = Path(__file__).parent / "schema_refresh_v1.preql"
 V2_PATH = Path(__file__).parent / "schema_refresh_v2.preql"
@@ -191,6 +206,12 @@ incremental by version;
 """
 
 
+@pytest.mark.xfail(
+    _FAKESNOW_MULTISTATEMENT_BROKEN,
+    reason="fakesnow >= 0.11.4 mishandles multi-statement persist + cursor.description "
+    "(DESCRIBE on a CREATE/INSERT statement). See module-level note.",
+    strict=False,
+)
 def test_snowflake_type_change_triggers_refresh(snowflake_engine):
     """Snowflake (fakesnow): type change on a column is detected as schema mismatch."""
     executor = snowflake_engine

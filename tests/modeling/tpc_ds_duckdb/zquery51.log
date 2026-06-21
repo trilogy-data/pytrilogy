@@ -1,16 +1,16 @@
 query_id = "51"
 generator = "v3"
-gen_length = 3586
-preql_size = 1387
+gen_length = 3538
+preql_size = 1357
 comp_size = 1999
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-     'STORE'  as \"sales_sales_channel\",
     \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -20,9 +20,9 @@ WHERE
 
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-     'WEB'  as \"sales_sales_channel\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -32,8 +32,8 @@ WHERE
 ),
 yummy as (
 SELECT
+    \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
     \"cheerful\"
@@ -46,8 +46,8 @@ cooperative as (
 SELECT
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
+    sum(CASE WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
+    sum(CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
 FROM
     \"cheerful\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -59,11 +59,11 @@ SELECT
     \"yummy\".\"sales_date_date\" as \"sales_date_date\",
     \"yummy\".\"sales_item_id\" as \"sales_item_id\",
     max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 1
+	WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN 1
 	ELSE 0
 	END) as \"store_has_row\",
     max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 1
+	WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN 1
 	ELSE 0
 	END) as \"web_has_row\"
 FROM

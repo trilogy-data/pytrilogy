@@ -5,6 +5,7 @@
     | function
     | type_declaration
     | multi_select_statement
+    | tvf_select_statement
     | select_statement
     | persist_statement
     | rowset_derivation_statement
@@ -42,7 +43,7 @@
     // single-comparison/arithmetic cases, so prior derivations are unaffected.
     concept_derivation:  select_hide_modifier? (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" conditional
 
-    rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
+    rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (tvf_union_invocation | multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (tvf_union_invocation | multi_select_statement | select_statement))
     
     concept_nullable_modifier: "?"
 
@@ -124,7 +125,9 @@
     // select statement
     from_clause: "from"i IDENTIFIER ("," IDENTIFIER)* ","?
 
-    select_statement: from_clause? where? join_clause* "select"i select_list where?  having?  order_by?  limit?
+    // join_clause may appear before "select" (legacy) OR right after the select
+    // list (preferred, SQL-like); both positions collect into the same join set.
+    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  having?  order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
     // for this select only (a query-local merge). The left key is the brought-in
@@ -345,6 +348,16 @@
     // union statement
     _UNION.1: "UNION("i
     union: _UNION   (expr ",")* expr ")"
+
+    // table-valued function: relational union(...). Reuses the _UNION token at
+    // statement (rowset-RHS / inline-FROM) positions, disjoint from the atom-level
+    // `union` expression above. Output signature binds result columns positionally.
+    tvf_output_item: select_hide_modifier? IDENTIFIER (PURPOSE? data_type concept_nullable_modifier?)? metadata?
+    tvf_output: "->" "(" tvf_output_item ("," tvf_output_item)* ","? ")"
+    tvf_rel_arg: "(" select_statement ")"
+    _tvf_arg: tvf_rel_arg
+    tvf_union_invocation: _UNION (_tvf_arg ("," _tvf_arg)* ","?)? ")" tvf_output
+    tvf_select_statement: "from"i tvf_union_invocation select_statement
 
     //indexing into an expression is a function
     index_access: atom "[" int_lit "]"
@@ -680,7 +693,10 @@
     MODIFIER: /OPTIONAL|PARTIAL|NULLABLE/i
 
     SHORTHAND_MODIFIER: /~|\?/
-    JOIN_TYPE: "left"i | "inner"i | "full"i | "right"i | "cross"i
+    // word-boundary so `inner`/`left`/... only lex as a join keyword when standalone
+    // (lets a trailing comma before a post-select `inner join ...` end the select list
+    // without swallowing the keyword, while `inner_total` / `inner.x` stay identifiers).
+    JOIN_TYPE.2: /(?:left|inner|full|right|cross)\b/i
     struct_component: IDENTIFIER ":" data_type concept_nullable_modifier? metadata?
     struct_type: "struct"i "<" (struct_component | IDENTIFIER) ("," (struct_component | IDENTIFIER))* ","? ">"
 

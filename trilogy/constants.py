@@ -13,6 +13,10 @@ RECURSIVE_GATING_CONCEPT = "_terminal"
 
 VIRTUAL_CONCEPT_PREFIX = "_virt"
 
+# Magic rowset name for an inline `from union(...) -> (...)` TVF; its outputs are
+# exposed as bare select-local bindings, so the name never collides.
+MAGIC_TVF_UNION_NAME = "_tvf_union"
+
 ENV_CACHE_NAME = ".preql_cache.json"
 
 REMOTE_PREFIXES = (

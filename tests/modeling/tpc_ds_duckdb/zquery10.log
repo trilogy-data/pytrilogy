@@ -1,15 +1,15 @@
 query_id = "10"
 generator = "v3"
-gen_length = 6466
-preql_size = 2009
+gen_length = 6412
+preql_size = 1997
 comp_size = 1858
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"sales_purchasing_customer_id\",
-     'CATALOG'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
@@ -20,8 +20,8 @@ WHERE
 
 UNION ALL
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_purchasing_customer_id\",
-     'STORE'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
@@ -32,8 +32,8 @@ WHERE
 
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_purchasing_customer_id\",
-     'WEB'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
@@ -44,10 +44,10 @@ WHERE
 ),
 thoughtful as (
 SELECT
+    \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"cheerful\".\"sales_date_month_of_year\" as \"sales_date_month_of_year\",
     \"cheerful\".\"sales_date_year\" as \"sales_date_year\",
-    \"cheerful\".\"sales_purchasing_customer_id\" as \"sales_purchasing_customer_id\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"cheerful\".\"sales_purchasing_customer_id\" as \"sales_purchasing_customer_id\"
 FROM
     \"cheerful\"
 GROUP BY
@@ -57,21 +57,21 @@ GROUP BY
     4),
 questionable as (
 SELECT
-    CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2002 and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"thoughtful\".\"sales_purchasing_customer_id\" ELSE NULL END as \"store_buyers\"
+    CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2002 and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"thoughtful\".\"sales_purchasing_customer_id\" ELSE NULL END as \"store_buyers\"
 FROM
     \"thoughtful\"
 WHERE
-    \"thoughtful\".\"sales_sales_channel\" = 'STORE'
+    \"thoughtful\".\"sales_channel\" = 'STORE'
 
 GROUP BY
     1),
 abundant as (
 SELECT
-    CASE WHEN \"thoughtful\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"thoughtful\".\"sales_date_year\" = 2002 and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"thoughtful\".\"sales_purchasing_customer_id\" ELSE NULL END as \"webcat_buyers\"
+    CASE WHEN \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG') and \"thoughtful\".\"sales_date_year\" = 2002 and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"thoughtful\".\"sales_purchasing_customer_id\" ELSE NULL END as \"webcat_buyers\"
 FROM
     \"thoughtful\"
 WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"thoughtful\".\"sales_purchasing_customer_id\" in (select questionable.\"store_buyers\" from questionable where questionable.\"store_buyers\" is not null)
+    \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG') and \"thoughtful\".\"sales_purchasing_customer_id\" in (select questionable.\"store_buyers\" from questionable where questionable.\"store_buyers\" is not null)
 
 GROUP BY
     1)

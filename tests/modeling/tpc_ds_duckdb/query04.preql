@@ -4,7 +4,7 @@ const first_year <- 2001;
 const second_year <- 2002;
 
 def channel_year_total(channel, year) -> sum(
-    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = channel and sales.date.year = year
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.channel = channel and sales.date.year = year
 )
     by sales.billing_customer.id;
 

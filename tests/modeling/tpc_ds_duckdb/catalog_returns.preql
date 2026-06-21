@@ -25,7 +25,7 @@ properties <order_number, item.id> (
     store_credit numeric::usd?, # Store credit issued for the return (USD).
     return_amount numeric::usd?, # Total amount refunded to the customer (USD).
     return_amt_inc_tax numeric::usd?, # Total amount refunded including sales tax (USD).
-    return_quantity int?, # Number of units returned on this line.
+    return_quantity int?, # Number of units returned on this line - can be null even if a return occured.
     --had_return bool, # True if a return row exists for the line.
 );
 

@@ -37,6 +37,7 @@ from trilogy.core.enums import (
     FunctionType,
     Granularity,
     InfiniteFunctionArgs,
+    JoinType,
     Modifier,
     Ordering,
     Purpose,
@@ -1493,6 +1494,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             BuildMultiSelectLineage,
             BuildRowsetItem,
             BuildSubselectItem,
+            BuildUnionSelectLineage,
             BuildWindowItem,
         )
 
@@ -1528,6 +1530,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             ),
         ):
             return Derivation.BASIC
+        elif lineage and isinstance(
+            lineage, (BuildUnionSelectLineage, UnionSelectLineage)
+        ):
+            return Derivation.TVF_UNION
         elif lineage and isinstance(
             lineage, (BuildMultiSelectLineage, MultiSelectLineage)
         ):
@@ -1589,12 +1595,20 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
 
     @classmethod
     def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):
-        from trilogy.core.models.build import BuildFunction
+        from trilogy.core.models.build import BuildFilterItem, BuildFunction
 
         if derivation == Derivation.CONSTANT:
             return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
             if all([x.endswith(ALL_ROWS_CONCEPT) for x in grain.components]):
+                return Granularity.SINGLE_ROW
+        elif derivation == Derivation.FILTER and isinstance(lineage, BuildFilterItem):
+            # Filtering rows never changes single-row-ness; inherit the filtered
+            # content's granularity, ignoring the (multi-row) where-condition args.
+            content_args = lineage.content_concept_arguments
+            if content_args and all(
+                x.granularity == Granularity.SINGLE_ROW for x in content_args
+            ):
                 return Granularity.SINGLE_ROW
         elif (
             lineage
@@ -2962,6 +2976,11 @@ class SelectLineage(Mergeable, Namespaced):
     grain: Grain = dc_field(default_factory=Grain)
     where_clause: Optional[WhereClause] = None
     having_clause: Optional[HavingClause] = None
+    # Query-scoped JOINs declared on this select (`inner|left|full join a = b`).
+    # Carried through to discovery so a select built as a sub-node (e.g. a union
+    # arm) applies its own joins — the top-level build reads these off the
+    # statement, but a nested arm only sees its lineage.
+    scoped_joins: List[tuple[str, str, JoinType]] = dc_field(default_factory=list)
 
     @property
     def output_components(self) -> List[ConceptRef]:
@@ -2994,6 +3013,14 @@ class SelectLineage(Mergeable, Namespaced):
                 if self.having_clause
                 else None
             ),
+            scoped_joins=[
+                (
+                    target.address if s == source.address else s,
+                    target.address if t == source.address else t,
+                    jt,
+                )
+                for s, t, jt in self.scoped_joins
+            ],
         )
 
     def with_namespace(self, namespace):
@@ -3017,6 +3044,14 @@ class SelectLineage(Mergeable, Namespaced):
                 if self.having_clause
                 else None
             ),
+            scoped_joins=[
+                (
+                    address_with_namespace(s, namespace),
+                    address_with_namespace(t, namespace),
+                    jt,
+                )
+                for s, t, jt in self.scoped_joins
+            ],
         )
 
 
@@ -3057,7 +3092,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> MultiSelectLineage:
-        new = MultiSelectLineage(
+        new = type(self)(
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
             derive=(
@@ -3087,7 +3122,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
         return new
 
     def with_namespace(self, namespace: str) -> "MultiSelectLineage":
-        return MultiSelectLineage(
+        return type(self)(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             derive=self.derive.with_namespace(namespace) if self.derive else None,
@@ -3123,6 +3158,27 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
         for select in self.selects:
             output += select.output_components
         return unique(output, "address")
+
+
+@dataclass
+class UnionSelectLineage(MultiSelectLineage):
+    """Positional column-stack (SQL UNION) of arm selects.
+
+    Shares the multiselect arm structure, but `align` items carry positional
+    output bindings (output *i* <- each arm's *i*-th column) and the build
+    combiner is a `UnionNode`, not the FULL-JOIN of a multiselect. The visible
+    output is exactly the bound union columns — the arms' internal (per-arm
+    mangled) columns are never exposed.
+    """
+
+    @property
+    def output_components(self) -> list[ConceptRef]:
+        # Align-item order is the positional output order; arms' own columns are
+        # internal and must not surface.
+        return [
+            ConceptRef(address=item.aligned_concept, datatype=DataType.UNKNOWN)
+            for item in self.align.items
+        ]
 
 
 @dataclass

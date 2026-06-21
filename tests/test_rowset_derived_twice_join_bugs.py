@@ -112,17 +112,19 @@ def test_shared_parent_dedup_fusion(dedup_engine: Executor, tmp_path: Path):
     assert join == DEDUP_EXPECTED, f"join double-counts dedup rows: {join}"
 
 
-# --- Bug B: q64 join form fails to plan (passthrough-dim grain tangle) --------
-# q64 carries many functionally dependent passthrough dims (product name, sale &
-# customer address fields, first-sales/shipto years) through the per-year
-# aggregates, then inner-joins on (item, store name, store zip). The passthrough
-# dims pick up grains that mix the join-target keys with each other, and
-# discovery dead-ends with "No remaining priority concepts". Plan-time only, so
-# no tpcds data is required to reproduce.
+# --- Bug B (RESOLVED 2026-06-09): q64 join form passthrough-dim grain tangle ---
+# q64 (now query64.preql, the canonical join form) carries many functionally
+# dependent passthrough dims (product name, sale & customer address fields,
+# first-sales/shipto years) through the per-year aggregates, then inner-joins on
+# (item, store name, store zip). These used to pick up grains that mixed the
+# join-target keys with each other, dead-ending discovery with "No remaining
+# priority concepts". The scoped-INNER-join equivalence fix (build.py mirrors
+# merge_concept for derived join keys) resolved it; this is a fast plan-time
+# regression guard (test_sixty_four covers full execution). No tpcds data needed.
 
 
 def test_q64_join_form_plans():
-    text = (MODELING_DIR / "query64_join.preql").read_text()
+    text = (MODELING_DIR / "query64.preql").read_text()
     env = Environment(working_path=MODELING_DIR)
     eng = Dialects.DUCK_DB.default_executor(environment=env)
     # The two per-year aggregate rowsets are joined on derived keys. A scoped

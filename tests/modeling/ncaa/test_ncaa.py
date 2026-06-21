@@ -5,7 +5,7 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Dialects, Executor
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import BuildUnionDatasource, Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -73,7 +73,7 @@ def test_adhoc02():
         text = f.read()
 
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    with raises(UnresolvableQueryException):
+    with raises(DisconnectedConceptsException):
         engine.generate_sql(text)[0]
 
 

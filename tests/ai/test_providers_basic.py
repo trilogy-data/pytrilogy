@@ -161,7 +161,8 @@ def run_provider_test(secret_name: str, provider: Provider, model: str):
         provider=build_provider(provider, model, api_key)
     )
     response = conversation.generate_query(
-        user_input="number of flights by month (departure date) in 2020", environment=environment
+        user_input="number of flights by month (departure date) in 2020",
+        environment=environment,
     )
     _, parsed = environment.parse(response)
     validate_response(

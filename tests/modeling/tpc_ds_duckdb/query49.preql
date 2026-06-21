@@ -2,18 +2,18 @@ import all_sales as sales;
 
 # Per-(channel, item) ratios. Filter requires a returns row with return_amount > 10000
 # (acts as INNER on LEFT JOIN to returns), and Dec 2001.
-def in_window(metric) -> sum(metric) by sales.sales_channel, sales.item.id;
+def in_window(metric) -> sum(metric) by sales.channel, sales.item.id;
 
-auto return_qty <- sum(sales.return_quantity) by sales.sales_channel, sales.item.id;
-auto sale_qty <- sum(sales.quantity) by sales.sales_channel, sales.item.id;
-auto return_amt <- sum(sales.return_amount) by sales.sales_channel, sales.item.id;
-auto sale_paid <- sum(sales.net_paid) by sales.sales_channel, sales.item.id;
-auto return_rank <- rank(sales.item.id) over (partition by sales.sales_channel order by return_ratio asc);
-auto currency_rank <- rank(sales.item.id) over (partition by sales.sales_channel order by currency_ratio asc);
+auto return_qty <- sum(sales.return_quantity) by sales.channel, sales.item.id;
+auto sale_qty <- sum(sales.quantity) by sales.channel, sales.item.id;
+auto return_amt <- sum(sales.return_amount) by sales.channel, sales.item.id;
+auto sale_paid <- sum(sales.net_paid) by sales.channel, sales.item.id;
+auto return_rank <- rank(sales.item.id) over (partition by sales.channel order by return_ratio asc);
+auto currency_rank <- rank(sales.item.id) over (partition by sales.channel order by currency_ratio asc);
 auto channel_label <- case
-    when sales.sales_channel = 'WEB' then 'web'
-    when sales.sales_channel = 'CATALOG' then 'catalog'
-    when sales.sales_channel = 'STORE' then 'store'
+    when sales.channel = 'WEB' then 'web'
+    when sales.channel = 'CATALOG' then 'catalog'
+    when sales.channel = 'STORE' then 'store'
     else null
 end;
 auto return_ratio <- return_qty::numeric(15,4) / sale_qty::numeric(15,4);

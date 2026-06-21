@@ -5,7 +5,7 @@ auto sales.item.desc_truncated <- substring(sales.item.desc, 1, 30);
 auto customer_total_in_window <- sum(sales.quantity * sales.sales_price) by sales.billing_customer.id;
 
 rowset frequent_items <- where
-    sales.sales_channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003)
+    sales.channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003)
 select
     sales.item.id as frequent_item_id,
     --ss_combo_count,
@@ -19,7 +19,7 @@ auto customer_total_overall <- sum(sales.quantity * sales.sales_price) by sales.
 
 rowset max_total <- where
     sales.billing_customer.id is not null
-    and sales.sales_channel = 'STORE'
+    and sales.channel = 'STORE'
     and sales.date.year in (2000, 2001, 2002, 2003)
 select
     max(customer_total_in_window) as cmax,
@@ -29,7 +29,7 @@ select
 auto ss_combo_count <- count(sales.order_id) by sales.item.desc_truncated, sales.item.id, sales.date.date;
 
 rowset best_customers <- where
-    sales.billing_customer.id is not null and sales.sales_channel = 'STORE'
+    sales.billing_customer.id is not null and sales.channel = 'STORE'
 select
     sales.billing_customer.id as best_customer_id,
     --customer_total_overall,
@@ -48,7 +48,7 @@ where
 select
     sales.billing_customer.last_name as c_last_name,
     sales.billing_customer.first_name as c_first_name,
-    sum((sales.quantity * sales.list_price) ? sales.sales_channel in ('WEB', 'CATALOG')) as sales_total,
+    sum((sales.quantity * sales.list_price) ? sales.channel in ('WEB', 'CATALOG')) as sales_total,
 having
     sales_total > 0
 

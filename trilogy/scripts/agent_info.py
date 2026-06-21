@@ -13,6 +13,10 @@ Trilogy is a semantic ETL and reporting tool with a streamlined
 SQL-like syntax. This CLI enables workspace management, script execution, testing,
 and data ingestion.
 
+Trilogy operates on an abstract semantic model, not tables. Joins are implicit
+via namespaced concepts; explicit joins are used to merge concepts when 
+deviating from the standard model only.
+
 ## Quick Start
 
 ```bash

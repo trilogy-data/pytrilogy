@@ -3,7 +3,7 @@
 import all_sales as sales;
 
 rowset pair_presence <- where
-    sales.sales_channel in ('STORE', 'CATALOG')
+    sales.channel in ('STORE', 'CATALOG')
     and sales.date.month_seq between 1200 and 1200 + 11
     and sales.billing_customer.id is not null
     and sales.item.id is not null
@@ -12,13 +12,13 @@ select
     sales.item.id,
     max(
             case
-                when sales.sales_channel = 'STORE' then sales.order_id
+                when sales.channel = 'STORE' then sales.order_id
                 else 0
             end
         ) as store_present,
     max(
             case
-                when sales.sales_channel = 'CATALOG' then sales.order_id
+                when sales.channel = 'CATALOG' then sales.order_id
                 else 0
             end
         ) as catalog_present,

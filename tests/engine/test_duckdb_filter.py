@@ -264,6 +264,51 @@ select
     assert results[0] == (2,)
 
 
+def test_having_filters_after_window():
+    """A HAVING (post-aggregation) filter must apply AFTER a window function,
+    while a WHERE filter applies BEFORE it.
+
+    Regression: DirectReturn collapsed the window CTE into the filtering CTE,
+    so the predicate landed in the window's own SELECT scope. SQL evaluates
+    WHERE before window functions, so `lead(val, 3)` only saw the 3 surviving
+    rows and returned NULL for every row instead of computing over the full
+    series and then filtering the output.
+    """
+    setup = """
+key ws int;
+property ws.val int;
+datasource weeks (ws, val)
+grain (ws)
+query '''
+select 1 as ws, 100 as val union all select 2, 200 union all select 3, 300
+union all select 4, 400 union all select 5, 500 union all select 6, 600
+''';
+"""
+    body = """
+select
+    ws,
+    val,
+    lead(val, 3) over (order by ws asc) as next_val
+{clause}
+    ws in (1, 2, 3)
+order by ws asc;
+"""
+
+    # HAVING: window computes over the full 6-row series, THEN the output is
+    # restricted to ws 1-3 -> lead reaches rows 4/5/6.
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    having_rows = engine.execute_text(setup + body.format(clause="having"))[
+        0
+    ].fetchall()
+    assert having_rows == [(1, 100, 400), (2, 200, 500), (3, 300, 600)]
+
+    # WHERE: rows are filtered BEFORE the window runs, so lead(.., 3) looks past
+    # the end of the 3-row input and is NULL. (Documents the contrast.)
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    where_rows = engine.execute_text(setup + body.format(clause="where"))[0].fetchall()
+    assert where_rows == [(1, 100, None), (2, 200, None), (3, 300, None)]
+
+
 def test_constant_bool_where_and_having():
     engine = Dialects.DUCK_DB.default_executor()
     setup = """

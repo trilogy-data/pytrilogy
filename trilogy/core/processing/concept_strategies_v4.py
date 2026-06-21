@@ -31,6 +31,7 @@ from trilogy.core.models.build import (
     BuildMultiSelectLineage,
     BuildRowsetItem,
     BuildSelectLineage,
+    BuildUnionSelectLineage,
     BuildWhereClause,
     Factory,
     get_canonical_pseudonyms,
@@ -47,7 +48,13 @@ from trilogy.core.processing.discovery_utility import (
     depth_to_prefix,
 )
 from trilogy.core.processing.node_generators.multiselect_node import extra_align_joins
-from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    History,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+    UnionNode,
+)
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
     ROW_SHAPE_BARRIER_DERIVATIONS,
@@ -250,6 +257,85 @@ def _resolve_multiselect(
             depth=depth,
         )
 
+    node.set_output_concepts(list(mandatory_list))
+    node.rebuild_cache()
+    return BuildInfo(
+        concept_graph=nx.DiGraph(),
+        group_graph=nx.DiGraph(),
+        group_attrs={},
+        strategy_node=node,
+    )
+
+
+def _resolve_union_select(
+    union_concept: BuildConcept,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+    g: ReferenceGraph,
+    history: "V4History",
+    conditions: list[BuildWhereClause],
+) -> BuildInfo:
+    """Plan a relational `union(...)` TVF: a column-positional row stack.
+
+    Each arm is planned independently (same arm recursion as a multiselect),
+    then each arm projects its i-th column onto the shared union output concept
+    and the arms are stacked with a `UnionNode` (SQL UNION ALL) — not joined."""
+    lineage = union_concept.lineage
+    assert isinstance(lineage, BuildUnionSelectLineage)
+
+    def _empty() -> BuildInfo:
+        return BuildInfo(
+            concept_graph=nx.DiGraph(),
+            group_graph=nx.DiGraph(),
+            group_attrs={},
+            strategy_node=None,
+        )
+
+    # Canonical output order = align-item order; every arm must expose exactly
+    # these concepts, in this order, so the UNION columns line up.
+    ordered_outputs = [
+        environment.concepts[item.aligned_concept] for item in lineage.align.items
+    ]
+
+    arm_nodes: list[StrategyNode] = []
+    for arm in lineage.selects:
+        built_arm, arm_env, arm_where = _build_nested_select(arm, history)
+        arm_conditions = [arm_where] if arm_where else []
+        arm_info = search_concepts(
+            mandatory_list=list(built_arm.output_components),
+            history=history,
+            environment=arm_env,
+            depth=depth + 1,
+            g=generate_graph(arm_env),
+            conditions=arm_conditions,
+        )
+        arm_node = arm_info.strategy_node
+        if arm_node is None:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} union arm "
+                f"{[c.address for c in built_arm.output_components]} did not resolve"
+            )
+            return _empty()
+        # Expose each arm's i-th column under the shared union output, then hide
+        # the per-arm internal columns so the rendered SELECT emits only the
+        # union outputs — sourced from the hidden columns via find_source.
+        arm_own = [c.address for c in arm_node.output_concepts]
+        for out in list(arm_node.output_concepts):
+            merge_name = lineage.get_merge_concept(out)
+            if merge_name:
+                arm_node.output_concepts.append(environment.concepts[merge_name])
+        arm_node.hidden_concepts = set(arm_own)
+        arm_node.rebuild_cache()
+        arm_nodes.append(arm_node)
+
+    node: StrategyNode = UnionNode(
+        input_concepts=list(ordered_outputs),
+        output_concepts=list(ordered_outputs),
+        environment=environment,
+        depth=depth,
+        parents=arm_nodes,
+    )
     node.set_output_concepts(list(mandatory_list))
     node.rebuild_cache()
     return BuildInfo(
@@ -731,6 +817,17 @@ def _search_concepts(
     # arms are independent sub-plans joined on the alignment concept. Resolve
     # each arm through v4 and stitch them, rather than trying to source both
     # arms' columns from one (unjoinable) root scan.
+    # A relational union TVF is a column-positional row stack (UNION), not a
+    # key-join. Its lineage subclasses BuildMultiSelectLineage, so check it
+    # first and route to the union combiner.
+    union_concept = next(
+        (c for c in mandatory_list if isinstance(c.lineage, BuildUnionSelectLineage)),
+        None,
+    )
+    if union_concept is not None:
+        return _resolve_union_select(
+            union_concept, mandatory_list, environment, depth, g, history, conditions
+        )
     ms_concept = next(
         (c for c in mandatory_list if isinstance(c.lineage, BuildMultiSelectLineage)),
         None,

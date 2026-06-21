@@ -4,6 +4,7 @@ from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildGrain,
 )
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -24,6 +25,7 @@ class UnionNode(StrategyNode):
         depth: int = 0,
         partial_concepts: List[BuildConcept] | None = None,
         preexisting_conditions: BoolExpr | None = None,
+        grain: BuildGrain | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -34,6 +36,10 @@ class UnionNode(StrategyNode):
             depth=depth,
             partial_concepts=partial_concepts,
             preexisting_conditions=preexisting_conditions,
+            # A union's grain is always its stacked output columns; expose it at
+            # construction so callers don't set-then-rebuild after the fact.
+            grain=grain
+            or BuildGrain.from_concepts(output_concepts, environment=environment),
         )
         # Intrinsic column-level partials (``~col`` inside a ``partial
         # datasource``) survive a covering UNION; the caller in
@@ -60,4 +66,5 @@ class UnionNode(StrategyNode):
             depth=self.depth,
             partial_concepts=self.partial_concepts,
             preexisting_conditions=self.preexisting_conditions,
+            grain=self.grain,
         )

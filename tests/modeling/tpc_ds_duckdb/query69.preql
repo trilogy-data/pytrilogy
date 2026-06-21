@@ -6,7 +6,7 @@ import all_sales as sales;
 #   - store/web filters use sales.billing_customer.id (= SS_CUSTOMER_SK / WS_BILL_CUSTOMER_SK)
 #   - catalog filter uses sales.ship_customer.id (= CS_SHIP_CUSTOMER_SK)
 rowset store_buyers <- where
-    sales.sales_channel = 'STORE'
+    sales.channel = 'STORE'
     and sales.date.year = 2001
     and sales.date.month_of_year between 4 and 6
     and sales.billing_customer.id is not null
@@ -15,7 +15,7 @@ select
 ;
 
 rowset web_buyers <- where
-    sales.sales_channel = 'WEB'
+    sales.channel = 'WEB'
     and sales.date.year = 2001
     and sales.date.month_of_year between 4 and 6
     and sales.billing_customer.id is not null
@@ -24,7 +24,7 @@ select
 ;
 
 rowset catalog_buyers <- where
-    sales.sales_channel = 'CATALOG'
+    sales.channel = 'CATALOG'
     and sales.date.year = 2001
     and sales.date.month_of_year between 4 and 6
     and sales.ship_customer.id is not null

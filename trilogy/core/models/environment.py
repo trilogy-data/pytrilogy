@@ -123,6 +123,12 @@ class EnvironmentConfig:
         return new
 
 
+def _is_subsequence(needle: list[str], haystack: list[str]) -> bool:
+    """True if every element of `needle` appears in `haystack` in order (gaps ok)."""
+    it = iter(haystack)
+    return all(seg in it for seg in needle)
+
+
 class EnvironmentConceptDict(UserDict[str, Concept]):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -351,6 +357,24 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # it may be present in the candidate set).
         keys = [k for k in keys if k != concept_name]
 
+        # Partial-path match: a reference that drops an intermediate namespace
+        # segment (e.g. `y1999.item_id` for the real `y1999.agg.item_id`, where the
+        # rowset column kept its source namespace) shares the looked-up segments as
+        # an ordered subsequence of the candidate's. Gated to >=2 segments so a bare
+        # leaf doesn't match deep inside an unrelated path; ranked first because a
+        # shared namespace prefix is a strong relevance signal.
+        q_segs = strip_local(concept_name).split(".")
+        path_matches = (
+            [
+                strip_local(k)
+                for k in keys
+                if k != concept_name
+                and _is_subsequence(q_segs, strip_local(k).split("."))
+            ]
+            if len(q_segs) >= 2
+            else []
+        )
+
         # Leaf-name match: a bare reference like `first_name` (e.g. in ORDER BY,
         # where the full path is required) has no fuzzy match against the long
         # full-path keys, so difflib returns nothing. Surface every concept whose
@@ -365,9 +389,9 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         fuzzy = difflib.get_close_matches(
             strip_local(concept_name), [strip_local(x) for x in keys]
         )
-        # Prefer exact-leaf matches, then fuzzy, de-duplicated, capped.
+        # Prefer partial-path, then exact-leaf, then fuzzy, de-duplicated, capped.
         out: list[str] = []
-        for m in leaf_matches + fuzzy:
+        for m in path_matches + leaf_matches + fuzzy:
             if m not in out:
                 out.append(m)
         return out[:6]
@@ -429,6 +453,13 @@ class Environment:
     version: str = field(default_factory=get_version)
     cte_name_map: Dict[str, str] = field(default_factory=dict)
     alias_origin_lookup: Dict[str, Concept] = field(default_factory=dict)
+    # INNER (non-`~`) global merges as build-time collapse pairs
+    # (source_address, target_address, INNER). These collapse to one node at
+    # build time via the same mechanism scoped `join`s use (Factory
+    # scoped_merge_map), rather than the pseudonym/weak-component path. `~`
+    # (PARTIAL) merges are LEFT-style enrichment (e.g. date spines) and are NOT
+    # recorded here — they stay on the pseudonym path.
+    merges: list[tuple[str, str, JoinType]] = field(default_factory=list)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | str | None = None
@@ -729,6 +760,18 @@ class Environment:
                 self.alias_origin_lookup[address_with_namespace(key, alias)] = (
                     val.with_namespace(alias)
                 )
+        for s_addr, t_addr, jt in source.merges:
+            pair = (
+                (s_addr, t_addr, jt)
+                if same_namespace
+                else (
+                    address_with_namespace(s_addr, alias),
+                    address_with_namespace(t_addr, alias),
+                    jt,
+                )
+            )
+            if pair not in self.merges:
+                self.merges.append(pair)
 
         for key, function in list(source.functions.items()):
             if same_namespace:
@@ -944,6 +987,16 @@ class Environment:
         for k, ds in self.datasources.items():
             if source_addr in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
+
+        # An INNER merge (`merge X into Y`) is a symmetric equivalence: record it
+        # as a build-time collapse pair so discovery folds the two concepts into
+        # one node (shared with scoped `join`). A `~` merge (`into ~Y`) is a
+        # LEFT-style enrichment (Y is the preserved base, e.g. a date spine) and
+        # keeps the pseudonym path — do NOT collapse it.
+        if Modifier.PARTIAL not in modifiers and source_addr != target_addr:
+            pair = (source_addr, target_addr, JoinType.INNER)
+            if pair not in self.merges:
+                self.merges.append(pair)
 
         return True
 

@@ -14,7 +14,9 @@ from trilogy.core.enums import (
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import (
+    UnresolvableQueryException,
+)
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     ConceptRef,
@@ -29,8 +31,10 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildDatasource,
     BuildFunction,
+    BuildGrain,
     BuildMultiSelectLineage,
     BuildParamaterizedConceptReference,
+    BuildRowsetItem,
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
@@ -54,7 +58,10 @@ from trilogy.core.models.execute import (
     UnnestJoin,
 )
 from trilogy.core.optimization import optimize_ctes
-from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.processing.concept_strategies_v3 import (
+    append_existence_check,
+    source_query_concepts,
+)
 from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
@@ -472,6 +479,65 @@ def datasource_to_cte(
     return cte
 
 
+def _carry_order_by_concepts(
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+) -> None:
+    """Pull `union(...)`/multiselect ORDER BY columns into the query grain so a
+    single group node keeps them.
+
+    A plain order-by concept is rendered from whichever CTE already exposes it
+    (its source_map entry), so it needs no special handling. But a `union(...)` /
+    multiselect output column is rendered via `find_source`, which only resolves
+    at the union node itself — once an outer aggregate groups it away it is gone
+    from every downstream CTE, and the renderer crashes trying to map it
+    ("Could not find upstream map for multiselect ...").
+
+    Such a column is always an alias-source of a selected transform (the author
+    validation enforces order-by ⊆ outputs ∪ alias-sources), so it is 1:1 with a
+    grain key — adding it to the grain (and as a hidden output) keeps the group a
+    single node, rather than sourcing it as a finer optional that gets joined
+    back via a (broken) enrichment merge."""
+    if not isinstance(build_statement, BuildSelectLineage):
+        return
+    if not build_statement.order_by:
+        return
+    output_addresses = {c.address for c in build_statement.output_components}
+    carry: dict[str, BuildConcept] = {}
+    for item in build_statement.order_by.items:
+        for c in item.concept_arguments:
+            # Already projected (directly, or as the rowset handle the order-by
+            # names) — it renders from the output, no carry needed.
+            if c.address in output_addresses:
+                continue
+            target = _find_source_target(c)
+            if target is None or target.address in output_addresses:
+                continue
+            carry.setdefault(target.address, target)
+    if not carry:
+        return
+    build_statement.selection = build_statement.selection + list(carry.values())
+    build_statement.hidden_components = build_statement.hidden_components | set(carry)
+    build_statement.grain = build_statement.grain + BuildGrain.from_concepts(
+        list(carry.values())
+    )
+
+
+def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
+    """The union column an order-by concept ultimately renders from, or None.
+
+    A `union(...)`/multiselect output column is rendered through `find_source`,
+    which resolves only at the union node — unlike a plain column it can't be
+    referenced from a downstream CTE once grouped away. Walk through a rowset
+    handle to the union column it wraps and return that column (the thing to
+    carry into the grain); a plain concept returns None (no carry needed)."""
+    lineage = concept.lineage
+    if isinstance(lineage, BuildMultiSelectLineage):
+        return concept
+    if isinstance(lineage, BuildRowsetItem):
+        return _find_source_target(lineage.content)
+    return None
+
+
 def _get_query_node_v4(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -559,6 +625,16 @@ def get_query_node(
     # on caches so nested sub-selects inherit the same merges.
     if scoped_joins:
         caches.scoped_joins = scoped_joins
+    # INNER global `merge`s collapse concepts exactly like a scoped INNER join;
+    # fold them into the same build-time mechanism so both share one path (and the
+    # scoped-join discovery fixes cover merges too). `~` (LEFT/enrichment) merges
+    # are NOT in environment.merges — they stay on the pseudonym path. Idempotent:
+    # nested sub-selects inherit the same caches, so only absent pairs are added.
+    if environment.merges:
+        existing = set(caches.scoped_joins)
+        caches.scoped_joins = caches.scoped_joins + [
+            m for m in environment.merges if m not in existing
+        ]
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(environment)
     build_cache: dict[str, BuildConcept] = caches.build_cache
@@ -585,8 +661,11 @@ def get_query_node(
         scoped_joins=caches.scoped_joins,
     )
 
+    _carry_order_by_concepts(build_statement)
+
     graph = generate_graph(build_environment)
 
+    search_concepts: list[BuildConcept] = list(build_statement.output_components)
     if CONFIG.use_v4_discovery:
         return _get_query_node_v4(
             build_statement=build_statement,
@@ -599,8 +678,6 @@ def get_query_node(
     logger.info(
         f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
     )
-
-    search_concepts: list[BuildConcept] = build_statement.output_components
 
     # A tautological `X IS NOT NULL` (X provably non-null given the actual join
     # tree) is dropped later by the StripRedundantNotNull optimization rule,
@@ -643,6 +720,13 @@ def get_query_node(
                 partial_concepts=ds.partial_concepts,
                 conditions=final,
             )
+        # Source any existence (`x in <set>`) args onto the node now carrying the
+        # HAVING, mirroring the WHERE path — the predicate's subselect must read
+        # from a real producer CTE, not a dangling reference. Idempotent, so the
+        # fold branch (which may already carry the set) is a no-op.
+        append_existence_check(
+            ds, build_environment, graph, build_statement.having_clause, history
+        )
     ds.hidden_concepts = build_statement.hidden_components
     ds.ordering = build_statement.order_by
     # TODO: avoid this
@@ -666,7 +750,9 @@ def get_query_datasources(
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-    join_clauses = getattr(statement, "join_clauses", None) or []
+    join_clauses = (
+        statement.join_clauses if isinstance(statement, SelectStatement) else []
+    )
     scoped_joins = [
         (j.source_address, j.target_address, j.join_type) for j in join_clauses
     ]
@@ -688,6 +774,28 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
     return output
+
+
+def _collect_unreachable_union_arms(
+    ctes: list[CTE | UnionCTE],
+) -> list[CTE | UnionCTE]:
+    """A union's arms live in ``internal_ctes``, not ``parent_ctes``, so
+    ``flatten_ctes`` only reaches an arm when something else references it (a
+    join, a shared base). An arm reachable ONLY through its union — e.g. a rename
+    projection sitting above a grouped arm — is otherwise never emitted, leaving
+    the union pointing at an undefined CTE. Add exactly those, by name (a
+    distinct same-named instance is already covered)."""
+    reachable = {c.name for c in ctes}
+    extra: list[CTE | UnionCTE] = []
+    for cte in ctes:
+        if not isinstance(cte, UnionCTE):
+            continue
+        for arm in cte.internal_ctes:
+            for node in flatten_ctes(arm):
+                if node.name not in reachable:
+                    reachable.add(node.name)
+                    extra.append(node)
+    return extra
 
 
 def process_auto(
@@ -884,7 +992,9 @@ def process_query(
 
     for hook in hooks:
         hook.process_root_cte(root_cte)
-    raw_ctes: List[CTE | UnionCTE] = list(reversed(flatten_ctes(root_cte)))
+    flattened = flatten_ctes(root_cte)
+    flattened = _collect_unreachable_union_arms(flattened) + flattened
+    raw_ctes: List[CTE | UnionCTE] = list(reversed(flattened))
     seen = dict()
     # we can have duplicate CTEs at this point
     # so merge them together
@@ -901,7 +1011,9 @@ def process_query(
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
-    join_clauses = getattr(statement, "join_clauses", None) or []
+    join_clauses = (
+        statement.join_clauses if isinstance(statement, SelectStatement) else []
+    )
     scoped_merge_map, _ = _build_scoped_merge_index(
         [(j.source_address, j.target_address, j.join_type) for j in join_clauses]
     )

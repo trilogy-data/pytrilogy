@@ -1,11 +1,17 @@
+# q64 as a query-scoped INNER `join`, "aggregate on keys, join text later" form:
+# the per-year aggregates group on id keys only (item, store, sale/customer
+# address, the date years); the descriptive text (product name, store name/zip,
+# address fields) is enriched in the outer select. Enriching a property off a
+# renamed scoped-join key requires chaining the base key into the join group
+# (`agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id`); the arm-only address
+# ids are chained to their base directly. Matches PRAGMA tpcds(64) at sf=1 (2 rows).
 import physical_sales as ss;
 import catalog_returns as cr;
 
-# cs_ui: items where catalog sale (sum of cs_ext_list_price) exceeds twice
-# the catalog refund (sum of refunded_cash + reversed_charge + store_credit)
-# for items that have a matching catalog_return. catalog_sales is reached
-# through cr.sales (cr already imports catalog_sales as sales) so we avoid
-# the cross-import merge dance.
+# cs_ui: items where catalog sale (sum of cs_ext_list_price) exceeds twice the
+# catalog refund (refunded_cash + reversed_charge + store_credit) for items with
+# a matching catalog_return. catalog_sales is reached through cr.sales (cr
+# already imports catalog_sales as sales) so we avoid the cross-import merge.
 auto cs_ui_refund_amt <- coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
 auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
 auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
@@ -17,10 +23,12 @@ select
 ;
 
 # Row-level filter common to both year slices. Excludes the cross-CDEMO
-# marital_status inequality — deferring that to the outer aggregate keeps
-# it out of the customer_demographics join planning, which otherwise
-# triggers a LEFT->INNER upgrade that DuckDB plans catastrophically (q64
-# went from 0.05s -> 18s in PR #549's null-safe promotion).
+# marital_status inequality — deferring that to the outer aggregate keeps it out
+# of the customer_demographics join planning, which otherwise triggers a
+# LEFT->INNER upgrade that DuckDB plans catastrophically (q64 went 0.05s -> 18s
+# in PR #549's null-safe promotion). Empirically re-confirmed 2026-06-10: pushing
+# the inequality into this row filter (and collapsing ss_rows_* away) blows the
+# sf=1 plan past 3GB / 5+ min, so the extra row-grain rowset stays on purpose.
 def year_row_filter(yr) -> ss.item.id in cs_ui.cs_ui_item_id
 and ss.date.year = yr
 and ss.is_returned
@@ -31,24 +39,18 @@ and ss.store.id is not null
 and ss.sale_address.id is not null
 and ss.customer.address.id is not null;
 
-# Row-grain projection for each year. Both marital_status columns are
-# selected here so the outer aggregate can apply the inequality.
+# Row-grain projection for each year — id keys only, no descriptive text. Both
+# marital_status columns are selected so the outer aggregate can apply the
+# inequality without dragging the customer_demographics joins into the main
+# aggregate's join planning.
 rowset ss_rows_99 <- where
     @year_row_filter(1999) = True
 select
     ss.ticket_number,
     ss.item.id,
-    ss.item.product_name,
-    ss.store.name,
-    ss.store.zip,
-    ss.sale_address.street_number,
-    ss.sale_address.street_name,
-    ss.sale_address.city,
-    ss.sale_address.zip,
-    ss.customer.address.street_number,
-    ss.customer.address.street_name,
-    ss.customer.address.city,
-    ss.customer.address.zip,
+    ss.store.id,
+    ss.sale_address.id,
+    ss.customer.address.id,
     ss.date.year,
     ss.customer.first_sales_date.year,
     ss.customer.first_shipto_date.year,
@@ -64,8 +66,7 @@ rowset ss_rows_00 <- where
 select
     ss.ticket_number,
     ss.item.id,
-    ss.store.name,
-    ss.store.zip,
+    ss.store.id,
     ss.date.year,
     ss.wholesale_cost,
     ss.list_price,
@@ -74,21 +75,15 @@ select
     ss.customer.demographics.marital_status,
 ;
 
-rowset q64_results <- where
+# Per-year aggregates on id keys. The marital-status inequality is applied here
+# (not in year_row_filter) per the perf note above.
+rowset agg_99 <- where
     ss_rows_99.ss.customer_demographic.marital_status != ss_rows_99.ss.customer.demographics.marital_status
 select
     ss_rows_99.ss.item.id as item_sk_99,
-    ss_rows_99.ss.store.name as s_name_99,
-    ss_rows_99.ss.store.zip as s_zip_99,
-    ss_rows_99.ss.item.product_name as p_name_99,
-    ss_rows_99.ss.sale_address.street_number as b_sn_99,
-    ss_rows_99.ss.sale_address.street_name as b_str_99,
-    ss_rows_99.ss.sale_address.city as b_city_99,
-    ss_rows_99.ss.sale_address.zip as b_zip_99,
-    ss_rows_99.ss.customer.address.street_number as c_sn_99,
-    ss_rows_99.ss.customer.address.street_name as c_str_99,
-    ss_rows_99.ss.customer.address.city as c_city_99,
-    ss_rows_99.ss.customer.address.zip as c_zip_99,
+    ss_rows_99.ss.store.id as store_sk_99,
+    ss_rows_99.ss.sale_address.id as b_addr_99,
+    ss_rows_99.ss.customer.address.id as c_addr_99,
     ss_rows_99.ss.date.year as syear_99,
     ss_rows_99.ss.customer.first_sales_date.year as fsyear_99,
     ss_rows_99.ss.customer.first_shipto_date.year as s2year_99,
@@ -96,52 +91,56 @@ select
     sum(ss_rows_99.ss.wholesale_cost) as s1_99,
     sum(ss_rows_99.ss.list_price) as s2_99,
     sum(ss_rows_99.ss.coupon_amt) as s3_99,
-merge
-where
+;
+
+rowset agg_00 <- where
     ss_rows_00.ss.customer_demographic.marital_status != ss_rows_00.ss.customer.demographics.marital_status
 select
     ss_rows_00.ss.item.id as item_sk_00,
-    ss_rows_00.ss.store.name as s_name_00,
-    ss_rows_00.ss.store.zip as s_zip_00,
+    ss_rows_00.ss.store.id as store_sk_00,
     ss_rows_00.ss.date.year as syear_00,
     count(ss_rows_00.ss.ticket_number) as cnt_00,
     sum(ss_rows_00.ss.wholesale_cost) as s1_00,
     sum(ss_rows_00.ss.list_price) as s2_00,
     sum(ss_rows_00.ss.coupon_amt) as s3_00,
-align
-    item_sk: item_sk_99, item_sk_00
-    and s_name: s_name_99, s_name_00
-    and s_zip: s_zip_99, s_zip_00
 ;
 
+# Join the two year slices on item + store. Chaining each join key to its base
+# (`= ss.item.id`, `= ss.store.id`) puts the base key in the join group so the
+# store/item properties can be enriched off it; the arm-only address ids are
+# chained to their base so the address text enriches from them.
 where
-    q64_results.cnt_00 <= q64_results.cnt_99
+    agg_00.cnt_00 <= agg_99.cnt_99
+inner join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id
+inner join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.id
+inner join agg_99.b_addr_99 = ss.sale_address.id
+inner join agg_99.c_addr_99 = ss.customer.address.id
 select
-    q64_results.p_name_99,
-    q64_results.s_name,
-    q64_results.s_zip,
-    q64_results.b_sn_99,
-    q64_results.b_str_99,
-    q64_results.b_city_99,
-    q64_results.b_zip_99,
-    q64_results.c_sn_99,
-    q64_results.c_str_99,
-    q64_results.c_city_99,
-    q64_results.c_zip_99,
-    q64_results.syear_99,
-    q64_results.cnt_99,
-    q64_results.s1_99,
-    q64_results.s2_99,
-    q64_results.s3_99,
-    q64_results.s1_00,
-    q64_results.s2_00,
-    q64_results.s3_00,
-    q64_results.syear_00,
-    q64_results.cnt_00,
+    ss.item.product_name as p_name,
+    ss.store.name as s_name,
+    ss.store.zip as s_zip,
+    ss.sale_address.street_number as b_sn,
+    ss.sale_address.street_name as b_str,
+    ss.sale_address.city as b_city,
+    ss.sale_address.zip as b_zip,
+    ss.customer.address.street_number as c_sn,
+    ss.customer.address.street_name as c_str,
+    ss.customer.address.city as c_city,
+    ss.customer.address.zip as c_zip,
+    agg_99.syear_99,
+    agg_99.cnt_99,
+    agg_99.s1_99,
+    agg_99.s2_99,
+    agg_99.s3_99,
+    agg_00.s1_00,
+    agg_00.s2_00,
+    agg_00.s3_00,
+    agg_00.syear_00,
+    agg_00.cnt_00,
 order by
-    q64_results.p_name_99 asc nulls first,
-    q64_results.s_name asc nulls first,
-    q64_results.cnt_00 asc nulls first,
-    q64_results.s1_99 asc nulls first,
-    q64_results.s1_00 asc nulls first
+    p_name asc nulls first,
+    s_name asc nulls first,
+    agg_00.cnt_00 asc nulls first,
+    agg_99.s1_99 asc nulls first,
+    agg_00.s1_00 asc nulls first
 ;

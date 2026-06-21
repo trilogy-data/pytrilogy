@@ -1,12 +1,13 @@
-from typing import List
+from typing import TYPE_CHECKING, List
 
-from trilogy.constants import logger
+from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
     Granularity,
     Purpose,
 )
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -34,6 +35,9 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
+
+if TYPE_CHECKING:
+    from trilogy.core.graph_models import ReferenceGraph
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -435,6 +439,7 @@ def get_priority_concept(
     found_concepts: set[str],
     partial_concepts: set[str],
     depth: int,
+    environment: BuildEnvironment | None = None,
 ) -> BuildConcept:
     # optimized search for missing concepts
     all_concepts_local = all_concepts
@@ -451,6 +456,9 @@ def get_priority_concept(
     priority = (
         # then multiselects to remove them from scope
         [c for c in pass_one if c.derivation == Derivation.MULTISELECT]
+        +
+        # union TVFs behave like multiselects (self-contained combined sources)
+        [c for c in pass_one if c.derivation == Derivation.TVF_UNION]
         +
         # then rowsets to remove them from scope, as they cannot get partials
         [c for c in pass_one if c.derivation == Derivation.ROWSET]
@@ -510,8 +518,187 @@ def get_priority_concept(
             final.append(x2)
     if final:
         return final[0]
-    raise ValueError(
-        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}"
+    subgraphs = (
+        disconnected_components(environment, all_concepts)
+        if environment is not None
+        else []
+    )
+    if len(subgraphs) > 1:
+        raise DisconnectedConceptsException(
+            format_disconnected_subgraphs_error(subgraphs),
+            subgraphs=[[c.address for c in group] for group in subgraphs],
+        )
+    raise DisconnectedConceptsException(
+        format_unresolved_concepts_error(all_concepts, found_concepts),
+        subgraphs=[[c.address for c in all_concepts]],
+    )
+
+
+def _crossjoinable(concept: BuildConcept) -> bool:
+    """Single-row / constant concepts cross-join into any component, so they
+    never cause a disconnection (mirrors calculate_graph_relevance)."""
+    return (
+        concept.granularity == Granularity.SINGLE_ROW
+        or concept.derivation == Derivation.CONSTANT
+    )
+
+
+def _anchor_nodes(concept: BuildConcept) -> List[str]:
+    """Reference-graph nodes that tie a concept into the model graph: its own
+    node, its default-grain node, and its direct source args' default-grain
+    nodes (derived concepts may not carry their own node, but their sources do).
+    """
+    from trilogy.core.graph_models import concept_to_node
+
+    nodes = [
+        concept_to_node(concept),
+        concept_to_node(concept.with_default_grain()),
+    ]
+    for arg in concept.concept_arguments:
+        if isinstance(arg, BuildConcept):
+            nodes.append(concept_to_node(arg.with_default_grain()))
+    return nodes
+
+
+def _aggregate_grain_only_parents(
+    environment: BuildEnvironment,
+) -> dict[str, set[str]]:
+    """Map each aggregate concept address -> the addresses of its grain-only
+    ``by`` keys: grain components that are NOT functional inputs of the measure.
+
+    An aggregate can be regrouped to any grain, so an edge from it to its ``by``
+    key is not a join relationship and must not bridge otherwise-unconnected
+    components. ``add_concept`` adds a graph edge for every ``concept_argument``,
+    and an aggregate's ``concept_arguments`` include its ``by`` keys — so without
+    this, ``sum(web.measure) by store.county`` would connect the (separate) web
+    and store subgraphs through ``store.county``. Mirrors the
+    "aggregate up to an arbitrary grain can be joined in later" rule in
+    ``calculate_graph_relevance``.
+    """
+    out: dict[str, set[str]] = {}
+    for c in environment.concepts.values():
+        if not isinstance(c, BuildConcept):
+            continue
+        if c.derivation != Derivation.AGGREGATE or not c.grain.components:
+            continue
+        if isinstance(c.lineage, BuildAggregateWrapper):
+            measure = c.lineage.function.concept_arguments
+        elif c.lineage is not None:
+            measure = c.lineage.concept_arguments
+        else:
+            measure = []
+        measure_addrs = {a.address for a in measure if isinstance(a, BuildConcept)}
+        grain_only = set(c.grain.components) - measure_addrs
+        if grain_only:
+            out[c.address] = grain_only
+    return out
+
+
+def disconnected_components(
+    environment: BuildEnvironment,
+    concepts: List[BuildConcept],
+    g: "ReferenceGraph | None" = None,
+) -> List[List[BuildConcept]]:
+    """Partition concepts by true join reachability: two concepts share a group
+    iff their reference-graph nodes are in the same weakly-connected component
+    (i.e. some join / FK / merge path relates them). >1 group means a genuinely
+    unconnected set — a real missing join/merge, not merely a grain conflict.
+
+    Pass the resolution's graph as ``g`` to reuse it; otherwise one is built from
+    ``environment``. Crossjoinable (single-row/constant) concepts are skipped.
+    Aggregate grain-only ``by`` edges are dropped first (see
+    ``_aggregate_grain_only_parents``) so a regroupable aggregate never bridges
+    two otherwise-disconnected models through its grouping key.
+    """
+    from trilogy.core import graph as gx
+    from trilogy.core.env_processor import generate_graph
+
+    g = g if g is not None else generate_graph(environment)
+
+    # Compute connectivity on an undirected copy so we can drop aggregate
+    # grain-only edges without mutating the shared resolution graph.
+    cg = g.to_undirected()
+    grain_only = _aggregate_grain_only_parents(environment)
+    if grain_only:
+        for node, concept in g.concepts.items():
+            keys = grain_only.get(concept.address)
+            if not keys or node not in cg:
+                continue
+            for neighbor in list(gx.neighbors(cg, node)):
+                neighbor_concept = g.concepts.get(neighbor)
+                if neighbor_concept is not None and neighbor_concept.address in keys:
+                    cg.remove_edge(node, neighbor)
+
+    comp_of: dict[str, int] = {}
+    for i, component in enumerate(gx.connected_components(cg)):
+        for node in component:
+            comp_of[node] = i
+
+    # concept -> the component id it resolves into; a concept whose nodes are
+    # absent from the graph gets a synthetic per-address component so it surfaces
+    # rather than silently vanishing.
+    buckets: dict[object, List[BuildConcept]] = {}
+    for concept in concepts:
+        if _crossjoinable(concept):
+            continue
+        cid: object | None = None
+        for node in _anchor_nodes(concept):
+            if node in comp_of:
+                cid = comp_of[node]
+                break
+        if cid is None:
+            cid = f"orphan::{concept.address}"
+        buckets.setdefault(cid, []).append(concept)
+
+    groups = [sorted(grp, key=lambda c: c.address) for grp in buckets.values()]
+    return sorted(groups, key=lambda grp: min(c.address for c in grp))
+
+
+def format_disconnected_subgraphs_error(
+    subgraphs: List[List[BuildConcept]],
+) -> str:
+    def render(group: List[BuildConcept]) -> str:
+        addrs = sorted(c.address for c in group)
+        # drop internal _virt_* scaffolding, but keep raw if that empties a group
+        cleaned = [a for a in addrs if VIRTUAL_CONCEPT_PREFIX not in a]
+        return "{" + ", ".join(cleaned or addrs) + "}"
+
+    rendered = "; ".join(render(group) for group in subgraphs)
+    return (
+        "Discovery error: cannot merge all concepts into one connected query. "
+        f"The requested concepts split into {len(subgraphs)} disconnected "
+        f"subgraphs: {rendered}. Are you missing a join or merge statement to "
+        "relate them?"
+    )
+
+
+def format_unresolved_concepts_error(
+    all_concepts: List[BuildConcept], found_concepts: set[str]
+) -> str:
+    """Terminal-fallback message when discovery exhausts its candidates without
+    building one connected source. Unlike the >1-subgraph case the model graph
+    looks connected, so we can't name subgraphs — but the likely cause is still a
+    missing join/merge to relate concepts across models. List what we did and
+    didn't source, dropping internal `_virt_*` scaffolding."""
+    requested = {c.address for c in all_concepts}
+
+    def clean(addresses: set[str]) -> list[str]:
+        return sorted(a for a in addresses if VIRTUAL_CONCEPT_PREFIX not in a)
+
+    sourced = clean(found_concepts & requested)
+    unresolved = clean(requested - found_concepts)
+
+    def fmt(items: list[str]) -> str:
+        return "{" + ", ".join(items) + "}"
+
+    if unresolved:
+        detail = f"Sourced: {fmt(sourced)}; still unresolved: {fmt(unresolved)}"
+    else:
+        # everything resolved individually but couldn't be combined
+        detail = f"Sourced individually but not joinable from model: {fmt(sourced)}"
+    return (
+        "Discovery error: couldn't source all these concepts into one query; you "
+        "may need a join or merge to relate them across models. " + detail
     )
 
 
@@ -664,6 +851,7 @@ def get_loop_iteration_targets(
         found_concepts=found,
         partial_concepts=partial,
         depth=depth,
+        environment=environment,
     )
 
     # A `by`-partitioned aggregate injected purely because it appears in the

@@ -50,6 +50,7 @@ from trilogy.parsing.v2.symbols import (
     extract_dependencies,
     find_concept_literals,
     find_select_transform_targets,
+    find_tvf_output_names,
 )
 from trilogy.parsing.v2.syntax import (
     SyntaxElement,
@@ -417,6 +418,21 @@ class RowsetStatementPlan(StatementPlanBase):
         # ``SemanticState.add``.
         namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
         seen: set[str] = set()
+        # A `union(...) -> (...)` TVF rowset's outputs are EXACTLY its signature
+        # columns; arm columns are internal and renamed positionally. Bind only
+        # the signature names — never the arm literals/aliases, which would leak
+        # bogus `rowset.<arm_source>` symbols (resolvable placeholders that mask
+        # real undefined-reference errors).
+        tvf_output_names = find_tvf_output_names(self.syntax)
+        if tvf_output_names:
+            target_ns = rowset_output_namespace(self.rowset_name, namespace, namespace)
+            for output_name in tvf_output_names:
+                rowset_address = f"{target_ns}.{output_name}"
+                if rowset_address in seen:
+                    continue
+                seen.add(rowset_address)
+                hydrator.symbol_table.declare(rowset_address, output_name, target_ns)
+            return
         for literal in find_concept_literals(self.syntax):
             source_address = extract_concept_name_from_literal(literal, namespace)
             source_ns, _, source_name = source_address.rpartition(".")

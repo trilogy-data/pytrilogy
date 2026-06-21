@@ -1,11 +1,13 @@
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import List, Optional
 
-from trilogy.constants import DEFAULT_NAMESPACE, logger
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    UnresolvableQueryException,
+)
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     UndefinedConcept,
@@ -15,12 +17,18 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import condition_implies
+from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    condition_implies,
+    decompose_condition,
+)
 from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
+    disconnected_components,
+    format_disconnected_subgraphs_error,
     get_loop_iteration_targets,
     group_if_required_v2,
 )
@@ -28,6 +36,7 @@ from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     _is_independent_scope,
     _is_scalar_only,
+    _node_condition_implies,
     validate_stack,
 )
 from trilogy.core.processing.nodes import (
@@ -48,10 +57,13 @@ def append_existence_check(
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
     if where.existence_arguments:
+        already_sourced = {c.address for c in node.input_concepts} | {
+            c.address for c in node.existence_concepts
+        }
         for subselect in where.existence_arguments:
             if not subselect:
                 continue
-            if all([x.address in node.input_concepts for x in subselect]):
+            if all(x.address in already_sourced for x in subselect):
                 logger.info(
                     f"{LOGGER_PREFIX} existance clause inputs already found {[str(c) for c in subselect]}"
                 )
@@ -296,6 +308,49 @@ def check_for_early_exit(
     return False
 
 
+def _restrict_completion_conditions(
+    conditions: BuildWhereClause,
+    non_virtual: list[BuildConcept],
+    stack: list[StrategyNode],
+    original_addresses: set[str],
+) -> tuple[BuildWhereClause, list[BuildConcept]]:
+    """Re-apply at the completion merge only the WHERE atoms not already applied
+    to *every* parent. An atom is dropped solely when each parent has genuinely
+    applied it (its preexisting_conditions imply it, or the node is a scalar /
+    independent-scope source) — never merely because its column is absent from
+    the merge's outputs. A filter parent that consumed a column while a sibling
+    parent did *not* filter on it still needs that atom re-applied; keeping it
+    means its row args stay projected, and if a column is genuinely unavailable
+    the downstream input validation fails loudly rather than silently dropping a
+    filter. Returns the residual where clause and ``non_virtual`` trimmed of any
+    row args that belonged only to dropped (already-applied) atoms.
+    """
+    atoms = decompose_condition(conditions.conditional)
+    kept = [
+        a
+        for a in atoms
+        if not all(
+            _is_scalar_only(n)
+            or _is_independent_scope(n, a)
+            or _node_condition_implies(n, a)
+            for n in stack
+        )
+    ]
+    if len(kept) == len(atoms):
+        return conditions, non_virtual
+    residual = combine_condition_atoms(kept)
+    kept_row_args = {r.address for a in kept for r in a.row_arguments}
+    reduced = [
+        c
+        for c in non_virtual
+        if c.address in original_addresses or c.address in kept_row_args
+    ]
+    where = (
+        BuildWhereClause(conditional=residual) if residual is not None else conditions
+    )
+    return where, reduced
+
+
 def generate_loop_completion(context: LoopContext, virtual: set[str]) -> StrategyNode:
     condition_required = True
     non_virtual = [c for c in context.completion_mandatory if c.address not in virtual]
@@ -335,6 +390,23 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             f"Condition {context.conditions} not required, parents included filtering! {parent_map}"
         )
 
+    # When re-applying conditions at this merge, drop atoms already applied to
+    # every parent (e.g. a scalar `state = 'GA'` filtered in all arms) so we do
+    # not demand their now-consumed columns as merge outputs. Atoms not applied
+    # to all parents (e.g. an existence `order_number in feeder` filtered in one
+    # arm only) stay and are re-applied here.
+    reapply_conditions = context.conditions
+    if condition_required and context.conditions:
+        reapply_conditions, non_virtual = _restrict_completion_conditions(
+            context.conditions,
+            non_virtual,
+            context.stack,
+            {x.address for x in context.original_mandatory},
+        )
+        non_virtual_difference_values = set(x.address for x in non_virtual).difference(
+            set(x.address for x in context.original_mandatory)
+        )
+
     if len(context.stack) == 1:
         output: StrategyNode = context.stack[0]
         if non_virtual_different:
@@ -355,16 +427,22 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
 
     # ensure we can resolve our final merge
     output.resolve()
-    if condition_required and context.conditions:
-        output.add_condition(context.conditions.conditional)
-        if context.conditions.existence_arguments:
+    if condition_required and reapply_conditions:
+        output.add_condition(reapply_conditions.conditional)
+        if reapply_conditions.existence_arguments:
             append_existence_check(
                 output,
                 context.environment,
                 context.g,
-                where=context.conditions,
+                where=reapply_conditions,
                 history=context.history,
             )
+        # If we re-applied only a residual subset, the dropped atoms are still
+        # guaranteed (every parent applied them), so advertise the FULL condition
+        # as satisfied — otherwise a higher-level search sees this node as
+        # missing those atoms and re-filters or fails as incomplete.
+        if reapply_conditions is not context.conditions and context.conditions:
+            output.set_preexisting_conditions(context.conditions.conditional)
     elif context.conditions:
         output.preexisting_conditions = context.conditions.conditional
     logger.info(
@@ -527,21 +605,6 @@ def _search_concepts(
     return None
 
 
-def _disjoint_source_models(concepts: List[BuildConcept]) -> dict[str, list[str]]:
-    """Map each underlying model namespace to the output concepts that draw on
-    it. Used to explain why an unconnected-models query couldn't resolve."""
-    models: dict[str, set[str]] = defaultdict(set)
-    for c in concepts:
-        roots = {
-            (src.namespace or DEFAULT_NAMESPACE).split(".")[0]
-            for src in [c, *c.sources]
-        }
-        roots = {r for r in roots if r and r != DEFAULT_NAMESPACE}
-        for root in roots or {DEFAULT_NAMESPACE}:
-            models[root].add(c.address)
-    return {k: sorted(v) for k, v in models.items()}
-
-
 def source_query_concepts(
     output_concepts: List[BuildConcept],
     history: History,
@@ -566,22 +629,26 @@ def source_query_concepts(
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>" for c in output_concepts
         ]
-        detail = ""
-        models = _disjoint_source_models(output_concepts)
-        if len(models) > 1:
-            groups = "; ".join(
-                f"{m} (needed by {', '.join(addrs)})"
-                for m, addrs in sorted(models.items())
+        # Partition the full required set (outputs + filter row args, i.e. the
+        # resolver's `completion_mandatory`) by true join reachability in the
+        # reference graph. When it splits, name the groups and point at the
+        # join/merge fix. Reachability (not lineage anchors) means FK-joined
+        # concepts stay grouped, so the message never falsely splits joinable
+        # models.
+        required = output_concepts
+        if conditions:
+            required = unique(
+                list(output_concepts) + list(conditions.row_arguments), "address"
             )
-            names = sorted(models)
-            detail = (
-                f" The output draws on models that are not connected in the current"
-                f" graph: {groups}. If these should be related, bridge their keys with"
-                f" a merge, e.g. `merge {names[0]}.<key> into ~{names[1]}.<key>;`."
+        groups = disconnected_components(environment, required, g)
+        if len(groups) > 1:
+            raise DisconnectedConceptsException(
+                format_disconnected_subgraphs_error(groups),
+                subgraphs=[[c.address for c in group] for group in groups],
             )
         raise UnresolvableQueryException(
             "Could not resolve connections for query with output"
-            f" {error_strings} from current model.{detail}"
+            f" {error_strings} from current model."
         )
     final = [x for x in root.output_concepts if x.address not in root.hidden_concepts]
     logger.info(

@@ -276,6 +276,9 @@ allow_database_introspection = {str(allow_database_introspection).lower()}
 # When false, `trilogy file read` is refused (gentle deny pointing at explore);
 # `file list` still works. Schema discovery should go through `explore`.
 allow_file_read = {str(allow_file_read).lower()}
+# Disabled for now: A/B-ing whether the post-submit reviewer gate helps or just
+# adds false kickbacks (e.g. q14 mis-quoted "can't see them due to the limit").
+disable_reviewer = true
 """,
         encoding="utf-8",
     )

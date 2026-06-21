@@ -1,6 +1,9 @@
 from logging import INFO
 
+import pytest
+
 from trilogy import Dialects
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.hooks.query_debugger import DebuggingHook
 
 _CONFLICTING_FILTER_FIXTURE = """
@@ -57,6 +60,62 @@ order by item_id asc;
     # (2000 only) and item 40 (1999 only) drop out. Each count reflects its
     # own year scope independently.
     assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
+
+
+_SELF_WELD_FIXTURE = """
+key sale_id int;
+property sale_id.wk int;
+property sale_id.yr int;
+property sale_id.chan string;
+property sale_id.amt float;
+
+datasource sales (
+    sale_id: sale_id,
+    wk: wk,
+    yr: yr,
+    chan: chan,
+    amt: amt,
+)
+grain (sale_id)
+query '''
+select 1 as sale_id, 1 as wk, 2001 as yr, 'WEB' as chan, 10.0 as amt union all
+select 2 as sale_id, 2 as wk, 2001 as yr, 'WEB' as chan, 20.0 as amt union all
+select 3 as sale_id, 54 as wk, 2002 as yr, 'WEB' as chan, 30.0 as amt
+''';
+"""
+
+
+def test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion():
+    # The TPC-DS q02 shape an agent stumbled into. A feeder rowset (`weeks`)
+    # defines week keys plus their +53 counterparts; two sum rowsets each filter
+    # their rows to a membership in a `weeks` column (`wk in weeks.ws` /
+    # `wk in weeks.nxt`) AND the outer query scoped-joins each sum's own output
+    # key back onto that same `weeks` column. The outer scoped join collapses the
+    # feeder key onto the rowset's own output and adds it as a pseudonym; that
+    # pseudonym used to leak into the rowset's independent-scope WHERE sourcing, so
+    # building a sum rowset's membership existence resolved back to the rowset
+    # itself — it depended on itself and the planner blew the Python stack
+    # (`RecursionError`) instead of erroring cleanly. The fix strips scoped joins
+    # touching a rowset's own outputs from that rowset's inner build, so the
+    # self-weld no longer recurses. This bridge-via-a-third-rowset shape still
+    # isn't resolvable (a separate scoped-join-to-rowset limitation), but now
+    # surfaces as a clean, catchable error rather than a stack overflow.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_SELF_WELD_FIXTURE)
+    with pytest.raises(DisconnectedConceptsException):
+        executor.generate_sql("""
+rowset weeks <- select wk as ws, wk + 53 as nxt where yr = 2001;
+rowset cur_sums <-
+    where chan = 'WEB' and wk in weeks.ws
+    select wk as src_ws, sum(amt) as cur;
+rowset nxt_sums <-
+    where chan = 'WEB' and wk in weeks.nxt
+    select wk as nxt_ws, sum(amt) as nxt;
+select cur_sums.src_ws, cur_sums.cur, nxt_sums.nxt
+left join cur_sums.src_ws = weeks.ws
+inner join weeks.nxt = nxt_sums.nxt_ws
+order by cur_sums.src_ws asc;
+""")
 
 
 _PER_ARM_FILTER_FIXTURE = """
@@ -344,3 +403,374 @@ SELECT
     assert row.v2_2001 == 600, f"expected 600, got {row.v2_2001}"
     assert row.v1_2002 == 66, f"expected 66, got {row.v1_2002}"
     assert row.v2_2002 == 660, f"expected 660, got {row.v2_2002}"
+
+
+_TVF_UNION_FIXTURE = """
+key line_id int;
+property line_id.item_id int;
+property line_id.yr int;
+property line_id.val int;
+
+datasource lines (
+    line_id: line_id,
+    item_id: item_id,
+    yr: yr,
+    val: val,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 1 as item_id, 2001 as yr, 10 as val union all
+select 2 as line_id, 1 as item_id, 2002 as yr, 30 as val union all
+select 3 as line_id, 2 as item_id, 2001 as yr, 5 as val union all
+select 4 as line_id, 2 as item_id, 2002 as yr, 5 as val
+''';
+"""
+
+
+def test_tvf_union_named():
+    # A named relational `union(...)` TVF: a column-positional row stack of two
+    # arms. Output is exactly the bound columns; the result is a SQL UNION ALL
+    # (rows stacked), NOT a key-join.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+
+select combined.k, combined.v
+order by combined.k asc, combined.v asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "UNION ALL" in sql
+    assert "FULL JOIN" not in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # Row count == sum of arm rows (stack, not join); each arm contributes 2 rows.
+    assert results == [(1, 10), (1, 30), (2, 5), (2, 5)]
+
+
+def test_tvf_union_named_aggregating_consumer():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    results = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+
+select combined.k, sum(combined.v) -> total
+order by combined.k asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in results] == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_inline_from():
+    # Inline `from union(...) -> (...)`: bare output names resolve in the
+    # trailing select; same UNION semantics as the named form.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+from union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v)
+select k, sum(v) -> total
+order by k asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "UNION ALL" in sql
+    results = executor.execute_text(query)[0].fetchall()
+    assert [tuple(r) for r in results] == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_explicit_output_types():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    results = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k int, v int?);
+
+select combined.k, sum(combined.v) -> total
+order by combined.k asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in results] == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_arity_mismatch_errors():
+    import pytest
+
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    with pytest.raises(InvalidSyntaxException, match="exactly one"):
+        executor.execute_text("""
+with combined as union(
+    (select item_id -> k, val -> v),
+    (select item_id -> k)
+) -> (k, v);
+select combined.k;
+""")
+
+
+def test_tvf_union_output_alias_self_reference_errors():
+    # Aliasing a union output column back to its own aligned name
+    # (`combined.k as k`) closes a reference cycle: the rowset column `combined.k`
+    # wraps the union's `k` output (`local.k`), and `as k` redefines `local.k` as
+    # `alias(combined.k)`. This used to blow the stack with a RecursionError; it
+    # must now raise a clean, actionable error.
+    import pytest
+
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    with pytest.raises(InvalidSyntaxException, match="refers back to itself"):
+        executor.generate_sql("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as k, combined.v as v order by k asc;
+""")
+
+
+# Multiple rows per (item_id, yr) so an arm-level `sum(val)` is meaningful: a
+# GROUP BY that wrongly includes the aggregate would either error or miscount.
+_TVF_UNION_AGG_FIXTURE = """
+key line_id int;
+property line_id.item_id int;
+property line_id.yr int;
+property line_id.val int;
+
+datasource lines (
+    line_id: line_id,
+    item_id: item_id,
+    yr: yr,
+    val: val,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 1 as item_id, 2001 as yr, 10 as val union all
+select 2 as line_id, 1 as item_id, 2001 as yr, 5 as val union all
+select 3 as line_id, 2 as item_id, 2001 as yr, 5 as val union all
+select 4 as line_id, 1 as item_id, 2002 as yr, 30 as val union all
+select 5 as line_id, 2 as item_id, 2002 as yr, 5 as val union all
+select 6 as line_id, 2 as item_id, 2002 as yr, 5 as val
+''';
+"""
+
+
+def test_tvf_union_aggregating_arm_groups_by_dims_only():
+    # An arm whose output column is itself an aggregate (`sum(val)`) must group
+    # by the dimension column only, never by the aggregate. Per (item, yr):
+    #   2001: item1 = 10+5 = 15, item2 = 5
+    #   2002: item1 = 30,        item2 = 5+5 = 10
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_AGG_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id -> k, sum(val) -> v),
+    (where yr = 2002 select item_id -> k, sum(val) -> v)
+) -> (k, v);
+select combined.k, combined.v
+order by combined.k asc, combined.v asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "UNION ALL" in sql
+    assert "GROUP BY" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [(1, 15), (1, 30), (2, 5), (2, 10)]
+
+
+def test_tvf_union_aggregating_arm_reaggregating_consumer():
+    # The consumer can re-aggregate the stacked arm aggregates: total per item
+    # across both years = item1: 15+30 = 45, item2: 5+10 = 15.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_AGG_FIXTURE)
+    results = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, sum(val) -> v),
+    (where yr = 2002 select item_id -> k, sum(val) -> v)
+) -> (k, v);
+select combined.k, sum(combined.v) -> total
+order by combined.k asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in results] == [(1, 45), (2, 15)]
+
+
+_TVF_UNION_JOIN_FIXTURE = """
+key store_id int;
+key return_store_id int;
+property store_id.sale_amt int;
+property return_store_id.return_amt int;
+
+datasource sales (store_id: store_id, sale_amt: sale_amt)
+grain (store_id)
+query '''
+select 1 as store_id, 100 as sale_amt union all
+select 2 as store_id, 200 as sale_amt
+''';
+
+datasource returns (return_store_id: return_store_id, return_amt: return_amt)
+grain (return_store_id)
+query '''
+select 1 as return_store_id, 10 as return_amt union all
+select 2 as return_store_id, 20 as return_amt
+''';
+
+rowset srs <- select store_id as s_store, sum(sale_amt) as s_amt;
+rowset rrs <- select return_store_id as r_store, sum(return_amt) as r_amt;
+"""
+
+
+def test_tvf_union_arm_local_join():
+    # A union arm carries its OWN query-scoped join (across two rowsets with
+    # distinct keys, mirroring q77's sales↔returns). The join is declared inside
+    # the arm — not on the outer select — and must reach the arm's build via the
+    # arm lineage's scoped_joins. Arm 0 nets returns off sales per store.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_JOIN_FIXTURE)
+    query = """
+with combined as union(
+    (left join srs.s_store = rrs.r_store
+     select srs.s_store -> k, srs.s_amt - coalesce(rrs.r_amt, 0) -> net),
+    (select store_id -> k, sale_amt -> net)
+) -> (k, net);
+select combined.k, combined.net
+order by combined.k asc, combined.net asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    # the arm-local join was applied in the arm (joined on the scoped keys)
+    assert "JOIN" in sql
+    assert '"srs_s_store" = ' in sql and '"rrs_r_store"' in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # arm 0 (net of returns): store1 = 100-10 = 90, store2 = 200-20 = 180
+    # arm 1 (raw sales):      store1 = 100,         store2 = 200
+    assert results == [(1, 90), (1, 100), (2, 180), (2, 200)]
+
+
+_LEFT_JOIN_UNMATCHED_FIXTURE = """
+key store_id int;
+key return_store_id int;
+property store_id.sale_amt int;
+property return_store_id.return_amt int;
+
+datasource sales (store_id: store_id, sale_amt: sale_amt)
+grain (store_id)
+query '''
+select 1 as store_id, 100 as sale_amt union all
+select 2 as store_id, 200 as sale_amt
+''';
+
+datasource returns (return_store_id: return_store_id, return_amt: return_amt)
+grain (return_store_id)
+query '''select 1 as return_store_id, 10 as return_amt''';
+
+rowset srs <- select store_id as s_store, sum(sale_amt) as s_amt;
+rowset rrs <- select return_store_id as r_store, sum(return_amt) as r_amt;
+"""
+
+
+def test_scoped_left_join_coalesce_keeps_unmatched():
+    # A scoped `left join` where the partial (right) rowset is referenced ONLY
+    # through a non-null wrapper (coalesce). Returns covers store 1 only, so
+    # store 2 is unmatched on the left and must survive with coalesce(NULL,0)=0.
+    # Previously rendered INNER and dropped store 2.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_LEFT_JOIN_UNMATCHED_FIXTURE)
+    query = """
+left join srs.s_store = rrs.r_store
+select srs.s_store -> k, srs.s_amt - coalesce(rrs.r_amt, 0) -> net
+order by k asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "INNER JOIN" not in sql
+    assert "LEFT OUTER JOIN" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [(1, 90), (2, 200)]
+
+
+def test_tvf_union_order_by_grouped_away_column():
+    # Regression: an outer aggregate consumes a `union(...)` with asymmetric
+    # measure arms (constant 0 vs sum), relabels a union sort column via CASE,
+    # and ORDERS BY that sort column — which is NOT in the projection (it only
+    # feeds the CASE). The aggregate groups the sort column away, so the renderer
+    # used to crash ("Could not find upstream map for multiselect ..."). The sort
+    # column must be carried into the grain so the ORDER BY resolves. Mirrors the
+    # full-99 TPC-DS q05 union shape.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id -> sort_k, val -> a, 0 -> b),
+    (where yr = 2002 select item_id -> sort_k, 0 -> a, val -> b)
+) -> (sort_k, a, b);
+select
+  case combined.sort_k when 1 then 'one' when 2 then 'two' end -> label,
+  sum(combined.a) -> total_a,
+  sum(combined.b) -> total_b
+order by combined.sort_k asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "UNION ALL" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # item 1: a=val@2001=10, b=val@2002=30; item 2: a=val@2001=5, b=val@2002=5
+    assert results == [("one", 10, 30), ("two", 5, 5)]
+
+
+def test_tvf_union_signature_renamed_output_forward_reference():
+    # Regression: a `union(...) -> (k, v)` whose arms project bare concept
+    # literals (`item_id`, `val`) renamed ONLY by the output signature. A later
+    # derived concept (`auto ... by combined.k`) forward-references those outputs
+    # during BIND. collect_symbols declared the arm literals (combined.item_id)
+    # and `as`-aliases but missed the signature renames, so combined.k was
+    # undefined ("Suggestions: ['combined.v']"). The signature names must be
+    # declared as forward-reference symbols.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id, val),
+    (where yr = 2002 select item_id, val)
+) -> (k, v);
+
+auto total <- sum(combined.v) by combined.k;
+
+select combined.k, total
+order by combined.k asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "UNION ALL" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # k=1: 10+30=40; k=2: 5+5=10
+    assert results == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_binds_only_signature_outputs():
+    # Negative of the above: a union(...) TVF rowset's outputs are EXACTLY its
+    # `-> (...)` signature. The arm-internal names (`item_id`, `val`, the WHERE
+    # column `yr`) must NOT leak as `combined.<name>` — collect_symbols used to
+    # declare them as resolvable forward-reference placeholders, masking what
+    # should be an undefined-reference error.
+    from trilogy.core.models.environment import Environment
+    from trilogy.parsing.parse_engine_v2 import TopLevelStatementParser, parse_syntax
+
+    environment = Environment()
+    environment.parse(_TVF_UNION_FIXTURE)
+    parser = TopLevelStatementParser(environment=environment, import_keys=["root"])
+    parser.parse(parse_syntax("""
+with combined as union(
+    (where yr = 2001 select item_id, val),
+    (where yr = 2002 select item_id, val)
+) -> (k, v);
+"""))
+    bound = {
+        addr
+        for addr in parser.hydrator.symbol_table.global_scope.definitions
+        if "combined" in addr
+    }
+    assert bound == {"combined.k", "combined.v"}

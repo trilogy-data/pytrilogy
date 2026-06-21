@@ -1,8 +1,14 @@
-from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    Purpose,
+)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildFunction,
     BuildGrain,
     BuildParenthetical,
     BuildWhereClause,
@@ -14,6 +20,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,
+    condition_value_implies,
     conditions_mutually_exclusive,
     decompose_condition,
     drop_covered_conditions,
@@ -162,6 +169,25 @@ class TestConditionsMutuallyExclusive:
 
         assert conditions_mutually_exclusive(web_or_catalog, store)
         assert not conditions_mutually_exclusive(web_or_catalog, web)
+
+    def test_function_valued_atom_not_hashable(self):
+        # `concat(...) in cid` — a non-literal (unhashable) expression value must
+        # be treated as un-enumerable, not crash the allowed-value extraction.
+        cid = _concept("cid")
+        concat = BuildFunction(
+            operator=FunctionType.CONCAT,
+            arguments=["a", "b"],
+            output_data_type=DataType.STRING,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+            valid_inputs=set(),
+        )
+        membership = BuildComparison(
+            left=concat, right=cid, operator=ComparisonOperator.IN
+        )
+        other = _eq(cid, "X")
+        assert not conditions_mutually_exclusive(membership, other)
+        assert not condition_value_implies(membership, other)
 
 
 class TestStripConditionAtoms:

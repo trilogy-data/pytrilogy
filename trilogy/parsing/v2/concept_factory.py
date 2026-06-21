@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from trilogy.core.enums import Purpose
 from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
@@ -31,11 +32,13 @@ from trilogy.core.models.author import (
     MultiSelectLineage,
     WhereClause,
 )
+from trilogy.core.models.core import DataType, TraitDataType
 from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.common import (
     align_item_to_concept,
     arbitrary_to_concept,
     derive_item_to_concept,
+    union_item_to_concept,
     unwrap_transformation,
 )
 
@@ -94,6 +97,27 @@ def align_item_to_concept_v2(
         where=where,
         having=having,
         limit=limit,
+    )
+
+
+def union_item_to_concept_v2(
+    parent: AlignItem,
+    align_clause: AlignClause,
+    selects: list[SelectStatement],
+    context: "RuleContext",
+    purpose: Purpose | None = None,
+    datatype: DataType | TraitDataType | None = None,
+    nullable: bool = False,
+) -> Concept:
+    """v2 wrapper for ``union_item_to_concept`` (relational union TVF output)."""
+    return union_item_to_concept(
+        parent,
+        align_clause,
+        selects,
+        environment=context.environment,
+        purpose=purpose,
+        datatype=datatype,
+        nullable=nullable,
     )
 
 

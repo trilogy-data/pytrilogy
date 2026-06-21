@@ -142,7 +142,7 @@ def _is_unresolved(context: RuleContext, address: str) -> bool:
 def _undefined_ref(
     ref: ConceptRef | Concept, clause: str, fallback_line: int | None
 ) -> _UndefinedRef:
-    meta = getattr(ref, "metadata", None)
+    meta = ref.metadata
     line = meta.line_number if meta and meta.line_number else fallback_line
     column = meta.column if meta else None
     return _UndefinedRef(ref.address, clause, line, column)
@@ -213,7 +213,7 @@ def raise_collected_undefined(
         hint = f"; did you mean: {', '.join(matches)}?" if matches else ""
         lines.append(f"  - {rec.address}{_format_location(rec)}{hint}")
     message = (
-        f"Undefined concepts ({len(deduped)} references); fix all before "
+        f"{len(deduped)} undefined concept references; fix all before "
         f"re-running:\n" + "\n".join(lines)
     )
     raise UndefinedConceptException(message, all_matches)
@@ -402,7 +402,10 @@ def _substitute_having_aggregates(
             return ref
         return node
     if isinstance(node, Comparison):
-        return Comparison(
+        # Preserve the concrete class (e.g. SubselectComparison) — a plain
+        # Comparison rebuild would strip a membership's existence semantics,
+        # leaving the HAVING set-concept to render as a bare column.
+        return type(node)(
             left=_substitute_having_aggregates(node.left, sig_to_ref),
             right=_substitute_having_aggregates(node.right, sig_to_ref),
             operator=node.operator,
@@ -741,11 +744,12 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                 )
         _validate_where_aggregate_matches_select(select, line_no)
     if select.having_clause:
-        # Report ALL missing refs at once (deduped, in order). Raising on the
-        # first one makes an agent fix it, re-run, hit the next, and loop — one
-        # message listing every missing ref collapses those rewrite cycles.
+        # Report ALL missing refs at once (deduped, in order). Use row_arguments,
+        # not concept_arguments: an `x in <set>` membership's existence RHS (the
+        # set) is sourced as a subselect at plan time (mirroring WHERE) and need
+        # not be projected — only the row side (`x`) must be a SELECT output.
         missing: list[str] = []
-        for cref in select.having_clause.concept_arguments:
+        for cref in select.having_clause.row_arguments:
             if cref.address not in allowed_addresses and cref.address not in missing:
                 missing.append(cref.address)
         if missing:
@@ -758,13 +762,13 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             snippet = ", ".join(f"--{a}" for a in missing)
             raise SyntaxError(
                 f"HAVING references {refs}, which {verb} not in the SELECT "
-                f"projection (line {line_no}). Add {obj} to SELECT, each prefixed "
-                f"with `--` so {subj} {stay} out of the output rows — keep your "
-                f"HAVING as-is:\n"
+                f"projection (line {line_no}). To filter output rows, add {obj} to "
+                f"SELECT — prefix each with `--` so {subj} {stay} out of the output "
+                f"rows, keeping your HAVING as-is:\n"
                 f"    select <your existing columns>, {snippet}\n"
-                f"Alternatively move a row-level filter to WHERE; for an aggregate "
-                f"condition on a non-output grain, write `agg(x) by grain` inline "
-                f"in WHERE."
+                f"Or move {obj} to WHERE to filter before aggregation; for an "
+                f"aggregate condition on a non-output grain, write `agg(x) by grain` "
+                f"inline in WHERE."
             )
         _validate_having_aggregates_match_select(select, context, line_no)
     if select.order_by:

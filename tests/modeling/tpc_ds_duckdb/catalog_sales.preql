@@ -22,7 +22,6 @@ import ship_mode as ship_mode;
 import address as customer_address;
 import address as bill_address;
 
-key warehouse_id int; # Warehouse identifier used in role-played warehouse joins.
 key order_number int; # Catalog order number identifying a single catalog sales transaction.
 auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day); # Number of calendar days between sold and ship dates.
 

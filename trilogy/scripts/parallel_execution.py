@@ -604,7 +604,8 @@ def run_single_script_execution(
                 f"Execution mode '{execution_mode.value}' is not implemented."
             )
     except Exception as e:
-        handle_execution_exception(e, debug=debug)
+        source = str(base) if isinstance(base, Path) else "stdin"
+        handle_execution_exception(e, debug=debug, source=source)
 
     if debug:
         flush_debugging_hooks(exec)

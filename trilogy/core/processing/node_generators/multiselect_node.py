@@ -12,6 +12,10 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
+from trilogy.core.processing.node_generators.common import (
+    gen_enrichment_node,
+    unsatisfied_optionals,
+)
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -19,7 +23,11 @@ from trilogy.core.processing.nodes import (
     NodeJoin,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
-from trilogy.core.processing.utility import concept_to_relevant_joins, padding
+from trilogy.core.processing.utility import (
+    concept_to_relevant_joins,
+    create_log_lambda,
+    padding,
+)
 
 LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
@@ -216,9 +224,7 @@ def gen_multiselect_node(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for multiselect node; exiting early"
         )
         return node
-    if all(
-        [x.address in [y.address for y in node.output_concepts] for x in local_optional]
-    ):
+    if not unsatisfied_optionals(local_optional, node):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base multiselect node; exiting early"
         )
@@ -226,31 +232,16 @@ def gen_multiselect_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} Missing required concepts {[x for x in local_optional if x.address not in [y.address for y in node.output_concepts]]}"
     )
-    enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
-        # to then connect to the rest of the query
-        mandatory_list=additional_relevant + local_optional,
+    return gen_enrichment_node(
+        node,
+        join_keys=additional_relevant,
+        local_optional=local_optional,
         environment=environment,
         g=g,
-        depth=depth + 1,
+        depth=depth,
+        source_concepts=source_concepts,
+        log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
         history=history,
         conditions=conditions,
-    )
-    if not enrich_node:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node"
-        )
-        return node
-
-    return MergeNode(
-        input_concepts=enrich_node.output_concepts + node.output_concepts,
-        output_concepts=node.output_concepts + local_optional,
-        environment=environment,
-        depth=depth,
-        parents=[
-            # this node gets the multiselect
-            node,
-            # this node gets enrichment
-            enrich_node,
-        ],
         partial_concepts=node.partial_concepts,
     )

@@ -1,7 +1,7 @@
 query_id = "04"
 generator = "v3"
-gen_length = 12734
-preql_size = 1836
+gen_length = 12668
+preql_size = 1830
 comp_size = 4661
 generated_sql = """
 
@@ -9,11 +9,11 @@ WITH
 thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_catalog_sales_unified\".\"CS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\",
-     'CATALOG'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
@@ -24,11 +24,11 @@ WHERE
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_store_sales_unified\".\"SS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_store_sales_unified\".\"SS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\",
-     'STORE'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -39,11 +39,11 @@ WHERE
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_web_sales_unified\".\"WS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_web_sales_unified\".\"WS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\",
-     'WEB'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -66,12 +66,12 @@ GROUP BY
 uneven as (
 SELECT
     \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
+    \"thoughtful\".\"sales_channel\" as \"sales_channel\",
     \"thoughtful\".\"sales_date_year\" as \"sales_date_year\",
     \"thoughtful\".\"sales_ext_discount_amount\" as \"sales_ext_discount_amount\",
     \"thoughtful\".\"sales_ext_list_price\" as \"sales_ext_list_price\",
     \"thoughtful\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
-    \"thoughtful\".\"sales_ext_wholesale_cost\" as \"sales_ext_wholesale_cost\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"thoughtful\".\"sales_ext_wholesale_cost\" as \"sales_ext_wholesale_cost\"
 FROM
     \"thoughtful\"),
 abundant as (
@@ -98,7 +98,7 @@ GROUP BY
 charming as (
 SELECT
     \"uneven\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'CATALOG' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"catalog_first_year\"
+    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"catalog_first_year\"
 FROM
     \"uneven\"
 GROUP BY
@@ -109,7 +109,7 @@ HAVING
 kaput as (
 SELECT
     \"uneven\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'CATALOG' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"catalog_second_year\"
+    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"catalog_second_year\"
 FROM
     \"uneven\"
 WHERE
@@ -120,7 +120,7 @@ GROUP BY
 macho as (
 SELECT
     \"uneven\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"store_first_year\"
+    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"store_first_year\"
 FROM
     \"uneven\"
 WHERE
@@ -134,7 +134,7 @@ HAVING
 abhorrent as (
 SELECT
     \"uneven\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"store_second_year\"
+    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"store_second_year\"
 FROM
     \"uneven\"
 WHERE
@@ -145,7 +145,7 @@ GROUP BY
 concerned as (
 SELECT
     \"uneven\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"web_first_year\"
+    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"web_first_year\"
 FROM
     \"uneven\"
 WHERE
@@ -156,7 +156,7 @@ GROUP BY
 yummy as (
 SELECT
     \"uneven\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"web_second_year\"
+    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"web_second_year\"
 FROM
     \"uneven\"
 WHERE
