@@ -191,28 +191,18 @@ FROM
     \"scrawny\"
 WHERE
     \"scrawny\".\"entity_text\" is not null
-),
-busy as (
+)
 SELECT
     \"kaput\".\"channel_label\" as \"channel_label\",
     \"kaput\".\"entity_id\" as \"entity_id\",
-    sum(\"kaput\".\"_virt_filter_ext_sales_price_81501173194113\") as \"_virt_agg_sum_1812620253456358\",
-    sum(\"kaput\".\"_virt_filter_net_profit_2654161333647466\") as \"_virt_agg_sum_9742232665516553\",
-    sum(\"kaput\".\"_virt_filter_return_amount_7146980734593598\") as \"_virt_agg_sum_8310510608508714\",
-    sum(\"kaput\".\"_virt_filter_return_net_loss_7776255813480323\") as \"_virt_agg_sum_9823880010566988\"
+    coalesce(sum(\"kaput\".\"_virt_filter_ext_sales_price_81501173194113\"),0.0) as \"sales\",
+    coalesce(sum(\"kaput\".\"_virt_filter_return_amount_7146980734593598\"),0.0) as \"returns\",
+    coalesce(sum(\"kaput\".\"_virt_filter_net_profit_2654161333647466\"),0.0) - coalesce(sum(\"kaput\".\"_virt_filter_return_net_loss_7776255813480323\"),0.0) as \"profit\"
 FROM
     \"kaput\"
 GROUP BY
-    ROLLUP (1, 2))
-SELECT
-    \"busy\".\"channel_label\" as \"channel_label\",
-    \"busy\".\"entity_id\" as \"entity_id\",
-    coalesce(\"busy\".\"_virt_agg_sum_1812620253456358\",0.0) as \"sales\",
-    coalesce(\"busy\".\"_virt_agg_sum_8310510608508714\",0.0) as \"returns\",
-    coalesce(\"busy\".\"_virt_agg_sum_9742232665516553\",0.0) - coalesce(\"busy\".\"_virt_agg_sum_9823880010566988\",0.0) as \"profit\"
-FROM
-    \"busy\"
+    ROLLUP (1, 2)
 ORDER BY 
-    \"busy\".\"channel_label\" asc nulls first,
-    \"busy\".\"entity_id\" asc nulls first
+    \"kaput\".\"channel_label\" asc nulls first,
+    \"kaput\".\"entity_id\" asc nulls first
 LIMIT (100)"""

@@ -1,4 +1,60 @@
-# v4 compatibility audit (last refreshed 2026-06-13)
+# v4 compatibility audit (last refreshed 2026-06-20)
+
+### FIXED 2026-06-20 — q76 crash: aggregate-over-aggregate dimension projection adds a non-output row key to the group grain
+`tpc_ds_duckdb/test_queries.py::test_seventy_six` was mis-bucketed `_TPCDS_SIZE`
+(SHAPE) but actually **CRASHED** under v4 in isolation (`ValueError: Invalid
+input concepts to node! ['ss.date.id'] are missing non-hidden parent nodes`) —
+so the headline "no crashes remain" was stale. Distilled q76: an
+aggregate-over-aggregate (`sum(ss_row_flag) by date.year/quarter/category`, where
+`ss_row_flag <- sum(case .. ss.store.id is null ..) by ticket_number, item.id`)
+with a `ss.date.id is not null` WHERE. The C9 bridge path
+(`_project_dimension_parents_to_group_grain`, strategy_builder.py) built a
+`GroupNode` whose grain = `fd_needed | join_keys`. `fd_needed` is derived from
+`outputs_by_parent` = the addresses available to the parent *from its own
+parents* (grandparents), NOT the parent's own outputs; `ss.date.id` is
+FD-determined by the row grain `{item.id, ticket_number}` (so it passes
+`_fd_at_grain`) and is available upstream, but the dimension parent drops it (it
+lives only as a scan-level WHERE filter, never a column here). Grouping on a
+concept the parent doesn't output fails `GroupNode.validate_inputs`. Fix
+(strategy_builder.py): intersect the projected grain with the parent's actual
+`usable_outputs` before building the GroupNode — `(fd_needed | join_keys) &
+parent_outputs`. q76 now builds + returns correct rows (stays `_TPCDS_SIZE`:
+`13369 < 10000` size ceiling). 0 regressions: rides C9 (`test_example_model`),
+both C8 `test_ambiguous_error_with_forced_join(_order)`, and core/processing +
+optimization + complex + engine (929 passed) all green under v4. Distilled
+regression lock: `tests/core/processing/test_v4_dimension_projection_group.py`
+(fails with the exact crash when the fix is reverted). **No crashes remain
+(re-confirmed).**
+
+### FIXED 2026-06-20 — BASIC-over-GROUP not folded into the GROUP SELECT (extra CTE)
+`tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate`
+(the audit's #1 "genuine wrong-rows" — actually **correct rows, extra CTE**).
+`select week_seq, @weekday_sum(0)/@weekday_sum(1)` (a BASIC division over two
+aggregates): v4 emitted the GROUP (`cooperative`: week_seq + the two sums) and
+then a SEPARATE projection CTE for the division, where v3 inlines
+`sum(..)/sum(..)` directly in the GROUP BY select (one CTE). Rows identical;
+pure SHAPE/verbosity. Root cause: `CollapseSingleParent.parent_is_ineligible`
+blocked a BASIC child from folding into a GROUP parent (blanket `SourceType.GROUP`
+/ `group_to_grain` block). Fix (`collapse_single_parent.py`): allow the fold,
+gated by a new `basic_fold_into_group_is_safe` — every output the child derives
+*locally* must be a scalar; aggregate/window columns merely *passed through* from
+the GROUP parent are fine (a dimension-join projection carries the parent's
+aggregates straight through). GROUP BY renders solely from `parent.group_concepts`
+(base.py), which the BASIC merge path never touches, so the fold can't change the
+grouping. DEAD ENDS: (a) a `child.grain == parent.grain` gate — a BASIC node
+inflates its own grain with the derived column (`{category, category_label}` vs
+`{category}`), so equality never holds; (b) rejecting any aggregate-lineage child
+output — those are passthroughs from the group, legitimately present. The fold is
+a pure restriction of the un-gated version, so it only ever folds a subset.
+Clears 4 known-failing entries (`test_inline_filter_basic`, gcat
+`test_equals_comparison`, stocks `test_calculated_field`, `def_wrapped`) and
+nudges TPC-DS CTE counts down (q97_1 now under its size ceiling in isolation).
+Unit + e2e lock: `tests/optimization/test_collapse_basic_into_group.py`. v3 + v4
+opt/complex/engine/core/persistence + modeling sweeps 0 regressions. The two q97
+xpasses are pre-existing cross-file pollution (pass in isolation with OR without
+this change) — left tracked.
+
+# v4 compatibility audit (previously refreshed 2026-06-13)
 
 Fresh re-classification of every entry in `tests/v4_known_failing.py`, run in
 isolation under `TRILOGY_V4_DISCOVERY=1 --runxfail`. Regenerate with
@@ -308,9 +364,12 @@ not quick wins:
   one-step CASE. Skipping ROW_SHAPE_BARRIER args there routes it through
   `gen_root`'s recursive-node fallback. (The earlier "carried into the final merge
   path graph" framing was a symptom, not the cause.)
-- **ROWS** `tpc_ds q54` (1 vs 100), `q77` (44 vs 46), `q46` (different rows),
-  `q97_2` (counts 540709 vs 540938 — note `q97_1`, tracked as `_TPCDS_SIZE`, is
-  actually the SAME wrong-rows bug, mis-bucketed). Not yet diagnosed.
+- **ROWS** `tpc_ds q46` (different rows — genuine wrong-rows; the classifier
+  mis-buckets it SHAPE because the captured planner log contains "datasource").
+  q54/q77 landed earlier (scoped_joins threading). `q97_1`/`q97_2` now **PASS in
+  isolation** under the current planner (re-confirmed 2026-06-20 via
+  `v4_classify.py` + direct run) — the XPASS in full-suite runs is cross-file
+  pollution; they remain tracked non-strict. Not yet diagnosed: q46.
 - **SHAPE/source** `geography exact_match` ×2 (picks `full_tree_info` over the
   partial source), `q68` (tie-break ordering — numeric values match, only the
   LIMIT-tie city name differs), `composite_rollup` (NULL CASE over rollup key).
@@ -361,7 +420,7 @@ single-source shortcuts. See the FIXED note in the headline.
   merge has nothing to join on), GUARDED on `fd_needed.isdisjoint(other_outputs)` so
   it only fires in the genuine no-shared-key cross-join case (the_look multi-key
   aggregate is untouched). See memory `project_v4_c9_aggregate_over_aggregate_crossjoin`.
-- `modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate` (0 vs 2) — SEPARATE root cause (a `@weekday_sum(0)/@weekday_sum(1)` filtered-aggregate-in-arithmetic that v4's final group CTE keeps as 0 aggregate outputs instead of 2). Not yet fixed.
+- ~~`modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate`~~ FIXED 2026-06-20 (see top FIXED note). NOT wrong rows — a `@weekday_sum(0)/@weekday_sum(1)` BASIC division over two aggregates that v4 emitted as a separate projection CTE instead of folding into the GROUP BY select. `CollapseSingleParent` now folds a BASIC child into a GROUP parent (gated by `basic_fold_into_group_is_safe`).
 
 ### C11 — fan-out RUNAWAY (the "timeout" cases, mis-labeled) — FIXED (was 2 → 0)
 FIXED via aggregate input-grain derivation over inline-expression args (see the
@@ -401,11 +460,14 @@ guards, repro recipes): `local_scripts/v4_c11_multifact_aggregate_runaway_brief.
 
 Only `top_x_by_metric` is distilled in `v4_evals/failing_cases/`. **All crash and
 runaway clusters are now fixed** (C2–C6, C8, C9 rides, plus q29/C10, the C11
-runaway, C7, and the filter-only-RECURSIVE wrong-rows). No crashes, no runaways
-remain. Remaining genuine work is all wrong-rows, in priority order:
-**C9 def_wrapped_filtered_aggregate → C10 q46/q97_2 wrong-rows → composite_rollup
-(NULL CASE over rollup key) → geography exact_match source-selection (×2) → q68
-tie-break → SHAPE/verbosity backlog.**
+runaway, C7, the filter-only-RECURSIVE wrong-rows, and the q76 hidden crash
+surfaced + fixed 2026-06-20). No crashes, no runaways remain (re-confirmed by a
+fresh `v4_classify.py` run: 43 SHAPE / 3 ROWS / 2 XPASS / 0 genuine CRASH).
+C9 def_wrapped turned out to be SHAPE (extra CTE), FIXED 2026-06-20. q97_1/q97_2
+now pass in isolation. Remaining genuine wrong-rows work, in priority order:
+**q46 wrong-rows → composite_rollup (NULL CASE over rollup key) →
+geography exact_match source-selection (×2) → q68 tie-break → SHAPE/verbosity
+backlog (the BASIC-into-GROUP fold trims CTE counts across this backlog).**
 
 The 47 SHAPE entries need no eval case; they're tracked verbosity/inlining regressions to
 close at the source-selection / render layer, gated on `CONFIG.use_v4_discovery`

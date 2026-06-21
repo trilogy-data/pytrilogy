@@ -8,7 +8,7 @@ generated_sql = """
 WITH 
 quizzical as (
 SELECT
-    CASE
+    CASE WHEN CASE
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
@@ -16,7 +16,1168 @@ SELECT
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END as \"bucket_id\",
+	END = 1 THEN avg(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_avg_9807684414024497\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 THEN count(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cnt_2224516900884374\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 THEN count(distinct CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cntd_5327557161933280\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 THEN avg(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_avg_2861588206160358\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 THEN count(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cnt_6858115141264011\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 THEN count(distinct CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cntd_7846943073851735\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 THEN avg(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_avg_2850673729313768\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 THEN count(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cnt_894357222675893\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 THEN count(distinct CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cntd_5736325163174944\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 THEN avg(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_avg_4880359626544039\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 THEN count(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cnt_3577078747089769\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 THEN count(distinct CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cntd_7690745280661633\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 THEN avg(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_avg_284549201004209\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 THEN count(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cnt_1394773238248231\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 THEN count(distinct CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cntd_3739216114026085\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 THEN avg(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_avg_9446332470240154\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 THEN count(CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cnt_8966209673081292\",
+    CASE WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 THEN count(distinct CASE
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 1 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 2 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 3 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 4 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 5 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	WHEN CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
+	ELSE null
+	END = 6 and ( \"physical_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"physical_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"physical_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"physical_sales_store_sales\".\"SS_LIST_PRICE\"
+	ELSE null
+	END) ELSE NULL END as \"_virt_filter_lp_cntd_3811294399709285\",
     avg(CASE
 	WHEN CASE
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1

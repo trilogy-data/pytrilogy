@@ -1,6 +1,6 @@
 query_id = "11"
 generator = "v4"
-gen_length = 2160
+gen_length = 2125
 preql_size = 355
 comp_size = 581
 generated_sql = """
@@ -46,29 +46,26 @@ FROM
 uneven as (
 SELECT
     \"abundant\".\"id\" as \"id\",
-    \"abundant\".\"part_total_value\" as \"part_total_value\"
+    \"abundant\".\"part_total_value\" as \"part_total_value\",
+    \"abundant\".\"part_total_value\" as \"total_value\"
 FROM
     \"thoughtful\"
     INNER JOIN \"abundant\" on \"thoughtful\".\"id\" = \"abundant\".\"id\"
-    FULL JOIN \"questionable\" on 1=1
+    INNER JOIN \"questionable\" on 1=1
+WHERE
+    \"abundant\".\"part_total_value\" > \"questionable\".\"germany_total_value\" * 0.0001
+
 GROUP BY
     1,
-    2),
-vacuous as (
+    2)
 SELECT
     \"uneven\".\"id\" as \"id\",
-    \"uneven\".\"part_total_value\" as \"part_total_value\",
-    \"uneven\".\"part_total_value\" as \"total_value\"
-FROM
-    \"uneven\")
-SELECT
-    \"vacuous\".\"id\" as \"id\",
-    \"vacuous\".\"total_value\" as \"total_value\"
+    \"uneven\".\"total_value\" as \"total_value\"
 FROM
     \"questionable\"
-    INNER JOIN \"vacuous\" on 1=1
+    INNER JOIN \"uneven\" on 1=1
 WHERE
-    \"vacuous\".\"part_total_value\" > \"questionable\".\"germany_total_value\" * 0.0001
+    \"uneven\".\"part_total_value\" > \"questionable\".\"germany_total_value\" * 0.0001
 
 ORDER BY 
-    \"vacuous\".\"total_value\" desc"""
+    \"uneven\".\"total_value\" desc"""

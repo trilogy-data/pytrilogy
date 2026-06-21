@@ -1,98 +1,77 @@
 query_id = "09"
 generator = "v4"
-gen_length = 3441
+gen_length = 2342
 preql_size = 1133
 comp_size = 2446
 generated_sql = """
-
-WITH 
-quizzical as (
 SELECT
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END) as \"_virt_agg_avg_9858274627692593\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END) as \"_virt_agg_avg_9062654498282180\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END) as \"_virt_agg_avg_6286210001235110\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END) as \"_virt_agg_avg_6786428604415001\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END) as \"_virt_agg_avg_2842446401510007\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END) as \"_virt_agg_avg_9517033459803245\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END) as \"_virt_agg_avg_3140295934302713\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END) as \"_virt_agg_avg_9972736767629163\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
-	ELSE null
-	END) as \"_virt_agg_avg_4617463002678086\",
-    avg(CASE
-	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
-	ELSE null
-	END) as \"_virt_agg_avg_7157978892210982\",
-    sum(CASE
+    CASE
+	WHEN sum(CASE
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN 1
 	ELSE 0
-	END) as \"count1\",
-    sum(CASE
+	END) > 74129 THEN avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 20 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
+	ELSE null
+	END)
+	END as \"bucket1\",
+    CASE
+	WHEN sum(CASE
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN 1
 	ELSE 0
-	END) as \"count2\",
-    sum(CASE
+	END) > 122840 THEN avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 40 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
+	ELSE null
+	END)
+	END as \"bucket2\",
+    CASE
+	WHEN sum(CASE
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN 1
 	ELSE 0
-	END) as \"count3\",
-    sum(CASE
+	END) > 56580 THEN avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 41 AND 60 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
+	ELSE null
+	END)
+	END as \"bucket3\",
+    CASE
+	WHEN sum(CASE
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN 1
 	ELSE 0
-	END) as \"count4\",
-    sum(CASE
+	END) > 10097 THEN avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 61 AND 80 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
+	ELSE null
+	END)
+	END as \"bucket4\",
+    CASE
+	WHEN sum(CASE
 	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN 1
 	ELSE 0
-	END) as \"count5\"
+	END) > 165306 THEN avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN \"physical_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 81 AND 100 THEN \"physical_sales_store_sales\".\"SS_NET_PAID\"
+	ELSE null
+	END)
+	END as \"bucket5\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
 WHERE
     \"physical_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 100
-)
-SELECT
-    CASE
-	WHEN \"quizzical\".\"count1\" > 74129 THEN \"quizzical\".\"_virt_agg_avg_9858274627692593\"
-	ELSE \"quizzical\".\"_virt_agg_avg_9062654498282180\"
-	END as \"bucket1\",
-    CASE
-	WHEN \"quizzical\".\"count2\" > 122840 THEN \"quizzical\".\"_virt_agg_avg_6286210001235110\"
-	ELSE \"quizzical\".\"_virt_agg_avg_6786428604415001\"
-	END as \"bucket2\",
-    CASE
-	WHEN \"quizzical\".\"count3\" > 56580 THEN \"quizzical\".\"_virt_agg_avg_2842446401510007\"
-	ELSE \"quizzical\".\"_virt_agg_avg_9517033459803245\"
-	END as \"bucket3\",
-    CASE
-	WHEN \"quizzical\".\"count4\" > 10097 THEN \"quizzical\".\"_virt_agg_avg_3140295934302713\"
-	ELSE \"quizzical\".\"_virt_agg_avg_9972736767629163\"
-	END as \"bucket4\",
-    CASE
-	WHEN \"quizzical\".\"count5\" > 165306 THEN \"quizzical\".\"_virt_agg_avg_4617463002678086\"
-	ELSE \"quizzical\".\"_virt_agg_avg_7157978892210982\"
-	END as \"bucket5\"
-FROM
-    \"quizzical\""""
+"""

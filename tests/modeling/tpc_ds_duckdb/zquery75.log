@@ -130,10 +130,10 @@ GROUP BY
     4),
 abhorrent as (
 SELECT
-    \"sparkling\".\"deduped_sales_item_brand_id\" as \"deduped_sales_item_brand_id\",
-    \"sparkling\".\"deduped_sales_item_category_id\" as \"deduped_sales_item_category_id\",
-    \"sparkling\".\"deduped_sales_item_class_id\" as \"deduped_sales_item_class_id\",
-    \"sparkling\".\"deduped_sales_item_manufacturer_id\" as \"deduped_sales_item_manufacturer_id\",
+    \"sparkling\".\"deduped_sales_item_brand_id\" as \"_prev_i_brand_id\",
+    \"sparkling\".\"deduped_sales_item_category_id\" as \"_prev_i_category_id\",
+    \"sparkling\".\"deduped_sales_item_class_id\" as \"_prev_i_class_id\",
+    \"sparkling\".\"deduped_sales_item_manufacturer_id\" as \"_prev_i_manufact_id\",
     sum(\"sparkling\".\"deduped_amt_per_row\") as \"_prev_prev_amt\",
     sum(\"sparkling\".\"deduped_cnt_per_row\") as \"_prev_prev_cnt\"
 FROM
@@ -146,46 +146,26 @@ GROUP BY
     2,
     3,
     4),
-busy as (
-SELECT
-    \"friendly\".\"_curr_curr_amt\" as \"_curr_curr_amt\",
-    \"friendly\".\"_curr_curr_cnt\" as \"_curr_curr_cnt\",
-    \"friendly\".\"deduped_sales_item_brand_id\" as \"_curr_i_brand_id\",
-    \"friendly\".\"deduped_sales_item_category_id\" as \"_curr_i_category_id\",
-    \"friendly\".\"deduped_sales_item_class_id\" as \"_curr_i_class_id\",
-    \"friendly\".\"deduped_sales_item_manufacturer_id\" as \"_curr_i_manufact_id\"
-FROM
-    \"friendly\"),
-macho as (
-SELECT
-    \"abhorrent\".\"_prev_prev_amt\" as \"_prev_prev_amt\",
-    \"abhorrent\".\"_prev_prev_cnt\" as \"_prev_prev_cnt\",
-    \"abhorrent\".\"deduped_sales_item_brand_id\" as \"_prev_i_brand_id\",
-    \"abhorrent\".\"deduped_sales_item_category_id\" as \"_prev_i_category_id\",
-    \"abhorrent\".\"deduped_sales_item_class_id\" as \"_prev_i_class_id\",
-    \"abhorrent\".\"deduped_sales_item_manufacturer_id\" as \"_prev_i_manufact_id\"
-FROM
-    \"abhorrent\"),
 charming as (
 SELECT
-    \"busy\".\"_curr_curr_amt\" as \"curr_curr_amt\",
-    \"busy\".\"_curr_curr_cnt\" as \"curr_curr_cnt\",
-    \"busy\".\"_curr_i_brand_id\" as \"curr_i_brand_id\",
-    \"busy\".\"_curr_i_category_id\" as \"curr_i_category_id\",
-    \"busy\".\"_curr_i_class_id\" as \"curr_i_class_id\",
-    \"busy\".\"_curr_i_manufact_id\" as \"curr_i_manufact_id\"
+    \"friendly\".\"_curr_curr_amt\" as \"curr_curr_amt\",
+    \"friendly\".\"_curr_curr_cnt\" as \"curr_curr_cnt\",
+    \"friendly\".\"_curr_i_brand_id\" as \"curr_i_brand_id\",
+    \"friendly\".\"_curr_i_category_id\" as \"curr_i_category_id\",
+    \"friendly\".\"_curr_i_class_id\" as \"curr_i_class_id\",
+    \"friendly\".\"_curr_i_manufact_id\" as \"curr_i_manufact_id\"
 FROM
-    \"busy\"),
+    \"friendly\"),
 scrawny as (
 SELECT
-    \"macho\".\"_prev_i_brand_id\" as \"prev_i_brand_id\",
-    \"macho\".\"_prev_i_category_id\" as \"prev_i_category_id\",
-    \"macho\".\"_prev_i_class_id\" as \"prev_i_class_id\",
-    \"macho\".\"_prev_i_manufact_id\" as \"prev_i_manufact_id\",
-    \"macho\".\"_prev_prev_amt\" as \"prev_prev_amt\",
-    \"macho\".\"_prev_prev_cnt\" as \"prev_prev_cnt\"
+    \"abhorrent\".\"_prev_i_brand_id\" as \"prev_i_brand_id\",
+    \"abhorrent\".\"_prev_i_category_id\" as \"prev_i_category_id\",
+    \"abhorrent\".\"_prev_i_class_id\" as \"prev_i_class_id\",
+    \"abhorrent\".\"_prev_i_manufact_id\" as \"prev_i_manufact_id\",
+    \"abhorrent\".\"_prev_prev_amt\" as \"prev_prev_amt\",
+    \"abhorrent\".\"_prev_prev_cnt\" as \"prev_prev_cnt\"
 FROM
-    \"macho\"),
+    \"abhorrent\"),
 protective as (
 SELECT
     \"charming\".\"curr_curr_amt\" - \"scrawny\".\"prev_prev_amt\" as \"sales_amt_diff\",

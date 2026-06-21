@@ -1,6 +1,6 @@
 query_id = "15"
 generator = "v4"
-gen_length = 2632
+gen_length = 2361
 preql_size = 396
 comp_size = 560
 generated_sql = """
@@ -40,6 +40,7 @@ FROM
 vacuous as (
 SELECT
     \"highfalutin\".\"supplier_rev\" as \"supplier_rev\",
+    \"highfalutin\".\"supplier_rev\" as \"total_revenue\",
     \"uneven\".\"part_supplier_address\" as \"part_supplier_address\",
     \"uneven\".\"part_supplier_id\" as \"part_supplier_id\",
     \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
@@ -48,34 +49,27 @@ FROM
     \"yummy\"
     INNER JOIN \"uneven\" on \"yummy\".\"line_no\" = \"uneven\".\"line_no\" AND \"yummy\".\"order_id\" = \"uneven\".\"order_id\"
     INNER JOIN \"highfalutin\" on \"yummy\".\"part_supplier_id\" = \"highfalutin\".\"part_supplier_id\"
-    FULL JOIN \"cooperative\" on 1=1
+    INNER JOIN \"cooperative\" on 1=1
+WHERE
+    \"highfalutin\".\"supplier_rev\" = \"cooperative\".\"max_supplier_rev\"
+
 GROUP BY
     1,
-    2,
     3,
     4,
-    5),
-sparkling as (
+    5,
+    6)
 SELECT
-    \"vacuous\".\"part_supplier_address\" as \"part_supplier_address\",
     \"vacuous\".\"part_supplier_id\" as \"part_supplier_id\",
     \"vacuous\".\"part_supplier_name\" as \"part_supplier_name\",
+    \"vacuous\".\"part_supplier_address\" as \"part_supplier_address\",
     \"vacuous\".\"part_supplier_phone\" as \"part_supplier_phone\",
-    \"vacuous\".\"supplier_rev\" as \"supplier_rev\",
-    \"vacuous\".\"supplier_rev\" as \"total_revenue\"
-FROM
-    \"vacuous\")
-SELECT
-    \"sparkling\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"sparkling\".\"part_supplier_name\" as \"part_supplier_name\",
-    \"sparkling\".\"part_supplier_address\" as \"part_supplier_address\",
-    \"sparkling\".\"part_supplier_phone\" as \"part_supplier_phone\",
-    \"sparkling\".\"total_revenue\" as \"total_revenue\"
+    \"vacuous\".\"total_revenue\" as \"total_revenue\"
 FROM
     \"cooperative\"
-    INNER JOIN \"sparkling\" on 1=1
+    INNER JOIN \"vacuous\" on 1=1
 WHERE
-    \"sparkling\".\"supplier_rev\" = \"cooperative\".\"max_supplier_rev\"
+    \"vacuous\".\"supplier_rev\" = \"cooperative\".\"max_supplier_rev\"
 
 ORDER BY 
-    \"sparkling\".\"part_supplier_id\" asc"""
+    \"vacuous\".\"part_supplier_id\" asc"""

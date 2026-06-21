@@ -42,7 +42,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining": _INLINE,
     "tests/optimization/test_inlining.py::test_select_literal_is_rendered_in_projection": _INLINE,
     "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection": _INLINE,
-    "tests/optimization/test_merge_basic.py::test_inline_filter_basic": _INLINE,
     "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection": _INLINE,
     # --- complex: shape diffs (assert on SQL, not crashes) ---
     "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _INLINE,
@@ -57,12 +56,10 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
     # --- modeling (non-TPC) sweep ---
-    "tests/modeling/gcat/test_gcat.py::test_equals_comparison": _MODELING,
     "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
     "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc08": _MODELING,
-    "tests/modeling/stocks/test_stocks.py::test_calculated_field": _MODELING,
     "tests/modeling/stocks/test_stocks.py::test_provider_name": _MODELING,
     "tests/modeling/test_complex.py::test_in_select": _MODELING,
     "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous": _MODELING,
@@ -90,7 +87,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_four": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_one": _TPCDS_SIZE,
     # --- tpc-ds non-benchmark: result / feature regressions ---
-    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate": _MODELING,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested": _MODELING,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _MODELING,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,

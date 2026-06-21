@@ -1,6 +1,6 @@
 query_id = "81"
 generator = "v4"
-gen_length = 10398
+gen_length = 10192
 preql_size = 1976
 comp_size = 1459
 generated_sql = """
@@ -100,17 +100,11 @@ GROUP BY
 abhorrent as (
 SELECT
     \"young\".\"cr_return_address_state\" as \"cr_return_address_state\",
-    avg(\"young\".\"customer_state\") as \"_virt_agg_avg_7052944147524274\"
+    1.2 * avg(\"young\".\"customer_state\") as \"scaled_state\"
 FROM
     \"young\"
 GROUP BY
     1),
-sweltering as (
-SELECT
-    \"abhorrent\".\"cr_return_address_state\" as \"cr_return_address_state\",
-    1.2 * \"abhorrent\".\"_virt_agg_avg_7052944147524274\" as \"scaled_state\"
-FROM
-    \"abhorrent\"),
 late as (
 SELECT
     \"questionable\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
@@ -119,9 +113,9 @@ SELECT
 FROM
     \"questionable\"
     INNER JOIN \"yummy\" on \"questionable\".\"cr_billing_customer_id\" = \"yummy\".\"cr_billing_customer_id\" AND \"questionable\".\"cr_return_address_state\" is not distinct from \"yummy\".\"cr_return_address_state\"
-    INNER JOIN \"sweltering\" on \"questionable\".\"cr_return_address_state\" is not distinct from \"sweltering\".\"cr_return_address_state\"
+    INNER JOIN \"abhorrent\" on \"questionable\".\"cr_return_address_state\" is not distinct from \"abhorrent\".\"cr_return_address_state\"
 WHERE
-    \"yummy\".\"customer_state\" > \"sweltering\".\"scaled_state\"
+    \"yummy\".\"customer_state\" > \"abhorrent\".\"scaled_state\"
 
 GROUP BY
     1,

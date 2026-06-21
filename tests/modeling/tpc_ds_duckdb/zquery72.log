@@ -1,6 +1,6 @@
 query_id = "72"
 generator = "v4"
-gen_length = 6896
+gen_length = 6654
 preql_size = 955
 comp_size = 1360
 generated_sql = """
@@ -90,8 +90,11 @@ GROUP BY
 sweltering as (
 SELECT
     \"uneven\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"uneven\".\"cs_item_desc\" as \"item_desc\",
     \"uneven\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
+    \"uneven\".\"cs_sold_date_week_seq\" as \"week_seq\",
     \"uneven\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
+    \"uneven\".\"inv_warehouse_name\" as \"warehouse_name\",
     sum(CASE
 	WHEN \"uneven\".\"cs_promotion_id\" is not null THEN 1
 	ELSE 0
@@ -104,33 +107,21 @@ FROM
     \"uneven\"
 GROUP BY
     1,
-    2,
-    3),
-late as (
+    3,
+    5)
 SELECT
-    \"sweltering\".\"cs_item_desc\" as \"cs_item_desc\",
-    \"sweltering\".\"cs_item_desc\" as \"item_desc\",
-    \"sweltering\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
-    \"sweltering\".\"cs_sold_date_week_seq\" as \"week_seq\",
-    \"sweltering\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
-    \"sweltering\".\"inv_warehouse_name\" as \"warehouse_name\",
+    \"sweltering\".\"item_desc\" as \"item_desc\",
+    \"sweltering\".\"warehouse_name\" as \"warehouse_name\",
+    \"sweltering\".\"week_seq\" as \"week_seq\",
     \"sweltering\".\"no_promo\" as \"no_promo\",
-    \"sweltering\".\"promo\" as \"promo\"
-FROM
-    \"sweltering\")
-SELECT
-    \"late\".\"item_desc\" as \"item_desc\",
-    \"late\".\"warehouse_name\" as \"warehouse_name\",
-    \"late\".\"week_seq\" as \"week_seq\",
-    \"late\".\"no_promo\" as \"no_promo\",
-    \"late\".\"promo\" as \"promo\",
+    \"sweltering\".\"promo\" as \"promo\",
     coalesce(\"divergent\".\"total_cnt\",0) as \"total_cnt\"
 FROM
     \"divergent\"
-    FULL JOIN \"late\" on \"divergent\".\"cs_item_desc\" is not distinct from \"late\".\"cs_item_desc\" AND \"divergent\".\"cs_sold_date_week_seq\" = \"late\".\"cs_sold_date_week_seq\" AND \"divergent\".\"inv_warehouse_name\" is not distinct from \"late\".\"inv_warehouse_name\"
+    INNER JOIN \"sweltering\" on \"divergent\".\"cs_item_desc\" is not distinct from \"sweltering\".\"cs_item_desc\" AND \"divergent\".\"cs_sold_date_week_seq\" = \"sweltering\".\"cs_sold_date_week_seq\" AND \"divergent\".\"inv_warehouse_name\" is not distinct from \"sweltering\".\"inv_warehouse_name\"
 ORDER BY 
     coalesce(\"divergent\".\"total_cnt\",0) desc nulls first,
-    \"late\".\"item_desc\" asc nulls first,
-    \"late\".\"warehouse_name\" asc nulls first,
-    \"late\".\"week_seq\" asc nulls first
+    \"sweltering\".\"item_desc\" asc nulls first,
+    \"sweltering\".\"warehouse_name\" asc nulls first,
+    \"sweltering\".\"week_seq\" asc nulls first
 LIMIT (100)"""

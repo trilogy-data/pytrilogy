@@ -740,9 +740,17 @@ def _project_dimension_parents_to_group_grain(
             and concept_satisfiable(c, outputs_by_parent[idx])
         }
         if join_keys and fd_needed.isdisjoint(other_outputs):
+            # The GroupNode reads from `parent`, so its grain may only include
+            # concepts the parent actually outputs. `fd_needed` is derived from
+            # what is available to the parent (its own parents' outputs) and can
+            # contain an FD attribute the parent drops -- e.g. a row key like
+            # `date.id` that is FD-determined by the row grain but lives only as a
+            # WHERE filter applied at the scan, never as a column here (q76).
+            # Grouping on it would fail input validation; keep only real outputs.
+            parent_outputs = {o.address for o in parent.usable_outputs}
             grain_concepts = [
                 c
-                for addr in sorted(fd_needed | join_keys)
+                for addr in sorted((fd_needed | join_keys) & parent_outputs)
                 if (c := _concept_at(environment, addr)) is not None
             ]
             projected.append(

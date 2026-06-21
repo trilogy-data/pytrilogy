@@ -107,7 +107,11 @@ GROUP BY
     \"vacuous\".\"sales_order_id\"),
 concerned as (
 SELECT
-    \"vacuous\".\"sales_item_text_id\" as \"sales_item_text_id\",
+    \"vacuous\".\"sales_item_text_id\" as \"item_id\",
+    ( ( (sum(\"vacuous\".\"_virt_filter_return_quantity_1904161637839137\") * 1.0) / ( ( sum(\"vacuous\".\"_virt_filter_return_quantity_6293408465554798\") + sum(\"vacuous\".\"_virt_filter_return_quantity_1904161637839137\") ) + sum(\"vacuous\".\"_virt_filter_return_quantity_6234128225083739\") ) ) / 3.0 ) * 100 as \"cr_dev\",
+    ( ( (sum(\"vacuous\".\"_virt_filter_return_quantity_6234128225083739\") * 1.0) / ( ( sum(\"vacuous\".\"_virt_filter_return_quantity_6293408465554798\") + sum(\"vacuous\".\"_virt_filter_return_quantity_1904161637839137\") ) + sum(\"vacuous\".\"_virt_filter_return_quantity_6234128225083739\") ) ) / 3.0 ) * 100 as \"wr_dev\",
+    ( ( (sum(\"vacuous\".\"_virt_filter_return_quantity_6293408465554798\") * 1.0) / ( ( sum(\"vacuous\".\"_virt_filter_return_quantity_6293408465554798\") + sum(\"vacuous\".\"_virt_filter_return_quantity_1904161637839137\") ) + sum(\"vacuous\".\"_virt_filter_return_quantity_6234128225083739\") ) ) / 3.0 ) * 100 as \"sr_dev\",
+    ( ( sum(\"vacuous\".\"_virt_filter_return_quantity_6293408465554798\") + sum(\"vacuous\".\"_virt_filter_return_quantity_1904161637839137\") ) + sum(\"vacuous\".\"_virt_filter_return_quantity_6234128225083739\") ) / 3.0 as \"average\",
     sum(\"vacuous\".\"_virt_filter_return_quantity_1904161637839137\") as \"cr_item_qty\",
     sum(\"vacuous\".\"_virt_filter_return_quantity_6234128225083739\") as \"wr_item_qty\",
     sum(\"vacuous\".\"_virt_filter_return_quantity_6293408465554798\") as \"sr_item_qty\"
@@ -138,20 +142,20 @@ FROM
     \"concerned\"),
 late as (
 SELECT
-    \"sparkling\".\"average\" as \"average\",
-    \"sparkling\".\"cr_dev\" as \"cr_dev\",
-    \"sparkling\".\"cr_item_qty\" as \"cr_item_qty\",
-    \"sparkling\".\"item_id\" as \"item_id\",
-    \"sparkling\".\"sr_dev\" as \"sr_dev\",
-    \"sparkling\".\"sr_item_qty\" as \"sr_item_qty\",
-    \"sparkling\".\"wr_dev\" as \"wr_dev\",
-    \"sparkling\".\"wr_item_qty\" as \"wr_item_qty\",
+    \"concerned\".\"average\" as \"average\",
+    \"concerned\".\"cr_dev\" as \"cr_dev\",
+    \"concerned\".\"cr_item_qty\" as \"cr_item_qty\",
+    \"concerned\".\"item_id\" as \"item_id\",
+    \"concerned\".\"sr_dev\" as \"sr_dev\",
+    \"concerned\".\"sr_item_qty\" as \"sr_item_qty\",
+    \"concerned\".\"wr_dev\" as \"wr_dev\",
+    \"concerned\".\"wr_item_qty\" as \"wr_item_qty\",
     \"sweltering\".\"cr_item_present\" as \"cr_item_present\",
     \"sweltering\".\"sr_item_present\" as \"sr_item_present\",
     \"sweltering\".\"wr_item_present\" as \"wr_item_present\"
 FROM
     \"sweltering\"
-    INNER JOIN \"sparkling\" on \"sweltering\".\"sales_item_text_id\" = \"sparkling\".\"item_id\"
+    INNER JOIN \"concerned\" on \"sweltering\".\"sales_item_text_id\" = \"concerned\".\"item_id\"
 WHERE
     \"sweltering\".\"sr_item_present\" > 0
 )

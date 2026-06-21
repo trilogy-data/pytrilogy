@@ -261,28 +261,18 @@ SELECT
     \"premium\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
     \"premium\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
 FROM
-    \"premium\"),
-waggish as (
+    \"premium\")
 SELECT
-    \"puzzled\".\"l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
-    \"puzzled\".\"l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
-    \"puzzled\".\"l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
-    \"puzzled\".\"l0_filtered_class_l0\" as \"l0_filtered_class_l0\",
-    sum(\"puzzled\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\",
-    sum(\"puzzled\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\"
+    \"puzzled\".\"l0_filtered_channel_l0\" as \"channel\",
+    \"puzzled\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
+    \"puzzled\".\"l0_filtered_class_l0\" as \"i_class_id\",
+    \"puzzled\".\"l0_filtered_category_l0\" as \"i_category_id\",
+    sum(\"puzzled\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
+    sum(\"puzzled\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
 FROM
     \"puzzled\"
 GROUP BY
-    ROLLUP (3, 1, 4, 2))
-SELECT
-    \"waggish\".\"l0_filtered_channel_l0\" as \"channel\",
-    \"waggish\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
-    \"waggish\".\"l0_filtered_class_l0\" as \"i_class_id\",
-    \"waggish\".\"l0_filtered_category_l0\" as \"i_category_id\",
-    \"waggish\".\"sum_sales\" as \"sum_sales\",
-    \"waggish\".\"sum_number_sales\" as \"sum_number_sales\"
-FROM
-    \"waggish\"
+    ROLLUP (1, 2, 3, 4)
 ORDER BY 
     \"channel\" asc nulls first,
     \"i_brand_id\" asc nulls first,

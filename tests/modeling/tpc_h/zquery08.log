@@ -1,16 +1,12 @@
 query_id = "08"
 generator = "v4"
-gen_length = 1784
+gen_length = 1532
 preql_size = 312
 comp_size = 949
 generated_sql = """
-
-WITH 
-uneven as (
 SELECT
-    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"_virt_agg_sum_1789203937951976\",
-    sum(CASE WHEN UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'BRAZIL' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) as \"_virt_agg_sum_4311411778856528\",
-    year(\"order_orders\".\"o_orderdate\") as \"o_year\"
+    year(\"order_orders\".\"o_orderdate\") as \"o_year\",
+    sum(CASE WHEN UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'BRAZIL' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) / sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"mkt_share\"
 FROM
     \"memory\".\"part\" as \"part_part\"
     INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
@@ -24,11 +20,6 @@ WHERE
     \"order_customer_nation_region_region\".\"r_name\" = 'AMERICA' and year(\"order_orders\".\"o_orderdate\") BETWEEN 1995 AND 1996 and \"part_part\".\"p_type\" = 'ECONOMY ANODIZED STEEL'
 
 GROUP BY
-    3)
-SELECT
-    \"uneven\".\"o_year\" as \"o_year\",
-    \"uneven\".\"_virt_agg_sum_4311411778856528\" / \"uneven\".\"_virt_agg_sum_1789203937951976\" as \"mkt_share\"
-FROM
-    \"uneven\"
+    1
 ORDER BY 
-    \"uneven\".\"o_year\" asc"""
+    \"o_year\" asc"""

@@ -1,6 +1,6 @@
 query_id = "17"
 generator = "v4"
-gen_length = 1188
+gen_length = 1048
 preql_size = 230
 comp_size = 328
 generated_sql = """
@@ -33,17 +33,12 @@ FROM
     \"wakeful\"
 WHERE
     \"wakeful\".\"part_brand\" = 'Brand#23' and \"wakeful\".\"part_container\" = 'MED BOX'
-),
-questionable as (
+)
 SELECT
-    sum(\"cheerful\".\"extended_price\") as \"_virt_agg_sum_5592368918008795\"
+    sum(\"cheerful\".\"extended_price\") / 7.0 as \"avg_yearly\"
 FROM
     \"cheerful\"
     INNER JOIN \"thoughtful\" on \"cheerful\".\"part_id\" = \"thoughtful\".\"part_id\"
 WHERE
     \"cheerful\".\"quantity\" < 0.2 * \"thoughtful\".\"avg_qty_per_part\"
-)
-SELECT
-    \"questionable\".\"_virt_agg_sum_5592368918008795\" / 7.0 as \"avg_yearly\"
-FROM
-    \"questionable\""""
+"""

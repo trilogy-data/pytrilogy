@@ -1,6 +1,6 @@
 query_id = "17"
 generator = "v4"
-gen_length = 9536
+gen_length = 7804
 preql_size = 1439
 comp_size = 1764
 generated_sql = """
@@ -74,10 +74,9 @@ SELECT
     \"young\".\"analysis_item_desc\" as \"analysis_item_desc\",
     \"young\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
     \"young\".\"analysis_store_state\" as \"analysis_store_state\",
-    avg(\"young\".\"analysis_catalog_quantity\") as \"_virt_agg_avg_1688371525139287\",
     avg(\"young\".\"analysis_catalog_quantity\") as \"catalog_sales_quantityave\",
     count(\"young\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitycount\",
-    stddev_samp(\"young\".\"analysis_catalog_quantity\") as \"_virt_agg_stddev_2693366057110854\",
+    stddev_samp(\"young\".\"analysis_catalog_quantity\") / avg(\"young\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitycov\",
     stddev_samp(\"young\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitystdev\"
 FROM
     \"young\"
@@ -90,69 +89,41 @@ SELECT
     \"yummy\".\"analysis_item_desc\" as \"analysis_item_desc\",
     \"yummy\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
     \"yummy\".\"analysis_store_state\" as \"analysis_store_state\",
-    avg(\"yummy\".\"analysis_store_quantity\") as \"_virt_agg_avg_7518273379920258\",
     avg(\"yummy\".\"analysis_store_quantity\") as \"store_sales_quantityave\",
-    avg(\"yummy\".\"analysis_store_return_quantity\") as \"_virt_agg_avg_8572613716165371\",
     avg(\"yummy\".\"analysis_store_return_quantity\") as \"store_returns_quantityave\",
     count(\"yummy\".\"analysis_store_quantity\") as \"store_sales_quantitycount\",
     count(\"yummy\".\"analysis_store_return_quantity\") as \"store_returns_quantitycount\",
-    stddev_samp(\"yummy\".\"analysis_store_quantity\") as \"_virt_agg_stddev_8948125603328408\",
+    stddev_samp(\"yummy\".\"analysis_store_quantity\") / avg(\"yummy\".\"analysis_store_quantity\") as \"store_sales_quantitycov\",
     stddev_samp(\"yummy\".\"analysis_store_quantity\") as \"store_sales_quantitystdev\",
-    stddev_samp(\"yummy\".\"analysis_store_return_quantity\") as \"_virt_agg_stddev_2955055239782943\",
+    stddev_samp(\"yummy\".\"analysis_store_return_quantity\") / avg(\"yummy\".\"analysis_store_return_quantity\") as \"store_returns_quantitycov\",
     stddev_samp(\"yummy\".\"analysis_store_return_quantity\") as \"store_returns_quantitystdev\"
 FROM
     \"yummy\"
 GROUP BY
     1,
     2,
-    3),
-sweltering as (
+    3)
 SELECT
-    \"abhorrent\".\"_virt_agg_stddev_2693366057110854\" / \"abhorrent\".\"_virt_agg_avg_1688371525139287\" as \"catalog_sales_quantitycov\",
-    \"abhorrent\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"abhorrent\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
-    \"abhorrent\".\"analysis_store_state\" as \"analysis_store_state\",
-    \"abhorrent\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
-    \"abhorrent\".\"catalog_sales_quantitycount\" as \"catalog_sales_quantitycount\",
-    \"abhorrent\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\"
-FROM
-    \"abhorrent\"),
-concerned as (
-SELECT
-    \"vacuous\".\"_virt_agg_stddev_2955055239782943\" / \"vacuous\".\"_virt_agg_avg_8572613716165371\" as \"store_returns_quantitycov\",
-    \"vacuous\".\"_virt_agg_stddev_8948125603328408\" / \"vacuous\".\"_virt_agg_avg_7518273379920258\" as \"store_sales_quantitycov\",
-    \"vacuous\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"vacuous\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
-    \"vacuous\".\"analysis_store_state\" as \"analysis_store_state\",
-    \"vacuous\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
-    \"vacuous\".\"store_returns_quantitycount\" as \"store_returns_quantitycount\",
-    \"vacuous\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
+    coalesce(\"abhorrent\".\"analysis_item_text_id\",\"vacuous\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
+    coalesce(\"abhorrent\".\"analysis_item_desc\",\"vacuous\".\"analysis_item_desc\") as \"analysis_item_desc\",
+    coalesce(\"abhorrent\".\"analysis_store_state\",\"vacuous\".\"analysis_store_state\") as \"analysis_store_state\",
+    coalesce(\"vacuous\".\"store_sales_quantitycount\",0) as \"store_sales_quantitycount\",
     \"vacuous\".\"store_sales_quantityave\" as \"store_sales_quantityave\",
-    \"vacuous\".\"store_sales_quantitycount\" as \"store_sales_quantitycount\",
-    \"vacuous\".\"store_sales_quantitystdev\" as \"store_sales_quantitystdev\"
+    \"vacuous\".\"store_sales_quantitystdev\" as \"store_sales_quantitystdev\",
+    \"vacuous\".\"store_sales_quantitycov\" as \"store_sales_quantitycov\",
+    coalesce(\"vacuous\".\"store_returns_quantitycount\",0) as \"store_returns_quantitycount\",
+    \"vacuous\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
+    \"vacuous\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
+    \"vacuous\".\"store_returns_quantitycov\" as \"store_returns_quantitycov\",
+    coalesce(\"abhorrent\".\"catalog_sales_quantitycount\",0) as \"catalog_sales_quantitycount\",
+    \"abhorrent\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
+    \"abhorrent\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\",
+    \"abhorrent\".\"catalog_sales_quantitycov\" as \"catalog_sales_quantitycov\"
 FROM
-    \"vacuous\")
-SELECT
-    coalesce(\"concerned\".\"analysis_item_text_id\",\"sweltering\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
-    coalesce(\"concerned\".\"analysis_item_desc\",\"sweltering\".\"analysis_item_desc\") as \"analysis_item_desc\",
-    coalesce(\"concerned\".\"analysis_store_state\",\"sweltering\".\"analysis_store_state\") as \"analysis_store_state\",
-    coalesce(\"concerned\".\"store_sales_quantitycount\",0) as \"store_sales_quantitycount\",
-    \"concerned\".\"store_sales_quantityave\" as \"store_sales_quantityave\",
-    \"concerned\".\"store_sales_quantitystdev\" as \"store_sales_quantitystdev\",
-    \"concerned\".\"store_sales_quantitycov\" as \"store_sales_quantitycov\",
-    coalesce(\"concerned\".\"store_returns_quantitycount\",0) as \"store_returns_quantitycount\",
-    \"concerned\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
-    \"concerned\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
-    \"concerned\".\"store_returns_quantitycov\" as \"store_returns_quantitycov\",
-    coalesce(\"sweltering\".\"catalog_sales_quantitycount\",0) as \"catalog_sales_quantitycount\",
-    \"sweltering\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
-    \"sweltering\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\",
-    \"sweltering\".\"catalog_sales_quantitycov\" as \"catalog_sales_quantitycov\"
-FROM
-    \"sweltering\"
-    FULL JOIN \"concerned\" on \"sweltering\".\"analysis_item_desc\" is not distinct from \"concerned\".\"analysis_item_desc\" AND \"sweltering\".\"analysis_item_text_id\" = \"concerned\".\"analysis_item_text_id\" AND \"sweltering\".\"analysis_store_state\" = \"concerned\".\"analysis_store_state\"
+    \"abhorrent\"
+    INNER JOIN \"vacuous\" on \"abhorrent\".\"analysis_item_desc\" is not distinct from \"vacuous\".\"analysis_item_desc\" AND \"abhorrent\".\"analysis_item_text_id\" = \"vacuous\".\"analysis_item_text_id\" AND \"abhorrent\".\"analysis_store_state\" = \"vacuous\".\"analysis_store_state\"
 ORDER BY 
-    coalesce(\"concerned\".\"analysis_item_text_id\",\"sweltering\".\"analysis_item_text_id\") asc nulls first,
-    coalesce(\"concerned\".\"analysis_item_desc\",\"sweltering\".\"analysis_item_desc\") asc nulls first,
-    coalesce(\"concerned\".\"analysis_store_state\",\"sweltering\".\"analysis_store_state\") asc nulls first
+    coalesce(\"abhorrent\".\"analysis_item_text_id\",\"vacuous\".\"analysis_item_text_id\") asc nulls first,
+    coalesce(\"abhorrent\".\"analysis_item_desc\",\"vacuous\".\"analysis_item_desc\") asc nulls first,
+    coalesce(\"abhorrent\".\"analysis_store_state\",\"vacuous\".\"analysis_store_state\") asc nulls first
 LIMIT (100)"""

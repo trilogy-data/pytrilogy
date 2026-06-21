@@ -8,8 +8,8 @@ generated_sql = """
 WITH 
 kaput as (
 SELECT
-    \"store_store\".\"S_COUNTY\" as \"store_county\",
-    \"store_store\".\"S_STATE\" as \"store_state\",
+    \"store_store\".\"S_COUNTY\" as \"_stores_cs_scs_county\",
+    \"store_store\".\"S_STATE\" as \"_stores_cs_scs_state\",
     count(\"store_store\".\"S_STORE_SK\") as \"_stores_cs_scs_count\"
 FROM
     \"memory\".\"store\" as \"store_store\"
@@ -38,11 +38,11 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity'
 ),
-charming as (
+protective as (
 SELECT
-    \"kaput\".\"_stores_cs_scs_count\" as \"_stores_cs_scs_count\",
-    \"kaput\".\"store_county\" as \"_stores_cs_scs_county\",
-    \"kaput\".\"store_state\" as \"_stores_cs_scs_state\"
+    \"kaput\".\"_stores_cs_scs_count\" as \"stores_cs_scs_count\",
+    \"kaput\".\"_stores_cs_scs_county\" as \"stores_cs_scs_county\",
+    \"kaput\".\"_stores_cs_scs_state\" as \"stores_cs_scs_state\"
 FROM
     \"kaput\"),
 abundant as (
@@ -52,13 +52,6 @@ FROM
     \"thoughtful\"
 GROUP BY
     1),
-protective as (
-SELECT
-    \"charming\".\"_stores_cs_scs_count\" as \"stores_cs_scs_count\",
-    \"charming\".\"_stores_cs_scs_county\" as \"stores_cs_scs_county\",
-    \"charming\".\"_stores_cs_scs_state\" as \"stores_cs_scs_state\"
-FROM
-    \"charming\"),
 juicy as (
 SELECT
     \"abundant\".\"_my_customers_my_cust_id\" as \"my_customers_my_cust_id\"
@@ -97,9 +90,9 @@ GROUP BY
     \"abhorrent\".\"ss_ticket_number\"),
 macho as (
 SELECT
-    \"sweltering\".\"ss_customer_address_county\" as \"ss_customer_address_county\",
-    \"sweltering\".\"ss_customer_address_state\" as \"ss_customer_address_state\",
-    \"sweltering\".\"ss_customer_id\" as \"ss_customer_id\",
+    \"sweltering\".\"ss_customer_address_county\" as \"_cust_ss_ss_cust_county\",
+    \"sweltering\".\"ss_customer_address_state\" as \"_cust_ss_ss_cust_state\",
+    \"sweltering\".\"ss_customer_id\" as \"_cust_ss_ss_cust_id\",
     sum(\"sweltering\".\"ss_ext_sales_price\") as \"_cust_ss_ss_revenue\"
 FROM
     \"sweltering\"
@@ -107,22 +100,14 @@ GROUP BY
     1,
     2,
     3),
-scrawny as (
-SELECT
-    \"macho\".\"_cust_ss_ss_revenue\" as \"_cust_ss_ss_revenue\",
-    \"macho\".\"ss_customer_address_county\" as \"_cust_ss_ss_cust_county\",
-    \"macho\".\"ss_customer_address_state\" as \"_cust_ss_ss_cust_state\",
-    \"macho\".\"ss_customer_id\" as \"_cust_ss_ss_cust_id\"
-FROM
-    \"macho\"),
 friendly as (
 SELECT
-    \"scrawny\".\"_cust_ss_ss_cust_county\" as \"cust_ss_ss_cust_county\",
-    \"scrawny\".\"_cust_ss_ss_cust_id\" as \"cust_ss_ss_cust_id\",
-    \"scrawny\".\"_cust_ss_ss_cust_state\" as \"cust_ss_ss_cust_state\",
-    \"scrawny\".\"_cust_ss_ss_revenue\" as \"cust_ss_ss_revenue\"
+    \"macho\".\"_cust_ss_ss_cust_county\" as \"cust_ss_ss_cust_county\",
+    \"macho\".\"_cust_ss_ss_cust_id\" as \"cust_ss_ss_cust_id\",
+    \"macho\".\"_cust_ss_ss_cust_state\" as \"cust_ss_ss_cust_state\",
+    \"macho\".\"_cust_ss_ss_revenue\" as \"cust_ss_ss_revenue\"
 FROM
-    \"scrawny\"),
+    \"macho\"),
 premium as (
 SELECT
     \"friendly\".\"cust_ss_ss_cust_id\" as \"_my_revenue_rev_cust_id\",

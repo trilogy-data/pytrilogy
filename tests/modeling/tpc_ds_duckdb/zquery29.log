@@ -1,6 +1,6 @@
 query_id = "29"
 generator = "v4"
-gen_length = 8156
+gen_length = 7576
 preql_size = 1620
 comp_size = 1089
 generated_sql = """
@@ -81,44 +81,34 @@ HAVING
 young as (
 SELECT
     \"concerned\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
+    \"concerned\".\"correlated_physical_sales_item_desc\" as \"store_sales_item_desc\",
     \"concerned\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
+    \"concerned\".\"correlated_physical_sales_item_text_id\" as \"store_sales_item_name\",
     \"concerned\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
+    \"concerned\".\"correlated_physical_sales_store_name\" as \"store_name\",
     \"concerned\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
+    \"concerned\".\"correlated_physical_sales_store_text_id\" as \"store_sales_store_text_id\",
     sum(\"concerned\".\"correlated_physical_sales_quantity\") as \"store_sales_quantity\",
     sum(\"concerned\".\"correlated_physical_sales_return_quantity\") as \"store_returns_quantity\"
 FROM
     \"concerned\"
 GROUP BY
     1,
-    2,
     3,
-    4),
-sparkling as (
-SELECT
-    \"young\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
-    \"young\".\"correlated_physical_sales_item_desc\" as \"store_sales_item_desc\",
-    \"young\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
-    \"young\".\"correlated_physical_sales_item_text_id\" as \"store_sales_item_name\",
-    \"young\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
-    \"young\".\"correlated_physical_sales_store_name\" as \"store_name\",
-    \"young\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
-    \"young\".\"correlated_physical_sales_store_text_id\" as \"store_sales_store_text_id\",
-    \"young\".\"store_returns_quantity\" as \"store_returns_quantity\",
-    \"young\".\"store_sales_quantity\" as \"store_sales_quantity\"
-FROM
-    \"young\"),
+    5,
+    7),
 abhorrent as (
 SELECT
     \"juicy\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\",
-    \"sparkling\".\"store_name\" as \"store_name\",
-    \"sparkling\".\"store_returns_quantity\" as \"store_returns_quantity\",
-    \"sparkling\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"sparkling\".\"store_sales_item_name\" as \"store_sales_item_name\",
-    \"sparkling\".\"store_sales_quantity\" as \"store_sales_quantity\",
-    \"sparkling\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
+    \"young\".\"store_name\" as \"store_name\",
+    \"young\".\"store_returns_quantity\" as \"store_returns_quantity\",
+    \"young\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"young\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"young\".\"store_sales_quantity\" as \"store_sales_quantity\",
+    \"young\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
 FROM
-    \"sparkling\"
-    INNER JOIN \"juicy\" on \"sparkling\".\"correlated_physical_sales_item_desc\" = \"juicy\".\"correlated_physical_sales_item_desc\" AND \"sparkling\".\"correlated_physical_sales_item_text_id\" = \"juicy\".\"correlated_physical_sales_item_text_id\" AND \"sparkling\".\"correlated_physical_sales_store_name\" = \"juicy\".\"correlated_physical_sales_store_name\" AND \"sparkling\".\"correlated_physical_sales_store_text_id\" = \"juicy\".\"correlated_physical_sales_store_text_id\"
+    \"young\"
+    INNER JOIN \"juicy\" on \"young\".\"correlated_physical_sales_item_desc\" = \"juicy\".\"correlated_physical_sales_item_desc\" AND \"young\".\"correlated_physical_sales_item_text_id\" = \"juicy\".\"correlated_physical_sales_item_text_id\" AND \"young\".\"correlated_physical_sales_store_name\" = \"juicy\".\"correlated_physical_sales_store_name\" AND \"young\".\"correlated_physical_sales_store_text_id\" = \"juicy\".\"correlated_physical_sales_store_text_id\"
 WHERE
     \"juicy\".\"catalog_sales_quantity\" > 0
 )

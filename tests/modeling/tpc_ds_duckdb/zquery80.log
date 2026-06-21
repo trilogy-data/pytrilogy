@@ -134,26 +134,17 @@ FROM
     INNER JOIN \"cheerful\" on \"vacuous\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"vacuous\".\"sales_channel_dim_id\" = \"cheerful\".\"sales_channel_dim_id\"
 WHERE
     \"cheerful\".\"sales_channel_dim_text_id\" is not null
-),
-macho as (
+)
 SELECT
-    \"abhorrent\".\"channel_label\" as \"channel_label\",
-    \"abhorrent\".\"id_label\" as \"id_label\",
-    sum(\"abhorrent\".\"profit_minus_loss\") as \"profit_total\",
+    \"abhorrent\".\"channel_label\" as \"channel\",
+    \"abhorrent\".\"id_label\" as \"id\",
     sum(\"abhorrent\".\"sales_ext_sales_price\") as \"sales_total\",
-    sum(coalesce(\"abhorrent\".\"sales_return_amount\",0)) as \"returns_total\"
+    sum(coalesce(\"abhorrent\".\"sales_return_amount\",0)) as \"returns_total\",
+    sum(\"abhorrent\".\"profit_minus_loss\") as \"profit_total\"
 FROM
     \"abhorrent\"
 GROUP BY
-    ROLLUP (1, 2))
-SELECT
-    \"macho\".\"channel_label\" as \"channel\",
-    \"macho\".\"id_label\" as \"id\",
-    \"macho\".\"sales_total\" as \"sales_total\",
-    \"macho\".\"returns_total\" as \"returns_total\",
-    \"macho\".\"profit_total\" as \"profit_total\"
-FROM
-    \"macho\"
+    ROLLUP (1, 2)
 ORDER BY 
     \"channel\" asc nulls first,
     \"id\" asc nulls first

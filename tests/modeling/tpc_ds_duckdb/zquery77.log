@@ -34,7 +34,7 @@ GROUP BY
     1),
 abhorrent as (
 SELECT
-    \"wr_web_returns\".\"WR_WEB_PAGE_SK\" as \"wr_web_page_id\",
+    \"wr_web_returns\".\"WR_WEB_PAGE_SK\" as \"_wr_grouped_wr_wp_id\",
     sum(\"wr_web_returns\".\"WR_NET_LOSS\") as \"_wr_grouped_wr_loss\",
     sum(\"wr_web_returns\".\"WR_RETURN_AMT\") as \"_wr_grouped_wr_returns\"
 FROM
@@ -60,7 +60,7 @@ WHERE
 ),
 kaput as (
 SELECT
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"_ss_grouped_ss_store_id\",
     sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"_ss_grouped_ss_sales\",
     sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"_ss_grouped_ss_profit\"
 FROM
@@ -205,17 +205,9 @@ SELECT
 FROM
     \"resonant\"
 GROUP BY
-    ROLLUP (1, 2))
-SELECT
-    \"tenuous\".\"l0_union_u_channel\" as \"channel\",
-    \"tenuous\".\"l0_union_u_id\" as \"id\",
-    \"tenuous\".\"sales\" as \"sales\",
-    \"tenuous\".\"returns_\" as \"returns_\",
-    \"tenuous\".\"profit\" as \"profit\"
-FROM
-    \"tenuous\"
+    ROLLUP (1, 2)
 ORDER BY 
     \"channel\" asc nulls first,
     \"id\" asc nulls first,
-    \"tenuous\".\"returns_\" desc
+    \"returns_\" desc
 LIMIT (100)"""

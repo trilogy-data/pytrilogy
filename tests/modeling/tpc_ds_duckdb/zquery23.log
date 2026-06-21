@@ -79,7 +79,7 @@ GROUP BY
     \"thoughtful\".\"sales_billing_customer_id\"),
 cooperative as (
 SELECT
-    \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
+    \"thoughtful\".\"sales_billing_customer_id\" as \"_best_customers_best_customer_id\",
     sum(\"thoughtful\".\"sales_quantity\" * \"thoughtful\".\"sales_sales_price\") as \"customer_total_overall\"
 FROM
     \"thoughtful\"
@@ -108,12 +108,6 @@ SELECT
     max(\"juicy\".\"customer_total_in_window\") as \"_max_total_cmax\"
 FROM
     \"juicy\"),
-uneven as (
-SELECT
-    \"cooperative\".\"customer_total_overall\" as \"customer_total_overall\",
-    \"cooperative\".\"sales_billing_customer_id\" as \"_best_customers_best_customer_id\"
-FROM
-    \"cooperative\"),
 protective as (
 SELECT
     \"busy\".\"sales_item_id\" as \"sales_item_id\"
@@ -139,12 +133,12 @@ FROM
     LEFT OUTER JOIN \"kaput\" on \"protective\".\"sales_item_id\" = \"kaput\".\"_frequent_items_frequent_item_id\"),
 sweltering as (
 SELECT
-    \"uneven\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
+    \"cooperative\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
 FROM
-    \"uneven\"
+    \"cooperative\"
     INNER JOIN \"abhorrent\" on 1=1
 WHERE
-    \"uneven\".\"customer_total_overall\" > 0.5 * \"abhorrent\".\"max_total_cmax\"
+    \"cooperative\".\"customer_total_overall\" > 0.5 * \"abhorrent\".\"max_total_cmax\"
 ),
 puzzled as (
 SELECT
