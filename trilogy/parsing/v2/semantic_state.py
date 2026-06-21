@@ -76,9 +76,8 @@ class SemanticState:
     _pending_types_by_name: dict[str, CustomType] = field(default_factory=dict)
     # Explicit `merge X into Y;` statements deferred until after concept
     # commit when either side is pending. Merge statements are stored as
-    # environment-level build-time joins. PARTIAL (`~`) merges still perform the
-    # legacy datasource rewrite as a compatibility bridge for spine/unnest
-    # enrichment until scoped LEFT joins cover those shapes fully.
+    # environment-level build-time joins, so they share the scoped join machinery
+    # instead of rewriting the author environment during parse.
     _pending_merges: list[tuple[Concept, Concept, list[Modifier]]] = field(
         default_factory=list
     )
@@ -267,10 +266,9 @@ class SemanticState:
         target: Concept,
         modifiers: list[Modifier],
     ) -> None:
-        # Register eagerly when both sides are already durable. PARTIAL merges
-        # dual-write through merge_concept for now; when either side is pending,
-        # defer until commit so rollback does not leak a merge join for concepts
-        # that were never durably added.
+        # Register eagerly when both sides are already durable. When either
+        # side is pending, defer until commit so rollback does not leak a merge
+        # join for concepts that were never durably added.
         durable = self.environment.concepts.data
         if (
             source.address in durable
@@ -278,9 +276,6 @@ class SemanticState:
             and source.address not in self._pending_by_address
             and target.address not in self._pending_by_address
         ):
-            if Modifier.PARTIAL in modifiers:
-                self.environment.merge_concept(source, target, modifiers)
-                return
             self.environment.add_merge_join(source, target, modifiers)
             return
         self._pending_merges.append((source, target, modifiers))
@@ -324,9 +319,6 @@ class SemanticState:
             pending_merges = self._pending_merges
             self._pending_merges = []
             for source, target, modifiers in pending_merges:
-                if Modifier.PARTIAL in modifiers:
-                    self.environment.merge_concept(source, target, modifiers)
-                    continue
                 self.environment.add_merge_join(source, target, modifiers)
             self._pending_by_address.clear()
             self._placeholder_addresses.clear()

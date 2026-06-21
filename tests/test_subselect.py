@@ -64,19 +64,6 @@ def test_subselect_item_with_namespace():
     assert ns_item.limit == 3
 
 
-def test_subselect_item_with_merge():
-    env, _ = parse("""
-key id int;
-property id.val int;
-    """)
-    source = env.concepts["val"]
-    target = env.concepts["val"]
-    ref = ConceptRef(address="local.val", datatype=DataType.INTEGER)
-    item = SubselectItem(content=ref, limit=2)
-    merged = item.with_merge(source, target, [])
-    assert merged.limit == 2
-
-
 def test_subselect_item_with_reference_replacement():
     ref = ConceptRef(address="local.val", datatype=DataType.INTEGER)
     replacement = ConceptRef(address="local.new_val", datatype=DataType.INTEGER)

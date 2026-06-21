@@ -396,7 +396,7 @@ SELECT
 def test_aggregate_grouped_by_merged_key(models: Path):
     # the output grain IS the merged key. The build canonicalizes
     # customers.customer_id and orders.customer_id into one (pure pseudonym
-    # substitution, no with_merge cascade), so the anchor key is satisfied
+    # substitution, no author rewrite cascade), so the anchor key is satisfied
     # straight from the orders source.
     text = """
 import orders as orders;

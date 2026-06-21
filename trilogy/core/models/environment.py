@@ -983,51 +983,6 @@ class Environment:
             return True
         return False
 
-    def merge_concept(
-        self,
-        source: Concept,
-        target: Concept,
-        modifiers: List[Modifier],
-        force: bool = False,
-    ) -> bool:
-        from trilogy.core.models.build import BuildConcept
-
-        if isinstance(source, BuildConcept):
-            raise SyntaxError(source)
-        elif isinstance(target, BuildConcept):
-            raise SyntaxError(target)
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot merge concepts")
-        replacements = {}
-        source_addr = source.address
-        target_addr = target.address
-
-        if source_addr in self.alias_origin_lookup and not force:
-            if self.concepts[source_addr] == target:
-                return False
-
-        self.alias_origin_lookup[source_addr] = source
-        self.alias_origin_lookup[source_addr].pseudonyms.add(target_addr)
-        for k, v in self.concepts.items():
-            v_addr = v.address
-            if v_addr == target_addr:
-                if source_addr != target_addr:
-                    v.pseudonyms.add(source_addr)
-
-            if v_addr == source_addr:
-                replacements[k] = target
-            else:
-                if source_addr in v.sources or source_addr in v.grain.components:
-                    replacements[k] = v.with_merge(source, target, modifiers)
-        self.concepts.update(replacements)
-        for k, ds in self.datasources.items():
-            if source_addr in ds.output_lcl:
-                ds.merge_concept(source, target, modifiers=modifiers)
-
-        self.add_merge_join(source, target, modifiers)
-
-        return True
-
     # LSP/Editor introspection helpers
 
     def user_concepts(self) -> List[Concept]:

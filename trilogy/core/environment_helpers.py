@@ -309,7 +309,7 @@ def generate_related_concepts(
             )
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):
-                environment.merge_concept(auto, value, modifiers=[])
+                environment.add_merge_join(auto, value, modifiers=[])
 
 
 def enrich_environment(environment: Environment):

@@ -74,10 +74,7 @@ class Namespaced:
         raise NotImplementedError
 
 
-class Mergeable:
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        raise NotImplementedError
-
+class ReferenceReplaceable:
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         raise NotImplementedError(type(self))
 
@@ -111,7 +108,7 @@ def compute_safe_address(namespace: str, name: str) -> str:
 
 
 @dataclass
-class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable):
+class ConceptRef(Addressable, Namespaced, DataTyped, ReferenceReplaceable):
     address: str
     datatype: CONCRETE_TYPES = DataType.UNKNOWN
     metadata: Optional["Metadata"] = None
@@ -159,15 +156,6 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable):
     @property
     def output_datatype(self):
         return self.datatype
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> ConceptRef:
-        if self.address == source.address:
-            return ConceptRef(
-                address=target.address, datatype=target.datatype, metadata=self.metadata
-            )
-        return self
 
     def with_namespace(self, namespace: str):
         return ConceptRef(
@@ -228,7 +216,7 @@ def address_with_namespace(address: str, namespace: str) -> str:
 class Parenthetical(
     DataTyped,
     ConceptArgs,
-    Mergeable,
+    ReferenceReplaceable,
     Namespaced,
 ):
     content: "Expr"
@@ -259,20 +247,11 @@ class Parenthetical(
             )
         )
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return Parenthetical(
-            content=(
-                self.content.with_merge(source, target, modifiers)
-                if isinstance(self.content, Mergeable)
-                else self.content
-            )
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return Parenthetical(
             content=(
                 self.content.with_reference_replacement(replacements)
-                if isinstance(self.content, Mergeable)
+                if isinstance(self.content, ReferenceReplaceable)
                 else self.content
             )
         )
@@ -305,7 +284,7 @@ class Parenthetical(
 
 
 @dataclass
-class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped):
+class Conditional(ReferenceReplaceable, ConceptArgs, Namespaced, DataTyped):
     left: Expr
     right: Expr
     operator: BooleanOperator
@@ -360,33 +339,16 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped):
             operator=self.operator,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Conditional":
-        return Conditional(
-            left=(
-                self.left.with_merge(source, target, modifiers)
-                if isinstance(self.left, Mergeable)
-                else self.left
-            ),
-            right=(
-                self.right.with_merge(source, target, modifiers)
-                if isinstance(self.right, Mergeable)
-                else self.right
-            ),
-            operator=self.operator,
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return self.__class__(
             left=(
                 self.left.with_reference_replacement(replacements)
-                if isinstance(self.left, Mergeable)
+                if isinstance(self.left, ReferenceReplaceable)
                 else self.left
             ),
             right=(
                 self.right.with_reference_replacement(replacements)
-                if isinstance(self.right, Mergeable)
+                if isinstance(self.right, ReferenceReplaceable)
                 else self.right
             ),
             operator=self.operator,
@@ -434,7 +396,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped):
 
 
 @dataclass
-class WhereClause(Mergeable, ConceptArgs, Namespaced):
+class WhereClause(ReferenceReplaceable, ConceptArgs, Namespaced):
     conditional: Union[
         SubselectComparison, Comparison, Conditional, Parenthetical, Between
     ]
@@ -456,13 +418,6 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced):
     @property
     def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
         return self.conditional.existence_arguments
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> Self:
-        return self.__class__(
-            conditional=self.conditional.with_merge(source, target, modifiers)
-        )
 
     def with_namespace(self, namespace: str) -> Self:
         return self.__class__(conditional=self.conditional.with_namespace(namespace))
@@ -516,19 +471,6 @@ class Grain(Namespaced):
             components=self.components,
             component_order=self.component_order,
         )
-
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        new_components = set()
-        new_order = []
-        for c in self.component_order:
-            if c == source.address:
-                address = target.address
-            else:
-                address = c
-            new_components.add(address)
-            if address not in new_order:
-                new_order.append(address)
-        return Grain(components=new_components, component_order=new_order)
 
     @classmethod
     def from_concepts(
@@ -668,7 +610,7 @@ class Grain(Namespaced):
 
 
 @dataclass
-class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced):
+class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
     left: Union[
         int,
         str,
@@ -786,31 +728,16 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced):
     def __hash__(self):
         return hash(repr(self))
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return self.__class__(
-            left=(
-                self.left.with_merge(source, target, modifiers)
-                if isinstance(self.left, Mergeable)
-                else self.left
-            ),
-            right=(
-                self.right.with_merge(source, target, modifiers)
-                if isinstance(self.right, Mergeable)
-                else self.right
-            ),
-            operator=self.operator,
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return self.__class__(
             left=(
                 self.left.with_reference_replacement(replacements)
-                if isinstance(self.left, Mergeable)
+                if isinstance(self.left, ReferenceReplaceable)
                 else self.left
             ),
             right=(
                 self.right.with_reference_replacement(replacements)
-                if isinstance(self.right, Mergeable)
+                if isinstance(self.right, ReferenceReplaceable)
                 else self.right
             ),
             operator=self.operator,
@@ -863,7 +790,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced):
 
 
 @dataclass
-class Between(ConceptArgs, Mergeable, DataTyped, Namespaced):
+class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
     left: Union[
         int,
         str,
@@ -990,44 +917,23 @@ class Between(ConceptArgs, Mergeable, DataTyped, Namespaced):
             ),
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Between":
-        return self.__class__(
-            left=(
-                self.left.with_merge(source, target, modifiers)
-                if isinstance(self.left, Mergeable)
-                else self.left
-            ),
-            low=(
-                self.low.with_merge(source, target, modifiers)
-                if isinstance(self.low, Mergeable)
-                else self.low
-            ),
-            high=(
-                self.high.with_merge(source, target, modifiers)
-                if isinstance(self.high, Mergeable)
-                else self.high
-            ),
-        )
-
     def with_reference_replacement(
         self, replacements: ReferenceReplacements
     ) -> "Between":
         return self.__class__(
             left=(
                 self.left.with_reference_replacement(replacements)
-                if isinstance(self.left, Mergeable)
+                if isinstance(self.left, ReferenceReplaceable)
                 else self.left
             ),
             low=(
                 self.low.with_reference_replacement(replacements)
-                if isinstance(self.low, Mergeable)
+                if isinstance(self.low, ReferenceReplaceable)
                 else self.low
             ),
             high=(
                 self.high.with_reference_replacement(replacements)
-                if isinstance(self.high, Mergeable)
+                if isinstance(self.high, ReferenceReplaceable)
                 else self.high
             ),
         )
@@ -1087,7 +993,7 @@ class SubselectComparison(Comparison):
 
 
 @dataclass
-class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
+class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     name: str
     datatype: CONCRETE_TYPES
     purpose: Purpose
@@ -1213,36 +1119,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     @cached_property
     def is_aggregate(self):
         return self.calculate_is_aggregate(self.lineage)
-
-    def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
-        if self.address == source.address:
-            new = target.with_grain(self.grain.with_merge(source, target, modifiers))
-            new.pseudonyms.add(self.address)
-            return new
-        if not self.grain.components and not self.lineage and not self.keys:
-            return self
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            derivation=self.derivation,
-            granularity=self.granularity,
-            lineage=(
-                self.lineage.with_merge(source, target, modifiers)
-                if self.lineage
-                else None
-            ),
-            grain=self.grain.with_merge(source, target, modifiers),
-            namespace=self.namespace,
-            keys=(
-                set(x if x != source.address else target.address for x in self.keys)
-                if self.keys
-                else None
-            ),
-            modifiers=self.modifiers,
-            pseudonyms=self.pseudonyms,
-        )
 
     def __eq__(self, other: object):
         if isinstance(other, str):
@@ -1663,7 +1539,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
 
 
 @dataclass(eq=False)
-class UndefinedConceptFull(Concept, Mergeable, Namespaced):
+class UndefinedConceptFull(Concept, ReferenceReplaceable, Namespaced):
     line_no: int | None = None
     datatype: CONCRETE_TYPES = DataType.UNKNOWN
     purpose: Purpose = Purpose.UNKNOWN
@@ -1674,7 +1550,7 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
 
 
 @dataclass
-class OrderItem(Mergeable, ConceptArgs, Namespaced):
+class OrderItem(ReferenceReplaceable, ConceptArgs, Namespaced):
     # this needs to be a full concept as it may not exist in environment
     expr: Expr
     order: Ordering
@@ -1695,23 +1571,11 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced):
             order=self.order,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "OrderItem":
-        return OrderItem(
-            expr=(
-                self.expr.with_merge(source, target, modifiers)
-                if isinstance(self.expr, Mergeable)
-                else self.expr
-            ),
-            order=self.order,
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return OrderItem(
             expr=(
                 self.expr.with_reference_replacement(replacements)
-                if isinstance(self.expr, Mergeable)
+                if isinstance(self.expr, ReferenceReplaceable)
                 else self.expr
             ),
             order=self.order,
@@ -1739,7 +1603,7 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced):
 
 
 @dataclass
-class NumberingWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
+class NumberingWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     type: WindowType
     arguments: List["ConceptRef"]
     order_by: List["OrderItem"]
@@ -1764,16 +1628,6 @@ class NumberingWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
 
     def __repr__(self):
         return f"{self.type.value}({self.arguments}) over {self.over} order {self.order_by}"
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "NumberingWindowItem":
-        return NumberingWindowItem(
-            type=self.type,
-            arguments=[x.with_merge(source, target, modifiers) for x in self.arguments],
-            over=[x.with_merge(source, target, modifiers) for x in self.over],
-            order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
-        )
 
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return NumberingWindowItem(
@@ -1812,7 +1666,7 @@ class NumberingWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
 
 
 @dataclass
-class NavigationWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
+class NavigationWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     type: WindowType
     content: FuncArgs
     order_by: List["OrderItem"]
@@ -1840,27 +1694,12 @@ class NavigationWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
     def __repr__(self):
         return f"{self.type.value}({self.content}, offset={self.offset}) over {self.over} order {self.order_by}"
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "NavigationWindowItem":
-        return NavigationWindowItem(
-            type=self.type,
-            content=(
-                self.content.with_merge(source, target, modifiers)
-                if isinstance(self.content, Mergeable)
-                else self.content
-            ),
-            over=[x.with_merge(source, target, modifiers) for x in self.over],
-            order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
-            offset=self.offset,
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return NavigationWindowItem(
             type=self.type,
             content=(
                 self.content.with_reference_replacement(replacements)
-                if isinstance(self.content, Mergeable)
+                if isinstance(self.content, ReferenceReplaceable)
                 else self.content
             ),
             over=[x.with_reference_replacement(replacements) for x in self.over],
@@ -1928,7 +1767,7 @@ def get_basic_type(
 
 
 @dataclass
-class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable):
+class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
     value_expr: "Expr"
     expr: "Expr"
 
@@ -1973,39 +1812,23 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable):
             ),
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> CaseSimpleWhen:
-        return CaseSimpleWhen(
-            value_expr=(
-                self.value_expr.with_merge(source, target, modifiers)
-                if isinstance(self.value_expr, Mergeable)
-                else self.value_expr
-            ),
-            expr=(
-                self.expr.with_merge(source, target, modifiers)
-                if isinstance(self.expr, Mergeable)
-                else self.expr
-            ),
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return CaseSimpleWhen(
             value_expr=(
                 self.value_expr.with_reference_replacement(replacements)
-                if isinstance(self.value_expr, Mergeable)
+                if isinstance(self.value_expr, ReferenceReplaceable)
                 else self.value_expr
             ),
             expr=(
                 self.expr.with_reference_replacement(replacements)
-                if isinstance(self.expr, Mergeable)
+                if isinstance(self.expr, ReferenceReplaceable)
                 else self.expr
             ),
         )
 
 
 @dataclass
-class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable):
+class CaseWhen(Namespaced, DataTyped, ConceptArgs, ReferenceReplaceable):
     comparison: Conditional | SubselectComparison | Comparison | Between
     expr: "Expr"
 
@@ -2046,31 +1869,19 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable):
             ),
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> CaseWhen:
-        return CaseWhen(
-            comparison=self.comparison.with_merge(source, target, modifiers),
-            expr=(
-                self.expr.with_merge(source, target, modifiers)
-                if isinstance(self.expr, Mergeable)
-                else self.expr
-            ),
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return CaseWhen(
             comparison=self.comparison.with_reference_replacement(replacements),
             expr=(
                 self.expr.with_reference_replacement(replacements)
-                if isinstance(self.expr, Mergeable)
+                if isinstance(self.expr, ReferenceReplaceable)
                 else self.expr
             ),
         )
 
 
 @dataclass
-class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable):
+class CaseElse(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = dc_field(
@@ -2097,24 +1908,12 @@ class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable):
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> CaseElse:
-        return CaseElse(
-            discriminant=self.discriminant,
-            expr=(
-                self.expr.with_merge(source, target, modifiers)
-                if isinstance(self.expr, Mergeable)
-                else self.expr
-            ),
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return CaseElse(
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_reference_replacement(replacements)
-                if isinstance(self.expr, Mergeable)
+                if isinstance(self.expr, ReferenceReplaceable)
                 else self.expr
             ),
         )
@@ -2182,7 +1981,7 @@ def _matches_valid_type(
 
 
 @dataclass
-class Function(DataTyped, ConceptArgs, Mergeable, Namespaced):
+class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     operator: FunctionType
     output_datatype: CONCRETE_TYPES
     output_purpose: Purpose
@@ -2296,7 +2095,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced):
         nargs = [
             (
                 c.with_reference_replacement(replacements)
-                if isinstance(c, Mergeable)
+                if isinstance(c, ReferenceReplaceable)
                 else c
             )
             for c in self.arguments
@@ -2343,29 +2142,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced):
             arg_count=self.arg_count,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Function":
-
-        return Function(
-            operator=self.operator,
-            arguments=[
-                (
-                    c.with_merge(source, target, modifiers)
-                    if isinstance(
-                        c,
-                        Mergeable,
-                    )
-                    else c
-                )
-                for c in self.arguments
-            ],
-            output_datatype=self.output_datatype,
-            output_purpose=self.output_purpose,
-            valid_inputs=self.valid_inputs,
-            arg_count=self.arg_count,
-        )
-
     @property
     def concept_arguments(self) -> List[ConceptRef]:
         base = []
@@ -2378,7 +2154,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced):
 class FunctionCallWrapper(
     DataTyped,
     ConceptArgs,
-    Mergeable,
+    ReferenceReplaceable,
     Namespaced,
 ):
     content: Expr
@@ -2406,34 +2182,14 @@ class FunctionCallWrapper(
         return FunctionCallWrapper(
             content=(
                 self.content.with_reference_replacement(replacements)
-                if isinstance(self.content, Mergeable)
+                if isinstance(self.content, ReferenceReplaceable)
                 else self.content
             ),
             name=self.name,
             args=[
                 (
                     x.with_reference_replacement(replacements)
-                    if isinstance(x, Mergeable)
-                    else x
-                )
-                for x in self.args
-            ],
-        )
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "FunctionCallWrapper":
-        return FunctionCallWrapper(
-            content=(
-                self.content.with_merge(source, target, modifiers)
-                if isinstance(self.content, Mergeable)
-                else self.content
-            ),
-            name=self.name,
-            args=[
-                (
-                    x.with_merge(source, target, modifiers)
-                    if isinstance(x, Mergeable)
+                    if isinstance(x, ReferenceReplaceable)
                     else x
                 )
                 for x in self.args
@@ -2476,14 +2232,8 @@ def _by_item_with_namespace(item, namespace: str):
     return item
 
 
-def _by_item_with_merge(item, source: Concept, target: Concept, modifiers):
-    if isinstance(item, Mergeable):
-        return item.with_merge(source, target, modifiers)
-    return item
-
-
 def _by_item_with_reference_replacement(item, replacements):
-    if isinstance(item, Mergeable):
+    if isinstance(item, ReferenceReplaceable):
         return item.with_reference_replacement(replacements)
     return item
 
@@ -2548,7 +2298,7 @@ class AggregateGrouping:
 
 
 @dataclass
-class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
+class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     function: Function
     by: List[Any] = dc_field(default_factory=list)
     grouping: AggregateGroupingMode = AggregateGroupingMode.STANDARD
@@ -2587,20 +2337,6 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
     def output_purpose(self):
         return self.function.output_purpose
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return AggregateWrapper(
-            function=self.function.with_merge(source, target, modifiers=modifiers),
-            by=[_by_item_with_merge(c, source, target, modifiers) for c in self.by],
-            grouping=self.grouping,
-            grouping_sets=[
-                [
-                    _by_item_with_merge(c, source, target, modifiers)
-                    for c in grouping_set
-                ]
-                for grouping_set in self.grouping_sets
-            ],
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return AggregateWrapper(
             function=self.function.with_reference_replacement(replacements),
@@ -2628,7 +2364,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
 
 
 @dataclass
-class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
+class FilterItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
     content: FuncArgs
     where: "WhereClause"
 
@@ -2640,18 +2376,6 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
 
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "FilterItem":
-        return FilterItem(
-            content=(
-                self.content.with_merge(source, target, modifiers)
-                if isinstance(self.content, Mergeable)
-                else self.content
-            ),
-            where=self.where.with_merge(source, target, modifiers),
-        )
 
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem(
@@ -2667,7 +2391,7 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
         return FilterItem(
             content=(
                 self.content.with_reference_replacement(replacements)
-                if isinstance(self.content, Mergeable)
+                if isinstance(self.content, ReferenceReplaceable)
                 else self.content
             ),
             where=self.where.with_reference_replacement(replacements),
@@ -2687,7 +2411,7 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
 
 
 @dataclass
-class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
+class SubselectItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
     content: ConceptRef
     where: Optional["WhereClause"] = None
     order_by: List["OrderItem"] = dc_field(default_factory=list)
@@ -2713,30 +2437,11 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
     def __str__(self):
         return self.__repr__()
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SubselectItem":
-        return SubselectItem(
-            content=(
-                self.content.with_merge(source, target, modifiers)
-                if isinstance(self.content, Mergeable)
-                else self.content
-            ),
-            where=(
-                self.where.with_merge(source, target, modifiers) if self.where else None
-            ),
-            order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
-            limit=self.limit,
-            outer_arguments=[
-                x.with_merge(source, target, modifiers) for x in self.outer_arguments
-            ],
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return SubselectItem(
             content=(
                 self.content.with_reference_replacement(replacements)
-                if isinstance(self.content, Mergeable)
+                if isinstance(self.content, ReferenceReplaceable)
                 else self.content
             ),
             where=(
@@ -2751,7 +2456,7 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
             outer_arguments=[
                 (
                     x.with_reference_replacement(replacements)
-                    if isinstance(x, Mergeable)
+                    if isinstance(x, ReferenceReplaceable)
                     else x
                 )
                 for x in self.outer_arguments
@@ -2790,7 +2495,7 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
 
 
 @dataclass
-class RowsetLineage(Namespaced, Mergeable):
+class RowsetLineage(Namespaced, ReferenceReplaceable):
     name: str
     derived_concepts: List[ConceptRef]
     select: SelectLineage | MultiSelectLineage
@@ -2804,18 +2509,9 @@ class RowsetLineage(Namespaced, Mergeable):
             select=self.select.with_namespace(namespace),
         )
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return RowsetLineage(
-            name=self.name,
-            derived_concepts=[
-                x.with_merge(source, target, modifiers) for x in self.derived_concepts
-            ],
-            select=self.select.with_merge(source, target, modifiers),
-        )
-
 
 @dataclass
-class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced):
+class RowsetItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     content: ConceptRef
     rowset: RowsetLineage
 
@@ -2824,12 +2520,6 @@ class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced):
 
     def __str__(self):
         return self.__repr__()
-
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return RowsetItem(
-            content=self.content.with_merge(source, target, modifiers),
-            rowset=self.rowset,
-        )
 
     def with_namespace(self, namespace: str) -> "RowsetItem":
         return RowsetItem(
@@ -2851,18 +2541,11 @@ class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced):
 
 
 @dataclass
-class OrderBy(Mergeable, Namespaced):
+class OrderBy(ReferenceReplaceable, Namespaced):
     items: List[OrderItem]
 
     def with_namespace(self, namespace: str) -> "OrderBy":
         return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "OrderBy":
-        return OrderBy(
-            items=[x.with_merge(source, target, modifiers) for x in self.items]
-        )
 
     @property
     def concept_arguments(self):
@@ -2881,7 +2564,7 @@ class AlignClause(Namespaced):
 
 
 @dataclass
-class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable):
+class DeriveItem(Namespaced, DataTyped, ConceptArgs, ReferenceReplaceable):
     expr: Expr
     name: str
     namespace: str
@@ -2901,24 +2584,11 @@ class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable):
             namespace=namespace,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "DeriveItem":
-        return DeriveItem(
-            expr=(
-                self.expr.with_merge(source, target, modifiers)
-                if isinstance(self.expr, Mergeable)
-                else self.expr
-            ),
-            name=self.name,
-            namespace=self.namespace,
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return DeriveItem(
             expr=(
                 self.expr.with_reference_replacement(replacements)
-                if isinstance(self.expr, Mergeable)
+                if isinstance(self.expr, ReferenceReplaceable)
                 else self.expr
             ),
             name=self.name,
@@ -2927,7 +2597,7 @@ class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable):
 
 
 @dataclass
-class DeriveClause(Mergeable, Namespaced):
+class DeriveClause(ReferenceReplaceable, Namespaced):
     items: List[DeriveItem]
 
     def with_namespace(self, namespace: str) -> "DeriveClause":
@@ -2938,26 +2608,12 @@ class DeriveClause(Mergeable, Namespaced):
             ]
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "DeriveClause":
-        return DeriveClause(
-            items=[
-                (
-                    x.with_merge(source, target, modifiers)
-                    if isinstance(x, Mergeable)
-                    else x
-                )
-                for x in self.items
-            ]
-        )
-
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return DeriveClause(
             items=[
                 (
                     x.with_reference_replacement(replacements)
-                    if isinstance(x, Mergeable)
+                    if isinstance(x, ReferenceReplaceable)
                     else x
                 )
                 for x in self.items
@@ -2966,7 +2622,7 @@ class DeriveClause(Mergeable, Namespaced):
 
 
 @dataclass
-class SelectLineage(Mergeable, Namespaced):
+class SelectLineage(ReferenceReplaceable, Namespaced):
     selection: List[ConceptRef]
     hidden_components: set[str]
     local_concepts: dict[str, Concept]
@@ -2985,43 +2641,6 @@ class SelectLineage(Mergeable, Namespaced):
     @property
     def output_components(self) -> List[ConceptRef]:
         return self.selection
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> SelectLineage:
-        return SelectLineage(
-            selection=[x.with_merge(source, target, modifiers) for x in self.selection],
-            hidden_components=self.hidden_components,
-            local_concepts={
-                x: y.with_merge(source, target, modifiers)
-                for x, y in self.local_concepts.items()
-            },
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
-            limit=self.limit,
-            grain=self.grain.with_merge(source, target, modifiers),
-            where_clause=(
-                self.where_clause.with_merge(source, target, modifiers)
-                if self.where_clause
-                else None
-            ),
-            having_clause=(
-                self.having_clause.with_merge(source, target, modifiers)
-                if self.having_clause
-                else None
-            ),
-            scoped_joins=[
-                (
-                    target.address if s == source.address else s,
-                    target.address if t == source.address else t,
-                    jt,
-                )
-                for s, t, jt in self.scoped_joins
-            ],
-        )
 
     def with_namespace(self, namespace):
         return SelectLineage(
@@ -3056,7 +2675,7 @@ class SelectLineage(Mergeable, Namespaced):
 
 
 @dataclass
-class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
+class MultiSelectLineage(ReferenceReplaceable, ConceptArgs, Namespaced):
     selects: List[SelectLineage]
     align: AlignClause
     namespace: str
@@ -3088,38 +2707,6 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
         for select in self.selects:
             output += select.output_components
         return [x for x in output if x.address not in select_hidden]
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> MultiSelectLineage:
-        new = type(self)(
-            selects=[s.with_merge(source, target, modifiers) for s in self.selects],
-            align=self.align,
-            derive=(
-                self.derive.with_merge(source, target, modifiers)
-                if self.derive
-                else None
-            ),
-            namespace=self.namespace,
-            hidden_components=self.hidden_components,
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
-            limit=self.limit,
-            where_clause=(
-                self.where_clause.with_merge(source, target, modifiers)
-                if self.where_clause
-                else None
-            ),
-            having_clause=(
-                self.having_clause.with_merge(source, target, modifiers)
-                if self.having_clause
-                else None
-            ),
-        )
-        return new
 
     def with_namespace(self, namespace: str) -> "MultiSelectLineage":
         return type(self)(
@@ -3352,7 +2939,7 @@ class CustomFunctionFactory:
                         f"Invalid argument type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected traits {arg.datatype.traits}, got {comparison}"
                     )
 
-        if isinstance(nout, Mergeable) and creation_arg_list:
+        if isinstance(nout, ReferenceReplaceable) and creation_arg_list:
             replacements: ReferenceReplacements = [
                 (
                     (

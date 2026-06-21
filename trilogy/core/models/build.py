@@ -2271,6 +2271,7 @@ class Factory:
         self.scoped_merge_map, self.scoped_partial_sources = _build_scoped_merge_index(
             self.scoped_joins
         )
+        self._source_identity_addresses: set[str] = set()
         full_join_sources = {
             source
             for source, _, join_type in self.scoped_joins
@@ -2309,15 +2310,25 @@ class Factory:
             return c is None or c.derivation in (Derivation.ROOT, Derivation.ROWSET)
 
         self.scoped_merge_sources: set[str] = set()
+        scoped_pseudonym_sources: set[str] = set()
         for s, t, jt in self.scoped_joins:
             if jt is JoinType.INNER:
                 self.scoped_merge_sources.add(s)
+                scoped_pseudonym_sources.add(s)
             elif jt is JoinType.LEFT_OUTER and not _is_binding_keyed(t):
                 # LEFT collapses target->source; the target is the partial side.
                 # Only a derived target lacks a binding to carry partiality and
                 # needs the merge mechanism (a root/rowset target keeps the
                 # column-partial / rowset machinery).
                 self.scoped_merge_sources.add(t)
+                scoped_pseudonym_sources.add(t)
+            elif jt is JoinType.LEFT_OUTER:
+                target_concept = environment.concepts.get(s)
+                if (
+                    target_concept is not None
+                    and target_concept.derivation is Derivation.UNNEST
+                ):
+                    scoped_pseudonym_sources.add(t)
             elif jt is JoinType.FULL and not _is_binding_keyed(s):
                 # FULL collapses source->target exactly like INNER, so the
                 # collapsed-away source needs the merge mechanism to stay
@@ -2342,12 +2353,13 @@ class Factory:
             # side's derivation, exactly as the global-merge path resolves it.
             # Sub-factories inherit the already-augmented map, so skip the copy
             # when the links are present.
-            pending = [
-                (s, self.scoped_merge_map[s])
-                for s in self.scoped_merge_sources
-                if s in self.scoped_merge_map
-                and s not in self.pseudonym_map.get(self.scoped_merge_map[s], ())
-            ]
+            pending: list[tuple[str, str]] = []
+            for source in scoped_pseudonym_sources:
+                if source not in self.scoped_merge_map or source in full_join_sources:
+                    continue
+                canonical_addr = self.scoped_merge_map[source]
+                if source not in self.pseudonym_map.get(canonical_addr, ()):
+                    pending.append((source, canonical_addr))
             if pending:
                 augmented = {k: set(v) for k, v in self.pseudonym_map.items()}
                 for source_addr, target_addr in pending:
@@ -2674,7 +2686,10 @@ class Factory:
         # merged-away source. Every concept lookup (refs, grain components,
         # lineage args) funnels through here, so this collapses the source
         # everywhere.
-        if self.scoped_merge_map:
+        if (
+            self.scoped_merge_map
+            and base.address not in self._source_identity_addresses
+        ):
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
                 base = self.environment.concepts[canonical]
@@ -3580,7 +3595,14 @@ class Factory:
             # partial / full-join machinery owns their resolution).
             if source_addr in self.scoped_merge_sources:
                 collapsed = self.local_concepts.pop(source_addr, None)
-                alias_build = self.__build_concept(src)
+                previous_identity_addresses = self._source_identity_addresses
+                self._source_identity_addresses = (
+                    previous_identity_addresses | self.scoped_merge_sources
+                )
+                try:
+                    alias_build = self.__build_concept(src)
+                finally:
+                    self._source_identity_addresses = previous_identity_addresses
                 if collapsed is not None:
                     self.local_concepts[source_addr] = collapsed
             else:

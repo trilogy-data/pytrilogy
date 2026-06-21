@@ -149,7 +149,9 @@ def gen_unnest_node(
                 f"{depth_prefix}{LOGGER_PREFIX} join node {x} with partial {x.partial_concepts}"
             )
             pseudonyms = [
-                environment.alias_origin_lookup[p] for p in concept.pseudonyms
+                environment.alias_origin_lookup[p]
+                for p in concept.pseudonyms
+                if p in environment.alias_origin_lookup
             ]
             x.add_partial_concepts(pseudonyms)
         return MergeNode(

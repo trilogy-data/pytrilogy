@@ -69,13 +69,6 @@ class ConceptTransform:
     output: Concept  # this has to be a full concept, as it may not exist in environment
     modifiers: List[Modifier] = field(default_factory=list)
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return ConceptTransform(
-            function=self.function.with_merge(source, target, modifiers),
-            output=self.output.with_merge(source, target, modifiers),
-            modifiers=self.modifiers + modifiers,
-        )
-
     def with_namespace(self, namespace: str) -> "ConceptTransform":
         return ConceptTransform(
             function=self.function.with_namespace(namespace),
