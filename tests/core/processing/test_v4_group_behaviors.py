@@ -57,6 +57,8 @@ from trilogy.core.processing.v4_helper.group_rules import (
 )
 from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
+    FinalAssemblyContract,
+    FinalContributorContract,
     GroupAttrs,
     GroupBucket,
     InputChannel,
@@ -64,8 +66,10 @@ from trilogy.core.processing.v4_helper.models import (
 from trilogy.core.processing.v4_helper.source_policy import STRICT_SOURCE_POLICY
 from trilogy.core.processing.v4_helper.strategy_builder import (
     _filter_intrinsic_pushdown_safe,
+    _final_contributor_contracts,
     _parent_nodes_for,
     _pre_merge_parents,
+    _required_final_contract,
 )
 
 
@@ -254,6 +258,24 @@ def test_final_contributor_contract_preserves_rowset_merge_grain_for_root():
     assert contract.merge_grain == {customer_id.address}
     assert root_contract.preserve_keys == {customer_id.address}
     assert root_contract.projection_grain == set()
+
+
+def test_stage3_requires_declared_final_contract():
+    attrs = {FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL)}
+
+    with pytest.raises(ValueError, match="FINAL contract missing"):
+        _required_final_contract(attrs)
+
+
+def test_stage3_requires_declared_final_contributor_contracts():
+    contract = FinalAssemblyContract(
+        contributor_contracts=(
+            FinalContributorContract(group_id="root", output_addresses=frozenset()),
+        )
+    )
+
+    with pytest.raises(ValueError, match="agg"):
+        _final_contributor_contracts(contract, ["root", "agg"])
 
 
 def test_input_contract_declares_projection_grain_with_barrier_sibling():
