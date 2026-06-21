@@ -13,6 +13,7 @@ graph's lineage edges. Generators that haven't been ported to the v4 flat
 style fall back inside `v4_node_generators.dispatch.build_node`."""
 
 from collections import defaultdict
+from dataclasses import dataclass
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -78,6 +79,12 @@ _MERGE_JOIN_PURPOSES = {
     Purpose.PROPERTY,
     Purpose.UNIQUE_PROPERTY,
 }
+
+
+@dataclass
+class ParentBuild:
+    group_id: str
+    node: StrategyNode
 
 
 def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | None:
@@ -342,7 +349,7 @@ def _parent_nodes_for(
     source_policy: SourcePolicy,
     *,
     needed: set[str],
-) -> list[StrategyNode]:
+) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
     predecessors. Topological order guarantees they exist (or that the
     generator was skipped, in which case we just skip that parent).
@@ -427,7 +434,7 @@ def _parent_nodes_for(
             )
         return sliced if sliced is not None else node.copy()
 
-    parents: list[StrategyNode] = []
+    parents: list[ParentBuild] = []
     for pgid, node in candidates:
         my_provides = provides(pgid, node)
         covered_by_descendant = False
@@ -440,7 +447,7 @@ def _parent_nodes_for(
                 covered_by_descendant = True
                 break
         if not covered_by_descendant:
-            parents.append(parent_for_consumer(pgid, node))
+            parents.append(ParentBuild(pgid, parent_for_consumer(pgid, node)))
     return parents
 
 
@@ -662,9 +669,16 @@ def _contains_shape_barrier(node: StrategyNode) -> bool:
     return any(_contains_shape_barrier(parent) for parent in node.parents)
 
 
-def _input_contract_projection_grain(group_attrs: GroupAttrs) -> frozenset[str]:
+def _input_contract_projection_grain(
+    group_attrs: GroupAttrs, parent_group_ids: set[str] | None = None
+) -> frozenset[str]:
     grain: set[str] = set()
     for contract in group_attrs.input_contracts:
+        if (
+            parent_group_ids is not None
+            and contract.parent_group_id not in parent_group_ids
+        ):
+            continue
         if contract.channel != InputChannel.ROW_STREAM:
             continue
         if not contract.may_project_dimension:
@@ -672,6 +686,36 @@ def _input_contract_projection_grain(group_attrs: GroupAttrs) -> frozenset[str]:
         grain |= set(contract.required_grain)
         grain |= set(contract.preserve_keys)
     return frozenset(grain)
+
+
+def _apply_input_contracts(
+    parent_builds: list[ParentBuild],
+    group_attrs: GroupAttrs,
+    needed: set[str],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    parents = [parent.node for parent in parent_builds]
+    parent_group_ids = {parent.group_id for parent in parent_builds}
+    projection_grain_components = set(
+        _input_contract_projection_grain(group_attrs, parent_group_ids)
+    )
+    if not projection_grain_components:
+        projection_grain_components = set(group_attrs.grain_components)
+    if not group_attrs.input_contracts and any(
+        _contains_shape_barrier(parent) for parent in parents
+    ):
+        for parent in parents:
+            if not _contains_shape_barrier(parent):
+                continue
+            for output in parent.output_concepts:
+                if output.derivation in GROUPING_DERIVATIONS and output.grain:
+                    projection_grain_components |= set(output.grain.components)
+    return _project_dimension_parents_to_group_grain(
+        parents,
+        needed,
+        frozenset(projection_grain_components),
+        environment,
+    )
 
 
 def _fd_at_grain(concept: BuildConcept, grain_components: frozenset[str]) -> bool:
@@ -1640,7 +1684,7 @@ def build_strategy_node(
         if injected is not None:
             for arg in condition_row_args(injected):
                 _add_needed_concept(needed, arg)
-        parents = _parent_nodes_for(
+        parent_builds = _parent_nodes_for(
             group_graph,
             group_edges,
             attrs,
@@ -1652,24 +1696,7 @@ def build_strategy_node(
             source_policy,
             needed=needed,
         )
-        projection_grain_components = set(_input_contract_projection_grain(a))
-        if not projection_grain_components:
-            projection_grain_components = set(a.grain_components)
-        if not a.input_contracts and any(
-            _contains_shape_barrier(parent) for parent in parents
-        ):
-            for parent in parents:
-                if not _contains_shape_barrier(parent):
-                    continue
-                for output in parent.output_concepts:
-                    if output.derivation in GROUPING_DERIVATIONS and output.grain:
-                        projection_grain_components |= set(output.grain.components)
-        parents = _project_dimension_parents_to_group_grain(
-            parents,
-            needed,
-            frozenset(projection_grain_components),
-            environment,
-        )
+        parents = _apply_input_contracts(parent_builds, a, needed, environment)
         parents = _pre_merge_parents(parents, environment)
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a

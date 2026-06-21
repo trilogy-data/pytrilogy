@@ -1071,7 +1071,8 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
         needed={supplier_id.address, order_id.address, filtered_supplier.address},
     )
 
-    assert {type(parent) for parent in parents} == {StrategyNode, FilterNode}
+    assert {parent.group_id for parent in parents} == {"root", "filter"}
+    assert {type(parent.node) for parent in parents} == {StrategyNode, FilterNode}
 
 
 def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
