@@ -45,6 +45,8 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
 )
 from trilogy.core.processing.v4_helper.group_graph import (
     _add_final_node,
+    _refresh_final_contract,
+    _refresh_input_contracts,
     _virtual_filter_scoped_columns,
 )
 from trilogy.core.processing.v4_helper.group_rules import (
@@ -57,6 +59,7 @@ from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
     GroupAttrs,
     GroupBucket,
+    InputChannel,
 )
 from trilogy.core.processing.v4_helper.source_policy import STRICT_SOURCE_POLICY
 from trilogy.core.processing.v4_helper.strategy_builder import (
@@ -199,6 +202,138 @@ def test_final_node_declares_logical_output_grain_contract():
     }
     assert contract.required_grain == {customer_id.address}
     assert contract.deduplicate_to_grain is True
+
+
+def test_final_contributor_contract_preserves_rowset_merge_grain_for_root():
+    customer_id = _build_concept("customer.id", Purpose.KEY)
+    customer_name = _build_concept(
+        "customer.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={customer_id.address},
+        keys={customer_id.address},
+    )
+    bought_city = _build_concept(
+        "bought_city",
+        Purpose.PROPERTY,
+        derivation=Derivation.ROWSET,
+        datatype=DataType.STRING,
+        grain={customer_id.address},
+    )
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs = {
+        "root": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            output_concepts=(customer_id.address, customer_name.address),
+        ),
+        "rowset": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.ROWSET,
+            grain_components=frozenset({customer_id.address}),
+            output_concepts=(bought_city.address,),
+        ),
+        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
+    }
+    group_graph.add_nodes_from(attrs)
+    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
+    add_edge(group_graph, group_edges, "rowset", FINAL_NODE_ID, EdgeKind.MERGE)
+
+    _refresh_final_contract(
+        group_graph,
+        attrs,
+        [customer_name, bought_city],
+    )
+
+    contract = attrs[FINAL_NODE_ID].final_contract
+    assert contract is not None
+    root_contract = next(
+        item for item in contract.contributor_contracts if item.group_id == "root"
+    )
+    assert contract.merge_grain == {customer_id.address}
+    assert root_contract.preserve_keys == {customer_id.address}
+    assert root_contract.projection_grain == set()
+
+
+def test_input_contract_declares_projection_grain_with_barrier_sibling():
+    store_id = _build_concept("store.id", Purpose.KEY)
+    ride_date = _build_concept("ride_date", Purpose.KEY)
+    station_name = _build_concept(
+        "station.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={store_id.address},
+        keys={store_id.address},
+    )
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs = {
+        "agg_parent": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({ride_date.address}),
+            output_concepts=("daily_rides", ride_date.address),
+        ),
+        "dim_parent": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            output_concepts=(store_id.address, station_name.address),
+        ),
+        "consumer": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({store_id.address}),
+            input_concepts=(
+                "daily_rides",
+                ride_date.address,
+                store_id.address,
+                station_name.address,
+            ),
+        ),
+    }
+    group_graph.add_nodes_from(attrs)
+    add_edge(group_graph, group_edges, "agg_parent", "consumer", EdgeKind.LINEAGE)
+    add_edge(group_graph, group_edges, "dim_parent", "consumer", EdgeKind.LINEAGE)
+
+    _refresh_input_contracts(group_graph, group_edges, attrs)
+
+    dim_contract = next(
+        item
+        for item in attrs["consumer"].input_contracts
+        if item.parent_group_id == "dim_parent"
+    )
+    assert dim_contract.channel == InputChannel.ROW_STREAM
+    assert dim_contract.may_project_dimension is True
+    assert dim_contract.required_grain == {store_id.address, ride_date.address}
+    assert dim_contract.preserve_keys == {store_id.address, ride_date.address}
+
+
+def test_input_contract_keeps_existence_parent_side_channel():
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs = {
+        "existence_src": GroupAttrs(
+            depth_label=DepthLabel.D1,
+            derivation=Derivation.ROOT,
+            output_concepts=("local.zip",),
+        ),
+        "consumer": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.BASIC,
+            input_concepts=("local.customer_id",),
+        ),
+    }
+    group_graph.add_nodes_from(attrs)
+    add_edge(group_graph, group_edges, "existence_src", "consumer", EdgeKind.EXISTENCE)
+
+    _refresh_input_contracts(group_graph, group_edges, attrs)
+
+    contract = attrs["consumer"].input_contracts[0]
+    assert contract.channel == InputChannel.EXISTENCE
+    assert contract.required_grain == set()
+    assert contract.preserve_keys == set()
+    assert contract.may_project_dimension is False
 
 
 def _build_concept(

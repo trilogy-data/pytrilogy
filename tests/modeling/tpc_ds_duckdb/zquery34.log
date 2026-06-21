@@ -1,12 +1,23 @@
 query_id = "34"
-generator = "v3"
-gen_length = 2873
+generator = "v4"
+gen_length = 4408
 preql_size = 1528
 comp_size = 1449
 generated_sql = """
 
 WITH 
-cooperative as (
+wakeful as (
+SELECT
+    \"physical_sales_customer_customers\".\"C_FIRST_NAME\" as \"physical_sales_customer_first_name\",
+    \"physical_sales_customer_customers\".\"C_LAST_NAME\" as \"physical_sales_customer_last_name\",
+    \"physical_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"physical_sales_customer_preferred_cust_flag\",
+    \"physical_sales_customer_customers\".\"C_SALUTATION\" as \"physical_sales_customer_salutation\",
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_customer_id\",
+    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\"
+FROM
+    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"),
+uneven as (
 SELECT
     \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_customer_id\",
     \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
@@ -27,20 +38,43 @@ GROUP BY
     2
 HAVING
     \"cnt\" BETWEEN 15 AND 20
-)
+),
+thoughtful as (
 SELECT
-    \"physical_sales_customer_customers\".\"C_LAST_NAME\" as \"physical_sales_customer_last_name\",
-    \"physical_sales_customer_customers\".\"C_FIRST_NAME\" as \"physical_sales_customer_first_name\",
-    \"physical_sales_customer_customers\".\"C_SALUTATION\" as \"physical_sales_customer_salutation\",
-    \"physical_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"physical_sales_customer_preferred_cust_flag\",
-    \"cooperative\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\",
-    \"cooperative\".\"cnt\" as \"cnt\"
+    \"wakeful\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"cooperative\".\"physical_sales_customer_id\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    \"wakeful\"
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    \"wakeful\".\"physical_sales_customer_first_name\" as \"physical_sales_customer_first_name\",
+    \"wakeful\".\"physical_sales_customer_id\" as \"physical_sales_customer_id\",
+    \"wakeful\".\"physical_sales_customer_last_name\" as \"physical_sales_customer_last_name\",
+    \"wakeful\".\"physical_sales_customer_preferred_cust_flag\" as \"physical_sales_customer_preferred_cust_flag\",
+    \"wakeful\".\"physical_sales_customer_salutation\" as \"physical_sales_customer_salutation\"
+FROM
+    \"wakeful\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5)
+SELECT
+    \"cheerful\".\"physical_sales_customer_last_name\" as \"physical_sales_customer_last_name\",
+    \"cheerful\".\"physical_sales_customer_first_name\" as \"physical_sales_customer_first_name\",
+    \"cheerful\".\"physical_sales_customer_salutation\" as \"physical_sales_customer_salutation\",
+    \"cheerful\".\"physical_sales_customer_preferred_cust_flag\" as \"physical_sales_customer_preferred_cust_flag\",
+    \"thoughtful\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\",
+    \"uneven\".\"cnt\" as \"cnt\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"uneven\" on \"cheerful\".\"physical_sales_customer_id\" = \"uneven\".\"physical_sales_customer_id\"
+    LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"physical_sales_ticket_number\" = \"thoughtful\".\"physical_sales_ticket_number\"
 ORDER BY 
-    \"physical_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
-    \"physical_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
-    \"physical_sales_customer_customers\".\"C_SALUTATION\" asc nulls first,
-    \"physical_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" desc nulls first,
-    \"cooperative\".\"physical_sales_ticket_number\" asc nulls first"""
+    \"cheerful\".\"physical_sales_customer_last_name\" asc nulls first,
+    \"cheerful\".\"physical_sales_customer_first_name\" asc nulls first,
+    \"cheerful\".\"physical_sales_customer_salutation\" asc nulls first,
+    \"cheerful\".\"physical_sales_customer_preferred_cust_flag\" desc nulls first,
+    \"thoughtful\".\"physical_sales_ticket_number\" asc nulls first"""

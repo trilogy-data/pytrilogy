@@ -20,8 +20,11 @@ from .models import (
     BuildInfo,
     ConceptAttrs,
     FinalAssemblyContract,
+    FinalContributorContract,
     GroupAttrs,
     GroupBucket,
+    GroupInputContract,
+    InputChannel,
 )
 from .strategy_builder import build_strategy_node
 
@@ -30,9 +33,12 @@ __all__ = [
     "ConceptAttrs",
     "FINAL_NODE_ID",
     "FinalAssemblyContract",
+    "FinalContributorContract",
     "GROUPING_DERIVATIONS",
     "GroupAttrs",
     "GroupBucket",
+    "GroupInputContract",
+    "InputChannel",
     "ROW_SHAPE_BARRIER_DERIVATIONS",
     "build_concept_graph",
     "build_group_graph",

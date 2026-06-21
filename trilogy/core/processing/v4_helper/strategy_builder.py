@@ -52,7 +52,12 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, dependency_subgraph, edge_kind
-from .models import FinalAssemblyContract, GroupAttrs
+from .models import (
+    FinalAssemblyContract,
+    FinalContributorContract,
+    GroupAttrs,
+    InputChannel,
+)
 from .projection import (
     concept_satisfiable,
     parent_output_addresses,
@@ -657,6 +662,18 @@ def _contains_shape_barrier(node: StrategyNode) -> bool:
     return any(_contains_shape_barrier(parent) for parent in node.parents)
 
 
+def _input_contract_projection_grain(group_attrs: GroupAttrs) -> frozenset[str]:
+    grain: set[str] = set()
+    for contract in group_attrs.input_contracts:
+        if contract.channel != InputChannel.ROW_STREAM:
+            continue
+        if not contract.may_project_dimension:
+            continue
+        grain |= set(contract.required_grain)
+        grain |= set(contract.preserve_keys)
+    return frozenset(grain)
+
+
 def _fd_at_grain(concept: BuildConcept, grain_components: frozenset[str]) -> bool:
     if concept.address in grain_components:
         return True
@@ -1158,6 +1175,43 @@ def _filter_arg_parents(
     return nodes, concepts
 
 
+def _fallback_final_contributor_contracts(
+    attrs: dict[str, GroupAttrs],
+    per_group: dict[str, list[BuildConcept]],
+) -> tuple[FinalContributorContract, ...]:
+    merge_grain: set[str] = set()
+    projection_grain_by_gid: dict[str, frozenset[str]] = {}
+    for gid, concepts in per_group.items():
+        projection_grain: frozenset[str] = frozenset()
+        if attrs[gid].derivation in GROUPING_DERIVATIONS:
+            merge_grain |= set(attrs[gid].grain_components)
+            projection_grain = attrs[gid].grain_components
+            for concept in concepts:
+                if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
+                    merge_grain |= set(concept.grain.components)
+                    projection_grain = frozenset(
+                        set(projection_grain) | set(concept.grain.components)
+                    )
+        elif attrs[gid].derivation == Derivation.ROWSET:
+            merge_grain |= set(attrs[gid].grain_components)
+            projection_grain = attrs[gid].grain_components
+        projection_grain_by_gid[gid] = projection_grain
+    frozen_merge_grain = frozenset(merge_grain)
+    return tuple(
+        FinalContributorContract(
+            group_id=gid,
+            output_addresses=frozenset(c.address for c in concepts),
+            preserve_keys=(
+                frozen_merge_grain
+                if attrs[gid].derivation == Derivation.ROOT
+                else frozenset()
+            ),
+            projection_grain=projection_grain_by_gid.get(gid, frozenset()),
+        )
+        for gid, concepts in per_group.items()
+    )
+
+
 def _group_to_grain_if_required(
     node: StrategyNode,
     mandatory_list: list[BuildConcept],
@@ -1389,22 +1443,32 @@ def _assemble_final_node(
     # merging dimension must join on (q46: the `bought` rowset's grain carries
     # `customer.id`, so the customer-address scan rides it instead of deduping to
     # its own `address.id` grain and cross-joining ON 1=1).
-    grouping_grain_components: set[str] = set()
-    for gid in contributing:
-        if attrs[gid].derivation in GROUPING_DERIVATIONS:
-            grouping_grain_components |= set(attrs[gid].grain_components)
-            for concept in per_group[gid]:
-                if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
-                    grouping_grain_components |= set(concept.grain.components)
-        elif attrs[gid].derivation == Derivation.ROWSET:
-            grouping_grain_components |= set(attrs[gid].grain_components)
+    fallback_contracts = {
+        contract.group_id: contract
+        for contract in _fallback_final_contributor_contracts(attrs, per_group)
+    }
+    contributor_contracts = {
+        contract.group_id: contract for contract in final_contract.contributor_contracts
+    }
+    contracts_by_gid = {
+        gid: contributor_contracts.get(gid, fallback_contracts[gid])
+        for gid in contributing
+    }
+    final_merge_grain = frozenset().union(
+        *(contract.projection_grain for contract in contracts_by_gid.values())
+    )
 
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
         is_root = attrs[gid].derivation == Derivation.ROOT
+        contributor_contract = contracts_by_gid[gid]
+        preserve_keys = contributor_contract.preserve_keys & final_merge_grain
+        projection_grain = (
+            final_merge_grain if is_root else contributor_contract.projection_grain
+        )
         group_concepts = list(per_group[gid])
-        if is_root and grouping_grain_components:
+        if is_root and preserve_keys:
             seen_group_concepts = {concept.address for concept in group_concepts}
             # Carry the merge grain's join KEYS onto the root scan, but never a
             # rowset's own handle outputs (`even_orders.order_id`) -- a root that
@@ -1414,7 +1478,7 @@ def _assemble_final_node(
             # contributor.
             group_concepts.extend(
                 c
-                for address in sorted(grouping_grain_components)
+                for address in sorted(preserve_keys)
                 if (c := _concept_at(environment, address)) is not None
                 and address not in seen_group_concepts
                 and c.derivation != Derivation.ROWSET
@@ -1434,7 +1498,7 @@ def _assemble_final_node(
                     node,
                     group_concepts,
                     environment,
-                    frozenset(grouping_grain_components),
+                    projection_grain,
                 )
             )
         else:
@@ -1448,11 +1512,11 @@ def _assemble_final_node(
     # row-preserving sibling already renders off its own parents, collapsing the
     # columns into one projection instead of joining (same passthrough logic the
     # per-group `_pre_merge_parents` uses).
-    final_needed = set(mandatory_addresses) | set(grouping_grain_components)
+    final_needed = set(mandatory_addresses) | set(final_merge_grain)
     parents = _project_dimension_parents_to_group_grain(
         parents,
         final_needed,
-        frozenset(grouping_grain_components),
+        final_merge_grain,
         environment,
     )
     parents = _fold_passthrough_parents(parents)
@@ -1480,8 +1544,8 @@ def _assemble_final_node(
     # force_group collapse back to the aggregate grain. Left None when there is
     # no grouping contributor, so plain row merges keep their current behavior.
     merge_grain = (
-        BuildGrain.from_concepts(grouping_grain_components, environment=environment)
-        if grouping_grain_components
+        BuildGrain.from_concepts(final_merge_grain, environment=environment)
+        if final_merge_grain
         else None
     )
     merged = MergeNode(
@@ -1588,8 +1652,12 @@ def build_strategy_node(
             source_policy,
             needed=needed,
         )
-        projection_grain_components = set(a.grain_components)
-        if any(_contains_shape_barrier(parent) for parent in parents):
+        projection_grain_components = set(_input_contract_projection_grain(a))
+        if not projection_grain_components:
+            projection_grain_components = set(a.grain_components)
+        if not a.input_contracts and any(
+            _contains_shape_barrier(parent) for parent in parents
+        ):
             for parent in parents:
                 if not _contains_shape_barrier(parent):
                     continue

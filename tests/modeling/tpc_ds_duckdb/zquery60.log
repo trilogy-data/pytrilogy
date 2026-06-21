@@ -1,12 +1,12 @@
 query_id = "60"
-generator = "v3"
-gen_length = 3299
+generator = "v4"
+gen_length = 3688
 preql_size = 406
 comp_size = 1599
 generated_sql = """
 
 WITH 
-abundant as (
+yummy as (
 SELECT
     \"sales_item_items\".\"I_ITEM_ID\" as \"music_item_ids\"
 FROM
@@ -16,6 +16,11 @@ WHERE
 
 GROUP BY
     1),
+uneven as (
+SELECT
+    \"sales_item_items\".\"I_ITEM_SK\" as \"sales_item_id\"
+FROM
+    \"memory\".\"item\" as \"sales_item_items\"),
 thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
@@ -26,7 +31,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"music_item_ids\" from abundant where abundant.\"music_item_ids\" is not null)
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_item_items\".\"I_ITEM_ID\" in (select yummy.\"music_item_ids\" from yummy where yummy.\"music_item_ids\" is not null)
 
 UNION ALL
 SELECT
@@ -38,7 +43,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"music_item_ids\" from abundant where abundant.\"music_item_ids\" is not null)
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_item_items\".\"I_ITEM_ID\" in (select yummy.\"music_item_ids\" from yummy where yummy.\"music_item_ids\" is not null)
 
 UNION ALL
 SELECT
@@ -50,16 +55,25 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"music_item_ids\" from abundant where abundant.\"music_item_ids\" is not null)
-)
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_item_items\".\"I_ITEM_ID\" in (select yummy.\"music_item_ids\" from yummy where yummy.\"music_item_ids\" is not null)
+),
+abundant as (
 SELECT
-    \"thoughtful\".\"sales_item_text_id\" as \"sales_item_text_id\",
-    sum(\"thoughtful\".\"sales_ext_sales_price\") as \"total_sales\"
+    \"thoughtful\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"thoughtful\".\"sales_item_text_id\" as \"sales_item_text_id\"
 FROM
-    \"thoughtful\"
+    \"thoughtful\")
+SELECT
+    \"abundant\".\"sales_item_text_id\" as \"sales_item_text_id\",
+    sum(\"abundant\".\"sales_ext_sales_price\") as \"total_sales\"
+FROM
+    \"abundant\"
+WHERE
+    \"abundant\".\"sales_item_text_id\" in (select yummy.\"music_item_ids\" from yummy where yummy.\"music_item_ids\" is not null)
+
 GROUP BY
     1
 ORDER BY 
-    \"thoughtful\".\"sales_item_text_id\" asc,
+    \"abundant\".\"sales_item_text_id\" asc,
     \"total_sales\" asc
 LIMIT (100)"""

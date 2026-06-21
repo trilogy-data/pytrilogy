@@ -1,12 +1,12 @@
 query_id = "24"
-generator = "v3"
-gen_length = 3932
+generator = "v4"
+gen_length = 4234
 preql_size = 758
 comp_size = 1264
 generated_sql = """
 
 WITH 
-yummy as (
+juicy as (
 SELECT
     sum(\"physical_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_5757395975543459\"
 FROM
@@ -19,9 +19,16 @@ WHERE
     \"physical_sales_store_store\".\"S_MARKET_ID\" = 8 and \"physical_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"physical_sales_customer_address_customer_address\".\"CA_COUNTRY\")  and SR_RETURN_TIME_SK IS NOT NULL is True and \"physical_sales_store_store\".\"S_ZIP\" = \"physical_sales_customer_address_customer_address\".\"CA_ZIP\"
 
 GROUP BY
+    \"physical_sales_customer_customers\".\"C_FIRST_NAME\",
+    \"physical_sales_customer_customers\".\"C_LAST_NAME\",
     \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\",
     \"physical_sales_store_sales\".\"SS_ITEM_SK\",
-    \"physical_sales_store_sales\".\"SS_STORE_SK\"),
+    \"physical_sales_store_sales\".\"SS_STORE_SK\",
+    \"physical_sales_store_store\".\"S_STORE_NAME\"),
+young as (
+SELECT
+    1 as \"__preql_internal_all_rows\"
+),
 questionable as (
 SELECT
     \"physical_sales_customer_customers\".\"C_FIRST_NAME\" as \"physical_sales_customer_first_name\",
@@ -42,19 +49,22 @@ GROUP BY
     1,
     2,
     3),
-vacuous as (
+sparkling as (
 SELECT
-    avg(\"yummy\".\"_virt_agg_sum_5757395975543459\") as \"avg_store_customer_sales\"
+    avg(\"juicy\".\"_virt_agg_sum_5757395975543459\") as \"avg_store_customer_sales\"
 FROM
-    \"yummy\")
+    \"young\"
+    FULL JOIN \"juicy\" on 1=1
+GROUP BY
+    \"young\".\"__preql_internal_all_rows\")
 SELECT
     \"questionable\".\"physical_sales_customer_last_name\" as \"physical_sales_customer_last_name\",
     \"questionable\".\"physical_sales_customer_first_name\" as \"physical_sales_customer_first_name\",
     \"questionable\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
     \"questionable\".\"peach_sales\" as \"peach_sales\"
 FROM
-    \"vacuous\"
+    \"sparkling\"
     INNER JOIN \"questionable\" on 1=1
 WHERE
-    \"questionable\".\"peach_sales\" > 0.05 * \"vacuous\".\"avg_store_customer_sales\"
+    \"questionable\".\"peach_sales\" > 0.05 * \"sparkling\".\"avg_store_customer_sales\"
 """

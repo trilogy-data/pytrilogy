@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from enum import Enum
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
@@ -7,6 +8,34 @@ from trilogy.core.processing.nodes import StrategyNode
 
 from .constants import DepthLabel
 from .edges import EdgeMap, copy_edges
+
+
+@dataclass
+class FinalContributorContract:
+    """Logical contract for one group feeding the FINAL sink."""
+
+    group_id: str
+    output_addresses: frozenset[str] = frozenset()
+    preserve_keys: frozenset[str] = frozenset()
+    projection_grain: frozenset[str] = frozenset()
+
+
+class InputChannel(Enum):
+    ROW_STREAM = "row_stream"
+    EXISTENCE = "existence"
+
+
+@dataclass
+class GroupInputContract:
+    """Logical contract for one parent group feeding one consumer group."""
+
+    parent_group_id: str
+    consumer_group_id: str
+    required_outputs: frozenset[str] = frozenset()
+    required_grain: frozenset[str] = frozenset()
+    preserve_keys: frozenset[str] = frozenset()
+    channel: InputChannel = InputChannel.ROW_STREAM
+    may_project_dimension: bool = False
 
 
 @dataclass
@@ -21,6 +50,8 @@ class FinalAssemblyContract:
 
     output_addresses: frozenset[str] = frozenset()
     required_grain: frozenset[str] = frozenset()
+    merge_grain: frozenset[str] = frozenset()
+    contributor_contracts: tuple[FinalContributorContract, ...] = ()
     deduplicate_to_grain: bool = True
 
 
@@ -61,6 +92,8 @@ class GroupAttrs:
     # Populated only for FINAL: the logical output/grain contract Stage 3
     # physically satisfies or prunes.
     final_contract: FinalAssemblyContract | None = None
+    # Populated for non-FINAL groups after `_compute_concept_sets`.
+    input_contracts: tuple[GroupInputContract, ...] = ()
 
 
 @dataclass
@@ -86,6 +119,10 @@ class ConceptAttrs:
     rowset_name: str | None = None
     aggregate_input_grain: frozenset[str] = frozenset()
     keys: frozenset[str] = frozenset()
+    # True for a pure rename (``alias(...)`` lineage) — a pseudonym of its
+    # source. The renderer resolves it transparently to the source column, so
+    # it must not be folded into a rollup group like a genuine transform dim.
+    is_rename: bool = False
     # Tagged post-build for a concept that appears ONLY as an existence arg
     # (semijoin RHS) and never as a row arg — `partition_roots` places such a
     # node in its own scan bucket (side-channel subselect source).
@@ -143,6 +180,7 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         input_concepts=a.input_concepts,
         aggregate_input_grain=a.aggregate_input_grain,
         final_contract=a.final_contract,
+        input_contracts=a.input_contracts,
     )
 
 
@@ -159,6 +197,7 @@ def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
         rowset_name=a.rowset_name,
         aggregate_input_grain=a.aggregate_input_grain,
         keys=a.keys,
+        is_rename=a.is_rename,
         existence_only=a.existence_only,
     )
 

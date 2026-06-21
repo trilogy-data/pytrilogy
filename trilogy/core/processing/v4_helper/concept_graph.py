@@ -19,12 +19,13 @@ by the v3 generators (`gen_group_node`, `gen_filter_node`,
 from typing import Callable
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildConceptArgs,
     BuildFilterItem,
+    BuildFunction,
     BuildRowsetItem,
     BuildWhereClause,
 )
@@ -478,6 +479,10 @@ def _add_concept(
     rowset_name = None
     if isinstance(concept.lineage, BuildRowsetItem):
         rowset_name = concept.lineage.rowset.name
+    is_rename = (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+    )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(
@@ -496,6 +501,7 @@ def _add_concept(
             else _aggregate_input_grain(concept, environment, out_grain)
         ),
         keys=frozenset(concept.keys or set()),
+        is_rename=is_rename,
     )
 
     # Materialized root: a datasource provides this concept directly (a

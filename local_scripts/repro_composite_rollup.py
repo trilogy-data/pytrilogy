@@ -1,3 +1,5 @@
+import sys
+
 from trilogy import Dialects, Environment
 from trilogy.constants import CONFIG
 
@@ -42,8 +44,6 @@ def run(v4: bool):
     rows = engine.execute_text(QUERY)[-1].fetchall()
     return [tuple(r) for r in rows]
 
-
-import sys
 
 mode = sys.argv[1] if len(sys.argv) > 1 else "both"
 if mode == "rows":

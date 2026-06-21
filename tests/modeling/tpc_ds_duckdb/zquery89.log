@@ -1,11 +1,25 @@
 query_id = "89"
-generator = "v3"
-gen_length = 4332
+generator = "v4"
+gen_length = 7161
 preql_size = 1659
 comp_size = 965
 generated_sql = """
 
 WITH 
+uneven as (
+SELECT
+    \"physical_sales_store_sales\".\"SS_ITEM_SK\" as \"physical_sales_item_id\",
+    \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"physical_sales_date_id\",
+    \"physical_sales_store_sales\".\"SS_STORE_SK\" as \"physical_sales_store_id\"
+FROM
+    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
+WHERE
+    \"physical_sales_store_sales\".\"SS_STORE_SK\" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
 thoughtful as (
 SELECT
     \"physical_sales_date_date\".\"D_MOY\" as \"physical_sales_date_month_of_year\",
@@ -30,46 +44,80 @@ GROUP BY
     4,
     5,
     6),
-questionable as (
+yummy as (
+SELECT
+    \"physical_sales_date_date\".\"D_MOY\" as \"physical_sales_date_month_of_year\",
+    \"physical_sales_item_items\".\"I_BRAND\" as \"physical_sales_item_brand_name\",
+    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
+    \"physical_sales_item_items\".\"I_CLASS\" as \"physical_sales_item_class\",
+    \"physical_sales_store_store\".\"S_COMPANY_NAME\" as \"physical_sales_store_company_name\",
+    \"physical_sales_store_store\".\"S_STORE_NAME\" as \"physical_sales_store_name\"
+FROM
+    \"uneven\"
+    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"uneven\".\"physical_sales_date_id\" = \"physical_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"uneven\".\"physical_sales_item_id\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"uneven\".\"physical_sales_store_id\" = \"physical_sales_store_store\".\"S_STORE_SK\"
+WHERE
+    \"physical_sales_date_date\".\"D_YEAR\" = 1999 and ( ( \"physical_sales_item_items\".\"I_CATEGORY\" in ('Books','Electronics','Sports') and \"physical_sales_item_items\".\"I_CLASS\" in ('computers','stereo','football') ) or ( \"physical_sales_item_items\".\"I_CATEGORY\" in ('Men','Jewelry','Women') and \"physical_sales_item_items\".\"I_CLASS\" in ('shirts','birdal','dresses') ) )
+),
+juicy as (
 SELECT
     \"thoughtful\".\"physical_sales_item_brand_name\" as \"physical_sales_item_brand_name\",
     \"thoughtful\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
     \"thoughtful\".\"physical_sales_store_company_name\" as \"physical_sales_store_company_name\",
     \"thoughtful\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
-    avg(\"thoughtful\".\"sum_sales\") as \"avg_monthly_sales\"
+    \"thoughtful\".\"sum_sales\" as \"sum_sales\"
 FROM
     \"thoughtful\"
+    RIGHT OUTER JOIN \"yummy\" on \"thoughtful\".\"physical_sales_date_month_of_year\" = \"yummy\".\"physical_sales_date_month_of_year\" AND \"thoughtful\".\"physical_sales_item_brand_name\" = \"yummy\".\"physical_sales_item_brand_name\" AND \"thoughtful\".\"physical_sales_item_category\" is not distinct from \"yummy\".\"physical_sales_item_category\" AND \"thoughtful\".\"physical_sales_item_class\" is not distinct from \"yummy\".\"physical_sales_item_class\" AND \"thoughtful\".\"physical_sales_store_company_name\" is not distinct from \"yummy\".\"physical_sales_store_company_name\" AND \"thoughtful\".\"physical_sales_store_name\" = \"yummy\".\"physical_sales_store_name\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    \"thoughtful\".\"physical_sales_date_month_of_year\",
+    \"thoughtful\".\"physical_sales_item_class\"),
+concerned as (
+SELECT
+    \"juicy\".\"physical_sales_item_brand_name\" as \"physical_sales_item_brand_name\",
+    \"juicy\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
+    \"juicy\".\"physical_sales_store_company_name\" as \"physical_sales_store_company_name\",
+    \"juicy\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
+    avg(\"juicy\".\"sum_sales\") as \"avg_monthly_sales\"
+FROM
+    \"juicy\"
 GROUP BY
     1,
     2,
     3,
     4)
 SELECT
-    coalesce(\"questionable\".\"physical_sales_item_category\",\"thoughtful\".\"physical_sales_item_category\") as \"physical_sales_item_category\",
+    coalesce(\"concerned\".\"physical_sales_item_category\",\"thoughtful\".\"physical_sales_item_category\") as \"physical_sales_item_category\",
     \"thoughtful\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
-    coalesce(\"questionable\".\"physical_sales_item_brand_name\",\"thoughtful\".\"physical_sales_item_brand_name\") as \"physical_sales_item_brand_name\",
-    coalesce(\"questionable\".\"physical_sales_store_name\",\"thoughtful\".\"physical_sales_store_name\") as \"physical_sales_store_name\",
-    coalesce(\"questionable\".\"physical_sales_store_company_name\",\"thoughtful\".\"physical_sales_store_company_name\") as \"physical_sales_store_company_name\",
+    coalesce(\"concerned\".\"physical_sales_item_brand_name\",\"thoughtful\".\"physical_sales_item_brand_name\") as \"physical_sales_item_brand_name\",
+    coalesce(\"concerned\".\"physical_sales_store_name\",\"thoughtful\".\"physical_sales_store_name\") as \"physical_sales_store_name\",
+    coalesce(\"concerned\".\"physical_sales_store_company_name\",\"thoughtful\".\"physical_sales_store_company_name\") as \"physical_sales_store_company_name\",
     \"thoughtful\".\"physical_sales_date_month_of_year\" as \"physical_sales_date_month_of_year\",
     \"thoughtful\".\"sum_sales\" as \"sum_sales\",
-    \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+    \"concerned\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"questionable\" on \"thoughtful\".\"physical_sales_item_brand_name\" = \"questionable\".\"physical_sales_item_brand_name\" AND \"thoughtful\".\"physical_sales_item_category\" is not distinct from \"questionable\".\"physical_sales_item_category\" AND \"thoughtful\".\"physical_sales_store_company_name\" is not distinct from \"questionable\".\"physical_sales_store_company_name\" AND \"thoughtful\".\"physical_sales_store_name\" is not distinct from \"questionable\".\"physical_sales_store_name\"
+    \"concerned\"
+    INNER JOIN \"thoughtful\" on \"concerned\".\"physical_sales_item_brand_name\" = \"thoughtful\".\"physical_sales_item_brand_name\" AND \"concerned\".\"physical_sales_item_category\" is not distinct from \"thoughtful\".\"physical_sales_item_category\" AND \"concerned\".\"physical_sales_store_company_name\" is not distinct from \"thoughtful\".\"physical_sales_store_company_name\" AND \"concerned\".\"physical_sales_store_name\" = \"thoughtful\".\"physical_sales_store_name\"
 WHERE
     CASE
-	WHEN \"questionable\".\"avg_monthly_sales\" != 0 THEN abs(\"thoughtful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"
+	WHEN \"concerned\".\"avg_monthly_sales\" != 0 THEN abs(\"thoughtful\".\"sum_sales\" - \"concerned\".\"avg_monthly_sales\") / \"concerned\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    \"thoughtful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\" asc,
-    coalesce(\"questionable\".\"physical_sales_store_name\",\"thoughtful\".\"physical_sales_store_name\") asc,
-    coalesce(\"questionable\".\"physical_sales_item_category\",\"thoughtful\".\"physical_sales_item_category\") asc,
+    \"thoughtful\".\"sum_sales\" - \"concerned\".\"avg_monthly_sales\" asc,
+    coalesce(\"concerned\".\"physical_sales_store_name\",\"thoughtful\".\"physical_sales_store_name\") asc,
+    coalesce(\"concerned\".\"physical_sales_item_category\",\"thoughtful\".\"physical_sales_item_category\") asc,
     \"thoughtful\".\"physical_sales_item_class\" asc,
-    coalesce(\"questionable\".\"physical_sales_item_brand_name\",\"thoughtful\".\"physical_sales_item_brand_name\") asc,
-    coalesce(\"questionable\".\"physical_sales_store_company_name\",\"thoughtful\".\"physical_sales_store_company_name\") asc,
+    coalesce(\"concerned\".\"physical_sales_item_brand_name\",\"thoughtful\".\"physical_sales_item_brand_name\") asc,
+    coalesce(\"concerned\".\"physical_sales_store_company_name\",\"thoughtful\".\"physical_sales_store_company_name\") asc,
     \"thoughtful\".\"physical_sales_date_month_of_year\" asc,
     \"thoughtful\".\"sum_sales\" asc,
-    \"questionable\".\"avg_monthly_sales\" asc
+    \"concerned\".\"avg_monthly_sales\" asc
 LIMIT (100)"""

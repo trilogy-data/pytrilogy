@@ -97,7 +97,13 @@ WHERE
 
 GROUP BY
     1),
-abundant as (
+late as (
+SELECT
+    :_l0_union_u_channel_c as \"_l0_union_u_channel_c\",
+    :_l0_union_u_channel_s as \"_l0_union_u_channel_s\",
+    :_l0_union_u_channel_w as \"_l0_union_u_channel_w\"
+),
+concerned as (
 SELECT
     \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     sum(\"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\") as \"_virt_agg_sum_6520591768854391\",
@@ -134,8 +140,8 @@ juicy as (
 SELECT
     cast(sum(\"wakeful\".\"cr_grouped_cr_returns_per_cc\") as numeric(15,2)) as \"___tvf_arm_0_u_returns\"
 FROM
-    \"wakeful\"),
-thoughtful as (
+    \"cloudy\"),
+wooden as (
 SELECT
     \"cloudy\".\"_ws_grouped_ws_profit\" as \"_ws_grouped_ws_profit\",
     \"cloudy\".\"_ws_grouped_ws_sales\" as \"_ws_grouped_ws_sales\",
