@@ -1,4 +1,4 @@
-# v4 compatibility audit (last refreshed 2026-06-21)
+# v4 compatibility audit (last refreshed 2026-06-21, post-geography-fix)
 
 This file is the current handoff for v4 discovery work. Long fixed-case notes
 from the 2026-06-11 through 2026-06-20 sweeps were removed because they were
@@ -8,29 +8,71 @@ when changing planner behavior.
 
 ## Current tracked state
 
-`tests/v4_known_failing.py` currently tracks 48 non-strict xfail entries:
+`tests/v4_known_failing.py` currently tracks 44 non-strict xfail entries:
 
 | bucket | n | meaning |
 | --- | ---: | --- |
 | INLINE | 11 | SQL/CTE shape differs from v3, rows expected to match |
 | RESULT | 2 | known wrong-row regressions |
-| MODELING | 17 | modeling sweep diffs still needing per-test classification |
+| MODELING | 13 | modeling sweep diffs still needing per-test classification |
 | TPCDS_SIZE | 18 | TPC-DS rows match, SQL exceeds v3-tuned size ceilings |
 
-Known result-regression entries:
+The four "high-priority unclassified" entries from the prior audit
+(`test_composite_rollup_aggregate_keeps_group_by`, both geography
+`test_exact_match_resolution` / `test_exact_match_with_parenthetical_extra_filter`,
+and `test_sixty_eight`) are now fixed and removed from the list.
 
-- `tests/stdlib/test_report.py::test_top_x_by_metric` is distilled in
-  `local_scripts/v4_evals/failing_cases/top_x_by_metric.preql`.
-- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two` still
-  needs a smaller repro or reclassification.
+### Latest classifier run (2026-06-21, isolation, `--runxfail`)
 
-High-priority unclassified modeling entries from the previous audit, still worth
-checking before cosmetic shape work:
+`python local_scripts/v4_classify.py` over the 44 entries: **38 SHAPE / 4 XPASS /
+2 ROWS**. (The ROWS/SHAPE split is a crude heuristic — `DebuggingHook` prints SQL
+to stderr, so the two "ROWS" hits, `test_select_literal_is_rendered_in_projection`
+and `test_aggregate_filter_uses_having`, are actually SQL-shape asserts and stay
+in INLINE.)
 
-- `tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by`
-- `tests/modeling/geography/test_landmark_updates.py::test_exact_match_resolution`
-- `tests/modeling/geography/test_landmark_updates.py::test_exact_match_with_parenthetical_extra_filter`
-- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_eight`
+XPASS-in-isolation, promote candidates (re-confirm in a full-suite run before
+removing — the list is non-strict precisely because of cross-test state leakage):
+
+- `tests/modeling/test_complex.py::test_in_select`
+- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_nine`
+- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_one`
+- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two`
+
+### Known result-regression (`_RESULT`) entries
+
+- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two` —
+  **now passes in isolation** (rows correct). Promote/remove pending a full-suite
+  confirmation; no longer a genuine wrong-rows case.
+- `tests/stdlib/test_report.py::test_top_x_by_metric` — **still wrong**
+  (`Decimal('10.0') == 6.0`). Distilled in
+  `local_scripts/v4_evals/failing_cases/top_x_by_metric.preql`. Root cause below.
+
+#### `test_top_x_by_metric`: FINAL cross-join drops the merge join key
+
+`@top_x_by_metric(order, sum(amount), 1, -1)` expands to
+`CASE WHEN rank(order) over (order by sum(amount) desc) < 2 THEN order ELSE -1 END`
+(a BASIC concept, grain `order`, over a WINDOW over a per-order AGGREGATE). The
+outer select is `top_orders, sum(amount) by top_orders`.
+
+- **v3** keeps the CASE *in the FINAL select* and joins the window CTE (`wakeful`,
+  carries `order`) to the raw scan (`quizzical`, carries `order`) `ON order`, then
+  groups — correct (top bucket = order 3's own 6.0).
+- **v4** materializes the BASIC CASE into its own CTE (`thoughtful`) that projects
+  **only `top_orders`**, dropping the `order` lineage/grain key. The FINAL
+  `sum(amount) by top_orders` then has no shared key and degrades to
+  `quizzical FULL JOIN thoughtful ON 1=1` — every amount row pairs with every
+  bucket, so the top bucket sums the global 10.0.
+
+This is the same class as the 7de267f6 "Declare merge join keys before
+materialization" fix, but for a non-grouping contributor: `_final_merge_grain`
+(group_graph.py) only contributes grain for `GROUPING_DERIVATIONS` and `ROWSET`,
+so the BASIC `top_orders` (grain `order`, derived from a row-shape barrier) never
+declares `order` as a merge join key, and its CTE isn't asked to carry it. Fix
+direction: extend the merge-grain / join-key declaration so a contributor
+exposing a row-barrier-derived concept declares that concept's grain key, OR fold
+the BASIC CASE into the FINAL group as v3 does. Touching the shared merge logic is
+delicate (see memory on prior regressions) — verify against q97/q11/forced-join
+family before landing.
 
 ## Phase boundary contract
 
@@ -77,7 +119,10 @@ notable sharp edges are:
 
 ## Next cleanup loop
 
-1. Re-run `local_scripts/v4_classify.py` under `TRILOGY_V4_DISCOVERY=1`.
-2. Promote any current xpasses that pass in isolation.
-3. Split `_MODELING` entries into `_RESULT`, `_INLINE`, or `_TPCDS_SIZE`.
-4. Tackle the two known `_RESULT` entries before the shape backlog.
+1. Confirm the 4 XPASS candidates above in a full-suite run, then remove them
+   (start with `test_ninety_seven_two`, which clears the last genuine wrong-rows
+   case besides `top_x_by_metric`).
+2. Fix `test_top_x_by_metric` — the sole remaining genuine wrong-rows regression
+   (FINAL `ON 1=1` cross-join; see diagnosis above).
+3. Split the 13 `_MODELING` entries into `_RESULT`, `_INLINE`, or `_TPCDS_SIZE`.
+4. Re-run `local_scripts/v4_classify.py` after any planner change.

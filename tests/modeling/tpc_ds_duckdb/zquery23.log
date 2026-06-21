@@ -66,6 +66,7 @@ FROM
 kaput as (
 SELECT
     \"sales_item_items\".\"I_ITEM_SK\" as \"_frequent_items_frequent_item_id\",
+    \"sales_item_items\".\"I_ITEM_SK\" as \"sales_item_id\",
     SUBSTRING(\"sales_item_items\".\"I_ITEM_DESC\",1,30) as \"sales_item_desc_truncated\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"),
@@ -91,12 +92,12 @@ GROUP BY
 juicy as (
 SELECT
     \"abundant\".\"sales_date_date\" as \"sales_date_date\",
-    \"abundant\".\"sales_item_id\" as \"sales_item_id\",
     \"abundant\".\"sales_order_id\" as \"sales_order_id\",
-    \"uneven\".\"sales_item_desc_truncated\" as \"sales_item_desc_truncated\"
+    \"uneven\".\"sales_item_desc_truncated\" as \"sales_item_desc_truncated\",
+    \"uneven\".\"sales_item_id\" as \"sales_item_id\"
 FROM
-    \"abundant\"
-    LEFT OUTER JOIN \"uneven\" on \"abundant\".\"sales_item_id\" = \"uneven\".\"_frequent_items_frequent_item_id\"
+    \"uneven\"
+    LEFT OUTER JOIN \"abundant\" on \"uneven\".\"_frequent_items_frequent_item_id\" = \"abundant\".\"sales_item_id\"
 GROUP BY
     1,
     2,

@@ -1,6 +1,6 @@
 query_id = "57"
 generator = "v4"
-gen_length = 9866
+gen_length = 10267
 preql_size = 2050
 comp_size = 2122
 generated_sql = """
@@ -51,7 +51,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"catalog_sales_item_items\" on \"highfalutin\".\"catalog_sales_item_id\" = \"catalog_sales_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"call_center\" as \"catalog_sales_call_center_call_center\" on \"highfalutin\".\"catalog_sales_call_center_id\" = \"catalog_sales_call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
-    ( \"catalog_sales_date_date\".\"D_YEAR\" = 1999 or ( \"catalog_sales_date_date\".\"D_YEAR\" = 1998 and \"catalog_sales_date_date\".\"D_MOY\" = 12 ) or ( \"catalog_sales_date_date\".\"D_YEAR\" = 2000 and \"catalog_sales_date_date\".\"D_MOY\" = 1 ) )
+    ( \"catalog_sales_date_date\".\"D_YEAR\" = 1999 or ( \"catalog_sales_date_date\".\"D_YEAR\" = 1998 and \"catalog_sales_date_date\".\"D_MOY\" = 12 ) or ( \"catalog_sales_date_date\".\"D_YEAR\" = 2000 and \"catalog_sales_date_date\".\"D_MOY\" = 1 ) ) and \"catalog_sales_date_date\".\"D_YEAR\" = 1999
 ),
 sweltering as (
 SELECT
@@ -72,7 +72,10 @@ SELECT
     \"thoughtful\".\"catalog_sales_item_brand_name\" as \"catalog_sales_item_brand_name\",
     \"thoughtful\".\"catalog_sales_item_category\" as \"catalog_sales_item_category\"
 FROM
-    \"thoughtful\"),
+    \"thoughtful\"
+WHERE
+    \"thoughtful\".\"catalog_sales_date_year\" = 1999
+),
 vacuous as (
 SELECT
     \"abundant\".\"sum_sales\" as \"sum_sales\",
@@ -83,6 +86,9 @@ SELECT
 FROM
     \"abundant\"
     FULL JOIN \"cooperative\" on \"abundant\".\"catalog_sales_call_center_name\" = \"cooperative\".\"catalog_sales_call_center_name\" AND \"abundant\".\"catalog_sales_date_month_of_year\" = \"cooperative\".\"catalog_sales_date_month_of_year\" AND \"abundant\".\"catalog_sales_date_year\" = \"cooperative\".\"catalog_sales_date_year\" AND \"abundant\".\"catalog_sales_item_brand_name\" = \"cooperative\".\"catalog_sales_item_brand_name\" AND \"abundant\".\"catalog_sales_item_category\" is not distinct from \"cooperative\".\"catalog_sales_item_category\"
+WHERE
+    coalesce(\"abundant\".\"catalog_sales_date_year\",\"cooperative\".\"catalog_sales_date_year\") = 1999
+
 GROUP BY
     1,
     2,
@@ -99,11 +105,17 @@ SELECT
     avg(\"vacuous\".\"sum_sales\") as \"avg_monthly_sales\"
 FROM
     \"vacuous\"
+WHERE
+    \"vacuous\".\"catalog_sales_date_year\" = 1999
+
 GROUP BY
     1,
     2,
     3,
-    4),
+    4
+HAVING
+    \"avg_monthly_sales\" > 0
+),
 sparkling as (
 SELECT
     \"abundant\".\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
@@ -116,7 +128,10 @@ SELECT
     coalesce(\"abundant\".\"catalog_sales_item_category\",\"young\".\"catalog_sales_item_category\") as \"catalog_sales_item_category\"
 FROM
     \"abundant\"
-    INNER JOIN \"young\" on \"abundant\".\"catalog_sales_call_center_name\" = \"young\".\"catalog_sales_call_center_name\" AND \"abundant\".\"catalog_sales_date_year\" = \"young\".\"catalog_sales_date_year\" AND \"abundant\".\"catalog_sales_item_brand_name\" = \"young\".\"catalog_sales_item_brand_name\" AND \"abundant\".\"catalog_sales_item_category\" is not distinct from \"young\".\"catalog_sales_item_category\")
+    RIGHT OUTER JOIN \"young\" on \"abundant\".\"catalog_sales_call_center_name\" = \"young\".\"catalog_sales_call_center_name\" AND \"abundant\".\"catalog_sales_date_year\" = \"young\".\"catalog_sales_date_year\" AND \"abundant\".\"catalog_sales_item_brand_name\" = \"young\".\"catalog_sales_item_brand_name\" AND \"abundant\".\"catalog_sales_item_category\" is not distinct from \"young\".\"catalog_sales_item_category\"
+WHERE
+    coalesce(\"abundant\".\"catalog_sales_date_year\",\"young\".\"catalog_sales_date_year\") = 1999
+)
 SELECT
     coalesce(\"sparkling\".\"catalog_sales_item_category\",\"sweltering\".\"catalog_sales_item_category\") as \"catalog_sales_item_category\",
     coalesce(\"sparkling\".\"catalog_sales_item_brand_name\",\"sweltering\".\"catalog_sales_item_brand_name\") as \"catalog_sales_item_brand_name\",
