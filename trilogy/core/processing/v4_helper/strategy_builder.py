@@ -53,9 +53,9 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, dependency_subgraph, edge_kind
+from .group_graph import _refresh_final_contract
 from .models import (
     FinalAssemblyContract,
-    FinalContributorContract,
     GroupAttrs,
     InputChannel,
 )
@@ -1219,43 +1219,6 @@ def _filter_arg_parents(
     return nodes, concepts
 
 
-def _fallback_final_contributor_contracts(
-    attrs: dict[str, GroupAttrs],
-    per_group: dict[str, list[BuildConcept]],
-) -> tuple[FinalContributorContract, ...]:
-    merge_grain: set[str] = set()
-    projection_grain_by_gid: dict[str, frozenset[str]] = {}
-    for gid, concepts in per_group.items():
-        projection_grain: frozenset[str] = frozenset()
-        if attrs[gid].derivation in GROUPING_DERIVATIONS:
-            merge_grain |= set(attrs[gid].grain_components)
-            projection_grain = attrs[gid].grain_components
-            for concept in concepts:
-                if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
-                    merge_grain |= set(concept.grain.components)
-                    projection_grain = frozenset(
-                        set(projection_grain) | set(concept.grain.components)
-                    )
-        elif attrs[gid].derivation == Derivation.ROWSET:
-            merge_grain |= set(attrs[gid].grain_components)
-            projection_grain = attrs[gid].grain_components
-        projection_grain_by_gid[gid] = projection_grain
-    frozen_merge_grain = frozenset(merge_grain)
-    return tuple(
-        FinalContributorContract(
-            group_id=gid,
-            output_addresses=frozenset(c.address for c in concepts),
-            preserve_keys=(
-                frozen_merge_grain
-                if attrs[gid].derivation == Derivation.ROOT
-                else frozenset()
-            ),
-            projection_grain=projection_grain_by_gid.get(gid, frozenset()),
-        )
-        for gid, concepts in per_group.items()
-    )
-
-
 def _group_to_grain_if_required(
     node: StrategyNode,
     mandatory_list: list[BuildConcept],
@@ -1366,12 +1329,19 @@ def _assemble_final_node(
     # group could host was deferred onto FINAL by `_inject_conditions`; apply it
     # as a WHERE over the assembled merge, where both columns coexist.
     final_conditions = _wrap_atoms(attrs[FINAL_NODE_ID].condition_atoms)
-    final_contract = attrs[FINAL_NODE_ID].final_contract or FinalAssemblyContract(
-        output_addresses=frozenset(c.address for c in mandatory_list),
-        required_grain=frozenset(
-            BuildGrain.from_concepts(mandatory_list, environment=environment).components
-        ),
-    )
+    final_contract = attrs[FINAL_NODE_ID].final_contract
+    if final_contract is None:
+        _refresh_final_contract(group_graph, attrs, mandatory_list)
+        final_contract = attrs[FINAL_NODE_ID].final_contract
+    if final_contract is None:
+        final_contract = FinalAssemblyContract(
+            output_addresses=frozenset(c.address for c in mandatory_list),
+            required_grain=frozenset(
+                BuildGrain.from_concepts(
+                    mandatory_list, environment=environment
+                ).components
+            ),
+        )
     mandatory_addresses = {c.address for c in mandatory_list}
     # Row-args a FINAL-deferred filter needs that aren't user outputs (q11:
     # global `germany_total_value`). Their producing groups get cross-joined in
@@ -1487,17 +1457,28 @@ def _assemble_final_node(
     # merging dimension must join on (q46: the `bought` rowset's grain carries
     # `customer.id`, so the customer-address scan rides it instead of deduping to
     # its own `address.id` grain and cross-joining ON 1=1).
-    fallback_contracts = {
-        contract.group_id: contract
-        for contract in _fallback_final_contributor_contracts(attrs, per_group)
-    }
     contributor_contracts = {
         contract.group_id: contract for contract in final_contract.contributor_contracts
     }
-    contracts_by_gid = {
-        gid: contributor_contracts.get(gid, fallback_contracts[gid])
-        for gid in contributing
-    }
+    missing_contracts = [
+        gid for gid in contributing if gid not in contributor_contracts
+    ]
+    if missing_contracts:
+        _refresh_final_contract(group_graph, attrs, mandatory_list)
+        final_contract = attrs[FINAL_NODE_ID].final_contract or final_contract
+        contributor_contracts = {
+            contract.group_id: contract
+            for contract in final_contract.contributor_contracts
+        }
+        missing_contracts = [
+            gid for gid in contributing if gid not in contributor_contracts
+        ]
+    if missing_contracts:
+        raise ValueError(
+            "FINAL contributor contract missing for groups: "
+            + ", ".join(sorted(missing_contracts))
+        )
+    contracts_by_gid = {gid: contributor_contracts[gid] for gid in contributing}
     final_merge_grain = frozenset().union(
         *(contract.projection_grain for contract in contracts_by_gid.values())
     )
