@@ -1,0 +1,29 @@
+# v4 parity case, distilled from tests/stdlib/test_report.py::test_top_x_by_metric.
+# @top_x_by_metric ranks orders by sum(amount), keeping the top 1 and bucketing
+# the rest into -1. The top bucket must return order 3's own amount (6.0), not the
+# global total (10.0): the `sum(amount) by top_orders` aggregate must join the
+# fact scan to the window-derived top_orders dimension on the shared `order` key
+# (declared as a GroupInputContract bridge join key) instead of cross-joining.
+import std.report;
+import std.money;
+
+key order int;
+key order_item int;
+property order_item.amount numeric::usd;
+datasource orders (
+    order:order,
+    order_item:order_item,
+    amount:amount)
+grain (order_item)
+query '''
+SELECT
+    1 AS order, 1 AS order_item, 2.0 as amount
+    union all select 2 as order, 2 as order_item, 2.0 as amount
+    union all select 3 as order, 3 as order_item, 6.0 as amount
+'''
+;
+
+SELECT
+    @top_x_by_metric(order, sum(amount), 1, -1) AS top_orders,
+    sum(amount) as total_amount,
+order by top_orders desc;
