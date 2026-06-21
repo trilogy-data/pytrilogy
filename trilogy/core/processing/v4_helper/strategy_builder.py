@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import AggregateGroupingMode, Derivation, Purpose
+from trilogy.core.enums import AggregateGroupingMode, Derivation
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
@@ -72,12 +72,6 @@ from .source_policy import STRICT_SOURCE_POLICY, SourcePolicy
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE,
     Derivation.GROUP_TO,
-}
-
-_MERGE_JOIN_PURPOSES = {
-    Purpose.KEY,
-    Purpose.PROPERTY,
-    Purpose.UNIQUE_PROPERTY,
 }
 
 
@@ -538,18 +532,6 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     return [p for p in parents if id(p) not in dropped]
 
 
-def _merge_join_key_candidate(concept: BuildConcept) -> bool:
-    if concept.purpose == Purpose.KEY:
-        return True
-    if concept.purpose not in _MERGE_JOIN_PURPOSES:
-        return False
-    if concept.keys:
-        return True
-    if concept.grain and concept.grain.components:
-        return True
-    return False
-
-
 def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
     seen: set[str] = set()
     output: list[BuildConcept] = []
@@ -564,14 +546,23 @@ def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
     return output
 
 
-def _widen_merge_join_keys(parents: list[StrategyNode]) -> None:
-    if len(parents) <= 1:
+def _widen_merge_join_keys(
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+    join_key_addresses: frozenset[str],
+) -> None:
+    if len(parents) <= 1 or not join_key_addresses:
         return
 
     sibling_outputs: dict[str, BuildConcept] = {}
     for parent in parents:
         for concept in parent.output_concepts:
             sibling_outputs.setdefault(concept.address, concept)
+    join_key_concepts: list[BuildConcept] = []
+    for address in sorted(join_key_addresses):
+        join_key = sibling_outputs.get(address) or _concept_at(environment, address)
+        if join_key is not None:
+            join_key_concepts.append(join_key)
 
     for parent in parents:
         if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
@@ -583,14 +574,12 @@ def _widen_merge_join_keys(parents: list[StrategyNode]) -> None:
         existence = {concept.address for concept in parent.existence_concepts}
         carried: list[BuildConcept] = []
         input_candidates: list[BuildConcept] = []
-        for concept in sibling_outputs.values():
+        for concept in join_key_concepts:
             if concept.address in parent_outputs:
                 continue
             # An existence concept is consumed via a subselect, not joined as a
             # row column, so it can't be carried as a widenable output.
             if concept.address in existence:
-                continue
-            if not _merge_join_key_candidate(concept):
                 continue
             if not concept_satisfiable(concept, available):
                 continue
@@ -631,6 +620,7 @@ def _filter_intrinsic_pushdown_safe(group_graph: nx.DiGraph, gid: str) -> bool:
 def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
+    join_key_addresses: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -644,7 +634,7 @@ def _pre_merge_parents(
     parents = _fold_passthrough_parents(parents)
     if len(parents) <= 1:
         return parents
-    _widen_merge_join_keys(parents)
+    _widen_merge_join_keys(parents, environment, join_key_addresses)
     seen: set[str] = set()
     all_outputs: list[BuildConcept] = []
     for p in parents:
@@ -686,6 +676,22 @@ def _input_contract_projection_grain(
         grain |= set(contract.required_grain)
         grain |= set(contract.preserve_keys)
     return frozenset(grain)
+
+
+def _input_contract_join_keys(
+    group_attrs: GroupAttrs, parent_group_ids: set[str] | None = None
+) -> frozenset[str]:
+    keys: set[str] = set()
+    for contract in group_attrs.input_contracts:
+        if (
+            parent_group_ids is not None
+            and contract.parent_group_id not in parent_group_ids
+        ):
+            continue
+        if contract.channel != InputChannel.ROW_STREAM:
+            continue
+        keys |= set(contract.preserve_keys)
+    return frozenset(keys)
 
 
 def _apply_input_contracts(
@@ -1535,7 +1541,7 @@ def _assemble_final_node(
         environment,
     )
     parents = _fold_passthrough_parents(parents)
-    _widen_merge_join_keys(parents)
+    _widen_merge_join_keys(parents, environment, final_merge_grain)
 
     available: set[str] = set()
     for p in parents:
@@ -1667,8 +1673,14 @@ def build_strategy_node(
             source_policy,
             needed=needed,
         )
+        parent_group_ids = {parent.group_id for parent in parent_builds}
+        join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
         parents = _apply_input_contracts(parent_builds, a, needed, environment)
-        parents = _pre_merge_parents(parents, environment)
+        parents = _pre_merge_parents(
+            parents,
+            environment,
+            join_key_addresses=join_key_addresses,
+        )
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
         # d1 aggregate feeding a HAVING-style filter on this root) is real

@@ -9,12 +9,20 @@ concept-graph node id, mirroring production; the graph itself carries only
 topology + lineage edges. ``_cg`` builds both from a compact spec.
 """
 
+from typing import cast
+
 import pytest
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models.build import BuildConcept, BuildGrain
+from trilogy.core.models.author import SelectLineage
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildGrain,
+    BuildRowsetItem,
+    BuildRowsetLineage,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
@@ -258,6 +266,82 @@ def test_final_contributor_contract_preserves_rowset_merge_grain_for_root():
     assert contract.merge_grain == {customer_id.address}
     assert root_contract.preserve_keys == {customer_id.address}
     assert root_contract.projection_grain == set()
+
+
+def test_final_contributor_contract_uses_rowset_lineage_join_key():
+    order_id = _build_concept("order_id", Purpose.KEY)
+    store_id_address = "local.store_id"
+    store_id = _build_concept(
+        "store_id",
+        Purpose.KEY,
+        grain={store_id_address},
+        keys={order_id.address},
+    )
+    rowset_order_id = _build_concept(
+        "even_orders.order_id",
+        Purpose.KEY,
+        derivation=Derivation.ROWSET,
+        grain={"local.even_orders.order_id"},
+    )
+    rowset_store_id = _build_concept(
+        "even_orders.store_id",
+        Purpose.KEY,
+        derivation=Derivation.ROWSET,
+        grain={"local.even_orders.store_id"},
+        keys={rowset_order_id.address},
+    )
+    rowset_lineage = BuildRowsetLineage(
+        name="even_orders",
+        derived_concepts=[rowset_order_id.address, rowset_store_id.address],
+        select=cast(SelectLineage, None),
+    )
+    rowset_order_id.lineage = BuildRowsetItem(
+        content=order_id,
+        rowset=rowset_lineage,
+    )
+    rowset_store_id.lineage = BuildRowsetItem(
+        content=store_id,
+        rowset=rowset_lineage,
+    )
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs = {
+        "root": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            output_concepts=(order_id.address,),
+        ),
+        "rowset": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.ROWSET,
+            grain_components=frozenset(
+                {rowset_order_id.address, rowset_store_id.address}
+            ),
+            output_concepts=(rowset_order_id.address, rowset_store_id.address),
+        ),
+        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
+    }
+    group_graph.add_nodes_from(attrs)
+    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
+    add_edge(group_graph, group_edges, "rowset", FINAL_NODE_ID, EdgeKind.MERGE)
+
+    _refresh_final_contract(
+        group_graph,
+        attrs,
+        [order_id, rowset_order_id, rowset_store_id],
+    )
+
+    contract = attrs[FINAL_NODE_ID].final_contract
+    assert contract is not None
+    rowset_contract = next(
+        item for item in contract.contributor_contracts if item.group_id == "rowset"
+    )
+    root_contract = next(
+        item for item in contract.contributor_contracts if item.group_id == "root"
+    )
+    assert contract.merge_grain == {order_id.address}
+    assert root_contract.preserve_keys == {order_id.address}
+    assert rowset_contract.projection_grain == {order_id.address}
 
 
 def test_stage3_requires_declared_final_contract():
@@ -990,7 +1074,7 @@ def test_partition_rollup_aggregates_split_by_source_signature():
     }
 
 
-def test_pre_merge_carries_sibling_join_keys_without_metrics():
+def test_pre_merge_carries_declared_join_keys_without_metrics():
 
     env = BuildEnvironment()
     part_name = _build_concept(
@@ -1031,6 +1115,18 @@ def test_pre_merge_carries_sibling_join_keys_without_metrics():
     )
 
     merged = _pre_merge_parents([row_projection, ratio_projection], env)
+
+    assert len(merged) == 1
+    assert isinstance(merged[0], MergeNode)
+    row_outputs = {concept.address for concept in row_projection.output_concepts}
+    assert "local.part.name" not in row_outputs
+    assert "local.charge_percent" not in row_outputs
+
+    merged = _pre_merge_parents(
+        [row_projection, ratio_projection],
+        env,
+        join_key_addresses=frozenset({part_name.address}),
+    )
 
     assert len(merged) == 1
     assert isinstance(merged[0], MergeNode)

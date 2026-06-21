@@ -654,34 +654,53 @@ def _add_final_node(
         add_edge(group_graph, group_edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
 
 
+def _rowset_join_key_addresses(
+    concept: BuildConcept, mandatory_by_address: dict[str, BuildConcept]
+) -> set[str]:
+    key_addresses = set(concept.keys or set())
+    if not key_addresses and concept.grain:
+        key_addresses = set(concept.grain.components)
+    if not key_addresses:
+        key_addresses = {concept.address}
+    output: set[str] = set()
+    for key_address in key_addresses:
+        key_concept = mandatory_by_address.get(key_address)
+        if key_concept is None or key_concept.lineage is None:
+            output.add(key_address)
+            continue
+        output |= {arg.address for arg in key_concept.lineage.concept_arguments}
+    return output
+
+
 def _final_merge_grain(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
 ) -> frozenset[str]:
+    mandatory_by_address = {concept.address: concept for concept in mandatory_list}
     grain: set[str] = set()
     for gid in group_graph.predecessors(FINAL_NODE_ID):
         if gid not in attrs:
             continue
         if attrs[gid].derivation in GROUPING_DERIVATIONS:
             grain |= set(attrs[gid].grain_components)
-        elif attrs[gid].derivation == Derivation.ROWSET:
-            grain |= set(attrs[gid].grain_components)
     for concept in mandatory_list:
         if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
             grain |= set(concept.grain.components)
+        elif concept.derivation == Derivation.ROWSET:
+            grain |= _rowset_join_key_addresses(concept, mandatory_by_address)
     return frozenset(grain)
 
 
 def _group_final_grain_contribution(
-    attrs: dict[str, GroupAttrs], gid: str
+    attrs: dict[str, GroupAttrs], gid: str, merge_grain: frozenset[str]
 ) -> frozenset[str]:
     if gid not in attrs:
         return frozenset()
     if attrs[gid].derivation in GROUPING_DERIVATIONS:
         return attrs[gid].grain_components
     if attrs[gid].derivation == Derivation.ROWSET:
-        return attrs[gid].grain_components
+        return merge_grain
     return frozenset()
 
 
@@ -706,7 +725,9 @@ def _refresh_final_contract(
                 group_id=gid,
                 output_addresses=frozenset(attrs[gid].output_concepts),
                 preserve_keys=preserve_keys,
-                projection_grain=_group_final_grain_contribution(attrs, gid),
+                projection_grain=_group_final_grain_contribution(
+                    attrs, gid, merge_grain
+                ),
             )
         )
     attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
