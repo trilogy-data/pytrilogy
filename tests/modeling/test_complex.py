@@ -88,7 +88,7 @@ def test_in_select(test_environment: Environment, test_executor: Executor):
         order_id,
     WHERE
         order_id in filtered
-
+    order by order_id asc
     ;"""
     _, statements = parse(test_select, test_environment)
 
