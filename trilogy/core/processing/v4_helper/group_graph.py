@@ -23,7 +23,7 @@ from typing import Literal, overload
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildGrain, BuildWhereClause
 
 from .condition_placement import plan_condition_placements
 from .constants import (
@@ -47,7 +47,7 @@ from .edges import (
 )
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
-from .models import ConceptAttrs, GroupAttrs, GroupBucket
+from .models import ConceptAttrs, FinalAssemblyContract, GroupAttrs, GroupBucket
 
 # depth_label used for the secondary root bucket dedicated to feeding d1
 # (in-WHERE) aggregate calculations. Distinct from ``root`` so the bucket
@@ -507,6 +507,7 @@ def _add_final_node(
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
+    mandatory_list: list[BuildConcept] | None = None,
 ) -> None:
     """Attach a single FINAL sink that collects every non-d1 concept, with a
     merge edge from every group. Added before `_inject_conditions` so a
@@ -520,6 +521,16 @@ def _add_final_node(
         depth_label=DepthLabel.FINAL,
         members=non_condition_members,
         conditions=[str(c) for c in conditions],
+        final_contract=(
+            FinalAssemblyContract(
+                output_addresses=frozenset(c.address for c in mandatory_list),
+                required_grain=frozenset(
+                    BuildGrain.from_concepts(mandatory_list).components
+                ),
+            )
+            if mandatory_list is not None
+            else None
+        ),
     )
     for gid in buckets:
         add_edge(group_graph, group_edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
@@ -922,6 +933,7 @@ def build_group_graph(
         concept_attrs,
         buckets,
         conditions,
+        mandatory_list,
     )
     merged_group_graph = group_graph.copy()
     merged_group_edges = copy_edges(group_edges)

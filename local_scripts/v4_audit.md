@@ -13,14 +13,16 @@ when changing planner behavior.
 | bucket | n | meaning |
 | --- | ---: | --- |
 | INLINE | 11 | SQL/CTE shape differs from v3, rows expected to match |
-| RESULT | 2 | known wrong-row regressions with distilled repro coverage |
+| RESULT | 2 | known wrong-row regressions |
 | MODELING | 17 | modeling sweep diffs still needing per-test classification |
 | TPCDS_SIZE | 18 | TPC-DS rows match, SQL exceeds v3-tuned size ceilings |
 
 Known result-regression entries:
 
-- `tests/stdlib/test_report.py::test_top_x_by_metric`
-- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two`
+- `tests/stdlib/test_report.py::test_top_x_by_metric` is distilled in
+  `local_scripts/v4_evals/failing_cases/top_x_by_metric.preql`.
+- `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two` still
+  needs a smaller repro or reclassification.
 
 High-priority unclassified modeling entries from the previous audit, still worth
 checking before cosmetic shape work:

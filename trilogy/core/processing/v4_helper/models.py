@@ -10,6 +10,21 @@ from .edges import EdgeMap, copy_edges
 
 
 @dataclass
+class FinalAssemblyContract:
+    """Logical contract for assembling the FINAL sink.
+
+    Stage 2 owns these semantic requirements: which user-visible concepts the
+    final query must expose, and the grain those outputs should be unique at.
+    Stage 3 may still skip a physical GroupNode when the chosen source already
+    satisfies the contract.
+    """
+
+    output_addresses: frozenset[str] = frozenset()
+    required_grain: frozenset[str] = frozenset()
+    deduplicate_to_grain: bool = True
+
+
+@dataclass
 class GroupAttrs:
     """Strongly-typed per-group state. Lives in a side dict
     (``dict[str, GroupAttrs]``) keyed by group id rather than on the
@@ -43,6 +58,9 @@ class GroupAttrs:
     output_concepts: tuple[str, ...] = ()
     hidden_concepts: tuple[str, ...] = ()
     input_concepts: tuple[str, ...] = ()
+    # Populated only for FINAL: the logical output/grain contract Stage 3
+    # physically satisfies or prunes.
+    final_contract: FinalAssemblyContract | None = None
 
 
 @dataclass
@@ -124,6 +142,7 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         hidden_concepts=a.hidden_concepts,
         input_concepts=a.input_concepts,
         aggregate_input_grain=a.aggregate_input_grain,
+        final_contract=a.final_contract,
     )
 
 

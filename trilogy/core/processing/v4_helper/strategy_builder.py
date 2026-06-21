@@ -52,7 +52,7 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, dependency_subgraph, edge_kind
-from .models import GroupAttrs
+from .models import FinalAssemblyContract, GroupAttrs
 from .projection import (
     concept_satisfiable,
     parent_output_addresses,
@@ -1161,6 +1161,7 @@ def _filter_arg_parents(
 def _group_to_grain_if_required(
     node: StrategyNode,
     mandatory_list: list[BuildConcept],
+    final_contract: FinalAssemblyContract,
     environment: BuildEnvironment,
 ) -> StrategyNode:
     """Dedup a non-grouping FINAL contributor to the requested output grain.
@@ -1181,18 +1182,25 @@ def _group_to_grain_if_required(
     `force_group`."""
     from trilogy.core.processing.discovery_utility import check_if_group_required
 
+    if not final_contract.deduplicate_to_grain:
+        return node
+    contract_outputs = [
+        concept
+        for concept in mandatory_list
+        if concept.address in final_contract.output_addresses
+    ]
     if isinstance(node, (GroupNode, WindowNode)) or node.force_group:
         return node
     if (
         check_if_group_required(
-            downstream_concepts=mandatory_list,
+            downstream_concepts=contract_outputs,
             parents=[node.resolve()],
             environment=environment,
         ).required
         is not True
     ):
         return node
-    mandatory_addrs = {c.address for c in mandatory_list}
+    mandatory_addrs = set(final_contract.output_addresses)
     targets = [o for o in node.output_concepts if o.address in mandatory_addrs]
     # Pseudonym fallback: a struct field surfaces under its origin address
     # (`s.a`, carrying the attr-access lineage) while the requested output is the
@@ -1203,7 +1211,7 @@ def _group_to_grain_if_required(
         targets = [
             o
             for o in node.output_concepts
-            if any(_output_covers(o, m) for m in mandatory_list)
+            if any(_output_covers(o, m) for m in contract_outputs)
         ]
     if isinstance(node, MergeNode):
         # Narrow to the requested grain *before* force-grouping: a MergeNode
@@ -1260,6 +1268,12 @@ def _assemble_final_node(
     # group could host was deferred onto FINAL by `_inject_conditions`; apply it
     # as a WHERE over the assembled merge, where both columns coexist.
     final_conditions = _wrap_atoms(attrs[FINAL_NODE_ID].condition_atoms)
+    final_contract = attrs[FINAL_NODE_ID].final_contract or FinalAssemblyContract(
+        output_addresses=frozenset(c.address for c in mandatory_list),
+        required_grain=frozenset(
+            BuildGrain.from_concepts(mandatory_list, environment=environment).components
+        ),
+    )
     mandatory_addresses = {c.address for c in mandatory_list}
     # Row-args a FINAL-deferred filter needs that aren't user outputs (q11:
     # global `germany_total_value`). Their producing groups get cross-joined in
@@ -1313,7 +1327,10 @@ def _assemble_final_node(
     if not per_group:
         return _apply_final_conditions(
             _group_to_grain_if_required(
-                next(iter(built.values())), mandatory_list, environment
+                next(iter(built.values())),
+                mandatory_list,
+                final_contract,
+                environment,
             )
         )
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
@@ -1349,7 +1366,12 @@ def _assemble_final_node(
             sole_node.hidden_concepts = existing | hide
             sole_node.rebuild_cache()
         return _apply_final_conditions(
-            _group_to_grain_if_required(sole_node, mandatory_list, environment)
+            _group_to_grain_if_required(
+                sole_node,
+                mandatory_list,
+                final_contract,
+                environment,
+            )
         )
 
     # Only root scans get the grain projection: their grain is the row-level
@@ -1478,7 +1500,12 @@ def _assemble_final_node(
     # keys (wh) drop out of the output grain (store_by_warehouse, product).
     # No-op when the merge already sits at the mandatory grain (the common
     # aggregate+dim case force_groups to merge_grain == output grain).
-    return _group_to_grain_if_required(merged, mandatory_list, environment)
+    return _group_to_grain_if_required(
+        merged,
+        mandatory_list,
+        final_contract,
+        environment,
+    )
 
 
 def build_strategy_node(

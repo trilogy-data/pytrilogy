@@ -44,6 +44,7 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
     native_grain_root,
 )
 from trilogy.core.processing.v4_helper.group_graph import (
+    _add_final_node,
     _virtual_filter_scoped_columns,
 )
 from trilogy.core.processing.v4_helper.group_rules import (
@@ -120,6 +121,84 @@ def _bucket(
 
 def _noop_ensure(derivation: Derivation) -> None:
     pass
+
+
+def test_final_node_declares_logical_output_grain_contract():
+    customer_id = _build_concept("customer.id", Purpose.KEY)
+    customer_name = _build_concept(
+        "customer.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={customer_id.address},
+        keys={customer_id.address},
+    )
+    total_revenue = _build_concept(
+        "total_revenue",
+        Purpose.METRIC,
+        derivation=Derivation.AGGREGATE,
+        grain={customer_id.address},
+        is_aggregate=True,
+    )
+    concept_graph = nx.DiGraph()
+    concept_attrs = {
+        concept.address: ConceptAttrs(
+            address=concept.address,
+            label="",
+            derivation=concept.derivation,
+            purpose=concept.purpose,
+            granularity=concept.granularity,
+            depth_label=DepthLabel.STAR,
+            grain_components=frozenset(concept.grain.components),
+        )
+        for concept in (customer_id, customer_name, total_revenue)
+    }
+    concept_graph.add_nodes_from(concept_attrs)
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs: dict[str, GroupAttrs] = {}
+    buckets = {
+        "root": GroupBucket(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            grain_components=frozenset(),
+            primary_members=[customer_id.address, customer_name.address],
+        ),
+        "agg": GroupBucket(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({customer_id.address}),
+            primary_members=[total_revenue.address],
+        ),
+    }
+    for gid, bucket in buckets.items():
+        group_graph.add_node(gid)
+        attrs[gid] = GroupAttrs(
+            depth_label=bucket.depth_label,
+            derivation=bucket.derivation,
+            grain_components=bucket.grain_components,
+            primary_members=tuple(bucket.primary_members),
+        )
+
+    _add_final_node(
+        group_graph,
+        group_edges,
+        attrs,
+        concept_graph,
+        concept_attrs,
+        buckets,
+        conditions=[],
+        mandatory_list=[customer_id, customer_name, total_revenue],
+    )
+
+    contract = attrs[FINAL_NODE_ID].final_contract
+    assert contract is not None
+    assert contract.output_addresses == {
+        customer_id.address,
+        customer_name.address,
+        total_revenue.address,
+    }
+    assert contract.required_grain == {customer_id.address}
+    assert contract.deduplicate_to_grain is True
 
 
 def _build_concept(
