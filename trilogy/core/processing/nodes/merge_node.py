@@ -488,12 +488,67 @@ class MergeNode(StrategyNode):
             final_datasets,
             key=lambda ds: (null_status.get(ds.identifier, 0), ds.identifier),
         )
+        # Scoped LEFT merges can need both the generated key and its raw-source
+        # pseudonym after an intermediate merge. Carry those columns forward so
+        # later joins render from the raw parent instead of recomputing UNNEST.
+        scoped_partial_sources = self.environment.scoped_partial_sources
+        output_addresses = {c.address for c in self.output_concepts}
+        passthrough_outputs: list[BuildConcept] = []
+        if scoped_partial_sources:
+            for source in final_datasets:
+                source_map_keys = (
+                    set(source.source_map)
+                    if isinstance(source, QueryDatasource)
+                    else {c.address for c in source.output_concepts}
+                )
+                candidate_concepts = (
+                    source.input_concepts + source.output_concepts
+                    if isinstance(source, QueryDatasource)
+                    else source.output_concepts
+                )
+                for concept in candidate_concepts:
+                    if concept.address in output_addresses:
+                        continue
+                    if not (concept.pseudonyms & scoped_partial_sources):
+                        continue
+                    if concept.address not in source_map_keys:
+                        continue
+                    passthrough_outputs.append(concept)
+                    output_addresses.add(concept.address)
+
+        final_output_concepts = unique(
+            self.output_concepts + passthrough_outputs, "address"
+        )
+        final_hidden_concepts = self.hidden_concepts
+        passthrough_partial_addresses = {
+            c.address
+            for c in passthrough_outputs
+            for source in final_datasets
+            if c.address in {p.address for p in source.partial_concepts}
+        }
+        final_partial_concepts = unique(
+            self.partial_concepts
+            + [
+                c
+                for c in passthrough_outputs
+                if c.address in passthrough_partial_addresses
+            ],
+            "address",
+        )
+
         source_map = resolve_concept_map(
             ordered_datasets,
-            targets=self.output_concepts,
+            targets=final_output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
         )
+        for concept in passthrough_outputs:
+            for source in ordered_datasets:
+                if isinstance(source, QueryDatasource):
+                    if concept.address in source.source_map:
+                        source_map[concept.address].add(source)
+                elif concept.address in {c.address for c in source.output_concepts}:
+                    source_map[concept.address].add(source)
         # A derived-key FULL join binds a *different* column on each side (da vs
         # db) that collapses to one canonical output. resolve_concept_map keyed
         # each address to its own side only, so the canonical output would render
@@ -522,7 +577,7 @@ class MergeNode(StrategyNode):
                 for source in final_datasets
                 if isinstance(source, QueryDatasource)
                 for c in source.rollup_concepts
-                if c.address in {out.address for out in self.output_concepts}
+                if c.address in {out.address for out in final_output_concepts}
             ],
             "address",
         )
@@ -536,7 +591,7 @@ class MergeNode(StrategyNode):
             )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
-            output_concepts=unique(self.output_concepts, "address"),
+            output_concepts=final_output_concepts,
             datasources=final_datasets,
             source_type=self.source_type,
             source_map=source_map,
@@ -546,13 +601,13 @@ class MergeNode(StrategyNode):
             joins=qd_joins,
             grain=grain,
             nullable_concepts=[
-                x for x in self.output_concepts if x.address in nullable_concepts
+                x for x in final_output_concepts if x.address in nullable_concepts
             ],
-            partial_concepts=self.partial_concepts,
+            partial_concepts=final_partial_concepts,
             rollup_concepts=rollup_concepts,
             force_group=force_group,
             condition=self.conditions,
-            hidden_concepts=self.hidden_concepts,
+            hidden_concepts=final_hidden_concepts,
             ordering=self.ordering,
         )
         return qds

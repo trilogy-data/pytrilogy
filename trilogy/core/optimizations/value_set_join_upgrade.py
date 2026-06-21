@@ -194,18 +194,18 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
       WHERE: filters fail mutual implication.
     - Sides without ``group_to_grain``: cardinality unknown, can't claim
       the side carries every distinct value.
-    - Query-scoped FULL joins (``full_join_keys``): the author explicitly
-      requested FULL because the two sides are independent populations with
-      disjoint key sets. The scoped merge collapses both keys onto one
-      canonical address, which would otherwise fool the source-address /
-      complete-distinct test into treating two distinct fact tables as the
-      same value space.
+    - Query-scoped outer joins (``protected_outer_join_keys``): the author
+      explicitly requested preservation because the two sides are independent
+      populations with potentially disjoint key sets. The scoped merge collapses
+      both keys onto one canonical address, which would otherwise fool the
+      source-address / complete-distinct test into treating two distinct
+      populations as the same value space.
     """
 
-    def __init__(self, full_join_keys: set[str] | None = None) -> None:
-        # Canonical addresses of query-scoped FULL-join keys; joins on these are
-        # explicit author intent and must never be upgraded to INNER.
-        self.full_join_keys = full_join_keys or set()
+    def __init__(self, protected_outer_join_keys: set[str] | None = None) -> None:
+        # Canonical addresses of query-scoped OUTER-join keys; joins on these
+        # are explicit author intent and must never be upgraded to INNER.
+        self.protected_outer_join_keys = protected_outer_join_keys or set()
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -220,9 +220,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 continue
             if not join.joinkey_pairs:
                 continue
-            if self.full_join_keys and any(
-                _key_addresses(pair.left) & self.full_join_keys
-                or _key_addresses(pair.right) & self.full_join_keys
+            if self.protected_outer_join_keys and any(
+                _key_addresses(pair.left) & self.protected_outer_join_keys
+                or _key_addresses(pair.right) & self.protected_outer_join_keys
                 for pair in join.joinkey_pairs
             ):
                 continue

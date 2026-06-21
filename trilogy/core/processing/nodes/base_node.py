@@ -78,6 +78,21 @@ def resolve_concept_map(
     # this adds our new derived metrics, which are not created in this CTE
     for target in targets:
         if target.address not in inherited:
+            for input in inputs:
+                for concept in input.output_concepts:
+                    if (
+                        concept.address != target.address
+                        and target.address not in concept.pseudonyms
+                    ):
+                        continue
+                    if (
+                        isinstance(input, QueryDatasource)
+                        and concept.address in input.hidden_concepts
+                    ):
+                        continue
+                    concept_map[target.address].add(input)
+            if concept_map.get(target.address):
+                continue
             # an empty source means it is defined in this CTE
             concept_map[target.address] = set()
     return concept_map

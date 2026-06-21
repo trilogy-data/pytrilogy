@@ -2080,15 +2080,25 @@ class BuildDatasource:
         # this logic needs to be refined.
         # if concept.lineage:
         # #     return None
+        exact_match = None
+        canonical_match = None
         for x in self.columns:
+            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
+                exact_match = x
+                break
             if (
-                x.concept.canonical_address == concept.canonical_address
-                or x.concept == concept
-                or x.concept.with_grain(concept.grain) == concept
+                concept.address in x.concept.pseudonyms
+                or x.concept.address in concept.pseudonyms
             ):
-                if use_raw_name:
-                    return x.alias
-                return concept.safe_address
+                exact_match = x
+                break
+            if x.concept.canonical_address == concept.canonical_address:
+                canonical_match = x
+        match = exact_match or canonical_match
+        if match is not None:
+            if use_raw_name:
+                return match.alias
+            return concept.safe_address
         existing = [str(c.concept) for c in self.columns]
         raise ValueError(
             f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have"

@@ -425,13 +425,23 @@ def datasource_to_cte(
     elif leaf_datasource is not None:
         cte_class = DatasourceCTE
         extra_kwargs["datasource"] = leaf_datasource
+    output_addresses = {c.address for c in query_datasource.output_concepts}
+    partial_addresses = {c.address for c in query_datasource.partial_concepts}
+    passthrough_columns = [
+        c
+        for c in query_datasource.input_concepts
+        if c.address not in output_addresses
+        and c.address in partial_addresses
+        and c.address in query_datasource.source_map
+        and c.pseudonyms
+    ]
     cte = cte_class(
         name=human_id,
         source=query_datasource,
         # output columns are what are selected/grouped by
         output_columns=[
             c.with_grain(query_datasource.grain)
-            for c in query_datasource.output_concepts
+            for c in query_datasource.output_concepts + passthrough_columns
         ],
         source_map=source_map,
         existence_source_map=existence_map,
@@ -1026,12 +1036,12 @@ def process_query(
         merge for merge in environment.merges if merge not in build_scoped_joins
     )
     scoped_merge_map, _ = _build_scoped_merge_index(build_scoped_joins)
-    # Canonical keys of explicit FULL joins — flagged so the outer-join upgrade
-    # optimization never collapses an explicit FULL back to INNER.
-    full_join_keys = {
+    # Canonical keys of explicit OUTER joins: flagged so the outer-join upgrade
+    # optimization never collapses author-requested preservation back to INNER.
+    protected_outer_join_keys = {
         scoped_merge_map.get(addr, addr)
         for source, target, join_type in build_scoped_joins
-        if join_type is JoinType.FULL
+        if join_type is not JoinType.INNER
         for addr in (source, target)
     }
 
@@ -1040,7 +1050,7 @@ def process_query(
         root_cte,
         statement,
         having_alias=having_alias,
-        full_join_keys=full_join_keys,
+        protected_outer_join_keys=protected_outer_join_keys,
     )
 
     return ProcessedQuery(

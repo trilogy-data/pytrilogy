@@ -53,14 +53,18 @@ def _datasource_column_for_concept(
     datasource: BuildDatasource,
     concept: BuildConcept,
 ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper | None:
+    canonical_match = None
     for column in datasource.columns:
         if (
-            column.concept.canonical_address == concept.canonical_address
-            or column.concept == concept
+            column.concept == concept
             or column.concept.with_grain(concept.grain) == concept
+            or concept.address in column.concept.pseudonyms
+            or column.concept.address in concept.pseudonyms
         ):
             return column.alias
-    return None
+        if column.concept.canonical_address == concept.canonical_address:
+            canonical_match = column.alias
+    return canonical_match
 
 
 @dataclass(frozen=True)
