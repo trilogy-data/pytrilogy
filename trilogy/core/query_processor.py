@@ -1042,7 +1042,7 @@ def process_query(
     # side at resolution) and needs no veto. FULL deliberately keeps its key
     # complete (registry-driven, not partial), so the outer-join upgrade can't
     # see it's preserving disjoint populations — protect FULL keys explicitly.
-    protected_outer_join_keys = {
+    full_join_keys = {
         scoped_merge_map.get(addr, addr)
         for source, target, join_type in build_scoped_joins
         if join_type is JoinType.FULL
@@ -1054,7 +1054,7 @@ def process_query(
         root_cte,
         statement,
         having_alias=having_alias,
-        protected_outer_join_keys=protected_outer_join_keys,
+        full_join_keys=full_join_keys,
     )
 
     return ProcessedQuery(

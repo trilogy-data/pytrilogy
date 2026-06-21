@@ -3513,6 +3513,7 @@ class Factory:
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            scoped_joins=self.scoped_joins,
         )
         where_factory = Factory(
             environment=self.environment,
@@ -3520,6 +3521,7 @@ class Factory:
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            scoped_joins=self.scoped_joins,
         )
         lineage = build_cls(
             # we don't build selects here; they'll be built automatically in query discovery

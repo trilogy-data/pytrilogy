@@ -194,7 +194,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
       WHERE: filters fail mutual implication.
     - Sides without ``group_to_grain``: cardinality unknown, can't claim
       the side carries every distinct value.
-    - Query-scoped FULL joins (``protected_outer_join_keys``): the two sides
+    - Query-scoped FULL joins (``full_join_keys``): the two sides
       are independent populations with potentially disjoint key sets, and FULL
       deliberately keeps its key complete (registry-driven, not partial), so
       the complete-distinct test can't see the disjointness. The scoped merge
@@ -204,11 +204,11 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
       partial flag and need no protection — the test fails naturally.)
     """
 
-    def __init__(self, protected_outer_join_keys: set[str] | None = None) -> None:
+    def __init__(self, full_join_keys: set[str] | None = None) -> None:
         # Canonical addresses of query-scoped FULL-join keys; joins on these
         # must never be upgraded to INNER (FULL's key stays complete, so the
         # partial-driven checks can't protect it).
-        self.protected_outer_join_keys = protected_outer_join_keys or set()
+        self.full_join_keys = full_join_keys or set()
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -223,9 +223,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 continue
             if not join.joinkey_pairs:
                 continue
-            if self.protected_outer_join_keys and any(
-                _key_addresses(pair.left) & self.protected_outer_join_keys
-                or _key_addresses(pair.right) & self.protected_outer_join_keys
+            if self.full_join_keys and any(
+                _key_addresses(pair.left) & self.full_join_keys
+                or _key_addresses(pair.right) & self.full_join_keys
                 for pair in join.joinkey_pairs
             ):
                 continue

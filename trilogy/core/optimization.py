@@ -440,10 +440,10 @@ def _enabled_dependencies(*names: tuple[str, bool]) -> tuple[str, ...]:
 
 def build_optimization_rule_plan(
     having_alias: bool = False,
-    protected_outer_join_keys: set[str] | None = None,
+    full_join_keys: set[str] | None = None,
 ) -> list[OptimizationRulePlan]:
     opts = CONFIG.optimizations
-    protected_outer_join_keys = protected_outer_join_keys or set()
+    full_join_keys = full_join_keys or set()
     plan: list[OptimizationRulePlan] = []
 
     if opts.merge_aggregate:
@@ -511,10 +511,7 @@ def build_optimization_rule_plan(
         plan.append(
             OptimizationRulePlan(
                 name="upgrade_join_on_guards.base_join_only",
-                rule_factory=lambda: UpgradeJoinOnGuards(
-                    base_join_only=True,
-                    protected_outer_join_keys=protected_outer_join_keys,
-                ),
+                rule_factory=lambda: UpgradeJoinOnGuards(base_join_only=True),
                 depends_on=_enabled_dependencies(
                     ("predicate_pushdown.initial", opts.predicate_pushdown)
                 ),
@@ -583,9 +580,7 @@ def build_optimization_rule_plan(
         plan.append(
             OptimizationRulePlan(
                 name="upgrade_join_on_guards.final",
-                rule_factory=lambda: UpgradeJoinOnGuards(
-                    protected_outer_join_keys=protected_outer_join_keys
-                ),
+                rule_factory=UpgradeJoinOnGuards,
                 depends_on=_enabled_dependencies(
                     ("predicate_pushdown.remove", opts.predicate_pushdown)
                 ),
@@ -612,7 +607,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="upgrade_outer_key_set_equivalence",
                 rule_factory=lambda: UpgradeOuterFromKeySetEquivalence(
-                    protected_outer_join_keys=protected_outer_join_keys
+                    full_join_keys=full_join_keys
                 ),
                 depends_on=_enabled_dependencies(
                     ("upgrade_join_on_guards.final", opts.upgrade_condition_joins)
@@ -687,7 +682,7 @@ def optimize_ctes(
     root_cte: CTE | UnionCTE,
     select: SelectStatement | MultiSelectStatement,
     having_alias: bool = False,
-    protected_outer_join_keys: set[str] | None = None,
+    full_join_keys: set[str] | None = None,
 ) -> list[CTE | UnionCTE]:
     direct_parent: CTE | UnionCTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
@@ -704,7 +699,7 @@ def optimize_ctes(
     phase_actions: dict[str, bool] = {}
     rule_plan = build_optimization_rule_plan(
         having_alias=having_alias,
-        protected_outer_join_keys=protected_outer_join_keys,
+        full_join_keys=full_join_keys,
     )
     log_optimization_rule_plan(rule_plan)
     for phase in rule_plan:

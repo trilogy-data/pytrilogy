@@ -41,7 +41,6 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildBetween,
     BuildComparison,
-    BuildConcept,
     BuildConditional,
     BuildDatasource,
     BuildFunction,
@@ -156,32 +155,6 @@ def _partial_addresses(
     if isinstance(source, BuildDatasource):
         return set()
     return {c.address for c in source.partial_concepts}
-
-
-def _key_addresses(concept: BuildConcept) -> set[str]:
-    return (
-        {concept.address, concept.canonical_address}
-        | set(concept.pseudonyms)
-        | concept.equivalent_addresses
-    )
-
-
-def _join_key_addresses(join: Join) -> set[str]:
-    out: set[str] = set()
-    for pair in join.joinkey_pairs or []:
-        out |= _key_addresses(pair.left)
-        out |= _key_addresses(pair.right)
-    return out
-
-
-def _base_join_key_addresses(join: BaseJoin) -> set[str]:
-    out: set[str] = set()
-    for pair in join.concept_pairs or []:
-        out |= _key_addresses(pair.left)
-        out |= _key_addresses(pair.right)
-    for concept in join.concepts or []:
-        out |= _key_addresses(concept)
-    return out
 
 
 def _opaque_binding_addresses(
@@ -719,14 +692,9 @@ class UpgradeJoinOnGuards(OptimizationRule):
     structures that change row visibility under upgrade).
     """
 
-    def __init__(
-        self,
-        base_join_only: bool = False,
-        protected_outer_join_keys: set[str] | None = None,
-    ) -> None:
+    def __init__(self, base_join_only: bool = False) -> None:
         super().__init__()
         self.base_join_only = base_join_only
-        self.protected_outer_join_keys = protected_outer_join_keys or set()
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -781,8 +749,6 @@ class UpgradeJoinOnGuards(OptimizationRule):
                         or join.jointype not in _OUTER_JOIN_TYPES
                     ):
                         continue
-                    if _join_key_addresses(join) & self.protected_outer_join_keys:
-                        continue
                     target = _downgrade(cte, idx, join, proofs)
                     if target is None or target == join.jointype:
                         continue
@@ -806,8 +772,6 @@ class UpgradeJoinOnGuards(OptimizationRule):
                     not isinstance(base_join, BaseJoin)
                     or base_join.join_type not in _OUTER_JOIN_TYPES
                 ):
-                    continue
-                if _base_join_key_addresses(base_join) & self.protected_outer_join_keys:
                     continue
                 target = _downgrade_base_join(cte, base_join, proofs)
                 if target is None or target == base_join.join_type:
