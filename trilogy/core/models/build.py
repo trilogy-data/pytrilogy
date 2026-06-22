@@ -3505,6 +3505,14 @@ class Factory:
             final: list[BuildConcept] = list(derived_base)
         else:
             final = [x for x in all_output if x.address not in select_hidden]
+        # Only global environment MERGEs (not the enclosing scope's query-level
+        # JOIN clauses) apply when building the align/derive/order/having and
+        # where clauses: a parent scope's JOIN is local to that select, but a
+        # MERGE canonicalizes a key everywhere — including the arm selects, so
+        # the align identities must collapse the same way for find_source.
+        env_scoped_joins = [
+            j for j in self.scoped_joins if j in self.environment.merges
+        ]
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
@@ -3513,7 +3521,7 @@ class Factory:
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
-            scoped_joins=self.scoped_joins,
+            scoped_joins=env_scoped_joins,
         )
         where_factory = Factory(
             environment=self.environment,
@@ -3521,7 +3529,7 @@ class Factory:
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
-            scoped_joins=self.scoped_joins,
+            scoped_joins=env_scoped_joins,
         )
         lineage = build_cls(
             # we don't build selects here; they'll be built automatically in query discovery
