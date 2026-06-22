@@ -395,6 +395,10 @@ limit 100;
 #    `@<...>` grain. Under-joining (one key of a multi-key grain) is a top cause of
 #    wrong, inflated results. Chain `= c` to also pull a base key into the join
 #    group so its properties stay reachable (`inner join a.k = b.k = base.k`).
+#  - Stacked clauses of the SAME type can share one prefix via `and`:
+#    `inner join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `inner join` clauses.
+#    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
+#    ONE group — both compose: `inner join a.k = b.k = base.k and a.k2 = b.k2`.
 #  - `inner`, `left`, and `full` are supported (NOT `right` — swap the operands
 #    for a right join). `inner` requires the key in BOTH sides (drops one-sided
 #    rows); `left` keeps unmatched anchor rows; `full` keeps unmatched rows from

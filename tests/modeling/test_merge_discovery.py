@@ -1,6 +1,5 @@
-from copy import deepcopy
-
 from trilogy import Dialects, Executor
+from trilogy.core.enums import JoinType
 from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -159,26 +158,43 @@ SELECT 'John' as firstname, 'Smith' as lastname
     base.add_import("p2", imports)
     base.add_import("p3", imports)
     # merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
-    c1 = deepcopy(base.concepts["p2.firstname"])
     base.parse("""
 merge p2.firstname into p1.firstname;
 merge p2.lastname  into p1.lastname;
 
 """)
 
-    c2 = base.concepts["p1.firstname"]
-    assert c2.pseudonyms == {"p2.firstname"}
-    merge = base.merge_concept(c1, c2, [])
-    assert merge is False
-    assert base.concepts["p1.firstname"].pseudonyms == {"p2.firstname"}
-    assert base.alias_origin_lookup["p2.firstname"].pseudonyms == {"p1.firstname"}
-    # assert not merge
+    assert base.concepts["p1.firstname"].pseudonyms == set()
+    assert ("p2.firstname", "p1.firstname", JoinType.INNER) in base.merges
+    assert ("p2.lastname", "p1.lastname", JoinType.INNER) in base.merges
     base_size = base.to_dict()
 
     for x in range(0, 10):
-        merge = base.merge_concept(c1, c2, [], force=True)
-        assert base.concepts["p1.firstname"].pseudonyms == {"p2.firstname"}
-        assert base.alias_origin_lookup["p2.firstname"].pseudonyms == {"p1.firstname"}
+        merge = base.add_merge_join(
+            base.concepts["p2.firstname"],
+            base.concepts["p1.firstname"],
+            [],
+        )
+        assert merge is False
+        assert base.concepts["p1.firstname"].pseudonyms == set()
+        assert "p2.firstname" not in base.alias_origin_lookup
         new_size = base.to_dict()
 
         assert len(base_size) == len(new_size)
+
+
+def test_executed_merge_statement_does_not_mutate_author_aliases():
+    base = Environment()
+    _, statements = base.parse("""
+key a int;
+key b int;
+merge a into b;
+""")
+    assert ("local.a", "local.b", JoinType.INNER) in base.merges
+    assert base.alias_origin_lookup == {}
+
+    exec = Dialects.DUCK_DB.default_executor(environment=base)
+    exec.execute_query(statements[-1])
+
+    assert ("local.a", "local.b", JoinType.INNER) in base.merges
+    assert base.alias_origin_lookup == {}

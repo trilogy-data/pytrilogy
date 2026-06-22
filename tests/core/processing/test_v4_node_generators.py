@@ -284,7 +284,7 @@ class TestRootSourcePlanning:
             for parent in info.strategy_node.parents
         ]
         assert any(
-            {"local.name", "local.passenger_last_name"}.issubset(outputs)
+            {"local.name", "local.rich_last_name"}.issubset(outputs)
             for outputs in parent_outputs
         )
         assert any(

@@ -75,11 +75,9 @@ class SemanticState:
     _pending_rowset_aliases: list[Any] = field(default_factory=list)
     _pending_types_by_name: dict[str, CustomType] = field(default_factory=dict)
     # Explicit `merge X into Y;` statements deferred until after concept
-    # commit. ``environment.merge_concept`` walks ``environment.concepts``
-    # to rewire pseudonyms/replacements, and those reads skip the pending
-    # overlay (``items()`` ignores it), so running the merge during
-    # per-plan commit silently no-ops when the target concept is still
-    # pending. Applying after ``commit`` ensures concepts are durable.
+    # commit when either side is pending. Merge statements are stored as
+    # environment-level build-time joins, so they share the scoped join machinery
+    # instead of rewriting the author environment during parse.
     _pending_merges: list[tuple[Concept, Concept, list[Modifier]]] = field(
         default_factory=list
     )
@@ -268,11 +266,9 @@ class SemanticState:
         target: Concept,
         modifiers: list[Modifier],
     ) -> None:
-        # Apply eagerly when both sides are already durable so downstream
-        # plans (e.g. rowset hydration) observe the merged pseudonyms on
-        # the source concept, matching v1's inline merge semantics. When
-        # either side is still pending, defer to semantic_state.commit so
-        # merge_concept's walk over env.concepts can actually see them.
+        # Register eagerly when both sides are already durable. When either
+        # side is pending, defer until commit so rollback does not leak a merge
+        # join for concepts that were never durably added.
         durable = self.environment.concepts.data
         if (
             source.address in durable
@@ -280,7 +276,7 @@ class SemanticState:
             and source.address not in self._pending_by_address
             and target.address not in self._pending_by_address
         ):
-            self.environment.merge_concept(source, target, modifiers)
+            self.environment.add_merge_join(source, target, modifiers)
             return
         self._pending_merges.append((source, target, modifiers))
 
@@ -298,9 +294,8 @@ class SemanticState:
     def commit(self, environment: Environment | None = None) -> list[ConceptUpdate]:
         if environment is not None and environment is not self.environment:
             raise ValueError("SemanticState committed against a different environment")
-        # Durable writes must see the canonical env.concepts — detach any
-        # live pending overlays so merge_concept doesn't shortcut against
-        # a staged alias and leave ``alias_origin_lookup`` stale.
+        # Durable writes must see the canonical env.concepts, so detach any
+        # live pending overlays before committing concepts and merge joins.
         with self.environment.concepts.without_overlays():
             # Types commit before concepts so concept hydration downstream
             # sees durable data_types entries through the same fallback
@@ -319,13 +314,12 @@ class SemanticState:
                     meta=update.meta,
                     force=update.kind != ConceptUpdateKind.TOP_LEVEL_DECLARATION,
                 )
-            # Explicit merge statements apply only after concepts are durable,
-            # so ``merge_concept``'s walk over ``environment.concepts.items()``
-            # actually finds the source/target entries it needs to rewire.
+            # Explicit merge statements apply only after concepts are durable
+            # when their concepts were pending during plan commit.
             pending_merges = self._pending_merges
             self._pending_merges = []
             for source, target, modifiers in pending_merges:
-                self.environment.merge_concept(source, target, modifiers)
+                self.environment.add_merge_join(source, target, modifiers)
             self._pending_by_address.clear()
             self._placeholder_addresses.clear()
             self._pending_start = len(self.concepts)

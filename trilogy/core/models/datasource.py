@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants, logger
+from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
 from trilogy.core.enums import (
     AddressType,
     BooleanOperator,
@@ -135,17 +135,6 @@ class ColumnAssignment(BaseModel):
             ),
             concept=self.concept.with_namespace(namespace),
             modifiers=self.modifiers,
-        )
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "ColumnAssignment":
-        return ColumnAssignment.model_construct(
-            alias=self.alias,
-            concept=self.concept.with_merge(source, target, modifiers),
-            modifiers=(
-                modifiers if self.concept.address == source.address else self.modifiers
-            ),
         )
 
 
@@ -281,34 +270,6 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @property
     def hidden_concepts(self) -> List[Concept]:
         return []
-
-    def merge_concept(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ):
-        source_addr = source.address
-        target_addr = target.address
-        early_exit_check = [c for c in self.columns if c.concept.address == target_addr]
-        if early_exit_check:
-            logger.info(
-                f"No concept merge needed on merge of {source} to {target}, have {[x.concept.address for x in self.columns]}"
-            )
-            return None
-        original = [c for c in self.columns if c.concept.address == source_addr]
-        if len(original) != 1:
-            raise ValueError(
-                f"Expected exactly one column to merge, got {len(original)} for {source_addr}, {[x.alias for x in original]}"
-            )
-        self.columns = [
-            c.with_merge(source, target, modifiers)
-            for c in self.columns
-            if c.concept.address != source_addr
-        ] + original
-        self.grain = self.grain.with_merge(source, target, modifiers)
-        self.where = (
-            self.where.with_merge(source, target, modifiers) if self.where else None
-        )
-
-        self.add_column(target, original[0].alias, modifiers)
 
     @property
     def identifier(self) -> str:

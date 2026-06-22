@@ -104,7 +104,6 @@ select
     env, stmts = parse(query)
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(stmts[-1])[-1]
-    assert exec.environment.concepts["processed_dbh"].keys == {"local.tree_id"}
     # highfalutin legitimately groups by city+species for the avg; cheerful must not
     assert '"tree_id" ="' not in sql, sql
 

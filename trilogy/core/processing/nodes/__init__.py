@@ -32,11 +32,9 @@ class BuildCaches:
     grain_build_cache: dict = field(default_factory=dict)
     datasource_build_cache: dict = field(default_factory=dict)
     pseudonym_map: dict | None = None
-    # Query-scoped merges (in-query JOINs) for this resolution, as
-    # (source_address, target_address, modifiers). Applied during the build:
-    # the concept equivalence is folded into pseudonym_map, the datasource
-    # remap happens in Factory._build_datasource. Shared so every sub-select
-    # (rowsets, multiselect arms) inherits the same scoped merges.
+    # Build-scoped joins for this resolution, as
+    # (source_address, target_address, JoinType). Applied during the build and
+    # shared so every sub-select (rowsets, multiselect arms) inherits them.
     scoped_joins: list = field(default_factory=list)
 
 

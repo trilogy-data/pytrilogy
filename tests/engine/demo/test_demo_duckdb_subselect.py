@@ -146,7 +146,7 @@ order by
     assert by_customer == {"alice": ["east"], "bob": ["west"]}
 
 
-def test_subselect_with_merge():
+def test_subselect_with_global_merge():
     """Subselect result merged with data from a separate datasource."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
     results = executor.execute_query("""

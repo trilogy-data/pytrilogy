@@ -1,4 +1,5 @@
 from trilogy import parse
+from trilogy.core.enums import JoinType
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.base import BaseDialect
 
@@ -26,7 +27,7 @@ def test_merge_concepts():
     bd = BaseDialect()
     _, queries = env1.parse("""
                select
-               one+1 as one,
+               one+1 as one_inc,
                env2.one;""")
     queries = bd.generate_queries(environment=env1, statements=queries)
     for query in queries:
@@ -71,26 +72,12 @@ address num1;
     )
     env1.add_import("env2", env2)
     env1.parse("""merge one into env2.one;""")
-    # assert key_candidate.model_dump() == env1.concepts["env2.one"].model_dump()
-    assert env1.concepts["name"].keys == {env1.concepts["env2.one"].address}, [
-        x for x in env1.concepts["name"].keys
-    ]
+    # merge no longer rewrites the author env in place; it records a join pair
+    assert ("local.one", "env2.one", JoinType.INNER) in env1.merges
+    assert env1.concepts["name"].keys == {"local.one"}
+    assert env1.datasources["num1"].grain.components == {"local.one"}
+    assert env1.alias_origin_lookup == {}
 
-    assert env1.datasources["num1"].grain.components == {"env2.one"}, [
-        x for x in env1.datasources["num1"].grain.components
-    ]
-
-    assert env1.concepts["env2.one"].address in [
-        y.address for y in env1.datasources["num1"].output_concepts
-    ]
-
-    assert (
-        len({x.alias: x.concept.address for x in env1.datasources["num1"].columns}) == 2
-    )
-
-    assert env1.concepts["name"].with_grain(env1.concepts["env2.one"]) in [
-        x for x in env1.datasources["num1"].concepts
-    ]
     bd = BaseDialect()
     _, queries = env1.parse("""
                select
@@ -100,7 +87,7 @@ address num1;
     for query in queries:
         compiled = bd.compile_statement(query)
         assert query_to_lines(compiled) == query_to_lines("""SELECT
-             	`env2_num1`.`one` as `env2_one`,
+             	`env2_num1`.`one` as `one`,
              	`env2_num1`.`one` as `two`
              FROM
              	`num1` as `env2_num1`"""), compiled

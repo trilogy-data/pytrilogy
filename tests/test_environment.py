@@ -4,7 +4,7 @@ from pydantic import TypeAdapter, ValidationError
 from pytest import raises
 
 from trilogy import Dialects
-from trilogy.core.enums import Modifier, Purpose
+from trilogy.core.enums import JoinType, Purpose
 from trilogy.core.exceptions import (
     FrozenEnvironmentException,
     UndefinedConceptException,
@@ -158,24 +158,20 @@ key  order_id int;
 
     env1.add_import("replacements", env2)
 
-    _ = env1.merge_concept(
+    merged = env1.add_merge_join(
         env1.concepts["replacements.order_id"],
         env1.concepts["order_id"],
-        modifiers=[Modifier.PARTIAL],
+        modifiers=[],
     )
 
-    assert env1.concepts["order_id"] == env1.concepts["replacements.order_id"]
-
-    found = False
-    for x in env1.datasources["replacements.replacements"].columns:
-        if (
-            x.alias == "order_id"
-            and x.concept.address == env1.concepts["order_id"].address
-        ):
-            assert x.concept == env1.concepts["order_id"]
-            assert x.modifiers == [Modifier.PARTIAL]
-            found = True
-    assert found
+    assert merged is True
+    assert (
+        "replacements.order_id",
+        "local.order_id",
+        JoinType.INNER,
+    ) in env1.merges
+    assert env1.concepts["order_id"] != env1.concepts["replacements.order_id"]
+    assert env1.alias_origin_lookup == {}
 
 
 def test_environment_select_promotion():

@@ -698,7 +698,8 @@ def optimize_ctes(
 
     phase_actions: dict[str, bool] = {}
     rule_plan = build_optimization_rule_plan(
-        having_alias=having_alias, full_join_keys=full_join_keys
+        having_alias=having_alias,
+        full_join_keys=full_join_keys,
     )
     log_optimization_rule_plan(rule_plan)
     for phase in rule_plan:

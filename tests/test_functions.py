@@ -545,6 +545,16 @@ def test_unnest(test_environment):
     assert env.concepts["x"].datatype == DataType.INTEGER
 
 
+def test_unnest_from_constant_array_derives_key(test_environment):
+    declarations = """
+    auto x <- unnest([1,2,3,4]);
+    """
+    env, _ = parse(declarations, environment=test_environment)
+    concept = env.concepts["x"]
+    assert concept.derivation == Derivation.UNNEST
+    assert concept.purpose == Purpose.KEY
+
+
 def test_validate_constant_functions():
     x = Environment()
     env, _ = x.parse("""

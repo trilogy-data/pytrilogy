@@ -125,12 +125,6 @@ class TestBetweenTransforms:
         assert ns.low.address == "other.test.lo"
         assert ns.high == 10
 
-    def test_with_merge(self):
-        b = Between(left=_ref("x"), low=_ref("lo"), high=10)
-        merged = b.with_merge(_ref("x"), _ref("z"), [])
-        assert isinstance(merged, Between)
-        assert merged.left.address == "test.z"
-
     def test_with_reference_replacement(self):
         b = Between(left=_ref("x"), low=1, high=10)
         replaced = b.with_reference_replacement([("nonexistent", 99)])

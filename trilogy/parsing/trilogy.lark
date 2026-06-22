@@ -133,7 +133,11 @@
     // for this select only (a query-local merge). The left key is the brought-in
     // (source) concept, the right key is the anchor. left -> partial, inner -> full.
     // `a = b = c` chains all keys into ONE equivalence group with this join type.
-    join_clause: JOIN_TYPE "join"i IDENTIFIER "=" IDENTIFIER ("=" IDENTIFIER)*
+    // `a = b and c = d` is sugar for two separate join clauses of this type (two
+    // DISTINCT equivalence groups), saving a repeated `JOIN_TYPE join` prefix.
+    join_clause: JOIN_TYPE "join"i join_group ("and"i join_group)*
+
+    join_group: IDENTIFIER "=" IDENTIFIER ("=" IDENTIFIER)*
 
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? order_by?  limit?

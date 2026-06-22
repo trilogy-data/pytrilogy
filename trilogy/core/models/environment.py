@@ -453,12 +453,9 @@ class Environment:
     version: str = field(default_factory=get_version)
     cte_name_map: Dict[str, str] = field(default_factory=dict)
     alias_origin_lookup: Dict[str, Concept] = field(default_factory=dict)
-    # INNER (non-`~`) global merges as build-time collapse pairs
-    # (source_address, target_address, INNER). These collapse to one node at
-    # build time via the same mechanism scoped `join`s use (Factory
-    # scoped_merge_map), rather than the pseudonym/weak-component path. `~`
-    # (PARTIAL) merges are LEFT-style enrichment (e.g. date spines) and are NOT
-    # recorded here — they stay on the pseudonym path.
+    # Global `merge` statements as build-time join pairs. These are evaluated
+    # alongside query-scoped joins by Factory.scoped_merge_map instead of
+    # rewriting the author environment during parse.
     merges: list[tuple[str, str, JoinType]] = field(default_factory=list)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
@@ -489,6 +486,10 @@ class Environment:
         """helper method"""
         from trilogy.core.models.build import Factory
 
+        build_scoped_joins = list(scoped_joins or [])
+        build_scoped_joins.extend(
+            merge for merge in self.merges if merge not in build_scoped_joins
+        )
         factory: Factory = Factory(
             self,
             local_concepts=local_concepts,
@@ -497,12 +498,38 @@ class Environment:
             grain_build_cache=grain_build_cache,
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
-            scoped_joins=scoped_joins,
+            scoped_joins=build_scoped_joins,
         )
         return factory.build(self)
 
     def add_rowset(self, name: str, lineage: SelectLineage):
         self.named_statements[name] = lineage
+
+    @staticmethod
+    def merge_to_join(
+        source: Concept,
+        target: Concept,
+        modifiers: list[Modifier],
+    ) -> tuple[str, str, JoinType] | None:
+        if source.address == target.address:
+            return None
+        if Modifier.PARTIAL in modifiers:
+            return (target.address, source.address, JoinType.LEFT_OUTER)
+        return (source.address, target.address, JoinType.INNER)
+
+    def add_merge_join(
+        self,
+        source: Concept,
+        target: Concept,
+        modifiers: list[Modifier],
+    ) -> bool:
+        if self.frozen:
+            raise ValueError("Environment is frozen, cannot merge concepts")
+        pair = self.merge_to_join(source, target, modifiers)
+        if pair is None or pair in self.merges:
+            return False
+        self.merges.append(pair)
+        return True
 
     def duplicate(self):
         return Environment(
@@ -519,6 +546,7 @@ class Environment:
             alias_origin_lookup={
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
+            merges=list(self.merges),
             env_file_path=self.env_file_path,
         )
 
@@ -585,6 +613,10 @@ class Environment:
                 k: _concept_adapter().validate_python(v)
                 for k, v in data.get("alias_origin_lookup", {}).items()
             },
+            merges=[
+                (source, target, JoinType(join_type))
+                for source, target, join_type in data.get("merges", [])
+            ],
             namespace=data.get("namespace", DEFAULT_NAMESPACE),
             version=data["version"],
             cte_name_map=data.get("cte_name_map", {}),
@@ -613,6 +645,10 @@ class Environment:
                 k: _concept_adapter().dump_python(v, mode="json")
                 for k, v in self.alias_origin_lookup.items()
             },
+            "merges": [
+                (source, target, join_type.value)
+                for source, target, join_type in self.merges
+            ],
         }
 
     def to_cache(self, path: Optional[str | Path] = None) -> Path:
@@ -946,59 +982,6 @@ class Environment:
             # self.gen_concept_list_caches()
             return True
         return False
-
-    def merge_concept(
-        self,
-        source: Concept,
-        target: Concept,
-        modifiers: List[Modifier],
-        force: bool = False,
-    ) -> bool:
-        from trilogy.core.models.build import BuildConcept
-
-        if isinstance(source, BuildConcept):
-            raise SyntaxError(source)
-        elif isinstance(target, BuildConcept):
-            raise SyntaxError(target)
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot merge concepts")
-        replacements = {}
-        source_addr = source.address
-        target_addr = target.address
-
-        if source_addr in self.alias_origin_lookup and not force:
-            if self.concepts[source_addr] == target:
-                return False
-
-        self.alias_origin_lookup[source_addr] = source
-        self.alias_origin_lookup[source_addr].pseudonyms.add(target_addr)
-        for k, v in self.concepts.items():
-            v_addr = v.address
-            if v_addr == target_addr:
-                if source_addr != target_addr:
-                    v.pseudonyms.add(source_addr)
-
-            if v_addr == source_addr:
-                replacements[k] = target
-            else:
-                if source_addr in v.sources or source_addr in v.grain.components:
-                    replacements[k] = v.with_merge(source, target, modifiers)
-        self.concepts.update(replacements)
-        for k, ds in self.datasources.items():
-            if source_addr in ds.output_lcl:
-                ds.merge_concept(source, target, modifiers=modifiers)
-
-        # An INNER merge (`merge X into Y`) is a symmetric equivalence: record it
-        # as a build-time collapse pair so discovery folds the two concepts into
-        # one node (shared with scoped `join`). A `~` merge (`into ~Y`) is a
-        # LEFT-style enrichment (Y is the preserved base, e.g. a date spine) and
-        # keeps the pseudonym path — do NOT collapse it.
-        if Modifier.PARTIAL not in modifiers and source_addr != target_addr:
-            pair = (source_addr, target_addr, JoinType.INNER)
-            if pair not in self.merges:
-                self.merges.append(pair)
-
-        return True
 
     # LSP/Editor introspection helpers
 

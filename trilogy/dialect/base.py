@@ -916,6 +916,12 @@ class BaseDialect:
         candidates: list[BuildConcept] = []
         if c.pseudonyms:
             candidates += [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
+            for candidate in list(candidates):
+                candidates += [
+                    y
+                    for y in [cte.get_concept(x) for x in candidate.pseudonyms]
+                    if y and y.address != c.address and y not in candidates
+                ]
         if c.lineage is None and not cte.source_map.get(c.address, []):
             candidates += self._canonical_render_siblings(c, cte)
         if candidates:

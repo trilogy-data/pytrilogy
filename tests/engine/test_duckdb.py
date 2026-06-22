@@ -8,7 +8,7 @@ from pytest import mark, raises
 
 from trilogy import Dialects
 from trilogy.constants import Rendering
-from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Granularity, JoinType, Purpose
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import Concept, FunctionCallWrapper, Grain
@@ -1234,7 +1234,13 @@ merge first_parent into parent.id;
                                
                                """)
 
-    recursive = executor.environment.alias_origin_lookup["local.first_parent"]
+    assert (
+        "local.first_parent",
+        "parent.id",
+        JoinType.INNER,
+    ) in executor.environment.merges
+    build_env = executor.environment.materialize_for_select()
+    recursive = build_env.alias_origin_lookup["local.first_parent"]
     assert recursive.derivation == Derivation.RECURSIVE, "recursive should be recursive"
 
     results = executor.execute_text("""where

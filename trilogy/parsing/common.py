@@ -794,6 +794,8 @@ def group_function_to_concept(
     grain = Grain.from_concepts(keys, environment)
     if is_metric:
         purpose = Purpose.METRIC
+    elif parent.operator in FunctionClass.ONE_TO_MANY.value:
+        purpose = parent.output_purpose
     elif not pkeys:
         purpose = Purpose.CONSTANT
     else:
@@ -927,6 +929,8 @@ def function_to_concept(
         grain = Grain.from_concepts(keys, environment)
     if is_metric:
         purpose = Purpose.METRIC
+    elif parent.operator in FunctionClass.ONE_TO_MANY.value:
+        purpose = parent.output_purpose
     elif not pkeys:
         purpose = Purpose.CONSTANT
     else:

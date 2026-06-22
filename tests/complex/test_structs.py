@@ -1,4 +1,5 @@
 from trilogy import Dialects
+from trilogy.core.enums import JoinType
 from trilogy.core.models.core import DataType, StructType
 
 
@@ -140,21 +141,13 @@ SELECT
     )
 
     for val in ["a", "b"]:
-        comp = executor.environment.concepts[val]
         assert (
-            f"unnest_array.{val}" in executor.environment.concepts[val].pseudonyms
-        ), comp
-        assert (
-            f"unnest_array.{val}"
-            in executor.environment.concepts[f"local.{val}"].pseudonyms
-            is not None
-        ), comp
-        assert (
-            f"local.{val}"
-            in executor.environment.alias_origin_lookup[
-                f"unnest_array.{val}"
-            ].pseudonyms
-        )
+            f"unnest_array.{val}",
+            f"local.{val}",
+            JoinType.INNER,
+        ) in executor.environment.merges
+        assert f"unnest_array.{val}" in executor.environment.concepts
+        assert f"unnest_array.{val}" not in executor.environment.alias_origin_lookup
 
     # for x in results[-1].output_columns:
     #     assert len(list(x.pseudonyms)) == 1, x.pseudonyms
@@ -185,7 +178,7 @@ order by
                           """)
     rows = results[-1].fetchall()
     assert len(rows) == 2, rows
-    assert rows[0].b == 2
+    assert rows[0].unnest_array_b == 2
 
 
 def test_struct_in_array_concept_parsing():
@@ -218,21 +211,18 @@ SELECT
     )
 
     for val in ["a", "b"]:
-        comp = executor.environment.concepts[val]
         assert (
-            f"unnest_array.{val}" in executor.environment.concepts[val].pseudonyms
-        ), comp
+            f"wrapper.{val}",
+            f"local.{val}",
+            JoinType.INNER,
+        ) in executor.environment.merges
         assert (
-            f"unnest_array.{val}"
-            in executor.environment.concepts[f"local.{val}"].pseudonyms
-            is not None
-        ), comp
-        assert (
-            f"local.{val}"
-            in executor.environment.alias_origin_lookup[
-                f"unnest_array.{val}"
-            ].pseudonyms
-        )
+            f"unnest_array.{val}",
+            f"local.{val}",
+            JoinType.INNER,
+        ) in executor.environment.merges
+        assert f"unnest_array.{val}" in executor.environment.concepts
+        assert f"unnest_array.{val}" not in executor.environment.alias_origin_lookup
 
     results = executor.execute_text("""
 key a int;
@@ -292,4 +282,4 @@ order by
                           """)
     rows = results[-1].fetchall()
     assert len(rows) == 2, rows
-    assert rows[0].a == 1
+    assert rows[0].wrapper_a == 1

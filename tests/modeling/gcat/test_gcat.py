@@ -3,7 +3,7 @@ from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
@@ -940,13 +940,12 @@ def test_date_spine(gcat_env: Executor):
     queries = base.parse_text("""import satcat;
 const target_company <- 'PLAN';
 
-auto launches <- count(jcat ? owner.code = target_company) by launch_date;
+auto launches <- count(jcat ? owner.code = target_company and launch.org.name like '%Rocket%') by launch_date;
 
 key chart_spine <- date_spine(date_add(current_date(), day, -60), current_date());
 
 merge launch_date into ~chart_spine;
 
-where launch.org.name like '%Rocket%'
 select
     chart_spine,
     launches
@@ -960,8 +959,10 @@ order by
     assert base.environment.concepts["chart_spine"].derivation == Derivation.UNNEST
     assert base.environment.concepts["chart_spine"].granularity == Granularity.MULTI_ROW
     assert (
-        "local.chart_spine" in base.environment.datasources["satcat"].partial_concepts
-    )
+        "local.chart_spine",
+        "local.launch_date",
+        JoinType.LEFT_OUTER,
+    ) in base.environment.merges
     assert Grain.from_concepts(
         [base.environment.concepts["chart_spine"]], environment=base.environment
     ).components == {

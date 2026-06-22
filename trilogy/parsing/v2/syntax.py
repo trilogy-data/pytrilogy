@@ -223,6 +223,7 @@ class SyntaxNodeKind(str, Enum):
     ROWSET_DERIVATION_STATEMENT = "rowset_derivation_statement"
     MULTI_SELECT_STATEMENT = "multi_select_statement"
     JOIN_CLAUSE = "join_clause"
+    JOIN_GROUP = "join_group"
     ALIGN_CLAUSE = "align_clause"
     ALIGN_ITEM = "align_item"
     DERIVE_CLAUSE = "derive_clause"
@@ -556,6 +557,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "rowset_derivation_statement": SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT,
     "multi_select_statement": SyntaxNodeKind.MULTI_SELECT_STATEMENT,
     "join_clause": SyntaxNodeKind.JOIN_CLAUSE,
+    "join_group": SyntaxNodeKind.JOIN_GROUP,
     "align_clause": SyntaxNodeKind.ALIGN_CLAUSE,
     "align_item": SyntaxNodeKind.ALIGN_ITEM,
     "derive_clause": SyntaxNodeKind.DERIVE_CLAUSE,
