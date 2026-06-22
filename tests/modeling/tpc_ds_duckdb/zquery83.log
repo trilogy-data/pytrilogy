@@ -90,20 +90,12 @@ GROUP BY
 HAVING
     count(\"concerned\".\"_virt_filter_order_id_5221868426357137\") > 0 and count(\"concerned\".\"_virt_filter_order_id_9747092284480774\") > 0 and count(\"concerned\".\"_virt_filter_order_id_4509973400283298\") > 0
 ),
-sparkling as (
+juicy as (
 SELECT
     \"yummy\".\"sales_item_text_id\" as \"sales_item_text_id\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\"
-FROM
-    \"concerned\"),
-late as (
-SELECT
-    \"yummy\".\"sales_item_text_id\" as \"sales_item_text_id\",
-    sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
-    sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
-    sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\"
 FROM
     \"yummy\"
 GROUP BY

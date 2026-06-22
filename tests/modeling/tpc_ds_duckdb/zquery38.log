@@ -53,26 +53,6 @@ SELECT
 	ELSE 0
 	END) as \"web_in_window\"
 FROM
-    \"thoughtful\"
-GROUP BY
-    1,
-    2,
-    3),
-abundant as (
-SELECT
-    sum(CASE
-	WHEN \"cooperative\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_id\" is not null THEN 1
-	ELSE 0
-	END) as \"catalog_in_window\",
-    sum(CASE
-	WHEN \"cooperative\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_id\" is not null THEN 1
-	ELSE 0
-	END) as \"store_in_window\",
-    sum(CASE
-	WHEN \"cooperative\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_id\" is not null THEN 1
-	ELSE 0
-	END) as \"web_in_window\"
-FROM
     \"cooperative\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cooperative\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"

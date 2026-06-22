@@ -97,10 +97,10 @@ FROM
     \"young\"),
 highfalutin as (
 SELECT
-    \"highfalutin\".\"cs_item_id\" as \"cs_item_id\",
-    \"highfalutin\".\"cs_order_number\" as \"cs_order_number\",
+    \"quizzical\".\"cs_item_id\" as \"cs_item_id\",
+    \"quizzical\".\"cs_order_number\" as \"cs_order_number\",
     CASE
-	WHEN \"highfalutin\".\"cs_customer_address_id\" is null THEN 1
+	WHEN \"quizzical\".\"cs_customer_address_id\" is null THEN 1
 	ELSE 0
 	END as \"cs_row_flag\"
 FROM

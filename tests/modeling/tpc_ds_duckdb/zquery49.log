@@ -109,38 +109,6 @@ SELECT
     rank() over (partition by \"yummy\".\"sales_channel\" order by \"yummy\".\"currency_ratio\" asc ) as \"currency_rank\",
     rank() over (partition by \"yummy\".\"sales_channel\" order by \"yummy\".\"return_ratio\" asc ) as \"return_rank\"
 FROM
-    \"yummy\"),
-sparkling as (
-SELECT
-    \"concerned\".\"currency_rank\" as \"currency_rank\",
-    \"concerned\".\"return_rank\" as \"return_rank\",
-    \"concerned\".\"return_ratio\" as \"return_ratio\",
-    \"concerned\".\"sales_item_id\" as \"item\",
-    CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 'web'
-	WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 'store'
-	ELSE null
-	END as \"channel_label\",
-    rank() over (partition by \"yummy\".\"sales_sales_channel\" order by \"yummy\".\"currency_ratio\" asc ) as \"currency_rank\",
-    rank() over (partition by \"yummy\".\"sales_sales_channel\" order by \"yummy\".\"return_ratio\" asc ) as \"return_rank\"
-FROM
-    \"yummy\"),
-sparkling as (
-SELECT
-    \"concerned\".\"currency_rank\" as \"currency_rank\",
-    \"concerned\".\"return_rank\" as \"return_rank\",
-    \"concerned\".\"return_ratio\" as \"return_ratio\",
-    \"concerned\".\"sales_item_id\" as \"item\",
-    CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 'web'
-	WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 'store'
-	ELSE null
-	END as \"channel_label\",
-    rank() over (partition by \"yummy\".\"sales_sales_channel\" order by \"yummy\".\"currency_ratio\" asc ) as \"currency_rank\",
-    rank() over (partition by \"yummy\".\"sales_sales_channel\" order by \"yummy\".\"return_ratio\" asc ) as \"return_rank\"
-FROM
     \"yummy\")
 SELECT
     \"vacuous\".\"channel_label\" as \"channel\",

@@ -50,7 +50,10 @@ SELECT
     sum(CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
 FROM
     \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"),
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+GROUP BY
+    1,
+    2),
 juicy as (
 SELECT
     \"yummy\".\"sales_date_date\" as \"sales_date_date\",
@@ -61,75 +64,6 @@ SELECT
 	END) as \"store_has_row\",
     max(CASE
 	WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN 1
-	ELSE 0
-	END) as \"web_has_row\"
-FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2),
-uneven as (
-SELECT
-    \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
-    \"cooperative\".\"sales_item_id\" as \"sales_item_id\",
-    \"cooperative\".\"sales_sales_channel\" as \"sales_sales_channel\"
-FROM
-    \"cooperative\"
-GROUP BY
-    1,
-    2,
-    3),
-cooperative as (
-SELECT
-    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
-FROM
-    \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-GROUP BY
-    1,
-    2),
-juicy as (
-SELECT
-    \"yummy\".\"sales_date_date\" as \"sales_date_date\",
-    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
-    max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 1
-	ELSE 0
-	END) as \"store_has_row\",
-    max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 1
-	ELSE 0
-	END) as \"web_has_row\"
-FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2),
-uneven as (
-SELECT
-    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
-FROM
-    \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-GROUP BY
-    1,
-    2),
-juicy as (
-SELECT
-    \"yummy\".\"sales_date_date\" as \"sales_date_date\",
-    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
-    max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 1
-	ELSE 0
-	END) as \"store_has_row\",
-    max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 1
 	ELSE 0
 	END) as \"web_has_row\"
 FROM

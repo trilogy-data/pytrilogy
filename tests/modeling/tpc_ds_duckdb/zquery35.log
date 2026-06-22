@@ -8,36 +8,12 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-     'CATALOG'  as \"sales_sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"sales_ship_customer_id\",
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\"
+    \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"catalog_buyers_cat_cust_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null
-
-UNION ALL
-SELECT
-     'STORE'  as \"sales_sales_channel\",
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_ship_customer_id\",
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
-
-GROUP BY
-    1),
-thoughtful as (
-SELECT
-    \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"_catalog_buyers_cat_cust_id\"
-FROM
-    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -48,7 +24,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and  'STORE'  = 'STORE' and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -59,7 +35,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and  'WEB'  = 'WEB' and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
