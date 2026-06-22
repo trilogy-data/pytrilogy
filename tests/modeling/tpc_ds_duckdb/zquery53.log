@@ -1,40 +1,40 @@
 query_id = "53"
 generator = "v3"
-gen_length = 2326
-preql_size = 1446
+gen_length = 2248
+preql_size = 1398
 comp_size = 1808
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    \"physical_sales_item_items\".\"I_MANUFACT_ID\" as \"physical_sales_item_manufacturer_id\",
-    sum(\"physical_sales_store_sales\".\"SS_SALES_PRICE\") as \"sum_sales\"
+    \"store_sales_item_items\".\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"sum_sales\"
 FROM
-    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_MONTH_SEQ\" in (1200,1201,1202,1203,1204,1205,1206,1207,1208,1209,1210,1211) and \"physical_sales_store_sales\".\"SS_STORE_SK\" is not null and ( ( \"physical_sales_item_items\".\"I_CATEGORY\" in ('Books','Children','Electronics') and \"physical_sales_item_items\".\"I_CLASS\" in ('personal','portable','reference','self-help') and \"physical_sales_item_items\".\"I_BRAND\" in ('scholaramalgamalg #14','scholaramalgamalg #7','exportiunivamalg #9','scholaramalgamalg #9') ) or ( \"physical_sales_item_items\".\"I_CATEGORY\" in ('Women','Music','Men') and \"physical_sales_item_items\".\"I_CLASS\" in ('accessories','classical','fragrances','pants') and \"physical_sales_item_items\".\"I_BRAND\" in ('amalgimporto #1','edu packscholar #1','exportiimporto #1','importoamalg #1') ) )
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" in (1200,1201,1202,1203,1204,1205,1206,1207,1208,1209,1210,1211) and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null and ( ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Books','Children','Electronics') and \"store_sales_item_items\".\"I_CLASS\" in ('personal','portable','reference','self-help') and \"store_sales_item_items\".\"I_BRAND\" in ('scholaramalgamalg #14','scholaramalgamalg #7','exportiunivamalg #9','scholaramalgamalg #9') ) or ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Women','Music','Men') and \"store_sales_item_items\".\"I_CLASS\" in ('accessories','classical','fragrances','pants') and \"store_sales_item_items\".\"I_BRAND\" in ('amalgimporto #1','edu packscholar #1','exportiimporto #1','importoamalg #1') ) )
 
 GROUP BY
     1,
-    \"physical_sales_date_date\".\"D_QOY\"),
+    \"store_sales_date_date\".\"D_QOY\"),
 cooperative as (
 SELECT
-    \"cheerful\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
+    \"cheerful\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
     avg(\"cheerful\".\"sum_sales\") as \"avg_quarterly_sales\"
 FROM
     \"cheerful\"
 GROUP BY
     1)
 SELECT
-    \"cheerful\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
+    \"cheerful\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
     \"cooperative\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
     \"cheerful\"
-    INNER JOIN \"cooperative\" on \"cheerful\".\"physical_sales_item_manufacturer_id\" = \"cooperative\".\"physical_sales_item_manufacturer_id\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"store_sales_item_manufacturer_id\" = \"cooperative\".\"store_sales_item_manufacturer_id\"
 WHERE
     CASE
 	WHEN \"cooperative\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_quarterly_sales\") / \"cooperative\".\"avg_quarterly_sales\"
@@ -44,5 +44,5 @@ WHERE
 ORDER BY 
     \"cooperative\".\"avg_quarterly_sales\" asc,
     \"cheerful\".\"sum_sales\" asc,
-    \"cheerful\".\"physical_sales_item_manufacturer_id\" asc
+    \"cheerful\".\"store_sales_item_manufacturer_id\" asc
 LIMIT (100)"""

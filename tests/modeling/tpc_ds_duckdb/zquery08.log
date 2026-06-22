@@ -1,7 +1,7 @@
 query_id = "08"
 generator = "v3"
-gen_length = 2870
-preql_size = 7493
+gen_length = 2810
+preql_size = 7469
 comp_size = 19155
 generated_sql = """
 
@@ -55,27 +55,27 @@ GROUP BY
     1),
 sweltering as (
 SELECT
-    \"physical_sales_store_sales\".\"SS_NET_PROFIT\" as \"physical_sales_net_profit\",
-    \"physical_sales_store_store\".\"S_STORE_NAME\" as \"physical_sales_store_name\"
+    \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
-    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_QOY\" = 2 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,2) in (select vacuous.\"final_zips\" from vacuous where vacuous.\"final_zips\" is not null)
+    \"store_sales_date_date\".\"D_QOY\" = 2 and \"store_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select vacuous.\"final_zips\" from vacuous where vacuous.\"final_zips\" is not null)
 
 GROUP BY
     1,
     2,
-    \"physical_sales_store_sales\".\"SS_ITEM_SK\",
-    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\")
+    \"store_sales_store_sales\".\"SS_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\")
 SELECT
-    \"sweltering\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
-    sum(\"sweltering\".\"physical_sales_net_profit\") as \"store_net_profit\"
+    \"sweltering\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    sum(\"sweltering\".\"store_sales_net_profit\") as \"store_net_profit\"
 FROM
     \"sweltering\"
 GROUP BY
     1
 ORDER BY 
-    \"sweltering\".\"physical_sales_store_name\" asc
+    \"sweltering\".\"store_sales_store_name\" asc
 LIMIT (100)"""

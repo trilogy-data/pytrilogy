@@ -118,3 +118,7 @@ output includes the subtotal + grand-total rows.
   (the `by rollup ()` grain-inference recursion — why the reference names rollup
   keys explicitly inside the `def`), `bug_composite_rollup_agg_union_drops_groupby.md`.
   Those are real planner items; this one is not.
+- `bug_outer_scoped_join_two_rowset_measures.md` — a real planner bug found while
+  diagnosing q05: the agent split `all_sales` into two aggregate rowsets and tried
+  to `full join` them; INNER blends two rowset measures fine but LEFT/FULL break.
+  Separate from this idiom note (which is about not splitting `all_sales` at all).

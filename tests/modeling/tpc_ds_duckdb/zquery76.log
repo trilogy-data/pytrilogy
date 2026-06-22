@@ -1,7 +1,7 @@
 query_id = "76"
 generator = "v3"
 gen_length = 7477
-preql_size = 2140
+preql_size = 2137
 comp_size = 1708
 generated_sql = """
 

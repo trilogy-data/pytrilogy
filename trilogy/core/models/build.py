@@ -2329,7 +2329,24 @@ class Factory:
             c = environment.concepts.get(addr)
             return c is None or c.derivation in (Derivation.ROOT, Derivation.ROWSET)
 
+        def _is_rowset_pair(a: str, b: str) -> bool:
+            ca = environment.concepts.get(a)
+            cb = environment.concepts.get(b)
+            if ca is None or cb is None:
+                return False
+            if not (
+                ca.derivation is Derivation.ROWSET
+                and cb.derivation is Derivation.ROWSET
+            ):
+                return False
+            return True
+
         self.scoped_merge_sources: set[str] = set()
+        # Rowset OUTER-join keys keep their own identity + a pseudonym back to
+        # the canonical key so both rowset subgraphs stay sourceable. Partiality
+        # is still owned by the rowset machinery, not scoped_partial_derived, so
+        # these are tracked separately and subtracted below.
+        self.scoped_rowset_identity_sources: set[str] = set()
         scoped_pseudonym_sources: set[str] = set()
         for s, t, jt in self.scoped_joins:
             if jt is JoinType.INNER:
@@ -2343,6 +2360,13 @@ class Factory:
                 self.scoped_merge_sources.add(t)
                 scoped_pseudonym_sources.add(t)
             elif jt is JoinType.LEFT_OUTER:
+                # LEFT collapses target->source. A rowset target needs the same
+                # identity/pseudonym wiring as a derived target to remain
+                # sourceable; rowset_node still marks its partial key.
+                if _is_rowset_pair(s, t):
+                    self.scoped_merge_sources.add(t)
+                    self.scoped_rowset_identity_sources.add(t)
+                    scoped_pseudonym_sources.add(t)
                 target_concept = environment.concepts.get(s)
                 if (
                     target_concept is not None
@@ -2357,6 +2381,13 @@ class Factory:
                 # keeps the existing canonical-column machinery. The both-sides
                 # coalesce of the FULL key is wired at the merge node.
                 self.scoped_merge_sources.add(s)
+            elif jt is JoinType.FULL and _is_rowset_pair(s, t):
+                # FULL collapses source->target. Keep the rowset source's own
+                # identity and a mutual pseudonym so either authored side can
+                # render from the merge-node coalesce.
+                self.scoped_merge_sources.add(s)
+                self.scoped_rowset_identity_sources.add(s)
+                scoped_pseudonym_sources.add(s)
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
@@ -2375,7 +2406,12 @@ class Factory:
             # when the links are present.
             pending: list[tuple[str, str]] = []
             for source in scoped_pseudonym_sources:
-                if source not in self.scoped_merge_map or source in full_join_sources:
+                # Rowset FULL sources keep identity/pseudonym wiring; every
+                # other FULL source keeps the canonical-column machinery.
+                if source not in self.scoped_merge_map or (
+                    source in full_join_sources
+                    and source not in self.scoped_rowset_identity_sources
+                ):
                     continue
                 canonical_addr = self.scoped_merge_map[source]
                 if source not in self.pseudonym_map.get(canonical_addr, ()):
@@ -3594,7 +3630,8 @@ class Factory:
             cte_name_map=base.cte_name_map,
             scoped_partial_sources=set(self.scoped_partial_sources),
             scoped_partial_derived=(
-                self.scoped_merge_sources & self.scoped_partial_sources
+                (self.scoped_merge_sources & self.scoped_partial_sources)
+                - self.scoped_rowset_identity_sources
             ),
             scoped_full_join_keys=set(self.scoped_full_join_keys),
         )

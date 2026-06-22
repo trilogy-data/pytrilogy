@@ -1,27 +1,27 @@
 query_id = "52"
 generator = "v3"
-gen_length = 993
-preql_size = 445
+gen_length = 936
+preql_size = 412
 comp_size = 469
 generated_sql = """
 SELECT
-    \"physical_sales_date_date\".\"D_YEAR\" as \"physical_sales_date_year\",
-    \"physical_sales_item_items\".\"I_BRAND_ID\" as \"physical_sales_item_brand_id\",
-    \"physical_sales_item_items\".\"I_BRAND\" as \"physical_sales_item_brand_name\",
-    sum(\"physical_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"ext_price\"
+    \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",
+    \"store_sales_item_items\".\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
+    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"ext_price\"
 FROM
-    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"physical_sales_item_items\".\"I_MANAGER_ID\" = 1 and \"physical_sales_date_date\".\"D_MOY\" = 11 and \"physical_sales_date_date\".\"D_YEAR\" = 2000
+    \"store_sales_item_items\".\"I_MANAGER_ID\" = 1 and \"store_sales_date_date\".\"D_MOY\" = 11 and \"store_sales_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"physical_sales_date_date\".\"D_YEAR\" asc,
+    \"store_sales_date_date\".\"D_YEAR\" asc,
     \"ext_price\" desc,
-    \"physical_sales_item_items\".\"I_BRAND_ID\" asc
+    \"store_sales_item_items\".\"I_BRAND_ID\" asc
 LIMIT (100)"""

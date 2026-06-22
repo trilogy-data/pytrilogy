@@ -496,24 +496,34 @@ class MergeNode(StrategyNode):
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
         )
-        # A derived-key FULL join binds a *different* column on each side (da vs
-        # db) that collapses to one canonical output. resolve_concept_map keyed
-        # each address to its own side only, so the canonical output would render
-        # one side's column and NULL the rows present only on the other. Union
-        # the two ConceptPair addresses' sources so the output renders
-        # coalesce(left.col, right.col). (Same-address keys — root/rowset FULL —
-        # already coalesce the shared column and are skipped.)
+        # Scoped OUTER joins can bind different physical key addresses for one
+        # merged key. The optional side should also render from the preserved
+        # side on LEFT/RIGHT; FULL needs both addresses to render from both
+        # sides, producing coalesce(left.col, right.col). Same-address keys are
+        # already handled by normal shared-column resolution.
         for join in joins:
-            if not isinstance(join, BaseJoin) or join.join_type != JoinType.FULL:
+            if not isinstance(join, BaseJoin) or join.join_type not in (
+                JoinType.LEFT_OUTER,
+                JoinType.RIGHT_OUTER,
+                JoinType.FULL,
+            ):
                 continue
             for pair in join.concept_pairs or []:
                 la, ra = pair.left.address, pair.right.address
                 if la == ra:
                     continue
-                combined = source_map.get(la, set()) | source_map.get(ra, set())
-                if len(combined) > 1:
+                left_sources = source_map.get(la, set())
+                right_sources = source_map.get(ra, set())
+                combined = left_sources | right_sources
+                if len(combined) <= 1:
+                    continue
+                if join.join_type == JoinType.FULL:
                     source_map[la] = set(combined)
                     source_map[ra] = set(combined)
+                elif join.join_type == JoinType.LEFT_OUTER:
+                    source_map[ra] = set(combined)
+                else:
+                    source_map[la] = set(combined)
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )

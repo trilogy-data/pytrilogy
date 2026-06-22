@@ -1,48 +1,48 @@
 query_id = "98"
 generator = "v3"
-gen_length = 3515
-preql_size = 801
+gen_length = 3326
+preql_size = 750
 comp_size = 811
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    \"physical_sales_item_items\".\"I_CLASS\" as \"physical_sales_item_class\",
-    \"physical_sales_item_items\".\"I_ITEM_SK\" as \"physical_sales_item_id\",
-    \"physical_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"physical_sales_ext_sales_price\"
+    \"store_sales_item_items\".\"I_CLASS\" as \"store_sales_item_class\",
+    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
+    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\"
 FROM
-    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"physical_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"physical_sales_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
+    \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"store_sales_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 ),
 questionable as (
 SELECT
-    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
-    \"physical_sales_item_items\".\"I_CLASS\" as \"physical_sales_item_class\",
-    \"physical_sales_item_items\".\"I_CURRENT_PRICE\" as \"physical_sales_item_current_price\",
-    \"physical_sales_item_items\".\"I_ITEM_DESC\" as \"physical_sales_item_desc\",
-    \"physical_sales_item_items\".\"I_ITEM_ID\" as \"physical_sales_item_text_id\",
-    \"physical_sales_item_items\".\"I_ITEM_SK\" as \"physical_sales_item_id\"
+    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
+    \"store_sales_item_items\".\"I_CLASS\" as \"store_sales_item_class\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_text_id\",
+    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
-    \"memory\".\"item\" as \"physical_sales_item_items\"
+    \"memory\".\"item\" as \"store_sales_item_items\"
 WHERE
-    \"physical_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
+    \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
 ),
 cooperative as (
 SELECT
-    \"cheerful\".\"physical_sales_item_id\" as \"physical_sales_item_id\",
-    sum(\"cheerful\".\"physical_sales_ext_sales_price\") as \"item_revenue\"
+    \"cheerful\".\"store_sales_item_id\" as \"store_sales_item_id\",
+    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"item_revenue\"
 FROM
     \"cheerful\"
 GROUP BY
     1),
 thoughtful as (
 SELECT
-    \"cheerful\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
-    sum(\"cheerful\".\"physical_sales_ext_sales_price\") as \"_virt_agg_sum_9925573558789696\"
+    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
 FROM
     \"cheerful\"
 GROUP BY
@@ -50,28 +50,28 @@ GROUP BY
 abundant as (
 SELECT
     \"cooperative\".\"item_revenue\" as \"item_revenue\",
-    \"questionable\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
-    \"questionable\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
-    \"questionable\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
-    \"questionable\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
-    \"questionable\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\"
+    \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"questionable\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    \"questionable\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"questionable\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"questionable\".\"store_sales_item_text_id\" as \"store_sales_item_text_id\"
 FROM
     \"questionable\"
-    INNER JOIN \"cooperative\" on \"questionable\".\"physical_sales_item_id\" = \"cooperative\".\"physical_sales_item_id\")
+    INNER JOIN \"cooperative\" on \"questionable\".\"store_sales_item_id\" = \"cooperative\".\"store_sales_item_id\")
 SELECT
-    \"abundant\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\",
-    \"abundant\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
-    \"abundant\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
-    \"abundant\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
-    \"abundant\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
+    \"abundant\".\"store_sales_item_text_id\" as \"store_sales_item_text_id\",
+    \"abundant\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"abundant\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"abundant\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    \"abundant\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     \"abundant\".\"item_revenue\" as \"item_revenue\",
-    ( \"abundant\".\"item_revenue\" * 100.0 ) / (\"thoughtful\".\"_virt_agg_sum_9925573558789696\") as \"revenueratio\"
+    ( \"abundant\".\"item_revenue\" * 100.0 ) / (\"thoughtful\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
 FROM
     \"abundant\"
-    LEFT OUTER JOIN \"thoughtful\" on \"abundant\".\"physical_sales_item_class\" is not distinct from \"thoughtful\".\"physical_sales_item_class\"
+    LEFT OUTER JOIN \"thoughtful\" on \"abundant\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\"
 ORDER BY 
-    \"abundant\".\"physical_sales_item_category\" asc nulls first,
-    \"abundant\".\"physical_sales_item_class\" asc nulls first,
-    \"abundant\".\"physical_sales_item_text_id\" asc nulls first,
-    \"abundant\".\"physical_sales_item_desc\" asc nulls first,
+    \"abundant\".\"store_sales_item_category\" asc nulls first,
+    \"abundant\".\"store_sales_item_class\" asc nulls first,
+    \"abundant\".\"store_sales_item_text_id\" asc nulls first,
+    \"abundant\".\"store_sales_item_desc\" asc nulls first,
     \"revenueratio\" asc nulls first"""
