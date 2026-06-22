@@ -36,7 +36,7 @@ def gen(preql: str) -> str:
 
 
 VARIANT = """
-import physical_sales as ss;
+import store_sales as ss;
 
 def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.id, ss.date.week_seq;
 

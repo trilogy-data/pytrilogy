@@ -7,13 +7,13 @@ auto p_cust_zip <- customer.address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
 where
-    physical_sales.date.quarter = 2
-    and physical_sales.date.year = 1998
-    and substring(physical_sales.store.zip, 1, 2) in final_zips
+    store_sales.date.quarter = 2
+    and store_sales.date.year = 1998
+    and substring(store_sales.store.zip, 1, 2) in final_zips
 select
-    physical_sales.store.name,
-    sum(physical_sales.net_profit) as store_net_profit,
+    store_sales.store.name,
+    sum(store_sales.net_profit) as store_net_profit,
 order by
-    physical_sales.store.name asc
+    store_sales.store.name asc
 limit 100
 ;

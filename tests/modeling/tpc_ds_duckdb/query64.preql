@@ -5,7 +5,7 @@
 # renamed scoped-join key requires chaining the base key into the join group
 # (`agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id`); the arm-only address
 # ids are chained to their base directly. Matches PRAGMA tpcds(64) at sf=1 (2 rows).
-import physical_sales as ss;
+import store_sales as ss;
 import catalog_returns as cr;
 
 # cs_ui: items where catalog sale (sum of cs_ext_list_price) exceeds twice the

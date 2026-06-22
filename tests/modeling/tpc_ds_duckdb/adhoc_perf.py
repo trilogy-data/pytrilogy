@@ -34,7 +34,7 @@ import inventory as inventory;
 import item as item;
 import promotion as promotion;
 import physical_returns as physical_returns;
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import store as store;
 import time as time;
 import date as date;
@@ -47,7 +47,7 @@ import web_sales as web_sales;
     test_queries = """
 
 
-    import physical_sales as physical_sales;
+    import store_sales as store_sales;
     import customer as customer;
 
     const zips_pre <- unnest(['24128',
@@ -462,15 +462,15 @@ import web_sales as web_sales;
 
 
     SELECT
-        physical_sales.store.name,
-        sum(physical_sales.net_profit
+        store_sales.store.name,
+        sum(store_sales.net_profit
         ) ->store_net_profit
     where 
-            physical_sales.date.quarter = 2
-            and physical_sales.date.year = 1998
-            and substring(physical_sales.store.zip, 1, 2) in final_zips
+            store_sales.date.quarter = 2
+            and store_sales.date.year = 1998
+            and substring(store_sales.store.zip, 1, 2) in final_zips
     order by
-        physical_sales.store.name asc
+        store_sales.store.name asc
     limit 100
     ;
 

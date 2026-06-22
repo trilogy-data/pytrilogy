@@ -1,4 +1,4 @@
-import physical_sales as ss;
+import store_sales as ss;
 
 where
     ss.date.month_seq between 1200 and 1211 and ss.store.id is not null

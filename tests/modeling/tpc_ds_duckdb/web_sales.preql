@@ -1,4 +1,4 @@
-# For cross-channel questions, prefer `all_sales` (combines this with physical_sales and catalog_sales).
+# For cross-channel questions, prefer `all_sales` (combines this with store_sales and catalog_sales).
 # Web channel sales info at (item, order_number) grain: quantity, sales /
 # list / extended prices, extended shipping cost, extended discount, net
 # paid, net profit, sold vs ship dates, and an is_returned flag with

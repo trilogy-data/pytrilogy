@@ -1,30 +1,30 @@
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 
 def bucket_count(h, min_low, min_high) -> sum(
     count(
-        physical_sales.item.id
-            ? physical_sales.time.hour = h
-and physical_sales.time.minute >= min_low
-and physical_sales.time.minute < min_high
+        store_sales.item.id
+            ? store_sales.time.hour = h
+and store_sales.time.minute >= min_low
+and store_sales.time.minute < min_high
     )
-        by physical_sales.ticket_number
+        by store_sales.ticket_number
 );
 
 where
-    physical_sales.store.name = 'ese'
-    and physical_sales.time.hour in (8, 9, 10, 11, 12)
+    store_sales.store.name = 'ese'
+    and store_sales.time.hour in (8, 9, 10, 11, 12)
     and (
         (
-            physical_sales.household_demographic.dependent_count = 4
-            and physical_sales.household_demographic.vehicle_count <= 6
+            store_sales.household_demographic.dependent_count = 4
+            and store_sales.household_demographic.vehicle_count <= 6
         )
         or (
-            physical_sales.household_demographic.dependent_count = 2
-            and physical_sales.household_demographic.vehicle_count <= 4
+            store_sales.household_demographic.dependent_count = 2
+            and store_sales.household_demographic.vehicle_count <= 4
         )
         or (
-            physical_sales.household_demographic.dependent_count = 0
-            and physical_sales.household_demographic.vehicle_count <= 2
+            store_sales.household_demographic.dependent_count = 0
+            and store_sales.household_demographic.vehicle_count <= 2
         )
     )
 select

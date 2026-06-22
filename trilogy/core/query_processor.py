@@ -593,7 +593,7 @@ def _get_query_node_v4(
         # the query-scoped JOIN merges. Sub-selects (rowsets, multiselect arms)
         # materialize their own build env via these caches; a fresh BuildCaches
         # would drop the merges, leaving a cross-fact rowset join unresolvable
-        # (q29: `inner join catalog_sales.* = physical_sales.*` on the outer
+        # (q29: `inner join catalog_sales.* = store_sales.*` on the outer
         # select feeds the rowset's combined source).
         history=V4History(
             base_environment=history.base_environment,
