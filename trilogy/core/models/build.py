@@ -140,7 +140,6 @@ def _gen_comp_name(parent: "BuildComparison") -> str:
     return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
-
 def _gen_msl_name(parent: "BuildMultiSelectLineage") -> str:
     return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
 
@@ -153,12 +152,18 @@ def _gen_default_name(parent: Any) -> str:
 _CONCEPT_NAME_GENERATORS: dict[type, Callable[[Any], str]] = {}
 
 
-def generate_concept_name(parent: Any) -> str:
+def generate_concept_name(
+    parent: Any, merge_concepts: Iterable[str] | None = None
+) -> str:
     generator = _CONCEPT_NAME_GENERATORS.get(type(parent))
     if generator:
-        return generator(parent)
-    return _gen_default_name(parent)
-
+        canonical_name = generator(parent)
+    else:
+        canonical_name = _gen_default_name(parent)
+    if not merge_concepts:
+        return canonical_name
+    parts = sorted({canonical_name, *merge_concepts})
+    return f"{VIRTUAL_CONCEPT_PREFIX}_merge_{string_to_hash('|'.join(parts))}"
 
 
 def _constant_bool_comparison(value: bool) -> "BuildComparison":
@@ -168,6 +173,8 @@ def _constant_bool_comparison(value: bool) -> "BuildComparison":
     return BuildComparison(
         left=1, right=1 if value else 0, operator=ComparisonOperator.EQ
     )
+
+
 class BuildConceptArgs:
     @property
     def concept_arguments(self) -> Sequence["BuildConcept"]:
@@ -2292,6 +2299,9 @@ class Factory:
             for source, target in self.scoped_merge_map.items()
             if source not in full_join_sources
         }
+        self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
+        for source, target in self.scoped_merge_map.items():
+            self.scoped_merge_sources_by_target[target].add(source)
         # Canonical keys of FULL joins: partial against every side pre-resolution,
         # but complete (coalesced) in the resolved FULL JOIN output.
         # Registry of FULL-join canonical keys. The key stays complete; this set
@@ -2783,8 +2793,17 @@ class Factory:
         if new_lineage:
             build_lineage = self.build(new_lineage)
             if isinstance(build_lineage, BuildConcept):
+                merge_concepts = self.scoped_merge_sources_by_target.get(base.address)
+                if not merge_concepts:
+                    return dc_replace(
+                        build_lineage, name=base.name, namespace=base.namespace
+                    )
+                canonical_name = generate_concept_name(build_lineage, merge_concepts)
                 return dc_replace(
-                    build_lineage, name=base.name, namespace=base.namespace
+                    build_lineage,
+                    name=base.name,
+                    namespace=base.namespace,
+                    canonical_name=canonical_name,
                 )
             elif isinstance(build_lineage, bool):
                 build_lineage = BuildFunction(
@@ -2797,7 +2816,12 @@ class Factory:
         else:
             build_lineage = None
         canonical_name = (
-            generate_concept_name(build_lineage) if build_lineage else base.name
+            generate_concept_name(
+                build_lineage,
+                self.scoped_merge_sources_by_target.get(base.address),
+            )
+            if build_lineage
+            else base.name
         )
         cache_address = (
             f"{base.namespace}.{base.address}.{canonical_name}.{str(final_grain)}"
