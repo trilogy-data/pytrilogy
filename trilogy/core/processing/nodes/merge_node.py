@@ -488,38 +488,7 @@ class MergeNode(StrategyNode):
             final_datasets,
             key=lambda ds: (null_status.get(ds.identifier, 0), ds.identifier),
         )
-        # A scoped merge (LEFT or FULL) can need both the generated key and its
-        # raw-source pseudonym after an intermediate merge. Carry those columns
-        # forward so later joins render from the raw parent instead of
-        # recomputing an (empty) UNNEST.
-        scoped_partial_sources = self.environment.scoped_partial_sources
-        output_addresses = {c.address for c in self.output_concepts}
-        passthrough_outputs: list[BuildConcept] = []
-        if scoped_partial_sources:
-            for source in final_datasets:
-                source_map_keys = (
-                    set(source.source_map)
-                    if isinstance(source, QueryDatasource)
-                    else {c.address for c in source.output_concepts}
-                )
-                candidate_concepts = (
-                    source.input_concepts + source.output_concepts
-                    if isinstance(source, QueryDatasource)
-                    else source.output_concepts
-                )
-                for concept in candidate_concepts:
-                    if concept.address in output_addresses:
-                        continue
-                    if not (concept.pseudonyms & scoped_partial_sources):
-                        continue
-                    if concept.address not in source_map_keys:
-                        continue
-                    passthrough_outputs.append(concept)
-                    output_addresses.add(concept.address)
-
-        final_output_concepts = unique(
-            self.output_concepts + passthrough_outputs, "address"
-        )
+        final_output_concepts = self.output_concepts
 
         source_map = resolve_concept_map(
             ordered_datasets,
@@ -527,13 +496,6 @@ class MergeNode(StrategyNode):
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
         )
-        for concept in passthrough_outputs:
-            for source in ordered_datasets:
-                if isinstance(source, QueryDatasource):
-                    if concept.address in source.source_map:
-                        source_map[concept.address].add(source)
-                elif concept.address in {c.address for c in source.output_concepts}:
-                    source_map[concept.address].add(source)
         # A derived-key FULL join binds a *different* column on each side (da vs
         # db) that collapses to one canonical output. resolve_concept_map keyed
         # each address to its own side only, so the canonical output would render

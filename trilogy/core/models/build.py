@@ -140,14 +140,6 @@ def _gen_comp_name(parent: "BuildComparison") -> str:
     return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
-def _constant_bool_comparison(value: bool) -> "BuildComparison":
-    # WHERE/HAVING that constant-folds to a bool needs to round-trip through
-    # the BoolExpr pipeline. `1=1` / `1=0` renders portably and has no
-    # row_arguments, so downstream optimizers see a no-op condition.
-    return BuildComparison(
-        left=1, right=1 if value else 0, operator=ComparisonOperator.EQ
-    )
-
 
 def _gen_msl_name(parent: "BuildMultiSelectLineage") -> str:
     return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
@@ -168,6 +160,14 @@ def generate_concept_name(parent: Any) -> str:
     return _gen_default_name(parent)
 
 
+
+def _constant_bool_comparison(value: bool) -> "BuildComparison":
+    # WHERE/HAVING that constant-folds to a bool needs to round-trip through
+    # the BoolExpr pipeline. `1=1` / `1=0` renders portably and has no
+    # row_arguments, so downstream optimizers see a no-op condition.
+    return BuildComparison(
+        left=1, right=1 if value else 0, operator=ComparisonOperator.EQ
+    )
 class BuildConceptArgs:
     @property
     def concept_arguments(self) -> Sequence["BuildConcept"]:
