@@ -702,24 +702,13 @@ def _apply_input_contracts(
 ) -> list[StrategyNode]:
     parents = [parent.node for parent in parent_builds]
     parent_group_ids = {parent.group_id for parent in parent_builds}
-    projection_grain_components = set(
-        _input_contract_projection_grain(group_attrs, parent_group_ids)
+    projection_grain_components = _input_contract_projection_grain(
+        group_attrs, parent_group_ids
     )
-    if not projection_grain_components:
-        projection_grain_components = set(group_attrs.grain_components)
-    if not group_attrs.input_contracts and any(
-        _contains_shape_barrier(parent) for parent in parents
-    ):
-        for parent in parents:
-            if not _contains_shape_barrier(parent):
-                continue
-            for output in parent.output_concepts:
-                if output.derivation in GROUPING_DERIVATIONS and output.grain:
-                    projection_grain_components |= set(output.grain.components)
-    return _project_dimension_parents_to_group_grain(
+    return _satisfy_parent_projection_contract(
         parents,
         needed,
-        frozenset(projection_grain_components),
+        projection_grain_components,
         environment,
     )
 
@@ -736,21 +725,20 @@ def _fd_at_grain(concept: BuildConcept, grain_components: frozenset[str]) -> boo
     return bool(concept_keys) and concept_keys <= grain_components
 
 
-def _project_dimension_parents_to_group_grain(
+def _satisfy_parent_projection_contract(
     parents: list[StrategyNode],
     needed: set[str],
-    group_grain_components: frozenset[str],
+    projection_grain_components: frozenset[str],
     environment: BuildEnvironment,
 ) -> list[StrategyNode]:
-    """Dedup dimension-side parents before they merge into a narrower group.
+    """Physically satisfy a declared parent projection-grain contract.
 
-    A group can consume an aggregate parent plus a detail/root parent that only
-    contributes FD attributes like store.name or warehouse.square_feet. If the
-    detail parent is merged at row grain first, the aggregate fans out. Project
-    that parent to the group's key grain before the merge; leave shape-changing
-    parents and row-grain facts untouched.
+    Stage 2 chooses the projection grain. This adapter only decides whether a
+    parent can be safely wrapped to satisfy that grain before it merges with an
+    already-shaped sibling; it must not infer a target grain from sibling
+    outputs or group attrs.
     """
-    if len(parents) <= 1 or not group_grain_components:
+    if len(parents) <= 1 or not projection_grain_components:
         return parents
 
     # Pre-grouping a dimension parent to the group grain only makes sense to
@@ -778,12 +766,12 @@ def _project_dimension_parents_to_group_grain(
             addr
             for addr in parent_needed
             if (c := _concept_at(environment, addr)) is not None
-            and _fd_at_grain(c, group_grain_components)
+            and _fd_at_grain(c, projection_grain_components)
         }
         fd_needed = {
             addr
             for addr in fd_candidates
-            if not (addr in group_grain_components and addr in other_outputs)
+            if not (addr in projection_grain_components and addr in other_outputs)
         }
         non_fd_needed = parent_needed - fd_candidates
         concepts = [
@@ -807,7 +795,7 @@ def _project_dimension_parents_to_group_grain(
         # projects), so test satisfiability.
         join_keys = {
             addr
-            for addr in group_grain_components
+            for addr in projection_grain_components
             if addr not in fd_needed
             and addr in other_outputs
             and (c := _concept_at(environment, addr)) is not None
@@ -837,7 +825,7 @@ def _project_dimension_parents_to_group_grain(
             )
             continue
         projected.extend(
-            _wrap_for_grain(parent, concepts, environment, group_grain_components)
+            _wrap_for_grain(parent, concepts, environment, projection_grain_components)
         )
     return projected
 
@@ -1539,7 +1527,7 @@ def _assemble_final_node(
     # columns into one projection instead of joining (same passthrough logic the
     # per-group `_pre_merge_parents` uses).
     final_needed = set(mandatory_addresses) | set(final_merge_grain)
-    parents = _project_dimension_parents_to_group_grain(
+    parents = _satisfy_parent_projection_contract(
         parents,
         final_needed,
         final_merge_grain,

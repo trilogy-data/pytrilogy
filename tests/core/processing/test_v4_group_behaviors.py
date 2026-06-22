@@ -28,6 +28,7 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     FilterNode,
+    GroupNode,
     History,
     MergeNode,
     SelectNode,
@@ -69,10 +70,13 @@ from trilogy.core.processing.v4_helper.models import (
     FinalContributorContract,
     GroupAttrs,
     GroupBucket,
+    GroupInputContract,
     InputChannel,
 )
 from trilogy.core.processing.v4_helper.source_policy import STRICT_SOURCE_POLICY
 from trilogy.core.processing.v4_helper.strategy_builder import (
+    ParentBuild,
+    _apply_input_contracts,
     _filter_intrinsic_pushdown_safe,
     _final_contributor_contracts,
     _parent_nodes_for,
@@ -1202,6 +1206,94 @@ def test_pre_merge_carries_declared_join_keys_without_metrics():
     row_outputs = {concept.address for concept in row_projection.output_concepts}
     assert "local.part.name" in row_outputs
     assert "local.charge_percent" not in row_outputs
+
+
+def test_parent_projection_uses_declared_contract_not_shape_barrier():
+
+    env = BuildEnvironment()
+    store_id = _build_concept("store.id", Purpose.KEY)
+    station_name = _build_concept(
+        "station.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={store_id.address},
+        keys={store_id.address},
+    )
+    daily_rides = _build_concept(
+        "daily_rides",
+        Purpose.METRIC,
+        derivation=Derivation.AGGREGATE,
+        grain={store_id.address},
+        is_aggregate=True,
+    )
+    for concept in (store_id, station_name, daily_rides):
+        env.concepts[concept.address] = concept
+        env.canonical_concepts[concept.canonical_address] = concept
+    dim_source = StrategyNode(
+        input_concepts=[],
+        output_concepts=[store_id, station_name],
+        environment=env,
+    )
+    dim_parent = SelectNode(
+        input_concepts=[store_id, station_name],
+        output_concepts=[store_id, station_name],
+        parents=[dim_source],
+        environment=env,
+    )
+    aggregate_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[store_id, daily_rides],
+        environment=env,
+    )
+    aggregate_parent.force_group = True
+    parent_builds = [
+        ParentBuild("dim", dim_parent),
+        ParentBuild("agg", aggregate_parent),
+    ]
+    no_contract_attrs = GroupAttrs(
+        depth_label=DepthLabel.D0,
+        derivation=Derivation.BASIC,
+        grain_components=frozenset({store_id.address}),
+    )
+
+    projected = _apply_input_contracts(
+        parent_builds,
+        no_contract_attrs,
+        needed={station_name.address},
+        environment=env,
+    )
+
+    assert projected[0] is dim_parent
+
+    contracted_attrs = GroupAttrs(
+        depth_label=DepthLabel.D0,
+        derivation=Derivation.BASIC,
+        grain_components=frozenset({store_id.address}),
+        input_contracts=(
+            GroupInputContract(
+                parent_group_id="dim",
+                consumer_group_id="consumer",
+                required_outputs=frozenset({station_name.address}),
+                required_grain=frozenset({store_id.address}),
+                preserve_keys=frozenset({store_id.address}),
+                channel=InputChannel.ROW_STREAM,
+                may_project_dimension=True,
+            ),
+        ),
+    )
+
+    projected = _apply_input_contracts(
+        parent_builds,
+        contracted_attrs,
+        needed={station_name.address},
+        environment=env,
+    )
+
+    assert isinstance(projected[0], GroupNode)
+    assert {concept.address for concept in projected[0].output_concepts} == {
+        store_id.address,
+        station_name.address,
+    }
 
 
 def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
