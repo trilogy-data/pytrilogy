@@ -1320,6 +1320,26 @@ def _group_to_grain_if_required(
     )
 
 
+def _hide_final_only_grain_keys(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    node: StrategyNode,
+    mandatory_addresses: set[str],
+) -> None:
+    output_addrs = {o.address for o in node.output_concepts}
+    grain_addrs = set(attrs[gid].grain_components)
+    for anc in nx.ancestors(group_graph, gid):
+        if anc != FINAL_NODE_ID and attrs[anc].derivation in GROUPING_DERIVATIONS:
+            grain_addrs |= set(attrs[anc].grain_components)
+    hide = (grain_addrs & output_addrs) - mandatory_addresses
+    if not hide:
+        return
+    existing = set(node.hidden_concepts or set())
+    node.hidden_concepts = existing | hide
+    node.rebuild_cache()
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -1423,22 +1443,19 @@ def _assemble_final_node(
         # them at an intermediate group blocks downstream consumers from
         # using them as JOIN keys (MergeNode validates non-hidden parent
         # outputs only).
-        output_addrs = {o.address for o in sole_node.output_concepts}
-        grain_addrs = set(attrs[gid].grain_components)
         # A basic riding a window-over-aggregate (q36 `i_category`/`i_class`
         # over a ROLLUP-then-rank) passes the aggregate's grain keys through as
         # row-identity / partition columns. Those aren't this basic's declared
         # grain, so add every grouping ancestor's grain to the hide candidates —
         # otherwise the carried keys (e.g. bare `ss.item.category`) leak into the
         # FINAL projection alongside their mandatory rename.
-        for anc in nx.ancestors(group_graph, gid):
-            if anc != FINAL_NODE_ID and attrs[anc].derivation in GROUPING_DERIVATIONS:
-                grain_addrs |= set(attrs[anc].grain_components)
-        hide = (grain_addrs & output_addrs) - mandatory_addresses
-        if hide:
-            existing = set(sole_node.hidden_concepts or set())
-            sole_node.hidden_concepts = existing | hide
-            sole_node.rebuild_cache()
+        _hide_final_only_grain_keys(
+            group_graph,
+            attrs,
+            gid,
+            sole_node,
+            mandatory_addresses,
+        )
         return _apply_final_conditions(
             _group_to_grain_if_required(
                 sole_node,

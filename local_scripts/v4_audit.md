@@ -1,4 +1,4 @@
-# v4 compatibility audit (last refreshed 2026-06-21, post-window-rollup-fix)
+# v4 compatibility audit (last refreshed 2026-06-22, phase-boundary hardening)
 
 This file is the current handoff for v4 discovery work. Long fixed-case notes
 from the 2026-06-11 through 2026-06-20 sweeps were removed because they were
@@ -143,8 +143,9 @@ The intended v4 path is:
 3. Materialize groups: `strategy_builder.py` walks the group DAG and dispatches
    each group to `v4_node_generators`. ROOT groups call `source_planning.py` for
    datasource selection, bridge planning, partial completion, and pinned rollup
-   sourcing. This phase may project/dedup parents to preserve grain, but should
-   not re-partition the conceptual groups.
+   sourcing. This phase satisfies declared contracts; it should not infer
+   projection grain, join keys, or final contributor contracts from physical
+   sibling shape.
 4. Zip final query: `_assemble_final_node` merges the minimum built contributors
    that cover the mandatory outputs, applies final-only filters, hides join keys
    that were carried only for assembly, and dedups to the requested output grain.
@@ -152,8 +153,30 @@ The intended v4 path is:
 
 ## Separation audit notes
 
-No obvious phase-breaking runtime issue was found in the current code read. The
-notable sharp edges are:
+The boundary is now enforced in code rather than only described here:
+
+- `FinalAssemblyContract` and `FinalContributorContract` are Stage 2 outputs.
+  Stage 3 requires them and no longer refreshes or synthesizes missing final
+  contracts.
+- `GroupInputContract` is the only source for parent projection grain and
+  per-group bridge join keys. `_satisfy_parent_projection_contract` physically
+  satisfies that grain, but no longer falls back to group grain or shaped sibling
+  outputs.
+- `_widen_merge_join_keys` only widens for declared join key addresses. It no
+  longer scans sibling outputs for "key-ish" concepts.
+- FINAL rowset joins declare the row-stream lineage key (for example
+  `local.order_id`) in Stage 2, rather than relying on Stage 3 to infer it from
+  nullable rowset aliases.
+- `_fold_passthrough_parents` is pinned as a physical redundancy optimization:
+  it can absorb row-preserving projections, but cannot dissolve row-shape
+  barriers.
+- Sole-contributor FINAL hiding is pinned as output hygiene: it hides
+  non-mandatory carried grain keys only at the FINAL layer.
+- `_group_to_grain_if_required` is pinned to `FinalAssemblyContract`; it may
+  skip or perform physical deduping, but does not choose the logical output
+  grain.
+
+Still-watch areas:
 
 - `source_planning.py` is the right home for concrete datasource selection. Its
   bridge and partial-completion helpers are sourcing concerns, not grouping
@@ -161,10 +184,6 @@ notable sharp edges are:
 - `_regraft_group_sources` in `group_graph.py` is topology-only: it may add a
   better existing parent edge or a synthetic dimension ROOT bucket, but it must
   not call `plan_source`, inspect datasources, or build `StrategyNode`s.
-- `_project_dimension_parents_to_group_grain`, `_wrap_for_grain`, and
-  `_group_to_grain_if_required` in `strategy_builder.py` are materialization
-  safeguards. They protect cardinality while assembling nodes; they should not
-  become alternative grouping rules.
 - Existence edges must stay side-channel-only. They order subselect sources but
   should not be treated as row-stream JOIN parents.
 - Rowset, recursive, aggregate, window, and group-to concepts remain row-shape
@@ -182,3 +201,5 @@ regressions**; the rest of the list is SHAPE/SIZE plus pollution-flaky xpasses.
 2. Split the 13 `_MODELING` entries into `_INLINE` or `_TPCDS_SIZE` (all are
    SHAPE per the classifier — no rows diffs left).
 3. Re-run `local_scripts/v4_classify.py` after any planner change.
+4. Keep new Stage 3 heuristics behind contract-driven tests: if materialization
+   needs a key or projection grain, Stage 2 should declare it first.

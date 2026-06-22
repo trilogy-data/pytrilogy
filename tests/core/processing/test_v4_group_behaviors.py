@@ -79,6 +79,9 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _apply_input_contracts,
     _filter_intrinsic_pushdown_safe,
     _final_contributor_contracts,
+    _fold_passthrough_parents,
+    _group_to_grain_if_required,
+    _hide_final_only_grain_keys,
     _parent_nodes_for,
     _pre_merge_parents,
     _required_final_contract,
@@ -1208,6 +1211,80 @@ def test_pre_merge_carries_declared_join_keys_without_metrics():
     assert "local.charge_percent" not in row_outputs
 
 
+def test_fold_passthrough_only_drops_row_preserving_redundant_parent():
+
+    env = BuildEnvironment()
+    key = _build_concept("item.id", Purpose.KEY)
+    name = _build_concept(
+        "item.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={key.address},
+        keys={key.address},
+    )
+    metric = _build_concept("metric", Purpose.METRIC)
+    source = StrategyNode(
+        input_concepts=[],
+        output_concepts=[key, name, metric],
+        environment=env,
+    )
+    redundant = SelectNode(
+        input_concepts=[name],
+        output_concepts=[name],
+        parents=[source],
+        environment=env,
+    )
+    carrier = SelectNode(
+        input_concepts=[metric],
+        output_concepts=[metric],
+        parents=[source],
+        environment=env,
+    )
+
+    folded = _fold_passthrough_parents([redundant, carrier])
+
+    assert len(folded) == 1
+    assert {concept.address for concept in folded[0].output_concepts} == {
+        name.address,
+        metric.address,
+    }
+
+
+def test_fold_passthrough_keeps_shape_barrier_parent():
+
+    env = BuildEnvironment()
+    key = _build_concept("item.id", Purpose.KEY)
+    total = _build_concept(
+        "total",
+        Purpose.METRIC,
+        derivation=Derivation.AGGREGATE,
+        grain={key.address},
+        is_aggregate=True,
+    )
+    source = StrategyNode(
+        input_concepts=[],
+        output_concepts=[key, total],
+        environment=env,
+    )
+    barrier = SelectNode(
+        input_concepts=[key, total],
+        output_concepts=[key, total],
+        parents=[source],
+        environment=env,
+    )
+    barrier.force_group = True
+    carrier = SelectNode(
+        input_concepts=[key],
+        output_concepts=[key],
+        parents=[source],
+        environment=env,
+    )
+
+    folded = _fold_passthrough_parents([barrier, carrier])
+
+    assert folded == [barrier, carrier]
+
+
 def test_parent_projection_uses_declared_contract_not_shape_barrier():
 
     env = BuildEnvironment()
@@ -1294,6 +1371,104 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
         store_id.address,
         station_name.address,
     }
+
+
+def test_final_hides_only_non_mandatory_grain_keys():
+
+    env = BuildEnvironment()
+    category = _build_concept("category", Purpose.KEY)
+    class_key = _build_concept("class", Purpose.KEY)
+    display_category = _build_concept(
+        "display_category",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={category.address},
+        keys={category.address},
+    )
+    node = StrategyNode(
+        input_concepts=[],
+        output_concepts=[category, class_key, display_category],
+        environment=env,
+    )
+    group_graph = nx.DiGraph()
+    group_graph.add_nodes_from(["rollup", "basic", FINAL_NODE_ID])
+    add_edge(group_graph, {}, "rollup", "basic", EdgeKind.LINEAGE)
+    add_edge(group_graph, {}, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
+    attrs = {
+        "rollup": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({category.address, class_key.address}),
+        ),
+        "basic": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.BASIC,
+            grain_components=frozenset({category.address}),
+        ),
+        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
+    }
+
+    _hide_final_only_grain_keys(
+        group_graph,
+        attrs,
+        "basic",
+        node,
+        mandatory_addresses={display_category.address},
+    )
+
+    assert node.hidden_concepts == {category.address, class_key.address}
+    assert display_category.address not in node.hidden_concepts
+
+
+def test_group_to_grain_is_controlled_by_final_contract():
+
+    env = BuildEnvironment()
+    customer_id = _build_concept("customer.id", Purpose.KEY)
+    customer_name = _build_concept(
+        "customer.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={customer_id.address},
+        keys={customer_id.address},
+    )
+    source = StrategyNode(
+        input_concepts=[],
+        output_concepts=[customer_id, customer_name],
+        environment=env,
+    )
+    contract = FinalAssemblyContract(
+        output_addresses=frozenset({customer_name.address}),
+        deduplicate_to_grain=False,
+    )
+
+    result = _group_to_grain_if_required(
+        source,
+        [customer_name],
+        contract,
+        env,
+    )
+
+    assert result is source
+
+    contract = FinalAssemblyContract(
+        output_addresses=frozenset({customer_name.address}),
+        deduplicate_to_grain=True,
+    )
+    grouped_input = GroupNode(
+        input_concepts=[customer_id, customer_name],
+        output_concepts=[customer_id, customer_name],
+        parents=[source],
+        environment=env,
+    )
+
+    result = _group_to_grain_if_required(
+        grouped_input,
+        [customer_name],
+        contract,
+        env,
+    )
+
+    assert result is grouped_input
 
 
 def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
