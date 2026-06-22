@@ -19,11 +19,13 @@ by the v3 generators (`gen_group_node`, `gen_filter_node`,
 from typing import Callable
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConceptArgs,
     BuildFilterItem,
+    BuildFunction,
     BuildRowsetItem,
     BuildWhereClause,
 )
@@ -127,12 +129,32 @@ def _upstream_aggregate(
 ) -> list[BuildConcept]:
     """AGGREGATE: lineage args plus row-identity concepts of each function
     arg (property keys, rowset grain). Stops at inner aggregate boundaries
-    via `_walk_aggregate_grain_inputs`."""
+    via `_walk_aggregate_grain_inputs`.
+
+    An arg that is itself an inner aggregate (`avg(daily_rides) by
+    start_station.id`, daily_rides = `count(...) by ride_date`) contributes its
+    OUTPUT grain (ride_date) as a row-level input: that grain key is the join
+    bridge between the outer aggregate's grouping dimension (start_station.id)
+    and the inner aggregate's value. Without it the dimension is row-sourced
+    alone and the input merge cross-joins ON 1=1. Mirrors `_aggregate_input_grain`
+    (which already includes it) so the graph edges and the computed input grain
+    agree."""
     base = list(_lineage_args(concept, environment))
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
             if isinstance(arg, BuildConcept):
-                base.extend(_walk_aggregate_grain_inputs(arg, environment))
+                grain_inputs = _walk_aggregate_grain_inputs(arg, environment)
+                if grain_inputs:
+                    base.extend(grain_inputs)
+                elif arg.derivation == Derivation.AGGREGATE and arg.grain:
+                    # The arg is itself an inner aggregate; its output grain is the
+                    # join bridge (see docstring). A non-aggregate arg's grain is
+                    # NOT added — its own row identity already flows via the walk.
+                    base.extend(
+                        environment.concepts[g]
+                        for g in arg.grain.components
+                        if g in environment.concepts
+                    )
     return base
 
 
@@ -286,13 +308,33 @@ def _aggregate_input_grain(
         return frozenset()
     input_grain: set[str] = set(out_grain)
     for arg in concept.lineage.function.arguments:
-        if not isinstance(arg, BuildConcept):
+        # Descend into inline expressions: `sum(case when ... then
+        # web_sales.price else 0)` arrives as a Function, not a BuildConcept, so
+        # walking only top-level concept args would miss its fact inputs. Two
+        # aggregates over different facts at the same output grain would then
+        # look identical and co-source into one raw fact-to-fact join before
+        # aggregating (q2.1/q2.2 fan-out). A referenced concept that is itself a
+        # row-shape barrier (inner aggregate / rowset) has already collapsed to
+        # its own grain and is consumed opaquely — pulling its grain here would
+        # force a spurious regroup of the outer aggregate's input (q97: a
+        # grand-total sum over rowset outputs would dedup the rowset rows).
+        if isinstance(arg, BuildConcept):
+            sub_args = [arg]
+        elif isinstance(arg, BuildConceptArgs):
+            sub_args = [
+                c
+                for c in arg.concept_arguments
+                if isinstance(c, BuildConcept)
+                and c.derivation not in ROW_SHAPE_BARRIER_DERIVATIONS
+            ]
+        else:
             continue
-        grain_inputs = _walk_aggregate_grain_inputs(arg, environment)
-        if grain_inputs:
-            input_grain.update(c.address for c in grain_inputs)
-        elif arg.grain:
-            input_grain.update(arg.grain.components)
+        for sub in sub_args:
+            grain_inputs = _walk_aggregate_grain_inputs(sub, environment)
+            if grain_inputs:
+                input_grain.update(c.address for c in grain_inputs)
+            elif sub.grain:
+                input_grain.update(sub.grain.components)
     return frozenset(input_grain)
 
 
@@ -437,6 +479,10 @@ def _add_concept(
     rowset_name = None
     if isinstance(concept.lineage, BuildRowsetItem):
         rowset_name = concept.lineage.rowset.name
+    is_rename = (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+    )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(
@@ -455,6 +501,7 @@ def _add_concept(
             else _aggregate_input_grain(concept, environment, out_grain)
         ),
         keys=frozenset(concept.keys or set()),
+        is_rename=is_rename,
     )
 
     # Materialized root: a datasource provides this concept directly (a

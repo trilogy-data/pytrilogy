@@ -119,6 +119,30 @@ datasource b (other:other) grain(other) query '''select 1 as other''';
 auto filtered <- id ? id in other;
 """
 
+# Two aggregates at the SAME output grain (date_id) whose arguments are inline
+# CASE expressions over DIFFERENT facts (web vs catalog). Their input grains
+# must differ by the fact row key so partitioning keeps them in separate
+# streams; collapsing both to the output grain co-sources them into one raw
+# fact-to-fact join before aggregating (the q2.1/q2.2 fan-out).
+INLINE_CASE_MULTIFACT_MODEL = """
+key date_id int;
+property date_id.dow int;
+key web_line int;
+property web_line.web_price float;
+key cat_line int;
+property cat_line.cat_price float;
+
+datasource dates (date_id:date_id, dow:dow) grain (date_id)
+query '''select 1 as date_id, 1 as dow''';
+datasource web (web_line:web_line, web_price:web_price, date_id:date_id) grain (web_line)
+query '''select 1 as web_line, 2.0 as web_price, 1 as date_id''';
+datasource cat (cat_line:cat_line, cat_price:cat_price, date_id:date_id) grain (cat_line)
+query '''select 1 as cat_line, 3.0 as cat_price, 1 as date_id''';
+
+metric web_dow_sales <- sum(case when dow = 1 then web_price else 0.0 end) by date_id;
+metric cat_dow_sales <- sum(case when dow = 1 then cat_price else 0.0 end) by date_id;
+"""
+
 
 # ----- _aggregate_input_grain -----------------------------------------
 
@@ -151,6 +175,34 @@ class TestAggregateInputGrain:
         assert _aggregate_input_grain(m, benv, out_grain) == frozenset(
             {"local.order_id", "local.store_id"}
         )
+
+    def test_inline_case_argument_contributes_fact_grain(self):
+        """An aggregate over an inline expression (`sum(case .. web_price ..)`)
+        must derive its input grain from the concepts referenced *inside* the
+        expression, not just the output grain. The arg is a Function, not a
+        bare BuildConcept, so walking only top-level concept args would miss it
+        and collapse the input grain to the output grain (the q2 fan-out)."""
+        _, benv = _build(INLINE_CASE_MULTIFACT_MODEL)
+        m = benv.concepts["local.web_dow_sales"]
+        out_grain = frozenset(m.grain.components)
+        assert _aggregate_input_grain(m, benv, out_grain) == frozenset(
+            {"local.date_id", "local.web_line"}
+        )
+
+    def test_inline_case_aggregates_over_disjoint_facts_split_input_grain(self):
+        """Two same-output-grain aggregates whose inline arguments read
+        different facts must produce DIFFERENT input grains — the signal that
+        keeps them in separate streams instead of one raw fact-to-fact join."""
+        _, benv = _build(INLINE_CASE_MULTIFACT_MODEL)
+        web = benv.concepts["local.web_dow_sales"]
+        cat = benv.concepts["local.cat_dow_sales"]
+        out_grain = frozenset(web.grain.components)
+        web_input = _aggregate_input_grain(web, benv, out_grain)
+        cat_input = _aggregate_input_grain(cat, benv, out_grain)
+        assert web_input != cat_input
+        assert web_input > out_grain and cat_input > out_grain
+        assert "local.web_line" in web_input and "local.web_line" not in cat_input
+        assert "local.cat_line" in cat_input and "local.cat_line" not in web_input
 
     def test_count_metric_resolves_end_to_end(self):
         env, benv = _build(COUNT_MODEL)

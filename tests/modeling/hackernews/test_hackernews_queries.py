@@ -32,6 +32,10 @@ def test_adhoc02():
     statement = engine.parse_text(text)[-1]
     generated = BigqueryDialect().compile_statement(statement)
     assert "WITH RECURSIVE" in generated, generated
+    # The recursive root must join back to the post on `id`, not cross-join: the
+    # recursion's grain key `id` is also the post scan's key, so the connector
+    # must emit it as the join column (v4 dropped it -> FULL JOIN ... on 1=1).
+    assert "1=1" not in generated, generated
 
 
 def test_adhoc03():
@@ -44,6 +48,9 @@ def test_adhoc03():
     generated = BigqueryDialect().compile_statement(statement)
     # TODO: better test
     assert "WITH RECURSIVE" in generated, generated
+    # root_parent.* properties join the re-import scan on the recursive root id;
+    # the post columns join on the post id — neither should cross-join.
+    assert "1=1" not in generated, generated
 
 
 def test_adhoc04():

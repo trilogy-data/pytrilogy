@@ -105,13 +105,54 @@ def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
                 SourceType.WINDOW,
             )
         )
-    # BASIC
-    return parent.group_to_grain or parent.source.source_type in (
-        SourceType.GROUP,
+    # BASIC: a scalar projection over a GROUP parent folds into the GROUP's
+    # SELECT list (`sum(a)/sum(b)` rendered alongside the GROUP BY is valid SQL,
+    # and matches v3's single-CTE shape). This is only sound for the safe subset
+    # gated by `basic_fold_into_group_is_safe` (checked separately in `optimize`),
+    # never blanket. WINDOW/SUBSELECT/UNNEST parents still can't absorb a
+    # downstream row projection without changing row shape.
+    return parent.source.source_type in (
         SourceType.WINDOW,
         SourceType.SUBSELECT,
         SourceType.UNNEST,
     )
+
+
+def parent_is_group(parent: CTE) -> bool:
+    return parent.group_to_grain or parent.source.source_type == SourceType.GROUP
+
+
+def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
+    """Gate the BASIC-into-GROUP fold to the provably row-preserving subset.
+
+    Folding a row projection into a GROUP parent is only sound when it cannot
+    alter the parent's grouping. GROUP BY is rendered solely from
+    ``parent.group_concepts`` (which `apply_child_merge`'s BASIC path leaves
+    untouched), and a BASIC-merge child is row-preserving by construction (it is
+    not ``group_to_grain`` and its source is not GROUP, so it never regroups).
+    The remaining requirement is that every output the child *derives locally*
+    is a scalar row projection over the parent's ``{grain keys, aggregates}``:
+
+    - aggregate / window / unnest / recursive columns the child computes *anew*
+      can't ride in the parent's GROUP BY select, so they disqualify the fold;
+    - the same column kinds merely *passed through* from the GROUP parent are
+      fine (already computed there) -- e.g. a dimension projection that joins a
+      label onto a grouped fact carries the parent's aggregates straight through.
+
+    The caller has already established the GROUP is the child's sole parent, so
+    every child input necessarily resolves to a parent output."""
+    parent_outputs = parent.output_lcl
+    for column in cte.output_columns:
+        if column.address in parent_outputs:
+            continue  # passthrough of a parent grain key / aggregate -- safe
+        if (
+            column.derivation in UNSAFE_DERIVATIONS
+            or column.derivation == Derivation.AGGREGATE
+        ):
+            return False
+        if isinstance(column.lineage, (BuildAggregateWrapper, BuildWindowItem)):
+            return False
+    return True
 
 
 def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
@@ -224,6 +265,16 @@ class CollapseSingleParent(OptimizationRule):
         if parent_is_ineligible(parent, merge_mode):
             self.debug(
                 f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping"
+            )
+            return False, None
+        if (
+            merge_mode == MergeMode.BASIC
+            and parent_is_group(parent)
+            and not basic_fold_into_group_is_safe(parent, cte)
+        ):
+            self.debug(
+                f"BASIC fold of {cte.name} into GROUP parent {parent.name} is "
+                "not row-preserving (grain change or non-scalar output), skipping"
             )
             return False, None
 

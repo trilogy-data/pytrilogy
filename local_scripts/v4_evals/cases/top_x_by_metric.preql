@@ -1,7 +1,9 @@
-# v4 result regression, distilled from tests/stdlib/test_report.py::test_top_x_by_metric.
+# v4 parity case, distilled from tests/stdlib/test_report.py::test_top_x_by_metric.
 # @top_x_by_metric ranks orders by sum(amount), keeping the top 1 and bucketing
-# the rest into -1. v3 returns the top order's own amount (6.0); v4 collapses the
-# per-order grouping and returns the global total (10.0) for the top bucket.
+# the rest into -1. The top bucket must return order 3's own amount (6.0), not the
+# global total (10.0): the `sum(amount) by top_orders` aggregate must join the
+# fact scan to the window-derived top_orders dimension on the shared `order` key
+# (declared as a GroupInputContract bridge join key) instead of cross-joining.
 import std.report;
 import std.money;
 

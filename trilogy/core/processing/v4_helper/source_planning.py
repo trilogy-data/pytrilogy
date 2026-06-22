@@ -42,6 +42,9 @@ from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     extract_concept,
 )
+from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    covered_conditions,
+)
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
@@ -51,6 +54,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
     finalize_select_node,
 )
 from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
 from trilogy.core.processing.v4_helper.source_policy import (
     STRICT_SOURCE_POLICY,
     SourceAttempt,
@@ -68,6 +72,10 @@ class SourceRequest:
     conditions: BuildWhereClause | None = None
     depth: int = 0
     source_policy: SourcePolicy = STRICT_SOURCE_POLICY
+    # False inside a partial-completion sub-call, so completing a partial output
+    # cannot re-enter `_complete_partial_requested` on itself (infinite loop when
+    # the concept has no complete source).
+    complete_partials: bool = True
 
 
 @dataclass(frozen=True)
@@ -156,8 +164,41 @@ def _direct_source(
     )
 
 
+def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
+    """ROOT lineage sources of any *derived* condition row-arg.
+
+    A derived WHERE arg (e.g. `launch_date <- launch_jd`) is dropped by the
+    `filter_downstream` Steiner pass, so without its sourceable root in the
+    search the datasource that supplies it (`launch_info`) is scanned only for
+    join keys and the rendered WHERE references an unscanned column
+    (INVALID_REFERENCE). Pull those roots into the bridge search explicitly.
+
+    A row-shape-barrier arg (RECURSIVE/AGGREGATE/WINDOW/...) is deliberately
+    NOT inlined this way: pulling its roots lets the renderer recompute it from
+    lineage (a RECURSIVE collapses to a single-step CASE), giving wrong rows.
+    Such an arg must be sourced through its own node and joined — left to
+    `gen_root`'s `_resolve_root_condition_sources` fallback, which the bridge
+    triggers by failing to source the arg here."""
+    roots: list[BuildConcept] = []
+    for concept in _condition_row_concepts(request.conditions):
+        if concept.lineage is None:
+            continue
+        if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+            continue
+        roots.extend(
+            source for source in concept.sources if source.derivation == Derivation.ROOT
+        )
+    return roots
+
+
 def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
-    return _concepts_with_grain_keys(_requested_concepts(request), request.environment)
+    return _concepts_with_grain_keys(
+        unique(
+            _requested_concepts(request) + _condition_arg_lineage_roots(request),
+            "address",
+        ),
+        request.environment,
+    )
 
 
 def _single_source_covers_completely(request: SourceRequest) -> bool:
@@ -188,15 +229,32 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
         return None
     search_concepts = _search_concepts_for_bridge(request)
     requested = {c.address for c in _requested_concepts(request)}
-    condition_options = (request.conditions, None) if request.conditions else (None,)
+    # (search_conditions, allow_intersection), most-specific first. The covered
+    # option mirrors v3's complete-where retry: when the full condition spans
+    # datasources (e.g. `city='USSFO' AND native_status IS NOT NULL`, with city
+    # owned by a `complete where` partial and native_status by a joined table),
+    # pruning on the full condition disconnects the joined table. Retrying on
+    # only the *covered* atoms (those implied by some datasource's
+    # `non_partial_for`) with `allow_intersection` keeps the foreign table and
+    # promotes the complete-where partial over the full union.
+    condition_options: list[tuple[BuildWhereClause | None, bool]]
+    if request.conditions is not None:
+        condition_options = [(request.conditions, False)]
+        covered = covered_conditions(request.conditions, request.environment)
+        if covered is not None:
+            condition_options.append((covered, True))
+        condition_options.append((None, False))
+    else:
+        condition_options = [(None, False)]
     for filter_downstream in (True, False):
-        for search_conditions in condition_options:
+        for search_conditions, allow_intersection in condition_options:
             graph = _resolve_bridge_graph(
                 search_concepts,
                 request,
                 attempt=attempt,
                 filter_downstream=filter_downstream,
                 search_conditions=search_conditions,
+                allow_intersection=allow_intersection,
             )
             if graph is None:
                 continue
@@ -210,11 +268,42 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             # through a single partial datasource, dropping the complete-key
             # merge `_direct_source` would otherwise build (refresh of a
             # count-by-X persist whose output also carries a `data_through`).
-            if ({c.address for c in bridged} - requested) or _has_union_datasource(
-                graph
+            # ...or when it selected a `complete where` partial whose predicate
+            # the query implies (an exact-match source). `_direct_source` would
+            # otherwise fall through to the full table, since the partial is
+            # rejected by the strict attempt and the full condition disconnects
+            # the partial's join partner from the graph (q geography exact-match).
+            if (
+                ({c.address for c in bridged} - requested)
+                or _has_union_datasource(graph)
+                or _graph_has_condition_matched_partial(
+                    graph, request.conditions, request.environment
+                )
             ):
                 return BridgePlan(concepts=bridged, graph=graph)
     return None
+
+
+def _graph_has_condition_matched_partial(
+    graph: ReferenceGraph,
+    conditions: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> bool:
+    """A `complete where <c>` partial datasource in `graph` whose predicate the
+    query conditions imply — pre-filtered to exactly the requested rows, so it
+    is the authoritative (and smaller) source over a full table."""
+    if conditions is None:
+        return False
+    for ds in graph.datasources.values():
+        if (
+            isinstance(ds, BuildDatasource)
+            and ds.non_partial_for is not None
+            and condition_implies(
+                conditions.conditional, ds.non_partial_for.conditional
+            )
+        ):
+            return True
+    return False
 
 
 def _has_union_datasource(graph: ReferenceGraph) -> bool:
@@ -231,6 +320,7 @@ def _resolve_bridge_graph(
     attempt: SourceAttempt,
     filter_downstream: bool,
     search_conditions: BuildWhereClause | None,
+    allow_intersection: bool = False,
 ) -> ReferenceGraph | None:
     search_graph = request.graph.copy()
     _inject_union_datasources(search_graph, concepts, request.environment)
@@ -238,6 +328,7 @@ def _resolve_bridge_graph(
         search_graph,
         attempt.criteria,
         conditions=search_conditions,
+        allow_intersection=allow_intersection,
     )
     # Single-row / abstract-grain concepts (a `<*>` watermark, a constant) join
     # by cross product, never by a key, so they must not drive the connectivity
@@ -343,6 +434,26 @@ def _inject_union_datasources(
     graph.add_edges_from(union_edges)
 
 
+def _concept_has_non_basic_merge_origin(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> bool:
+    """`concept` is a merge key whose value comes from a non-BASIC (recursive /
+    aggregate) origin — its real lineage lives in `alias_origin_lookup` under the
+    concept's address or a pseudonym, while `environment.concepts` holds a demoted
+    lineage-less ROOT. Such a key is materialized by `_derived_connector_nodes`,
+    never a raw scan. A BASIC merge origin (`p_last <- split(p_name)`) computes
+    inline on the scan, so it is excluded."""
+    for alias in (concept.address, *concept.pseudonyms):
+        origin = environment.alias_origin_lookup.get(alias)
+        if (
+            origin is not None
+            and origin.lineage is not None
+            and origin.derivation != Derivation.BASIC
+        ):
+            return True
+    return False
+
+
 def _bridge_has_non_basic_merge(
     plan: BridgePlan, environment: BuildEnvironment
 ) -> bool:
@@ -351,16 +462,10 @@ def _bridge_has_non_basic_merge(
     Such a key is materialized by `_derived_connector_nodes`, not a raw scan, so
     the datasource-registration gap-fill must stand down for that bridge.
     """
-    for concept in plan.concepts:
-        for alias in (concept.address, *concept.pseudonyms):
-            origin = environment.alias_origin_lookup.get(alias)
-            if (
-                origin is not None
-                and origin.lineage is not None
-                and origin.derivation != Derivation.BASIC
-            ):
-                return True
-    return False
+    return any(
+        _concept_has_non_basic_merge_origin(concept, environment)
+        for concept in plan.concepts
+    )
 
 
 def _datasource_nodes_for_bridge(
@@ -433,6 +538,24 @@ def _datasource_nodes_for_bridge(
         concept_nodes = sorted(set(concept_nodes))
         if not concept_nodes:
             continue
+        # Pass the WHERE only to a `complete where` partial the query implies, so
+        # `create_select_node_candidate` clears its partial flag (partial_is_full)
+        # and applies the predicate on the scan -- otherwise its outputs stay
+        # partial and `_complete_partial_requested` joins the full table back in
+        # (geography exact-match). Other sources get the condition post-merge.
+        ds_obj = plan.graph.datasources.get(ds_node)
+        ds_conditions = (
+            request.conditions
+            if (
+                isinstance(ds_obj, BuildDatasource)
+                and ds_obj.non_partial_for is not None
+                and request.conditions is not None
+                and condition_implies(
+                    request.conditions.conditional, ds_obj.non_partial_for.conditional
+                )
+            )
+            else None
+        )
         candidate = create_select_node_candidate(
             ds_node,
             concept_nodes,
@@ -440,7 +563,7 @@ def _datasource_nodes_for_bridge(
             g=plan.graph,
             environment=request.environment,
             depth=request.depth + 1,
-            conditions=None,
+            conditions=ds_conditions,
         )
         parents.append(
             finalize_select_node(
@@ -502,15 +625,18 @@ def _derived_connector_nodes(
                 or origin.address in history.connectors_in_progress
             ):
                 continue
-            # Carry the connector's grain keys it still owes the bridge (e.g. a
-            # recursion keyed by `id` must emit `id`, not group it away) so the
-            # merge has the columns the consumer reads, not just the join key.
+            # Carry the connector's grain keys (e.g. a recursion keyed by `id`
+            # must emit `id`, not group it away) so the merge can join the
+            # connector back to the consumer on that key. The key must be emitted
+            # even when another parent already covers it — it IS the join column;
+            # dropping it leaves the merge with no shared key and a 1=1 cross join
+            # (hackernews: the recursion's `id` is also the post scan's `id`).
             mandatory = unique(
                 [origin]
                 + [
                     env.concepts[address]
                     for address in origin.grain.components
-                    if address in env.concepts and address not in covered
+                    if address in env.concepts
                 ],
                 "address",
             )
@@ -614,6 +740,7 @@ def _local_concept_nodes_for_datasource(
     bridge_addresses: set[str],
     environment: BuildEnvironment,
 ) -> list[str]:
+    datasource = graph.datasources.get(ds_node)
     queue: deque[str] = deque([ds_node])
     seen: set[str] = {ds_node}
     concepts: dict[str, str] = {}
@@ -629,6 +756,23 @@ def _local_concept_nodes_for_datasource(
                 continue
             address = _concept_node_address(neighbor)
             canonical = environment.canonical_concepts.get(address)
+            # A recursive/aggregate merge key (`recursive_parent` merged into a
+            # dimension key) is reachable from this scan only through its
+            # reverse-lineage (the scan provides its recursive INPUTS), but its
+            # value is materialized by `_derived_connector_nodes`, not the scan.
+            # Attach it here only when this datasource genuinely binds it as a
+            # column (the property-side re-import scan keyed on it); otherwise the
+            # bridge would emit it from the input scan and strand the connector.
+            if (
+                canonical is not None
+                and _concept_has_non_basic_merge_origin(canonical, environment)
+                and not (
+                    datasource is not None
+                    and _datasource_can_output(datasource, address)
+                )
+            ):
+                queue.append(neighbor)
+                continue
             # Bridge addresses are keyed by `.address`, but a derived concept's
             # graph node uses its `.canonical_address` (a `_virt_func_*` name) —
             # so a derived merge key (`p_last <- split(p_name)`) bound to this
@@ -691,6 +835,68 @@ def _merge_component_sources(
         conditions=(
             request.conditions.conditional if request.conditions is not None else None
         ),
+    )
+
+
+def _complete_partial_requested(
+    request: SourceRequest, node: StrategyNode
+) -> StrategyNode:
+    """Upgrade a requested output that the bridge could only bind *partially*.
+
+    On a strict (non-partial) pass a bridge can still carry a requested concept
+    as a partial column -- e.g. the `~vehicle.name` merge key on `launch_info`:
+    every launch has one, but the column is not vehicle.name's authoritative
+    domain, so it is flagged partial and the final-output guard rejects it. v3's
+    sourcing loop completes such a key against its dimension source (`lv_info`)
+    and joins; mirror that here. If no *complete* source exists the node is left
+    unchanged -- the genuinely-partial case stays for the partial passes / guard.
+    """
+    requested = {c.address for c in _requested_concepts(request)}
+    partial_requested = [c for c in node.partial_concepts if c.address in requested]
+    if not partial_requested:
+        return node
+    partial_addresses = {c.address for c in partial_requested}
+    # Carry the WHERE onto the completing dimension when every column it
+    # references is one we are completing (e.g. `vehicle.name like '%Falcon%'`);
+    # otherwise the unfiltered dimension would re-introduce keys the bridge's
+    # filter excluded. If the filter spans other columns the completion source
+    # cannot satisfy it, so leave it on the bridge side only.
+    completion_conditions = None
+    if (
+        request.conditions is not None
+        and {c.address for c in request.conditions.row_arguments} <= partial_addresses
+    ):
+        completion_conditions = request.conditions
+    completion = plan_source(
+        SourceRequest(
+            outputs=partial_requested,
+            environment=request.environment,
+            graph=request.graph,
+            history=request.history,
+            conditions=completion_conditions,
+            depth=request.depth + 1,
+            source_policy=STRICT_SOURCE_POLICY,
+            complete_partials=False,
+        )
+    )
+    if completion is None:
+        return node
+    completion_partial = {c.address for c in completion.partial_concepts}
+    if any(c.address in completion_partial for c in partial_requested):
+        return node
+    inputs = unique(
+        [c for parent in (completion, node) for c in parent.usable_outputs],
+        "address",
+    )
+    # Anchor the complete (and filtered) dimension and outer-join the bridge, so
+    # the requested key is non-partial and every surviving dimension value is
+    # kept -- matching v3's `lv_info LEFT JOIN launch_info` shape.
+    return MergeNode(
+        input_concepts=inputs,
+        output_concepts=node.output_concepts,
+        environment=request.environment,
+        parents=[completion, node],
+        depth=request.depth,
     )
 
 
@@ -808,6 +1014,12 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
     for ds in environment.datasources.values():
         if not isinstance(ds, BuildDatasource) or ds.non_partial_for is None:
             continue
+        # Only datasources exposed as a standalone scan in this graph are
+        # addressable here. A union *member* (e.g. `store_sales_unified`) lives
+        # in the environment but the graph only carries the union node, so
+        # scanning it directly would KeyError -- leave it to the union planner.
+        if f"ds~{ds.name}" not in request.graph.datasources:
+            continue
         if not condition_implies(
             conditions.conditional, ds.non_partial_for.conditional
         ):
@@ -815,7 +1027,17 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
         if not output_canonicals.issubset(ds_canonicals):
             continue
-        if not condition_canonicals.issubset(ds_canonicals):
+        # The scan must still apply any residual predicate beyond
+        # `non_partial_for`, so its columns must be present -- UNLESS
+        # `non_partial_for` also implies the query condition (the two are
+        # equivalent). Then the datasource is pre-filtered to exactly the
+        # requested rows, there is no residual WHERE, and the filter columns
+        # (e.g. `name` for a `complete where name = 'Sarah'` source that only
+        # binds customer_id/revenue) need not be bound.
+        residual_free = condition_implies(
+            ds.non_partial_for.conditional, conditions.conditional
+        )
+        if not residual_free and not condition_canonicals.issubset(ds_canonicals):
             continue
         ds_grain_canonicals = {
             environment.concepts[c].canonical_address
@@ -916,7 +1138,17 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 attempt.accepts_partial
                 or _bridge_parents_cover(parents, requested_addresses)
             ):
-                return _merge_component_sources(request, parents, bridge_plan.concepts)
+                merged = _merge_component_sources(
+                    request, parents, bridge_plan.concepts
+                )
+                if (
+                    merged is not None
+                    and not attempt.accepts_partial
+                    and request.complete_partials
+                ):
+                    merged = _complete_partial_requested(request, merged)
+                if merged is not None:
+                    return merged
         direct = _direct_source(request, attempt)
         if direct is not None:
             return direct
