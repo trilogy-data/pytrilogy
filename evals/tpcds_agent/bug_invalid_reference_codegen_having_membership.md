@@ -1,6 +1,23 @@
 # Bug: "Invalid reference string" codegen crash (dangling CTE) on membership-in-HAVING + window
 
-**Status:** FIXED 2026-06-19 (found 2026-06-06)
+**Status:** FIXED 2026-06-19 (v3); FIXED 2026-06-22 (v4 discovery) (found 2026-06-06)
+
+## v4 discovery fix (2026-06-22)
+
+The v3 fix never reached the v4 planner, so under `CONFIG.use_v4_discovery` the
+membership-in-HAVING tests regressed (`test_membership_in_having_*`, untracked).
+Two v4-only gaps, both mirroring existing v3 behavior:
+
+1. `query_processor._get_query_node_v4` applied the HAVING by wrapping a
+   `SelectNode` but never called `append_existence_check` — so the HAVING
+   subselect rendered a dangling CTE. Added the same idempotent call the v3 path
+   uses.
+2. A *projected* membership flag (`--x in set as flag`, a BASIC concept whose
+   lineage is a `BuildSubselectComparison`) had its existence set dropped:
+   `strategy_builder._group_existence_concepts` only collected existence args
+   from injected WHERE atoms and `BuildFilterItem` lineage. Added a
+   `BuildConceptArgs` branch (mirrors v3 `gen_basic_node`) so the set is wired as
+   the group's existence parent.
 
 ## Fix (2026-06-19)
 

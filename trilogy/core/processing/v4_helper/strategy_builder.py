@@ -23,6 +23,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConceptArgs,
     BuildFilterItem,
     BuildGrain,
     BuildWhereClause,
@@ -154,6 +155,13 @@ def _group_existence_concepts(
         visited.add(concept.address)
         if isinstance(concept.lineage, BuildFilterItem):
             for arg_group in concept.lineage.where.existence_arguments or ():
+                _add(tuple(arg_group))
+        # A BASIC concept whose lineage is (or wraps) a membership comparison
+        # (`x in <set>`, e.g. a projected `--x in set as flag`) carries the set
+        # as a direct existence arg; without this its subselect renders against a
+        # dangling CTE (INVALID_REFERENCE_BUG). Mirrors v3 gen_basic_node.
+        elif isinstance(concept.lineage, BuildConceptArgs):
+            for arg_group in concept.lineage.existence_arguments or ():
                 _add(tuple(arg_group))
         if concept.lineage is not None:
             stack.extend(concept.lineage.concept_arguments)

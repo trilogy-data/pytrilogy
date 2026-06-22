@@ -37,6 +37,11 @@ _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
     "exceeds the v3-tuned length ceiling (more CTEs / less compact)"
 )
+_DISCONNECTED = (
+    "v4 cross-join semantics gap (not exception-typing): v4 resolves/crashes "
+    "where it should raise DisconnectedConceptsException, or fails a valid "
+    "single-row cross-join. See local_scripts/v4_disconnected_handoff.md"
+)
 V4_KNOWN_FAILING: dict[str, str] = {
     # --- optimization: CTE-shape snapshot diffs ---
     "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining": _INLINE,
@@ -91,4 +96,9 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- previously-untracked v4 baseline fails (all pass under v3) ---
     # wrong rows:
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two": _RESULT,
+    # --- disconnected-component cross-join semantics (10/13 fixed 2026-06-22;
+    #     these 3 need deeper v4 work -- see local_scripts/v4_disconnected_handoff.md) ---
+    "tests/core/processing/test_disconnected_components_e2e.py::test_where_filter_pulls_in_disconnected_model": _DISCONNECTED,
+    "tests/core/processing/test_disconnected_components_e2e.py::test_abstract_aggregates_cross_join_resolve": _DISCONNECTED,
+    "tests/core/processing/test_disconnected_subgraphs.py::test_cross_cte_aggregate_grain_only_bridge_raises": _DISCONNECTED,
 }

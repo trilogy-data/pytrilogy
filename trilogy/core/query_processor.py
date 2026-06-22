@@ -15,6 +15,7 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
     UnresolvableQueryException,
 )
 from trilogy.core.graph_models import ReferenceGraph
@@ -65,6 +66,10 @@ from trilogy.core.processing.concept_strategies_v3 import (
 from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
+)
+from trilogy.core.processing.discovery_utility import (
+    disconnected_components,
+    format_disconnected_subgraphs_error,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -580,6 +585,20 @@ def _get_query_node_v4(
     )
     ds = info.strategy_node
     if ds is None:
+        # When the requested concepts span unconnected models, surface the typed
+        # subgraph error (mirrors the v3 get_priority_concept dead-end) rather
+        # than an opaque "could not resolve" dump. The required set is outputs +
+        # filter args -- a WHERE on an unrelated model also forces the split.
+        concepts = list(build_statement.output_components)
+        seen = {c.address for c in concepts}
+        if conditions:
+            concepts += [c for c in conditions.row_arguments if c.address not in seen]
+        subgraphs = disconnected_components(build_environment, concepts, graph)
+        if len(subgraphs) > 1:
+            raise DisconnectedConceptsException(
+                format_disconnected_subgraphs_error(subgraphs),
+                subgraphs=[[c.address for c in group] for group in subgraphs],
+            )
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>"
             for c in build_statement.output_components
@@ -603,6 +622,12 @@ def _get_query_node_v4(
             environment=ds.environment,
             partial_concepts=ds.partial_concepts,
             conditions=final,
+        )
+        # Source any existence (`x in <set>`) args onto the HAVING-carrying node,
+        # mirroring the v3 path -- without this the membership subselect renders a
+        # dangling CTE reference (INVALID_REFERENCE_BUG). Idempotent.
+        append_existence_check(
+            ds, build_environment, graph, build_statement.having_clause, history
         )
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components
