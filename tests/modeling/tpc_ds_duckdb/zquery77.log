@@ -1,6 +1,6 @@
 query_id = "77"
 generator = "v3"
-gen_length = 7397
+gen_length = 7487
 preql_size = 3148
 comp_size = 3129
 generated_sql = """
@@ -88,20 +88,20 @@ GROUP BY
 hard as (
 SELECT
     \"rambunctious\".\"ws_grouped_ws_profit\" - cast(coalesce(\"protective\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"___tvf_arm_2_u_profit\",
-    \"rambunctious\".\"ws_grouped_ws_wp_id\" as \"___tvf_arm_2_u_id\",
     :___tvf_arm_2_u_channel as \"___tvf_arm_2_u_channel\",
     cast(\"rambunctious\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"___tvf_arm_2_u_sales\",
-    cast(coalesce(\"protective\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"___tvf_arm_2_u_returns\"
+    cast(coalesce(\"protective\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"___tvf_arm_2_u_returns\",
+    coalesce(\"protective\".\"wr_grouped_wr_wp_id\",\"rambunctious\".\"ws_grouped_ws_wp_id\") as \"___tvf_arm_2_u_id\"
 FROM
     \"rambunctious\"
     LEFT OUTER JOIN \"protective\" on \"rambunctious\".\"ws_grouped_ws_wp_id\" = \"protective\".\"wr_grouped_wr_wp_id\"),
 kaput as (
 SELECT
     \"abhorrent\".\"ss_grouped_ss_profit\" - cast(coalesce(\"scrawny\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"___tvf_arm_1_u_profit\",
-    \"abhorrent\".\"ss_grouped_ss_store_id\" as \"___tvf_arm_1_u_id\",
     :___tvf_arm_1_u_channel as \"___tvf_arm_1_u_channel\",
     cast(\"abhorrent\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"___tvf_arm_1_u_sales\",
-    cast(coalesce(\"scrawny\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"___tvf_arm_1_u_returns\"
+    cast(coalesce(\"scrawny\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"___tvf_arm_1_u_returns\",
+    coalesce(\"abhorrent\".\"ss_grouped_ss_store_id\",\"scrawny\".\"sr_grouped_sr_store_id\") as \"___tvf_arm_1_u_id\"
 FROM
     \"abhorrent\"
     LEFT OUTER JOIN \"scrawny\" on \"abhorrent\".\"ss_grouped_ss_store_id\" = \"scrawny\".\"sr_grouped_sr_store_id\"),

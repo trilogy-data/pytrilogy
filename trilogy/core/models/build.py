@@ -2280,10 +2280,34 @@ class Factory:
         self.grain = grain or Grain()
         self.environment = environment
         # Build-scoped joins (query JOIN clauses plus environment MERGE
-        # statements) collapse here: every source address is mapped to its
-        # canonical target (scoped_merge_map) so `_build_concept` returns the
-        # target instead of the source. scoped_partial_sources marks the
-        # LEFT-join side whose datasource binding must be partial.
+        # statements) relate two key concepts. TWO mechanisms do this, split by
+        # JOIN SEMANTICS (not by key kind — a root-keyed FULL still needs
+        # coalesce, a derived-keyed INNER still substitutes):
+        #
+        #   * SUBSTITUTION (scoped_merge_map -> `_build_concept` swap): the
+        #     source address is replaced by its canonical target everywhere
+        #     (refs, grain components, datasource column bindings). Correct ONLY
+        #     when the key equality holds on EVERY output row, so one logical key
+        #     can render from one physical column: INNER, global `merge`, the
+        #     FULL canonical-key registry, and dependent-grain collapse.
+        #
+        #   * IDENTITY + pseudonym + coalesce (scoped_merge_sources +
+        #     scoped_outer_identity_sources, coalesced at the merge node): the
+        #     collapsed-away key keeps its OWN address and a pseudonym back to the
+        #     canonical, and the merge node coalesces the distinct physical
+        #     columns. Required when the correspondence MAY be ABSENT on some
+        #     rows (LEFT / FULL across distinct columns), where the output key is
+        #     a row-by-row `coalesce` of both columns and substitution — having
+        #     destroyed one column — could not represent it.
+        #
+        # KNOWN INCOMPLETENESS: for a ROOT OUTER key both run — the output
+        # concept stays projectable via identity (alias_origin_lookup) but its
+        # DATASOURCE BINDING is still substituted to the canonical. So the FULL
+        # coalesce attaches only to the canonical side; projecting the authored
+        # source key renders its raw (NULL-on-unmatched) column. Rowset keys
+        # keep distinct bindings and coalesce on either side. See the strict
+        # xfail in tests/test_scoped_join_permutations.py. scoped_partial_sources
+        # marks the LEFT-join side whose datasource binding must be partial.
         self.scoped_joins: list[tuple[str, str, JoinType]] = scoped_joins or []
         self.scoped_merge_map, self.scoped_partial_sources = _build_scoped_merge_index(
             self.scoped_joins
@@ -2329,24 +2353,15 @@ class Factory:
             c = environment.concepts.get(addr)
             return c is None or c.derivation in (Derivation.ROOT, Derivation.ROWSET)
 
-        def _is_rowset_pair(a: str, b: str) -> bool:
-            ca = environment.concepts.get(a)
-            cb = environment.concepts.get(b)
-            if ca is None or cb is None:
-                return False
-            if not (
-                ca.derivation is Derivation.ROWSET
-                and cb.derivation is Derivation.ROWSET
-            ):
-                return False
-            return True
-
         self.scoped_merge_sources: set[str] = set()
-        # Rowset OUTER-join keys keep their own identity + a pseudonym back to
-        # the canonical key so both rowset subgraphs stay sourceable. Partiality
-        # is still owned by the rowset machinery, not scoped_partial_derived, so
-        # these are tracked separately and subtracted below.
-        self.scoped_rowset_identity_sources: set[str] = set()
+        # OUTER-join keys with a datasource/rowset binding (ROOT/ROWSET) keep
+        # their own identity + a pseudonym back to the canonical key so both
+        # joined subgraphs stay sourceable; the merge node coalesces the physical
+        # key columns. Their partiality is carried by that binding / the rowset
+        # machinery, NOT scoped_partial_derived, so they are tracked here and
+        # subtracted from it below. (A *derived* key has no binding to carry
+        # partiality, so it stays in scoped_partial_derived and out of this set.)
+        self.scoped_outer_identity_sources: set[str] = set()
         scoped_pseudonym_sources: set[str] = set()
         for s, t, jt in self.scoped_joins:
             if jt is JoinType.INNER:
@@ -2354,39 +2369,28 @@ class Factory:
                 scoped_pseudonym_sources.add(s)
             elif jt is JoinType.LEFT_OUTER and not _is_binding_keyed(t):
                 # LEFT collapses target->source; the target is the partial side.
-                # Only a derived target lacks a binding to carry partiality and
-                # needs the merge mechanism (a root/rowset target keeps the
-                # column-partial / rowset machinery).
+                # A derived target lacks a binding to carry partiality, so it
+                # needs the merge mechanism and stays in scoped_partial_derived.
                 self.scoped_merge_sources.add(t)
                 scoped_pseudonym_sources.add(t)
             elif jt is JoinType.LEFT_OUTER:
-                # LEFT collapses target->source. A rowset target needs the same
-                # identity/pseudonym wiring as a derived target to remain
-                # sourceable; rowset_node still marks its partial key.
-                if _is_rowset_pair(s, t):
-                    self.scoped_merge_sources.add(t)
-                    self.scoped_rowset_identity_sources.add(t)
-                    scoped_pseudonym_sources.add(t)
-                target_concept = environment.concepts.get(s)
-                if (
-                    target_concept is not None
-                    and target_concept.derivation is Derivation.UNNEST
-                ):
-                    scoped_pseudonym_sources.add(t)
+                # Binding-keyed (root/rowset) target: same identity/pseudonym
+                # wiring so it stays sourceable, but its partiality is owned by
+                # the binding / rowset machinery (excluded from partial_derived).
+                self.scoped_merge_sources.add(t)
+                self.scoped_outer_identity_sources.add(t)
+                scoped_pseudonym_sources.add(t)
             elif jt is JoinType.FULL and not _is_binding_keyed(s):
-                # FULL collapses source->target exactly like INNER, so the
+                # FULL collapses source->target exactly like INNER, so a derived
                 # collapsed-away source needs the merge mechanism to stay
-                # sourceable from its own derivation (a derived key has no
-                # datasource binding). Gated to a derived key — root/rowset FULL
-                # keeps the existing canonical-column machinery. The both-sides
-                # coalesce of the FULL key is wired at the merge node.
+                # sourceable from its own derivation (no datasource binding). The
+                # both-sides coalesce of the FULL key is wired at the merge node.
                 self.scoped_merge_sources.add(s)
-            elif jt is JoinType.FULL and _is_rowset_pair(s, t):
-                # FULL collapses source->target. Keep the rowset source's own
-                # identity and a mutual pseudonym so either authored side can
-                # render from the merge-node coalesce.
+            elif jt is JoinType.FULL:
+                # Binding-keyed source: keep its own identity + a mutual pseudonym
+                # so either authored side renders from the merge-node coalesce.
                 self.scoped_merge_sources.add(s)
-                self.scoped_rowset_identity_sources.add(s)
+                self.scoped_outer_identity_sources.add(s)
                 scoped_pseudonym_sources.add(s)
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
@@ -2406,11 +2410,11 @@ class Factory:
             # when the links are present.
             pending: list[tuple[str, str]] = []
             for source in scoped_pseudonym_sources:
-                # Rowset FULL sources keep identity/pseudonym wiring; every
-                # other FULL source keeps the canonical-column machinery.
+                # A binding-keyed FULL source keeps its identity/pseudonym wiring;
+                # a derived FULL source keeps the canonical-column machinery.
                 if source not in self.scoped_merge_map or (
                     source in full_join_sources
-                    and source not in self.scoped_rowset_identity_sources
+                    and source not in self.scoped_outer_identity_sources
                 ):
                     continue
                 canonical_addr = self.scoped_merge_map[source]
@@ -3631,7 +3635,7 @@ class Factory:
             scoped_partial_sources=set(self.scoped_partial_sources),
             scoped_partial_derived=(
                 (self.scoped_merge_sources & self.scoped_partial_sources)
-                - self.scoped_rowset_identity_sources
+                - self.scoped_outer_identity_sources
             ),
             scoped_full_join_keys=set(self.scoped_full_join_keys),
         )

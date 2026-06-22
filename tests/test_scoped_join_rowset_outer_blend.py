@@ -98,7 +98,12 @@ def test_left_join_blends_two_rowset_measures(models: Path):
 
 
 def test_left_join_optional_key_projects_preserved_value(models: Path):
-    text = _BLEND.replace("select a.reg, a.amt_a, b.amt_b", "select b.reg, a.amt_a, b.amt_b")
+    # Projecting the OPTIONAL side's key (b.reg) under LEFT still yields the
+    # preserved value: 'west' has no returns row but its key resolves from the
+    # sales (preserved) side.
+    text = _BLEND.replace(
+        "select a.reg, a.amt_a, b.amt_b", "select b.reg, a.amt_a, b.amt_b"
+    ).replace("order by a.reg asc", "order by b.reg asc")
     res = _executor(models).execute_text(text.format(join_type="left"))[0]
     assert [tuple(r) for r in res.fetchall()] == [
         ("east", 10.0, 1.0),

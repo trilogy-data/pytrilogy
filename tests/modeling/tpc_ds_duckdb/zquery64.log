@@ -1,6 +1,6 @@
 query_id = "64"
 generator = "v3"
-gen_length = 10675
+gen_length = 10738
 preql_size = 3676
 comp_size = 3783
 generated_sql = """
@@ -144,11 +144,9 @@ GROUP BY
 divergent as (
 SELECT
     \"abhorrent\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
-    \"abhorrent\".\"agg_99_item_sk_99\" as \"agg_99_item_sk_99\",
     \"abhorrent\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
     \"abhorrent\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
     \"abhorrent\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
-    \"abhorrent\".\"agg_99_store_sk_99\" as \"agg_99_store_sk_99\",
     \"abhorrent\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
     \"kaput\".\"b_city\" as \"b_city\",
     \"kaput\".\"b_sn\" as \"b_sn\",
@@ -160,7 +158,9 @@ SELECT
     \"kaput\".\"c_zip\" as \"c_zip\",
     \"kaput\".\"p_name\" as \"p_name\",
     \"kaput\".\"s_name\" as \"s_name\",
-    \"kaput\".\"s_zip\" as \"s_zip\"
+    \"kaput\".\"s_zip\" as \"s_zip\",
+    coalesce(\"abhorrent\".\"agg_99_item_sk_99\",\"kaput\".\"ss_item_id\") as \"agg_99_item_sk_99\",
+    coalesce(\"abhorrent\".\"agg_99_store_sk_99\",\"kaput\".\"ss_store_id\") as \"agg_99_store_sk_99\"
 FROM
     \"kaput\"
     LEFT OUTER JOIN \"abhorrent\" on \"kaput\".\"ss_customer_address_id\" = \"abhorrent\".\"agg_99_c_addr_99\" AND \"kaput\".\"ss_item_id\" = \"abhorrent\".\"agg_99_item_sk_99\" AND \"kaput\".\"ss_sale_address_id\" = \"abhorrent\".\"agg_99_b_addr_99\" AND \"kaput\".\"ss_store_id\" = \"abhorrent\".\"agg_99_store_sk_99\")
