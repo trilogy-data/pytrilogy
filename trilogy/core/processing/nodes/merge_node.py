@@ -488,9 +488,10 @@ class MergeNode(StrategyNode):
             final_datasets,
             key=lambda ds: (null_status.get(ds.identifier, 0), ds.identifier),
         )
-        # Scoped LEFT merges can need both the generated key and its raw-source
-        # pseudonym after an intermediate merge. Carry those columns forward so
-        # later joins render from the raw parent instead of recomputing UNNEST.
+        # A scoped merge (LEFT or FULL) can need both the generated key and its
+        # raw-source pseudonym after an intermediate merge. Carry those columns
+        # forward so later joins render from the raw parent instead of
+        # recomputing an (empty) UNNEST.
         scoped_partial_sources = self.environment.scoped_partial_sources
         output_addresses = {c.address for c in self.output_concepts}
         passthrough_outputs: list[BuildConcept] = []
@@ -518,22 +519,6 @@ class MergeNode(StrategyNode):
 
         final_output_concepts = unique(
             self.output_concepts + passthrough_outputs, "address"
-        )
-        final_hidden_concepts = self.hidden_concepts
-        passthrough_partial_addresses = {
-            c.address
-            for c in passthrough_outputs
-            for source in final_datasets
-            if c.address in {p.address for p in source.partial_concepts}
-        }
-        final_partial_concepts = unique(
-            self.partial_concepts
-            + [
-                c
-                for c in passthrough_outputs
-                if c.address in passthrough_partial_addresses
-            ],
-            "address",
         )
 
         source_map = resolve_concept_map(
@@ -603,11 +588,11 @@ class MergeNode(StrategyNode):
             nullable_concepts=[
                 x for x in final_output_concepts if x.address in nullable_concepts
             ],
-            partial_concepts=final_partial_concepts,
+            partial_concepts=self.partial_concepts,
             rollup_concepts=rollup_concepts,
             force_group=force_group,
             condition=self.conditions,
-            hidden_concepts=final_hidden_concepts,
+            hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
         )
         return qds
