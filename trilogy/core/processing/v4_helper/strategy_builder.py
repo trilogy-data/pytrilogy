@@ -453,6 +453,25 @@ def _parent_nodes_for(
     return parents
 
 
+def _drop_constant_only_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+    """Drop a parent that supplies only constants (e.g. the `by
+    __preql_internal.all_rows` grand-total marker, a `SELECT 1`). A constant is a
+    literal, never a join key — merging it as a row parent only cross-joins it ON
+    1=1, and the grand-total marker isn't even a needed output. Keep it only when
+    it is the sole parent (a bare constant select). Mirrors v3, which drops
+    ALL_ROWS_CONCEPT from the concepts it sources (group_node
+    `_resolve_parent_sources`)."""
+    non_constant = [
+        p
+        for p in parents
+        if not (
+            p.output_concepts
+            and all(c.derivation == Derivation.CONSTANT for c in p.output_concepts)
+        )
+    ]
+    return non_constant if non_constant else parents
+
+
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
@@ -637,6 +656,9 @@ def _pre_merge_parents(
     yields `Referenced table "X" not found` binder errors when the SELECT
     references the dropped parent. Wrapping here keeps the generators
     simple and the join logic in one place."""
+    if len(parents) <= 1:
+        return parents
+    parents = _drop_constant_only_parents(parents)
     if len(parents) <= 1:
         return parents
     parents = _fold_passthrough_parents(parents)

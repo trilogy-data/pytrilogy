@@ -18,7 +18,7 @@ TRILOGY_V4_DISCOVERY=1 .venv/Scripts/python.exe -m pytest <test> \
 | geography `test_exact_match_merge_preserves_subgraph_filters` | STALE (passes alone) | safe-ish to drop from known-failing; verify in full sweep first |
 | test_complex `test_in_select` | STALE (passes alone) | ditto |
 | tpc_ds `test_ninety_seven_two` | STALE (passes alone) | ditto (was `_RESULT`) |
-| gcat `test_join_discovery` | **GENUINE wrong-rows (deep)** | bridge cross-join — see below |
+| gcat `test_join_discovery` | **FIXED 2026-06-23** | condition-root bridge co-source — see below |
 | ncaa `test_adhoc08` | borderline genuine | FULL JOIN on nullable `shot_display` → dup rows; test asserts `"FULL JOIN" not in sql` |
 | ncaa `test_adhoc07` | SHAPE | asserts a regex over generated SQL |
 | stocks `test_provider_name` | SHAPE/join-count | asserts `sql.count("JOIN") == 2` |
@@ -42,7 +42,33 @@ applied each arm's WHERE (`arm_where`) but never its HAVING. Fix: in
 `built_arm.having_clause` via `_resolve_and_inject_condition` (mirrors the inner-
 HAVING handling in `resolve_rowset` and the top-level `_get_query_node_v4` wrap).
 
-## GENUINE (deep): gcat `test_join_discovery` — bridge cross-join
+## FIXED 2026-06-23: gcat `test_join_discovery` — condition-root bridge co-source
+
+Both pieces in `group_graph.py` (v4-only). Full details in memory
+`project_v4_condition_root_bridge_cosource`. Summary:
+1. `build_group_graph` folds the WHERE's `clause.row_arguments` into the
+   convergence set passed to `partition_roots` → the filter root (`org.state_code`)
+   co-sources with the SELECT roots in their shared weakly-connected component, so
+   one `plan_source` request discovers the `launch_info` connector. Component-gated
+   (NOT the ATTEMPT-1 reach-traversal that ran away).
+2. `_d1_calc_subgraph` narrows the `root_d1` pristine-scan split: a root feeds
+   `root_d1` only if its d1 consumer is a ROW_SHAPE_BARRIER or constrains a
+   NON-grouping d0 output. A plain BASIC filter (`org.flag`) now folds into the
+   co-sourced root and applies inline instead of re-scanning + cross-joining.
+   (Gate is the constraint TARGET: aggregate → fold safe; ROOT output → keep split
+   or it 2-cycles.)
+
+This was BROADER than the diagnosis below assumed — even a single `~merge` join
+(`where org.flag='x' SELECT count(launch_tag)`) cross-joined.
+
+ALSO fixed the `by all_rows` grand-total marker (was a separate benign `SELECT 1`
+cross-join): `_drop_constant_only_parents` inside `_pre_merge_parents` drops a
+constant-only parent before the merge, and `projection.concept_satisfiable`
+returns True for CONSTANT (else the count whose grain references all_rows gets
+pruned to an empty SELECT). Result is byte-identical to v3 (bare grand-total
+aggregate). `test_join_discovery` uses strict `"1=1" not in sql` + FK-join regex.
+
+### Original diagnosis (kept for context)
 
 Repro:
 ```trilogy
@@ -73,16 +99,43 @@ pure REFERENCE-graph connector (neither concept's lineage references it), and
 disconnected pre-check does NOT fire (they ARE connected in the reference graph
 via the FK merges), so it's a resolution gap, not a disconnection.
 
-Fix direction (NOT done — needs care): get `{vehicle.family, org.state_code}`
-into one bridge search. Two avenues:
-1. Attach the `org.flag` WHERE to `vehicle.family`'s root source request, so
-   `_search_concepts_for_bridge`'s `_condition_arg_lineage_roots` pulls in
-   `org.state_code`/`org.code` and the Steiner walk finds `launch_info`.
-2. Co-source FK-bridged roots in the group graph using REFERENCE-graph
-   connectivity (the concept graph can't see the bridge). Mirrors v3's single
-   Steiner over all_concepts.
-Whichever path: regression-guard against the disconnected abstract-aggregate
-case (`select sum(av), sum(bv)` must still split) and re-run the full v4 sweep.
+### ATTEMPT 1 (2026-06-22) — reverted: co-source via reach-following-CONSTRAINT
+
+Tried avenue 2 the cheap way: in `partition_roots`, extend the per-root reach
+traversal to follow `EdgeKind.CONSTRAINT` edges (a filter arg's implied JOIN to
+its consumer) in addition to `LINEAGE`. This makes `org.state_code` reach the
+shared `all_vehicles` aggregate, so it co-sources with `vehicle.*` in one root
+bucket. RESULT:
+- It DID trigger bridge discovery — the Steiner walk then searched
+  `{org.code, vehicle.family, vehicle.name, vehicle.variant}` together and found
+  `launch_info`; the `thoughtful` CTE correctly joined organizations→launch_info→
+  lv_info on real keys.
+- BUT only a HALF fix: a `1=1` remained. The `org.flag` filter still came from a
+  SEPARATE `@condition` group (org re-scanned) cross-joined onto the bridge,
+  because the bridge node didn't EXPOSE the org join key (org.code/state_code) —
+  the backward pass prunes it (not "needed" as an output), and the condition
+  atom (`org.flag`, a BASIC) can't be hosted on the d0 root since
+  `_candidate_groups`/`_reachable_input` only count a group's own members +
+  lineage ancestors, and `org.flag` is DOWNSTREAM of the member `org.state_code`.
+- WORSE: following CONSTRAINT edges blanket co-sources too many roots in complex
+  queries (TPC-DS), exploding `plan_source`'s bridge/Steiner search → a RUNAWAY
+  (a single planner process pinned ~1GB, no output after 11 min). Reverted.
+
+Lessons for the next attempt:
+- Co-sourcing must be TARGETED (only when a bridge is genuinely needed — i.e. the
+  filter arg and outputs share no direct datasource), not blanket CONSTRAINT
+  reach, or complex queries run away.
+- Even with co-sourcing, a second sub-fix is required so the filter is HOSTED at
+  the bridge root rather than re-scanned + cross-joined. Either (a) let the d0
+  root expose the org join key so the condition source joins on it (correct rows,
+  extra self-join — passes the `1=1` assertion), or (b) extend `_reachable_input`
+  with a BASIC-derivability closure so `org.flag` is hostable on the root that
+  carries `org.state_code`, and apply the filter there (matches v3's inline WHERE).
+
+Remaining fix is therefore TWO coupled pieces (targeted co-source + filter
+hosting/key-exposure), each non-trivial. Guard the disconnected abstract-aggregate
+case (`select sum(av), sum(bv)` must still split) and run the FULL v4 sweep —
+watch for runaways (a hung process at high RAM), not just failures.
 
 Verify: `tests/modeling/gcat/test_gcat.py::test_join_discovery`
 (`assert "1=1" not in sql`).

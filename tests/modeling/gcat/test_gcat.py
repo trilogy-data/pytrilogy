@@ -531,8 +531,14 @@ SELECT
 LIMIT 1
 ;
 """)
-    sql = base.generate_sql(queries[-1])
-    assert "1=1" not in sql[0], sql[0]
+    sql = base.generate_sql(queries[-1])[0]
+    assert "1=1" not in sql, sql
+    # `org.flag` (organizations) and `vehicle.family` (lv_info) connect only
+    # through the `launch_info` fact (FK merges `FirstAgency: ~org.code`,
+    # `LV_Type: ~vehicle.name`). The planner must discover that bridge and join on
+    # the real FK keys rather than cross-joining ON 1=1 (which inflated the count).
+    assert re.search(r'"org_organizations"\."Code" = "\w+"\."org_code"', sql), sql
+    assert re.search(r'"\w+"\."vehicle_name" = "vehicle_lv_info"\."LV_Name"', sql), sql
 
 
 def test_join_discovery_two():
