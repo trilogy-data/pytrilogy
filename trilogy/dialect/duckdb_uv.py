@@ -7,7 +7,6 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-
 MAX_ATTEMPTS = 3
 RETRY_DELAYS_SECONDS = (0.5, 1.5)
 RETRYABLE_UV_ERROR_MARKERS = (

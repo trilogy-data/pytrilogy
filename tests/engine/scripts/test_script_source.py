@@ -1,14 +1,29 @@
 from pathlib import Path
-import os
 
 import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.core.enums import ValidationScope
 from trilogy.core.validation.environment import validate_environment
+from trilogy.dialect import duckdb_uv
 from trilogy.dialect.duckdb import get_python_datasource_setup_sql
 from trilogy.dialect.duckdb_uv import is_retryable_uv_error, run_with_retry
 from trilogy.execution import DuckDBConfig
+
+
+class FakeRetryableUvRun:
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def __call__(
+        self, script: str, args: str, output_path: Path, error_path: Path
+    ) -> int:
+        self.attempts += 1
+        if self.attempts == 1:
+            error_path.write_text("failed to acquire file lock", encoding="utf-8")
+            return 1
+        output_path.write_text("ok", encoding="utf-8")
+        return 0
 
 
 def test_arrow_source():
@@ -106,32 +121,14 @@ def test_uv_wrapper_retries_retryable_errors(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
-    fake_uv = tmp_path / "uv.cmd"
-    fake_uv.write_text(
-        "\n".join(
-            [
-                "@echo off",
-                "set count=0",
-                'if exist "%~dp0count.txt" set /p count=<"%~dp0count.txt"',
-                "set /a count=%count%+1",
-                'echo %count%>"%~dp0count.txt"',
-                "if %count% LSS 2 (",
-                "  echo failed to acquire file lock 1>&2",
-                "  exit /b 1",
-                ")",
-                "echo ok",
-                "exit /b 0",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
-
     output_path = tmp_path / "out.arrow"
     error_path = tmp_path / "out.err"
+    fake_run_uv = FakeRetryableUvRun()
+
+    monkeypatch.setattr(duckdb_uv, "_run_uv", fake_run_uv)
 
     assert run_with_retry("script.py", "", output_path, error_path) == 0
-    assert (tmp_path / "count.txt").read_text(encoding="utf-8").strip() == "2"
+    assert fake_run_uv.attempts == 2
     assert output_path.read_text(encoding="utf-8").strip() == "ok"
     assert capsys.readouterr().out.strip() == '{"name": "done"}'
 
