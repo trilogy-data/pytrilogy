@@ -138,17 +138,12 @@ def test_source_side_key_projection_inner_left(tmp_path: Path, jt: str, expected
     assert _rows(eng, tmp_path, text) == expected
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ROOT-key FULL substitutes the datasource binding to the canonical, "
-    "so only the canonical side carries the coalesce; the authored source key "
-    "renders its raw (NULL-on-unmatched) column. Driver for moving root OUTER "
-    "bindings onto the identity path.",
-)
 def test_full_source_side_projection_coalesces(tmp_path: Path):
-    # `FULL JOIN a.kid = b.kid; SELECT a.kid` must yield the coalesced key (the
+    # `FULL JOIN a.kid = b.kid; SELECT a.kid` yields the coalesced key (the
     # b-only row 3 surfaces) — the join asserts a.kid and b.kid are one logical
-    # key, and the ORDER BY already coalesces. The SELECT currently does not.
+    # key. FULL binding-keyed sources stay on the identity path (their binding is
+    # NOT substituted to the canonical), so the keypair is distinct (`a.k = b.k`)
+    # and the merge node coalesces both members regardless of which is projected.
     eng = _engine(tmp_path, B_MODEL)
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0), (2, 20.0)])
     _load(eng, "create table b_tbl (k int, m float)", [(2, 200.0), (3, 300.0)])

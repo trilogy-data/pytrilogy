@@ -1,25 +1,16 @@
-"""Repro: a window-over-aggregate predicate in HAVING lowers to a QUALIFY whose
-window is RE-RENDERED at the outer scope, where the window's inner aggregate is
-not resolvable -> the rendered SQL contains `INVALID_REFERENCE_BUG` and
-`generate_sql` raises `ValueError: Invalid reference string found in query`.
+"""A window-over-aggregate predicate in HAVING used to lower to a QUALIFY whose
+window was RE-RENDERED at the outer scope, where the window's inner aggregate is
+not resolvable -> the rendered SQL contained `INVALID_REFERENCE_BUG` and
+`generate_sql` raised `ValueError: Invalid reference string found in query`.
 
-This is the still-open window-in-HAVING bug (see
-evals/tpcds_agent/bug_window_function_in_having.md). The qualify-routing in
-`trilogy/dialect/base.py` (render of a CTE condition, ~L1979-2050) DOES detect the
-window and move it to QUALIFY, but it re-renders the whole window expression
-`max(sum(amt)) over (...)` from scratch. The inner `sum(amt)` is materialized only
-in an upstream CTE as `_virt_agg_sum_*` and is not in scope at the final
-SELECT/QUALIFY, so it renders as `INVALID_REFERENCE_BUG`.
-
-The window column is ALREADY materialized as an output (`rm` below) in the
-upstream CTE; the QUALIFY should reference that materialized column (or the bug
-should lower to a wrapper-select + outer WHERE on the materialized column, which is
-the dialect-agnostic form the `control` test confirms already works).
+Fixed in `select_finalize._substitute_having_windows`: a HAVING window whose
+signature matches a SELECT window output is rewritten to reference that
+materialized alias (`rm` below), so the filter points at the already-computed
+column instead of re-deriving the window. See
+evals/tpcds_agent/bug_window_function_in_having.md.
 
 Surfaced on enriched TPC-DS q51 (web-vs-store running-max compare) and q75
 (year-over-year lag ratio) — ~4.5M tokens combined.
-
-When fixed: delete the xfail markers; both tests assert clean SQL.
 """
 
 from pathlib import Path
@@ -51,11 +42,9 @@ def _gen(models: Path, body: str) -> str:
     return eng.generate_sql(body)[-1]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="window-over-aggregate in HAVING re-renders in QUALIFY"
-)
 def test_window_over_aggregate_in_having_renders_valid_sql(models: Path):
-    # BUG: the QUALIFY re-renders max(sum(amt)) over (...) -> max(INVALID_REFERENCE_BUG) over (...)
+    # The QUALIFY/WHERE references the materialized window column `rm` rather
+    # than re-rendering max(sum(amt)) over (...) -> max(INVALID_REFERENCE_BUG).
     body = """
 import sales as sales;
 select
@@ -70,25 +59,25 @@ order by store asc;
     assert "INVALID_REFERENCE_BUG" not in sql
 
 
-def test_window_over_aggregate_in_having_currently_raises(models: Path):
-    # Pin the CURRENT failure mode (delete once the xfail above flips to passing).
+def test_numbering_window_over_aggregate_in_having_renders_valid_sql(models: Path):
+    # rank() over (order by sum(...)) — the NumberingWindowItem variant.
     body = """
 import sales as sales;
 select
     sales.store as store,
-    sales.day as day,
     sum(sales.amt) as amt,
-    max(sum(sales.amt)) over (partition by sales.store order by sales.day) as rm
-having max(sum(sales.amt)) over (partition by sales.store order by sales.day) > 0
+    rank() over (order by sum(sales.amt) desc) as rnk
+having rank() over (order by sum(sales.amt) desc) <= 10
 order by store asc;
 """
-    with pytest.raises(ValueError, match="Invalid reference string"):
-        _gen(models, body)
+    sql = _gen(models, body)
+    assert "INVALID_REFERENCE_BUG" not in sql
 
 
 def test_window_filtered_in_wrapper_select_is_the_working_idiom(models: Path):
-    # Control: the dialect-agnostic lowering the fix should converge on — project
-    # the window in an inner select, filter it in a wrapping select. Works today.
+    # The dialect-agnostic lowering this converges on: project the window in an
+    # inner select, filter it in a wrapping select. Works today and is the
+    # equivalent form the HAVING substitution produces.
     body = """
 import sales as sales;
 with daily as

@@ -57,6 +57,8 @@ from trilogy.core.models.author import (
     Conditional,
     Function,
     Grain,
+    NavigationWindowItem,
+    NumberingWindowItem,
     OrderBy,
     OrderItem,
     Parenthetical,
@@ -297,6 +299,151 @@ def _select_aggregate_outputs(
     return results
 
 
+def _norm_window_address(node: Any, rename: Mapping[str, str]) -> Any:
+    """Normalize a window operand to a comparable key. Pure-rename SELECT
+    aliases (``sales.store as store``) leave the SELECT-side window referencing
+    the source name while the HAVING side is rewritten to the alias; map source
+    names through ``rename`` so both sides compare equal."""
+    addr = node.address if isinstance(node, ConceptRef) else None
+    if addr is None:
+        return ("expr", str(node))
+    return rename.get(addr, addr)
+
+
+def _window_signature(node: Any, rename: Mapping[str, str]) -> tuple[Any, ...] | None:
+    """Signature for matching a window expression across SELECT/HAVING. Returns
+    ``None`` for non-window nodes."""
+    if isinstance(node, NavigationWindowItem):
+        return (
+            "nav",
+            node.type,
+            _norm_window_address(node.content, rename),
+            tuple(_norm_window_address(o, rename) for o in node.over),
+            tuple(
+                (_norm_window_address(o.expr, rename), o.order) for o in node.order_by
+            ),
+            node.offset,
+        )
+    if isinstance(node, NumberingWindowItem):
+        return (
+            "num",
+            node.type,
+            tuple(_norm_window_address(a, rename) for a in node.arguments),
+            tuple(_norm_window_address(o, rename) for o in node.over),
+            tuple(
+                (_norm_window_address(o.expr, rename), o.order) for o in node.order_by
+            ),
+        )
+    return None
+
+
+def _select_window_outputs(
+    select: SelectStatement, rename: Mapping[str, str]
+) -> dict[tuple[Any, ...], ConceptRef]:
+    """Map each window-producing select item's signature to its output ref."""
+    results: dict[tuple[Any, ...], ConceptRef] = {}
+    for item in select.selection:
+        if isinstance(item.content, ConceptTransform):
+            sig = _window_signature(item.content.function, rename)
+            if sig is not None:
+                results[sig] = item.content.output.reference
+    return results
+
+
+def _substitute_having_windows(
+    select: SelectStatement,
+) -> None:
+    """Rewrite HAVING window expressions to reference the matching SELECT window
+    alias. Without this the renderer re-derives the window at the outer scope,
+    where the window's inner aggregate is no longer a resolvable column and
+    emits an ``INVALID_REFERENCE_BUG`` sentinel."""
+    if not select.having_clause:
+        return
+    rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
+    sig_to_ref = _select_window_outputs(select, rename)
+    if not sig_to_ref:
+        return
+
+    def match(node: Any) -> ConceptRef | None:
+        sig = _window_signature(node, rename)
+        return sig_to_ref.get(sig) if sig is not None else None
+
+    new_conditional = _substitute_condition_tree(
+        select.having_clause.conditional, match
+    )
+    if new_conditional is not select.having_clause.conditional:
+        select.having_clause.conditional = new_conditional
+
+
+def _scalar_expr_signature(
+    node: Any, rename: Mapping[str, str]
+) -> tuple[Any, ...] | None:
+    """Structural signature of a scalar (non-aggregate, non-window) derived
+    expression, for matching a HAVING subexpression to its SELECT alias. Returns
+    ``None`` if the node contains an aggregate/window (those have dedicated
+    passes) or anything else not safely comparable."""
+    if isinstance(node, Parenthetical):
+        return _scalar_expr_signature(node.content, rename)
+    if isinstance(node, ConceptRef):
+        return ("ref", rename.get(node.address, node.address))
+    if isinstance(node, Function):
+        if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            return None
+        arg_sigs = []
+        for arg in node.arguments:
+            sig = _scalar_expr_signature(arg, rename)
+            if sig is None:
+                return None
+            arg_sigs.append(sig)
+        return ("fn", node.operator, tuple(arg_sigs))
+    if isinstance(node, (AggregateWrapper, NavigationWindowItem, NumberingWindowItem)):
+        return None
+    return ("lit", type(node).__name__, str(node))
+
+
+def _select_derived_outputs(
+    select: SelectStatement, rename: Mapping[str, str]
+) -> dict[tuple[Any, ...], ConceptRef]:
+    """Map each scalar-derived (compound function) select item's signature to its
+    output ref. Bare renames are handled by ``_alias_rename_map``; aggregates and
+    windows by their own passes — only top-level ``fn`` signatures register here."""
+    results: dict[tuple[Any, ...], ConceptRef] = {}
+    for item in select.selection:
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        if not isinstance(item.content.function, Function):
+            continue
+        sig = _scalar_expr_signature(item.content.function, rename)
+        if sig is not None and sig[0] == "fn":
+            results.setdefault(sig, item.content.output.reference)
+    return results
+
+
+def _substitute_having_derived(select: SelectStatement) -> None:
+    """Rewrite HAVING scalar-derived expressions (e.g. ``coalesce(x, 0)``) to
+    reference the matching SELECT alias. Without this the renderer re-derives the
+    expression at the outer scope, where its inner argument is no longer a
+    resolvable column, and emits an ``INVALID_REFERENCE_BUG`` sentinel."""
+    if not select.having_clause:
+        return
+    rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
+    sig_to_ref = _select_derived_outputs(select, rename)
+    if not sig_to_ref:
+        return
+
+    def match(node: Any) -> ConceptRef | None:
+        if not isinstance(node, Function):
+            return None
+        sig = _scalar_expr_signature(node, rename)
+        return sig_to_ref.get(sig) if sig is not None else None
+
+    new_conditional = _substitute_condition_tree(
+        select.having_clause.conditional, match
+    )
+    if new_conditional is not select.having_clause.conditional:
+        select.having_clause.conditional = new_conditional
+
+
 def _collect_condition_aggregates(node: Any) -> list[Any]:
     """Walk a WHERE/HAVING conditional tree and return outer aggregate nodes.
 
@@ -388,55 +535,62 @@ def _aggregate_node_has_nested_aggregate(node: Any) -> bool:
     return False
 
 
-def _substitute_having_aggregates(
-    node: Any,
-    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef],
-) -> Any:
-    """Rewrite a HAVING conditional tree, replacing matched aggregates with
-    ``ConceptRef`` to the SELECT alias. Aggregates are leaves in our walk (we
-    do not descend into their argument expressions)."""
-    sig = _aggregate_full_signature(node)
-    if sig is not None:
-        ref = sig_to_ref.get(sig)
-        if ref is not None:
-            return ref
-        return node
+def _substitute_condition_tree(node: Any, match_leaf: Any) -> Any:
+    """Walk a HAVING conditional tree, replacing any node for which
+    ``match_leaf(node)`` returns a ``ConceptRef`` with that reference. A
+    ``None`` return leaves the node to the structural recursion. Matched
+    nodes are leaves — we do not descend into their argument expressions."""
+    replacement = match_leaf(node)
+    if replacement is not None:
+        return replacement
     if isinstance(node, Comparison):
         # Preserve the concrete class (e.g. SubselectComparison) — a plain
         # Comparison rebuild would strip a membership's existence semantics,
         # leaving the HAVING set-concept to render as a bare column.
         return type(node)(
-            left=_substitute_having_aggregates(node.left, sig_to_ref),
-            right=_substitute_having_aggregates(node.right, sig_to_ref),
+            left=_substitute_condition_tree(node.left, match_leaf),
+            right=_substitute_condition_tree(node.right, match_leaf),
             operator=node.operator,
         )
     if isinstance(node, Conditional):
         return Conditional(
-            left=_substitute_having_aggregates(node.left, sig_to_ref),
-            right=_substitute_having_aggregates(node.right, sig_to_ref),
+            left=_substitute_condition_tree(node.left, match_leaf),
+            right=_substitute_condition_tree(node.right, match_leaf),
             operator=node.operator,
         )
     if isinstance(node, Parenthetical):
         return Parenthetical(
-            content=_substitute_having_aggregates(node.content, sig_to_ref)
+            content=_substitute_condition_tree(node.content, match_leaf)
         )
     if isinstance(node, Between):
         return Between(
-            left=_substitute_having_aggregates(node.left, sig_to_ref),
-            low=_substitute_having_aggregates(node.low, sig_to_ref),
-            high=_substitute_having_aggregates(node.high, sig_to_ref),
+            left=_substitute_condition_tree(node.left, match_leaf),
+            low=_substitute_condition_tree(node.low, match_leaf),
+            high=_substitute_condition_tree(node.high, match_leaf),
         )
     if isinstance(node, Function):
-        new_args = [
-            _substitute_having_aggregates(a, sig_to_ref) for a in node.arguments
-        ]
+        new_args = [_substitute_condition_tree(a, match_leaf) for a in node.arguments]
         if all(a is b for a, b in zip(new_args, node.arguments)):
             return node
-        replacement = Function.__new__(Function)
-        replacement.__dict__.update(node.__dict__)
-        replacement.arguments = new_args
-        return replacement
+        replacement_fn = Function.__new__(Function)
+        replacement_fn.__dict__.update(node.__dict__)
+        replacement_fn.arguments = new_args
+        return replacement_fn
     return node
+
+
+def _substitute_having_aggregates(
+    node: Any,
+    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef],
+) -> Any:
+    """Rewrite a HAVING conditional tree, replacing matched aggregates with
+    ``ConceptRef`` to the SELECT alias."""
+
+    def match(n: Any) -> ConceptRef | None:
+        sig = _aggregate_full_signature(n)
+        return sig_to_ref.get(sig) if sig is not None else None
+
+    return _substitute_condition_tree(node, match)
 
 
 def _validate_having_aggregates_match_select(
@@ -744,6 +898,14 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                 )
         _validate_where_aggregate_matches_select(select, line_no)
     if select.having_clause:
+        # Point HAVING windows at their materialized SELECT alias before
+        # validating refs, so the window's inner aggregate input isn't treated
+        # as a required (and absent) output column.
+        _substitute_having_windows(select)
+        # Point HAVING scalar-derived expressions (e.g. coalesce) at their SELECT
+        # alias too, so a filter on a derived output resolves to the materialized
+        # column instead of re-deriving its (now-absent) inner argument.
+        _substitute_having_derived(select)
         # Report ALL missing refs at once (deduped, in order). Use row_arguments,
         # not concept_arguments: an `x in <set>` membership's existence RHS (the
         # set) is sourced as a subselect at plan time (mirroring WHERE) and need

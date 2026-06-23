@@ -1,7 +1,34 @@
 # Bug/handoff: window predicate in HAVING → QUALIFY re-renders the window → INVALID_REFERENCE_BUG
 
-**Status:** OPEN. Found 2026-06-07 (q75); re-confirmed 2026-06-22 on trilogy 0.3.285,
-now also implicated in q51. Combined cost ~4.5M tokens (q75 2.93M + q51 1.64M).
+**Status:** FIXED 2026-06-22. Found 2026-06-07 (q75); re-confirmed 2026-06-22 on
+trilogy 0.3.285, also implicated in q51. Combined cost ~4.5M tokens (q75 2.93M +
+q51 1.64M).
+
+## Fix (2026-06-22)
+
+Took fix-direction option 1 (reference the materialized window column). A HAVING
+window whose signature matches a SELECT window output is now rewritten at parse
+finalize to a `ConceptRef` to that materialized alias (`rm`), so the
+WHERE/QUALIFY points at the already-computed column instead of re-deriving
+`max(sum(...)) over(...)` at the outer scope. New
+`select_finalize._substitute_having_windows` (mirrors the existing
+`_substitute_having_aggregates`); the shared tree walk was factored into
+`_substitute_condition_tree`. Namespace skew between the SELECT-side window
+(`sales.store`) and the alias-rewritten HAVING side (`local.store`) is normalized
+through `_alias_rename_map`. Covers both `NavigationWindowItem` (max/lag/...) and
+`NumberingWindowItem` (rank/...). The xfail markers in
+`tests/test_window_in_having_qualify_render.py` are removed; both shapes assert
+clean SQL.
+
+Scope note: the fix fires when the window predicate's expression is **projected**
+as a SELECT output (the documented "project the window then filter on it" idiom).
+A window-over-aggregate in HAVING that is NOT projected and that the planner
+splits across CTEs is not covered by this substitution (the single-CTE
+not-projected case already renders a correct QUALIFY).
+
+---
+
+_Original report below._
 **Severity:** medium-high — a `having` whose condition contains a window function
 emits SQL with an `INVALID_REFERENCE_BUG` sentinel and `generate_sql` raises
 `ValueError: Invalid reference string found in query`. The agent gets an opaque

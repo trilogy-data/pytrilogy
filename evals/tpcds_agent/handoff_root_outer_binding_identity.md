@@ -1,10 +1,37 @@
-# Handoff: finish moving ROOT OUTER join keys onto the identity path
+# Handoff: ROOT OUTER source-side FULL coalesce — FIXED (render-layer)
 
-**Status:** SCHEDULED. The permutation suite + in-code distinction landed
-(2026-06-22); this bug is captured as a strict xfail that the fix must flip.
-Companion to `handoff_scoped_join_substitution_removal.md` (which concluded the
-two mechanisms — substitution vs identity+coalesce — should both stay, split by
-join semantics). This handoff is the concrete next slice that decision implies.
+**Status:** FIXED 2026-06-22 — but NOT by the binding-identity approach this doc
+originally proposed. That approach (below, "What the fix requires") was attempted
+and REJECTED: it broke discovery. The actual fix was render-layer. Kept for the
+diagnosis; the recommended-fix section is superseded.
+
+## What actually fixed it (render-layer pseudonym fallback)
+
+`trilogy/dialect/base.py` `safe_get_cte_value`: when a projected concept's own
+address is absent from `source_map`, fall back to a MULTI-source pseudonym entry
+(the coalesced canonical) — gated on the concept resolving as a plain column on
+EVERY one of those sources (`get_alias` != `INVALID_ALIAS`). Root keys resolve via
+the parents' pseudonym columns; a DERIVED FULL key's canonical is not exposed on
+the parents (get_alias invalid) so the fallback skips it, leaving its own
+merge-node coalesce machinery untouched. No discovery/binding change. The strict
+xfail `test_full_source_side_projection_coalesces` is now a normal passing test;
+full non-modeling suite (3864) + tpc_ds modeling (106) green.
+
+## Why the binding-identity approach below was WRONG
+
+Forcing FULL binding-keyed sources onto identity everywhere
+(`_source_identity_addresses |= scoped_full_identity_sources`) flipped the test
+but perturbed DISCOVERY, because it changed what addresses the planner sees:
+- `test_full_join_two_keys_single_join`: composite-key FULL collapse split into
+  TWO FULL joins (the two keys no longer merged into one composite join).
+- `test_two_fact_full_join_key_only_is_union_of_facts`: the FK-keyed FULL routed
+  THROUGH the customer dimension (`customers_tbl` pulled in) instead of taking the
+  key off the facts.
+Lesson: this was a discovery-vs-render pseudonym MISMATCH (rendering lagged
+discovery). Fix rendering, never the binding/discovery layer.
+
+---
+## (Superseded) original diagnosis + binding-identity proposal
 
 ## The bug (one sentence)
 

@@ -91,11 +91,21 @@ def run_query(
     exec_time, comp_results = _time(_exec_trilogy)
     comp_time, base_results = _time(_exec_reference)
 
-    if min(exec_time, comp_time) < REPEAT_TIME_CUTOFF:
+    # Only re-run the sides that are themselves sub-cutoff (jitter-dominated).
+    # A side already well above the cutoff is a stable sample, so re-running it
+    # only multiplies cost — e.g. q64/q72's reference SQL is ~20s even at
+    # sf=0.01, and re-running it 3x ballooned those tests to 90s/23s purely to
+    # denoise the unrelated, fast trilogy side.
+    if min(parse_time, exec_time, comp_time) < REPEAT_TIME_CUTOFF:
         for _ in range(REPEAT_COUNT):
-            parse_time = min(parse_time, _time(lambda: engine.generate_sql(text))[0])
-            exec_time = min(exec_time, _time(_exec_trilogy)[0])
-            comp_time = min(comp_time, _time(_exec_reference)[0])
+            if parse_time < REPEAT_TIME_CUTOFF:
+                parse_time = min(
+                    parse_time, _time(lambda: engine.generate_sql(text))[0]
+                )
+            if exec_time < REPEAT_TIME_CUTOFF:
+                exec_time = min(exec_time, _time(_exec_trilogy)[0])
+            if comp_time < REPEAT_TIME_CUTOFF:
+                comp_time = min(comp_time, _time(_exec_reference)[0])
 
     # Always prefer the on-disk reference SQL for size comparison when available,
     # so the PRAGMA-driven runs still report a meaningful comp_size.
@@ -475,9 +485,7 @@ def test_forty_five(engine):
 def test_forty_six(engine):
     query = run_query(engine, 46)
     assert len(query) < 8000, query
-    assert (
-        '"memory"."customer" as "store_sales_customer_customers"' not in query
-    ), query
+    assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
     assert query.count("GROUP BY") == 1, query
 
 
@@ -589,9 +597,7 @@ def test_sixty_seven(engine):
 def test_sixty_eight(engine):
     query = run_query(engine, 68)
     assert len(query) < 8000, query
-    assert (
-        '"memory"."customer" as "store_sales_customer_customers"' not in query
-    ), query
+    assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
 
 
 def test_sixty_nine(engine):

@@ -1,6 +1,6 @@
 query_id = "76"
 generator = "v3"
-gen_length = 7477
+gen_length = 7467
 preql_size = 2137
 comp_size = 1708
 generated_sql = """
@@ -200,9 +200,9 @@ SELECT
 FROM
     \"puzzled\"
 ORDER BY 
-    \"q76_results_channel\" asc nulls first,
-    \"q76_results_col_name\" asc nulls first,
-    \"q76_results_d_year\" asc nulls first,
-    \"q76_results_d_qoy\" asc nulls first,
-    \"q76_results_i_category\" asc nulls first
+    \"puzzled\".\"channel\" asc nulls first,
+    \"puzzled\".\"col_name\" asc nulls first,
+    \"puzzled\".\"d_year\" asc nulls first,
+    \"puzzled\".\"d_qoy\" asc nulls first,
+    \"puzzled\".\"i_category\" asc nulls first
 LIMIT (100)"""
