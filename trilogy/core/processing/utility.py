@@ -247,6 +247,8 @@ def sort_select_output_processed(
 
     def render_as(target, oc: BuildConcept) -> BuildConcept:
         # render `oc`'s column under the originally-written `target` name
+        if target.address not in cte.source_map and oc.address in cte.source_map:
+            cte.source_map[target.address] = list(cte.source_map[oc.address])
         return BuildConcept(
             name=target.name,
             canonical_name=target.name,

@@ -433,6 +433,7 @@ def test_tvf_union_named():
     # (rows stacked), NOT a key-join.
     executor = Dialects.DUCK_DB.default_executor()
     from trilogy.hooks import DebuggingHook
+
     DebuggingHook()
     executor.execute_text(_TVF_UNION_FIXTURE)
     query = """

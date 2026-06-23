@@ -95,9 +95,7 @@ def gen_rowset_node(
         # — otherwise its datasources come back disconnected. Combine with the outer
         # query's joins (filtered to avoid self-referential recursion).
         own_scoped = (
-            list(select.scoped_joins)
-            if isinstance(select, SelectLineage)
-            else []
+            list(select.scoped_joins) if isinstance(select, SelectLineage) else []
         )
         scoped_joins = (
             _scoped_joins_for_rowset(
@@ -133,8 +131,9 @@ def gen_rowset_node(
         x.address for x in concept_pool if x.address in lineage.rowset.derived_concepts
     ]
     rowset_relevant: list[BuildConcept] = [
-        v for v in concept_pool if v.address in rowset_outputs
-        and v.address not in node.hidden_concepts
+        v
+        for v in concept_pool
+        if v.address in rowset_outputs and v.address not in node.hidden_concepts
     ]
 
     present_map: dict[str, BuildConcept] = {v.address: v for v in rowset_relevant}
@@ -154,7 +153,9 @@ def gen_rowset_node(
             scoped_partial.append(advertised)
 
     additional_relevant = [
-        environment.concepts[x.address] for x in select.output_components if x.address in enrichment
+        environment.concepts[x.address]
+        for x in select.output_components
+        if x.address in enrichment
     ]
     # Wrap the body node in a translation SelectNode rather than mutating its
     # outputs. The body materializes the rowset-local concepts (`local._rs_*`)
@@ -165,7 +166,13 @@ def gen_rowset_node(
     # join canonical (`b.bid`). We can optimize this extra node away later.
     base_node = node
     node = RowsetNode(
-        input_concepts=list([x for x in base_node.output_concepts if x.address not in base_node.hidden_concepts]),
+        input_concepts=list(
+            [
+                x
+                for x in base_node.output_concepts
+                if x.address not in base_node.hidden_concepts
+            ]
+        ),
         output_concepts=rowset_relevant + additional_relevant,
         environment=environment,
         parents=[base_node],

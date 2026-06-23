@@ -407,7 +407,10 @@ class CTE:
             if source and source != cte.name:
                 continue
             for col in cte.output_columns:
-                if concept.address in col.pseudonyms:
+                if (
+                    concept.address in col.pseudonyms
+                    or col.address in concept.pseudonyms
+                ):
                     return col.safe_address
 
         # An inlined datasource exposes *all* its raw columns to the consumer,

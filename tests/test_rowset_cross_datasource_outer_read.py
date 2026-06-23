@@ -264,19 +264,15 @@ def test_rowset_key_readback_inner_k(models: Path):
     # the key must be filtered to the matching ids {1,2} (aid 3 and bid 4 dropped).
     eng = _matrix_engine(models)
     from trilogy.hooks import DebuggingHook
+
     DebuggingHook()
-    rows = [
-        tuple(r)
-        for r in eng.execute_query(
-            """
+    rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
 with rs as inner join a.aid = b.bid
 select a.aid as k, a.av as sa, b.bv as sb;
 select rs.k order by rs.k;
-"""
-        ).fetchall()
-    ]
+""").fetchall()]
     assert rows == [(1,), (2,)]
 
 
@@ -292,10 +288,7 @@ def test_rowset_key_readback_left_k_aw(models: Path):
     # LEFT body preserves all a rows {1,2,3}; read the key beside a SOURCE-side
     # property (a.aw, keyed by the join source a.aid).
     eng = _matrix_engine(models)
-    rows = [
-        tuple(r)
-        for r in eng.execute_query(
-            """
+    rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
 with rs as left join a.aid = b.bid
@@ -303,9 +296,7 @@ select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, a.aw,
 left join rs.k = a.aid
 order by rs.k;
-"""
-        ).fetchall()
-    ]
+""").fetchall()]
     assert rows == [(1, 1000.0), (2, 2000.0), (3, 3000.0)]
 
 
@@ -313,10 +304,7 @@ def test_rowset_key_readback_left_k_bv(models: Path):
     # LEFT body preserves all a rows {1,2,3}; read the key beside a CANONICAL-side
     # property (b.bv, keyed by the join target b.bid). aid 3 has no b row -> None.
     eng = _matrix_engine(models)
-    rows = [
-        tuple(r)
-        for r in eng.execute_query(
-            """
+    rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
 with rs as left join a.aid = b.bid
@@ -324,9 +312,7 @@ select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, b.bv,
 left join rs.k = b.bid
 order by rs.k;
-"""
-        ).fetchall()
-    ]
+""").fetchall()]
     assert rows == [(1, 100.0), (2, 200.0), (3, None)]
 
 
@@ -334,10 +320,7 @@ def test_rowset_key_readback_full_k_aw(models: Path):
     # FULL body is the union of keys {1,2,3,4}; read the key beside a SOURCE-side
     # property (a.aw). bid 4 has no a row -> None.
     eng = _matrix_engine(models)
-    rows = [
-        tuple(r)
-        for r in eng.execute_query(
-            """
+    rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
 with rs as full join a.aid = b.bid
@@ -345,9 +328,7 @@ select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, a.aw,
 full join rs.k = a.aid
 order by rs.k;
-"""
-        ).fetchall()
-    ]
+""").fetchall()]
     assert rows == [(1, 1000.0), (2, 2000.0), (3, 3000.0), (4, None)]
 
 
@@ -355,10 +336,7 @@ def test_rowset_key_readback_full_k_bv(models: Path):
     # FULL body is the union of keys {1,2,3,4}; read the key beside a CANONICAL-side
     # property (b.bv). aid 3 has no b row -> None.
     eng = _matrix_engine(models)
-    rows = [
-        tuple(r)
-        for r in eng.execute_query(
-            """
+    rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
 with rs as full join a.aid = b.bid
@@ -366,7 +344,5 @@ select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, b.bv,
 full join rs.k = b.bid
 order by rs.k;
-"""
-        ).fetchall()
-    ]
+""").fetchall()]
     assert rows == [(1, 100.0), (2, 200.0), (3, None), (4, 400.0)]

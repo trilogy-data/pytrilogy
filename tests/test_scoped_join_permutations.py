@@ -145,6 +145,9 @@ def test_full_source_side_projection_coalesces(tmp_path: Path):
     # NOT substituted to the canonical), so the keypair is distinct (`a.k = b.k`)
     # and the merge node coalesces both members regardless of which is projected.
     eng = _engine(tmp_path, B_MODEL)
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0), (2, 20.0)])
     _load(eng, "create table b_tbl (k int, m float)", [(2, 200.0), (3, 300.0)])
     text = (

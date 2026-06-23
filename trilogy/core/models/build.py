@@ -2318,11 +2318,6 @@ class Factory:
             for source, _, join_type in self.scoped_joins
             if join_type is JoinType.FULL
         }
-        self.scoped_key_merge_map = {
-            source: target
-            for source, target in self.scoped_merge_map.items()
-            if source not in full_join_sources
-        }
         self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
         for source, target in self.scoped_merge_map.items():
             self.scoped_merge_sources_by_target[target].add(source)
@@ -2353,6 +2348,26 @@ class Factory:
             c = environment.concepts.get(addr)
             return c is None or c.derivation in (Derivation.ROOT, Derivation.ROWSET)
 
+        def _is_rowset_keyed(addr: str) -> bool:
+            c = environment.concepts.get(addr)
+            return c is not None and c.derivation == Derivation.ROWSET
+
+        self.scoped_rowset_outer_sources: set[str] = {
+            s
+            for s, _, jt in self.scoped_joins
+            if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
+        }
+        self.scoped_rowset_outer_targets: set[str] = {
+            t
+            for s, t, jt in self.scoped_joins
+            if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
+        }
+        self.scoped_key_merge_map = {
+            source: target
+            for source, target in self.scoped_merge_map.items()
+            if source not in full_join_sources
+            and source not in self.scoped_rowset_outer_targets
+        }
         self.scoped_merge_sources: set[str] = set()
         # OUTER-join keys with a datasource/rowset binding (ROOT/ROWSET) keep
         # their own identity + a pseudonym back to the canonical key so both
@@ -2749,6 +2764,8 @@ class Factory:
         if (
             self.scoped_merge_map
             and base.address not in self._source_identity_addresses
+            and base.address not in self.scoped_rowset_outer_sources
+            and base.address not in self.scoped_rowset_outer_targets
         ):
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
