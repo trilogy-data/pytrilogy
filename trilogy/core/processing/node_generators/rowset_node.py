@@ -6,15 +6,18 @@ from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildGrain,
     BuildRowsetItem,
     BuildRowsetLineage,
     BuildWhereClause,
-    Factory,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import unsatisfied_optionals
-from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    History,
+    MergeNode,
+    RowsetNode,
+    StrategyNode,
+)
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
@@ -131,6 +134,7 @@ def gen_rowset_node(
     ]
     rowset_relevant: list[BuildConcept] = [
         v for v in concept_pool if v.address in rowset_outputs
+        and v.address not in node.hidden_concepts
     ]
 
     present_map: dict[str, BuildConcept] = {v.address: v for v in rowset_relevant}
@@ -152,8 +156,22 @@ def gen_rowset_node(
     additional_relevant = [
         environment.concepts[x.address] for x in select.output_components if x.address in enrichment
     ]
-    # add in other other concepts
-    node.set_output_concepts(rowset_relevant + additional_relevant)
+    # Wrap the body node in a translation SelectNode rather than mutating its
+    # outputs. The body materializes the rowset-local concepts (`local._rs_*`)
+    # against its own scoped-join-collapsed env; keeping it as a parent (with
+    # those locals as this node's inputs) preserves their source mapping, so
+    # `rs.*` resolves across the query boundary — in particular a collapsed join
+    # key whose authored source (e.g. `a.aid`) only exists inside the body as the
+    # join canonical (`b.bid`). We can optimize this extra node away later.
+    base_node = node
+    node = RowsetNode(
+        input_concepts=list([x for x in base_node.output_concepts if x.address not in base_node.hidden_concepts]),
+        output_concepts=rowset_relevant + additional_relevant,
+        environment=environment,
+        parents=[base_node],
+        depth=depth,
+        partial_concepts=list(base_node.partial_concepts),
+    )
     if select.where_clause:
         for item in additional_relevant:
             logger.info(
@@ -166,21 +184,6 @@ def gen_rowset_node(
         if item.address not in existing_partial:
             node.partial_concepts.append(item)
             existing_partial.add(item.address)
-
-    # map the rowset grain back to the context of the surrounding environment
-    node.grain = BuildGrain.from_concepts(
-        [
-            x
-            for x in node.output_concepts
-            if x.address
-            not in [
-                y
-                for y in node.hidden_concepts
-                if y in environment.concepts
-                and environment.concepts[y].derivation != Derivation.ROWSET
-            ]
-        ],
-    )
 
     node.rebuild_cache()
     logger.info(

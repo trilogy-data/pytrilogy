@@ -126,7 +126,6 @@ def check_if_group_required(
 
     comp_grain = BuildGrain()
     for source in parents:
-        # comp_grain += source.grain
         comp_grain += calculate_effective_parent_grain(source)
 
     # dynamically select if we need to group
@@ -205,7 +204,6 @@ def check_if_group_required(
             for x in downstream_concepts
             if x.address in target_grain.components
         ]
-        # flatten the list of lists
         replaced_grain = [item for sublist in replaced_grain_raw for item in sublist]
         # if the replaced grain is a subset of the comp grain, we can skip the group
         unique_grain_comp = BuildGrain.from_concepts(
@@ -253,16 +251,8 @@ def group_if_required_v2(
         if x.address in final or any(c in final for c in x.pseudonyms)
     ]
     # A multiselect align outer is a pure FULL JOIN of pre-aggregated arms at the
-    # align-key grain and must never regroup: its arms can carry hidden derive-arg
-    # columns whose source keys are absent from the align keys (e.g. a
-    # `--date.year as yr_a` consumed only by `coalesce(yr_a, 0)`), which inflate
-    # the joined pregrain past the align grain. Forcing a GROUP BY there omits the
-    # raw aggregate projections and yields invalid SQL. Keyed off the concrete
-    # node type (the multiselect generator emits a MultiSelectMergeNode) — not the
-    # generic ``whole_grain`` flag, which a group-to enrichment join also sets even
-    # though it joins on the group keys and can genuinely fan out (e.g.
-    # `group(store_id) by order_id` enriched with `product_id`) and so must still
-    # defer to the regroup check below.
+    # align-key grain and must never regroup: Keyed off the concrete
+    # node type (the multiselect generator emits a MultiSelectMergeNode
     if isinstance(root, MultiSelectMergeNode):
         root.set_output_concepts(targets, change_visibility=False)
         return root

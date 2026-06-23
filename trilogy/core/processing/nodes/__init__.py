@@ -12,7 +12,7 @@ from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode, MultiSelectMergeNode
 from .recursive_node import RecursiveNode
-from .select_node_v2 import ConstantNode, SelectNode
+from .select_node_v2 import ConstantNode, RowsetNode, SelectNode
 from .subselect_node import SubselectNode
 from .union_node import UnionNode
 from .unnest_node import UnnestNode
@@ -217,6 +217,7 @@ __all__ = [
     "NodeJoin",
     "UnnestNode",
     "ConstantNode",
+    "RowsetNode",
     "UnionNode",
     "History",
     "WhereSafetyNode",

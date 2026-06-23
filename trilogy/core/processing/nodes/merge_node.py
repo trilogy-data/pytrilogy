@@ -476,8 +476,15 @@ class MergeNode(StrategyNode):
         )
 
         if self.force_group is True:
+            # A node already producing rowset outputs at a grain its parents
+            # satisfy must not regroup. TVF_UNION counts too: a UNION ALL stack
+            # defines its own (no-dedup) row semantics, so a MergeNode wrapping it
+            # at the stack grain must never collapse duplicate rows. (Formerly the
+            # rowset generator masked this by renaming the body's outputs to
+            # ROWSET-derived concepts in place; the wrapper path keeps the body's
+            # TVF_UNION outputs, so recognize them here.)
             rowset_output = any(
-                concept.derivation == Derivation.ROWSET
+                concept.derivation in (Derivation.ROWSET, Derivation.TVF_UNION)
                 for concept in self.output_concepts
             )
             force_group = condition_key_requires_group or not (

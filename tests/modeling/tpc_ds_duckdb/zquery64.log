@@ -1,7 +1,7 @@
 query_id = "64"
 generator = "v3"
-gen_length = 10738
-preql_size = 3676
+gen_length = 13371
+preql_size = 3713
 comp_size = 3783
 generated_sql = """
 
@@ -23,7 +23,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"cr_sales_catalog_sales\"
 GROUP BY
     1),
-friendly as (
+charming as (
 SELECT
     \"ss_store_sales\".\"SS_ADDR_SK\" as \"ss_sale_address_id\",
     \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_id\",
@@ -44,11 +44,13 @@ FROM
     INNER JOIN \"wakeful\" on \"thoughtful\".\"cr_sales_item_id\" = \"wakeful\".\"cr_sales_item_id\"
 WHERE
     \"thoughtful\".\"cs_ui_sale\" > 2 * \"wakeful\".\"cs_ui_refund\"
-),
-kaput as (
+
+GROUP BY
+    1),
+protective as (
 SELECT
-    \"friendly\".\"ss_sale_address_id\" as \"ss_sale_address_id\",
-    \"friendly\".\"ss_store_id\" as \"ss_store_id\",
+    \"charming\".\"ss_sale_address_id\" as \"ss_sale_address_id\",
+    \"charming\".\"ss_store_id\" as \"ss_store_id\",
     \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\" as \"ss_customer_address_id\",
     \"ss_customer_address_customer_address\".\"CA_CITY\" as \"c_city\",
     \"ss_customer_address_customer_address\".\"CA_STREET_NAME\" as \"c_str\",
@@ -63,11 +65,11 @@ SELECT
     \"ss_store_store\".\"S_STORE_NAME\" as \"s_name\",
     \"ss_store_store\".\"S_ZIP\" as \"s_zip\"
 FROM
-    \"friendly\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"friendly\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"friendly\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"friendly\".\"ss_customer_id\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"ss_sale_address_customer_address\" on \"friendly\".\"ss_sale_address_id\" = \"ss_sale_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"charming\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"charming\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"charming\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"charming\".\"ss_customer_id\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"ss_sale_address_customer_address\" on \"charming\".\"ss_sale_address_id\" = \"ss_sale_address_customer_address\".\"CA_ADDRESS_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_address\" as \"ss_customer_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 GROUP BY
     1,
@@ -85,15 +87,17 @@ GROUP BY
     13,
     14,
     15),
-busy as (
+puzzled as (
 SELECT
-    \"ss_date_date\".\"D_YEAR\" as \"agg_00_syear_00\",
-    \"ss_item_items\".\"I_ITEM_SK\" as \"agg_00_item_sk_00\",
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"agg_00_store_sk_00\",
-    count(\"ss_store_sales\".\"SS_TICKET_NUMBER\") as \"agg_00_cnt_00\",
-    sum(\"ss_store_sales\".\"SS_COUPON_AMT\") as \"agg_00_s3_00\",
-    sum(\"ss_store_sales\".\"SS_LIST_PRICE\") as \"agg_00_s2_00\",
-    sum(\"ss_store_sales\".\"SS_WHOLESALE_COST\") as \"agg_00_s1_00\"
+    \"ss_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_demographic_marital_status\",
+    \"ss_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_demographics_marital_status\",
+    \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
+    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
+    \"ss_store_sales\".\"SS_COUPON_AMT\" as \"ss_coupon_amt\",
+    \"ss_store_sales\".\"SS_LIST_PRICE\" as \"ss_list_price\",
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
+    \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\",
+    \"ss_store_sales\".\"SS_WHOLESALE_COST\" as \"ss_wholesale_cost\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -103,23 +107,33 @@ FROM
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"ss_customer_demographics_customer_demographics\" on \"ss_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"ss_customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"ss_item_items\".\"I_ITEM_SK\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null and \"ss_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" != \"ss_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\"
+    \"ss_item_items\".\"I_ITEM_SK\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null
 
 GROUP BY
     1,
     2,
-    3),
-abhorrent as (
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9),
+late as (
 SELECT
-    \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"agg_99_c_addr_99\",
-    \"ss_date_date\".\"D_YEAR\" as \"agg_99_syear_99\",
-    \"ss_item_items\".\"I_ITEM_SK\" as \"agg_99_item_sk_99\",
-    \"ss_store_sales\".\"SS_ADDR_SK\" as \"agg_99_b_addr_99\",
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"agg_99_store_sk_99\",
-    count(\"ss_store_sales\".\"SS_TICKET_NUMBER\") as \"agg_99_cnt_99\",
-    sum(\"ss_store_sales\".\"SS_COUPON_AMT\") as \"agg_99_s3_99\",
-    sum(\"ss_store_sales\".\"SS_LIST_PRICE\") as \"agg_99_s2_99\",
-    sum(\"ss_store_sales\".\"SS_WHOLESALE_COST\") as \"agg_99_s1_99\"
+    \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"ss_customer_address_id\",
+    \"ss_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_demographic_marital_status\",
+    \"ss_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_demographics_marital_status\",
+    \"ss_customer_first_sales_date_date\".\"D_YEAR\" as \"ss_customer_first_sales_date_year\",
+    \"ss_customer_first_shipto_date_date\".\"D_YEAR\" as \"ss_customer_first_shipto_date_year\",
+    \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
+    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
+    \"ss_store_sales\".\"SS_ADDR_SK\" as \"ss_sale_address_id\",
+    \"ss_store_sales\".\"SS_COUPON_AMT\" as \"ss_coupon_amt\",
+    \"ss_store_sales\".\"SS_LIST_PRICE\" as \"ss_list_price\",
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
+    \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\",
+    \"ss_store_sales\".\"SS_WHOLESALE_COST\" as \"ss_wholesale_cost\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -131,7 +145,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"ss_customer_first_shipto_date_date\" on \"ss_customer_customers\".\"C_FIRST_SHIPTO_DATE_SK\" = \"ss_customer_first_shipto_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"ss_item_items\".\"I_ITEM_SK\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null and \"ss_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" != \"ss_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\"
+    \"ss_item_items\".\"I_ITEM_SK\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null
 
 GROUP BY
     1,
@@ -139,62 +153,134 @@ GROUP BY
     3,
     4,
     5,
-    \"ss_customer_first_sales_date_date\".\"D_YEAR\",
-    \"ss_customer_first_shipto_date_date\".\"D_YEAR\"),
-divergent as (
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13),
+waggish as (
 SELECT
-    \"abhorrent\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
-    \"abhorrent\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
-    \"abhorrent\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
-    \"abhorrent\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
-    \"abhorrent\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
-    \"kaput\".\"b_city\" as \"b_city\",
-    \"kaput\".\"b_sn\" as \"b_sn\",
-    \"kaput\".\"b_str\" as \"b_str\",
-    \"kaput\".\"b_zip\" as \"b_zip\",
-    \"kaput\".\"c_city\" as \"c_city\",
-    \"kaput\".\"c_sn\" as \"c_sn\",
-    \"kaput\".\"c_str\" as \"c_str\",
-    \"kaput\".\"c_zip\" as \"c_zip\",
-    \"kaput\".\"p_name\" as \"p_name\",
-    \"kaput\".\"s_name\" as \"s_name\",
-    \"kaput\".\"s_zip\" as \"s_zip\",
-    coalesce(\"abhorrent\".\"agg_99_item_sk_99\",\"kaput\".\"ss_item_id\") as \"agg_99_item_sk_99\",
-    coalesce(\"abhorrent\".\"agg_99_store_sk_99\",\"kaput\".\"ss_store_id\") as \"agg_99_store_sk_99\"
+    \"puzzled\".\"ss_date_year\" as \"_agg_00_syear_00\",
+    \"puzzled\".\"ss_item_id\" as \"_agg_00_item_sk_00\",
+    \"puzzled\".\"ss_store_id\" as \"_agg_00_store_sk_00\",
+    count(\"puzzled\".\"ss_ticket_number\") as \"_agg_00_cnt_00\",
+    sum(\"puzzled\".\"ss_coupon_amt\") as \"_agg_00_s3_00\",
+    sum(\"puzzled\".\"ss_list_price\") as \"_agg_00_s2_00\",
+    sum(\"puzzled\".\"ss_wholesale_cost\") as \"_agg_00_s1_00\"
 FROM
-    \"kaput\"
-    LEFT OUTER JOIN \"abhorrent\" on \"kaput\".\"ss_customer_address_id\" = \"abhorrent\".\"agg_99_c_addr_99\" AND \"kaput\".\"ss_item_id\" = \"abhorrent\".\"agg_99_item_sk_99\" AND \"kaput\".\"ss_sale_address_id\" = \"abhorrent\".\"agg_99_b_addr_99\" AND \"kaput\".\"ss_store_id\" = \"abhorrent\".\"agg_99_store_sk_99\")
-SELECT
-    \"divergent\".\"p_name\" as \"p_name\",
-    \"divergent\".\"s_name\" as \"s_name\",
-    \"divergent\".\"s_zip\" as \"s_zip\",
-    \"divergent\".\"b_sn\" as \"b_sn\",
-    \"divergent\".\"b_str\" as \"b_str\",
-    \"divergent\".\"b_city\" as \"b_city\",
-    \"divergent\".\"b_zip\" as \"b_zip\",
-    \"divergent\".\"c_sn\" as \"c_sn\",
-    \"divergent\".\"c_str\" as \"c_str\",
-    \"divergent\".\"c_city\" as \"c_city\",
-    \"divergent\".\"c_zip\" as \"c_zip\",
-    \"divergent\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
-    \"divergent\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
-    \"divergent\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
-    \"divergent\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
-    \"divergent\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
-    \"busy\".\"agg_00_s1_00\" as \"agg_00_s1_00\",
-    \"busy\".\"agg_00_s2_00\" as \"agg_00_s2_00\",
-    \"busy\".\"agg_00_s3_00\" as \"agg_00_s3_00\",
-    \"busy\".\"agg_00_syear_00\" as \"agg_00_syear_00\",
-    \"busy\".\"agg_00_cnt_00\" as \"agg_00_cnt_00\"
-FROM
-    \"divergent\"
-    INNER JOIN \"busy\" on \"divergent\".\"agg_99_item_sk_99\" = \"busy\".\"agg_00_item_sk_00\" AND \"divergent\".\"agg_99_store_sk_99\" = \"busy\".\"agg_00_store_sk_00\"
+    \"puzzled\"
 WHERE
-    \"busy\".\"agg_00_cnt_00\" <= \"divergent\".\"agg_99_cnt_99\"
+    \"puzzled\".\"ss_customer_demographic_marital_status\" != \"puzzled\".\"ss_customer_demographics_marital_status\"
+
+GROUP BY
+    1,
+    2,
+    3),
+macho as (
+SELECT
+    \"late\".\"ss_customer_address_id\" as \"_agg_99_c_addr_99\",
+    \"late\".\"ss_date_year\" as \"_agg_99_syear_99\",
+    \"late\".\"ss_item_id\" as \"_agg_99_item_sk_99\",
+    \"late\".\"ss_sale_address_id\" as \"_agg_99_b_addr_99\",
+    \"late\".\"ss_store_id\" as \"_agg_99_store_sk_99\",
+    count(\"late\".\"ss_ticket_number\") as \"_agg_99_cnt_99\",
+    sum(\"late\".\"ss_coupon_amt\") as \"_agg_99_s3_99\",
+    sum(\"late\".\"ss_list_price\") as \"_agg_99_s2_99\",
+    sum(\"late\".\"ss_wholesale_cost\") as \"_agg_99_s1_99\"
+FROM
+    \"late\"
+WHERE
+    \"late\".\"ss_customer_demographic_marital_status\" != \"late\".\"ss_customer_demographics_marital_status\"
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    \"late\".\"ss_customer_first_sales_date_year\",
+    \"late\".\"ss_customer_first_shipto_date_year\"),
+puffy as (
+SELECT
+    \"waggish\".\"_agg_00_cnt_00\" as \"agg_00_cnt_00\",
+    \"waggish\".\"_agg_00_item_sk_00\" as \"agg_00_item_sk_00\",
+    \"waggish\".\"_agg_00_s1_00\" as \"agg_00_s1_00\",
+    \"waggish\".\"_agg_00_s2_00\" as \"agg_00_s2_00\",
+    \"waggish\".\"_agg_00_s3_00\" as \"agg_00_s3_00\",
+    \"waggish\".\"_agg_00_store_sk_00\" as \"agg_00_store_sk_00\",
+    \"waggish\".\"_agg_00_syear_00\" as \"agg_00_syear_00\"
+FROM
+    \"waggish\"),
+friendly as (
+SELECT
+    \"macho\".\"_agg_99_b_addr_99\" as \"agg_99_b_addr_99\",
+    \"macho\".\"_agg_99_c_addr_99\" as \"agg_99_c_addr_99\",
+    \"macho\".\"_agg_99_cnt_99\" as \"agg_99_cnt_99\",
+    \"macho\".\"_agg_99_item_sk_99\" as \"agg_99_item_sk_99\",
+    \"macho\".\"_agg_99_s1_99\" as \"agg_99_s1_99\",
+    \"macho\".\"_agg_99_s2_99\" as \"agg_99_s2_99\",
+    \"macho\".\"_agg_99_s3_99\" as \"agg_99_s3_99\",
+    \"macho\".\"_agg_99_store_sk_99\" as \"agg_99_store_sk_99\",
+    \"macho\".\"_agg_99_syear_99\" as \"agg_99_syear_99\"
+FROM
+    \"macho\"),
+premium as (
+SELECT
+    \"friendly\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
+    \"friendly\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
+    \"friendly\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
+    \"friendly\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
+    \"friendly\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
+    \"protective\".\"b_city\" as \"b_city\",
+    \"protective\".\"b_sn\" as \"b_sn\",
+    \"protective\".\"b_str\" as \"b_str\",
+    \"protective\".\"b_zip\" as \"b_zip\",
+    \"protective\".\"c_city\" as \"c_city\",
+    \"protective\".\"c_sn\" as \"c_sn\",
+    \"protective\".\"c_str\" as \"c_str\",
+    \"protective\".\"c_zip\" as \"c_zip\",
+    \"protective\".\"p_name\" as \"p_name\",
+    \"protective\".\"s_name\" as \"s_name\",
+    \"protective\".\"s_zip\" as \"s_zip\",
+    coalesce(\"friendly\".\"agg_99_item_sk_99\",\"protective\".\"ss_item_id\") as \"agg_99_item_sk_99\",
+    coalesce(\"friendly\".\"agg_99_store_sk_99\",\"protective\".\"ss_store_id\") as \"agg_99_store_sk_99\"
+FROM
+    \"protective\"
+    LEFT OUTER JOIN \"friendly\" on \"protective\".\"ss_customer_address_id\" = \"friendly\".\"agg_99_c_addr_99\" AND \"protective\".\"ss_item_id\" = \"friendly\".\"agg_99_item_sk_99\" AND \"protective\".\"ss_sale_address_id\" = \"friendly\".\"agg_99_b_addr_99\" AND \"protective\".\"ss_store_id\" = \"friendly\".\"agg_99_store_sk_99\")
+SELECT
+    \"premium\".\"p_name\" as \"p_name\",
+    \"premium\".\"s_name\" as \"s_name\",
+    \"premium\".\"s_zip\" as \"s_zip\",
+    \"premium\".\"b_sn\" as \"b_sn\",
+    \"premium\".\"b_str\" as \"b_str\",
+    \"premium\".\"b_city\" as \"b_city\",
+    \"premium\".\"b_zip\" as \"b_zip\",
+    \"premium\".\"c_sn\" as \"c_sn\",
+    \"premium\".\"c_str\" as \"c_str\",
+    \"premium\".\"c_city\" as \"c_city\",
+    \"premium\".\"c_zip\" as \"c_zip\",
+    \"premium\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
+    \"premium\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
+    \"premium\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
+    \"premium\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
+    \"premium\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
+    \"puffy\".\"agg_00_s1_00\" as \"agg_00_s1_00\",
+    \"puffy\".\"agg_00_s2_00\" as \"agg_00_s2_00\",
+    \"puffy\".\"agg_00_s3_00\" as \"agg_00_s3_00\",
+    \"puffy\".\"agg_00_syear_00\" as \"agg_00_syear_00\",
+    \"puffy\".\"agg_00_cnt_00\" as \"agg_00_cnt_00\"
+FROM
+    \"premium\"
+    INNER JOIN \"puffy\" on \"premium\".\"agg_99_item_sk_99\" = \"puffy\".\"agg_00_item_sk_00\" AND \"premium\".\"agg_99_store_sk_99\" = \"puffy\".\"agg_00_store_sk_00\"
+WHERE
+    \"puffy\".\"agg_00_cnt_00\" <= \"premium\".\"agg_99_cnt_99\"
 
 ORDER BY 
-    \"divergent\".\"p_name\" asc nulls first,
-    \"divergent\".\"s_name\" asc nulls first,
-    \"busy\".\"agg_00_cnt_00\" asc nulls first,
-    \"divergent\".\"agg_99_s1_99\" asc nulls first,
-    \"busy\".\"agg_00_s1_00\" asc nulls first"""
+    \"premium\".\"p_name\" asc nulls first,
+    \"premium\".\"s_name\" asc nulls first,
+    \"puffy\".\"agg_00_cnt_00\" asc nulls first,
+    \"premium\".\"agg_99_s1_99\" asc nulls first,
+    \"puffy\".\"agg_00_s1_00\" asc nulls first"""

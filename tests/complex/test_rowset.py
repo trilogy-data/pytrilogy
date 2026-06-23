@@ -156,12 +156,18 @@ SELECT
     env = Environment()
     engine = Dialects.DUCK_DB.default_executor(environment=env, conf=DuckDBConfig())
     sql = engine.generate_sql(declarations)[-1]
+    # Each rowset body is wrapped in a translation node, so the source columns are
+    # projected under the rowset-local names (`_buyers_a_cust_id`) and renamed to
+    # the rowset outputs in the wrapper. Assert the full non-swapped chain:
+    # bill -> buyers_a -> a_cust, ship -> buyers_b -> b_cust.
     assert (
-        '"orders"."bill" as "buyers_a_cust_id"' in sql
+        '"orders"."bill" as "_buyers_a_cust_id"' in sql
     ), f"buyers_a.cust_id should project bill, sql was:\n{sql}"
     assert (
-        '"orders"."ship" as "buyers_b_cust_id"' in sql
+        '"orders"."ship" as "_buyers_b_cust_id"' in sql
     ), f"buyers_b.cust_id should project ship, sql was:\n{sql}"
+    assert '"buyers_a_cust_id" as "a_cust"' in sql, sql
+    assert '"buyers_b_cust_id" as "b_cust"' in sql, sql
 
 
 def test_rowset_alias_name_collision_lineage() -> None:

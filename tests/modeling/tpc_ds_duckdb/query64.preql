@@ -116,6 +116,10 @@ inner join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.id
 inner join agg_99.b_addr_99 = ss.sale_address.id
 inner join agg_99.c_addr_99 = ss.customer.address.id
 select
+    --ss.item.id,
+    --ss.store.id,
+    --ss.sale_address.id,
+    --ss.customer.address.id,
     ss.item.product_name as p_name,
     ss.store.name as s_name,
     ss.store.zip as s_zip,

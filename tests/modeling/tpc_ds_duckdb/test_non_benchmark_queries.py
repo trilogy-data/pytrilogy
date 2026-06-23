@@ -522,6 +522,23 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
 
 
+def test_tvf_union_rowset_remap_does_not_regroup():
+    patterns = {
+        "query76.preql": r'SELECT\s+"[^"]+"\."channel" as "channel".*?'
+        r'FROM\s+"[^"]+"\s+GROUP BY\s+1,\s+2,\s+3,\s+4,\s+5,\s+6,\s+7\)\s*SELECT\s+'
+        r'"[^"]+"\."channel" as "q76_results_channel"',
+        "query77.preql": r'SELECT\s+"[^"]+"\."u_channel" as "u_channel".*?'
+        r'FROM\s+"[^"]+"\s+GROUP BY\s+1,\s+2,\s+3,\s+4,\s+5\),\s+'
+        r'\w+ as \(\s*SELECT\s+"[^"]+"\."u_channel" as "l0_union_u_channel"',
+    }
+    for filename, pattern in patterns.items():
+        query = (working_path / filename).read_text()
+        env = Environment(working_path=working_path)
+        sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+
+        assert not re.search(pattern, sql, re.S), sql
+
+
 def _assert_having_membership_subselect_valid(query: str) -> None:
     """A HAVING `x in <set>` must source its existence subselect from a real
     producer CTE present in the WITH list — not a dangling reference. The HAVING

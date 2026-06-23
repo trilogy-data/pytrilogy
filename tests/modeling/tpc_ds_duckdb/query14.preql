@@ -9,6 +9,10 @@ auto tuple_key <- concat(
     '|',
     sales.item.category_id::string
 );
+
+# Map all_sales' uppercase channel codes to the reference's lowercase labels.
+auto cross_channel_count <- count_distinct(sales.channel) by tuple_key;
+
 # cross_tuples: tuples sold in all 3 channels during 1999-2001. Equivalent to
 # the reference's 3-way INTERSECT on (i_brand_id, i_class_id, i_category_id)
 # across store/catalog/web sales.
@@ -19,7 +23,6 @@ select
     --cross_channel_count,
 having
     cross_channel_count = 3
-
 ;
 
 # avg_sales: scalar avg(quantity * list_price) over all 3 channels for 1999-2001.
@@ -37,8 +40,6 @@ auto channel_label <- case
     else null
 end;
 
-# Map all_sales' uppercase channel codes to the reference's lowercase labels.
-auto cross_channel_count <- count_distinct(sales.channel) by tuple_key;
 
 # Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in
 # cross_tuples, HAVING sum(quantity*list_price) > avg_sales.

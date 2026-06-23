@@ -432,6 +432,8 @@ def test_tvf_union_named():
     # arms. Output is exactly the bound columns; the result is a SQL UNION ALL
     # (rows stacked), NOT a key-join.
     executor = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
+    DebuggingHook()
     executor.execute_text(_TVF_UNION_FIXTURE)
     query = """
 with combined as union(
