@@ -87,19 +87,27 @@ def gen_rowset_node(
     if cached is not None:
         node = cached.copy()
     else:
-        # The outer query's scoped joins live on the shared build caches; strip
-        # those touching this rowset's own outputs before the inner build so the
-        # rowset doesn't get welded onto itself (see _scoped_joins_for_rowset),
-        # then restore so outer sourcing is unaffected.
-        caches = history.build_caches
-        saved_scoped_joins = caches.scoped_joins
-        caches.scoped_joins = _scoped_joins_for_rowset(
-            saved_scoped_joins, lineage.rowset.derived_concepts
+        # The rowset body's OWN query-scoped joins live on its SelectLineage; feed
+        # them to the inner build (like the union-arm path) so the body applies them
+        # — otherwise its datasources come back disconnected. Combine with the outer
+        # query's joins (filtered to avoid self-referential recursion).
+        own_scoped = (
+            list(select.scoped_joins)
+            if isinstance(select, SelectLineage)
+            else []
         )
-        try:
-            node = get_query_node(history.base_environment, select, history)
-        finally:
-            caches.scoped_joins = saved_scoped_joins
+        scoped_joins = (
+            _scoped_joins_for_rowset(
+                history.build_caches.scoped_joins, lineage.rowset.derived_concepts
+            )
+            + own_scoped
+        )
+        node = get_query_node(
+            history.base_environment,
+            select,
+            history=None,
+            scoped_joins=scoped_joins or None,
+        )
         if node is not None:
             history.rowset_history[rowset.name] = node.copy()
 
@@ -110,15 +118,8 @@ def gen_rowset_node(
         raise UnresolvableQueryException(
             f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
         )
-    # A LEFT scoped-join key is partial against its anchor; this arm keeps the
-    # anchor's rows, so re-enriching the key back to a shared base dimension fans
-    # the arm out against that base (a 1=1 cross product). Drop it from the
-    # enrichment set — the rowset already outputs the key directly. FULL keys are
-    # intentionally NOT dropped: a FULL join must source both sides in full (so a
-    # complete dimension on one side contributes all its rows).
     enrichment = set([x.address for x in local_optional])
 
-    factory = Factory(environment=history.base_environment, grain=select.grain)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} rowset derived concepts are {lineage.rowset.derived_concepts}"
     )
@@ -131,16 +132,7 @@ def gen_rowset_node(
     rowset_relevant: list[BuildConcept] = [
         v for v in concept_pool if v.address in rowset_outputs
     ]
-    # A query-scoped `join` collapses one of this rowset's derived keys onto the
-    # join's canonical concept. A distinct-base key keeps its own address (with a
-    # pseudonym back to the canonical) and is already advertised above. But a key
-    # that's a passthrough of a base dimension *shared* with the other rowset has
-    # its address rewritten to the canonical, so it no longer matches its own
-    # derived address and drops out — leaving the rowset with no join key to merge
-    # on. For those, follow the collapse and advertise the canonical concept.
-    # `scoped_partial` collects the keys whose join is LEFT (the source side of a
-    # `left join`), keyed off the *original* derived address, marking whichever
-    # concept actually carries the key.
+
     present_map: dict[str, BuildConcept] = {v.address: v for v in rowset_relevant}
     scoped_partial: list[BuildConcept] = []
     for derived_address in lineage.rowset.derived_concepts:
@@ -158,7 +150,7 @@ def gen_rowset_node(
             scoped_partial.append(advertised)
 
     additional_relevant = [
-        factory.build(x) for x in select.output_components if x.address in enrichment
+        environment.concepts[x.address] for x in select.output_components if x.address in enrichment
     ]
     # add in other other concepts
     node.set_output_concepts(rowset_relevant + additional_relevant)
@@ -168,16 +160,14 @@ def gen_rowset_node(
                 f"{padding(depth)}{LOGGER_PREFIX} adding {item} to partial concepts"
             )
             node.partial_concepts.append(item)
-    # The LEFT-join key is partial against its anchor — neither the column-partial
-    # path (no Modifier.PARTIAL on a derived binding) nor get_node_joins
-    # (scoped_partial_derived excludes ROWSET keys) marks it. Mark it here so the
-    # outer merge keeps the anchor's unmatched rows (LEFT, not INNER).
+
     existing_partial = {c.address for c in node.partial_concepts}
     for item in scoped_partial:
         if item.address not in existing_partial:
             node.partial_concepts.append(item)
             existing_partial.add(item.address)
 
+    # map the rowset grain back to the context of the surrounding environment
     node.grain = BuildGrain.from_concepts(
         [
             x

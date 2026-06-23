@@ -672,14 +672,7 @@ def get_query_node(
     logger.info(
         f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
     )
-    # Caches live on History so every sub-select (rowsets, multiselect arms)
-    # in this resolution reuses the base environment's materialized concepts.
     caches = history.build_caches
-    # Query-scoped JOINs and environment-level MERGEs are applied during the
-    # build, not by cloning/mutating the author env: each Factory collapses
-    # merged-away source concepts to their canonical target in `_build_concept`
-    # and marks partial datasource bindings. Stored on caches so nested
-    # sub-selects inherit the same merges.
     if scoped_joins:
         caches.scoped_joins = scoped_joins
     if environment.merges:
@@ -689,12 +682,11 @@ def get_query_node(
         ]
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(environment)
-    build_cache: dict[str, BuildConcept] = caches.build_cache
-    canonical_build_cache: dict[str, BuildConcept] = caches.canonical_build_cache
+
     base_factory = Factory(
         environment=environment,
-        build_cache=build_cache,
-        canonical_build_cache=canonical_build_cache,
+        build_cache=caches.build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
         scoped_joins=caches.scoped_joins,
@@ -705,10 +697,10 @@ def get_query_node(
 
     build_environment = environment.materialize_for_select(
         build_statement.local_concepts,
-        build_cache=build_cache,
+        build_cache=caches.build_cache,
         pseudonym_map=base_factory.pseudonym_map,
         grain_build_cache=base_factory.grain_build_cache,
-        canonical_build_cache=canonical_build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=caches.scoped_joins,
     )
@@ -731,10 +723,6 @@ def get_query_node(
         f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
     )
 
-    # A tautological `X IS NOT NULL` (X provably non-null given the actual join
-    # tree) is dropped later by the StripRedundantNotNull optimization rule,
-    # which operates on the built CTEs where join types and nullability are
-    # known — pre-resolution we can't tell whether an outer join pads X.
     ods: StrategyNode = source_query_concepts(
         output_concepts=search_concepts,
         environment=build_environment,

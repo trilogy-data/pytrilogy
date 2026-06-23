@@ -632,9 +632,7 @@ def source_query_concepts(
         # Partition the full required set (outputs + filter row args, i.e. the
         # resolver's `completion_mandatory`) by true join reachability in the
         # reference graph. When it splits, name the groups and point at the
-        # join/merge fix. Reachability (not lineage anchors) means FK-joined
-        # concepts stay grouped, so the message never falsely splits joinable
-        # models.
+        # join/merge fix. R
         required = output_concepts
         if conditions:
             required = unique(

@@ -22,9 +22,7 @@ from .window_node import WindowNode
 @dataclass
 class BuildCaches:
     """Factory build caches, threaded through every get_query_node call in a
-    resolution (the top-level select and each rowset/multiselect sub-select)
-    so the base environment's concepts are materialized once instead of once
-    per sub-select. All are keyed on grain/lineage/address identity, so reuse
+    resolution. All are keyed on grain/lineage/address identity, so reuse
     is correct across sub-selects sharing the same base environment."""
 
     build_cache: dict = field(default_factory=dict)

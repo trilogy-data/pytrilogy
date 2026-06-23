@@ -128,6 +128,7 @@ import a as a;
 import b as b;
 with rs as inner join a.aid = b.bid
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
+
 select rs.k, rs.sa, rs.sb limit 10;
 """,
     )
