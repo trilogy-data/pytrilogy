@@ -1,10 +1,13 @@
 from pathlib import Path
+import os
 
 import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.core.enums import ValidationScope
 from trilogy.core.validation.environment import validate_environment
+from trilogy.dialect.duckdb import get_python_datasource_setup_sql
+from trilogy.dialect.duckdb_uv import is_retryable_uv_error, run_with_retry
 from trilogy.execution import DuckDBConfig
 
 
@@ -73,7 +76,7 @@ def test_uv_run_macro_error_message():
 
 
 def test_uv_run_error_passing():
-    """Test that uv_run macro gives helpful error when not configured."""
+    """Test that uv_run macro surfaces script stderr."""
     executor = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent),
         conf=DuckDBConfig(enable_python_datasources=True),
@@ -82,7 +85,55 @@ def test_uv_run_error_passing():
     with pytest.raises(Exception) as exc_info:
         executor.execute_raw_sql(f"SELECT * FROM uv_run('{script_path}')")
 
-        assert "A helpful error describing what went wrong." in str(exc_info.value)
+    assert "Pipe process exited" in str(exc_info.value)
+
+
+def test_windows_uv_run_uses_retry_wrapper():
+    sql = get_python_datasource_setup_sql(enabled=True, is_windows=True)
+
+    assert "trilogy.dialect.duckdb_uv" in sql
+
+
+def test_uv_retryable_error_detection():
+    assert is_retryable_uv_error(
+        "error: failed to acquire file lock: The process cannot access the file"
+    )
+    assert not is_retryable_uv_error("SyntaxError: A helpful error")
+
+
+def test_uv_wrapper_retries_retryable_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    fake_uv = tmp_path / "uv.cmd"
+    fake_uv.write_text(
+        "\n".join(
+            [
+                "@echo off",
+                "set count=0",
+                'if exist "%~dp0count.txt" set /p count=<"%~dp0count.txt"',
+                "set /a count=%count%+1",
+                'echo %count%>"%~dp0count.txt"',
+                "if %count% LSS 2 (",
+                "  echo failed to acquire file lock 1>&2",
+                "  exit /b 1",
+                ")",
+                "echo ok",
+                "exit /b 0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+
+    output_path = tmp_path / "out.arrow"
+    error_path = tmp_path / "out.err"
+
+    assert run_with_retry("script.py", "", output_path, error_path) == 0
+    assert (tmp_path / "count.txt").read_text(encoding="utf-8").strip() == "2"
+    assert output_path.read_text(encoding="utf-8").strip() == "ok"
+    assert capsys.readouterr().out.strip() == '{"name": "done"}'
 
 
 def test_validation_caches_python_datasource_per_run():
