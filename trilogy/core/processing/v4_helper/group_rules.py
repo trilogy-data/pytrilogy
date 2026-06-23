@@ -362,8 +362,23 @@ def partition_roots(
                         concept_attrs[x].address in output_addresses for x in reaches[i]
                     )
                 ]
-                for k in range(1, len(output_roots)):
-                    union(output_roots[0], output_roots[k])
+                # Only co-source output-converging roots that lie in the same
+                # weakly-connected component of the concept graph. Roots in
+                # different components (unrelated models, no join/merge path) only
+                # meet at a cross-product of single-row aggregates; forcing them
+                # into one scan yields an unsourceable disconnected root group
+                # (`select sum(av), sum(bv)` over two unrelated models).
+                undirected = concept_graph.to_undirected()
+                comp_of: dict[str, int] = {}
+                for ci, comp in enumerate(nx.connected_components(undirected)):
+                    for node in comp:
+                        comp_of[node] = ci
+                by_component: dict[int, list[int]] = defaultdict(list)
+                for i in output_roots:
+                    by_component[comp_of.get(main_items[i][0], -1 - i)].append(i)
+                for component_roots in by_component.values():
+                    for k in range(1, len(component_roots)):
+                        union(component_roots[0], component_roots[k])
 
             components: dict[int, list[NodeItem]] = defaultdict(list)
             for i, item in enumerate(main_items):

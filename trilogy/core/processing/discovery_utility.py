@@ -654,6 +654,22 @@ def disconnected_components(
     return sorted(groups, key=lambda grp: min(c.address for c in grp))
 
 
+def raise_if_disconnected(
+    environment: BuildEnvironment,
+    concepts: List[BuildConcept],
+    g: "ReferenceGraph | None" = None,
+) -> None:
+    """Raise the typed subgraph error when ``concepts`` span >1 unconnected
+    reference-graph component (a real missing join/merge). Crossjoinable
+    (single-row/constant) concepts are skipped, so valid cross-joins still pass."""
+    subgraphs = disconnected_components(environment, concepts, g)
+    if len(subgraphs) > 1:
+        raise DisconnectedConceptsException(
+            format_disconnected_subgraphs_error(subgraphs),
+            subgraphs=[[c.address for c in group] for group in subgraphs],
+        )
+
+
 def format_disconnected_subgraphs_error(
     subgraphs: List[List[BuildConcept]],
 ) -> str:

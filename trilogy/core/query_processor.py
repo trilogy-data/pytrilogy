@@ -15,7 +15,6 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
-    DisconnectedConceptsException,
     UnresolvableQueryException,
 )
 from trilogy.core.graph_models import ReferenceGraph
@@ -68,8 +67,7 @@ from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
 from trilogy.core.processing.discovery_utility import (
-    disconnected_components,
-    format_disconnected_subgraphs_error,
+    raise_if_disconnected,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -553,6 +551,23 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     return None
 
 
+def _raise_if_disconnected(
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+    build_environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    conditions: BuildWhereClause | None,
+) -> None:
+    """Raise the typed subgraph error when the required concepts (outputs + WHERE
+    row args) span unconnected reference-graph components. Crossjoinable
+    (single-row/constant) concepts are skipped by ``disconnected_components``, so
+    e.g. two ungrouped scalar aggregates still resolve via cross-join."""
+    concepts = list(build_statement.output_components)
+    seen = {c.address for c in concepts}
+    if conditions:
+        concepts += [c for c in conditions.row_arguments if c.address not in seen]
+    raise_if_disconnected(build_environment, concepts, graph)
+
+
 def _get_query_node_v4(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -566,6 +581,11 @@ def _get_query_node_v4(
     planner, which returns a fully-grouped FINAL node (no `group_if_required_v2`)
     and may have promoted grain keys to hidden — so hidden_concepts are merged,
     not overwritten."""
+    # Pre-check connectivity: a WHERE on an unrelated model would otherwise be
+    # silently cross-joined (`ON 1=1`) into the output instead of surfacing the
+    # typed subgraph error. Crossjoinable concepts are skipped, so valid
+    # cross-joins (scalar aggregates, constants) still resolve below.
+    _raise_if_disconnected(build_statement, build_environment, graph, conditions)
     info = search_concepts_v4(
         mandatory_list=list(build_statement.output_components),
         # Inherit the outer resolution's build caches — chiefly `scoped_joins`,
@@ -587,18 +607,9 @@ def _get_query_node_v4(
     if ds is None:
         # When the requested concepts span unconnected models, surface the typed
         # subgraph error (mirrors the v3 get_priority_concept dead-end) rather
-        # than an opaque "could not resolve" dump. The required set is outputs +
-        # filter args -- a WHERE on an unrelated model also forces the split.
-        concepts = list(build_statement.output_components)
-        seen = {c.address for c in concepts}
-        if conditions:
-            concepts += [c for c in conditions.row_arguments if c.address not in seen]
-        subgraphs = disconnected_components(build_environment, concepts, graph)
-        if len(subgraphs) > 1:
-            raise DisconnectedConceptsException(
-                format_disconnected_subgraphs_error(subgraphs),
-                subgraphs=[[c.address for c in group] for group in subgraphs],
-            )
+        # than an opaque "could not resolve" dump. Caught by the up-front
+        # pre-check for top-level selects; this also covers nested dead-ends.
+        _raise_if_disconnected(build_statement, build_environment, graph, conditions)
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>"
             for c in build_statement.output_components
