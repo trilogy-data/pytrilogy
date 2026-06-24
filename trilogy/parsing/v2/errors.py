@@ -34,6 +34,13 @@ ERROR_CODES: dict[int, str] = {
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
     210: "Missing order direction? Order by must be explicit about direction - specify `asc` or `desc`.",
     211: "Expression in `by` clause must be wrapped in parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.",
+    212: (
+        "A `by <grain>` clause must attach directly to an aggregate, not to an "
+        "expression that wraps one (e.g. `coalesce(...)`, `round(...)`, "
+        "arithmetic). Move the grain inside, next to the aggregate — write "
+        "`coalesce(sum(x) by store.id, 0)` — or compute the grouped aggregate "
+        "first and wrap it: `auto m <- sum(x) by store.id;` then `coalesce(m, 0)`."
+    ),
     220: (
         "Filter or stray clause after a `join`? A query-scoped join "
         "`inner|left|full join <a> = <b>` takes only key equalities — to join on "
@@ -186,6 +193,73 @@ def detect_align_missing_and(text: str, pos: int) -> int | None:
             best = m.start()
             break
     return best
+
+
+_AGG_NAMES = (
+    "count_distinct",
+    "array_agg",
+    "stddev",
+    "variance",
+    "bool_or",
+    "bool_and",
+    "count",
+    "sum",
+    "max",
+    "min",
+    "avg",
+    "any",
+)
+_AGG_CALL_RE = re.compile(r"\b(?:" + "|".join(_AGG_NAMES) + r")\s*\(", re.IGNORECASE)
+_BY_NEAR_RE = re.compile(r"\bby\b", re.IGNORECASE)
+
+
+def detect_by_on_wrapped_aggregate(text: str, pos: int) -> int | None:
+    """Locate a `by <grain>` clause attached to an expression that *wraps* an
+    aggregate rather than to the aggregate itself — e.g.
+    `coalesce(sum(x), 0) by store.id`. The grain may only follow a bare aggregate
+    (`sum(x) by store.id`), so the parser chokes on the `by` once it sits after
+    the wrapping call's `)`. Returns the offending `by` position, or None. Shared
+    by both grammar backends; purely textual (no reparse)."""
+    m = _BY_NEAR_RE.search(text, max(0, pos - 2), pos + 6)
+    if m is None:
+        return None
+    by_pos = m.start()
+    # The char immediately before `by` (skipping spaces) must close a call.
+    i = by_pos - 1
+    while i >= 0 and text[i].isspace():
+        i -= 1
+    if i < 0 or text[i] != ")":
+        return None
+    # Match that `)` back to its `(`.
+    depth = 0
+    j = i
+    while j >= 0:
+        if text[j] == ")":
+            depth += 1
+        elif text[j] == "(":
+            depth -= 1
+            if depth == 0:
+                break
+        j -= 1
+    if j < 0:
+        return None
+    open_paren = j
+    # Read the wrapping function name preceding `(`.
+    k = open_paren - 1
+    while k >= 0 and text[k].isspace():
+        k -= 1
+    name_end = k + 1
+    while k >= 0 and (text[k].isalnum() or text[k] == "_"):
+        k -= 1
+    func = text[k + 1 : name_end].lower()
+    # No wrapper name, or the call IS the aggregate (`sum(x) by ...` is valid) —
+    # not this mistake.
+    if not func or func in _AGG_NAMES:
+        return None
+    # The wrapped expression must actually contain an aggregate.
+    if _AGG_CALL_RE.search(text, open_paren + 1, i) is None:
+        return None
+    return by_pos
 
 
 DEFAULT_ERROR_SPAN: int = 30
