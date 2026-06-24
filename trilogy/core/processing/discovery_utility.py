@@ -584,6 +584,60 @@ def _aggregate_grain_only_parents(
     return out
 
 
+def _island_rowsets(g: "ReferenceGraph", cg) -> None:
+    """Mutate the undirected connectivity copy ``cg`` so each rowset becomes an
+    island: a rowset is a materialized result, so from outside it you can reach
+    only its declared outputs through an explicit scoped join/merge — you cannot
+    navigate into its derivation to recover the base concepts it was computed
+    from. So sever every edge crossing a rowset boundary, then reconnect (a) a
+    rowset's own outputs to each other and (b) outputs related across rowsets by a
+    scoped-join pseudonym.
+
+    Without this, a property keyed on a base concept (e.g. ``store_id.name``) looks
+    falsely reachable from a rowset whose key was *renamed* off that base concept
+    (``select store_id as sk_a``): the global graph connects ``store_id`` to the
+    rowset through that internal derivation, so a genuine scoped-join disconnection
+    (the join group is ``{sk_a, sk_b}``, not ``store_id``) is masked and surfaces
+    as the generic unresolvable error instead of a named subgraph split.
+    """
+    members_by_rowset: dict[str, list[str]] = {}
+    nodes_by_address: dict[str, list[str]] = {}
+    rowset_nodes: set[str] = set()
+    for node, concept in g.concepts.items():
+        if concept.derivation != Derivation.ROWSET:
+            continue
+        rowset_nodes.add(node)
+        nodes_by_address.setdefault(concept.address, []).append(node)
+        if isinstance(concept.lineage, BuildRowsetItem):
+            members_by_rowset.setdefault(concept.lineage.rowset.name, []).append(node)
+
+    if not rowset_nodes:
+        return
+
+    island = rowset_nodes | {
+        n for n in cg.nodes if isinstance(n, str) and n.startswith("rowset~")
+    }
+    cg.remove_edges_from(
+        [(u, v) for u, v in cg.edges if (u in island) != (v in island)]
+    )
+
+    # reconnect each rowset's own outputs via a synthetic hub
+    for name, members in members_by_rowset.items():
+        hub = f"rowset_island~{name}"
+        cg.add_node(hub)
+        cg.add_edges_from((hub, m) for m in members if m in cg)
+
+    # reconnect outputs related across rowsets by a scoped-join pseudonym
+    for node in rowset_nodes:
+        concept = g.concepts[node]
+        for pseudonym in concept.pseudonyms:
+            if pseudonym == concept.address:
+                continue
+            for other in nodes_by_address.get(pseudonym, []):
+                if node in cg and other in cg:
+                    cg.add_edge(node, other)
+
+
 def disconnected_components(
     environment: BuildEnvironment,
     concepts: List[BuildConcept],
@@ -598,7 +652,9 @@ def disconnected_components(
     ``environment``. Crossjoinable (single-row/constant) concepts are skipped.
     Aggregate grain-only ``by`` edges are dropped first (see
     ``_aggregate_grain_only_parents``) so a regroupable aggregate never bridges
-    two otherwise-disconnected models through its grouping key.
+    two otherwise-disconnected models through its grouping key. Rowsets are then
+    islanded (see ``_island_rowsets``) so a base concept reachable only by
+    navigating into a rowset's renamed-key derivation isn't falsely bridged.
     """
     from trilogy.core import graph as gx
     from trilogy.core.env_processor import generate_graph
@@ -618,6 +674,8 @@ def disconnected_components(
                 neighbor_concept = g.concepts.get(neighbor)
                 if neighbor_concept is not None and neighbor_concept.address in keys:
                     cg.remove_edge(node, neighbor)
+
+    _island_rowsets(g, cg)
 
     comp_of: dict[str, int] = {}
     for i, component in enumerate(gx.connected_components(cg)):

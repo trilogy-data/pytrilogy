@@ -21,3 +21,322 @@
   [q10] starting (worker _worker_0)
   [q10] done in 50s (exit 0, score=pass)
   [q11] starting (worker _worker_0)
+  [q05] done in 485s (exit 0, score=fail)
+  [q12] starting (worker _worker_1)
+  [q11] done in 150s (exit 0, score=pass)
+  [q13] starting (worker _worker_0)
+  [q12] done in 22s (exit 0, score=pass)
+  [q14] starting (worker _worker_1)
+  [q13] done in 40s (exit 0, score=pass)
+  [q15] starting (worker _worker_0)
+  [q15] done in 38s (exit 0, score=fail)
+  [q16] starting (worker _worker_0)
+  [q16] done in 42s (exit 0, score=pass)
+  [q17] starting (worker _worker_0)
+  [q14] done in 156s (exit 0, score=fail)
+  [q18] starting (worker _worker_1)
+  [q18] done in 60s (exit 0, score=fail)
+  [q19] starting (worker _worker_1)
+  [q19] done in 36s (exit 0, score=pass)
+  [q20] starting (worker _worker_1)
+  [q20] done in 32s (exit 0, score=pass)
+  [q21] starting (worker _worker_1)
+  [q21] done in 56s (exit 0, score=pass)
+  [q22] starting (worker _worker_1)
+  [q17] done in 242s (exit 0, score=pass)
+  [q23] starting (worker _worker_0)
+  [q22] done in 21s (exit 0, score=pass)
+  [q24] starting (worker _worker_1)
+  [q24] done in 62s (exit 0, score=fail)
+  [q25] starting (worker _worker_1)
+  [q25] done in 34s (exit 0, score=pass)
+  [q26] starting (worker _worker_1)
+  [q26] done in 28s (exit 0, score=pass)
+  [q27] starting (worker _worker_1)
+  [q27] done in 55s (exit 0, score=fail)
+  [q28] starting (worker _worker_1)
+  [q23] done in 213s (exit 0, score=fail)
+  [q29] starting (worker _worker_0)
+  [q28] done in 25s (exit 0, score=fail)
+  [q30] starting (worker _worker_1)
+  [q30] done in 57s (exit 0, score=fail)
+  [q31] starting (worker _worker_1)
+  [q29] done in 105s (exit 0, score=pass)
+  [q32] starting (worker _worker_0)
+  [q32] done in 25s (exit 0, score=pass)
+  [q33] starting (worker _worker_0)
+  [q31] done in 73s (exit 0, score=fail)
+  [q34] starting (worker _worker_1)
+  [q33] done in 30s (exit 0, score=pass)
+  [q35] starting (worker _worker_0)
+  [q34] done in 44s (exit 0, score=pass)
+  [q36] starting (worker _worker_1)
+  [q35] done in 38s (exit 0, score=fail)
+  [q37] starting (worker _worker_0)
+  [q36] done in 66s (exit 0, score=pass)
+  [q38] starting (worker _worker_1)
+  [q37] done in 48s (exit 0, score=fail)
+  [q39] starting (worker _worker_0)
+  [q38] done in 26s (exit 0, score=fail)
+  [q40] starting (worker _worker_1)
+  [q39] done in 74s (exit 0, score=pass)
+  [q41] starting (worker _worker_0)
+  [q40] done in 53s (exit 0, score=fail)
+  [q42] starting (worker _worker_1)
+  [q42] done in 18s (exit 0, score=pass)
+  [q43] starting (worker _worker_1)
+  [q41] done in 40s (exit 0, score=pass)
+  [q44] starting (worker _worker_0)
+  [q43] done in 62s (exit 0, score=pass)
+  [q45] starting (worker _worker_1)
+  [q45] done in 46s (exit 0, score=pass)
+  [q46] starting (worker _worker_1)
+  [q44] done in 120s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q46] done in 44s (exit 0, score=pass)
+  [q48] starting (worker _worker_1)
+  [q47] done in 51s (exit 0, score=pass)
+  [q49] starting (worker _worker_0)
+  [q48] done in 32s (exit 0, score=pass)
+  [q50] starting (worker _worker_1)
+  [q49] done in 37s (exit 0, score=fail)
+  [q51] starting (worker _worker_0)
+  [q50] done in 81s (exit 0, score=fail)
+  [q52] starting (worker _worker_1)
+  [q51] done in 61s (exit 0, score=fail)
+  [q53] starting (worker _worker_0)
+  [q52] done in 21s (exit 0, score=pass)
+  [q54] starting (worker _worker_1)
+  [q53] done in 52s (exit 0, score=pass)
+  [q55] starting (worker _worker_0)
+  [q55] done in 21s (exit 0, score=pass)
+  [q56] starting (worker _worker_0)
+  [q56] done in 60s (exit 0, score=fail)
+  [q57] starting (worker _worker_0)
+  [q54] done in 201s (exit 0, score=fail)
+  [q58] starting (worker _worker_1)
+  [q58] done in 70s (exit 0, score=pass)
+  [q59] starting (worker _worker_1)
+  [q57] done in 141s (exit 0, score=pass)
+  [q60] starting (worker _worker_0)
+  [q60] done in 25s (exit 0, score=pass)
+  [q61] starting (worker _worker_0)
+  [q61] done in 32s (exit 0, score=pass)
+  [q62] starting (worker _worker_0)
+  [q62] done in 40s (exit 0, score=pass)
+  [q63] starting (worker _worker_0)
+  [q59] done in 130s (exit 0, score=pass)
+  [q64] starting (worker _worker_1)
+  [q63] done in 59s (exit 0, score=pass)
+  [q65] starting (worker _worker_0)
+  [q65] done in 68s (exit 0, score=fail)
+  [q66] starting (worker _worker_0)
+  [q64] done in 150s (exit 0, score=fail)
+  [q67] starting (worker _worker_1)
+  [q66] done in 91s (exit 0, score=fail)
+  [q68] starting (worker _worker_0)
+  [q68] done in 33s (exit 0, score=pass)
+  [q69] starting (worker _worker_0)
+  [q67] done in 105s (exit 0, score=fail)
+  [q70] starting (worker _worker_1)
+  [q69] done in 64s (exit 0, score=fail)
+  [q71] starting (worker _worker_0)
+  [q70] done in 66s (exit 0, score=pass)
+  [q72] starting (worker _worker_1)
+  [q71] done in 41s (exit 0, score=pass)
+  [q73] starting (worker _worker_0)
+  [q73] done in 29s (exit 0, score=fail)
+  [q74] starting (worker _worker_0)
+  [q72] done in 59s (exit 0, score=pass)
+  [q75] starting (worker _worker_1)
+  [q74] done in 92s (exit 0, score=fail)
+  [q76] starting (worker _worker_0)
+  [q76] done in 91s (exit 0, score=fail)
+  [q77] starting (worker _worker_0)
+  [q75] done in 290s (exit 0, score=fail)
+  [q78] starting (worker _worker_1)
+  [q77] done in 132s (exit 0, score=fail)
+  [q79] starting (worker _worker_0)
+  [q79] done in 30s (exit 0, score=fail)
+  [q80] starting (worker _worker_0)
+  [q78] done in 61s (exit 0, score=fail)
+  [q81] starting (worker _worker_1)
+  [q81] done in 89s (exit 0, score=fail)
+  [q82] starting (worker _worker_1)
+  [q82] done in 30s (exit 0, score=pass)
+  [q83] starting (worker _worker_1)
+  [q83] done in 79s (exit 0, score=pass)
+  [q84] starting (worker _worker_1)
+  [q80] done in 291s (exit 0, score=fail)
+  [q85] starting (worker _worker_0)
+  [q84] done in 71s (exit 0, score=fail)
+  [q86] starting (worker _worker_1)
+  [q85] done in 35s (exit 0, score=pass)
+  [q87] starting (worker _worker_0)
+  [q86] done in 72s (exit 0, score=pass)
+  [q88] starting (worker _worker_1)
+  [q87] done in 47s (exit 0, score=fail)
+  [q89] starting (worker _worker_0)
+  [q88] done in 35s (exit 0, score=pass)
+  [q90] starting (worker _worker_1)
+  [q90] done in 50s (exit 0, score=pass)
+  [q91] starting (worker _worker_1)
+  [q89] done in 78s (exit 0, score=pass)
+  [q92] starting (worker _worker_0)
+  [q91] done in 32s (exit 0, score=fail)
+  [q93] starting (worker _worker_1)
+  [q92] done in 31s (exit 0, score=fail)
+  [q94] starting (worker _worker_0)
+  [q93] done in 71s (exit 0, score=pass)
+  [q95] starting (worker _worker_1)
+  [q94] done in 98s (exit 0, score=fail)
+  [q96] starting (worker _worker_0)
+  [q96] done in 20s (exit 0, score=pass)
+  [q97] starting (worker _worker_0)
+  [q95] done in 77s (exit 0, score=pass)
+  [q98] starting (worker _worker_1)
+  [q98] done in 23s (exit 0, score=fail)
+  [q99] starting (worker _worker_1)
+  [q97] done in 78s (exit 0, score=fail)
+  [q99] done in 29s (exit 0, score=pass)
+[4/5] Finalising scores for 99 queries ...
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (185 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260624-133456
+
+# TPC-DS Agent Eval — 20260624-133456
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.285
+
+## Result
+
+- **Pass rate: 58/99** (59%)
+- Status breakdown: {'pass': 58, 'fail': 41}
+- Wall time: 3783.7s  |  Agent time: 7363.2s  |  Avg/query: 74.4s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 1378
+- Tool calls: 1661  →  {'trilogy': 1562, 'return_control_to_user': 99}
+- `trilogy` subcommands: {'agent-info': 152, 'file': 498, 'explore': 479, 'run': 426, 'database': 3}
+- Tool success rate: 89% (1476/1661 ok)
+- Tokens: 36806359 total (36344387 prompt + 461972 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 1562 | 4580 | 36762 | 0 | 0% |
+| `return_control_to_user` | 99 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 190} — total 190
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 01 | pass | 100 | 100 | 1577 |  |
+| 02 | fail | 53 | 53 | 7032 | result set differs from reference |
+| 03 | pass | 89 | 89 | 800 |  |
+| 04 | pass | 6 | 6 | 6168 |  |
+| 05 | fail | 100 | 100 | 12674 | result set differs from reference |
+| 06 | pass | 46 | 46 | 1929 |  |
+| 07 | pass | 100 | 100 | 1538 |  |
+| 08 | pass | 5 | 5 | 2450 |  |
+| 09 | pass | 1 | 1 | 5044 |  |
+| 10 | pass | 6 | 6 | 6298 |  |
+| 11 | pass | 90 | 90 | 4377 |  |
+| 12 | pass | 100 | 100 | 3824 |  |
+| 13 | pass | 1 | 1 | 2758 |  |
+| 14 | fail | 100 | 100 | 6661 | result set differs from reference |
+| 15 | fail | 100 | 100 | 1100 | result set differs from reference |
+| 16 | pass | 1 | 1 | 4149 |  |
+| 17 | pass | 0 | 0 | 7331 |  |
+| 18 | fail | 100 | 100 | 3658 | result set differs from reference |
+| 19 | pass | 100 | 100 | 1645 |  |
+| 20 | pass | 100 | 100 | 1968 |  |
+| 21 | pass | 100 | 100 | 1300 |  |
+| 22 | pass | 100 | 100 | 1288 |  |
+| 23 | fail | 4 | 27 | 7189 | result set differs from reference |
+| 24 | fail | 1 | 10 | 2885 | result set differs from reference |
+| 25 | pass | 1 | 1 | 5772 |  |
+| 26 | pass | 100 | 100 | 1651 |  |
+| 27 | fail | 100 | 100 | 2398 | result set differs from reference |
+| 28 | fail | 1 | 1 | 7623 | result set differs from reference |
+| 29 | pass | 1 | 1 | 5791 |  |
+| 30 | fail | 100 | 100 | 5737 | result set differs from reference |
+| 31 | fail | 44 | 44 | 4022 | result set differs from reference |
+| 32 | pass | 1 | 1 | 1620 |  |
+| 33 | pass | 100 | 100 | 3147 |  |
+| 34 | pass | 455 | 455 | 3461 |  |
+| 35 | fail | 100 | 100 | 10980 | result set differs from reference |
+| 36 | pass | 100 | 100 | 2195 |  |
+| 37 | fail | 1 | 2 | 1209 | result set differs from reference |
+| 38 | fail | 1 | 1 | 1105 | result set differs from reference |
+| 39 | pass | 243 | 243 | 4662 |  |
+| 40 | fail | 100 | 100 | 1418 | result set differs from reference |
+| 41 | pass | 100 | 100 | 1848 |  |
+| 42 | pass | 10 | 10 | 745 |  |
+| 43 | pass | 6 | 6 | 1640 |  |
+| 44 | pass | 10 | 10 | 5626 |  |
+| 45 | pass | 19 | 19 | 1490 |  |
+| 46 | pass | 100 | 100 | 2372 |  |
+| 47 | pass | 100 | 100 | 5770 |  |
+| 48 | pass | 1 | 1 | 2182 |  |
+| 49 | fail | 34 | 34 | 5826 | result set differs from reference |
+| 50 | fail | 6 | 7 | 3222 | result set differs from reference |
+| 51 | fail | 100 | 100 | 5497 | result set differs from reference |
+| 52 | pass | 100 | 100 | 794 |  |
+| 53 | pass | 100 | 100 | 2380 |  |
+| 54 | fail | 1 | 1 | 3876 | result set differs from reference |
+| 55 | pass | 100 | 100 | 832 |  |
+| 56 | fail | 100 | 100 | 3407 | result set differs from reference |
+| 57 | pass | 100 | 100 | 3956 |  |
+| 58 | pass | 5 | 5 | 4326 |  |
+| 59 | pass | 100 | 100 | 6343 |  |
+| 60 | pass | 100 | 100 | 3171 |  |
+| 61 | pass | 1 | 1 | 2045 |  |
+| 62 | pass | 100 | 100 | 2639 |  |
+| 63 | pass | 100 | 100 | 1885 |  |
+| 64 | fail | 2 | 2 | 14756 | result set differs from reference |
+| 65 | fail | 100 | 100 | 3440 | result set differs from reference |
+| 66 | fail | 5 | 60 | 4692 | result set differs from reference |
+| 67 | fail | 100 | 100 | 3658 | result set differs from reference |
+| 68 | pass | 100 | 100 | 2418 |  |
+| 69 | fail | 100 | 100 | 4156 | result set differs from reference |
+| 70 | pass | 3 | 3 | 2745 |  |
+| 71 | pass | 1031 | 1031 | 3356 |  |
+| 72 | pass | 100 | 100 | 2952 |  |
+| 73 | fail | 1 | 9 | 2090 | result set differs from reference |
+| 74 | fail | 92 | 90 | 5766 | result set differs from reference |
+| 75 | fail | 100 | 100 | 7020 | result set differs from reference |
+| 76 | fail | 100 | 100 | 5305 | result set differs from reference |
+| 77 | fail | 44 | 76 | 5259 | result set differs from reference |
+| 78 | fail | 100 | 100 | 6930 | result set differs from reference |
+| 79 | fail | 100 | 100 | 1621 | result set differs from reference |
+| 80 | fail | 100 | 100 | 7173 | result set differs from reference |
+| 81 | fail | 100 | 100 | 8775 | result set differs from reference |
+| 82 | pass | 2 | 2 | 1095 |  |
+| 83 | pass | 24 | 24 | 4727 |  |
+| 84 | fail | 16 | 100 | 1547 | result set differs from reference |
+| 85 | pass | 1 | 1 | 3859 |  |
+| 86 | pass | 100 | 100 | 1866 |  |
+| 87 | fail | 1 | 1 | 2220 | result set differs from reference |
+| 88 | pass | 1 | 1 | 2101 |  |
+| 89 | pass | 100 | 100 | 4025 |  |
+| 90 | pass | 1 | 1 | 1619 |  |
+| 91 | fail | 2 | 2 | 2373 | result set differs from reference |
+| 92 | fail | 1 | 1 | 1090 | result set differs from reference |
+| 93 | pass | 100 | 100 | 1001 |  |
+| 94 | fail | 1 | 1 | 2850 | result set differs from reference |
+| 95 | pass | 1 | 1 | 4791 |  |
+| 96 | pass | 1 | 1 | 988 |  |
+| 97 | fail | 1 | 1 | 861 | result set differs from reference |
+| 98 | fail | 2521 | 2521 | 3336 | result set differs from reference |
+| 99 | pass | 90 | 90 | 3278 |  |
+
+## Agent final message
+
+> Done. `query99.preql` has been written alongside `trilogy.toml` and validated with `trilogy run` — it executes successfully, returning 90 rows with the requested buckets (30-or-fewer, 31–60, 61–90, 91–120, >120 days), grouped by the first 20 chars of warehouse name, ship_mode type, and lowercased call center name, nulls first, ordered as specified, with 0 for empty buckets.
+

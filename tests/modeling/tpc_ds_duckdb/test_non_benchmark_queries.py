@@ -748,3 +748,49 @@ order by pivoted.daily_sales.week_seq nulls first;
     env = Environment(working_path=working_path)
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert not _has_nested_aggregate(sql), sql
+
+
+def test_property_via_partial_fk_does_not_broadcast(engine_sf001):
+    # q05 shape: an entity label (`return_channel_dim_text_id`, a PROPERTY of the
+    # FK `return_channel_dim_id`) is selected at row grain alongside its return
+    # measure. The FK is PARTIAL on the returns grain (web_returns doesn't map it),
+    # so the planner sourced the FK from the dim datasource (where it's the grain
+    # key) instead of from the returns fact, then joined fact->dim on the only
+    # shared concept, `channel`. That channel-only join fans out: every catalog
+    # page in the channel pairs with the full channel return set, so an outer
+    # `sum(return_amount) by entity` broadcasts the channel total identically onto
+    # every entity. The FK must be sourced from the fact so the dim join keys on it.
+    query = """
+import all_sales as s;
+
+with combined as union(
+  (where s.date.date between '2000-08-23'::date and '2000-09-06'::date
+    and s.channel_dim_id is not null
+   select
+     case when s.channel = 'CATALOG' then 'catalog channel' else 'other' end as ch,
+     concat('catalog_page', s.channel_dim_text_id) as ent,
+     s.ext_sales_price as gs,
+     0::float as ret_amt),
+  (where s.return_date.date between '2000-08-23'::date and '2000-09-06'::date
+    and s.return_channel_dim_id is not null
+   select
+     case when s.channel = 'CATALOG' then 'catalog channel' else 'other' end as ch,
+     concat('catalog_page', s.return_channel_dim_text_id) as ent,
+     0::float as gs,
+     s.return_amount as ret_amt)
+) -> (channel_type, entity_id, gross_sales, return_amounts);
+
+select
+  combined.channel_type,
+  combined.entity_id,
+  sum(combined.gross_sales) as total_gross_sales,
+  sum(combined.return_amounts) as total_returns
+where combined.channel_type = 'catalog channel'
+order by total_returns desc
+limit 10;
+"""
+    rows = engine_sf001.execute_text(query)[0].fetchall()
+    totals = [round(r.total_returns, 2) for r in rows]
+    # A broadcast collapses every page onto the same channel total; correct
+    # per-page returns vary.
+    assert len(set(totals)) > 1, totals

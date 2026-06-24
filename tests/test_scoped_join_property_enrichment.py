@@ -82,5 +82,9 @@ def test_enrich_property_off_scoped_join_key_chained():
 
 def test_enrich_property_off_scoped_join_key_unchained_unresolvable():
     eng = Dialects.DUCK_DB.default_executor(environment=Environment())
+    # Rowsets are islanded for connectivity (a base concept reachable only by
+    # navigating into a rowset's renamed-key derivation is not a real join path),
+    # so store_name splits into its own subgraph and surfaces a named
+    # disconnected-subgraph error rather than the generic unresolvable one.
     with pytest.raises(DisconnectedConceptsException, match="local.store_name"):
         eng.generate_sql(UNCHAINED)
