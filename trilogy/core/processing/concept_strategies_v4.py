@@ -29,7 +29,6 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
-    BuildAggregateWrapper,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
@@ -52,7 +51,7 @@ from trilogy.core.processing.condition_utility import condition_implies
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
-    raise_if_disconnected,
+    raise_if_disconnected_for,
 )
 from trilogy.core.processing.node_generators.multiselect_node import extra_align_joins
 from trilogy.core.processing.nodes import (
@@ -459,54 +458,6 @@ def _resolve_and_inject_condition(
     )
 
 
-def _rowset_inner_check_concepts(
-    outputs: list[BuildConcept], environment: BuildEnvironment
-) -> list[BuildConcept]:
-    """Row-level parent set used to test an inner select's connectivity, mirroring
-    v3's dead-end working set: the group grain keys plus each aggregate measure at
-    a DIFFERENT grain (a same-grain aggregate regroups freely within the group, so
-    it adds no join requirement and is elided — otherwise its measure column would
-    spuriously surface in the subgraph error). The aggregate handles themselves are
-    never included; only their row-level sources are."""
-    group_grain: set[str] = set()
-    for c in outputs:
-        if c.derivation != Derivation.AGGREGATE:
-            group_grain |= set(c.grain.components)
-    if not group_grain:
-        for c in outputs:
-            group_grain |= set(c.grain.components)
-
-    check: dict[str, BuildConcept] = {}
-
-    def add(address: str) -> None:
-        bc = environment.concepts.get(address)
-        if bc is not None:
-            check[address] = bc
-
-    for address in group_grain:
-        add(address)
-    for c in outputs:
-        lineage = c.lineage
-        if isinstance(lineage, BuildAggregateWrapper):
-            for measure in lineage.function.concept_arguments:
-                if not isinstance(measure, BuildConcept):
-                    continue
-                if set(measure.grain.components) <= group_grain:
-                    continue
-                check[measure.address] = measure
-                for key in measure.grain.components:
-                    add(key)
-        elif (
-            c.derivation in (Derivation.BASIC, Derivation.ROOT) and lineage is not None
-        ):
-            for arg in lineage.concept_arguments:
-                if isinstance(arg, BuildConcept):
-                    add(arg.address)
-        else:
-            check[c.address] = c
-    return list(check.values())
-
-
 def resolve_rowset(
     outputs: list[BuildConcept],
     environment: BuildEnvironment,
@@ -548,15 +499,9 @@ def resolve_rowset(
     # The inner select is its own resolution scope; if its required concepts span
     # unconnected models (a grain-only `by` edge does NOT bridge them), surface
     # the typed subgraph error rather than silently cross-joining inside the CTE.
-    inner_required = _rowset_inner_check_concepts(
-        list(built.output_components), inner_env
+    raise_if_disconnected_for(
+        list(built.output_components), inner_where, inner_env, inner_g
     )
-    seen_inner = {c.address for c in inner_required}
-    if inner_where:
-        inner_required += [
-            c for c in inner_where.row_arguments if c.address not in seen_inner
-        ]
-    raise_if_disconnected(inner_env, inner_required, inner_g)
 
     inner_info = search_concepts(
         mandatory_list=list(built.output_components),

@@ -67,7 +67,7 @@ from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
 from trilogy.core.processing.discovery_utility import (
-    raise_if_disconnected,
+    raise_if_disconnected_for,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -557,15 +557,16 @@ def _raise_if_disconnected(
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
 ) -> None:
-    """Raise the typed subgraph error when the required concepts (outputs + WHERE
-    row args) span unconnected reference-graph components. Crossjoinable
-    (single-row/constant) concepts are skipped by ``disconnected_components``, so
-    e.g. two ungrouped scalar aggregates still resolve via cross-join."""
-    concepts = list(build_statement.output_components)
-    seen = {c.address for c in concepts}
-    if conditions:
-        concepts += [c for c in conditions.row_arguments if c.address not in seen]
-    raise_if_disconnected(build_environment, concepts, graph)
+    """Raise the typed subgraph error when this select's required concepts (outputs
+    + WHERE row args) span unconnected reference-graph components. Delegates to the
+    shared ``raise_if_disconnected_for`` so the top-level and nested-rowset checks
+    stay one code path."""
+    raise_if_disconnected_for(
+        list(build_statement.output_components),
+        conditions,
+        build_environment,
+        graph,
+    )
 
 
 def _get_query_node_v4(
