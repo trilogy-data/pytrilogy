@@ -914,6 +914,43 @@ def _output_covers(output: BuildConcept, concept: BuildConcept) -> bool:
     )
 
 
+def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None:
+    """Add the merge-canonical concepts as hidden bridge outputs on a sole FINAL
+    contributor so the CTE layer can map every requested alias of a merged key
+    onto the column it computes.
+
+    A single contributor computes a merged key under one alias (`unnest_array.a`,
+    an `unnest`/struct field carrying the attr-access lineage) but the user may
+    write a *different* alias of the same key (`local.a`, the merge origin of the
+    written `wrapper.a`). Sibling aliases don't list each other as pseudonyms —
+    each only knows the canonical origin — so the CTE-layer pseudonym match
+    can't bridge the written `wrapper.a` to the output `unnest_array.a` and the
+    column drops from the SELECT. `per_group` resolved each output to the
+    canonical concept, which carries the full equivalence class; expose it as a
+    *hidden* output (it has no lineage of its own, so it renders via its
+    canonical sibling) — the user-facing alias resolves through it, while hiding
+    keeps it out of the grain/GROUP BY/projection. A no-op when an output already
+    names the canonical (the user wrote the produced alias directly), so the
+    direct-match cases (`unnest_array.a` selected as itself) are untouched."""
+    out_addrs = {o.address for o in node.output_concepts}
+    bridges: list[BuildConcept] = []
+    for m in provided:
+        if m.address in out_addrs:
+            continue
+        if any(_output_covers(o, m) for o in node.output_concepts):
+            bridges.append(m)
+    if not bridges:
+        return
+    node.set_output_concepts(
+        list(node.output_concepts) + bridges,
+        change_visibility=False,
+    )
+    node.hidden_concepts = set(node.hidden_concepts or set()) | {
+        m.address for m in bridges
+    }
+    node.rebuild_cache()
+
+
 def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -1486,14 +1523,18 @@ def _assemble_final_node(
             sole_node,
             mandatory_addresses,
         )
-        return _apply_final_conditions(
-            _group_to_grain_if_required(
-                sole_node,
-                mandatory_list,
-                final_contract,
-                environment,
-            )
+        final_node = _group_to_grain_if_required(
+            sole_node,
+            mandatory_list,
+            final_contract,
+            environment,
         )
+        # The multi-contributor path projects `per_group` directly; the
+        # single-contributor path returns the node's raw output, which can name a
+        # merged key under a sibling alias the user didn't write. Bridge last, so
+        # the hidden bridge concepts can't perturb the grain decision above.
+        _bridge_pseudonyms(final_node, per_group[gid])
+        return _apply_final_conditions(final_node)
 
     # Only root scans get the grain projection: their grain is the row-level
     # source-table grain (often much wider than what a downstream merge

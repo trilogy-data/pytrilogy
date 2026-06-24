@@ -1,12 +1,12 @@
 query_id = "01"
-generator = "v3"
-gen_length = 1699
+generator = "v4"
+gen_length = 2842
 preql_size = 459
 comp_size = 689
 generated_sql = """
 
 WITH 
-thoughtful as (
+abundant as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_billing_customer_id\",
     \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
@@ -21,30 +21,58 @@ WHERE
 GROUP BY
     1,
     2),
-abundant as (
+thoughtful as (
 SELECT
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"thoughtful\".\"total_returns\") as \"avg_store_returns\"
+    \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_text_id\",
+    \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_billing_customer_id\",
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
 FROM
-    \"thoughtful\"
+    \"memory\".\"store_returns\" as \"returns_store_returns\"
+    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"returns_store_returns\".\"SR_CUSTOMER_SK\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"returns_store_store\".\"S_STATE\" = 'TN' and \"returns_return_date_date\".\"D_YEAR\" = 2000
+),
+juicy as (
+SELECT
+    \"abundant\".\"returns_store_id\" as \"returns_store_id\",
+    avg(\"abundant\".\"total_returns\") as \"avg_store_returns\"
+FROM
+    \"abundant\"
 GROUP BY
     1),
 questionable as (
 SELECT
-    \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_text_id\",
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
-    \"thoughtful\".\"total_returns\" as \"total_returns\"
+    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"thoughtful\".\"returns_billing_customer_id\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\")
+GROUP BY
+    1),
+cooperative as (
 SELECT
-    \"questionable\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+    \"thoughtful\".\"returns_billing_customer_id\" as \"returns_billing_customer_id\",
+    \"thoughtful\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
 FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"
+    \"thoughtful\"
+GROUP BY
+    1,
+    2),
+concerned as (
+SELECT
+    \"cooperative\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+FROM
+    \"abundant\"
+    INNER JOIN \"cooperative\" on \"abundant\".\"returns_billing_customer_id\" = \"cooperative\".\"returns_billing_customer_id\"
+    INNER JOIN \"juicy\" on \"abundant\".\"returns_store_id\" = \"juicy\".\"returns_store_id\"
+    INNER JOIN \"questionable\" on \"abundant\".\"returns_store_id\" = \"questionable\".\"returns_store_id\"
 WHERE
-    \"questionable\".\"total_returns\" > ( 1.2 * \"abundant\".\"avg_store_returns\" )
-
+    \"abundant\".\"total_returns\" > ( 1.2 * \"juicy\".\"avg_store_returns\" )
+)
+SELECT
+    \"concerned\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+FROM
+    \"concerned\"
 ORDER BY 
-    \"questionable\".\"returns_billing_customer_text_id\" asc
+    \"concerned\".\"returns_billing_customer_text_id\" asc
 LIMIT (100)"""

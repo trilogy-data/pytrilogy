@@ -1,37 +1,49 @@
 query_id = 3
-generator = "v3"
-gen_length = 2020
+generator = "v4"
+gen_length = 3305
 generated_sql = """
 
 WITH 
-cooperative as (
+abundant as (
 SELECT
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_date_month_of_year\" as \"physical_sales_date_month_of_year\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_date_year\" as \"physical_sales_date_year\",
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_ext_sales_price\" as \"physical_sales_ext_sales_price\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_item_brand_id\" as \"physical_sales_item_brand_id\",
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_item_brand_name\" as \"physical_sales_item_brand_name\"
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_item_brand_name\" as \"physical_sales_item_brand_name\",
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_item_id\" as \"physical_sales_item_id\",
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\"
 FROM
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\"
+WHERE
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_date_month_of_year\" = 11 and \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_item_manufacturer_id\" = 128
+
 GROUP BY
     1,
     2,
     3,
     4,
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_item_id\",
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_ticket_number\")
+    5,
+    6,
+    7,
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"physical_sales_ext_sales_price\")
 SELECT
-    \"cooperative\".\"physical_sales_date_year\" as \"physical_sales_date_year\",
-    \"cooperative\".\"physical_sales_item_brand_id\" as \"physical_sales_item_brand_id\",
-    \"cooperative\".\"physical_sales_item_brand_name\" as \"physical_sales_item_brand_name\",
-    sum(\"cooperative\".\"physical_sales_ext_sales_price\") as \"sum_agg\"
+    \"abundant\".\"physical_sales_date_year\" as \"physical_sales_date_year\",
+    \"abundant\".\"physical_sales_item_brand_id\" as \"physical_sales_item_brand_id\",
+    \"abundant\".\"physical_sales_item_brand_name\" as \"physical_sales_item_brand_name\",
+    sum(\"physical_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"sum_agg\"
 FROM
-    \"cooperative\"
+    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
+    LEFT OUTER JOIN \"abundant\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"abundant\".\"physical_sales_item_id\" AND \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"abundant\".\"physical_sales_ticket_number\"
+WHERE
+    \"abundant\".\"physical_sales_date_month_of_year\" = 11 and \"abundant\".\"physical_sales_item_manufacturer_id\" = 128
+
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"cooperative\".\"physical_sales_date_year\" asc,
+    \"abundant\".\"physical_sales_date_year\" asc,
     \"sum_agg\" desc,
-    \"cooperative\".\"physical_sales_item_brand_id\" asc
+    \"abundant\".\"physical_sales_item_brand_id\" asc
 LIMIT (100)"""
