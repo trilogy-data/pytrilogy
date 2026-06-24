@@ -1,7 +1,7 @@
 from typing import Callable
 
 from trilogy.core.constants import UNNEST_NAME
-from trilogy.core.enums import Modifier, UnnestMode
+from trilogy.core.enums import JoinType, Modifier, UnnestMode
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
@@ -264,6 +264,32 @@ def _build_joinkeys(
         right_render = _render_right_concept(
             pairs[0], join, consumer, quote_character, render_expr_func, use_map
         )
+        if join.jointype in (
+            JoinType.LEFT_OUTER,
+            JoinType.RIGHT_OUTER,
+            JoinType.FULL,
+        ):
+            left_renders = [
+                _render_left_concept(
+                    p, join, consumer, quote_character, render_expr_func, use_map
+                )
+                for p in pairs
+            ]
+            unique_renders = list(dict.fromkeys(left_renders))
+            if len(unique_renders) > 1:
+                coalesced = f"coalesce({', '.join(unique_renders)})"
+                result.append(
+                    null_wrapper(
+                        coalesced,
+                        right_render,
+                        [
+                            modifier
+                            for pair in pairs
+                            for modifier in _collect_modifiers(pair, join)
+                        ],
+                    )
+                )
+                continue
         # Sub-group by left address: same left concept from different CTEs
         # can be COALESCE'd; different left concepts are separate AND conditions.
         left_addr_groups: dict[str, list] = {}

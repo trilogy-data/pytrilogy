@@ -1,13 +1,17 @@
 from dataclasses import dataclass
 from typing import Iterator
 
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models.build import BuildConcept, BuildDatasource
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildDatasource,
+    BuildRowsetItem,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 
 
@@ -188,6 +192,36 @@ def generate_adhoc_graph(
         add_concept(
             concept, g, concept_mapping, default_concept_graph, seen, node_stash
         )
+
+    # A rowset has no datasource node, so its outputs are otherwise uncoordinated
+    # in the graph — unlike a datasource's columns, which the datasource node
+    # co-locates. Add a co-locating anchor node per rowset connecting its outputs,
+    # so a derivation over one output (e.g. `rowset.x * 2`) can reach the rowset's
+    # other outputs (e.g. a scoped-join key), making the resolution path identical
+    # to the datasource case. Exclude aggregate (metric) outputs: a rowset that
+    # aggregates from several unrelated models (an invalid combine) must still
+    # surface as disconnected, so its measures are not bridged through the anchor
+    # (mirrors the aggregate grain-only edge drop in disconnected_components).
+    rowset_members: dict[str, list[str]] = {}
+    for concept in concepts:
+        if (
+            concept.derivation == Derivation.ROWSET
+            and isinstance(concept.lineage, BuildRowsetItem)
+            and concept.purpose != Purpose.METRIC
+        ):
+            rowset_members.setdefault(concept.lineage.rowset.name, []).append(
+                concept_to_node(concept, node_stash)
+            )
+    for rowset_name, members in rowset_members.items():
+        if len(members) < 2:
+            continue
+        anchor = f"rowset~{rowset_name}"
+        g.add_node(anchor)
+        anchor_edges: list[tuple[str, str]] = []
+        for member in members:
+            anchor_edges.append((anchor, member))
+            anchor_edges.append((member, anchor))
+        g.add_edges_from(anchor_edges)
 
     basic_graph = build_basic_concept_graph(concepts)
 

@@ -507,21 +507,33 @@ def _search_concepts(
     virtual: set[str] = set()
     complete = ValidationResult.INCOMPLETE
     while context.incomplete:
-        priority_concept, candidate_list, local_conditions = get_loop_iteration_targets(
-            mandatory=context.mandatory_list,
-            conditions=context.conditions,
-            attempted=context.attempted,
-            force_conditions=context.must_evaluate_condition_on_this_level_not_push_down,
-            found=context.found,
-            partial=partial,
-            depth=depth,
-            materialized_canonical=(
-                environment.non_partial_materialized_canonical_concepts
-                if not accept_partial
-                else environment.materialized_canonical_concepts
-            ),
-            environment=environment,
-        )
+        try:
+            (
+                priority_concept,
+                candidate_list,
+                local_conditions,
+            ) = get_loop_iteration_targets(
+                mandatory=context.mandatory_list,
+                conditions=context.conditions,
+                attempted=context.attempted,
+                force_conditions=context.must_evaluate_condition_on_this_level_not_push_down,
+                found=context.found,
+                partial=partial,
+                depth=depth,
+                materialized_canonical=(
+                    environment.non_partial_materialized_canonical_concepts
+                    if not accept_partial
+                    else environment.materialized_canonical_concepts
+                ),
+                environment=environment,
+            )
+        except DisconnectedConceptsException:
+            if partial:
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} search exhausted with partial concepts {sorted(partial)}"
+                )
+                break
+            raise
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )

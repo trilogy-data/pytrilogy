@@ -18,7 +18,7 @@ disconnected/unresolvable-query error).
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.environment import Environment
 
 # Fully self-contained via query-backed datasources (no external tables).
@@ -82,5 +82,5 @@ def test_enrich_property_off_scoped_join_key_chained():
 
 def test_enrich_property_off_scoped_join_key_unchained_unresolvable():
     eng = Dialects.DUCK_DB.default_executor(environment=Environment())
-    with pytest.raises(UnresolvableQueryException, match="Could not resolve"):
+    with pytest.raises(DisconnectedConceptsException, match="local.store_name"):
         eng.generate_sql(UNCHAINED)

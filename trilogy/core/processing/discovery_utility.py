@@ -451,12 +451,12 @@ def get_priority_concept(
         [c for c in pass_one if c.derivation == Derivation.TVF_UNION]
         +
         # then rowsets to remove them from scope, as they cannot get partials
-        [c for c in pass_one if c.derivation == Derivation.ROWSET]
-        +
-        # then rowsets to remove them from scope, as they cannot get partials
         [c for c in pass_one if c.derivation == Derivation.UNION]
         # we should be home-free here
         + [c for c in pass_one if c.derivation == Derivation.BASIC]
+        +
+        # then rowsets to remove them from scope, as they cannot get partials
+        [c for c in pass_one if c.derivation == Derivation.ROWSET]
         +
         # then aggregates to remove them from scope, as they cannot get partials
         [c for c in pass_one if c.derivation == Derivation.AGGREGATE]

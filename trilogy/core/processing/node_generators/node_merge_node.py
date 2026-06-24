@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildFunction,
+    BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -103,6 +104,24 @@ def extract_ds_components(
         if not any(parsed in x for x in graphs):
             graphs.append([parsed])
     return graphs
+
+
+def prune_rowset_lineage_edges_for_weak_merge(
+    g: ReferenceGraph, requested_concepts: list[BuildConcept]
+) -> None:
+    if all(c.derivation == Derivation.ROWSET for c in requested_concepts):
+        return
+    to_remove: list[tuple[str, str]] = []
+    for node, concept in g.concepts.items():
+        if not isinstance(concept.lineage, BuildRowsetItem):
+            continue
+        content_node = concept_to_node(concept.lineage.content.with_default_grain())
+        if (content_node, node) in g.edges:
+            to_remove.append((content_node, node))
+        if (node, content_node) in g.edges:
+            to_remove.append((node, content_node))
+    if to_remove:
+        g.remove_edges_from(to_remove)
 
 
 def determine_induced_minimal_nodes(
@@ -329,6 +348,7 @@ def resolve_weak_components(
         ),
         conditions=search_conditions,
     )
+    prune_rowset_lineage_edges_for_weak_merge(search_graph, all_concepts)
     reduced_concept_sets: list[set[str]] = []
 
     count = 0

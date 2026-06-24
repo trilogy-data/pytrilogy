@@ -272,3 +272,56 @@ SELECT
     assert "INVALID_REFERENCE_BUG" not in sql, sql
     assert 'count("facts"."x")' in sql, f"rs_a.total should be count(x):\n{sql}"
     assert 'sum("facts"."y")' in sql, f"rs_b.total should be sum(y):\n{sql}"
+
+
+def test_basic_expression_over_rowset_output_keeps_scoped_join_keys() -> None:
+    declarations = """
+key sale_id int;
+property sale_id.w_sqft float;
+property sale_id.channel string;
+
+key date_id int;
+property date_id.month int;
+
+datasource sales (
+    id: sale_id,
+    sqft: w_sqft,
+    channel: channel,
+)
+grain (sale_id)
+address sales;
+
+datasource dates (
+    id: date_id,
+    month: month,
+)
+grain (date_id)
+address dates;
+
+rowset all_months <- select
+    month,
+    1 as join_key,
+;
+
+rowset wh_groups <- where channel = 'WEB'
+select
+    w_sqft,
+    1 as join_key,
+;
+
+select
+    wh_groups.w_sqft * 2 as r,
+    all_months.month,
+inner join wh_groups.join_key = all_months.join_key
+order by
+    all_months.month asc nulls first,
+    r asc nulls first
+;
+"""
+    from trilogy import Dialects
+    from trilogy.dialect.config import DuckDBConfig
+
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env, conf=DuckDBConfig())
+    sql = engine.generate_sql(declarations)[-1]
+    assert "JOIN" in sql
