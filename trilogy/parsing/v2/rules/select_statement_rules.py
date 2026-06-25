@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.enums import ConceptSource, JoinType, Modifier
+from trilogy.core.enums import ComparisonOperator, ConceptSource, JoinType, Modifier
 from trilogy.core.models.author import (
     Concept,
+    ConceptRef,
+    Expr,
     HavingClause,
     Metadata,
     OrderBy,
@@ -23,6 +25,7 @@ from trilogy.parsing.v2.concept_factory import (
     arbitrary_to_concept_v2,
     unwrap_transformation_v2,
 )
+from trilogy.parsing.v2.errors import create_syntax_error
 from trilogy.parsing.v2.rules.concept_rules import (
     metadata_from_meta,
     parse_concept_reference,
@@ -127,9 +130,21 @@ def join_group(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> list[str]:
-    """One `=`-chained key group (`a = b = c`) within a join clause."""
-    return [a for a in hydrated_children(node, hydrate) if isinstance(a, str)]
+) -> list[Expr]:
+    """One `=`-chained key group (`a = b = c`) within a join clause. Each key is
+    an arbitrary expression — a bare concept reference, arithmetic, an aggregate,
+    a window, ... — not just a plain identifier. The keys are separated by
+    COMPARISON_OPERATOR tokens (parsed positionally: keys at even indices,
+    operators at odd); only `=` equality is allowed."""
+    parts = [a for a in hydrated_children(node, hydrate) if a is not None]
+    for op in parts[1::2]:
+        if op != ComparisonOperator.EQ:
+            # A non-`=` operator in a join group is a key inequality (unsupported)
+            # or, far more commonly, a filter mistakenly chained onto the join
+            # (`... join a = b and amount > 0`). Surface the same guidance the
+            # parse-level "clause after join" path gives: filters belong in WHERE.
+            raise create_syntax_error(220, node.start_pos or 0, context.source_text)
+    return parts[0::2]
 
 
 def join_clause(
@@ -149,9 +164,6 @@ def join_clause(
     # arise from the `a = b and c = d` sugar, which is exactly equivalent to two
     # separate `JOIN_TYPE join` clauses (distinct groups, same type).
     joins: list[SelectJoin] = []
-    flat_keys = [a for a in args if isinstance(a, str)]
-    if flat_keys:
-        joins.extend(_resolve_join_group(node, context, join_type, flat_keys))
     for keys in (a for a in args if isinstance(a, list)):
         joins.extend(_resolve_join_group(node, context, join_type, keys))
     return joins
@@ -161,35 +173,57 @@ def _resolve_join_group(
     node: SyntaxNode,
     context: RuleContext,
     join_type: JoinType,
-    keys: list[str],
+    keys: list[Expr],
 ) -> list[SelectJoin]:
     # Positional direction: the first key is the anchor, each subsequent key is a
     # brought-in (source) concept. `a = b = c` chains into ONE equivalence group:
-    # adjacent pairs (a,b),(b,c) all share this join type. Both sides are
-    # fully-addressed concepts, so no model token is needed to disambiguate.
-    resolved: list[Concept] = []
-    for key in keys:
-        concept = context.concepts.require(key)
-        if isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
-            raise fail(node, f"Join key `{key}` does not exist")
-        resolved.append(concept)
+    # adjacent pairs (a,b),(b,c) all share this join type.
+    resolved: list[tuple[str, str]] = [
+        _resolve_join_key(node, context, key) for key in keys
+    ]
     joins: list[SelectJoin] = []
-    for (lk, lc), (rk, rc) in zip(zip(keys, resolved), list(zip(keys, resolved))[1:]):
-        if lc.address == rc.address:
+    for (la, ll), (ra, rl) in zip(resolved, resolved[1:]):
+        if la == ra:
             raise fail(
                 node,
-                f"Cannot join `{lk}` to itself (`{rk}` resolves to the same concept "
-                f"`{lc.address}`), which degenerates to `1=1`. Join distinct concepts"
-                " (e.g. separate rowset outputs).",
+                f"Cannot join `{ll}` to itself (`{rl}` resolves to the same key "
+                f"`{la}`), which degenerates to `1=1`. Join distinct keys (e.g. "
+                "separate rowset outputs or distinct expressions).",
             )
         joins.append(
             SelectJoin(
                 join_type=join_type,
-                source_address=lc.address,
-                target_address=rc.address,
+                source_address=la,
+                target_address=ra,
             )
         )
     return joins
+
+
+def _resolve_join_key(
+    node: SyntaxNode,
+    context: RuleContext,
+    key: Expr,
+) -> tuple[str, str]:
+    """Resolve a single join key to ``(address, label)``. A bare concept
+    reference resolves to its existing concept; any other expression is
+    materialized as an anonymous (virtual) concept — mirroring how select and
+    order-by expressions become concepts — so the build phase and discovery
+    source it like any other derived concept. ``label`` is used only for error
+    messages."""
+    if isinstance(key, ConceptRef):
+        concept = context.concepts.require(key.address)
+        if isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
+            # Join keys are concept literals, so they are pre-declared as scoped
+            # placeholders and resolve to a non-durable UndefinedConceptFull
+            # rather than raising during hydration. Surface the same undefined
+            # error the rest of the parser uses — via ConceptLookup so staged
+            # named-statement outputs feed the suggestions.
+            context.concepts._raise_undefined(key.address)
+        return concept.address, key.address
+    anon = arbitrary_to_concept_v2(key, context=context)
+    context.add_virtual_concept(anon, meta=core_meta(node.meta))
+    return anon.address, str(key)
 
 
 def select_item(

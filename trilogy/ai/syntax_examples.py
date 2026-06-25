@@ -390,6 +390,23 @@ inner join y2020.dept = y2021.dept
 order by yoy_diff desc nulls first
 limit 100;
 
+# ---------------------------------------------------------------------------
+# (4) EXPRESSION join keys — a key may be ANY expression (arithmetic, an
+# aggregate, a window), not just a bare field. Here each year is matched to the
+# PRIOR year by joining on an OFFSET key (`prev_year.yr + 1`), so the prior
+# year's count lands on the current row without a self-merge. Only `=` equality
+# is supported (a key below comparison level — wrap a comparison in parens).
+rowset cur_year  <- select enroll.year as yr, count(enroll.id) as cnt;
+rowset prev_year <- select enroll.year as yr, count(enroll.id) as cnt;
+
+select
+    cur_year.yr,
+    cur_year.cnt as this_year,
+    prev_year.cnt as prior_year,
+inner join cur_year.yr = prev_year.yr + 1
+order by cur_year.yr asc
+limit 100;
+
 # NOTES:
 #  - JOIN ON THE FULL GRAIN: one `join` clause per key in the two facts' shared
 #    `@<...>` grain. Under-joining (one key of a multi-key grain) is a top cause of
@@ -399,6 +416,8 @@ limit 100;
 #    `inner join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `inner join` clauses.
 #    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
 #    ONE group — both compose: `inner join a.k = b.k = base.k and a.k2 = b.k2`.
+#  - A join key may be ANY expression (a computed/offset key, an aggregate, a
+#    window), not only a bare field — see (4). Only `=` equality is supported.
 #  - `inner`, `left`, and `full` are supported (NOT `right` — swap the operands
 #    for a right join). `inner` requires the key in BOTH sides (drops one-sided
 #    rows); `left` keeps unmatched anchor rows; `full` keeps unmatched rows from

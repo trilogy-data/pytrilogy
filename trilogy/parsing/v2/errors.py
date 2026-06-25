@@ -147,6 +147,15 @@ _JOIN_CLAUSE_RE = re.compile(
     r"\b(?:inner|left|right|full|cross)\s+join\b", re.IGNORECASE
 )
 _POST_JOIN_CONTINUATION_RE = re.compile(r"\b(?:and|or|where|having)\b", re.IGNORECASE)
+# A join key is an expression at the `sum_operator` level — below comparison —
+# so any comparison/membership operator inside a join clause means a filter was
+# misplaced there. When the offending key is itself an expression (`a + 1 = b`),
+# the parser consumes the whole key and the failure lands ON the comparison
+# operator, too far past the preceding `and` for the keyword window to catch.
+_POST_JOIN_FILTER_OP_RE = re.compile(
+    r"(>=|<=|!=|>|<|\bis\b|\bin\b|\bnot\b|\blike\b|\bilike\b|\bbetween\b)",
+    re.IGNORECASE,
+)
 
 
 def detect_clause_after_join(text: str, pos: int) -> int | None:
@@ -164,7 +173,10 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
     # introduced a filter rather than another key equality — so scan a little
     # before pos as well to catch the preceding `and`/`where`/`or`/`having`.
     window = text[max(stmt_start, pos - 6) : pos + 8]
-    if _POST_JOIN_CONTINUATION_RE.search(window) is None:
+    if (
+        _POST_JOIN_CONTINUATION_RE.search(window) is None
+        and _POST_JOIN_FILTER_OP_RE.search(window) is None
+    ):
         return None
     return joins[-1].start()
 

@@ -1,7 +1,7 @@
 from trilogy.core.enums import FunctionClass, FunctionType
 from trilogy.core.functions import FUNCTION_REGISTRY
 
-RULE_PROMPT = """# Trilogy Syntax Guide
+RULE_PROMPT = r"""# Trilogy Syntax Guide
 
 Trilogy statements define either a semantic model or a query. If a user asks for data, they want a SELECT.
 
@@ -28,7 +28,7 @@ Models include facts + dimensions. Nullability and fanout are handled automatica
 
 ### Query-scoped join (the default)
 
-inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. right is unsupported — swap operands. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join.
+inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. right is unsupported — swap operands. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.week_seq + 53 = b.week_seq`), an aggregate, or a window; only `=` equality is supported.
 
 Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH inner join a.order_number = b.order_number AND inner join a.item.id = b.item.id. Matching only one key of a multi-key grain fans out and double-counts — a top cause of wrong results.
 

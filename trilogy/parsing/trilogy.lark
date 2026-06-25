@@ -137,7 +137,13 @@
     // DISTINCT equivalence groups), saving a repeated `JOIN_TYPE join` prefix.
     join_clause: JOIN_TYPE "join"i join_group ("and"i join_group)*
 
-    join_group: IDENTIFIER "=" IDENTIFIER ("=" IDENTIFIER)*
+    // Each key is a `sum_chain` (the expr level just below comparison) so join
+    // keys admit arbitrary expressions (arithmetic, aggregates, windows, ...),
+    // not just bare concept references; a comparison key can be parenthesized.
+    // The separator reuses COMPARISON_OPERATOR (rather than a bare `"="`, which
+    // would mint an EQUAL terminal that shadows `=` inside COMPARISON_OPERATOR
+    // after a sum_chain and break every comparison); the hydrator enforces `=`.
+    join_group: sum_chain (COMPARISON_OPERATOR sum_chain)+
 
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? order_by?  limit?
