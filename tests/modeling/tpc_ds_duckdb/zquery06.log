@@ -8,44 +8,44 @@ generated_sql = """
 WITH 
 cooperative as (
 SELECT
-    \"physical_sales_customer_address_customer_address\".\"CA_STATE\" as \"physical_sales_customer_address_state\",
-    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
-    \"physical_sales_item_items\".\"I_CURRENT_PRICE\" as \"physical_sales_item_current_price\",
-    1 as \"physical_sales_row_counter\"
+    \"store_sales_customer_address_customer_address\".\"CA_STATE\" as \"store_sales_customer_address_state\",
+    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    1 as \"store_sales_row_counter\"
 FROM
-    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"physical_sales_customer_address_customer_address\" on \"physical_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"physical_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_YEAR\" = 2001 and \"physical_sales_item_items\".\"I_CATEGORY\" is not null and \"physical_sales_date_date\".\"D_MOY\" = 1 and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"physical_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\" is not null
+    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\" is not null
 ),
 questionable as (
 SELECT
-    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
-    avg(\"physical_sales_item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_8857095867163344\"
+    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
+    avg(\"store_sales_item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_2054483076469165\"
 FROM
-    \"memory\".\"item\" as \"physical_sales_item_items\"
+    \"memory\".\"item\" as \"store_sales_item_items\"
 WHERE
-    \"physical_sales_item_items\".\"I_CATEGORY\" is not null
+    \"store_sales_item_items\".\"I_CATEGORY\" is not null
 
 GROUP BY
     1)
 SELECT
-    \"cooperative\".\"physical_sales_customer_address_state\" as \"physical_sales_customer_address_state\",
-    sum(\"cooperative\".\"physical_sales_row_counter\") as \"physical_sales_line_item_count\"
+    \"cooperative\".\"store_sales_customer_address_state\" as \"store_sales_customer_address_state\",
+    sum(\"cooperative\".\"store_sales_row_counter\") as \"store_sales_line_item_count\"
 FROM
     \"cooperative\"
-    INNER JOIN \"questionable\" on \"cooperative\".\"physical_sales_item_category\" is not distinct from \"questionable\".\"physical_sales_item_category\"
+    INNER JOIN \"questionable\" on \"cooperative\".\"store_sales_item_category\" is not distinct from \"questionable\".\"store_sales_item_category\"
 WHERE
-    \"cooperative\".\"physical_sales_item_current_price\" > 1.2 * \"questionable\".\"_virt_agg_avg_8857095867163344\"
+    \"cooperative\".\"store_sales_item_current_price\" > 1.2 * \"questionable\".\"_virt_agg_avg_2054483076469165\"
 
 GROUP BY
     1
 HAVING
-    \"physical_sales_line_item_count\" >= 10
+    \"store_sales_line_item_count\" >= 10
 
 ORDER BY 
-    \"physical_sales_line_item_count\" asc nulls first,
-    \"cooperative\".\"physical_sales_customer_address_state\" asc nulls first"""
+    \"store_sales_line_item_count\" asc nulls first,
+    \"cooperative\".\"store_sales_customer_address_state\" asc nulls first"""

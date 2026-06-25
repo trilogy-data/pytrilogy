@@ -402,13 +402,37 @@ class CTE:
 
         # A derived-key FULL join coalesces the canonical key across both sides;
         # the null-extendable side outputs it under a pseudonym column (da for
-        # db), so render that side's own column.
+        # db), so render that side's own column. Walk the pseudonym closure so a
+        # transitively-equivalent key resolves (e.g. an OUTER merge key whose only
+        # pseudonym is a binding key that is itself a pseudonym of the rendered
+        # join-key alias), and prefer a NON-hidden member: a hidden column is
+        # absent from the source's SELECT, so referencing it is invalid SQL.
         for cte in self.parent_ctes:
             if source and source != cte.name:
                 continue
-            for col in cte.output_columns:
-                if concept.address in col.pseudonyms:
+            by_address = {col.address: col for col in cte.output_columns}
+            frontier = {
+                col.address
+                for col in cte.output_columns
+                if concept.address in col.pseudonyms
+                or col.address in concept.pseudonyms
+            }
+            seen: set[str] = set()
+            hidden_match: str | None = None
+            while frontier:
+                addr = frontier.pop()
+                if addr in seen:
+                    continue
+                seen.add(addr)
+                col = by_address.get(addr)
+                if col is None:
+                    continue
+                if addr not in cte.hidden_concepts:
                     return col.safe_address
+                hidden_match = col.safe_address
+                frontier |= {p for p in col.pseudonyms if p not in seen}
+            if hidden_match is not None:
+                return hidden_match
 
         # An inlined datasource exposes *all* its raw columns to the consumer,
         # not just the leaf's pruned projection (e.g. ``_raw_name`` backing a

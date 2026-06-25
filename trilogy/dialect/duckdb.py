@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import sys
 from os import environ
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -228,7 +230,8 @@ SELECT * FROM (
 
         unique_id = instance_id or str(uuid.uuid4())
         staging = staging or StagingConfig()
-        base_dir = staging.get_executor_subdir(unique_id)
+        base_dir = staging.prepare_executor_subdir(unique_id)
+        python_executable = Path(sys.executable).as_posix()
         return f"""
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
@@ -238,15 +241,15 @@ SET VARIABLE __trilogy_uv_temp_dir = '{base_dir}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 WITH __build AS MATERIALIZED (
 SELECT a.name
-FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' 2> {base_dir}' || md5(script || args) || '.err > {base_dir}' || md5(script || args) || '.arrow && echo {{"name": "done"}} |') AS a
+FROM read_json('call "{python_executable}" -m trilogy.dialect.duckdb_uv "' || getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow" "' || getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.err" "' || script || '" "' || args || '" |') AS a
 LIMIT 1
 )
 -- __build writes the .arrow file as a side effect. It MUST be referenced (the
 -- cross-join below) or some duckdb versions prune the unreferenced CTE and never
 -- run the write. AS MATERIALIZED forces the CTE to execute to completion before
 -- the outer read_arrow scan, so the file is fully written before it is read.
--- uv's stderr is redirected to a sidecar .err file: left on the shellfs pipe it
--- intermittently fails the process with code=2 on Windows (duckdb 1.5 pipe handling).
+-- The wrapper keeps uv stderr in a sidecar file and retries transient uv cache
+-- lock/contention errors before exposing the final failure to DuckDB.
 SELECT r.* FROM __build b, read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow') AS r;
 """
     else:

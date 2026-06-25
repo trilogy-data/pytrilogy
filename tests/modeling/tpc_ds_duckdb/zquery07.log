@@ -5,22 +5,22 @@ preql_size = 691
 comp_size = 576
 generated_sql = """
 SELECT
-    \"physical_sales_item_items\".\"I_ITEM_ID\" as \"physical_sales_item_text_id\",
-    avg(\"physical_sales_store_sales\".\"SS_QUANTITY\") as \"avg_quantity\",
-    avg(\"physical_sales_store_sales\".\"SS_LIST_PRICE\") as \"avg_list_price\",
-    avg(\"physical_sales_store_sales\".\"SS_COUPON_AMT\") as \"avg_coupon_amt\",
-    avg(\"physical_sales_store_sales\".\"SS_SALES_PRICE\") as \"avg_sales_price\"
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_text_id\",
+    avg(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"avg_quantity\",
+    avg(\"store_sales_store_sales\".\"SS_LIST_PRICE\") as \"avg_list_price\",
+    avg(\"store_sales_store_sales\".\"SS_COUPON_AMT\") as \"avg_coupon_amt\",
+    avg(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"avg_sales_price\"
 FROM
-    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"promotion\" as \"physical_sales_promotion_promotion\" on \"physical_sales_store_sales\".\"SS_PROMO_SK\" = \"physical_sales_promotion_promotion\".\"P_PROMO_SK\"
-    INNER JOIN \"memory\".\"customer_demographics\" as \"physical_sales_customer_demographic_customer_demographics\" on \"physical_sales_store_sales\".\"SS_CDEMO_SK\" = \"physical_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"promotion\" as \"store_sales_promotion_promotion\" on \"store_sales_store_sales\".\"SS_PROMO_SK\" = \"store_sales_promotion_promotion\".\"P_PROMO_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"physical_sales_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"physical_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"physical_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and ( \"physical_sales_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'N' or \"physical_sales_promotion_promotion\".\"P_CHANNEL_EVENT\" = 'N' ) and \"physical_sales_date_date\".\"D_YEAR\" = 2000
+    \"store_sales_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and ( \"store_sales_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'N' or \"store_sales_promotion_promotion\".\"P_CHANNEL_EVENT\" = 'N' ) and \"store_sales_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1
 ORDER BY 
-    \"physical_sales_item_items\".\"I_ITEM_ID\" asc
+    \"store_sales_item_items\".\"I_ITEM_ID\" asc
 LIMIT (100)"""

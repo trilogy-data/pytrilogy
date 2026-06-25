@@ -57,6 +57,27 @@ def _collect_applied_conditions(source: QueryDatasource | BuildDatasource) -> li
     return out
 
 
+def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
+    """Union-find the join-key address pairs into connected equivalence classes,
+    so a chain (`a=b`, `c=b`) yields the single class {a, b, c}."""
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for a, b in pairs:
+        parent[find(a)] = find(b)
+
+    classes: dict[str, set[str]] = {}
+    for addr in parent:
+        classes.setdefault(find(addr), set()).add(addr)
+    return list(classes.values())
+
+
 def deduplicate_nodes(
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
@@ -455,8 +476,15 @@ class MergeNode(StrategyNode):
         )
 
         if self.force_group is True:
+            # A node already producing rowset outputs at a grain its parents
+            # satisfy must not regroup. TVF_UNION counts too: a UNION ALL stack
+            # defines its own (no-dedup) row semantics, so a MergeNode wrapping it
+            # at the stack grain must never collapse duplicate rows. (Formerly the
+            # rowset generator masked this by renaming the body's outputs to
+            # ROWSET-derived concepts in place; the wrapper path keeps the body's
+            # TVF_UNION outputs, so recognize them here.)
             rowset_output = any(
-                concept.derivation == Derivation.ROWSET
+                concept.derivation in (Derivation.ROWSET, Derivation.TVF_UNION)
                 for concept in self.output_concepts
             )
             force_group = condition_key_requires_group or not (
@@ -496,24 +524,32 @@ class MergeNode(StrategyNode):
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
         )
-        # A derived-key FULL join binds a *different* column on each side (da vs
-        # db) that collapses to one canonical output. resolve_concept_map keyed
-        # each address to its own side only, so the canonical output would render
-        # one side's column and NULL the rows present only on the other. Union
-        # the two ConceptPair addresses' sources so the output renders
-        # coalesce(left.col, right.col). (Same-address keys — root/rowset FULL —
-        # already coalesce the shared column and are skipped.)
-        for join in joins:
-            if not isinstance(join, BaseJoin) or join.join_type != JoinType.FULL:
+        # Scoped OUTER joins can bind different physical key addresses for one
+        # merged key. A chain of joins (e.g. `a.k=b.k`, `c.k=b.k`) makes those
+        # addresses one equivalence class; the merged key on any output row is
+        # the coalesce of every present member, so each member must render from
+        # the union of all class sources — a pairwise merge would leave a 3-way
+        # class only partly coalesced (`a.k` never learning `c`'s source). Build
+        # the classes by union-find over every OUTER-join pair, then point every
+        # member's source_map at the class-wide source union. (Same-address keys
+        # are already handled by normal shared-column resolution.)
+        outer_pairs: list[tuple[str, str]] = [
+            (pair.left.address, pair.right.address)
+            for join in joins
+            if isinstance(join, BaseJoin)
+            and join.join_type
+            in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.FULL)
+            for pair in join.concept_pairs or []
+            if pair.left.address != pair.right.address
+        ]
+        for key_class in _key_equivalence_classes(outer_pairs):
+            combined: set[BuildDatasource | QueryDatasource | UnnestJoin] = set()
+            for addr in key_class:
+                combined |= source_map.get(addr, set())
+            if len(combined) <= 1:
                 continue
-            for pair in join.concept_pairs or []:
-                la, ra = pair.left.address, pair.right.address
-                if la == ra:
-                    continue
-                combined = source_map.get(la, set()) | source_map.get(ra, set())
-                if len(combined) > 1:
-                    source_map[la] = set(combined)
-                    source_map[ra] = set(combined)
+            for addr in key_class:
+                source_map[addr] = set(combined)
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )

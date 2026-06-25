@@ -1,17 +1,17 @@
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 
 where
-    physical_sales.item.manager_id = 1
-    and physical_sales.date.month_of_year = 11
-    and physical_sales.date.year = 2000
+    store_sales.item.manager_id = 1
+    and store_sales.date.month_of_year = 11
+    and store_sales.date.year = 2000
 select
-    physical_sales.date.year,
-    physical_sales.item.brand_id,
-    physical_sales.item.brand_name,
-    sum(physical_sales.ext_sales_price) as ext_price,
+    store_sales.date.year,
+    store_sales.item.brand_id,
+    store_sales.item.brand_name,
+    sum(store_sales.ext_sales_price) as ext_price,
 order by
-    physical_sales.date.year asc,
+    store_sales.date.year asc,
     ext_price desc,
-    physical_sales.item.brand_id asc
+    store_sales.item.brand_id asc
 limit 100
 ;

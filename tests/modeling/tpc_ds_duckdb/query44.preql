@@ -1,4 +1,4 @@
-import physical_sales as ss;
+import store_sales as ss;
 
 # Threshold: avg net_profit for store 4 where address is null.
 # Pre-compute in a filtered `with` block so trilogy emits

@@ -118,6 +118,57 @@ order by gb desc, gc desc, brand nulls first, class nulls first;
     ]
 
 
+def test_inline_grouping_in_order_by_resolves_to_projected_alias():
+    """The canonical rollup-subtotal ordering idiom: `grouping()` is projected
+    (hidden) and ORDER BY references the inline `grouping(dim)` expression — not
+    the alias. The dimension is projected under an alias (`brand as brand_type`)
+    to exercise the pure-rename normalization. The inline ORDER BY grouping is
+    semantically identical to its projected twin and must resolve to that alias,
+    not raise `ORDER BY contains aggregate`. q05."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+rowset overall <- select avg(amount) as overall_avg;
+select
+    brand as brand_type,
+    class,
+    sum(amount) by rollup brand, class as total,
+    --overall.overall_avg,
+    --grouping(brand) as gb,
+    --grouping(class) as gc
+having total > overall.overall_avg
+order by
+    grouping(brand) asc, brand asc nulls last,
+    grouping(class) asc, class asc nulls last;
+"""
+    sql = engine.generate_sql(text)[-1]
+    # The HAVING forces a groupless filter CTE; the inline ORDER BY grouping must
+    # resolve to the projected alias and compute in the rollup CTE, not re-emit
+    # `grouping(col)` in the groupless wrapper's ORDER BY.
+    assert "grouping(" not in sql.split("ORDER BY")[-1], sql
+    results = engine.execute_text(text)[-1].fetchall()
+    # overall avg = 40; surviving rollup buckets: grand total (160) and B (130).
+    assert [(r[0], r[1]) for r in results] == [
+        ("B", "Y"),
+        ("B", None),
+        (None, None),
+    ]
+
+
+def test_inline_aggregate_in_order_by_resolves_to_projected_alias():
+    """An inline non-grouping aggregate in ORDER BY that is byte-identical to a
+    projected output resolves to that output's alias instead of raising — the
+    ordering scope references the materialized column, it does not recompute."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select brand, sum(amount) as total
+order by sum(amount) desc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [("B", 130.0), ("A", 30.0)]
+
+
 _COMPOSITE_ROLLUP_MODEL = """
 key chan int;
 key oid int;

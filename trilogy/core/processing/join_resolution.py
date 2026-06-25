@@ -314,17 +314,26 @@ def resolve_join_order_v2(
                 if not all_connecting_keys:
                     continue
 
+                # A FULL-join key must keep EVERY left source that provides it:
+                # the row may exist on only one of them, so the ON clause has to
+                # coalesce across all (`coalesce(l1.k, l2.k) = r.k`). Skipping a
+                # redundant left here would drop that source from the coalesce and
+                # split rows present only on it. Non-FULL keys still dedup.
+                is_full_key = bool(
+                    full_join_keys and (all_connecting_keys & full_join_keys)
+                )
                 exists = False
-                for existing_left, v in joinkeys.items():
-                    if v == all_connecting_keys:
-                        left_is_partial = _has_any(
-                            all_connecting_keys, left_candidate, partials
-                        )
-                        existing_is_partial = _has_any(
-                            all_connecting_keys, existing_left, partials
-                        )
-                        if not (left_is_partial and existing_is_partial):
-                            exists = True
+                if not is_full_key:
+                    for existing_left, v in joinkeys.items():
+                        if v == all_connecting_keys:
+                            left_is_partial = _has_any(
+                                all_connecting_keys, left_candidate, partials
+                            )
+                            existing_is_partial = _has_any(
+                                all_connecting_keys, existing_left, partials
+                            )
+                            if not (left_is_partial and existing_is_partial):
+                                exists = True
                 if exists:
                     continue
 

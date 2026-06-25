@@ -23,18 +23,18 @@ working_path = Path(__file__).parent
 
 def test_demo(engine):
     query = """
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 with ranked_states as
 select 
-    physical_sales.customer.first_name,
-    physical_sales.customer.address.state,
-    rank physical_sales.customer.first_name 
-        over physical_sales.customer.address.state 
-        order by  sum(physical_sales.sales_price) by physical_sales.customer.first_name, physical_sales.customer.address.state desc 
+    store_sales.customer.first_name,
+    store_sales.customer.address.state,
+    rank store_sales.customer.first_name 
+        over store_sales.customer.address.state 
+        order by  sum(store_sales.sales_price) by store_sales.customer.first_name, store_sales.customer.address.state desc 
     -> sales_rank;
 
 select 
-    ranked_states.physical_sales.customer.first_name,
+    ranked_states.store_sales.customer.first_name,
     avg(cast(ranked_states.sales_rank as int))-> avg_sales_rank
 order by 
     avg_sales_rank desc
@@ -57,7 +57,7 @@ import inventory as inventory;
 import item as item;
 import promotion as promotion;
 import physical_returns as physical_returns;
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import store as store;
 import time as time;
 import date as date;
@@ -85,7 +85,7 @@ import inventory as inventory;
 import item as item;
 import promotion as promotion;
 import physical_returns as physical_returns;
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import store as store;
 import time as time;
 import date as date;
@@ -96,8 +96,8 @@ import web_sales as web_sales;
     dialect = Dialects.DUCK_DB.default_executor(environment=env)
     test_queries = """
 select
-    physical_sales.date.year,
-    count(physical_sales.ticket_number) as store_order_count;
+    store_sales.date.year,
+    count(store_sales.ticket_number) as store_order_count;
 
 select
     web_sales.date.year,
@@ -221,15 +221,15 @@ limit 100;
 def test_merge_comparison(engine):
 
     x = """
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import web_sales as web_sales;
 
 
 
 
     SELECT
-    physical_sales.date.year,
-    count(physical_sales.ticket_number) as store_order_count
+    store_sales.date.year,
+    count(store_sales.ticket_number) as store_order_count
 HAVING
     store_order_count>0
 MERGE
@@ -239,7 +239,7 @@ SELECT
 HAVING
     web_order_count>0 
 ALIGN 
-    report_date: physical_sales.date.year, web_sales.date.year
+    report_date: store_sales.date.year, web_sales.date.year
 ORDER BY
     report_date asc;"""
 
@@ -247,31 +247,31 @@ ORDER BY
     assert r1[0].web_order_count == 11951
 
     y = """
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import web_sales as web_sales;
 import date as date; 
 
-MERGE physical_sales.date.* into ~date.*;
+MERGE store_sales.date.* into ~date.*;
 MERGE web_sales.date.* into ~date.*;
 
 datasource filtered_cache (
-    store_sales_date_month_of_year: ~physical_sales.date.month_of_year,
-    store_sales_date_year: ~physical_sales.date.year,
-    store_sales_ext_sales_price: ~physical_sales.ext_sales_price,
-    store_sales_item_brand_id: ~physical_sales.item.brand_id,
-    store_sales_item_brand_name: ~physical_sales.item.brand_name,
-    store_sales_item_id: ~physical_sales.item.id,
-    store_sales_item_manufacturer_id: ~physical_sales.item.manufacturer_id,
-    store_sales_ticket_number: ~physical_sales.ticket_number
+    store_sales_date_month_of_year: ~store_sales.date.month_of_year,
+    store_sales_date_year: ~store_sales.date.year,
+    store_sales_ext_sales_price: ~store_sales.ext_sales_price,
+    store_sales_item_brand_id: ~store_sales.item.brand_id,
+    store_sales_item_brand_name: ~store_sales.item.brand_name,
+    store_sales_item_id: ~store_sales.item.id,
+    store_sales_item_manufacturer_id: ~store_sales.item.manufacturer_id,
+    store_sales_ticket_number: ~store_sales.ticket_number
 )
-complete where physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
+complete where store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
 address filtered_cache;
 
 
 SELECT
     date.year,
     count(web_sales.order_number) as web_order_count,
-    count(physical_sales.ticket_number) as store_order_count
+    count(store_sales.ticket_number) as store_order_count
 HAVING
     web_order_count>0 or store_order_count>0
 ORDER BY 
@@ -289,12 +289,12 @@ LIMIT 100;"""
 def test_having_nested(engine):
 
     y = """
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import web_sales as web_sales;
 
 SELECT
-    physical_sales.date.year,
-    count_distinct(physical_sales.ticket_number) as store_order_count
+    store_sales.date.year,
+    count_distinct(store_sales.ticket_number) as store_order_count
 having
     store_order_count > 1000
 MERGE
@@ -303,7 +303,7 @@ SELECT
     count_distinct(web_sales.order_number) as web_order_count
 
 ALIGN 
-    report_date: physical_sales.date.year, web_sales.date.year
+    report_date: store_sales.date.year, web_sales.date.year
 ORDER BY
     report_date asc;"""
 
@@ -313,46 +313,46 @@ ORDER BY
 
 
 def test_website_demo(engine):
-    query = """import physical_sales as physical_sales;
+    query = """import store_sales as store_sales;
 select 
-    physical_sales.customer.id, 
-    physical_sales.customer.full_name,
-    physical_sales.ticket_number, 
+    store_sales.customer.id, 
+    store_sales.customer.full_name,
+    store_sales.ticket_number, 
 limit 5;    
 """
     engine.execute_query(query).fetchall()
 
 
 def test_where_clause_inputs(engine):
-    y = """import physical_sales as physical_sales;
+    y = """import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 
-merge catalog_sales.bill_customer.id into physical_sales.customer.id;
-merge catalog_sales.item.id into physical_sales.item.id;
+merge catalog_sales.bill_customer.id into store_sales.customer.id;
+merge catalog_sales.item.id into store_sales.item.id;
 
 SELECT 
-    physical_sales.item.product_name,
-    physical_sales.item.desc,
-    physical_sales.store.text_id,
-    physical_sales.store.name,
-    sum(physical_sales.net_profit) AS store_sales_profit ,
-    sum(physical_sales.return_net_loss) AS store_returns_loss ,
+    store_sales.item.product_name,
+    store_sales.item.desc,
+    store_sales.store.text_id,
+    store_sales.store.name,
+    sum(store_sales.net_profit) AS store_sales_profit ,
+    sum(store_sales.return_net_loss) AS store_returns_loss ,
     sum(catalog_sales.net_profit) AS catalog_sales_profit
 WHERE 
-    physical_sales.is_returned and physical_sales.date.year=2001 and physical_sales.date.month_of_year=4
-    and physical_sales.return_date.year=2001 and physical_sales.return_date.month_of_year between 4 and 10
+    store_sales.is_returned and store_sales.date.year=2001 and store_sales.date.month_of_year=4
+    and store_sales.return_date.year=2001 and store_sales.return_date.month_of_year between 4 and 10
     and catalog_sales.date.year=2001 and catalog_sales.date.month_of_year between 4 and 10
-    and physical_sales.return_customer.id = physical_sales.customer.id
+    and store_sales.return_customer.id = store_sales.customer.id
 ORDER BY 
-    physical_sales.item.product_name asc,
-    physical_sales.item.desc asc,
-    physical_sales.store.text_id asc,
-    physical_sales.store.name asc
+    store_sales.item.product_name asc,
+    store_sales.item.desc asc,
+    store_sales.store.text_id asc,
+    store_sales.store.name asc
 LIMIT 100;"""
     r1 = engine.parse_text(y)[-1]
     found = False
     for cte in r1.ctes:
-        if cte.condition and "physical_sales.is_returned" in [
+        if cte.condition and "store_sales.is_returned" in [
             x.address for x in cte.condition.row_arguments
         ]:
             found = True
@@ -361,11 +361,11 @@ LIMIT 100;"""
 
 
 def test_constant_extra(engine):
-    query = """import physical_sales as physical_sales;
+    query = """import store_sales as store_sales;
 
-where physical_sales.date.year = 2001
+where store_sales.date.year = 2001
 select 
-    count(physical_sales.customer.id)->ccount, 
+    count(store_sales.customer.id)->ccount, 
     1 as test,
 limit 5;    
 """
@@ -374,15 +374,15 @@ limit 5;
 
 def test_merge_grain_discovery(engine: Executor):
 
-    engine.parse_text("""import physical_sales as physical_sales;""")
+    engine.parse_text("""import store_sales as store_sales;""")
     environment = engine.environment
     build_environment = environment.materialize_for_select()
     graph = generate_graph(build_environment)
 
     target_concepts = [
-        build_environment.concepts["physical_sales.ticket_number"],
-        build_environment.concepts["physical_sales.date.year"],
-        build_environment.concepts["physical_sales.item.id"],
+        build_environment.concepts["store_sales.ticket_number"],
+        build_environment.concepts["store_sales.date.year"],
+        build_environment.concepts["store_sales.item.id"],
     ]
     node = search_concepts(
         mandatory_list=target_concepts,
@@ -396,7 +396,7 @@ def test_merge_grain_discovery(engine: Executor):
     assert (
         grain.components
         == BuildGrain(
-            components={"physical_sales.ticket_number", "physical_sales.item.id"}
+            components={"store_sales.ticket_number", "store_sales.item.id"}
         ).components
     ), grain.components
 
@@ -520,6 +520,23 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
 
     assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
+
+
+def test_tvf_union_rowset_remap_does_not_regroup():
+    patterns = {
+        "query76.preql": r'SELECT\s+"[^"]+"\."channel" as "channel".*?'
+        r'FROM\s+"[^"]+"\s+GROUP BY\s+1,\s+2,\s+3,\s+4,\s+5,\s+6,\s+7\)\s*SELECT\s+'
+        r'"[^"]+"\."channel" as "q76_results_channel"',
+        "query77.preql": r'SELECT\s+"[^"]+"\."u_channel" as "u_channel".*?'
+        r'FROM\s+"[^"]+"\s+GROUP BY\s+1,\s+2,\s+3,\s+4,\s+5\),\s+'
+        r'\w+ as \(\s*SELECT\s+"[^"]+"\."u_channel" as "l0_union_u_channel"',
+    }
+    for filename, pattern in patterns.items():
+        query = (working_path / filename).read_text()
+        env = Environment(working_path=working_path)
+        sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+
+        assert not re.search(pattern, sql, re.S), sql
 
 
 def _assert_having_membership_subselect_valid(query: str) -> None:
@@ -731,3 +748,49 @@ order by pivoted.daily_sales.week_seq nulls first;
     env = Environment(working_path=working_path)
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert not _has_nested_aggregate(sql), sql
+
+
+def test_property_via_partial_fk_does_not_broadcast(engine_sf001):
+    # q05 shape: an entity label (`return_channel_dim_text_id`, a PROPERTY of the
+    # FK `return_channel_dim_id`) is selected at row grain alongside its return
+    # measure. The FK is PARTIAL on the returns grain (web_returns doesn't map it),
+    # so the planner sourced the FK from the dim datasource (where it's the grain
+    # key) instead of from the returns fact, then joined fact->dim on the only
+    # shared concept, `channel`. That channel-only join fans out: every catalog
+    # page in the channel pairs with the full channel return set, so an outer
+    # `sum(return_amount) by entity` broadcasts the channel total identically onto
+    # every entity. The FK must be sourced from the fact so the dim join keys on it.
+    query = """
+import all_sales as s;
+
+with combined as union(
+  (where s.date.date between '2000-08-23'::date and '2000-09-06'::date
+    and s.channel_dim_id is not null
+   select
+     case when s.channel = 'CATALOG' then 'catalog channel' else 'other' end as ch,
+     concat('catalog_page', s.channel_dim_text_id) as ent,
+     s.ext_sales_price as gs,
+     0::float as ret_amt),
+  (where s.return_date.date between '2000-08-23'::date and '2000-09-06'::date
+    and s.return_channel_dim_id is not null
+   select
+     case when s.channel = 'CATALOG' then 'catalog channel' else 'other' end as ch,
+     concat('catalog_page', s.return_channel_dim_text_id) as ent,
+     0::float as gs,
+     s.return_amount as ret_amt)
+) -> (channel_type, entity_id, gross_sales, return_amounts);
+
+select
+  combined.channel_type,
+  combined.entity_id,
+  sum(combined.gross_sales) as total_gross_sales,
+  sum(combined.return_amounts) as total_returns
+where combined.channel_type = 'catalog channel'
+order by total_returns desc
+limit 10;
+"""
+    rows = engine_sf001.execute_text(query)[0].fetchall()
+    totals = [round(r.total_returns, 2) for r in rows]
+    # A broadcast collapses every page onto the same channel total; correct
+    # per-page returns vary.
+    assert len(set(totals)) > 1, totals

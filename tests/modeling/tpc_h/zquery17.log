@@ -6,22 +6,21 @@ comp_size = 328
 generated_sql = """
 
 WITH 
-wakeful as (
+cheerful as (
 SELECT
     \"lineitem\".\"l_extendedprice\" as \"extended_price\",
     \"lineitem\".\"l_quantity\" as \"quantity\",
-    \"part_part\".\"p_brand\" as \"part_brand\",
-    \"part_part\".\"p_container\" as \"part_container\",
     \"part_part\".\"p_partkey\" as \"part_id\"
 FROM
     \"memory\".\"part\" as \"part_part\"
     LEFT OUTER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"),
 thoughtful as (
 SELECT
-    \"wakeful\".\"part_id\" as \"part_id\",
-    avg(\"wakeful\".\"quantity\") as \"avg_qty_per_part\"
+    \"part_partsupp\".\"ps_partkey\" as \"part_id\",
+    avg(\"lineitem\".\"l_quantity\") as \"avg_qty_per_part\"
 FROM
-    \"wakeful\"
+    \"memory\".\"partsupp\" as \"part_partsupp\"
+    LEFT OUTER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_partsupp\".\"ps_partkey\" = \"lineitem\".\"l_partkey\" AND \"part_partsupp\".\"ps_suppkey\" = \"lineitem\".\"l_suppkey\"
 GROUP BY
     1),
 cheerful as (

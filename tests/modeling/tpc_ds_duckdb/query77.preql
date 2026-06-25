@@ -1,6 +1,6 @@
 import catalog_sales as cs;
 import catalog_returns as cr;
-import physical_sales as ss;
+import store_sales as ss;
 import web_sales as ws;
 import web_returns as wr;
 

@@ -1,42 +1,42 @@
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 
 where
-    physical_sales.date.year = 2000
-    and physical_sales.store.id is not null
+    store_sales.date.year = 2000
+    and store_sales.store.id is not null
     and (
         (
-            physical_sales.customer_demographic.marital_status = 'M'
-            and physical_sales.customer_demographic.education_status = '4 yr Degree'
-            and physical_sales.sales_price between 100.0 and 150.0
+            store_sales.customer_demographic.marital_status = 'M'
+            and store_sales.customer_demographic.education_status = '4 yr Degree'
+            and store_sales.sales_price between 100.0 and 150.0
         )
         or (
-            physical_sales.customer_demographic.marital_status = 'D'
-            and physical_sales.customer_demographic.education_status = '2 yr Degree'
-            and physical_sales.sales_price between 50.0 and 100.0
+            store_sales.customer_demographic.marital_status = 'D'
+            and store_sales.customer_demographic.education_status = '2 yr Degree'
+            and store_sales.sales_price between 50.0 and 100.0
         )
         or (
-            physical_sales.customer_demographic.marital_status = 'S'
-            and physical_sales.customer_demographic.education_status = 'College'
-            and physical_sales.sales_price between 150.0 and 200.0
+            store_sales.customer_demographic.marital_status = 'S'
+            and store_sales.customer_demographic.education_status = 'College'
+            and store_sales.sales_price between 150.0 and 200.0
         )
     )
     and (
         (
-            physical_sales.sale_address.country = 'United States'
-            and physical_sales.sale_address.state in ('CO', 'OH', 'TX')
-            and physical_sales.net_profit between 0 and 2000
+            store_sales.sale_address.country = 'United States'
+            and store_sales.sale_address.state in ('CO', 'OH', 'TX')
+            and store_sales.net_profit between 0 and 2000
         )
         or (
-            physical_sales.sale_address.country = 'United States'
-            and physical_sales.sale_address.state in ('OR', 'MN', 'KY')
-            and physical_sales.net_profit between 150 and 3000
+            store_sales.sale_address.country = 'United States'
+            and store_sales.sale_address.state in ('OR', 'MN', 'KY')
+            and store_sales.net_profit between 150 and 3000
         )
         or (
-            physical_sales.sale_address.country = 'United States'
-            and physical_sales.sale_address.state in ('VA', 'CA', 'MS')
-            and physical_sales.net_profit between 50 and 25000
+            store_sales.sale_address.country = 'United States'
+            and store_sales.sale_address.state in ('VA', 'CA', 'MS')
+            and store_sales.net_profit between 50 and 25000
         )
     )
 select
-    sum(physical_sales.quantity) as total_quantity,
+    sum(store_sales.quantity) as total_quantity,
 ;

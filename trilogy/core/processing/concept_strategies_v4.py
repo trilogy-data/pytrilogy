@@ -500,7 +500,12 @@ def resolve_rowset(
     # unconnected models (a grain-only `by` edge does NOT bridge them), surface
     # the typed subgraph error rather than silently cross-joining inside the CTE.
     raise_if_disconnected_for(
-        list(built.output_components), inner_where, inner_env, inner_g
+        list(built.output_components),
+        inner_where,
+        inner_env,
+        inner_g,
+        # v4 pre-gate: see query_processor._raise_if_disconnected.
+        island_rowsets=False,
     )
 
     inner_info = search_concepts(

@@ -7,17 +7,17 @@
 # channel is a filtered customer_item value. This converges on the query97-one
 # formulation — joins onto a conformed dimension are how a full-outer overlap is
 # expressed without the multi-select.
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 import customer as customer;
 import item as item;
 
 auto customer_item <- concat(concat(customer.id::string, '-'), item.id::string);
-auto store_present <- customer_item ? physical_sales.date.month_seq between 1200 and 1200 + 11;
+auto store_present <- customer_item ? store_sales.date.month_seq between 1200 and 1200 + 11;
 auto catalog_present <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
 
-left join customer.id = physical_sales.customer.id
-left join item.id = physical_sales.item.id
+left join customer.id = store_sales.customer.id
+left join item.id = store_sales.item.id
 left join customer.id = catalog_sales.bill_customer.id
 left join item.id = catalog_sales.item.id
 select

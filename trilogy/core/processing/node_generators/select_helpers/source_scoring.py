@@ -340,9 +340,16 @@ def resolve_subgraphs(
         ds: {n for n in subgraphs[ds] if n in concepts} for ds in datasources
     }
 
-    def _bridge_targets(ds: str) -> set[str]:
+    def _bridge_edges(ds: str) -> set[tuple[str, str]]:
+        # (other datasource, the join-key node shared with it). Keyed by join key,
+        # not just by target: an FK bridge reaches a fact via a fine key (oid)
+        # while a dimension peer reaches the same fact only via a coarse enum key
+        # (channel). Comparing whole targets treats those as equivalent and drops
+        # the FK bridge; comparing (target, key) edges keeps the distinction.
         mine = ds_join_nodes[ds]
-        return {o for o in datasources if o != ds and (mine & ds_join_nodes[o])}
+        return {
+            (o, n) for o in datasources if o != ds for n in (mine & ds_join_nodes[o])
+        }
 
     # Datasources that uniquely provide some requested concept — pruning a join
     # path to one of these would lose data, so a bridge to it is load-bearing.
@@ -385,10 +392,15 @@ def resolve_subgraphs(
                 # fans the result out, so keep it. A bridge to a datasource that
                 # is redundant elsewhere is NOT protected (it would re-introduce
                 # an ambiguous alternative path).
-                key_only_bridges = (
-                    _bridge_targets(key) - _bridge_targets(other_key) - {other_key}
-                )
-                if key_only_bridges & sole_providers:
+                other_edges = _bridge_edges(other_key)
+                key_only_bridges = {
+                    o
+                    for (o, n) in _bridge_edges(key)
+                    if o != other_key
+                    and o in sole_providers
+                    and (o, n) not in other_edges
+                }
+                if key_only_bridges:
                     continue
                 if len(value) < len(other_value):
                     is_subset = True

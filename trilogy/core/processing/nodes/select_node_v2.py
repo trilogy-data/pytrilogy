@@ -239,6 +239,39 @@ class SelectNode(StrategyNode):
         )
 
 
+class RowsetNode(SelectNode):
+    """A thin translation projection over a rowset body.
+
+    Re-exposes the body's rowset-local concepts (`local._rs_*`) under their outer
+    rowset addresses (`rs.*`). A distinct type so the regroup pass
+    (``group_if_required_v2``) recognizes it and never regroups: the wrapper is a
+    pure 1:1 projection of an already-final body, so forcing a GROUP BY would dedup
+    rows (e.g. collapse a union-stack's duplicates) or omit raw projections.
+    """
+
+    def copy(self) -> "RowsetNode":
+        return RowsetNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            datasource=self.datasource,
+            depth=self.depth,
+            parents=self.parents,
+            whole_grain=self.whole_grain,
+            partial_concepts=list(self.partial_concepts),
+            rollup_concepts=list(self.rollup_concepts),
+            nullable_concepts=list(self.nullable_concepts),
+            accept_partial=self.accept_partial,
+            grain=self.grain,
+            force_group=self.force_group,
+            conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
+            hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
+            existence_concepts=list(self.existence_concepts),
+        )
+
+
 class ConstantNode(SelectNode):
     source_type = SourceType.CONSTANT
     """Represents a constant value."""

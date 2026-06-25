@@ -1,15 +1,15 @@
 import aggregates.opt_three;
 
 WHERE
-    physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
+    store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
 SELECT
-    physical_sales.date.year,
-    physical_sales.item.brand_id,
-    physical_sales.item.brand_name,
-    sum(physical_sales.ext_sales_price) -> sum_agg,
+    store_sales.date.year,
+    store_sales.item.brand_id,
+    store_sales.item.brand_name,
+    sum(store_sales.ext_sales_price) -> sum_agg,
 ORDER BY
-    physical_sales.date.year asc,
+    store_sales.date.year asc,
     sum_agg desc,
-    physical_sales.item.brand_id asc
+    store_sales.item.brand_id asc
 LIMIT 100
 ;

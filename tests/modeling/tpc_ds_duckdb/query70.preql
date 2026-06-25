@@ -1,4 +1,4 @@
-import physical_sales as ss;
+import store_sales as ss;
 
 # Top-5 states by sum(profit) — same as reference's IN-subquery.
 auto state_total <- sum(ss.net_profit ? ss.date.month_seq between 1200 and 1211) by ss.store.state;

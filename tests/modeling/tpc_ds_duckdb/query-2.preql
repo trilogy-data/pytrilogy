@@ -1,7 +1,7 @@
 # q77 STORE branch, extracted as a standalone select (negative test id -2).
 # Two per-store aggregates joined by a rowset `merge` (sales keyed by store,
 # returns keyed by return_store). Checks v4 parity on the merge-join shape.
-import physical_sales as ss;
+import store_sales as ss;
 
 const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;

@@ -1,31 +1,31 @@
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import customer as customer;
 
 rowset bought <- where
-    physical_sales.date.day_of_month between 1 and 2
+    store_sales.date.day_of_month between 1 and 2
     and (
-        physical_sales.household_demographic.dependent_count = 4
-        or physical_sales.household_demographic.vehicle_count = 3
+        store_sales.household_demographic.dependent_count = 4
+        or store_sales.household_demographic.vehicle_count = 3
     )
-    and physical_sales.date.year in (1999, 2000, 2001)
-    and physical_sales.store.city in ('Fairview', 'Midway')
-    and physical_sales.customer.id is not null
+    and store_sales.date.year in (1999, 2000, 2001)
+    and store_sales.store.city in ('Fairview', 'Midway')
+    and store_sales.customer.id is not null
 select
-    physical_sales.customer.id,
-    physical_sales.ticket_number,
-    physical_sales.sale_address.city as bought_city,
-    sum(physical_sales.ext_sales_price) as extended_price,
-    sum(physical_sales.ext_tax) as extended_tax,
-    sum(physical_sales.ext_list_price) as list_price,
+    store_sales.customer.id,
+    store_sales.ticket_number,
+    store_sales.sale_address.city as bought_city,
+    sum(store_sales.ext_sales_price) as extended_price,
+    sum(store_sales.ext_tax) as extended_tax,
+    sum(store_sales.ext_list_price) as list_price,
 ;
 
-inner join bought.physical_sales.customer.id = customer.id
+inner join bought.store_sales.customer.id = customer.id
 select
     customer.last_name,
     customer.first_name,
     customer.address.city,
     bought.bought_city,
-    bought.physical_sales.ticket_number,
+    bought.store_sales.ticket_number,
     bought.extended_price,
     bought.extended_tax,
     bought.list_price,
@@ -33,6 +33,6 @@ having
     customer.address.city != bought.bought_city
 order by
     customer.last_name asc nulls first,
-    bought.physical_sales.ticket_number asc nulls first
+    bought.store_sales.ticket_number asc nulls first
 limit 100
 ;

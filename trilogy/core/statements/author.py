@@ -44,6 +44,7 @@ from trilogy.core.models.author import (
     UnionSelectLineage,
     WhereClause,
     WindowItem,
+    get_concept_arguments,
 )
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
@@ -97,6 +98,41 @@ class SelectItem:
     @property
     def is_undefined(self) -> bool:
         return True if isinstance(self.content, UndefinedConcept) else False
+
+
+def _row_grain_arguments(node: Any) -> List[ConceptRef]:
+    """Concept arguments of a SELECT-derived expression that a HAVING/ORDER BY
+    may reference without being a direct output column. Scalar functions pass
+    their operands through; an aggregate exposes all of its arguments (matching
+    a `sum(x)` in HAVING to the `sum(x) as total` output via the shared `x`).
+    A window contributes nothing: its partition/order/content live at the
+    pre-window grain and are grouped away in the outer scope, so a bare
+    dimension that appears only inside a window is NOT an available output."""
+    if isinstance(node, ConceptRef):
+        return [node]
+    if isinstance(node, WindowItem):
+        return []
+    if isinstance(node, AggregateWrapper):
+        return list(node.concept_arguments)
+    if isinstance(node, Function):
+        if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            return list(node.concept_arguments)
+        out: List[ConceptRef] = []
+        for arg in node.arguments:
+            out += _row_grain_arguments(arg)
+        return out
+    if isinstance(node, FunctionCallWrapper):
+        out = _row_grain_arguments(node.content)
+        for arg in node.args:
+            out += _row_grain_arguments(arg)
+        return out
+    if isinstance(node, Parenthetical):
+        return _row_grain_arguments(node.content)
+    if isinstance(node, FilterItem):
+        return _row_grain_arguments(node.content) + list(node.where.concept_arguments)
+    # Conditional / Comparison / Between and other expression nodes carry no
+    # grain collapse — descend through their plain concept arguments.
+    return list(get_concept_arguments(node))
 
 
 @dataclass
@@ -382,7 +418,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         sources: set[str] = set()
         for item in self.selection:
             if isinstance(item.content, ConceptTransform):
-                for arg in item.content.function.concept_arguments:
+                for arg in _row_grain_arguments(item.content.function):
                     sources.add(arg.address)
         return sources
 

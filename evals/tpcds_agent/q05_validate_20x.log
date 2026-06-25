@@ -1,0 +1,12 @@
+[1/3] Building TPC-DS DuckDB (sf=1) ...
+[2/3] Category 'enriched': setting up workspace ...
+[3/3] Running q05 x20 (concurrency=3) ...
+  [r02] fail      iters=29  prompt_tok=940774   explore=5   wrote=True (259s)
+  [r01] fail      iters=30  prompt_tok=1414280  explore=9   wrote=True (303s)
+  [r00] timeout   iters=25  prompt_tok=823664   explore=12  wrote=True (900s)
+  [r03] timeout   iters=46  prompt_tok=2826018  explore=17  wrote=True (900s)
+  [r04] exhausted iters=50  prompt_tok=2276450  explore=9   wrote=True (408s)
+  [r05] exhausted iters=50  prompt_tok=2710428  explore=12  wrote=True (461s)
+  [r06] exhausted iters=50  prompt_tok=2228968  explore=10  wrote=True (560s)
+  [r08] exhausted iters=50  prompt_tok=2957385  explore=13  wrote=True (327s)
+  [r09] exhausted iters=50  prompt_tok=1842162  explore=8   wrote=True (326s)

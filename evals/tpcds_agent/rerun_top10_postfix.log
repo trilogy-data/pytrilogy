@@ -1,0 +1,173 @@
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (10 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q02] starting (worker _worker_1)
+  [q05] starting (worker _worker_0)
+  [q02] done in 357s (exit 0, score=pass)
+  [q11] starting (worker _worker_1)
+  [q05] done in 478s (exit 0, score=fail)
+  [q14] starting (worker _worker_0)
+  [q11] done in 160s (exit 0, score=pass)
+  [q17] starting (worker _worker_1)
+  [q17] done in 99s (exit 0, score=pass)
+  [q23] starting (worker _worker_1)
+  [q23] done in 86s (exit 0, score=fail)
+  [q54] starting (worker _worker_1)
+  [q54] done in 49s (exit 0, score=fail)
+  [q64] starting (worker _worker_1)
+  [q14] done in 412s (exit 0, score=fail)
+  [q75] starting (worker _worker_0)
+  [q75] done in 81s (exit 0, score=fail)
+  [q80] starting (worker _worker_0)
+  [q64] done in 227s (exit 0, score=fail)
+  [q80] done in 148s (exit 0, score=fail)
+[4/5] Finalising scores for 10 queries ...
+  spliced 89 prior results from 20260625-025205
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (63 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260625-120155
+
+# TPC-DS Agent Eval — 20260625-120155
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.285
+
+## Result
+
+- **Pass rate: 59/99** (60%)
+- Status breakdown: {'pass': 59, 'fail': 40}
+- Wall time: 1125.6s  |  Agent time: 2096.6s  |  Avg/query: 209.7s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 310
+- Tool calls: 361  →  {'trilogy': 351, 'return_control_to_user': 10}
+- `trilogy` subcommands: {'agent-info': 21, 'file': 116, 'explore': 85, 'run': 129}
+- Tool success rate: 82% (298/361 ok)
+- Tokens: 12603215 total (12459593 prompt + 143622 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 351 | 3163 | 32230 | 0 | 0% |
+| `return_control_to_user` | 10 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 101} — total 101
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 01 | pass | 100 | 100 | 1577 |  |
+| 02 | pass | 53 | 53 | 5781 |  |
+| 03 | pass | 89 | 89 | 800 |  |
+| 04 | pass | 6 | 6 | 6168 |  |
+| 05 | fail | 100 | 100 | 13607 | result set differs from reference |
+| 06 | pass | 46 | 46 | 1929 |  |
+| 07 | pass | 100 | 100 | 1538 |  |
+| 08 | pass | 5 | 5 | 2450 |  |
+| 09 | pass | 1 | 1 | 5044 |  |
+| 10 | pass | 6 | 6 | 6298 |  |
+| 11 | pass | 90 | 90 | 5533 |  |
+| 12 | pass | 100 | 100 | 3824 |  |
+| 13 | pass | 1 | 1 | 2758 |  |
+| 14 | fail | 100 | 100 | 4846 | result set differs from reference |
+| 15 | fail | 100 | 100 | 1100 | result set differs from reference |
+| 16 | pass | 1 | 1 | 4149 |  |
+| 17 | pass | 0 | 0 | 6680 |  |
+| 18 | fail | 100 | 100 | 3658 | result set differs from reference |
+| 19 | pass | 100 | 100 | 1645 |  |
+| 20 | pass | 100 | 100 | 1968 |  |
+| 21 | pass | 100 | 100 | 1300 |  |
+| 22 | pass | 100 | 100 | 1288 |  |
+| 23 | fail | 4 | 19 | 6298 | result set differs from reference |
+| 24 | fail | 1 | 10 | 2885 | result set differs from reference |
+| 25 | pass | 1 | 1 | 5772 |  |
+| 26 | pass | 100 | 100 | 1651 |  |
+| 27 | fail | 100 | 100 | 2398 | result set differs from reference |
+| 28 | fail | 1 | 1 | 7623 | result set differs from reference |
+| 29 | pass | 1 | 1 | 5791 |  |
+| 30 | fail | 100 | 100 | 5737 | result set differs from reference |
+| 31 | fail | 44 | 44 | 4022 | result set differs from reference |
+| 32 | pass | 1 | 1 | 1620 |  |
+| 33 | pass | 100 | 100 | 3147 |  |
+| 34 | pass | 455 | 455 | 3461 |  |
+| 35 | fail | 100 | 100 | 10980 | result set differs from reference |
+| 36 | pass | 100 | 100 | 2195 |  |
+| 37 | fail | 1 | 2 | 1209 | result set differs from reference |
+| 38 | fail | 1 | 1 | 1105 | result set differs from reference |
+| 39 | pass | 243 | 243 | 4662 |  |
+| 40 | fail | 100 | 100 | 1418 | result set differs from reference |
+| 41 | pass | 100 | 100 | 1848 |  |
+| 42 | pass | 10 | 10 | 745 |  |
+| 43 | pass | 6 | 6 | 1640 |  |
+| 44 | pass | 10 | 10 | 5626 |  |
+| 45 | pass | 19 | 19 | 1490 |  |
+| 46 | pass | 100 | 100 | 2372 |  |
+| 47 | pass | 100 | 100 | 5770 |  |
+| 48 | pass | 1 | 1 | 2182 |  |
+| 49 | fail | 34 | 34 | 5826 | result set differs from reference |
+| 50 | fail | 6 | 7 | 3222 | result set differs from reference |
+| 51 | fail | 100 | 100 | 5497 | result set differs from reference |
+| 52 | pass | 100 | 100 | 794 |  |
+| 53 | pass | 100 | 100 | 2380 |  |
+| 54 | fail | 1 | 1 | 4671 | result set differs from reference |
+| 55 | pass | 100 | 100 | 832 |  |
+| 56 | fail | 100 | 100 | 3407 | result set differs from reference |
+| 57 | pass | 100 | 100 | 3956 |  |
+| 58 | pass | 5 | 5 | 4326 |  |
+| 59 | pass | 100 | 100 | 6343 |  |
+| 60 | pass | 100 | 100 | 3171 |  |
+| 61 | pass | 1 | 1 | 2045 |  |
+| 62 | pass | 100 | 100 | 2639 |  |
+| 63 | pass | 100 | 100 | 1885 |  |
+| 64 | fail | 2 | 2 | 16216 | result set differs from reference |
+| 65 | fail | 100 | 100 | 3440 | result set differs from reference |
+| 66 | fail | 5 | 60 | 4692 | result set differs from reference |
+| 67 | fail | 100 | 100 | 3658 | result set differs from reference |
+| 68 | pass | 100 | 100 | 2418 |  |
+| 69 | fail | 100 | 100 | 4156 | result set differs from reference |
+| 70 | pass | 3 | 3 | 2745 |  |
+| 71 | pass | 1031 | 1031 | 3356 |  |
+| 72 | pass | 100 | 100 | 2952 |  |
+| 73 | fail | 1 | 9 | 2090 | result set differs from reference |
+| 74 | fail | 92 | 90 | 5766 | result set differs from reference |
+| 75 | fail | 100 | 100 | 8314 | result set differs from reference |
+| 76 | fail | 100 | 100 | 5305 | result set differs from reference |
+| 77 | fail | 44 | 76 | 5259 | result set differs from reference |
+| 78 | fail | 100 | 100 | 6930 | result set differs from reference |
+| 79 | fail | 100 | 100 | 1621 | result set differs from reference |
+| 80 | fail | 100 | 100 | 6509 | result set differs from reference |
+| 81 | fail | 100 | 100 | 8775 | result set differs from reference |
+| 82 | pass | 2 | 2 | 1095 |  |
+| 83 | pass | 24 | 24 | 4727 |  |
+| 84 | fail | 16 | 100 | 1547 | result set differs from reference |
+| 85 | pass | 1 | 1 | 3859 |  |
+| 86 | pass | 100 | 100 | 1866 |  |
+| 87 | fail | 1 | 1 | 2220 | result set differs from reference |
+| 88 | pass | 1 | 1 | 2101 |  |
+| 89 | pass | 100 | 100 | 4025 |  |
+| 90 | pass | 1 | 1 | 1619 |  |
+| 91 | fail | 2 | 2 | 2373 | result set differs from reference |
+| 92 | fail | 1 | 1 | 1090 | result set differs from reference |
+| 93 | pass | 100 | 100 | 1001 |  |
+| 94 | fail | 1 | 1 | 2850 | result set differs from reference |
+| 95 | pass | 1 | 1 | 4791 |  |
+| 96 | pass | 1 | 1 | 988 |  |
+| 97 | fail | 1 | 1 | 861 | result set differs from reference |
+| 98 | fail | 2521 | 2521 | 3336 | result set differs from reference |
+| 99 | pass | 90 | 90 | 3278 |  |
+
+## Agent final message
+
+> Created query80.preql and validated it successfully. The query:
+> 
+> 1. Imports `raw.all_sales` (multi-channel consolidated model with WEB/CATALOG/STORE)
+> 2. Derives `channel_label` (e.g. 'store channel') and `outlet_id` (e.g. 'storeAAAAAAAABAAAAA') from the channel enum and channel_dim_text_id
+> 3. Filters to date range 2000-08-23 through 2000-09-22, item.current_price > 50, promotion.channel_tv = 'N', and recorded outlets (channel_dim_id is not null)
+> 4. Uses a `def rl_sum(metric)` macro with `by rollup channel_label, outlet_id` to compute sales (ext_sales_price), returns (return_amount, null→0), and profit (net_profit − return_net_loss, null→0) at all three subtotal levels
+> 5. Orders by channel_label nulls first, outlet_id nulls first with LIMIT 100
+> 
+> Result: 100 rows returned (grand total, per-channel subtotals, per-outlet detail) — query runs cleanly.
+

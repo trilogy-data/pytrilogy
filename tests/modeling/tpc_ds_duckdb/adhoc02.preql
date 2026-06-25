@@ -1,8 +1,8 @@
 WHERE
-    physical_sales.date.id is not null
+    store_sales.date.id is not null
 SELECT
-    physical_sales.date.year,
-    count(physical_sales.ticket_number) as store_order_count
+    store_sales.date.year,
+    count(store_sales.ticket_number) as store_order_count
 HAVING
     store_order_count>0
 MERGE
@@ -14,6 +14,6 @@ SELECT
 HAVING
     web_order_count>0
 ALIGN 
-    report_date: physical_sales.date.year, web_sales.date.year
+    report_date: store_sales.date.year, web_sales.date.year
 ORDER BY
     report_date asc;

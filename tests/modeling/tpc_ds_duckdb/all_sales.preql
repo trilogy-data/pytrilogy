@@ -2,7 +2,7 @@
 # an two channel combination. Carries sales and
 # return information in a consolidated format. Channel specific fields 
 # and data exist on peer models
-# (`physical_sales`, `catalog_sales`, `web_sales`) for single-channel-only queries.
+# (`store_sales`, `catalog_sales`, `web_sales`) for single-channel-only queries.
 
 import item as item;
 import date as date;

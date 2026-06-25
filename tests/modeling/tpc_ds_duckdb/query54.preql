@@ -1,5 +1,5 @@
 import all_sales as sales;
-import physical_sales as ss;
+import store_sales as ss;
 import store as store;
 
 # my_customers: customers who bought i_category='Women' & i_class='maternity'

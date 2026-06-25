@@ -1,4 +1,4 @@
-import physical_sales as ss;
+import store_sales as ss;
 
 # Single ROLLUP(category, class). Both rollup sums and the grouping() columns
 # resolve into one rollup CTE, and the window (ordering by the gross-margin

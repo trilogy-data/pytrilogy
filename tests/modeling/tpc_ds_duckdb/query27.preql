@@ -1,25 +1,25 @@
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 
 where
-    physical_sales.customer_demographic.gender = 'M'
-    and physical_sales.customer_demographic.marital_status = 'S'
-    and physical_sales.customer_demographic.education_status = 'College'
-    and physical_sales.date.year = 2002
-    and physical_sales.store.state = 'TN'
+    store_sales.customer_demographic.gender = 'M'
+    and store_sales.customer_demographic.marital_status = 'S'
+    and store_sales.customer_demographic.education_status = 'College'
+    and store_sales.date.year = 2002
+    and store_sales.store.state = 'TN'
 select
-    physical_sales.item.text_id,
-    physical_sales.store.state,
-    grouping(physical_sales.store.state) by rollup physical_sales.item.text_id, physical_sales.store.state as g_state,
-    avg(physical_sales.quantity::numeric(12,2))
-            by rollup physical_sales.item.text_id, physical_sales.store.state as agg1,
-    avg(physical_sales.list_price::numeric(12,2))
-            by rollup physical_sales.item.text_id, physical_sales.store.state as agg2,
-    avg(physical_sales.coupon_amt::numeric(12,2))
-            by rollup physical_sales.item.text_id, physical_sales.store.state as agg3,
-    avg(physical_sales.sales_price::numeric(12,2))
-            by rollup physical_sales.item.text_id, physical_sales.store.state as agg4,
+    store_sales.item.text_id,
+    store_sales.store.state,
+    grouping(store_sales.store.state) by rollup store_sales.item.text_id, store_sales.store.state as g_state,
+    avg(store_sales.quantity::numeric(12,2))
+            by rollup store_sales.item.text_id, store_sales.store.state as agg1,
+    avg(store_sales.list_price::numeric(12,2))
+            by rollup store_sales.item.text_id, store_sales.store.state as agg2,
+    avg(store_sales.coupon_amt::numeric(12,2))
+            by rollup store_sales.item.text_id, store_sales.store.state as agg3,
+    avg(store_sales.sales_price::numeric(12,2))
+            by rollup store_sales.item.text_id, store_sales.store.state as agg4,
 order by
-    physical_sales.item.text_id asc nulls first,
-    physical_sales.store.state asc nulls first
+    store_sales.item.text_id asc nulls first,
+    store_sales.store.state asc nulls first
 limit 100
 ;

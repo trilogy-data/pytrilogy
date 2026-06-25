@@ -9,6 +9,7 @@ from trilogy.parsing.v2.errors import (
     create_generic_syntax_error,
     create_syntax_error,
     detect_align_missing_and,
+    detect_by_on_wrapped_aggregate,
     detect_clause_after_join,
     detect_definition_after_clause,
     detect_group_by,
@@ -135,6 +136,12 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     by_pos = _detect_unparenthesized_by_expr_lark(text, pos)
     if by_pos is not None:
         raise create_syntax_error(211, by_pos, text)
+
+    # 212: `by <grain>` attached to an expression that WRAPS an aggregate
+    # (e.g. `coalesce(sum(x), 0) by store.id`) — grain must sit next to the agg.
+    wrapped_by_pos = detect_by_on_wrapped_aggregate(text, pos)
+    if wrapped_by_pos is not None:
+        raise create_syntax_error(212, wrapped_by_pos, text)
 
     sub_pos = detect_subselect(text, pos)
     if sub_pos is not None:

@@ -33,7 +33,7 @@ properties <ticket_number, item.id> (
     ext_list_price numeric::usd, # Line-extended list price.
     ext_discount_amount numeric::usd, # Extended discount applied to the line.
     coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
-    net_profit numeric::usd, # Net profit reported for the line.
+    net_profit numeric::usd, # Reported net profit for the line. Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
     is_returned bool, # True if at least part of this ticket line was later returned (derived from store_returns).
     net_paid numeric::usd, # Net amount paid by the customer for the line, excluding tax.
     ext_tax numeric::usd, # Extended sales tax on the line.
@@ -44,7 +44,7 @@ properties <ticket_number, item.id> (
     row_counter int, # Constant 1, used for unconditional row counts.
 );
 
-auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line profit.
+auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
 
 auto line_item <- concat(ticket_number::string, '-', item.id::string); # Unique line-item identifier (one ticket + item). Count line items with count(line_item); do NOT use count(ticket_number), a receipt key that dedups and undercounts multi-item tickets.
 auto line_item_count<- sum(row_counter); # Number of line items (= count(line_item)); kept for queries that reference it.

@@ -1122,9 +1122,10 @@ class BaseDialect:
                 f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address,None)}"
             )
 
-            raw_content = cte.get_alias(c)
             parent = cte.source_map.get(c.address, None)
-            if parent:
+            has_multiple_sources = isinstance(parent, list) and len(parent) > 1
+            raw_content = None if has_multiple_sources else cte.get_alias(c)
+            if parent and not has_multiple_sources:
                 self.used_map[parent[0]].add(c.address)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text

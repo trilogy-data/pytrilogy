@@ -1,29 +1,29 @@
-import physical_sales as physical_sales;
+import store_sales as store_sales;
 import customer as customer;
 
 rowset bought <- where
     (
-        physical_sales.household_demographic.dependent_count = 4
-        or physical_sales.household_demographic.vehicle_count = 3
+        store_sales.household_demographic.dependent_count = 4
+        or store_sales.household_demographic.vehicle_count = 3
     )
-    and physical_sales.date.day_of_week in (6, 0)
-    and physical_sales.date.year in (1999, 2000, 2001)
-    and physical_sales.store.city in ('Fairview', 'Midway')
+    and store_sales.date.day_of_week in (6, 0)
+    and store_sales.date.year in (1999, 2000, 2001)
+    and store_sales.store.city in ('Fairview', 'Midway')
 select
-    physical_sales.customer.id,
-    physical_sales.sale_address.city as bought_city,
-    physical_sales.ticket_number,
-    sum(physical_sales.coupon_amt) as amt,
-    sum(physical_sales.net_profit) as profit,
+    store_sales.customer.id,
+    store_sales.sale_address.city as bought_city,
+    store_sales.ticket_number,
+    sum(store_sales.coupon_amt) as amt,
+    sum(store_sales.net_profit) as profit,
 ;
 
-inner join bought.physical_sales.customer.id = customer.id
+inner join bought.store_sales.customer.id = customer.id
 select
     customer.last_name,
     customer.first_name,
     customer.address.city,
     bought.bought_city,
-    bought.physical_sales.ticket_number,
+    bought.store_sales.ticket_number,
     bought.amt,
     bought.profit,
 having
@@ -33,6 +33,6 @@ order by
     customer.first_name asc nulls first,
     customer.address.city asc nulls first,
     bought.bought_city asc nulls first,
-    bought.physical_sales.ticket_number asc nulls first
+    bought.store_sales.ticket_number asc nulls first
 limit 100
 ;
