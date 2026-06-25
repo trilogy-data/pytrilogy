@@ -1,0 +1,52 @@
+
+WITH 
+cooperative as (
+SELECT
+    "ws_ship_mode_ship_mode"."SM_TYPE" as "ws_ship_mode_type",
+    "ws_web_site_web_site"."web_name" as "ws_web_site_name",
+    CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 30 THEN 1 ELSE NULL END as "_virt_filter_row_counter_8850714245272626",
+    CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 120 THEN 1 ELSE NULL END as "_virt_filter_row_counter_7798998707086244",
+    CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 30 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 60 THEN 1 ELSE NULL END as "_virt_filter_row_counter_352593546908065",
+    CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 60 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 90 THEN 1 ELSE NULL END as "_virt_filter_row_counter_7249021014595014",
+    CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 90 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 120 THEN 1 ELSE NULL END as "_virt_filter_row_counter_2773618370950165",
+    SUBSTRING("ws_warehouse_warehouse"."w_warehouse_name",1,20) as "w_substr"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."ship_mode" as "ws_ship_mode_ship_mode" on "ws_web_sales"."WS_SHIP_MODE_SK" = "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
+    INNER JOIN "memory"."warehouse" as "ws_warehouse_warehouse" on "ws_web_sales"."WS_WAREHOUSE_SK" = "ws_warehouse_warehouse"."w_warehouse_sk"
+WHERE
+    "ws_ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    "ws_web_sales"."WS_ITEM_SK",
+    "ws_web_sales"."WS_ORDER_NUMBER")
+SELECT
+    "cooperative"."w_substr" as "w_substr",
+    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
+    "cooperative"."ws_web_site_name" as "ws_web_site_name",
+    coalesce(sum("cooperative"."_virt_filter_row_counter_8850714245272626"),0) as "days_30",
+    coalesce(sum("cooperative"."_virt_filter_row_counter_352593546908065"),0) as "days_31_60",
+    coalesce(sum("cooperative"."_virt_filter_row_counter_7249021014595014"),0) as "days_61_90",
+    coalesce(sum("cooperative"."_virt_filter_row_counter_2773618370950165"),0) as "days_91_120",
+    coalesce(sum("cooperative"."_virt_filter_row_counter_7798998707086244"),0) as "days_120_plus"
+FROM
+    "cooperative"
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    "cooperative"."w_substr" asc nulls first,
+    "cooperative"."ws_ship_mode_type" asc nulls first,
+    "cooperative"."ws_web_site_name" asc nulls first
+LIMIT (100)

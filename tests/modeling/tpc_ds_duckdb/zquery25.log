@@ -1,6 +1,6 @@
 query_id = "25"
-generator = "v4"
-gen_length = 6935
+generator = "v3"
+gen_length = 6889
 preql_size = 818
 comp_size = 1067
 generated_sql = """
@@ -17,7 +17,7 @@ GROUP BY
     1,
     2,
     3),
-concerned as (
+vacuous as (
 SELECT
     \"analysis_catalog_sales\".\"CS_NET_PROFIT\" as \"analysis_catalog_net_profit\",
     \"analysis_item_items\".\"I_ITEM_DESC\" as \"analysis_item_desc\",
@@ -73,21 +73,21 @@ GROUP BY
     6,
     \"analysis_store_sales\".\"SS_TICKET_NUMBER\",
     \"wakeful\".\"analysis_item_id\"),
-sparkling as (
+concerned as (
 SELECT
-    \"concerned\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"concerned\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
-    \"concerned\".\"analysis_store_name\" as \"analysis_store_name\",
-    \"concerned\".\"analysis_store_text_id\" as \"analysis_store_text_id\",
-    sum(\"concerned\".\"analysis_catalog_net_profit\") as \"catalog_sales_profit\"
+    \"vacuous\".\"analysis_item_desc\" as \"analysis_item_desc\",
+    \"vacuous\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
+    \"vacuous\".\"analysis_store_name\" as \"analysis_store_name\",
+    \"vacuous\".\"analysis_store_text_id\" as \"analysis_store_text_id\",
+    sum(\"vacuous\".\"analysis_catalog_net_profit\") as \"catalog_sales_profit\"
 FROM
-    \"concerned\"
+    \"vacuous\"
 GROUP BY
     1,
     2,
     3,
     4),
-vacuous as (
+juicy as (
 SELECT
     \"yummy\".\"analysis_item_desc\" as \"analysis_item_desc\",
     \"yummy\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
@@ -103,19 +103,19 @@ GROUP BY
     3,
     4)
 SELECT
-    coalesce(\"sparkling\".\"analysis_item_text_id\",\"vacuous\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
-    coalesce(\"sparkling\".\"analysis_item_desc\",\"vacuous\".\"analysis_item_desc\") as \"analysis_item_desc\",
-    coalesce(\"sparkling\".\"analysis_store_text_id\",\"vacuous\".\"analysis_store_text_id\") as \"analysis_store_text_id\",
-    coalesce(\"sparkling\".\"analysis_store_name\",\"vacuous\".\"analysis_store_name\") as \"analysis_store_name\",
-    \"vacuous\".\"store_sales_profit\" as \"store_sales_profit\",
-    \"vacuous\".\"store_returns_loss\" as \"store_returns_loss\",
-    \"sparkling\".\"catalog_sales_profit\" as \"catalog_sales_profit\"
+    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
+    coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") as \"analysis_item_desc\",
+    coalesce(\"concerned\".\"analysis_store_text_id\",\"juicy\".\"analysis_store_text_id\") as \"analysis_store_text_id\",
+    coalesce(\"concerned\".\"analysis_store_name\",\"juicy\".\"analysis_store_name\") as \"analysis_store_name\",
+    \"juicy\".\"store_sales_profit\" as \"store_sales_profit\",
+    \"juicy\".\"store_returns_loss\" as \"store_returns_loss\",
+    \"concerned\".\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
-    \"sparkling\"
-    INNER JOIN \"vacuous\" on \"sparkling\".\"analysis_item_desc\" is not distinct from \"vacuous\".\"analysis_item_desc\" AND \"sparkling\".\"analysis_item_text_id\" = \"vacuous\".\"analysis_item_text_id\" AND \"sparkling\".\"analysis_store_name\" is not distinct from \"vacuous\".\"analysis_store_name\" AND \"sparkling\".\"analysis_store_text_id\" is not distinct from \"vacuous\".\"analysis_store_text_id\"
+    \"concerned\"
+    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_text_id\" = \"juicy\".\"analysis_item_text_id\" AND \"concerned\".\"analysis_store_name\" is not distinct from \"juicy\".\"analysis_store_name\" AND \"concerned\".\"analysis_store_text_id\" is not distinct from \"juicy\".\"analysis_store_text_id\"
 ORDER BY 
-    coalesce(\"sparkling\".\"analysis_item_text_id\",\"vacuous\".\"analysis_item_text_id\") asc,
-    coalesce(\"sparkling\".\"analysis_item_desc\",\"vacuous\".\"analysis_item_desc\") asc,
-    coalesce(\"sparkling\".\"analysis_store_text_id\",\"vacuous\".\"analysis_store_text_id\") asc,
-    coalesce(\"sparkling\".\"analysis_store_name\",\"vacuous\".\"analysis_store_name\") asc
+    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") asc,
+    coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") asc,
+    coalesce(\"concerned\".\"analysis_store_text_id\",\"juicy\".\"analysis_store_text_id\") asc,
+    coalesce(\"concerned\".\"analysis_store_name\",\"juicy\".\"analysis_store_name\") asc
 LIMIT (100)"""

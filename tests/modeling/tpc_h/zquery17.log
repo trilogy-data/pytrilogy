@@ -1,6 +1,6 @@
 query_id = "17"
-generator = "v4"
-gen_length = 1048
+generator = "v3"
+gen_length = 858
 preql_size = 230
 comp_size = 328
 generated_sql = """
@@ -14,7 +14,7 @@ SELECT
 FROM
     \"memory\".\"part\" as \"part_part\"
     LEFT OUTER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"),
-thoughtful as (
+cheerful as (
 SELECT
     \"part_partsupp\".\"ps_partkey\" as \"part_id\",
     avg(\"lineitem\".\"l_quantity\") as \"avg_qty_per_part\"
@@ -22,22 +22,12 @@ FROM
     \"memory\".\"partsupp\" as \"part_partsupp\"
     LEFT OUTER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_partsupp\".\"ps_partkey\" = \"lineitem\".\"l_partkey\" AND \"part_partsupp\".\"ps_suppkey\" = \"lineitem\".\"l_suppkey\"
 GROUP BY
-    1),
-cheerful as (
+    1)
 SELECT
-    \"wakeful\".\"extended_price\" as \"extended_price\",
-    \"wakeful\".\"part_id\" as \"part_id\",
-    \"wakeful\".\"quantity\" as \"quantity\"
+    sum(\"wakeful\".\"extended_price\") / 7.0 as \"avg_yearly\"
 FROM
     \"wakeful\"
+    INNER JOIN \"cheerful\" on \"wakeful\".\"part_id\" = \"cheerful\".\"part_id\"
 WHERE
-    \"wakeful\".\"part_brand\" = 'Brand#23' and \"wakeful\".\"part_container\" = 'MED BOX'
-)
-SELECT
-    sum(\"cheerful\".\"extended_price\") / 7.0 as \"avg_yearly\"
-FROM
-    \"cheerful\"
-    INNER JOIN \"thoughtful\" on \"cheerful\".\"part_id\" = \"thoughtful\".\"part_id\"
-WHERE
-    \"cheerful\".\"quantity\" < 0.2 * \"thoughtful\".\"avg_qty_per_part\"
+    \"wakeful\".\"part_brand\" = 'Brand#23' and \"wakeful\".\"part_container\" = 'MED BOX' and \"wakeful\".\"quantity\" < 0.2 * \"cheerful\".\"avg_qty_per_part\"
 """

@@ -1,6 +1,6 @@
 query_id = "27"
-generator = "v4"
-gen_length = 2941
+generator = "v3"
+gen_length = 2410
 preql_size = 1174
 comp_size = 1550
 generated_sql = """
@@ -22,30 +22,20 @@ FROM
     INNER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
     \"physical_sales_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"physical_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"physical_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"physical_sales_date_date\".\"D_YEAR\" = 2002 and \"physical_sales_store_store\".\"S_STATE\" = 'TN'
-),
-questionable as (
+)
 SELECT
-    \"cooperative\".\"physical_sales_coupon_amt\" as \"physical_sales_coupon_amt\",
     \"cooperative\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\",
-    \"cooperative\".\"physical_sales_list_price\" as \"physical_sales_list_price\",
-    \"cooperative\".\"physical_sales_quantity\" as \"physical_sales_quantity\",
-    \"cooperative\".\"physical_sales_sales_price\" as \"physical_sales_sales_price\",
-    \"cooperative\".\"physical_sales_store_state\" as \"physical_sales_store_state\"
+    \"cooperative\".\"physical_sales_store_state\" as \"physical_sales_store_state\",
+    grouping(\"cooperative\".\"physical_sales_store_state\") as \"g_state\",
+    avg(cast(\"cooperative\".\"physical_sales_quantity\" as numeric(12,2))) as \"agg1\",
+    avg(cast(\"cooperative\".\"physical_sales_list_price\" as numeric(12,2))) as \"agg2\",
+    avg(cast(\"cooperative\".\"physical_sales_coupon_amt\" as numeric(12,2))) as \"agg3\",
+    avg(cast(\"cooperative\".\"physical_sales_sales_price\" as numeric(12,2))) as \"agg4\"
 FROM
-    \"cooperative\")
-SELECT
-    \"questionable\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\",
-    \"questionable\".\"physical_sales_store_state\" as \"physical_sales_store_state\",
-    grouping(\"questionable\".\"physical_sales_store_state\") as \"g_state\",
-    avg(cast(\"questionable\".\"physical_sales_quantity\" as numeric(12,2))) as \"agg1\",
-    avg(cast(\"questionable\".\"physical_sales_list_price\" as numeric(12,2))) as \"agg2\",
-    avg(cast(\"questionable\".\"physical_sales_coupon_amt\" as numeric(12,2))) as \"agg3\",
-    avg(cast(\"questionable\".\"physical_sales_sales_price\" as numeric(12,2))) as \"agg4\"
-FROM
-    \"questionable\"
+    \"cooperative\"
 GROUP BY
     ROLLUP (1, 2)
 ORDER BY 
-    \"questionable\".\"physical_sales_item_text_id\" asc nulls first,
-    \"questionable\".\"physical_sales_store_state\" asc nulls first
+    \"cooperative\".\"physical_sales_item_text_id\" asc nulls first,
+    \"cooperative\".\"physical_sales_store_state\" asc nulls first
 LIMIT (100)"""

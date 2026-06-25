@@ -1,0 +1,171 @@
+
+WITH 
+yummy as (
+SELECT
+    "physical_sales_store_sales"."SS_ITEM_SK" as "physical_sales_item_id",
+    "physical_sales_store_sales"."SS_SOLD_DATE_SK" as "physical_sales_date_id",
+    "physical_sales_store_sales"."SS_STORE_SK" as "physical_sales_store_id"
+FROM
+    "memory"."store_sales" as "physical_sales_store_sales"
+WHERE
+    "physical_sales_store_sales"."SS_STORE_SK" is not null
+),
+thoughtful as (
+SELECT
+    "physical_sales_date_date"."D_MOY" as "physical_sales_date_month_of_year",
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
+    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
+    "physical_sales_item_items"."I_CATEGORY" as "physical_sales_item_category",
+    "physical_sales_store_store"."S_COMPANY_NAME" as "physical_sales_store_company_name",
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name",
+    sum("physical_sales_store_sales"."SS_SALES_PRICE") as "sum_sales"
+FROM
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+WHERE
+    "physical_sales_store_sales"."SS_STORE_SK" is not null and ( "physical_sales_date_date"."D_YEAR" = 1999 or ( "physical_sales_date_date"."D_YEAR" = 1998 and "physical_sales_date_date"."D_MOY" = 12 ) or ( "physical_sales_date_date"."D_YEAR" = 2000 and "physical_sales_date_date"."D_MOY" = 1 ) )
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6),
+juicy as (
+SELECT
+    "physical_sales_date_date"."D_MOY" as "physical_sales_date_month_of_year",
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
+    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
+    "physical_sales_item_items"."I_CATEGORY" as "physical_sales_item_category",
+    "physical_sales_store_store"."S_COMPANY_NAME" as "physical_sales_store_company_name",
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name"
+FROM
+    "yummy"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "yummy"."physical_sales_date_id" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "yummy"."physical_sales_item_id" = "physical_sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."store" as "physical_sales_store_store" on "yummy"."physical_sales_store_id" = "physical_sales_store_store"."S_STORE_SK"
+WHERE
+    ( "physical_sales_date_date"."D_YEAR" = 1999 or ( "physical_sales_date_date"."D_YEAR" = 1998 and "physical_sales_date_date"."D_MOY" = 12 ) or ( "physical_sales_date_date"."D_YEAR" = 2000 and "physical_sales_date_date"."D_MOY" = 1 ) ) and "physical_sales_date_date"."D_YEAR" = 1999
+),
+uneven as (
+SELECT
+    "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
+    "thoughtful"."physical_sales_date_year" as "physical_sales_date_year",
+    "thoughtful"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
+    "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
+    "thoughtful"."physical_sales_store_company_name" as "physical_sales_store_company_name",
+    "thoughtful"."physical_sales_store_name" as "physical_sales_store_name",
+    lag("thoughtful"."sum_sales", 1) over (partition by "thoughtful"."physical_sales_item_category","thoughtful"."physical_sales_item_brand_name","thoughtful"."physical_sales_store_name","thoughtful"."physical_sales_store_company_name" order by "thoughtful"."physical_sales_date_year" asc,"thoughtful"."physical_sales_date_month_of_year" asc ) as "psum",
+    lead("thoughtful"."sum_sales", 1) over (partition by "thoughtful"."physical_sales_item_category","thoughtful"."physical_sales_item_brand_name","thoughtful"."physical_sales_store_name","thoughtful"."physical_sales_store_company_name" order by "thoughtful"."physical_sales_date_year" asc,"thoughtful"."physical_sales_date_month_of_year" asc ) as "nsum"
+FROM
+    "thoughtful"),
+vacuous as (
+SELECT
+    "juicy"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
+    "juicy"."physical_sales_date_year" as "physical_sales_date_year",
+    "juicy"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
+    "juicy"."physical_sales_item_category" as "physical_sales_item_category",
+    "juicy"."physical_sales_store_company_name" as "physical_sales_store_company_name",
+    "juicy"."physical_sales_store_name" as "physical_sales_store_name"
+FROM
+    "juicy"
+WHERE
+    "juicy"."physical_sales_date_year" = 1999
+),
+concerned as (
+SELECT
+    "thoughtful"."sum_sales" as "sum_sales",
+    coalesce("thoughtful"."physical_sales_date_year","vacuous"."physical_sales_date_year") as "physical_sales_date_year",
+    coalesce("thoughtful"."physical_sales_item_brand_name","vacuous"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
+    coalesce("thoughtful"."physical_sales_item_category","vacuous"."physical_sales_item_category") as "physical_sales_item_category",
+    coalesce("thoughtful"."physical_sales_store_company_name","vacuous"."physical_sales_store_company_name") as "physical_sales_store_company_name",
+    coalesce("thoughtful"."physical_sales_store_name","vacuous"."physical_sales_store_name") as "physical_sales_store_name"
+FROM
+    "thoughtful"
+    FULL JOIN "vacuous" on "thoughtful"."physical_sales_date_month_of_year" = "vacuous"."physical_sales_date_month_of_year" AND "thoughtful"."physical_sales_date_year" = "vacuous"."physical_sales_date_year" AND "thoughtful"."physical_sales_item_brand_name" = "vacuous"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "vacuous"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "vacuous"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" = "vacuous"."physical_sales_store_name"
+WHERE
+    coalesce("thoughtful"."physical_sales_date_year","vacuous"."physical_sales_date_year") = 1999
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    coalesce("thoughtful"."physical_sales_date_month_of_year","vacuous"."physical_sales_date_month_of_year")),
+sparkling as (
+SELECT
+    "concerned"."physical_sales_date_year" as "physical_sales_date_year",
+    "concerned"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
+    "concerned"."physical_sales_item_category" as "physical_sales_item_category",
+    "concerned"."physical_sales_store_company_name" as "physical_sales_store_company_name",
+    "concerned"."physical_sales_store_name" as "physical_sales_store_name",
+    avg("concerned"."sum_sales") as "avg_monthly_sales"
+FROM
+    "concerned"
+WHERE
+    "concerned"."physical_sales_date_year" = 1999
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
+HAVING
+    "avg_monthly_sales" > 0
+),
+abhorrent as (
+SELECT
+    "sparkling"."avg_monthly_sales" as "avg_monthly_sales",
+    "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
+    "thoughtful"."sum_sales" - "sparkling"."avg_monthly_sales" as "sum_minus_avg",
+    "thoughtful"."sum_sales" as "sum_sales",
+    coalesce("sparkling"."physical_sales_date_year","thoughtful"."physical_sales_date_year") as "physical_sales_date_year",
+    coalesce("sparkling"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
+    coalesce("sparkling"."physical_sales_item_category","thoughtful"."physical_sales_item_category") as "physical_sales_item_category",
+    coalesce("sparkling"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") as "physical_sales_store_company_name",
+    coalesce("sparkling"."physical_sales_store_name","thoughtful"."physical_sales_store_name") as "physical_sales_store_name"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "sparkling" on "thoughtful"."physical_sales_date_year" = "sparkling"."physical_sales_date_year" AND "thoughtful"."physical_sales_item_brand_name" = "sparkling"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "sparkling"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "sparkling"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" = "sparkling"."physical_sales_store_name"
+WHERE
+    coalesce("sparkling"."physical_sales_date_year","thoughtful"."physical_sales_date_year") = 1999
+)
+SELECT
+    coalesce("abhorrent"."physical_sales_item_category","uneven"."physical_sales_item_category") as "physical_sales_item_category",
+    coalesce("abhorrent"."physical_sales_item_brand_name","uneven"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
+    coalesce("abhorrent"."physical_sales_store_name","uneven"."physical_sales_store_name") as "physical_sales_store_name",
+    coalesce("abhorrent"."physical_sales_store_company_name","uneven"."physical_sales_store_company_name") as "physical_sales_store_company_name",
+    coalesce("abhorrent"."physical_sales_date_year","uneven"."physical_sales_date_year") as "physical_sales_date_year",
+    coalesce("abhorrent"."physical_sales_date_month_of_year","uneven"."physical_sales_date_month_of_year") as "physical_sales_date_month_of_year",
+    "abhorrent"."avg_monthly_sales" as "avg_monthly_sales",
+    "abhorrent"."sum_sales" as "sum_sales",
+    "uneven"."psum" as "psum",
+    "uneven"."nsum" as "nsum"
+FROM
+    "abhorrent"
+    LEFT OUTER JOIN "uneven" on "abhorrent"."physical_sales_date_month_of_year" = "uneven"."physical_sales_date_month_of_year" AND "abhorrent"."physical_sales_date_year" = "uneven"."physical_sales_date_year" AND "abhorrent"."physical_sales_item_brand_name" = "uneven"."physical_sales_item_brand_name" AND "abhorrent"."physical_sales_item_category" is not distinct from "uneven"."physical_sales_item_category" AND "abhorrent"."physical_sales_store_company_name" is not distinct from "uneven"."physical_sales_store_company_name" AND "abhorrent"."physical_sales_store_name" = "uneven"."physical_sales_store_name"
+WHERE
+    coalesce("abhorrent"."physical_sales_date_year","uneven"."physical_sales_date_year") = 1999 and "abhorrent"."avg_monthly_sales" > 0 and CASE
+	WHEN "abhorrent"."avg_monthly_sales" > 0 THEN abs("abhorrent"."sum_sales" - "abhorrent"."avg_monthly_sales") / "abhorrent"."avg_monthly_sales"
+	ELSE null
+	END > 0.1
+
+ORDER BY 
+    "abhorrent"."sum_minus_avg" asc,
+    coalesce("abhorrent"."physical_sales_item_category","uneven"."physical_sales_item_category") asc,
+    coalesce("abhorrent"."physical_sales_item_brand_name","uneven"."physical_sales_item_brand_name") asc,
+    coalesce("abhorrent"."physical_sales_store_name","uneven"."physical_sales_store_name") asc,
+    coalesce("abhorrent"."physical_sales_store_company_name","uneven"."physical_sales_store_company_name") asc,
+    coalesce("abhorrent"."physical_sales_date_year","uneven"."physical_sales_date_year") asc,
+    coalesce("abhorrent"."physical_sales_date_month_of_year","uneven"."physical_sales_date_month_of_year") asc,
+    "abhorrent"."avg_monthly_sales" asc,
+    "abhorrent"."sum_sales" asc,
+    "uneven"."psum" asc,
+    "uneven"."nsum" asc
+LIMIT (100)
