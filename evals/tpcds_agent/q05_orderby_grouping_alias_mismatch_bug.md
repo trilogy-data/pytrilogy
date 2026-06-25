@@ -1,6 +1,9 @@
 # Bug: ORDER BY `grouping(x)` rejected though `x` (and `grouping(x)`) is a projected output (q05)
 
-**Status:** OPEN — confirmed by code reading; surfaced live in q05 enriched eval thrash.
+**Status:** FIXED 2026-06-25 — `_substitute_order_by_aggregates` resolve-to-alias pass in
+`trilogy/parsing/v2/select_finalize.py`. Tests in `tests/engine/test_duckdb.py`
+(`test_inline_grouping_in_order_by_resolves_to_projected_alias`,
+`test_inline_aggregate_in_order_by_resolves_to_projected_alias`). See "Fix landed" below.
 **Surfaced by:** TPC-DS q05 enriched eval, agent message ~86.
 **Severity:** Medium (usability / token sink). Emits a *misleading* syntax error that tells
 the agent to do the thing it already did, causing repeated rollup-ordering thrash. Not a
@@ -104,6 +107,38 @@ Note: `tests/engine/test_duckdb.py:84` currently *asserts* `order by grouping(br
 raises `"ORDER BY contains aggregate"`. That test encodes the current (wrong-for-projected-
 grouping) behavior and will need revisiting — it orders by `grouping(brand)` where `brand`
 is projected, which is exactly the idiom this bug is about.
+
+## Fix landed
+
+Added a `_substitute_order_by_aggregates` pass run inside `_validate_syntax` (under
+`if select.order_by:`, just before the ref/aggregate validation), mirroring
+`_substitute_having_windows`/`_substitute_having_derived`. It rewrites any ORDER BY aggregate
+that matches a projected SELECT output to a `ConceptRef` of that output's alias; the
+subsequent `_validate_order_by_aggregates` then only sees genuinely-unprojected aggregates
+and raises (unchanged) for those.
+
+Matching uses a new `_order_match_signature(node, rename)` that (1) normalizes pure-rename
+args through `_alias_rename_map` — fixing defect 1, where `_rewrite_aliased_source_refs` had
+already rewritten ORDER BY `grouping(brand)` → `grouping(brand_type)` while the projection
+kept `grouping(brand)`; and (2) compares `grouping()`/`grouping_id()` mode-insensitively (drops
+the `by` component), since `_fix_projection_grouping_mode` aligns projection wrappers' `.by` to
+the rollup spec but never touches ORDER BY — fixing the by-tuple mismatch. Defect 2 (matched
+but raised unconditionally) is fixed by the substitution happening *before* validation, so a
+matched aggregate is never validated as an aggregate.
+
+This is an **author-time** (parse-finalize) fix; the error was thrown in
+`finalize_select_statement` → `_validate_syntax`, before build. The codebase's canonical/
+pseudonym mapping lives in build, after this validation — so it isn't reachable here; the
+author-time `_alias_rename_map` (pure-rename source→alias) is the equivalent normalization at
+this layer.
+
+The single-CTE form now renders `grouping()` inline in ORDER BY (valid SQL for a grouped
+query); the multi-CTE form (HAVING-forced groupless wrapper) resolves to the projected alias
+and computes `grouping()` in the rollup CTE (the existing B3 render path). `--` grouping
+outputs do not have to be projected as long as the inline ORDER BY aggregate matches one that
+*is*; suggestion 3 (synthesize a hidden output when only the grouping *key* is projected) was
+NOT implemented — `test_inline_aggregate_in_order_by_raises` (grouping not projected) stays
+green and unchanged.
 
 ## Relation to prior notes
 

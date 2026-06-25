@@ -815,6 +815,68 @@ def _fix_projection_grouping_mode(
             wrapper.grouping_sets = [list(g) for g in grouping_sets]
 
 
+def _order_match_signature(
+    node: Any, rename: Mapping[str, str]
+) -> tuple[Any, ...] | None:
+    """Signature for matching an ORDER BY aggregate to a projected SELECT output,
+    normalizing pure-rename args through ``rename``. ``grouping()``/
+    ``grouping_id()`` compare mode-insensitively (drop the ``by`` component): the
+    rollup-mode alignment ``_fix_projection_grouping_mode`` applies to projections
+    but not ORDER BY is irrelevant to the expression's identity."""
+    base = _aggregate_full_signature(node)
+    if base is None:
+        return None
+    op, args, by = base
+    nargs = tuple(rename.get(a, a) for a in args)
+    if op in _GROUPING_FNS:
+        return (op, nargs)
+    return (op, nargs, tuple(sorted(rename.get(b, b) for b in by)))
+
+
+def _select_order_match_outputs(
+    select: SelectStatement, rename: Mapping[str, str]
+) -> dict[tuple[Any, ...], ConceptRef]:
+    """Map each aggregate-producing select item's order-match signature to its
+    output ref (first wins)."""
+    results: dict[tuple[Any, ...], ConceptRef] = {}
+    for item in select.selection:
+        if isinstance(item.content, ConceptTransform):
+            sig = _order_match_signature(item.content.function, rename)
+            if sig is not None:
+                results.setdefault(sig, item.content.output.reference)
+    return results
+
+
+def _substitute_order_by_aggregates(select: SelectStatement) -> None:
+    """Rewrite ORDER BY aggregates that match a projected SELECT output to
+    reference that output's alias. The ordering scope cannot recompute an
+    aggregate, but an inline aggregate identical to a projected (possibly hidden)
+    output is just sorting by that materialized column — resolve it instead of
+    forcing a manual alias rewrite. Mirrors ``_substitute_having_*``."""
+    if not select.order_by:
+        return
+    rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
+    sig_to_ref = _select_order_match_outputs(select, rename)
+    if not sig_to_ref:
+        return
+
+    def match(node: Any) -> ConceptRef | None:
+        sig = _order_match_signature(node, rename)
+        return sig_to_ref.get(sig) if sig is not None else None
+
+    new_items: list[OrderItem] = []
+    changed = False
+    for item in select.order_by.items:
+        new_expr = _substitute_condition_tree(item.expr, match)
+        if new_expr is not item.expr:
+            changed = True
+            new_items.append(OrderItem(expr=new_expr, order=item.order))
+        else:
+            new_items.append(item)
+    if changed:
+        select.order_by = OrderBy(items=new_items)
+
+
 def _validate_order_by_aggregates(select: SelectStatement, line_no: int | None) -> None:
     """Reject inline aggregates in ORDER BY that are not SELECT outputs.
     ORDER BY may only reference an aggregate via its SELECT
@@ -934,6 +996,11 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             )
         _validate_having_aggregates_match_select(select, context, line_no)
     if select.order_by:
+        # Resolve inline ORDER BY aggregates that match a projected output to
+        # that output's alias before validating refs, so an aggregate identical
+        # to a (possibly hidden) projection sorts by the materialized column
+        # rather than tripping the "not a SELECT output" check.
+        _substitute_order_by_aggregates(select)
         for cref in select.order_by.concept_arguments:
             if cref.address not in allowed_addresses:
                 raise SyntaxError(
