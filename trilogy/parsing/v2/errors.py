@@ -252,11 +252,12 @@ def detect_by_on_wrapped_aggregate(text: str, pos: int) -> int | None:
     while k >= 0 and (text[k].isalnum() or text[k] == "_"):
         k -= 1
     func = text[k + 1 : name_end].lower()
-    # No wrapper name, or the call IS the aggregate (`sum(x) by ...` is valid) —
-    # not this mistake.
-    if not func or func in _AGG_NAMES:
+    # The call IS the aggregate (`sum(x) by ...`) — that's the valid form.
+    if func in _AGG_NAMES:
         return None
-    # The wrapped expression must actually contain an aggregate.
+    # Otherwise the wrapper is a non-aggregate function (`coalesce(...)`) OR a
+    # bare parenthetical (`(sum(x) + 1)`, func == "") — either way the `by` is
+    # misplaced, but only if an aggregate actually sits inside the wrapper.
     if _AGG_CALL_RE.search(text, open_paren + 1, i) is None:
         return None
     return by_pos

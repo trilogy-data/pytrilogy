@@ -816,6 +816,61 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     return output
 
 
+def _expose_downstream_referenced_columns(
+    ctes: list[CTE | UnionCTE], root_cte: CTE | UnionCTE
+) -> None:
+    """A CTE renders ``output_columns - hidden_concepts``. When a consumer
+    actually renders a column (a non-hidden output) that resolves to a producer
+    column the producer hid — with no visible pseudonym-equivalent on that
+    producer to render instead — the producer never projects it and the SQL
+    references a missing column (a hard BinderException). This bites a grouped
+    metric carried only into a filter CTE's GROUP BY, then re-projected
+    downstream past a property join (q23). Un-hide exactly those producer
+    columns, propagating to a fixpoint (un-hiding a column makes its own
+    upstream references live too).
+
+    Restricted to *rendered* references (non-hidden consumer outputs): a column
+    that merely rides through hidden-everywhere ``source_map`` metadata is never
+    emitted, so un-hiding it would wrongly force it into a grouped SELECT."""
+    producers: dict[str, CTE | UnionCTE] = {
+        c.name: c for c in ctes if not isinstance(c, DatasourceCTE)
+    }
+
+    def _has_visible_equiv(producer: CTE | UnionCTE, address: str) -> bool:
+        target = next(
+            (o for o in producer.output_columns if o.address == address), None
+        )
+        if target is None:
+            return True  # not its own column — resolves via pseudonym/inline
+        klass = set(target.pseudonyms) | {address}
+        return any(
+            o.address in klass and o.address not in producer.hidden_concepts
+            for o in producer.output_columns
+        )
+
+    changed = True
+    while changed:
+        changed = False
+        for consumer in (*ctes, root_cte):
+            for col in consumer.output_columns:
+                if col.address in consumer.hidden_concepts:
+                    continue
+                raw = consumer.source_map.get(col.address, [])
+                tokens = [raw] if isinstance(raw, str) else list(raw)
+                for token in tokens:
+                    producer = producers.get(token)
+                    if (
+                        producer is None
+                        or col.address not in producer.hidden_concepts
+                        or _has_visible_equiv(producer, col.address)
+                    ):
+                        continue
+                    producer.hidden_concepts = set(producer.hidden_concepts) - {
+                        col.address
+                    }
+                    changed = True
+
+
 def _collect_unreachable_union_arms(
     ctes: list[CTE | UnionCTE],
 ) -> list[CTE | UnionCTE]:
@@ -1081,7 +1136,7 @@ def process_query(
         having_alias=having_alias,
         full_join_keys=full_join_keys,
     )
-
+    _expose_downstream_referenced_columns(final_ctes, root_cte)
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,

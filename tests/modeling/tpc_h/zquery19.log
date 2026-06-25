@@ -7,8 +7,9 @@ generated_sql = """
 SELECT
     sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
 FROM
-    \"memory\".\"part\" as \"part_part\"
-    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
+    \"memory\".\"partsupp\" as \"part_partsupp\"
+    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_partsupp\".\"ps_partkey\" = \"lineitem\".\"l_partkey\" AND \"part_partsupp\".\"ps_suppkey\" = \"lineitem\".\"l_suppkey\"
+    INNER JOIN \"memory\".\"part\" as \"part_part\" on \"part_partsupp\".\"ps_partkey\" = \"part_part\".\"p_partkey\"
 WHERE
     ( ( \"part_part\".\"p_brand\" = 'Brand#12' and \"part_part\".\"p_container\" in ('SM CASE','SM BOX','SM PACK','SM PKG') and \"lineitem\".\"l_quantity\" >= 1 and \"lineitem\".\"l_quantity\" <= 11 and \"part_part\".\"p_size\" BETWEEN 1 AND 5 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) or ( \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" in ('MED BAG','MED BOX','MED PKG','MED PACK') and \"lineitem\".\"l_quantity\" >= 10 and \"lineitem\".\"l_quantity\" <= 20 and \"part_part\".\"p_size\" BETWEEN 1 AND 10 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) or ( \"part_part\".\"p_brand\" = 'Brand#34' and \"part_part\".\"p_container\" in ('LG CASE','LG BOX','LG PACK','LG PKG') and \"lineitem\".\"l_quantity\" >= 20 and \"lineitem\".\"l_quantity\" <= 30 and \"part_part\".\"p_size\" BETWEEN 1 AND 15 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) )
 """

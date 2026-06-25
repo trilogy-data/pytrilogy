@@ -117,7 +117,6 @@ def create_pruned_concept_graph(
     g.add_edges_from(rollup_edges)
 
     union_edges: list[tuple[str, str]] = []
-    requested_addresses = {c.address for c in all_concepts}
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
         _merged = merge_conditions(
@@ -136,27 +135,6 @@ def create_pruned_concept_graph(
         common: set[BuildConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
-        # A union can only project the columns common to EVERY branch (a UNION ALL
-        # has one column list). If a branch provides a *requested* concept that
-        # another branch lacks, the intersection silently drops it — and a join
-        # key dropped here gets sourced from some other datasource (e.g. the dim
-        # that owns it) and joined back on a weaker shared key, fanning out. Don't
-        # offer such a union: the model must bind that column on every branch (an
-        # explicit ``raw(NULL)`` binding suffices) for the union to resolve.
-        common_addresses = {c.address for c in common}
-        silently_dropped = {
-            c.address
-            for child in ds_list
-            for c in child.output_concepts
-            if c.address in requested_addresses
-        } - common_addresses
-        if silently_dropped:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} skipping union datasource {node_address}: "
-                f"branches disagree on requested concept(s) {sorted(silently_dropped)}; "
-                "bind the column on every branch (e.g. raw(NULL)) to union it"
-            )
-            continue
         g.datasources[node_address] = BuildUnionDatasource(
             children=ds_list, non_partial_for=reduced_non_partial_for
         )

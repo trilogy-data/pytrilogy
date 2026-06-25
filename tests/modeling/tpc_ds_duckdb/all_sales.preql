@@ -213,7 +213,6 @@ partial datasource web_returns_unified (
     WR_ORDER_NUMBER: ~order_id,
     WR_ITEM_SK: ~item.id,
     WR_RETURNED_DATE_SK: ?~return_date.id,
-    raw(''' NULL '''): ?return_channel_dim_id,
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
     WR_NET_LOSS: return_net_loss,

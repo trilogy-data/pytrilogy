@@ -31,6 +31,10 @@ _BAD = [
     "select coalesce(sum(x.val), 0) by x.id as r;",
     "auto r <- round(avg(x.val), 2) by x.id;",
     "auto r <- coalesce(count(x.val), 0) by x.a, x.b;",
+    # bare-parenthetical wrappers (no function name) also misplace the grain
+    "auto r <- (sum(x.val) + 1) by x.id;",
+    "auto r <- (sum(x.val) * 2) by x.id;",
+    "auto r <- (sum(x.val)) by x.id;",
 ]
 
 # Valid forms that MUST still parse cleanly (the suggested fixes + bare agg).
@@ -84,4 +88,17 @@ def test_detector_ignores_bare_aggregate_by():
 def test_detector_ignores_wrapper_without_aggregate():
     # No aggregate inside the wrapper -> a different error, not [212].
     text = "auto r <- coalesce(x.val, 0) by x.id;"
+    assert detect_by_on_wrapped_aggregate(text, text.index(" by ") + 1) is None
+
+
+def test_detector_finds_parenthetical_wrapped_by():
+    text = "auto r <- (sum(x.val) + 1) by x.id;"
+    found = detect_by_on_wrapped_aggregate(text, text.index(" by ") + 1)
+    assert found is not None
+    assert text[found:].startswith("by ")
+
+
+def test_detector_ignores_parenthetical_without_aggregate():
+    # Bare parenthetical with no aggregate inside -> not [212].
+    text = "auto r <- (x.val + 1) by x.id;"
     assert detect_by_on_wrapped_aggregate(text, text.index(" by ") + 1) is None
