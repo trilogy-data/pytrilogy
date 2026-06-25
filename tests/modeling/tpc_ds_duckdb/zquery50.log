@@ -6,7 +6,7 @@ comp_size = 1903
 generated_sql = """
 
 WITH 
-yummy as (
+cheerful as (
 SELECT
     \"store_sales_return_date_date\".\"D_DATE_SK\" - \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"days_to_return\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
@@ -50,7 +50,20 @@ SELECT
     sum(\"thoughtful\".\"_virt_agg_count_7691116690045464\") as \"days_30\",
     sum(\"thoughtful\".\"_virt_agg_count_7969998780980378\") as \"days_120_plus\"
 FROM
-    \"yummy\"
+    \"cheerful\"
+GROUP BY
+    1,
+    \"cheerful\".\"physical_sales_ticket_number\"),
+questionable as (
+SELECT
+    \"thoughtful\".\"physical_sales_store_id\" as \"physical_sales_store_id\",
+    sum(\"thoughtful\".\"_virt_agg_count_1754169376042040\") as \"days_31_60\",
+    sum(\"thoughtful\".\"_virt_agg_count_5608833957360839\") as \"days_91_120\",
+    sum(\"thoughtful\".\"_virt_agg_count_6261479071707891\") as \"days_120_plus\",
+    sum(\"thoughtful\".\"_virt_agg_count_6396225769465204\") as \"days_30\",
+    sum(\"thoughtful\".\"_virt_agg_count_9524432267113409\") as \"days_61_90\"
+FROM
+    \"thoughtful\"
 GROUP BY
     1)
 SELECT

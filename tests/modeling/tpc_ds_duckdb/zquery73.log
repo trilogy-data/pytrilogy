@@ -27,8 +27,7 @@ GROUP BY
     2
 HAVING
     \"ticket_cnt\" >= 1 and \"ticket_cnt\" <= 5
-),
-abundant as (
+)
 SELECT
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",

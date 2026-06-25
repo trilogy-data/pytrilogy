@@ -196,6 +196,9 @@ it's the invalid-SQL bug, see `v4_q02_invalid_alias_handoff.md`). Three patterns
      from `billing_customer.id`. Preserve the aggregate/final merge boundary when it
      is required for `customer_state > scaled_state`, but source final-only customer
      dimensions from the customer/address path instead of the returns join-stream.
+   - Full write-up: `local_scripts/v4_dimension_projection_rejoin_handoff.md` (v3
+     sources the dims from `customer ⋈ customer_address` at customer grain in 1 join;
+     v4 re-derives them through the fact in 4 joins + a dedup GROUP + a passthrough).
 3. **Aggregate over-split — q73 (v3 1 CTE → v4 4).** v3 renders all joins + dims +
    GROUP in a single SELECT; v4 splits the dim projections into their own CTEs first.
    Overlaps heavily with (1).

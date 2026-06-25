@@ -758,17 +758,14 @@ def test_inlined_parent_providing_returns_none_for_unknown_concept():
     assert consumer.inlined_parent_providing(_property_concept("missing")) is None
 
 
-def test_get_alias_skips_source_mismatch_and_raises_on_miss():
+def test_get_alias_skips_source_mismatch_and_reports_invalid():
     key = _key_concept("k")
     missing = _property_concept("missing")
     parent = _datasource_cte("parent", key)
     consumer = _query_cte("consumer", key, [parent])
 
     assert consumer.get_alias(key, source="other") == key.safe_address
-    # A genuine source-map miss is a planner gap; fail loudly instead of
-    # emitting a sentinel alias into the rendered SQL.
-    with raises(ValueError):
-        consumer.get_alias(missing)
+    assert consumer.get_alias(missing).startswith("INVALID_ALIAS:")
 
 
 def test_union_condition_setter_is_not_supported():

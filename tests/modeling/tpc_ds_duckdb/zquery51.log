@@ -1,17 +1,16 @@
 query_id = "51"
-generator = "v4"
-gen_length = 4292
+generator = "v3"
+gen_length = 3268
 preql_size = 1357
 comp_size = 1999
 generated_sql = """
 
 WITH 
-abundant as (
+cheerful as (
 SELECT
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -23,100 +22,85 @@ SELECT
      'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null
 ),
-cheerful as (
+yummy as (
 SELECT
-     'STORE'  as \"sales_channel\",
-    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\"
+    \"cheerful\".\"sales_channel\" as \"sales_channel\",
+    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
-    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
-UNION ALL
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
+
+GROUP BY
+    1,
+    2,
+    3),
+cooperative as (
 SELECT
-     'WEB'  as \"sales_channel\",
-    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\"
-FROM
-    \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
-vacuous as (
-SELECT
-    \"abundant\".\"sales_item_id\" as \"sales_item_id\",
+    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    sum(CASE WHEN \"abundant\".\"sales_channel\" = 'STORE' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
-    sum(CASE WHEN \"abundant\".\"sales_channel\" = 'WEB' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
+    sum(CASE WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
+    sum(CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
 FROM
-    \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 
 GROUP BY
     1,
     2),
-yummy as (
+juicy as (
 SELECT
-    \"abundant\".\"sales_item_id\" as \"sales_item_id\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"yummy\".\"sales_date_date\" as \"sales_date_date\",
+    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
     max(CASE
-	WHEN \"abundant\".\"sales_channel\" = 'STORE' THEN 1
+	WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN 1
 	ELSE 0
 	END) as \"store_has_row\",
     max(CASE
-	WHEN \"abundant\".\"sales_channel\" = 'WEB' THEN 1
+	WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN 1
 	ELSE 0
 	END) as \"web_has_row\"
 FROM
-    \"abundant\"
-    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
-
+    \"yummy\"
 GROUP BY
     1,
     2),
-young as (
+uneven as (
 SELECT
-    \"vacuous\".\"sales_date_date\" as \"sales_date_date\",
-    \"vacuous\".\"sales_item_id\" as \"sales_item_id\",
-    sum(\"vacuous\".\"store_daily\") over (partition by \"vacuous\".\"sales_item_id\" order by \"vacuous\".\"sales_date_date\" asc ) as \"store_cume\",
-    sum(\"vacuous\".\"web_daily\") over (partition by \"vacuous\".\"sales_item_id\" order by \"vacuous\".\"sales_date_date\" asc ) as \"web_cume\"
+    \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
+    \"cooperative\".\"sales_item_id\" as \"sales_item_id\",
+    sum(\"cooperative\".\"store_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"store_cume\",
+    sum(\"cooperative\".\"web_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"web_cume\"
 FROM
-    \"vacuous\"),
-sparkling as (
+    \"cooperative\")
 SELECT
-    \"young\".\"store_cume\" as \"store_cume\",
-    \"young\".\"web_cume\" as \"web_cume\",
-    \"yummy\".\"store_has_row\" as \"store_has_row\",
-    \"yummy\".\"web_has_row\" as \"web_has_row\",
-    coalesce(\"young\".\"sales_date_date\",\"yummy\".\"sales_date_date\") as \"sales_date_date\",
-    coalesce(\"young\".\"sales_item_id\",\"yummy\".\"sales_item_id\") as \"sales_item_id\"
-FROM
-    \"young\"
-    FULL JOIN \"yummy\" on \"young\".\"sales_date_date\" = \"yummy\".\"sales_date_date\" AND \"young\".\"sales_item_id\" = \"yummy\".\"sales_item_id\")
-SELECT
-    \"sparkling\".\"sales_item_id\" as \"item_sk\",
-    \"sparkling\".\"sales_date_date\" as \"d_date\",
+    \"juicy\".\"sales_item_id\" as \"item_sk\",
+    \"juicy\".\"sales_date_date\" as \"d_date\",
     CASE
-	WHEN \"sparkling\".\"web_has_row\" = 1 THEN \"sparkling\".\"web_cume\"
+	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"uneven\".\"web_cume\"
 	ELSE null
 	END as \"web_sales\",
     CASE
-	WHEN \"sparkling\".\"store_has_row\" = 1 THEN \"sparkling\".\"store_cume\"
+	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"uneven\".\"store_cume\"
 	ELSE null
 	END as \"store_sales\",
-    \"sparkling\".\"web_cume\" as \"web_cumulative\",
-    \"sparkling\".\"store_cume\" as \"store_cumulative\"
+    \"uneven\".\"web_cume\" as \"web_cumulative\",
+    \"uneven\".\"store_cume\" as \"store_cumulative\"
 FROM
-    \"sparkling\"
+    \"juicy\"
+    LEFT OUTER JOIN \"uneven\" on \"juicy\".\"sales_date_date\" = \"uneven\".\"sales_date_date\" AND \"juicy\".\"sales_item_id\" = \"uneven\".\"sales_item_id\"
 WHERE
-    \"sparkling\".\"web_cume\" > \"sparkling\".\"store_cume\"
+    \"uneven\".\"web_cume\" > \"uneven\".\"store_cume\"
 
 ORDER BY 
     \"item_sk\" asc nulls first,

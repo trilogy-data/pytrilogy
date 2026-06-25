@@ -441,11 +441,10 @@ class CTE:
         if inlined is not None and (source is None or source == inlined.name):
             return inlined.consumer_column(concept)
 
-        # A source-map miss here is a planner gap: the concept was assigned to a
-        # source that can't render it (often a grain-keyed mismatch). Fail loudly
-        # at build time rather than emitting a sentinel string into the SQL, which
-        # only surfaces downstream as an opaque parser error.
-        return self.source.get_alias(concept, source=source)
+        try:
+            return self.source.get_alias(concept, source=source)
+        except ValueError as e:
+            return f"INVALID_ALIAS: {str(e)}"
 
     @property
     def group_concepts(self) -> List[BuildConcept]:

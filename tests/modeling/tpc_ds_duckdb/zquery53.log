@@ -27,8 +27,7 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    1),
-abundant as (
+    1)
 SELECT
     \"cheerful\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
@@ -41,13 +40,7 @@ WHERE
 	WHEN \"cooperative\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_quarterly_sales\") / \"cooperative\".\"avg_quarterly_sales\"
 	ELSE null
 	END > 0.1
-)
-SELECT
-    \"abundant\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
-    \"abundant\".\"sum_sales\" as \"sum_sales\",
-    \"abundant\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
-FROM
-    \"abundant\"
+
 ORDER BY 
     \"cooperative\".\"avg_quarterly_sales\" asc,
     \"cheerful\".\"sum_sales\" asc,

@@ -1,6 +1,6 @@
 query_id = "86"
-generator = "v4"
-gen_length = 2109
+generator = "v3"
+gen_length = 2136
 preql_size = 1039
 comp_size = 847
 generated_sql = """
@@ -22,8 +22,11 @@ thoughtful as (
 SELECT
     \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    grouping(\"cheerful\".\"web_sales_item_category\") as \"g_cat\",
-    grouping(\"cheerful\".\"web_sales_item_class\") as \"g_class\",
+    CASE
+	WHEN grouping(\"cheerful\".\"web_sales_item_class\") = 0 THEN \"cheerful\".\"web_sales_item_category\"
+	ELSE null
+	END as \"partition_cat\",
+    grouping(\"cheerful\".\"web_sales_item_category\") + grouping(\"cheerful\".\"web_sales_item_class\") as \"lochierarchy\",
     sum(\"cheerful\".\"web_sales_net_paid\") as \"total_sum\"
 FROM
     \"cheerful\"
@@ -31,14 +34,11 @@ GROUP BY
     ROLLUP (1, 2)),
 cooperative as (
 SELECT
-    \"thoughtful\".\"g_cat\" + \"thoughtful\".\"g_class\" as \"lochierarchy\",
+    \"thoughtful\".\"lochierarchy\" as \"lochierarchy\",
     \"thoughtful\".\"total_sum\" as \"total_sum\",
     \"thoughtful\".\"web_sales_item_category\" as \"web_sales_item_category\",
     \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    rank() over (partition by \"thoughtful\".\"g_cat\" + \"thoughtful\".\"g_class\",CASE
-	WHEN \"thoughtful\".\"g_class\" = 0 THEN \"thoughtful\".\"web_sales_item_category\"
-	ELSE null
-	END order by \"thoughtful\".\"total_sum\" desc ) as \"rank_within_parent\"
+    rank() over (partition by \"thoughtful\".\"lochierarchy\",\"thoughtful\".\"partition_cat\" order by \"thoughtful\".\"total_sum\" desc ) as \"rank_within_parent\"
 FROM
     \"thoughtful\")
 SELECT
