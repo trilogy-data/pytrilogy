@@ -1,6 +1,6 @@
 """Display helpers for single-script execution output."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from trilogy.core.statements.execute import ProcessedChartStatement
@@ -280,14 +280,44 @@ def show_formatting_result(
     print_success(f"Formatted {num_queries} statements in {format_duration(duration)}")
 
 
+def _column_stats(columns: list, rows: list) -> list[dict]:
+    """Per-column summary over the FULL fetched result. Surfaced only when rows
+    are elided, so the agent reads the whole set's shape (non-null / distinct /
+    range) instead of inferring it from the truncated head+tail — the q05
+    failure mode where a sparse, id-sorted page of nulls was misread as a
+    structural "missing data" problem rather than expected sparsity."""
+    n = len(rows)
+    stats: list[dict] = []
+    for i, col in enumerate(columns):
+        non_null = [r[i] for r in rows if r[i] is not None]
+        entry: dict[str, Any] = {
+            "column": col,
+            "non_null": len(non_null),
+            "nulls": n - len(non_null),
+        }
+        try:  # unhashable cells (lists/dicts) — skip rather than crash
+            entry["distinct"] = len(set(non_null))
+        except TypeError:
+            pass
+        if non_null:
+            try:  # mixed/unorderable types — skip the range
+                entry["min"] = min(non_null)
+                entry["max"] = max(non_null)
+            except TypeError:
+                pass
+        stats.append(entry)
+    return stats
+
+
 def _emit_results_json(results: ResultSet, cap: int) -> None:
     """Emit a query result set as a single ``result`` NDJSON event.
 
     Mirrors the rich table's display contract: the full result is fetched (so
     ``row_count`` is exact) but only ``cap`` rows are emitted, middle-truncated
     head+tail, with ``displayed``/``truncated``/``omitted`` reporting the gap.
-    Rows are plain lists; non-JSON cell values fall back to ``str`` via the
-    event serializer."""
+    When rows are elided, ``column_stats`` carries per-column non-null/distinct/
+    range over the full fetched set. Rows are plain lists; non-JSON cell values
+    fall back to ``str`` via the event serializer."""
     rows = results.rows
     total = len(rows)
     hit_fetch_ceiling = total >= _core.DISPLAY_FETCH_CEILING
@@ -307,6 +337,7 @@ def _emit_results_json(results: ResultSet, cap: int) -> None:
         displayed=len(head) + len(tail),
         truncated=omitted > 0 or None,
         omitted=omitted or None,
+        column_stats=_column_stats(list(results.columns), rows) if omitted else None,
         fetch_ceiling_hit=hit_fetch_ceiling or None,
     )
 

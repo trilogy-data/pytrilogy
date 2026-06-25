@@ -468,6 +468,32 @@ order by combined.k asc;
     assert [tuple(r) for r in results] == [(1, 40), (2, 10)]
 
 
+def test_tvf_union_derived_concept_over_output_aggregated_no_recursion():
+    # A derived `auto` concept (case/concat) reading a `union(...)` output column,
+    # projected alongside an aggregate over union columns, used to overflow the
+    # planner stack (RecursionError, q05). Root cause: the union output kept an
+    # abstract grain and inherited the consuming select's grain at build time;
+    # that grain was the aggregate itself, so the aggregate's parent-concept walk
+    # re-added the aggregate forever. The union output must keep its own grain.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+
+auto klabel <- case combined.k when 1 then 'one' when 2 then 'two' end;
+
+select klabel, sum(combined.v) by combined.k as total
+order by klabel asc;
+"""
+    # the UNION ALL stack must not be deduped on (k, v): item 2 has val 5 in both
+    # arms, so its total is 10, not 5.
+    results = executor.execute_text(query)[0].fetchall()
+    assert [tuple(r) for r in results] == [("one", 40), ("two", 10)]
+
+
 def test_tvf_union_inline_from():
     # Inline `from union(...) -> (...)`: bare output names resolve in the
     # trailing select; same UNION semantics as the named form.

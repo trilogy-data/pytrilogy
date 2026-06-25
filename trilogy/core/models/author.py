@@ -1225,6 +1225,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         if not new_lineage:
             return new_lineage, final_grain, keys
 
+        if isinstance(new_lineage, RowsetItem):
+            # A rowset/union output defines its own row identity and must not
+            # inherit the consuming select's grain. When that select aggregates
+            # over this very output (e.g. `sum(u.v) by u.k`), the inherited grain
+            # would be the aggregate itself — a cyclic grain whose parent-concept
+            # walk re-adds the aggregate forever (planner RecursionError, q05).
+            # Keep the rowset's own grain (abstract for a union, since its stack
+            # has no narrower key than the full row).
+            return new_lineage, self.grain, keys
         if grain.components and isinstance(new_lineage, Function) and self.is_aggregate:
             aggregate_grain_components = cast(
                 List[ConceptRef | Concept], _grain_concept_refs(grain, environment)

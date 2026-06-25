@@ -485,3 +485,21 @@ def test_local_backend_direct_read_missing(tmp_path: Path):
     backend = LocalFileBackend()
     with pytest.raises(FileNotFoundError):
         backend.read(str(tmp_path / "missing.preql"))
+
+
+def test_local_backend_list_caps_entries(tmp_path: Path):
+    for i in range(10):
+        (tmp_path / f"f{i:02d}.preql").write_text("x")
+    backend = LocalFileBackend()
+    entries = backend.list(str(tmp_path), max_entries=5)
+    assert len(entries) == 5
+    assert [e.path for e in entries] == sorted(e.path for e in entries)
+
+
+def test_list_cap_emits_truncation_notice(runner, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("trilogy.scripts.file.LIST_MAX_ENTRIES", 3)
+    for i in range(6):
+        (tmp_path / f"f{i}.preql").write_text("x")
+    result = runner.invoke(cli, ["file", "list", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "capped at 3 entries" in result.output
