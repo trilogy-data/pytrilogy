@@ -642,6 +642,7 @@ def disconnected_components(
     environment: BuildEnvironment,
     concepts: List[BuildConcept],
     g: "ReferenceGraph | None" = None,
+    island_rowsets: bool = True,
 ) -> List[List[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
     iff their reference-graph nodes are in the same weakly-connected component
@@ -652,9 +653,15 @@ def disconnected_components(
     ``environment``. Crossjoinable (single-row/constant) concepts are skipped.
     Aggregate grain-only ``by`` edges are dropped first (see
     ``_aggregate_grain_only_parents``) so a regroupable aggregate never bridges
-    two otherwise-disconnected models through its grouping key. Rowsets are then
-    islanded (see ``_island_rowsets``) so a base concept reachable only by
-    navigating into a rowset's renamed-key derivation isn't falsely bridged.
+    two otherwise-disconnected models through its grouping key.
+
+    ``island_rowsets`` controls rowset islanding (see ``_island_rowsets``): when
+    set, a base concept reachable only by navigating into a rowset's derivation is
+    not treated as a real join path. This is correct as a *post-failure* message
+    refiner (the v3 path, where discovery has already failed independently), but as
+    a *pre-check gate* it false-positives on legitimate rowset join-backs (a base
+    key that IS a rowset output, or a concept DERIVED from one) — so the v4
+    pre-gate disables it and lets discovery decide. Defaults to the v3 behaviour.
     """
     from trilogy.core import graph as gx
     from trilogy.core.env_processor import generate_graph
@@ -675,7 +682,8 @@ def disconnected_components(
                 if neighbor_concept is not None and neighbor_concept.address in keys:
                     cg.remove_edge(node, neighbor)
 
-    _island_rowsets(g, cg)
+    if island_rowsets:
+        _island_rowsets(g, cg)
 
     comp_of: dict[str, int] = {}
     for i, component in enumerate(gx.connected_components(cg)):
@@ -706,11 +714,15 @@ def raise_if_disconnected(
     environment: BuildEnvironment,
     concepts: List[BuildConcept],
     g: "ReferenceGraph | None" = None,
+    island_rowsets: bool = True,
 ) -> None:
     """Raise the typed subgraph error when ``concepts`` span >1 unconnected
     reference-graph component (a real missing join/merge). Crossjoinable
-    (single-row/constant) concepts are skipped, so valid cross-joins still pass."""
-    subgraphs = disconnected_components(environment, concepts, g)
+    (single-row/constant) concepts are skipped, so valid cross-joins still pass.
+    See ``disconnected_components`` for ``island_rowsets``."""
+    subgraphs = disconnected_components(
+        environment, concepts, g, island_rowsets=island_rowsets
+    )
     if len(subgraphs) > 1:
         raise DisconnectedConceptsException(
             format_disconnected_subgraphs_error(subgraphs),
@@ -723,6 +735,7 @@ def raise_if_disconnected_for(
     conditions: "BuildWhereClause | None",
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
+    island_rowsets: bool = True,
 ) -> None:
     """Connectivity gate for a select's required concepts (its outputs plus any
     WHERE row args): raise the typed subgraph error when they span unconnected
@@ -730,12 +743,13 @@ def raise_if_disconnected_for(
     skipped by ``disconnected_components``, so e.g. two ungrouped scalar aggregates
     still resolve via cross-join. Shared verbatim by the top-level select and
     nested rowset inner selects — rowset discovery is recursive query discovery, so
-    the connectivity diagnostic must be identical."""
+    the connectivity diagnostic must be identical. See ``disconnected_components``
+    for ``island_rowsets`` (the v4 pre-gate passes ``False``)."""
     concepts = list(outputs)
     seen = {c.address for c in concepts}
     if conditions:
         concepts += [c for c in conditions.row_arguments if c.address not in seen]
-    raise_if_disconnected(environment, concepts, g)
+    raise_if_disconnected(environment, concepts, g, island_rowsets=island_rowsets)
 
 
 def format_disconnected_subgraphs_error(

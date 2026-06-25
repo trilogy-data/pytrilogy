@@ -566,6 +566,11 @@ def _raise_if_disconnected(
         conditions,
         build_environment,
         graph,
+        # v4 runs this as a pre-discovery gate; rowset islanding false-positives
+        # on legitimate join-backs (base key that IS a rowset output, or a concept
+        # derived from one), so disable it and let v4 discovery decide. v3 keeps
+        # islanding because it only consults this AFTER discovery already failed.
+        island_rowsets=False,
     )
 
 

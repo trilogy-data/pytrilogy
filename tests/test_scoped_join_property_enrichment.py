@@ -88,3 +88,43 @@ def test_enrich_property_off_scoped_join_key_unchained_unresolvable():
     # disconnected-subgraph error rather than the generic unresolvable one.
     with pytest.raises(DisconnectedConceptsException, match="local.store_name"):
         eng.generate_sql(UNCHAINED)
+
+
+# A SINGLE rowset, no join statement at all, with `store_name` (a base-keyed
+# property, NOT projected from the rowset) in the final select alongside the
+# rowset's aggregate. The rowset carries `store_id` — both when output unchanged
+# and when renamed. This isolates the connectivity islanding from the self-join:
+# `store_id` reached only via a rowset's derivation is not treated as a real join
+# path, so `store_name` splits into its own subgraph. Ideally this would source
+# the name at store grain and resolve; it currently raises in both forms. Full
+# queries inline for easy editing/debugging.
+ONE_ROWSET_UNALIASED = (
+    MODEL
+    + """
+rowset agg_one <- where year = 2001 select store_id, count(sale_id) as cnt;
+select name as store_name, agg_one.cnt
+order by store_name asc;
+"""
+)
+
+ONE_ROWSET_ALIASED = (
+    MODEL
+    + """
+rowset agg_one <- where year = 2001 select store_id as sk_a, count(sale_id) as cnt;
+select name as store_name, agg_one.cnt
+order by store_name asc;
+"""
+)
+
+
+@pytest.mark.parametrize("query", [ONE_ROWSET_UNALIASED, ONE_ROWSET_ALIASED])
+@pytest.mark.xfail(
+    raises=DisconnectedConceptsException,
+    reason="single rowset (no join) islands its key; a base-keyed property "
+    "(store_name) cannot source off the rowset, aliased or not",
+    strict=True,
+)
+def test_enrich_property_off_single_rowset_no_join(query):
+    eng = Dialects.DUCK_DB.default_executor(environment=Environment())
+    rows = [tuple(r) for r in eng.execute_text(query)[-1].fetchall()]
+    assert rows == [("Alpha", 1), ("Beta", 1)], rows
