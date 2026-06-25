@@ -15,10 +15,11 @@ TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
 
 Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
 
-**4139 passed, 20 skipped, 5 xfailed, 38 xpassed, 82 errors — 0 failed (exit 0).**
+**4153 passed, 20 skipped, 5 xfailed, 27 xpassed, 82 errors — 0 failed (exit 0).**
 
 - **0 failed** — no untracked wrong-rows / crash / invalid-render regressions, including
-  across #586/#587/#588 ("V4 Parity" PRs) and the row-preserving-input inline fix below.
+  across #586/#587/#588 ("V4 Parity" PRs) and the two size fixes below (row-preserving
+  inline + join-stream sharing).
 - The **82 errors** are all `tests/engine/test_clickhouse_server.py` — clickhouse.cloud
   connection errors, environmental (no local server). Ignore.
 - **xfailed / xpassed** are the tracked `v4_known_failing.py` entries. The list is
@@ -50,7 +51,7 @@ migration-gating work, not a live-path regression surface.
 | `_MODELING` | modeling-sweep shape/CTE diffs; rows match (classifier: all SHAPE). |
 | `_TPCDS_SIZE` | rows match the official reference, generated SQL exceeds v3-tuned length ceilings. Verbosity. |
 
-30 entries (2026-06-25): 10 `_INLINE`, 7 `_MODELING`, 13 `_TPCDS_SIZE`. The single
+27 entries (2026-06-25): 10 `_INLINE`, 7 `_MODELING`, 10 `_TPCDS_SIZE`. The single
 open *theme* is **plan verbosity / CTE shape**, not correctness. That is the focus
 of the size-analysis work below.
 
@@ -70,37 +71,38 @@ Trust the `test` column for pass/fail; use the proxy lengths only for v3-vs-v4 d
 
 ### Measurements (proxy lengths from `v4_size_compare`; `test` = real verdict)
 
-The **v4 (pre)** column is the 2026-06-24 baseline (before the inline fix below);
-**v4** is current. `test` PASS rows were pruned from `v4_known_failing.py`.
+`v4 base` = the 2026-06-24 baseline (before any size fix). `v4` = current, after the
+two fixes below (row-preserving inline + join-stream sharing). `test` PASS rows were
+pruned from `v4_known_failing.py`.
 
-| q | ceiling | v3 | v4 (pre) | v4 | v3 sel | v4 sel | test |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
-| 02 | 7500 | 4625 | 7725 | 7685 | 8 | 10 | fail |
-| 2.2 | 7500 | 6770 | 10267 | 10267 | 8 | 17 | fail |
-| 12 | 3200 | 2026 | 4132 | 4132 | 3 | 6 | fail |
-| 20 | 3200 | 1869 | 4214 | 4214 | 3 | 7 | fail |
-| 23 | 8500 | 7792 | 10610 | 8423 | 22 | 26 | **PASS** |
-| 30.alt | 12000 | 7147 | 11670 | 10320 | 5 | 9 | fail |
-| 47 | 6800 | 5486 | 11568 | 11568 | 4 | 9 | fail |
-| 50 | 7000 | 4725 | 8776 | 7935 | 4 | 6 | fail |
-| 57 | 6500 | 4894 | 10267 | 10267 | 4 | 9 | fail |
-| 62 | 2500 | 2160 | 3073 | **2160** | 1 | 1 | **PASS** |
-| 69 | 5000 | 4059 | 4485 | 4485 | 8 | 11 | **PASS** |
-| 73 | 3000 | 2823 | 5665 | 5496 | 2 | 5 | fail |
-| 76 | 10000 | 7477 | 10957 | 10957 | 16 | 28 | fail |
-| 81 | 8000 | 7460 | 10192 | 10314 | 5 | 9 | fail |
-| 94 | 5000 | 3544 | 5265 | 5265 | 13 | 22 | **PASS** |
-| 97.1 | 4250 | 2989 | 2357 | 2357 | 5 | **4** | **PASS** |
+| q | ceiling | v3 | v4 base | v4 | test |
+| --- | ---: | ---: | ---: | ---: | :---: |
+| 02 | 7500 | 4625 | 7725 | 7685 | fail* |
+| 2.2 | 7500 | 6770 | 10267 | 10267 | fail |
+| 12 | 3200 | 2026 | 4132 | **2026** | **PASS** |
+| 20 | 3200 | 1869 | 4214 | **2314** | **PASS** |
+| 23 | 8500 | 7792 | 10610 | 8423 | **PASS** |
+| 30.alt | 12000 | 7147 | 11670 | 9006 | fail |
+| 47 | 6800 | 5486 | 11568 | **7868** | fail |
+| 50 | 7000 | 4725 | 8776 | **6889** | **PASS** |
+| 57 | 6500 | 4894 | 10267 | **6900** | fail |
+| 62 | 2500 | 2160 | 3073 | 2160 | **PASS** |
+| 69 | 5000 | 4059 | 4485 | 4485 | **PASS** |
+| 73 | 3000 | 2823 | 5665 | 5496 | fail |
+| 76 | 10000 | 7477 | 10957 | 10957 | fail |
+| 81 | 8000 | 7460 | 10192 | 9163 | fail |
+| 94 | 5000 | 3544 | 5265 | 4810 | **PASS** |
+| 97.1 | 4250 | 2989 | 2357 | 2357 | **PASS** |
 
-(q2.1 and q10 hit a `RecursionError` in the generation-only harness but pass
-in-suite where the dataset is imported — a separate planner-recursion concern,
-not size.)
+\* q02 fails by **rendering an invalid empty identifier** (`""`), not on size — a
+pre-existing bug (reproduces with both size fixes reverted), masked by the xfail.
+(q2.1 and q10 `RecursionError` in the generation-only harness — separate
+planner-recursion concern, not size.)
 
-**Still failing `_TPCDS_SIZE` (13):** 02, 2.1, 2.2, 10, 12, 20, 30.alt, 47, 50, 57,
-73, 76, 81. The remaining verbosity is **not** the single-consumer scalar-input case
-the inline fix covers — it is the multi-join / multi-fact / multi-consumer shapes
-(q47/q57/q76/q2.2 barely moved). Next size work should target those join-stream
-shapes, not the aggregate-input inline.
+**Still failing `_TPCDS_SIZE` (10):** 02, 2.1, 2.2, 10, 30.alt, 47, 57, 73, 76, 81.
+The join-stream spike cut these substantially (q47 11568→7868, q57 10267→6900) but
+they remain over ceiling. q47/q57 are now close; q2.2/q76 are the most verbose
+multi-fact / many-sibling shapes left.
 
 ### The row-preserving aggregate-input inline fix (2026-06-25)
 
@@ -115,6 +117,18 @@ the group is renderable from them; the vacuous input-grain normalization GroupNo
 is skipped. Guarded so q08-style disjoint filters (existence args) stay separate.
 Cleared q62 (3073→2160, == v3) plus q23/q94/etc. Locked by
 `tests/core/processing/test_v4_virt_filter_extra_cte.py`.
+
+### The join-stream sharing fix (2026-06-25)
+
+Lives in `strategy_builder.py` (`_add_aggregate_needed_concepts`). Multi-consumer /
+multi-grain queries (q47: one `sum_sales` aggregate feeding an `avg` regroup, two
+windows, and a scalar diff) re-derived the fact×dimension **join-stream** once per
+consumer — v4 rebuilt the dim joins from a bare fact-key re-scan and FULL/RIGHT-joined
+the streams back on all dim keys, instead of reusing the already-joined-and-aggregated
+CTE. The fix adds an aggregate's `by` grouping keys (and row-preserving inputs) to the
+`needed` set, so parent-dedup keeps the existing joined stream as the shared parent
+rather than re-sourcing. q47 went 8 CTEs / 9 JOINs / 2 fact-scans → **4 / 5 / 1** (near
+v3's 3). New stable passes: q12 (== v3), q20, q50. Full sweep 4153 passed / 0 failed.
 
 ## Phase boundary contract
 
@@ -185,7 +199,8 @@ Still-watch areas:
    `test_exact_match_merge_preserves_subgraph_filters`, `test_adhoc08`, `test_in_select`,
    `test_group_by_with_existing`, and tpc-ds `test_twenty_three`, `test_sixty_two`,
    `test_sixty_nine`, `test_ninety_four`, `test_ninety_seven_one`, `test_ninety_seven_two`.
-   The `_RESULT` bucket is gone. Remaining 30 entries still fail in isolation.
+   The `_RESULT` bucket is gone. Then the join-stream fix added 3 more (`test_twelve`,
+   `test_twenty`, `test_fifty`), leaving 27 entries that still fail in isolation.
 2. Split the `_MODELING` entries into `_INLINE` or `_TPCDS_SIZE` (all are SHAPE per
    the classifier — no rows diffs left).
 3. Re-run `local_scripts/v4_classify.py` after any planner change, and a full v4

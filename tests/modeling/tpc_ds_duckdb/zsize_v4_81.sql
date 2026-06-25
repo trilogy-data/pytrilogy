@@ -2,10 +2,16 @@
 WITH 
 abundant as (
 SELECT
-    "cr_catalog_returns"."CR_RETURNING_ADDR_SK" as "cr_return_address_id",
-    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id"
+    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id",
+    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state",
+    sum(CASE WHEN "cr_date_date"."D_YEAR" = 2000 and "cr_return_address_customer_address"."CA_STATE" is not null THEN "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "customer_state"
 FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
+    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "cr_catalog_returns"."CR_RETURNING_ADDR_SK" = "cr_return_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "cr_return_address_customer_address"."CA_STATE" is not null
+
 GROUP BY
     1,
     2),
@@ -37,28 +43,14 @@ FROM
 WHERE
     "cr_billing_customer_address_customer_address"."CA_STATE" = 'GA' and "cr_return_address_customer_address"."CA_STATE" is not null
 ),
-yummy as (
+juicy as (
 SELECT
-    "cr_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cr_billing_customer_id",
-    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state",
-    sum(CASE WHEN "cr_date_date"."D_YEAR" = 2000 and "cr_return_address_customer_address"."CA_STATE" is not null THEN "cr_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "customer_state"
-FROM
-    "memory"."catalog_returns" as "cr_catalog_returns"
-    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "cr_catalog_returns"."CR_RETURNING_ADDR_SK" = "cr_return_address_customer_address"."CA_ADDRESS_SK"
-WHERE
-    "cr_return_address_customer_address"."CA_STATE" is not null
-
-GROUP BY
-    1,
-    2),
-uneven as (
-SELECT
-    "abundant"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "cr_return_address_customer_address"."CA_STATE" as "cr_return_address_state"
+    "abundant"."cr_return_address_state" as "cr_return_address_state",
+    1.2 * avg("abundant"."customer_state") as "scaled_state"
 FROM
     "abundant"
-    INNER JOIN "memory"."customer_address" as "cr_return_address_customer_address" on "abundant"."cr_return_address_id" = "cr_return_address_customer_address"."CA_ADDRESS_SK"),
+GROUP BY
+    1),
 questionable as (
 SELECT
     "cooperative"."cr_billing_customer_address_city" as "cr_billing_customer_address_city",
@@ -80,36 +72,17 @@ SELECT
     "cooperative"."cr_return_address_state" as "cr_return_address_state"
 FROM
     "cooperative"),
-concerned as (
+young as (
 SELECT
-    "yummy"."customer_state" as "customer_state",
-    coalesce("uneven"."cr_return_address_state","yummy"."cr_return_address_state") as "cr_return_address_state"
-FROM
-    "yummy"
-    FULL JOIN "uneven" on "yummy"."cr_billing_customer_id" = "uneven"."cr_billing_customer_id" AND "yummy"."cr_return_address_state" is not distinct from "uneven"."cr_return_address_state"
-GROUP BY
-    1,
-    2,
-    coalesce("uneven"."cr_billing_customer_id","yummy"."cr_billing_customer_id")),
-sparkling as (
-SELECT
-    "concerned"."cr_return_address_state" as "cr_return_address_state",
-    1.2 * avg("concerned"."customer_state") as "scaled_state"
-FROM
-    "concerned"
-GROUP BY
-    1),
-sweltering as (
-SELECT
+    "abundant"."customer_state" as "customer_state",
     "cooperative"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "yummy"."customer_state" as "customer_state",
-    coalesce("cooperative"."cr_return_address_state","sparkling"."cr_return_address_state","yummy"."cr_return_address_state") as "cr_return_address_state"
+    coalesce("abundant"."cr_return_address_state","cooperative"."cr_return_address_state","juicy"."cr_return_address_state") as "cr_return_address_state"
 FROM
-    "yummy"
-    INNER JOIN "cooperative" on "yummy"."cr_billing_customer_id" = "cooperative"."cr_billing_customer_id" AND "yummy"."cr_return_address_state" is not distinct from "cooperative"."cr_return_address_state"
-    INNER JOIN "sparkling" on "yummy"."cr_return_address_state" is not distinct from "sparkling"."cr_return_address_state"
+    "abundant"
+    INNER JOIN "cooperative" on "abundant"."cr_billing_customer_id" = "cooperative"."cr_billing_customer_id" AND "abundant"."cr_return_address_state" is not distinct from "cooperative"."cr_return_address_state"
+    INNER JOIN "juicy" on "abundant"."cr_return_address_state" is not distinct from "juicy"."cr_return_address_state"
 WHERE
-    "yummy"."customer_state" > "sparkling"."scaled_state"
+    "abundant"."customer_state" > "juicy"."scaled_state"
 
 GROUP BY
     1,
@@ -131,10 +104,10 @@ SELECT
     "questionable"."cr_billing_customer_address_country" as "cr_billing_customer_address_country",
     "questionable"."cr_billing_customer_address_gmt_offset" as "cr_billing_customer_address_gmt_offset",
     "questionable"."cr_billing_customer_address_location_type" as "cr_billing_customer_address_location_type",
-    "sweltering"."customer_state" as "customer_state"
+    "young"."customer_state" as "customer_state"
 FROM
     "questionable"
-    INNER JOIN "sweltering" on "questionable"."cr_billing_customer_id" = "sweltering"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "sweltering"."cr_return_address_state"
+    INNER JOIN "young" on "questionable"."cr_billing_customer_id" = "young"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "young"."cr_return_address_state"
 GROUP BY
     1,
     2,
@@ -169,5 +142,5 @@ ORDER BY
     "questionable"."cr_billing_customer_address_country" asc nulls first,
     "questionable"."cr_billing_customer_address_gmt_offset" asc nulls first,
     "questionable"."cr_billing_customer_address_location_type" asc nulls first,
-    "sweltering"."customer_state" asc nulls first
+    "young"."customer_state" asc nulls first
 LIMIT (100)

@@ -46,6 +46,7 @@ from .edges import (
     lineage_subgraph,
     remove_edge,
 )
+from .functional_dependency import concept_attr_fd_determines
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import (
@@ -96,12 +97,7 @@ def _fd_on_key(
     """Whether `address` is functionally determined by the dimension key set
     `key`: it is a key, has no grain (constant), or its declared grain is a
     subset of the key."""
-    if address in key:
-        return True
-    if address not in concept_attrs:
-        return False
-    gc = concept_attrs[address].grain_components
-    return not gc or set(gc) <= key
+    return concept_attr_fd_determines(concept_attrs, key, address)
 
 
 def _group_id_for(bucket: GroupBucket) -> str:

@@ -668,6 +668,27 @@ def _aggregate_row_preserving_input_addresses(outputs: list[BuildConcept]) -> se
     return addresses
 
 
+def _row_preserving_function_inputs(
+    arg: BuildConcept | BuildConceptArgs,
+) -> list[BuildConcept] | None:
+    if isinstance(arg, BuildConcept):
+        if (
+            arg.derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+            and not _lineage_crosses_row_shape_barrier(arg)
+        ):
+            return [arg]
+        return None
+    output: list[BuildConcept] = []
+    for concept_arg in arg.concept_arguments:
+        if not isinstance(concept_arg, BuildConcept):
+            continue
+        nested = _row_preserving_function_inputs(concept_arg)
+        if nested is None:
+            return None
+        output.extend(nested)
+    return output
+
+
 def _group_filter_has_existence(
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
@@ -711,14 +732,12 @@ def _aggregate_inputs_are_row_preserving(
         if not isinstance(concept.lineage, BuildAggregateWrapper):
             continue
         for arg in concept.lineage.function.arguments:
-            if not isinstance(arg, BuildConcept):
+            if not isinstance(arg, (BuildConcept, BuildConceptArgs)):
                 return False
-            if (
-                arg.derivation not in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
-                or _lineage_crosses_row_shape_barrier(arg)
-            ):
+            arg_inputs = _row_preserving_function_inputs(arg)
+            if arg_inputs is None:
                 return False
-            row_preserving_inputs.append(arg)
+            row_preserving_inputs.extend(arg_inputs)
     if not row_preserving_inputs:
         return False
     available = {
@@ -1293,6 +1312,23 @@ def _add_needed_concept(needed: set[str], concept: BuildConcept) -> None:
     needed.add(concept.address)
     if concept.grain is not None:
         needed.update(concept.grain.components)
+
+
+def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> None:
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        if concept.lineage is None:
+            return
+        for arg in concept.lineage.concept_arguments:
+            _add_needed_concept(needed, arg)
+        return
+    for arg in concept.lineage.function.concept_arguments:
+        _add_needed_concept(needed, arg)
+    for group_key in concept.lineage.by:
+        needed.add(group_key.address)
+    for input_concept in _aggregate_row_preserving_inputs(concept):
+        for row_input in _row_lineage_closure(input_concept):
+            if row_input.address != input_concept.address:
+                _add_needed_concept(needed, row_input)
 
 
 def _wrap_for_grain(
@@ -1888,14 +1924,10 @@ def build_strategy_node(
         for c in outputs:
             needed.add(c.address)
             if c.address in primary_addrs and c.lineage is not None:
-                for arg in c.lineage.concept_arguments:
-                    if derivation in _AGGREGATING_DERIVATIONS:
-                        _add_needed_concept(needed, arg)
-                        for input_concept in _aggregate_row_preserving_inputs(c):
-                            for row_input in _row_lineage_closure(input_concept):
-                                if row_input.address != input_concept.address:
-                                    _add_needed_concept(needed, row_input)
-                    else:
+                if derivation in _AGGREGATING_DERIVATIONS:
+                    _add_aggregate_needed_concepts(needed, c)
+                else:
+                    for arg in c.lineage.concept_arguments:
                         needed.add(arg.address)
         if injected is not None:
             for arg in condition_row_args(injected):

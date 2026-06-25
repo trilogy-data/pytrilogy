@@ -1,11 +1,17 @@
 
 WITH 
-vacuous as (
+uneven as (
 SELECT
-    "web_returns_web_returns"."WR_RETURNING_ADDR_SK" as "web_returns_return_address_id",
-    "web_returns_web_returns"."WR_RETURNING_CUSTOMER_SK" as "web_returns_billing_customer_id"
+    "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state",
+    "web_returns_web_returns"."WR_RETURNING_CUSTOMER_SK" as "web_returns_billing_customer_id",
+    sum(CASE WHEN "web_returns_return_date_date"."D_YEAR" = 2002 and "web_returns_return_address_customer_address"."CA_STATE" is not null THEN "web_returns_web_returns"."WR_RETURN_AMT" ELSE NULL END) as "customer_state_returns_2002"
 FROM
     "memory"."web_returns" as "web_returns_web_returns"
+    INNER JOIN "memory"."date_dim" as "web_returns_return_date_date" on "web_returns_web_returns"."WR_RETURNED_DATE_SK" = "web_returns_return_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "web_returns_return_address_customer_address" on "web_returns_web_returns"."WR_RETURNING_ADDR_SK" = "web_returns_return_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "web_returns_return_address_customer_address"."CA_STATE" is not null
+
 GROUP BY
     1,
     2),
@@ -34,28 +40,14 @@ FROM
 WHERE
     "web_returns_billing_customer_address_customer_address"."CA_STATE" = 'GA' and "web_returns_return_address_customer_address"."CA_STATE" is not null
 ),
-uneven as (
+vacuous as (
 SELECT
-    "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state",
-    "web_returns_web_returns"."WR_RETURNING_CUSTOMER_SK" as "web_returns_billing_customer_id",
-    sum(CASE WHEN "web_returns_return_date_date"."D_YEAR" = 2002 and "web_returns_return_address_customer_address"."CA_STATE" is not null THEN "web_returns_web_returns"."WR_RETURN_AMT" ELSE NULL END) as "customer_state_returns_2002"
+    "uneven"."web_returns_return_address_state" as "web_returns_return_address_state",
+    1.2 * avg("uneven"."customer_state_returns_2002") as "scaled_state_returns_2002"
 FROM
-    "memory"."web_returns" as "web_returns_web_returns"
-    INNER JOIN "memory"."date_dim" as "web_returns_return_date_date" on "web_returns_web_returns"."WR_RETURNED_DATE_SK" = "web_returns_return_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer_address" as "web_returns_return_address_customer_address" on "web_returns_web_returns"."WR_RETURNING_ADDR_SK" = "web_returns_return_address_customer_address"."CA_ADDRESS_SK"
-WHERE
-    "web_returns_return_address_customer_address"."CA_STATE" is not null
-
+    "uneven"
 GROUP BY
-    1,
-    2),
-concerned as (
-SELECT
-    "vacuous"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
-    "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state"
-FROM
-    "vacuous"
-    INNER JOIN "memory"."customer_address" as "web_returns_return_address_customer_address" on "vacuous"."web_returns_return_address_id" = "web_returns_return_address_customer_address"."CA_ADDRESS_SK"),
+    1),
 questionable as (
 SELECT
     "cooperative"."web_returns_billing_customer_birth_country" as "web_returns_billing_customer_birth_country",
@@ -89,36 +81,17 @@ GROUP BY
     12,
     13,
     14),
-young as (
-SELECT
-    "uneven"."customer_state_returns_2002" as "customer_state_returns_2002",
-    coalesce("concerned"."web_returns_return_address_state","uneven"."web_returns_return_address_state") as "web_returns_return_address_state"
-FROM
-    "concerned"
-    FULL JOIN "uneven" on "concerned"."web_returns_billing_customer_id" = "uneven"."web_returns_billing_customer_id" AND "concerned"."web_returns_return_address_state" is not distinct from "uneven"."web_returns_return_address_state"
-GROUP BY
-    1,
-    2,
-    coalesce("concerned"."web_returns_billing_customer_id","uneven"."web_returns_billing_customer_id")),
-abhorrent as (
-SELECT
-    "young"."web_returns_return_address_state" as "web_returns_return_address_state",
-    1.2 * avg("young"."customer_state_returns_2002") as "scaled_state_returns_2002"
-FROM
-    "young"
-GROUP BY
-    1),
-late as (
+sparkling as (
 SELECT
     "cooperative"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
     "uneven"."customer_state_returns_2002" as "customer_state_returns_2002",
-    coalesce("abhorrent"."web_returns_return_address_state","cooperative"."web_returns_return_address_state","uneven"."web_returns_return_address_state") as "web_returns_return_address_state"
+    coalesce("cooperative"."web_returns_return_address_state","uneven"."web_returns_return_address_state","vacuous"."web_returns_return_address_state") as "web_returns_return_address_state"
 FROM
     "uneven"
     INNER JOIN "cooperative" on "uneven"."web_returns_billing_customer_id" = "cooperative"."web_returns_billing_customer_id" AND "uneven"."web_returns_return_address_state" is not distinct from "cooperative"."web_returns_return_address_state"
-    INNER JOIN "abhorrent" on "uneven"."web_returns_return_address_state" is not distinct from "abhorrent"."web_returns_return_address_state"
+    INNER JOIN "vacuous" on "uneven"."web_returns_return_address_state" is not distinct from "vacuous"."web_returns_return_address_state"
 WHERE
-    "uneven"."customer_state_returns_2002" > "abhorrent"."scaled_state_returns_2002"
+    "uneven"."customer_state_returns_2002" > "vacuous"."scaled_state_returns_2002"
 
 GROUP BY
     1,
@@ -137,10 +110,10 @@ SELECT
     "questionable"."web_returns_billing_customer_login" as "web_returns_billing_customer_login",
     "questionable"."web_returns_billing_customer_email_address" as "web_returns_billing_customer_email_address",
     "questionable"."web_returns_billing_customer_last_review_date" as "web_returns_billing_customer_last_review_date",
-    "late"."customer_state_returns_2002" as "customer_state_returns_2002"
+    "sparkling"."customer_state_returns_2002" as "customer_state_returns_2002"
 FROM
-    "late"
-    LEFT OUTER JOIN "questionable" on "late"."web_returns_billing_customer_id" = "questionable"."web_returns_billing_customer_id" AND "late"."web_returns_return_address_state" is not distinct from "questionable"."web_returns_return_address_state"
+    "sparkling"
+    LEFT OUTER JOIN "questionable" on "sparkling"."web_returns_billing_customer_id" = "questionable"."web_returns_billing_customer_id" AND "sparkling"."web_returns_return_address_state" is not distinct from "questionable"."web_returns_return_address_state"
 ORDER BY 
     "questionable"."web_returns_billing_customer_text_id" asc nulls first,
     "questionable"."web_returns_billing_customer_salutation" asc nulls first,
@@ -154,5 +127,5 @@ ORDER BY
     "questionable"."web_returns_billing_customer_login" asc nulls first,
     "questionable"."web_returns_billing_customer_email_address" asc nulls first,
     "questionable"."web_returns_billing_customer_last_review_date" asc nulls first,
-    "late"."customer_state_returns_2002" asc nulls first
+    "sparkling"."customer_state_returns_2002" asc nulls first
 LIMIT (100)

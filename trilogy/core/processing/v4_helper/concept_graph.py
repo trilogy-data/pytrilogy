@@ -41,6 +41,7 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, add_edge
+from .functional_dependency import minimize_build_grain
 from .models import ConceptAttrs
 from .projection import concept_satisfiable
 
@@ -335,7 +336,7 @@ def _aggregate_input_grain(
                 input_grain.update(c.address for c in grain_inputs)
             elif sub.grain:
                 input_grain.update(sub.grain.components)
-    return frozenset(input_grain)
+    return minimize_build_grain(environment, input_grain)
 
 
 def _derivable_pseudonym_origins(

@@ -61,13 +61,10 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twelve": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six": _TPCDS_SIZE,
