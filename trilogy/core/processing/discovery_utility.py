@@ -654,6 +654,42 @@ def disconnected_components(
     return sorted(groups, key=lambda grp: min(c.address for c in grp))
 
 
+def raise_if_disconnected(
+    environment: BuildEnvironment,
+    concepts: List[BuildConcept],
+    g: "ReferenceGraph | None" = None,
+) -> None:
+    """Raise the typed subgraph error when ``concepts`` span >1 unconnected
+    reference-graph component (a real missing join/merge). Crossjoinable
+    (single-row/constant) concepts are skipped, so valid cross-joins still pass."""
+    subgraphs = disconnected_components(environment, concepts, g)
+    if len(subgraphs) > 1:
+        raise DisconnectedConceptsException(
+            format_disconnected_subgraphs_error(subgraphs),
+            subgraphs=[[c.address for c in group] for group in subgraphs],
+        )
+
+
+def raise_if_disconnected_for(
+    outputs: List[BuildConcept],
+    conditions: "BuildWhereClause | None",
+    environment: BuildEnvironment,
+    g: "ReferenceGraph | None" = None,
+) -> None:
+    """Connectivity gate for a select's required concepts (its outputs plus any
+    WHERE row args): raise the typed subgraph error when they span unconnected
+    reference-graph components. Crossjoinable (single-row/constant) concepts are
+    skipped by ``disconnected_components``, so e.g. two ungrouped scalar aggregates
+    still resolve via cross-join. Shared verbatim by the top-level select and
+    nested rowset inner selects — rowset discovery is recursive query discovery, so
+    the connectivity diagnostic must be identical."""
+    concepts = list(outputs)
+    seen = {c.address for c in concepts}
+    if conditions:
+        concepts += [c for c in conditions.row_arguments if c.address not in seen]
+    raise_if_disconnected(environment, concepts, g)
+
+
 def format_disconnected_subgraphs_error(
     subgraphs: List[List[BuildConcept]],
 ) -> str:

@@ -54,7 +54,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
     # --- modeling (non-TPC) sweep ---
-    "tests/modeling/gcat/test_gcat.py::test_join_discovery": _MODELING,
     "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc08": _MODELING,
@@ -85,7 +84,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_four": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_one": _TPCDS_SIZE,
     # --- tpc-ds non-benchmark: result / feature regressions ---
-    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_having_nested": _MODELING,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _MODELING,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,
     # --- previously-untracked v4 baseline fails (all pass under v3) ---

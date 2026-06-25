@@ -51,6 +51,7 @@ from trilogy.core.processing.condition_utility import condition_implies
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
+    raise_if_disconnected_for,
 )
 from trilogy.core.processing.node_generators.multiselect_node import extra_align_joins
 from trilogy.core.processing.nodes import (
@@ -204,12 +205,13 @@ def _resolve_multiselect(
     for arm in lineage.selects:
         built_arm, arm_env, arm_where = _build_nested_select(arm, history)
         arm_conditions = [arm_where] if arm_where else []
+        arm_g = generate_graph(arm_env)
         arm_info = search_concepts(
             mandatory_list=list(built_arm.output_components),
             history=history,
             environment=arm_env,
             depth=depth + 1,
-            g=generate_graph(arm_env),
+            g=arm_g,
             conditions=arm_conditions,
         )
         arm_node = arm_info.strategy_node
@@ -219,6 +221,22 @@ def _resolve_multiselect(
                 f"{[c.address for c in built_arm.output_components]} did not resolve"
             )
             return _empty()
+        # A per-arm HAVING is a post-aggregate filter over that arm's producer
+        # (e.g. `count_distinct(ticket) as c having c > 1000`). The top-level
+        # `_get_query_node_v4` HAVING wrap doesn't reach into arms, so apply it
+        # here -- mirroring the inner-HAVING handling in `resolve_rowset`.
+        arm_having = built_arm.having_clause
+        if arm_having is not None:
+            arm_node = _resolve_and_inject_condition(
+                arm_node,
+                arm_having,
+                list(built_arm.output_components),
+                environment=arm_env,
+                graph=arm_g,
+                history=history,
+                depth=depth,
+                partial_concepts=list(arm_node.partial_concepts),
+            )
         # Expose each arm's alignment key under the merge concept's address so
         # `extra_align_joins` can bind the arms together on it.
         for out in list(arm_node.output_concepts):
@@ -477,6 +495,13 @@ def resolve_rowset(
 
     built, inner_env, inner_where = _build_nested_select(select, history)
     inner_g = generate_graph(inner_env)
+
+    # The inner select is its own resolution scope; if its required concepts span
+    # unconnected models (a grain-only `by` edge does NOT bridge them), surface
+    # the typed subgraph error rather than silently cross-joining inside the CTE.
+    raise_if_disconnected_for(
+        list(built.output_components), inner_where, inner_env, inner_g
+    )
 
     inner_info = search_concepts(
         mandatory_list=list(built.output_components),

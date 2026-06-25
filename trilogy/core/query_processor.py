@@ -66,6 +66,9 @@ from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
+from trilogy.core.processing.discovery_utility import (
+    raise_if_disconnected_for,
+)
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -548,6 +551,24 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     return None
 
 
+def _raise_if_disconnected(
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+    build_environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    conditions: BuildWhereClause | None,
+) -> None:
+    """Raise the typed subgraph error when this select's required concepts (outputs
+    + WHERE row args) span unconnected reference-graph components. Delegates to the
+    shared ``raise_if_disconnected_for`` so the top-level and nested-rowset checks
+    stay one code path."""
+    raise_if_disconnected_for(
+        list(build_statement.output_components),
+        conditions,
+        build_environment,
+        graph,
+    )
+
+
 def _get_query_node_v4(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -561,6 +582,11 @@ def _get_query_node_v4(
     planner, which returns a fully-grouped FINAL node (no `group_if_required_v2`)
     and may have promoted grain keys to hidden — so hidden_concepts are merged,
     not overwritten."""
+    # Pre-check connectivity: a WHERE on an unrelated model would otherwise be
+    # silently cross-joined (`ON 1=1`) into the output instead of surfacing the
+    # typed subgraph error. Crossjoinable concepts are skipped, so valid
+    # cross-joins (scalar aggregates, constants) still resolve below.
+    _raise_if_disconnected(build_statement, build_environment, graph, conditions)
     info = search_concepts_v4(
         mandatory_list=list(build_statement.output_components),
         # Inherit the outer resolution's build caches — chiefly `scoped_joins`,
@@ -580,6 +606,11 @@ def _get_query_node_v4(
     )
     ds = info.strategy_node
     if ds is None:
+        # When the requested concepts span unconnected models, surface the typed
+        # subgraph error (mirrors the v3 get_priority_concept dead-end) rather
+        # than an opaque "could not resolve" dump. Caught by the up-front
+        # pre-check for top-level selects; this also covers nested dead-ends.
+        _raise_if_disconnected(build_statement, build_environment, graph, conditions)
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>"
             for c in build_statement.output_components
@@ -603,6 +634,12 @@ def _get_query_node_v4(
             environment=ds.environment,
             partial_concepts=ds.partial_concepts,
             conditions=final,
+        )
+        # Source any existence (`x in <set>`) args onto the HAVING-carrying node,
+        # mirroring the v3 path -- without this the membership subselect renders a
+        # dangling CTE reference (INVALID_REFERENCE_BUG). Idempotent.
+        append_existence_check(
+            ds, build_environment, graph, build_statement.having_clause, history
         )
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components

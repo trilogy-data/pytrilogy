@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildFilterItem
 from trilogy.core.processing.nodes import StrategyNode
 
@@ -45,6 +46,13 @@ def concept_satisfiable(
     keep = keep_addrs or set()
     seen = cache if cache is not None else {}
     if concept.address in available or concept.address in keep:
+        return True
+    # A constant is a literal rendered inline (e.g. the `by all_rows` grand-total
+    # marker), never sourced from a row parent — always satisfiable. Without this,
+    # dropping its standalone constant scan (a cross-joined `SELECT 1`) would make
+    # an output whose grain references it (the `count() by all_rows`) look
+    # unsatisfiable and get pruned.
+    if concept.derivation == Derivation.CONSTANT:
         return True
     # A merged/struct concept can be available under a pseudonym address (e.g.
     # the unnest exposes `local.unnest_array`, the attr-access arg is its merge

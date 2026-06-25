@@ -30,6 +30,7 @@ from .constants import (
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
     EdgePhase,
@@ -121,14 +122,31 @@ def _d1_calc_subgraph(
     """Identify (d1_calc_roots, d1_subgraph_nodes).
 
     Any concept reached via the WHERE recursion lives at a condition-phase
-    label (suffix ``@condition``) and is classified d1. Such concepts —
-    aggregates, filters, basics, unnests, etc. — feed pre-WHERE compute
-    that must not be polluted by sibling WHERE atoms applied to the
-    SELECT-side scan. We route root → condition-phase lineage edges
-    through a dedicated root_d1 bucket so the condition scan stays
-    independent of the blank-phase scan's WHERE atoms.
+    label (suffix ``@condition``) and is classified d1. We route a root →
+    condition-phase lineage edge through a dedicated root_d1 bucket when the
+    condition compute it feeds is a ROW-SHAPE BARRIER (an aggregate/window/etc.
+    whose value depends on the row set, e.g. ``where x > avg(price)``): such a
+    calc must see a pristine scan, free of sibling WHERE atoms pushed onto the
+    SELECT-side scan.
 
-    - d1_calc_roots: blank-phase roots that feed any condition-phase node.
+    A condition concept that is only a scalar BASIC (``where flag = 'x'`` with
+    ``flag <- case state_code ...``) needs no pristine scan — applying it over
+    rows a sibling filter already narrowed still selects exactly the conjunction.
+    Splitting its root would re-scan the source as an independent CTE and, when
+    that root is co-sourced with the SELECT through a bridge, leave the condition
+    re-scan cross-joined ON 1=1.
+
+    A root therefore feeds root_d1 only when it feeds a d1 node that genuinely
+    needs an independent scan, i.e. one that is EITHER:
+      - a row-shape barrier (the pristine-scan case above); or
+      - a condition that constrains a NON-grouping d0 output (a ROOT/BASIC the
+        SELECT scans directly). That output is co-sourced into the same root
+        bucket, so folding the condition into it would 2-cycle (root → condition
+        lineage → root). Keeping the split breaks that cycle. When the constraint
+        target is instead an aggregate, it lives in its own group and the
+        condition folds into the co-sourced root cleanly.
+
+    - d1_calc_roots: blank-phase roots feeding such a d1 node.
     - d1_subgraph_nodes: every condition-phase node. Edge routing uses
       this as the destination side of the predicate."""
     d1_subgraph: set[str] = {
@@ -136,14 +154,36 @@ def _d1_calc_subgraph(
     }
     if not d1_subgraph:
         return set(), set()
-    d1_calc_roots: set[str] = set()
-    for n in d1_subgraph:
-        for pred, _ in concept_graph.in_edges(n):
-            if edge_kind(concept_edges, pred, n) != EdgeKind.LINEAGE:
+
+    def _needs_independent_scan(n: str) -> bool:
+        if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+            return True
+        for succ in concept_graph.successors(n):
+            if edge_kind(concept_edges, n, succ) != EdgeKind.CONSTRAINT:
                 continue
+            if concept_attrs[succ].derivation not in GROUPING_DERIVATIONS:
+                return True
+        return False
+
+    # Walk lineage upward from each d1 node that needs an independent scan; the
+    # blank-phase ROOT ancestors are the roots whose condition scan must stay
+    # separate from the SELECT-side scan.
+    d1_calc_roots: set[str] = set()
+    visited: set[str] = set()
+    stack: list[str] = [n for n in d1_subgraph if _needs_independent_scan(n)]
+    while stack:
+        cur = stack.pop()
+        for pred, _ in concept_graph.in_edges(cur):
+            if edge_kind(concept_edges, pred, cur) != EdgeKind.LINEAGE:
+                continue
+            if pred in visited:
+                continue
+            visited.add(pred)
             pa = concept_attrs[pred]
             if pa.derivation == Derivation.ROOT and pa.depth_label != DepthLabel.D1:
                 d1_calc_roots.add(pred)
+            else:
+                stack.append(pred)
     return d1_calc_roots, d1_subgraph
 
 
@@ -1293,9 +1333,24 @@ def build_group_graph(
     most derivations group by equality on `(depth_label, grain)`; ROOT
     collapses to one bucket; BASIC merges by grain subset/equality.
     """
+    # Roots reconverge into one row stream not only at the SELECT projection but
+    # also at the WHERE: a filter row-arg is a join target the same way an output
+    # is. Folding the condition row-args into the convergence set lets
+    # `partition_roots` co-source a filter root that descends from a remote model
+    # (e.g. `org.flag` from `organizations`, joined to the SELECT's `lv_info` only
+    # through the `launch_info` fact) with the SELECT roots, so the bridge planner
+    # sees them in one request and discovers the connector instead of cross-joining
+    # ON 1=1 at the FINAL merge. Component-gated in `partition_roots`, so this only
+    # unions roots already weakly-connected (via the condition's constraint edge).
+    condition_arg_addresses = frozenset(
+        arg.address for clause in conditions for arg in clause.row_arguments
+    )
     output_addresses = frozenset(c.address for c in mandatory_list or [])
     primary_group, buckets = _assign_groups(
-        concept_graph, concept_edges, concept_attrs, output_addresses
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        output_addresses | condition_arg_addresses,
     )
     _fold_rollup_key_dims(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets

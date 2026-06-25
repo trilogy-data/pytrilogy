@@ -1,54 +1,12 @@
 # v4 compatibility audit (last refreshed 2026-06-22, phase-boundary hardening)
 
-This file is the current handoff for v4 discovery work. Long fixed-case notes
-from the 2026-06-11 through 2026-06-20 sweeps were removed because they were
-stale and obscured the remaining work. The authoritative skip list is
+This file is the current handoff for v4 discovery work. The authoritative skip list is
 `tests/v4_known_failing.py`; reclassify with `python local_scripts/v4_classify.py`
 when changing planner behavior.
 
-## 2026-06-21 follow-up: three correctness fixes (all v4-only)
-
-The prior "no remaining wrong-rows" claim was wrong on two counts and the
-inherited (then-uncommitted) `top_x` bridge fix had regressed two tests. All
-three are now fixed in `v4_helper/` (v3 untouched):
-
-1. **Constant-sibling drops the WHERE** (`test_select_literal_is_rendered_in_projection`
-   was mis-bucketed INLINE/SHAPE but was wrong-rows). `where x = 1 select x, 'abc'`
-   returned both rows: in the multi-contributor FINAL merge,
-   `_fresh_final_root_projection` re-sourced the root scan with `conditions=None`,
-   dropping the root group's own WHERE, then the constant CTE `1=1`-joined the
-   unfiltered scan. Fix: thread `_wrap_atoms(_atoms_at(attrs, gid))` into the
-   fresh re-source (`strategy_builder.py`). The remaining `:label`-in-separate-CTE
-   diff is a genuine SHAPE diff (v3 inlines the constant); the entry stays INLINE.
-2. **Window-over-rollup fan-out** (`test_window_over_rollup_preserves_grouping_rows`,
-   untracked, v3-passing, hash-seed-flaky so the full suite "got lucky"). A
-   `rank() over (partition by g1)` over a `sum() by rollup g1, g2` carried only
-   the partition key `g1`, so the FINAL merge joined the window CTE back to the
-   dims on `g1` alone and fanned out the ROLLUP subtotal rows (13 rows vs 6).
-   Root cause: a WINDOW is a grouping derivation, so `_apply_grouping_parent_grain_overrides`
-   skipped it, leaving its grain at the partition key. New
-   `_widen_window_grain_to_grouping_parent` (`group_graph.py`) widens a WINDOW's
-   grain to its (finer) grouping parent's grain — a window runs pointwise and
-   preserves every parent row — so it carries the full join key and folds into
-   the rollup CTE (no join-back).
-3. **`top_x` bridge over-declaration** regressed `gcat::test_parenthetical` and
-   `tpc_h::test_twenty_two` ("Invalid reference"/"no cover"), while a too-narrow
-   first cut regressed `complex::test_bound_conversion_existence` (fan-out, 4 vs 3
-   rows). `_shared_row_parent_join_keys` originally declared a preserve_key for
-   ANY consumer with ≥2 row parents sharing a KEY output, which over-fired on
-   plain projections of a common scan. Final discriminator: a shared key is a
-   bridge only when it is BOTH a **lineage ancestor of the consumer's own
-   grouping grain** (the column the group key is derived from — `top_orders<-order`,
-   `date_converted<-date_string`) AND **not held by any parent as that parent's
-   own grain** (q22's `customer.id` is the `cntrycode` projection's grain; folds).
-   A key unrelated to the grouping grain (parenthetical's `vehicle.name`/`launch_tag`)
-   is co-carried by foldable projections, not a bridge. `_refresh_input_contracts`
-   now threads `concept_edges` for the lineage walk. The unit test was updated to
-   wire the `order -> top_orders` lineage the discriminator now requires.
-
 ## Current tracked state
 
-`tests/v4_known_failing.py` currently tracks 43 non-strict xfail entries:
+`tests/v4_known_failing.py` currently tracks 46 non-strict xfail entries:
 
 | bucket | n | meaning |
 | --- | ---: | --- |
@@ -56,6 +14,7 @@ three are now fixed in `v4_helper/` (v3 untouched):
 | RESULT | 1 | known wrong-row regression (test_ninety_seven_two; now xpasses) |
 | MODELING | 13 | modeling sweep diffs still needing per-test classification |
 | TPCDS_SIZE | 18 | TPC-DS rows match, SQL exceeds v3-tuned size ceilings |
+| DISCONNECTED | 3 | v4 cross-join semantics gaps; handoff in `v4_disconnected_handoff.md` |
 
 The four "high-priority unclassified" entries from the prior audit
 (`test_composite_rollup_aggregate_keeps_group_by`, both geography
@@ -63,7 +22,9 @@ The four "high-priority unclassified" entries from the prior audit
 and `test_sixty_eight`) are now fixed and removed from the list. `test_top_x_by_metric`
 is fixed and promoted to `v4_evals/cases/` (see below). Full v4 suite (no
 adventureworks, clickhouse ignored), after the three 2026-06-21 fixes below:
-**4022 passed, 4 xfailed, 40 xpassed, 0 failed**.
+**4022 passed, 4 xfailed, 40 xpassed, 0 failed** — but that figure predates #584
+and is now stale; see "Correctness parity — corrected" below for an untracked
+`membership in having` over-union regression that turns the gate red.
 
 Two of those fixes were genuine wrong-rows bugs the prior "no remaining
 wrong-rows" line had missed: `test_select_literal_is_rendered_in_projection`
@@ -71,20 +32,92 @@ wrong-rows" line had missed: `test_select_literal_is_rendered_in_projection`
 hash-seed-flaky `test_window_over_rollup_preserves_grouping_rows`. The third was
 fallout from the (then-uncommitted) `top_x` bridge fix. See the section above.
 
-### Latest classifier run (2026-06-21, isolation, `--runxfail`)
+### Latest classifier run (2026-06-22, isolation, `--runxfail`)
 
-`python local_scripts/v4_classify.py` over the then-44 entries: **38 SHAPE /
-4 XPASS / 2 ROWS** (`top_x_by_metric` then classified SHAPE, but it was genuinely
-wrong-rows — see below — now fixed and removed). The ROWS/SHAPE split is a crude
-heuristic: `DebuggingHook` prints SQL to stderr, so the two "ROWS" hits,
-`test_select_literal_is_rendered_in_projection` and
-`test_aggregate_filter_uses_having`, are actually SQL-shape asserts and stay in
-INLINE.
+`python local_scripts/v4_classify.py` over the 43 entries, after the classifier
+heuristic was hardened (see below): **37 SHAPE / 5 XPASS / 1 OTHER**. The two
+prior false positives are gone — the old run's 2 "ROWS" were SQL-shape asserts
+(now SHAPE) and the 2 "CRASH" were a parallel-worker file-lock on the shared
+`zquery_timing_*` sidecar (now re-run serially in a second pass). The lone
+**OTHER** is `test_having_nested`: a per-row value predicate
+(`store_order_count > 1000`) the classifier can't cleanly call SHAPE or ROWS.
+In isolation it fails under v4 (got 534) but passes under v3; at file level it
+xpasses, so it is cross-test-pollution-dependent, not a full-suite regression.
+
+#### Classifier heuristic fix (2026-06-22)
+
+`v4_classify.py` had two bugs that produced the false positives above:
+
+1. **Parallel `zquery_timing` collision mislabeled CRASH.** The benchmark
+   suites read-modify-write a shared `zquery_timing_{fingerprint}.log` per test
+   (temp-file + atomic `replace()`); the 8-worker pool races the rename →
+   Windows `PermissionError`. Fix: detect `(Permission|FileExists)Error … zquery_timing`,
+   flag the node, and re-run those nodes **serially** after the pool drains.
+2. **ROWS/SHAPE split scanned the wrong text.** It searched full stderr for
+   space-anchored SQL tokens (`select `, ` from `), which miss real
+   newline/truncated query text, so SQL-text asserts fell through to ROWS. Fix:
+   switch to `--tb=short` and classify on the `E ` assertion-operand lines with
+   word-boundary SQL tokens; SQL token ⇒ SHAPE, else row signal (count/`len(`/row
+   mismatch/tuple-eq) ⇒ ROWS, else OTHER. NB: dropped `where`/`and` from the SQL
+   token set — pytest's own assertion-rewrite explanation lines (` + where 534 = …`)
+   use those words and were false-matching SQL (this is what had masked
+   `test_having_nested` as SHAPE).
+
+### Correctness parity — corrected (fresh full v4 sweep 2026-06-22)
+
+The prior "v4 is at correctness parity" line was based solely on the
+`v4_known_failing.py` skip list, and that list is **stale**: the classifier only
+audits tests already on it, so it is blind to regressions in tests added after
+the list was last curated. A fresh full v4 sweep
+(`TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution"`) reports
+**4105 passed / 5 xfailed / 40 xpassed / 13 failed** (+82 clickhouse.cloud
+connection errors, environmental — ignore). The 13 are untracked, all added in
+#584, all pass under v3:
+
+- **`membership in having` over UNION ALL** — 3 tests
+  (`test_membership_in_having_{over_window,auto_concept,no_projected_flag}_renders_valid_subselect`).
+  **FIXED 2026-06-22** (v4-only). v4 never sourced the existence subselect for
+  a HAVING membership, nor for a *projected* membership flag (`--x in set as
+  flag`), so both rendered `INVALID_REFERENCE_BUG`. Two changes mirroring v3:
+  (1) `_get_query_node_v4` now calls `append_existence_check` after applying the
+  HAVING; (2) `strategy_builder._group_existence_concepts` now also collects the
+  existence set from a `BuildConceptArgs` (SubselectComparison) lineage, not just
+  `BuildFilterItem`. Full sweep confirms 0 regressions. See the eval doc
+  `evals/tpcds_agent/bug_invalid_reference_codegen_having_membership.md`.
+- **disconnected-component detection** — 13 tests
+  (`test_disconnected_components_e2e.py` ×10 + `test_disconnected_subgraphs.py`
+  ×3). Pre-existing (fail with the membership fix stashed too — not a
+  regression). **10/13 FIXED 2026-06-22**: `_get_query_node_v4`'s dead-end
+  (`info.strategy_node is None`) now mirrors the v3 `get_priority_concept`
+  dead-end — it runs `disconnected_components` over (outputs + WHERE row args)
+  and raises the typed `DisconnectedConceptsException(msg, subgraphs=…)` when
+  the required concepts split into >1 subgraph, instead of a generic
+  `UnresolvableQueryException`. The remaining **3 are deeper v4 cross-join
+  semantics gaps**, not exception-typing — v4 resolves/crashes where it should
+  raise (and vice-versa) instead of dead-ending to `None`:
+    - `test_where_filter_pulls_in_disconnected_model` — v4 silently builds a
+      `RIGHT OUTER JOIN … ON 1=1` cross-join for `select av where bv > 0` over
+      unrelated models, so the dead-end is never reached. Should raise.
+    - `test_abstract_aggregates_cross_join_resolve` — should *resolve* (two
+      single-row `sum`s cross-join), but v4 crashes with `IndexError` in
+      `calculate_effective_parent_grain` (`qds.datasources[0]`, empty datasources).
+    - `test_cross_cte_aggregate_grain_only_bridge_raises` — nested dead-end
+      (inside building the `combined` CTE), deeper than the top-level None site;
+      expects inner-namespace subgraphs (`a_agg.a_id`, `b_agg.sb`).
+
+After the membership fix + the 10/13 disconnected fix, those 3 deeper
+cross-join-semantics cases are now **tracked** in `v4_known_failing.py`
+(`_DISCONNECTED`), so the v4 gate is green again. They are the only known open v4
+correctness work; full diagnosis + repros + fix pointers are in
+`local_scripts/v4_disconnected_handoff.md`. Parity is **confirmed modulo those 3
+tracked cases** (re-run a full v4 sweep after the next planner change to catch
+any newly-added untracked tests — the classifier alone cannot).
 
 XPASS-in-isolation, promote candidates (re-confirm in a full-suite run before
 removing — the list is non-strict precisely because of cross-test state leakage):
 
 - `tests/modeling/test_complex.py::test_in_select`
+- `tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters`
 - `tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_nine`
 - `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_one`
 - `tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_seven_two`
@@ -192,12 +225,19 @@ Still-watch areas:
 
 ## Next cleanup loop
 
-With `top_x_by_metric` fixed, there are **no remaining genuine wrong-rows
-regressions**; the rest of the list is SHAPE/SIZE plus pollution-flaky xpasses.
+Among *tracked* entries the rest of the list is SHAPE/SIZE plus pollution-flaky
+xpasses. The open correctness work is the **untracked** `membership in having`
+over-union cluster (see "Correctness parity — corrected"); fix or track it, then
+re-run a full v4 sweep to confirm nothing else regressed since #584 (the
+classifier only re-checks tests already on the skip list, so a fresh full-suite
+run is the only way to find new untracked gaps).
 
-1. Remove the 4 XPASS candidates above (all confirmed xpassing in the latest
-   full-suite run): `test_in_select`, `test_sixty_nine`, `test_ninety_seven_one`,
-   `test_ninety_seven_two`. That empties the `_RESULT` bucket entirely.
+1. Remove the 5 XPASS candidates above (confirmed xpassing in isolation; the
+   geography `test_exact_match_merge_preserves_subgraph_filters` is the newest):
+   `test_in_select`, `test_exact_match_merge_preserves_subgraph_filters`,
+   `test_sixty_nine`, `test_ninety_seven_one`, `test_ninety_seven_two`.
+   Re-confirm in a full-suite run first. Removing `test_ninety_seven_two`
+   empties the `_RESULT` bucket entirely.
 2. Split the 13 `_MODELING` entries into `_INLINE` or `_TPCDS_SIZE` (all are
    SHAPE per the classifier — no rows diffs left).
 3. Re-run `local_scripts/v4_classify.py` after any planner change.
