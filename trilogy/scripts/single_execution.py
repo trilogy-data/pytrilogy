@@ -5,6 +5,7 @@ from typing import Any, Union
 from trilogy import Executor
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedQuery,
     ProcessedValidateStatement,
 )
 from trilogy.dialect.results import ChartResult
@@ -107,6 +108,12 @@ def execute_single_statement(
         return False, None, duration, e
 
 
+def _statement_limit(query: PROCESSED_STATEMENT_TYPES) -> int | None:
+    """The statement's own ``LIMIT`` (only ``ProcessedQuery`` carries one), so
+    the JSON result event can flag a LIMIT-bounded prefix."""
+    return query.limit if isinstance(query, ProcessedQuery) else None
+
+
 def execute_queries_with_progress(
     exec: Executor,
     queries: list[PROCESSED_STATEMENT_TYPES],
@@ -142,14 +149,30 @@ def execute_queries_with_progress(
 
             # Store results for printing after progress is done
             results_to_print.append(
-                (idx, len(queries), duration, success, results, error)
+                (
+                    idx,
+                    len(queries),
+                    duration,
+                    success,
+                    results,
+                    error,
+                    _statement_limit(query),
+                )
             )
             progress.advance(task)
             if exception:
                 break
 
     # Print all results after progress bar is finished
-    for idx, total_queries, duration, success, results, error in results_to_print:
+    for (
+        idx,
+        total_queries,
+        duration,
+        success,
+        results,
+        error,
+        q_limit,
+    ) in results_to_print:
         if error:
             show_statement_result(
                 idx, total_queries, duration, False, str(error), type(error)
@@ -161,7 +184,9 @@ def execute_queries_with_progress(
                 if isinstance(results, ChartResult):
                     print_chart_terminal(results.data, results.statement)
                 else:
-                    print_results_table(results, row_limit=row_limit)
+                    print_results_table(
+                        results, row_limit=row_limit, query_limit=q_limit
+                    )
                     total_rows += len(results.rows)
 
     return exception, total_rows
@@ -197,7 +222,9 @@ def execute_queries_simple(
             if isinstance(results, ChartResult):
                 print_chart_terminal(results.data, results.statement)
             else:
-                print_results_table(results, row_limit=row_limit)
+                print_results_table(
+                    results, row_limit=row_limit, query_limit=_statement_limit(query)
+                )
                 total_rows += len(results.rows)
 
     return exception, total_rows

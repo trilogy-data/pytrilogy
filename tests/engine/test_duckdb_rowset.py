@@ -545,25 +545,70 @@ select combined.k;
 """)
 
 
-def test_tvf_union_output_alias_self_reference_errors():
-    # Aliasing a union output column back to its own aligned name
-    # (`combined.k as k`) closes a reference cycle: the rowset column `combined.k`
-    # wraps the union's `k` output (`local.k`), and `as k` redefines `local.k` as
-    # `alias(combined.k)`. This used to blow the stack with a RecursionError; it
-    # must now raise a clean, actionable error.
+def test_tvf_union_named_output_self_alias_resolves():
+    # A named `union(...)` re-projecting or aggregating its own output columns to
+    # the same name (`combined.k as k`, `sum(combined.v) as v`) must work: the
+    # named form registers its aligned outputs under the hidden per-rowset name
+    # (`local._combined_k`), so the user-facing `local.k` is free and the outer
+    # `as k`/`as v` no longer closes a build cycle with the rowset wrapper. This
+    # used to blow the stack with a RecursionError (q05).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+
+    # Re-aliasing an output to its own name must behave identically to aliasing
+    # it to a fresh name — the self-name no longer special-cases (or cycles).
+    self_named = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as k, combined.v as v order by k asc, v asc;
+""")[0].fetchall()
+    distinct_named = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as kk, combined.v as vv order by kk asc, vv asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in self_named] == [tuple(r) for r in distinct_named]
+
+    aggregated = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k, sum(combined.v) as v order by combined.k asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in aggregated] == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_inline_output_self_alias_errors():
+    # The inline form (`from union(...) -> (k, v) select ...`) keeps its outputs
+    # under the bare names so the trailing select resolves them, so re-aliasing an
+    # output to its own name there genuinely closes a cycle and must raise a clean
+    # error rather than overflowing the stack.
     import pytest
 
     from trilogy.core.exceptions import InvalidSyntaxException
 
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_TVF_UNION_FIXTURE)
-    with pytest.raises(InvalidSyntaxException, match="refers back to itself"):
+    with pytest.raises(InvalidSyntaxException, match="cannot reference itself"):
         executor.generate_sql("""
-with combined as union(
+from union(
     (where yr = 2001 select item_id -> k, val -> v),
     (where yr = 2002 select item_id -> k, val -> v)
-) -> (k, v);
-select combined.k as k, combined.v as v order by k asc;
+) -> (k, v)
+select k, sum(v) as v order by k asc;
+""")
+    with pytest.raises(InvalidSyntaxException, match="refers back to itself"):
+        executor.generate_sql("""
+from union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v)
+select k, v as v order by k asc;
 """)
 
 

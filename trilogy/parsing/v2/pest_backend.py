@@ -12,6 +12,7 @@ from trilogy.parsing.v2.errors import (
     detect_clause_after_join,
     detect_definition_after_clause,
     detect_group_by,
+    detect_missing_signature_semicolon,
     detect_subselect,
 )
 from trilogy.parsing.v2.syntax import (
@@ -299,6 +300,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     align_pos = detect_align_missing_and(text, pos)
     if align_pos is not None:
         return create_syntax_error(221, align_pos, text)
+
+    # 222: a named `union(...) -> (...)` definition not terminated with `;`
+    # before the consuming statement. Confirm by inserting `;` and reparsing.
+    sig_pos = detect_missing_signature_semicolon(text, pos)
+    if sig_pos is not None and _pest_parses(text[:sig_pos] + ";" + text[sig_pos:]):
+        return create_syntax_error(222, sig_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position
     # is at or past the last non-whitespace character — otherwise we'd mask

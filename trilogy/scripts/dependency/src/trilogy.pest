@@ -365,8 +365,14 @@ comparison = { sum_operator ~ (COMPARISON_OPERATOR ~ sum_operator)? }
 // ?between_root: sum_chain "between" sum_chain "and" sum_chain
 between_comparison = { sum_operator ~ ^"between" ~ sum_operator ~ ^"and" ~ sum_operator }
 
-// ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)*
-sum_operator = { product_operator ~ (PLUS_OR_MINUS ~ product_operator)* }
+// ?sum_chain: UNARY_MINUS? product_chain (PLUS_OR_MINUS product_chain)*
+// A leading UNARY_MINUS is prefix negation on the first product_chain
+// (`-sum(x)`, `-col`, `-(a+b)`); it binds only the first operand so
+// `-a + b` is `(-a) + b`. UNARY_MINUS's negative lookahead excludes a `-`
+// glued to a number, so a negative literal (`-1`) stays a single literal.
+sum_operator = { UNARY_MINUS? ~ product_operator ~ (PLUS_OR_MINUS ~ product_operator)* }
+// `-` not glued to a number (`-sum`, `- 1`, `-(x)`) and not the `->` arrow.
+UNARY_MINUS = @{ "-" ~ !(ASCII_DIGIT | "." | ">") }
 
 // ?product_chain: atom (MULTIPLY_DIVIDE_PERCENT atom)*
 product_operator = { access_chain ~ (MULTIPLY_DIVIDE_PERCENT ~ access_chain)* }

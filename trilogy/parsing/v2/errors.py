@@ -61,6 +61,13 @@ ERROR_CODES: dict[int, str] = {
         "A comma here does not start a new group, so the previous group consumed this "
         "name as one of its columns."
     ),
+    222: (
+        "Missing `;` — a named definition must be terminated with a semicolon "
+        "before the next statement. Terminate the `union(...) -> (...)` (or "
+        "`with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after "
+        "its `-> (...)` output signature, then start the consuming `select` on the "
+        "next line. Example: `with u as union(...) -> (channel, np); select ...`."
+    ),
 }
 
 
@@ -273,6 +280,48 @@ def detect_by_on_wrapped_aggregate(text: str, pos: int) -> int | None:
     if _AGG_CALL_RE.search(text, open_paren + 1, i) is None:
         return None
     return by_pos
+
+
+_TVF_SIGNATURE_RE = re.compile(r"->\s*\(")
+
+
+def detect_missing_signature_semicolon(text: str, pos: int) -> int | None:
+    """Locate a TVF output signature `-> (cols)` that was not terminated with a
+    `;` before the next statement (e.g. `with u as union(...) -> (a, b) select
+    ...`). Returns the position just after the signature's closing `)` (where the
+    `;` belongs), or None. The two backends report the failure at different
+    spots — pest on the signature's `)`, lark on the following statement keyword
+    — so anchor on the nearest `-> (` at or before ``pos``. Shared by both
+    backends; each confirms with a `;`-insertion reparse before surfacing."""
+    sig = None
+    for m in _TVF_SIGNATURE_RE.finditer(text, 0, pos + 2):
+        sig = m
+    if sig is None:
+        return None
+    open_paren = sig.end() - 1
+    depth = 0
+    close = None
+    for i in range(open_paren, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                close = i
+                break
+    if close is None:
+        return None
+    # Next non-space char after the signature: a `;` means it IS terminated, so
+    # this isn't the bug; end-of-input is the trailing-terminator case (202).
+    nxt = close + 1
+    while nxt < len(text) and text[nxt].isspace():
+        nxt += 1
+    if nxt >= len(text) or text[nxt] == ";":
+        return None
+    # The failure must sit within the signature or at the following token.
+    if pos < open_paren or pos > nxt:
+        return None
+    return close + 1
 
 
 DEFAULT_ERROR_SPAN: int = 30

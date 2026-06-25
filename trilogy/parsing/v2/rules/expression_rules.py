@@ -32,7 +32,12 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+from trilogy.parsing.v2.syntax import (
+    SyntaxNode,
+    SyntaxNodeKind,
+    SyntaxToken,
+    SyntaxTokenKind,
+)
 
 _LIKE_OPERATORS = {
     "like": ComparisonOperator.LIKE,
@@ -158,10 +163,26 @@ def sum_operator(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Any:
-    values = hydrated_children(node, hydrate)
-    if len(values) == 1:
+    children = node.children
+    # A leading UNARY_MINUS is prefix negation on the first product_chain
+    # (`-sum(x)`, `-col`). It binds only the first operand so precedence stays
+    # `(-a) + b`. A negative numeric literal (`-1`) never reaches here — its
+    # sign is part of the literal token.
+    negate_leading = bool(
+        children
+        and isinstance(children[0], SyntaxToken)
+        and children[0].kind == SyntaxTokenKind.UNARY_MINUS
+    )
+    if negate_leading:
+        children = children[1:]
+    values = [hydrate(child) for child in children]
+    if len(values) == 1 and not negate_leading:
         return values[0]
     result = values[0]
+    if negate_leading:
+        result = context.function_factory.create_function(
+            [result, -1], operator=FunctionType.MULTIPLY, meta=core_meta(node.meta)
+        )
     for i in range(1, len(values), 2):
         op = " ".join(str(values[i]).lower().split())
         right = values[i + 1]

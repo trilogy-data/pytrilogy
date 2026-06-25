@@ -13,6 +13,7 @@ from trilogy.parsing.v2.errors import (
     detect_clause_after_join,
     detect_definition_after_clause,
     detect_group_by,
+    detect_missing_signature_semicolon,
     detect_subselect,
 )
 from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
@@ -162,6 +163,12 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     align_pos = detect_align_missing_and(text, pos)
     if align_pos is not None:
         raise create_syntax_error(221, align_pos, text)
+
+    # 222: a named `union(...) -> (...)` definition not terminated with `;`
+    # before the consuming statement. Confirm by inserting `;` and reparsing.
+    sig_pos = detect_missing_signature_semicolon(text, pos)
+    if sig_pos is not None and _lark_parses(text[:sig_pos] + ";" + text[sig_pos:]):
+        raise create_syntax_error(222, sig_pos, text)
 
     if last_token and e.token.type == "$END":
         try:

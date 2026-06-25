@@ -385,7 +385,14 @@
 
     PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | /not\s+ilike/i | /not\s+like/i | "ilike"i | "like"i )
 
-    ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
+    // A leading UNARY_MINUS is prefix negation on the first product_chain
+    // (`-sum(x)`, `-col`, `-(a+b)`). It binds only the first operand, so
+    // `-a + b` is `(-a) + b`. UNARY_MINUS's negative lookahead excludes a `-`
+    // glued to a digit/dot, so a negative numeric literal (`-1`, `-1.5`) still
+    // lexes as a single number — there's no overlap to resolve by priority.
+    ?sum_chain: UNARY_MINUS? product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
+    // `-` not glued to a number (`-sum`, `- 1`, `-(x)`) and not the `->` arrow.
+    UNARY_MINUS: /-(?![0-9.>])/
     
     MULTIPLY_DIVIDE_PERCENT: ("**" | "*" | "/" | "%")
 
@@ -681,7 +688,7 @@
 
     INT_LITERAL_PART: /\-?[0-9]+/
     int_lit: INT_LITERAL_PART
-    
+
     float_lit: /\-?[0-9]*\.[0-9]+/
 
     array_lit: "[" (expr ("," expr)* ","?)? "]"()

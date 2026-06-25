@@ -169,6 +169,48 @@ order by sum(amount) desc;
     assert [tuple(r) for r in results] == [("B", 130.0), ("A", 30.0)]
 
 
+def test_grouping_without_rollup_raises_clean_error():
+    """`grouping()` is meaningless without an enclosing grouping set. Reached from
+    the SELECT with no `by rollup`/cube/grouping-sets aggregate to anchor it — as
+    a named `auto` concept (V1) or inline in a case (V3) — the grouping wrapper's
+    concept gets an unanchorable abstract grain that recurses in build. Reject it
+    with a clean author-time error instead of stack-overflowing. q05."""
+    for select in (
+        # V1: grouping() captured in a named derived concept, no rollup.
+        """
+auto ct <- case when grouping(brand) = 1 then 'tot' else brand end;
+select ct, sum(amount) as g;
+""",
+        # V3: grouping() inline in a select case, no rollup.
+        """
+select case when grouping(brand) = 1 then 'tot' else brand end as ct,
+    sum(amount) as g;
+""",
+    ):
+        engine = Dialects.DUCK_DB.default_executor()
+        engine.execute_text(_ROLLUP_GROUPING_MODEL)
+        with raises(InvalidSyntaxException, match="grouping"):
+            engine.generate_sql(select)
+
+
+def test_grouping_in_named_concept_with_rollup_builds():
+    """The valid form of the above: a named `auto` concept wrapping `grouping()`
+    builds and runs as long as a `by rollup` aggregate in the select anchors it."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+auto ct <- case when grouping(brand) = 1 then 'tot' else brand end;
+select ct, sum(amount) by rollup brand as g
+order by ct desc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("tot", 160.0),
+        ("B", 130.0),
+        ("A", 30.0),
+    ]
+
+
 _COMPOSITE_ROLLUP_MODEL = """
 key chan int;
 key oid int;

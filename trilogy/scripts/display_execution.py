@@ -309,18 +309,38 @@ def _column_stats(columns: list, rows: list) -> list[dict]:
     return stats
 
 
-def _emit_results_json(results: ResultSet, cap: int) -> None:
+_LIMIT_BOUNDED_STATS_NOTE = (
+    "column_stats cover only the returned rows, and this result reached the "
+    "query's LIMIT — so it is a prefix of the full result. An ORDER BY biases "
+    "distinct/min/max toward that prefix (e.g. distinct=1 may just mean other "
+    "values sort past the LIMIT). Use count_distinct / aggregates for true "
+    "cardinality rather than reading it off a LIMIT-bounded sample."
+)
+
+
+def _emit_results_json(
+    results: ResultSet, cap: int, query_limit: int | None = None
+) -> None:
     """Emit a query result set as a single ``result`` NDJSON event.
 
     Mirrors the rich table's display contract: the full result is fetched (so
     ``row_count`` is exact) but only ``cap`` rows are emitted, middle-truncated
     head+tail, with ``displayed``/``truncated``/``omitted`` reporting the gap.
     When rows are elided, ``column_stats`` carries per-column non-null/distinct/
-    range over the full fetched set. Rows are plain lists; non-JSON cell values
+    range over the full fetched set. ``limit_bounded`` flags that the result hit
+    the query's own ``LIMIT`` — so the rows (and the stats) are a prefix of the
+    full result, not the whole thing. Rows are plain lists; non-JSON cell values
     fall back to ``str`` via the event serializer."""
     rows = results.rows
     total = len(rows)
     hit_fetch_ceiling = total >= _core.DISPLAY_FETCH_CEILING
+    # The result reached the query's own LIMIT, so it is a deliberate prefix —
+    # callers must read distinct/min/max as describing that prefix, not the
+    # full data (the q14 "only CATALOG" misread of a `limit 100` sorted by
+    # channel).
+    limit_bounded = (
+        query_limit if query_limit is not None and total >= query_limit else None
+    )
     head, tail, omitted = _slice_for_middle_truncation(rows, cap)
     shown: list = [list(r) for r in head]
     # Inject a visible marker where the middle was cut so the agent doesn't
@@ -338,18 +358,26 @@ def _emit_results_json(results: ResultSet, cap: int) -> None:
         truncated=omitted > 0 or None,
         omitted=omitted or None,
         column_stats=_column_stats(list(results.columns), rows) if omitted else None,
+        column_stats_note=(
+            _LIMIT_BOUNDED_STATS_NOTE if (limit_bounded and omitted) else None
+        ),
+        limit_bounded=limit_bounded,
         fetch_ceiling_hit=hit_fetch_ceiling or None,
     )
 
 
-def print_results_table(results: ResultSet, row_limit: int | None = None) -> None:
+def print_results_table(
+    results: ResultSet, row_limit: int | None = None, query_limit: int | None = None
+) -> None:
     """Print query results using Rich tables or fallback.
 
     ``row_limit`` is the displayed-rows ceiling. ``None`` keeps the legacy
-    default (50 rows shown, one extra fetched as a "more exist" sentinel)."""
+    default (50 rows shown, one extra fetched as a "more exist" sentinel).
+    ``query_limit`` is the statement's own ``LIMIT`` (if any), surfaced in JSON
+    mode so a consumer knows the result is a prefix of the full set."""
     cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
     if is_json_mode():
-        _emit_results_json(results, cap)
+        _emit_results_json(results, cap, query_limit)
         return
     if _core.RICH_AVAILABLE and _core.console is not None:
         _print_rich_table(results.rows, headers=results.columns, row_limit=cap)

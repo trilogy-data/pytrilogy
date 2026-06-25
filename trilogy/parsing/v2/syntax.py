@@ -299,6 +299,7 @@ class SyntaxTokenKind(str, Enum):
     UNIQUE = "unique"
     COMPARISON_OPERATOR = "comparison_operator"
     PLUS_OR_MINUS = "plus_or_minus"
+    UNARY_MINUS = "unary_minus"
     MULTIPLY_DIVIDE_PERCENT = "multiply_divide_percent"
     CONCEPTS = "concepts"
     DATASOURCES = "datasources"
@@ -633,6 +634,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "UNIQUE": SyntaxTokenKind.UNIQUE,
     "COMPARISON_OPERATOR": SyntaxTokenKind.COMPARISON_OPERATOR,
     "PLUS_OR_MINUS": SyntaxTokenKind.PLUS_OR_MINUS,
+    "UNARY_MINUS": SyntaxTokenKind.UNARY_MINUS,
     "MULTIPLY_DIVIDE_PERCENT": SyntaxTokenKind.MULTIPLY_DIVIDE_PERCENT,
     "CONCEPTS": SyntaxTokenKind.CONCEPTS,
     "DATASOURCES": SyntaxTokenKind.DATASOURCES,

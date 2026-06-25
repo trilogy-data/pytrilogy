@@ -803,6 +803,21 @@ def _fix_projection_grouping_mode(
     """
     spec = _select_rollup_spec(select, context)
     if spec is None:
+        # `grouping()` has no meaning without an enclosing grouping set. With no
+        # rollup/cube/grouping-sets aggregate to anchor it, a standard-mode
+        # wrapper reached from the SELECT gives its (possibly named) concept an
+        # unanchorable abstract grain whose resolution recurses. Reject it here.
+        for sitem in select.selection:
+            lineage = _item_lineage(sitem, context)
+            if lineage is None:
+                continue
+            if _collect_standard_grouping_wrappers(lineage):
+                raise InvalidSyntaxException(
+                    "grouping()/grouping_id() requires a `by rollup`/`by cube`/"
+                    "grouping-sets aggregate in the enclosing select; it has no "
+                    "meaning without a grouping set (e.g. add `by rollup <dim>` "
+                    "to an aggregate in the select)."
+                )
         return
     mode, by, grouping_sets = spec
     for sitem in select.selection:
