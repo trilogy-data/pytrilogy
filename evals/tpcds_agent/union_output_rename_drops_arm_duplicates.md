@@ -1,6 +1,20 @@
 # Bug: renaming a `union(...)` output column drops UNION ALL arm duplicates
 
-**Status:** OPEN — confirmed, deterministic repro on the current tree (2026-06-25).
+**Status:** FIXED 2026-06-25. Fix: `concept_source_address`
+(`trilogy/core/processing/grain_utility.py`) now recursively unwraps a pure
+BASIC `ALIAS` to its source address, so a renamed union output
+(`combined.k as kk` → `combined.k` → rowset/body column) is recognized as the
+same grain as the union node and the spurious collapsing `GROUP BY` is no longer
+emitted. The recursion matters: a single hop stops at the rowset output
+(`combined.k`); a second hop is needed to reach the canonical body column that
+`comp_grain` carries. A blanket "RowsetNode never regroups" was rejected — it
+broke a legit regroup where a union sort-key carrier feeds a coarser-grain join
+(`test_tvf_union_order_by_grouped_away_column`). Regression test:
+`tests/engine/test_duckdb_rowset.py::test_tvf_union_renamed_output_preserves_arm_duplicates`.
+
+---
+
+**Status (original):** OPEN — confirmed, deterministic repro on the current tree (2026-06-25).
 **Surfaced by:** writing tests for the named-union self-alias fix
 (`q05_union_output_self_alias_recursion_bug.md`); the self-alias passthrough
 returned fewer rows than the no-rename projection.

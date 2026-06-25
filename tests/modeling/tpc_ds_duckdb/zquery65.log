@@ -1,6 +1,6 @@
 query_id = "65"
 generator = "v3"
-gen_length = 2442
+gen_length = 2354
 preql_size = 670
 comp_size = 1062
 generated_sql = """
@@ -54,14 +54,6 @@ FROM
 WHERE
     \"abundant\".\"item_revenue\" <= 0.1 * \"thoughtful\".\"store_avg_revenue\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"thoughtful\".\"store_avg_revenue\"
 ORDER BY 
     \"abundant\".\"store_sales_store_name\" asc nulls first,
     \"abundant\".\"store_sales_item_desc\" asc nulls first

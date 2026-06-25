@@ -896,13 +896,18 @@ select k, v;
 
 
 def _tvf_union_output(env, name: str):
-    """Return the inner TVF_UNION output concept named ``name``."""
+    """Return the inner TVF_UNION output concept for user output ``name``.
+
+    A named `union(...)` registers its aligned outputs under the hidden
+    per-rowset name (`_combined_k`), so match the unmangled suffix too.
+    """
     from trilogy.core.enums import Derivation
 
     return next(
         c
         for c in env.concepts.values()
-        if c.derivation == Derivation.TVF_UNION and c.name == name
+        if c.derivation == Derivation.TVF_UNION
+        and (c.name == name or c.name.endswith(f"_{name}"))
     )
 
 

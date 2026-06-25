@@ -583,6 +583,42 @@ select combined.k, sum(combined.v) as v order by combined.k asc;
     assert [tuple(r) for r in aggregated] == [(1, 40), (2, 10)]
 
 
+def test_tvf_union_renamed_output_preserves_arm_duplicates():
+    # Regression: renaming a `union(...)` output (`combined.k as kk`) is a pure
+    # 1:1 relabel and must NOT change row multiplicity. The rename used to mint a
+    # BASIC alias that re-grained to the select grain, forcing a GROUP BY that
+    # collapsed the UNION ALL cross-arm duplicate (item 2 has val=5 in both arms),
+    # silently dropping a row vs the bare projection.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    bare = [tuple(r) for r in executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k, combined.v order by 1, 2;
+""")[0].fetchall()]
+    renamed_sql = executor.generate_sql("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as kk, combined.v as vv order by 1, 2;
+""")[-1]
+    renamed = [tuple(r) for r in executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as kk, combined.v as vv order by 1, 2;
+""")[0].fetchall()]
+    assert bare == [(1, 10), (1, 30), (2, 5), (2, 5)]
+    assert renamed == bare
+    # the rename must not introduce a collapsing GROUP BY over the stack: only the
+    # two per-arm group bys remain, none on the outer projection.
+    assert renamed_sql.count("GROUP BY") == 2
+
+
 def test_tvf_union_inline_output_self_alias_errors():
     # The inline form (`from union(...) -> (k, v) select ...`) keeps its outputs
     # under the bare names so the trailing select resolves them, so re-aliasing an

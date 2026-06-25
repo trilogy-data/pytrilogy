@@ -887,11 +887,19 @@ def function_to_concept(
         if isinstance(source, ConceptRef) and _alias_target_cycles(
             f"{namespace}.{name}", source, environment
         ):
+            existing = environment.concepts.get(f"{namespace}.{name}")
+            where = ""
+            if (
+                existing is not None
+                and existing.metadata is not None
+                and existing.metadata.line_number is not None
+            ):
+                where = f" (defined at line {existing.metadata.line_number})"
             raise InvalidSyntaxException(
-                f"Output column '{name}' aliases '{source.address}', which is "
-                f"itself the '{name}' output of a union(...)/rowset, so the "
-                "rename refers back to itself. Use a distinct output name "
-                f"(e.g. '{name}_out')."
+                f"Output column '{name}' renames '{source.address}' back to the "
+                f"name of an existing concept '{name}'{where} that "
+                f"'{source.address}' is derived from, so the rename refers back to "
+                f"itself. Use a distinct output name (e.g. '{name}_out')."
             )
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)

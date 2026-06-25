@@ -54,15 +54,6 @@ properties <order_id, channel, item.id> (
     row_one int?, # Constant 1 from the sales datasources only (NOT return-only rows): counts sale presence. Use is_returned for return presence; `row_one ? is_returned` counts lines with BOTH a sale and a return.
 );
 
-# Per-line net profit after returns: the sale's reported net_profit minus any return
-# net loss recorded on that same line. SUM IT DIRECTLY (`sum(net_profit_net_return_loss)`)
-# — do NOT compute `sum(net_profit) - sum(return_net_loss)`, which over-subtracts wherever
-# net_profit is NULL (NULL sale profit + a real return loss). Here net_profit is kept RAW
-# (so a line with no reported profit drops from the sum, matching the TPC-DS reference)
-# while return_net_loss is coalesced to 0 (a non-returned line has no loss). Use for
-# channel/outlet "sales and returns" P&L reports (e.g. q05/q80 net-profit columns).
-auto net_profit_net_return_loss <- net_profit - coalesce(return_net_loss, 0);
-
 partial datasource web_sales_unified (
     raw(''' 'WEB' '''): channel,
     WS_ORDER_NUMBER: order_id,

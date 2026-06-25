@@ -111,17 +111,17 @@ def concept_source_address(concept: BuildConcept) -> str:
         if isinstance(content, BuildConcept):
             return content.address
     # A pure rename (`combined.k as kk`) is a 1:1 relabel, so for grain purposes
-    # it lives at the source concept's grain. Without this the renamed alias
-    # becomes its own grain component and a projection of union/stack outputs
-    # looks like extra grain, forcing a spurious GROUP BY that drops UNION ALL
-    # duplicate rows.
+    # it lives at the source concept's grain. Recurse, since the renamed source
+    # may itself be a rowset/filter output (`combined.k` -> body column): without
+    # this a renamed projection of union/stack outputs looks like extra grain and
+    # forces a spurious GROUP BY that drops UNION ALL duplicate rows.
     if (
         concept.derivation == Derivation.BASIC
         and isinstance(concept.lineage, BuildFunction)
         and concept.lineage.operator == FunctionType.ALIAS
         and len(concept.lineage.concept_arguments) == 1
     ):
-        return concept.lineage.concept_arguments[0].address
+        return concept_source_address(concept.lineage.concept_arguments[0])
     return concept.address
 
 
