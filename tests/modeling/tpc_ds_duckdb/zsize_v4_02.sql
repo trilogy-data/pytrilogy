@@ -52,7 +52,7 @@ FROM
     "cooperative"
 GROUP BY
     1),
-concerned as (
+vacuous as (
 SELECT
     "uneven"."_virt_agg_sum_1215995592885356" as "_virt_agg_sum_1215995592885356",
     "uneven"."_virt_agg_sum_1755492547499297" as "_virt_agg_sum_1755492547499297",
@@ -72,19 +72,19 @@ SELECT
 FROM
     "uneven")
 SELECT
-    "concerned"."sales_date_week_seq" as "sales_date_week_seq",
-    round("concerned"."_virt_agg_sum_5898269946212687" / ("concerned"."_virt_window_lead_3355739386573542"),2) as "sunday_increase",
-    round("concerned"."_virt_agg_sum_1215995592885356" / ("concerned"."_virt_window_lead_8434916643189094"),2) as "monday_increase",
-    round("concerned"."_virt_agg_sum_5503961012463124" / ("concerned"."_virt_window_lead_5402686874923245"),2) as "tuesday_increase",
-    round("concerned"."_virt_agg_sum_6232287870778562" / ("concerned"."_virt_window_lead_8846802885933861"),2) as "wednesday_increase",
-    round("concerned"."_virt_agg_sum_3226984322777641" / ("concerned"."_virt_window_lead_7589933802981203"),2) as "thursday_increase",
-    round("concerned"."_virt_agg_sum_1755492547499297" / ("concerned"."_virt_window_lead_1513977696668684"),2) as "friday_increase",
-    round("concerned"."_virt_agg_sum_3160525683686265" / ("concerned"."_virt_window_lead_6726398054446491"),2) as "saturday_increase"
+    "vacuous"."sales_date_week_seq" as "sales_date_week_seq",
+    round("vacuous"."_virt_agg_sum_5898269946212687" / ("vacuous"."_virt_window_lead_3355739386573542"),2) as "sunday_increase",
+    round("vacuous"."_virt_agg_sum_1215995592885356" / ("vacuous"."_virt_window_lead_8434916643189094"),2) as "monday_increase",
+    round("vacuous"."_virt_agg_sum_5503961012463124" / ("vacuous"."_virt_window_lead_5402686874923245"),2) as "tuesday_increase",
+    round("vacuous"."_virt_agg_sum_6232287870778562" / ("vacuous"."_virt_window_lead_8846802885933861"),2) as "wednesday_increase",
+    round("vacuous"."_virt_agg_sum_3226984322777641" / ("vacuous"."_virt_window_lead_7589933802981203"),2) as "thursday_increase",
+    round("vacuous"."_virt_agg_sum_1755492547499297" / ("vacuous"."_virt_window_lead_1513977696668684"),2) as "friday_increase",
+    round("vacuous"."_virt_agg_sum_3160525683686265" / ("vacuous"."_virt_window_lead_6726398054446491"),2) as "saturday_increase"
 FROM
-    "concerned"
+    "vacuous"
 WHERE
-    round("concerned"."_virt_agg_sum_5898269946212687" / ("concerned"."_virt_window_lead_3355739386573542"),2) is not null
+    round("vacuous"."_virt_agg_sum_5898269946212687" / ("vacuous"."_virt_window_lead_3355739386573542"),2) is not null
 
 ORDER BY 
-    "concerned"."sales_date_week_seq" asc nulls first
+    "vacuous"."sales_date_week_seq" asc nulls first
 LIMIT (100)

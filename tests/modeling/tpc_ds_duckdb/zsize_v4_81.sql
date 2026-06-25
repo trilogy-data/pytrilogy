@@ -80,7 +80,7 @@ SELECT
     "cooperative"."cr_return_address_state" as "cr_return_address_state"
 FROM
     "cooperative"),
-young as (
+concerned as (
 SELECT
     "yummy"."customer_state" as "customer_state",
     coalesce("uneven"."cr_return_address_state","yummy"."cr_return_address_state") as "cr_return_address_state"
@@ -91,25 +91,25 @@ GROUP BY
     1,
     2,
     coalesce("uneven"."cr_billing_customer_id","yummy"."cr_billing_customer_id")),
-abhorrent as (
+sparkling as (
 SELECT
-    "young"."cr_return_address_state" as "cr_return_address_state",
-    1.2 * avg("young"."customer_state") as "scaled_state"
+    "concerned"."cr_return_address_state" as "cr_return_address_state",
+    1.2 * avg("concerned"."customer_state") as "scaled_state"
 FROM
-    "young"
+    "concerned"
 GROUP BY
     1),
-late as (
+sweltering as (
 SELECT
-    "questionable"."cr_billing_customer_id" as "cr_billing_customer_id",
-    "questionable"."cr_return_address_state" as "cr_return_address_state",
-    "yummy"."customer_state" as "customer_state"
+    "cooperative"."cr_billing_customer_id" as "cr_billing_customer_id",
+    "yummy"."customer_state" as "customer_state",
+    coalesce("cooperative"."cr_return_address_state","sparkling"."cr_return_address_state","yummy"."cr_return_address_state") as "cr_return_address_state"
 FROM
-    "questionable"
-    INNER JOIN "yummy" on "questionable"."cr_billing_customer_id" = "yummy"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "yummy"."cr_return_address_state"
-    INNER JOIN "abhorrent" on "questionable"."cr_return_address_state" is not distinct from "abhorrent"."cr_return_address_state"
+    "yummy"
+    INNER JOIN "cooperative" on "yummy"."cr_billing_customer_id" = "cooperative"."cr_billing_customer_id" AND "yummy"."cr_return_address_state" is not distinct from "cooperative"."cr_return_address_state"
+    INNER JOIN "sparkling" on "yummy"."cr_return_address_state" is not distinct from "sparkling"."cr_return_address_state"
 WHERE
-    "yummy"."customer_state" > "abhorrent"."scaled_state"
+    "yummy"."customer_state" > "sparkling"."scaled_state"
 
 GROUP BY
     1,
@@ -131,10 +131,10 @@ SELECT
     "questionable"."cr_billing_customer_address_country" as "cr_billing_customer_address_country",
     "questionable"."cr_billing_customer_address_gmt_offset" as "cr_billing_customer_address_gmt_offset",
     "questionable"."cr_billing_customer_address_location_type" as "cr_billing_customer_address_location_type",
-    "late"."customer_state" as "customer_state"
+    "sweltering"."customer_state" as "customer_state"
 FROM
     "questionable"
-    INNER JOIN "late" on "questionable"."cr_billing_customer_id" = "late"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "late"."cr_return_address_state"
+    INNER JOIN "sweltering" on "questionable"."cr_billing_customer_id" = "sweltering"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "sweltering"."cr_return_address_state"
 GROUP BY
     1,
     2,
@@ -169,5 +169,5 @@ ORDER BY
     "questionable"."cr_billing_customer_address_country" asc nulls first,
     "questionable"."cr_billing_customer_address_gmt_offset" asc nulls first,
     "questionable"."cr_billing_customer_address_location_type" asc nulls first,
-    "late"."customer_state" asc nulls first
+    "sweltering"."customer_state" asc nulls first
 LIMIT (100)

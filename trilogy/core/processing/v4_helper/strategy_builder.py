@@ -50,6 +50,7 @@ from .condition_injection import (
 from .constants import (
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
 )
@@ -73,6 +74,12 @@ from .source_policy import STRICT_SOURCE_POLICY, SourcePolicy
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE,
     Derivation.GROUP_TO,
+}
+
+_ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS = {
+    Derivation.ROOT,
+    Derivation.BASIC,
+    Derivation.FILTER,
 }
 
 
@@ -394,6 +401,49 @@ def _parent_nodes_for(
         if node is not None:
             candidates.append((pgid, node))
 
+    if attrs[gid].derivation == Derivation.AGGREGATE:
+        inline_input_addresses = _aggregate_row_preserving_input_addresses(
+            [
+                concept
+                for addr in attrs[gid].primary_members
+                if (concept := _concept_at(environment, addr)) is not None
+            ]
+        )
+        expanded: list[tuple[str, StrategyNode]] = []
+        for pgid, node in candidates:
+            row_preserving_input = (
+                attrs[pgid].derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                and attrs[pgid].derivation != Derivation.ROOT
+                and set(attrs[pgid].primary_members).issubset(inline_input_addresses)
+                and node.conditions is None
+                and not node.force_group
+                and not node.existence_concepts
+                and not _contains_shape_barrier(node)
+                and not _group_filter_has_existence(attrs, environment, pgid)
+            )
+            if not row_preserving_input:
+                expanded.append((pgid, node))
+                continue
+            input_parents = [
+                (fgid, built[fgid])
+                for fgid in group_graph.predecessors(pgid)
+                if fgid != FINAL_NODE_ID
+                and edge_kind(group_edges, fgid, pgid) != EdgeKind.EXISTENCE
+                and fgid in built
+            ]
+            available = {
+                output.address
+                for _, input_parent in input_parents
+                for output in input_parent.output_concepts
+            }
+            if input_parents and _group_renderable_from(
+                attrs, environment, pgid, available
+            ):
+                expanded.extend(input_parents)
+            else:
+                expanded.append((pgid, node))
+        candidates = list(dict(expanded).items())
+
     def provides(pgid: str, node: StrategyNode) -> set[str]:
         if isinstance(node, FilterNode) and node.conditions is not None:
             return set(attrs[pgid].primary_members) & needed
@@ -571,6 +621,102 @@ def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
         output.append(current)
         stack.extend(row_lineage_arguments(current))
     return output
+
+
+def _lineage_crosses_row_shape_barrier(
+    concept: BuildConcept, seen: set[str] | None = None
+) -> bool:
+    seen = seen or set()
+    if concept.address in seen:
+        return False
+    seen.add(concept.address)
+    if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+        return True
+    return any(
+        _lineage_crosses_row_shape_barrier(arg, seen)
+        for arg in row_lineage_arguments(concept)
+    )
+
+
+def _aggregate_row_preserving_inputs(concept: BuildConcept) -> list[BuildConcept]:
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return []
+    return [
+        arg
+        for arg in concept.lineage.function.arguments
+        if isinstance(arg, BuildConcept)
+        and arg.derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+        and not _lineage_crosses_row_shape_barrier(arg)
+    ]
+
+
+def _aggregate_row_preserving_input_addresses(outputs: list[BuildConcept]) -> set[str]:
+    addresses: set[str] = set()
+    for concept in outputs:
+        for input_concept in _aggregate_row_preserving_inputs(concept):
+            addresses.add(input_concept.address)
+    return addresses
+
+
+def _group_filter_has_existence(
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    gid: str,
+) -> bool:
+    for addr in attrs[gid].primary_members:
+        concept = _concept_at(environment, addr)
+        if not concept or not isinstance(concept.lineage, BuildFilterItem):
+            continue
+        if concept.lineage.where.existence_arguments:
+            return True
+    return False
+
+
+def _group_renderable_from(
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    gid: str,
+    available: set[str],
+) -> bool:
+    for addr in attrs[gid].primary_members:
+        concept = _concept_at(environment, addr)
+        if (
+            concept is None
+            or _lineage_crosses_row_shape_barrier(concept)
+            or not concept_satisfiable(concept, available)
+        ):
+            return False
+    return True
+
+
+def _aggregate_inputs_are_row_preserving(
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    parents: list[StrategyNode],
+) -> bool:
+    row_preserving_inputs: list[BuildConcept] = []
+    for concept in outputs:
+        if concept.address not in primary_addrs:
+            continue
+        if not isinstance(concept.lineage, BuildAggregateWrapper):
+            continue
+        for arg in concept.lineage.function.arguments:
+            if not isinstance(arg, BuildConcept):
+                return False
+            if (
+                arg.derivation not in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                or _lineage_crosses_row_shape_barrier(arg)
+            ):
+                return False
+            row_preserving_inputs.append(arg)
+    if not row_preserving_inputs:
+        return False
+    if all(arg.derivation == Derivation.ROOT for arg in row_preserving_inputs):
+        return False
+    available = {
+        output.address for parent in parents for output in parent.output_concepts
+    }
+    return all(concept_satisfiable(arg, available) for arg in row_preserving_inputs)
 
 
 def _widen_merge_join_keys(
@@ -1737,6 +1883,10 @@ def build_strategy_node(
                 for arg in c.lineage.concept_arguments:
                     if derivation in _AGGREGATING_DERIVATIONS:
                         _add_needed_concept(needed, arg)
+                        for input_concept in _aggregate_row_preserving_inputs(c):
+                            for row_input in _row_lineage_closure(input_concept):
+                                if row_input.address != input_concept.address:
+                                    _add_needed_concept(needed, row_input)
                     else:
                         needed.add(arg.address)
         if injected is not None:
@@ -1833,6 +1983,9 @@ def build_strategy_node(
             and a.aggregate_input_grain
             and a.aggregate_input_grain != a.grain_components
             and parents
+            and not _aggregate_inputs_are_row_preserving(
+                outputs, primary_addrs, parents
+            )
         ):
             normalize_addrs = set(a.aggregate_input_grain)
             for c in outputs:

@@ -1,6 +1,6 @@
 
 WITH 
-concerned as (
+vacuous as (
 SELECT
     "web_returns_web_returns"."WR_RETURNING_ADDR_SK" as "web_returns_return_address_id",
     "web_returns_web_returns"."WR_RETURNING_CUSTOMER_SK" as "web_returns_billing_customer_id"
@@ -49,13 +49,13 @@ WHERE
 GROUP BY
     1,
     2),
-young as (
+concerned as (
 SELECT
-    "concerned"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
+    "vacuous"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
     "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state"
 FROM
-    "concerned"
-    INNER JOIN "memory"."customer_address" as "web_returns_return_address_customer_address" on "concerned"."web_returns_return_address_id" = "web_returns_return_address_customer_address"."CA_ADDRESS_SK"),
+    "vacuous"
+    INNER JOIN "memory"."customer_address" as "web_returns_return_address_customer_address" on "vacuous"."web_returns_return_address_id" = "web_returns_return_address_customer_address"."CA_ADDRESS_SK"),
 questionable as (
 SELECT
     "cooperative"."web_returns_billing_customer_birth_country" as "web_returns_billing_customer_birth_country",
@@ -73,36 +73,7 @@ SELECT
     "cooperative"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
     "cooperative"."web_returns_return_address_state" as "web_returns_return_address_state"
 FROM
-    "cooperative"),
-sparkling as (
-SELECT
-    "uneven"."customer_state_returns_2002" as "customer_state_returns_2002",
-    coalesce("uneven"."web_returns_return_address_state","young"."web_returns_return_address_state") as "web_returns_return_address_state"
-FROM
-    "young"
-    FULL JOIN "uneven" on "young"."web_returns_billing_customer_id" = "uneven"."web_returns_billing_customer_id" AND "young"."web_returns_return_address_state" is not distinct from "uneven"."web_returns_return_address_state"
-GROUP BY
-    1,
-    2,
-    coalesce("uneven"."web_returns_billing_customer_id","young"."web_returns_billing_customer_id")),
-abundant as (
-SELECT
-    "questionable"."web_returns_billing_customer_birth_country" as "web_returns_billing_customer_birth_country",
-    "questionable"."web_returns_billing_customer_birth_day" as "web_returns_billing_customer_birth_day",
-    "questionable"."web_returns_billing_customer_birth_month" as "web_returns_billing_customer_birth_month",
-    "questionable"."web_returns_billing_customer_birth_year" as "web_returns_billing_customer_birth_year",
-    "questionable"."web_returns_billing_customer_email_address" as "web_returns_billing_customer_email_address",
-    "questionable"."web_returns_billing_customer_first_name" as "web_returns_billing_customer_first_name",
-    "questionable"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
-    "questionable"."web_returns_billing_customer_last_name" as "web_returns_billing_customer_last_name",
-    "questionable"."web_returns_billing_customer_last_review_date" as "web_returns_billing_customer_last_review_date",
-    "questionable"."web_returns_billing_customer_login" as "web_returns_billing_customer_login",
-    "questionable"."web_returns_billing_customer_preferred_cust_flag" as "web_returns_billing_customer_preferred_cust_flag",
-    "questionable"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
-    "questionable"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
-    "questionable"."web_returns_return_address_state" as "web_returns_return_address_state"
-FROM
-    "questionable"
+    "cooperative"
 GROUP BY
     1,
     2,
@@ -118,59 +89,70 @@ GROUP BY
     12,
     13,
     14),
-sweltering as (
+young as (
 SELECT
-    "sparkling"."web_returns_return_address_state" as "web_returns_return_address_state",
-    1.2 * avg("sparkling"."customer_state_returns_2002") as "scaled_state_returns_2002"
+    "uneven"."customer_state_returns_2002" as "customer_state_returns_2002",
+    coalesce("concerned"."web_returns_return_address_state","uneven"."web_returns_return_address_state") as "web_returns_return_address_state"
 FROM
-    "sparkling"
+    "concerned"
+    FULL JOIN "uneven" on "concerned"."web_returns_billing_customer_id" = "uneven"."web_returns_billing_customer_id" AND "concerned"."web_returns_return_address_state" is not distinct from "uneven"."web_returns_return_address_state"
+GROUP BY
+    1,
+    2,
+    coalesce("concerned"."web_returns_billing_customer_id","uneven"."web_returns_billing_customer_id")),
+abhorrent as (
+SELECT
+    "young"."web_returns_return_address_state" as "web_returns_return_address_state",
+    1.2 * avg("young"."customer_state_returns_2002") as "scaled_state_returns_2002"
+FROM
+    "young"
 GROUP BY
     1),
-macho as (
+late as (
 SELECT
-    "questionable"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
-    "questionable"."web_returns_return_address_state" as "web_returns_return_address_state",
-    "uneven"."customer_state_returns_2002" as "customer_state_returns_2002"
+    "cooperative"."web_returns_billing_customer_id" as "web_returns_billing_customer_id",
+    "uneven"."customer_state_returns_2002" as "customer_state_returns_2002",
+    coalesce("abhorrent"."web_returns_return_address_state","cooperative"."web_returns_return_address_state","uneven"."web_returns_return_address_state") as "web_returns_return_address_state"
 FROM
-    "questionable"
-    INNER JOIN "uneven" on "questionable"."web_returns_billing_customer_id" = "uneven"."web_returns_billing_customer_id" AND "questionable"."web_returns_return_address_state" is not distinct from "uneven"."web_returns_return_address_state"
-    INNER JOIN "sweltering" on "questionable"."web_returns_return_address_state" is not distinct from "sweltering"."web_returns_return_address_state"
+    "uneven"
+    INNER JOIN "cooperative" on "uneven"."web_returns_billing_customer_id" = "cooperative"."web_returns_billing_customer_id" AND "uneven"."web_returns_return_address_state" is not distinct from "cooperative"."web_returns_return_address_state"
+    INNER JOIN "abhorrent" on "uneven"."web_returns_return_address_state" is not distinct from "abhorrent"."web_returns_return_address_state"
 WHERE
-    "uneven"."customer_state_returns_2002" > "sweltering"."scaled_state_returns_2002"
+    "uneven"."customer_state_returns_2002" > "abhorrent"."scaled_state_returns_2002"
 
 GROUP BY
     1,
     2,
     3)
 SELECT
-    "abundant"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
-    "abundant"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
-    "abundant"."web_returns_billing_customer_first_name" as "web_returns_billing_customer_first_name",
-    "abundant"."web_returns_billing_customer_last_name" as "web_returns_billing_customer_last_name",
-    "abundant"."web_returns_billing_customer_preferred_cust_flag" as "web_returns_billing_customer_preferred_cust_flag",
-    "abundant"."web_returns_billing_customer_birth_day" as "web_returns_billing_customer_birth_day",
-    "abundant"."web_returns_billing_customer_birth_month" as "web_returns_billing_customer_birth_month",
-    "abundant"."web_returns_billing_customer_birth_year" as "web_returns_billing_customer_birth_year",
-    "abundant"."web_returns_billing_customer_birth_country" as "web_returns_billing_customer_birth_country",
-    "abundant"."web_returns_billing_customer_login" as "web_returns_billing_customer_login",
-    "abundant"."web_returns_billing_customer_email_address" as "web_returns_billing_customer_email_address",
-    "abundant"."web_returns_billing_customer_last_review_date" as "web_returns_billing_customer_last_review_date",
-    "macho"."customer_state_returns_2002" as "customer_state_returns_2002"
+    "questionable"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
+    "questionable"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
+    "questionable"."web_returns_billing_customer_first_name" as "web_returns_billing_customer_first_name",
+    "questionable"."web_returns_billing_customer_last_name" as "web_returns_billing_customer_last_name",
+    "questionable"."web_returns_billing_customer_preferred_cust_flag" as "web_returns_billing_customer_preferred_cust_flag",
+    "questionable"."web_returns_billing_customer_birth_day" as "web_returns_billing_customer_birth_day",
+    "questionable"."web_returns_billing_customer_birth_month" as "web_returns_billing_customer_birth_month",
+    "questionable"."web_returns_billing_customer_birth_year" as "web_returns_billing_customer_birth_year",
+    "questionable"."web_returns_billing_customer_birth_country" as "web_returns_billing_customer_birth_country",
+    "questionable"."web_returns_billing_customer_login" as "web_returns_billing_customer_login",
+    "questionable"."web_returns_billing_customer_email_address" as "web_returns_billing_customer_email_address",
+    "questionable"."web_returns_billing_customer_last_review_date" as "web_returns_billing_customer_last_review_date",
+    "late"."customer_state_returns_2002" as "customer_state_returns_2002"
 FROM
-    "macho"
-    LEFT OUTER JOIN "abundant" on "macho"."web_returns_billing_customer_id" = "abundant"."web_returns_billing_customer_id" AND "macho"."web_returns_return_address_state" is not distinct from "abundant"."web_returns_return_address_state"
+    "late"
+    LEFT OUTER JOIN "questionable" on "late"."web_returns_billing_customer_id" = "questionable"."web_returns_billing_customer_id" AND "late"."web_returns_return_address_state" is not distinct from "questionable"."web_returns_return_address_state"
 ORDER BY 
-    "abundant"."web_returns_billing_customer_text_id" asc nulls first,
-    "abundant"."web_returns_billing_customer_salutation" asc nulls first,
-    "abundant"."web_returns_billing_customer_first_name" asc nulls first,
-    "abundant"."web_returns_billing_customer_last_name" asc nulls first,
-    "abundant"."web_returns_billing_customer_preferred_cust_flag" asc nulls first,
-    "abundant"."web_returns_billing_customer_birth_day" asc nulls first,
-    "abundant"."web_returns_billing_customer_birth_month" asc nulls first,
-    "abundant"."web_returns_billing_customer_birth_year" asc nulls first,
-    "abundant"."web_returns_billing_customer_birth_country" asc nulls first,
-    "abundant"."web_returns_billing_customer_login" asc nulls first,
-    "abundant"."web_returns_billing_customer_email_address" asc nulls first,
-    "abundant"."web_returns_billing_customer_last_review_date" asc nulls first,
-    "macho"."customer_state_returns_2002" asc nulls first
+    "questionable"."web_returns_billing_customer_text_id" asc nulls first,
+    "questionable"."web_returns_billing_customer_salutation" asc nulls first,
+    "questionable"."web_returns_billing_customer_first_name" asc nulls first,
+    "questionable"."web_returns_billing_customer_last_name" asc nulls first,
+    "questionable"."web_returns_billing_customer_preferred_cust_flag" asc nulls first,
+    "questionable"."web_returns_billing_customer_birth_day" asc nulls first,
+    "questionable"."web_returns_billing_customer_birth_month" asc nulls first,
+    "questionable"."web_returns_billing_customer_birth_year" asc nulls first,
+    "questionable"."web_returns_billing_customer_birth_country" asc nulls first,
+    "questionable"."web_returns_billing_customer_login" asc nulls first,
+    "questionable"."web_returns_billing_customer_email_address" asc nulls first,
+    "questionable"."web_returns_billing_customer_last_review_date" asc nulls first,
+    "late"."customer_state_returns_2002" asc nulls first
 LIMIT (100)

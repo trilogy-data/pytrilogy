@@ -38,24 +38,7 @@ SELECT
 	END ) > 1 and "cooperative"."physical_sales_date_year" in (1999,2000,2001) and "cooperative"."physical_sales_store_county" in ('Orange County','Bronx County','Franklin Parish','Williamson County') THEN "cooperative"."physical_sales_item_id" ELSE NULL END as "_virt_filter_id_1043861805013093"
 FROM
     "cooperative"),
-yummy as (
-SELECT
-    "questionable"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
-    "questionable"."physical_sales_customer_id" as "physical_sales_customer_id",
-    "questionable"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
-    "questionable"."physical_sales_customer_preferred_cust_flag" as "physical_sales_customer_preferred_cust_flag",
-    "questionable"."physical_sales_customer_salutation" as "physical_sales_customer_salutation",
-    "questionable"."physical_sales_ticket_number" as "physical_sales_ticket_number"
-FROM
-    "questionable"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6),
-abundant as (
+uneven as (
 SELECT
     "questionable"."physical_sales_customer_id" as "physical_sales_customer_id",
     "questionable"."physical_sales_ticket_number" as "physical_sales_ticket_number",
@@ -67,19 +50,34 @@ GROUP BY
     2
 HAVING
     "ticket_cnt" >= 1 and "ticket_cnt" <= 5
-)
+),
+abundant as (
 SELECT
-    "yummy"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
-    "yummy"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
-    "yummy"."physical_sales_customer_salutation" as "physical_sales_customer_salutation",
-    "yummy"."physical_sales_customer_preferred_cust_flag" as "physical_sales_customer_preferred_cust_flag",
-    "abundant"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    "abundant"."ticket_cnt" as "ticket_cnt"
+    "questionable"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
+    "questionable"."physical_sales_customer_id" as "physical_sales_customer_id",
+    "questionable"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
+    "questionable"."physical_sales_customer_preferred_cust_flag" as "physical_sales_customer_preferred_cust_flag",
+    "questionable"."physical_sales_customer_salutation" as "physical_sales_customer_salutation"
 FROM
-    "yummy"
-    INNER JOIN "abundant" on "yummy"."physical_sales_customer_id" = "abundant"."physical_sales_customer_id" AND "yummy"."physical_sales_ticket_number" = "abundant"."physical_sales_ticket_number"
+    "questionable"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5)
+SELECT
+    "abundant"."physical_sales_customer_last_name" as "physical_sales_customer_last_name",
+    "abundant"."physical_sales_customer_first_name" as "physical_sales_customer_first_name",
+    "abundant"."physical_sales_customer_salutation" as "physical_sales_customer_salutation",
+    "abundant"."physical_sales_customer_preferred_cust_flag" as "physical_sales_customer_preferred_cust_flag",
+    "uneven"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    "uneven"."ticket_cnt" as "ticket_cnt"
+FROM
+    "uneven"
+    INNER JOIN "abundant" on "uneven"."physical_sales_customer_id" = "abundant"."physical_sales_customer_id"
 ORDER BY 
-    "abundant"."ticket_cnt" desc,
-    "yummy"."physical_sales_customer_last_name" asc,
-    "abundant"."physical_sales_ticket_number" asc,
+    "uneven"."ticket_cnt" desc,
+    "abundant"."physical_sales_customer_last_name" asc,
+    "uneven"."physical_sales_ticket_number" asc,
     "abundant"."physical_sales_customer_id" asc

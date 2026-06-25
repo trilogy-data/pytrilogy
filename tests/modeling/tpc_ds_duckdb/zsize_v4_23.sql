@@ -123,9 +123,7 @@ thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
      'CATALOG'  as "sales_channel",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_LIST_PRICE" as "sales_list_price",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
     "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
@@ -138,9 +136,7 @@ UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
      'STORE'  as "sales_channel",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_LIST_PRICE" as "sales_list_price",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
     "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
@@ -153,9 +149,7 @@ UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
      'WEB'  as "sales_channel",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_LIST_PRICE" as "sales_list_price",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
     "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
@@ -169,9 +163,7 @@ SELECT
     "sales_billing_customer_customers"."C_FIRST_NAME" as "sales_billing_customer_first_name",
     "sales_billing_customer_customers"."C_LAST_NAME" as "sales_billing_customer_last_name",
     "thoughtful"."sales_channel" as "sales_channel",
-    "thoughtful"."sales_item_id" as "sales_item_id",
     "thoughtful"."sales_list_price" as "sales_list_price",
-    "thoughtful"."sales_order_id" as "sales_order_id",
     "thoughtful"."sales_quantity" as "sales_quantity"
 FROM
     "thoughtful"
@@ -180,43 +172,9 @@ hard as (
 SELECT
     "questionable"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
     "questionable"."sales_billing_customer_last_name" as "sales_billing_customer_last_name",
-    "questionable"."sales_channel" as "sales_channel",
-    "questionable"."sales_item_id" as "sales_item_id",
-    "questionable"."sales_list_price" as "sales_list_price",
-    "questionable"."sales_order_id" as "sales_order_id",
-    "questionable"."sales_quantity" as "sales_quantity"
+    sum(CASE WHEN "questionable"."sales_channel" in ('WEB','CATALOG') THEN "questionable"."sales_quantity" * "questionable"."sales_list_price" ELSE NULL END) as "sales_total"
 FROM
-    "questionable"),
-sedate as (
-SELECT
-    "hard"."sales_channel" as "sales_channel",
-    "hard"."sales_item_id" as "sales_item_id",
-    "hard"."sales_order_id" as "sales_order_id",
-    CASE WHEN "hard"."sales_channel" in ('WEB','CATALOG') THEN "hard"."sales_quantity" * "hard"."sales_list_price" ELSE NULL END as "_virt_filter_4187188518610842"
-FROM
-    "hard"),
-resonant as (
-SELECT
-    "hard"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
-    "hard"."sales_billing_customer_last_name" as "sales_billing_customer_last_name",
-    "sedate"."_virt_filter_4187188518610842" as "_virt_filter_4187188518610842"
-FROM
-    "hard"
-    FULL JOIN "sedate" on "hard"."sales_channel" = "sedate"."sales_channel" AND "hard"."sales_item_id" = "sedate"."sales_item_id" AND "hard"."sales_order_id" = "sedate"."sales_order_id"
-GROUP BY
-    1,
-    2,
-    3,
-    coalesce("hard"."sales_channel","sedate"."sales_channel"),
-    coalesce("hard"."sales_item_id","sedate"."sales_item_id"),
-    coalesce("hard"."sales_order_id","sedate"."sales_order_id")),
-courageous as (
-SELECT
-    "resonant"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
-    "resonant"."sales_billing_customer_last_name" as "sales_billing_customer_last_name",
-    sum("resonant"."_virt_filter_4187188518610842") as "sales_total"
-FROM
-    "resonant"
+    "questionable"
 GROUP BY
     1,
     2
@@ -224,13 +182,13 @@ HAVING
     "sales_total" > 0
 )
 SELECT
-    "courageous"."sales_billing_customer_last_name" as "c_last_name",
-    "courageous"."sales_billing_customer_first_name" as "c_first_name",
-    "courageous"."sales_total" as "sales_total"
+    "hard"."sales_billing_customer_last_name" as "c_last_name",
+    "hard"."sales_billing_customer_first_name" as "c_first_name",
+    "hard"."sales_total" as "sales_total"
 FROM
-    "courageous"
+    "hard"
 ORDER BY 
     "c_last_name" asc nulls first,
     "c_first_name" asc nulls first,
-    "courageous"."sales_total" asc nulls first
+    "hard"."sales_total" asc nulls first
 LIMIT (100)

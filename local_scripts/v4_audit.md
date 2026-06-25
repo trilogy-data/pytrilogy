@@ -128,6 +128,47 @@ redundant input-grain pre-group in one move.
 Related: `_virtual_filter_scoped_columns` (`project_q21_virt_filter_propagation`)
 and the BASIC-into-GROUP fold (`project_v4_basic_into_group_fold`).
 
+### Attempted fixes + why they fail (2026-06-24) — READ BEFORE RETRYING
+
+The verbosity is one concrete mechanism: the virtual FILTER bucket materializes as
+a **GROUP CTE** (q62 `cooperative`) that GROUPs at the fact's own row grain — a
+**vacuous DISTINCT, no aggregate outputs** — carrying the dim joins + the CASE
+columns; the consuming aggregate then reads it as a second CTE. v3 inlines the
+CASE into one grouped SELECT. Three intuitively-correct fixes were tried and
+reverted (clean base verified: q62 = 3077 chars, `days_30` present, no spurious
+`web_returns`):
+
+1. **Don't create the FILTER concept-graph node** (descend into the filter in
+   `concept_graph._upstream_aggregate`). BREAKS CORRECTNESS: v4 requires every
+   lineage concept to be a graph node. The aggregate's lineage still says
+   `sum(_virt_filter)`; with no node, `_compute_concept_sets` finds it
+   unsourceable and **silently drops the whole `days_30` aggregate chain** (output
+   columns vanish; a degenerate `FULL JOIN web_returns` appears). Same failure
+   whether done in the concept graph or by reassigning the FILTER bucket's members
+   into the AGGREGATE bucket in `group_graph` — the materializer treats bucket
+   members as node *outputs*, not inline intermediates.
+
+2. **Relax `parent_is_ineligible` (CollapseSingleParent) to fold an AGGREGATE
+   child into a GROUP parent.** UNSAFE IN GENERAL: a keyed DISTINCT that genuinely
+   dedups (`count(customer.id)` over `distinct customer` from a fact) would
+   double-count if folded. q62 is safe only because `(item, order)` is the fact
+   PK, so its group is *vacuous* — but the optimizer can't tell a vacuous group
+   from a deduplicating one without source-datasource grain (the planner has this;
+   the CTE layer doesn't carry it cleanly). `MergeIrrelevantGroupBy` sidesteps this
+   only because it merges a *scalar* child and *keeps* the group.
+
+The real fix needs one of: (a) detect the FILTER group is vacuous
+(`parent.grain ⊇ its source datasource grain`) and fold it — requires threading
+source grain to the optimizer or doing it in the planner; or (b) render a
+row-preserving virtual FILTER as a `FilterNode`/projection (`SourceType.FILTER`),
+not a `GroupNode` — then the existing `CollapseSingleParent` AGGREGATE path folds
+it safely (FILTER source type is already eligible). (b) is likely cleaner but
+needs locating where the v4 FILTER bucket picks `GroupNode` + a regression sweep,
+since a virtual filter's grain == its source row grain (the GROUP is always
+vacuous for these), so the grouping looks defensive/removable. Either way: verify
+with `python -m local_scripts.v4_size_compare` AND a full v4 correctness sweep —
+the naive fixes pass a glance but silently drop rows/columns.
+
 ## Phase boundary contract
 
 The intended v4 path is:
