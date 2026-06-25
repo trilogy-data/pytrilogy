@@ -409,40 +409,50 @@ def _parent_nodes_for(
                 if (concept := _concept_at(environment, addr)) is not None
             ]
         )
-        expanded: list[tuple[str, StrategyNode]] = []
-        for pgid, node in candidates:
-            row_preserving_input = (
-                attrs[pgid].derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
-                and attrs[pgid].derivation != Derivation.ROOT
-                and set(attrs[pgid].primary_members).issubset(inline_input_addresses)
-                and node.conditions is None
-                and not node.force_group
-                and not node.existence_concepts
-                and not _contains_shape_barrier(node)
-                and not _group_filter_has_existence(attrs, environment, pgid)
-            )
-            if not row_preserving_input:
-                expanded.append((pgid, node))
-                continue
-            input_parents = [
-                (fgid, built[fgid])
-                for fgid in group_graph.predecessors(pgid)
-                if fgid != FINAL_NODE_ID
-                and edge_kind(group_edges, fgid, pgid) != EdgeKind.EXISTENCE
-                and fgid in built
-            ]
-            available = {
-                output.address
-                for _, input_parent in input_parents
-                for output in input_parent.output_concepts
-            }
-            if input_parents and _group_renderable_from(
-                attrs, environment, pgid, available
-            ):
-                expanded.extend(input_parents)
-            else:
-                expanded.append((pgid, node))
-        candidates = list(dict(expanded).items())
+        while True:
+            expanded: list[tuple[str, StrategyNode]] = []
+            changed = False
+            for pgid, node in candidates:
+                row_preserving_input = (
+                    attrs[pgid].derivation
+                    in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                    and attrs[pgid].derivation != Derivation.ROOT
+                    and set(attrs[pgid].primary_members).issubset(
+                        inline_input_addresses
+                    )
+                    and node.conditions is None
+                    and not node.force_group
+                    and not node.existence_concepts
+                    and not _contains_shape_barrier(node)
+                    and not _group_filter_has_existence(attrs, environment, pgid)
+                )
+                if not row_preserving_input:
+                    expanded.append((pgid, node))
+                    continue
+                input_parents = [
+                    (fgid, built[fgid])
+                    for fgid in group_graph.predecessors(pgid)
+                    if fgid != FINAL_NODE_ID
+                    and edge_kind(group_edges, fgid, pgid) != EdgeKind.EXISTENCE
+                    and fgid in built
+                ]
+                available = {
+                    output.address
+                    for _, input_parent in input_parents
+                    for output in input_parent.output_concepts
+                }
+                if input_parents and _group_renderable_from(
+                    attrs, environment, pgid, available
+                ):
+                    expanded.extend(input_parents)
+                    changed = True
+                else:
+                    expanded.append((pgid, node))
+            deduped = list(dict(expanded).items())
+            if not changed or deduped == candidates:
+                candidates = deduped
+                break
+            candidates = deduped
 
     def provides(pgid: str, node: StrategyNode) -> set[str]:
         if isinstance(node, FilterNode) and node.conditions is not None:
@@ -654,7 +664,7 @@ def _aggregate_row_preserving_input_addresses(outputs: list[BuildConcept]) -> se
     addresses: set[str] = set()
     for concept in outputs:
         for input_concept in _aggregate_row_preserving_inputs(concept):
-            addresses.add(input_concept.address)
+            addresses.update(arg.address for arg in _row_lineage_closure(input_concept))
     return addresses
 
 
@@ -710,8 +720,6 @@ def _aggregate_inputs_are_row_preserving(
                 return False
             row_preserving_inputs.append(arg)
     if not row_preserving_inputs:
-        return False
-    if all(arg.derivation == Derivation.ROOT for arg in row_preserving_inputs):
         return False
     available = {
         output.address for parent in parents for output in parent.output_concepts

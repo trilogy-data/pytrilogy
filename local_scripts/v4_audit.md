@@ -1,4 +1,4 @@
-# v4 compatibility audit (last refreshed 2026-06-24, post full-sweep)
+# v4 compatibility audit (last refreshed 2026-06-25, post full-sweep)
 
 This file is the current handoff for v4 discovery work. The authoritative skip list is
 `tests/v4_known_failing.py`; reclassify with `python local_scripts/v4_classify.py`
@@ -11,18 +11,21 @@ PR. Run it, don't trust the classifier alone:
 TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
 ```
 
-## Correctness: at parity (full sweep 2026-06-24)
+## Correctness: at parity (full sweep 2026-06-25)
 
 Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
 
-**4134 passed, 20 skipped, 5 xfailed, 38 xpassed, 82 errors — 0 failed (exit 0).**
+**4139 passed, 20 skipped, 5 xfailed, 38 xpassed, 82 errors — 0 failed (exit 0).**
 
 - **0 failed** — no untracked wrong-rows / crash / invalid-render regressions, including
-  across #586/#587/#588 ("V4 Parity" PRs) added after the prior audit.
+  across #586/#587/#588 ("V4 Parity" PRs) and the row-preserving-input inline fix below.
 - The **82 errors** are all `tests/engine/test_clickhouse_server.py` — clickhouse.cloud
   connection errors, environmental (no local server). Ignore.
-- **5 xfailed / 38 xpassed** are the tracked `v4_known_failing.py` entries. The xpasses
-  are cross-test-pollution-flaky (the list is non-strict for exactly that reason).
+- **xfailed / xpassed** are the tracked `v4_known_failing.py` entries. The list is
+  non-strict so an entry that now passes shows as xpassed and keeps the gate green
+  rather than flipping it red; confirmed-passing entries are pruned (see the cleanup
+  loop). To prune one, verify it passes in ISOLATION (`pytest <nodeid>` with the env
+  var), not just in the full suite.
 
 v4 discovery remains off by default (`CONFIG.use_v4_discovery = False`); this is
 migration-gating work, not a live-path regression surface.
@@ -46,128 +49,72 @@ migration-gating work, not a live-path regression surface.
 | `_INLINE` | SQL/CTE shape differs from v3; rows match. Cosmetic. |
 | `_MODELING` | modeling-sweep shape/CTE diffs; rows match (classifier: all SHAPE). |
 | `_TPCDS_SIZE` | rows match the official reference, generated SQL exceeds v3-tuned length ceilings. Verbosity. |
-| `_RESULT` | `test_ninety_seven_two` only — historical wrong-rows entry that **now xpasses** (rows correct); stale, safe to remove. |
 
-The single open *theme* is therefore **plan verbosity / CTE shape**, not correctness.
-That is the focus of the size-analysis work below.
+30 entries (2026-06-25): 10 `_INLINE`, 7 `_MODELING`, 13 `_TPCDS_SIZE`. The single
+open *theme* is **plan verbosity / CTE shape**, not correctness. That is the focus
+of the size-analysis work below.
 
-## Size / verbosity analysis (in progress, 2026-06-24)
+## Size / verbosity analysis (2026-06-25)
 
 Goal: v4 should produce **equal-or-less** verbose SQL than v3. The `_TPCDS_SIZE`
 entries are queries where v4's rows are correct but the SQL is longer (more CTEs /
-less compact) than v3's, tripping length-ceiling asserts.
+less compact) than v3's, tripping the per-test `assert len(query) < ceiling`.
 
-Measure with `python -m local_scripts.v4_size_compare` (generation-only, no exec;
-writes each v4 plan to `tests/modeling/tpc_ds_duckdb/zsize_v4_<q>.sql`).
+Measure the v3-vs-v4 *relative* gap with `python -m local_scripts.v4_size_compare`
+(generation-only). **Caveat:** that harness builds a minimal `Environment` with no
+DB attached, so it does NOT apply datasource inlining — its absolute lengths run
+higher than the real tests, which use the `engine` fixture (DB imported, small
+sources inlined; `test_two` even asserts the raw `"memory"."store_sales"` is gone).
+So a query can read "over ceiling" in the proxy yet PASS its actual test (q23, q94).
+Trust the `test` column for pass/fail; use the proxy lengths only for v3-vs-v4 deltas.
 
-### Measurements (2026-06-24, stripped length / SELECT count)
+### Measurements (proxy lengths from `v4_size_compare`; `test` = real verdict)
 
-| q | ceiling | v3 | v4 | Δ | v3 sel | v4 sel |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 02 | 7500 | 4625 | 7725 | +3100 | 8 | 10 |
-| 2.2 | 7500 | 6770 | 10267 | +3497 | 8 | 17 |
-| 12 | 3200 | 2026 | 4132 | +2106 | 3 | 6 |
-| 20 | 3200 | 1869 | 4214 | +2345 | 3 | 7 |
-| 23 | 8500 | 7792 | 10610 | +2818 | 22 | 30 |
-| 30.alt | 12000 | 7147 | 11670 | +4523 | 5 | 10 |
-| 47 | 6800 | 5486 | 11568 | +6082 | 4 | 9 |
-| 50 | 7000 | 4725 | 8776 | +4051 | 4 | 6 |
-| 57 | 6500 | 4894 | 10267 | +5373 | 4 | 9 |
-| 62 | 2500 | 2160 | 3073 | +913 | 1 | 2 |
-| 69 | 5000 | 4059 | 4485 | +426 | 8 | 11 |
-| 73 | 3000 | 2823 | 5665 | +2842 | 2 | 5 |
-| 76 | 10000 | 7477 | 10957 | +3480 | 16 | 28 |
-| 81 | 8000 | 7460 | 10192 | +2732 | 5 | 9 |
-| 94 | 5000 | 3544 | 5265 | +1721 | 13 | 22 |
-| 97.1 | 4250 | 2989 | **2357** | **-632** | 5 | **4** |
+The **v4 (pre)** column is the 2026-06-24 baseline (before the inline fix below);
+**v4** is current. `test` PASS rows were pruned from `v4_known_failing.py`.
 
-v4 is ~1.5–2.1× longer with roughly **double the CTE count**. q97.1 is *smaller*
-under v4 — existence proof the engine can be more compact. (q2.1 and q10 hit a
-`RecursionError` in the generation-only harness but pass in-suite where the
-dataset is imported — a separate planner-recursion concern, not size.)
+| q | ceiling | v3 | v4 (pre) | v4 | v3 sel | v4 sel | test |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| 02 | 7500 | 4625 | 7725 | 7685 | 8 | 10 | fail |
+| 2.2 | 7500 | 6770 | 10267 | 10267 | 8 | 17 | fail |
+| 12 | 3200 | 2026 | 4132 | 4132 | 3 | 6 | fail |
+| 20 | 3200 | 1869 | 4214 | 4214 | 3 | 7 | fail |
+| 23 | 8500 | 7792 | 10610 | 8423 | 22 | 26 | **PASS** |
+| 30.alt | 12000 | 7147 | 11670 | 10320 | 5 | 9 | fail |
+| 47 | 6800 | 5486 | 11568 | 11568 | 4 | 9 | fail |
+| 50 | 7000 | 4725 | 8776 | 7935 | 4 | 6 | fail |
+| 57 | 6500 | 4894 | 10267 | 10267 | 4 | 9 | fail |
+| 62 | 2500 | 2160 | 3073 | **2160** | 1 | 1 | **PASS** |
+| 69 | 5000 | 4059 | 4485 | 4485 | 8 | 11 | **PASS** |
+| 73 | 3000 | 2823 | 5665 | 5496 | 2 | 5 | fail |
+| 76 | 10000 | 7477 | 10957 | 10957 | 16 | 28 | fail |
+| 81 | 8000 | 7460 | 10192 | 10314 | 5 | 9 | fail |
+| 94 | 5000 | 3544 | 5265 | 5265 | 13 | 22 | **PASS** |
+| 97.1 | 4250 | 2989 | 2357 | 2357 | 5 | **4** | **PASS** |
 
-### Root cause: one pattern, not 18
+(q2.1 and q10 hit a `RecursionError` in the generation-only harness but pass
+in-suite where the dataset is imported — a separate planner-recursion concern,
+not size.)
 
-v4 emits extra intermediate CTEs around aggregates that v3 collapses into a single
-grouped SELECT. Two concrete forms of the same class:
+**Still failing `_TPCDS_SIZE` (13):** 02, 2.1, 2.2, 10, 12, 20, 30.alt, 47, 50, 57,
+73, 76, 81. The remaining verbosity is **not** the single-consumer scalar-input case
+the inline fix covers — it is the multi-join / multi-fact / multi-consumer shapes
+(q47/q57/q76/q2.2 barely moved). Next size work should target those join-stream
+shapes, not the aggregate-input inline.
 
-- **q62** — v3 inlines virtual-filter counters
-  `sum(CASE WHEN … THEN 1 ELSE NULL END)` in one grouped SELECT. v4 builds an
-  intermediate CTE that **GROUPs at the fact's own row grain**
-  (`…, WS_ITEM_SK, WS_ORDER_NUMBER` — a no-op group; the fact is already unique
-  there) just to materialize the CASE columns, then re-aggregates. Redundant
-  double-group.
-- **q73** — the `_virt_filter_id` CASE projection gets its **own standalone CTE**
-  instead of being inlined into the `count(...)` that consumes it.
+### The row-preserving aggregate-input inline fix (2026-06-25)
 
-**This is NOT a missing post-hoc optimization** — v3 never builds these nodes.
-The `_virt_filter_*` concepts (`Derivation.FILTER`, the `CASE WHEN cond THEN x
-ELSE NULL END` of a `count(x ? cond)` filtered aggregate) are virtual concepts
-minted at parse, identical for both planners (`VIRTUAL_CONCEPT_PREFIX`). v3's
-`gen_group_node` renders the FILTER lineage **inline inside `sum(...)`** in the
-one group node — no node boundary is ever created. v4's Stage-2 group graph runs
-`group_rules.partition_filters_by_signature`, which gives **each FILTER concept
-its own group bucket** → its own CTE (and the q62 "inner GROUP at fact row grain"
-is that input-grain bucket rendered as a no-op group). The boundary is *injected
-by the partitioner*; folding it back in the optimizer would paper over a Stage-2
-decision and fight the phase-boundary contract.
-
-v4 already inlines a FILTER into a *wrapping BASIC* concept (q08
-`final_zips = substring(_virt_filter_zips,1,2)`; see `strategy_builder.py:145`),
-but NOT when the FILTER is consumed **directly by an AGGREGATE** (q62 `sum`, q73
-`count`) — the common TPC-DS case.
-
-**Fix lives in the group graph (Stage 2), not the optimizer:** co-locate a
-single-consumer scalar virtual FILTER into its consuming AGGREGATE's bucket, the
-same way it already co-locates one into a wrapping BASIC. Guard with the existing
-scan-compatibility check (q08's two `_virt_filter`s over disjoint upstreams must
-stay separate — see the `partition_filters_by_signature` docstring — or they form
-a back-edge through the shared consumer). Eliminates the extra CTE *and* the
-redundant input-grain pre-group in one move.
-
-Related: `_virtual_filter_scoped_columns` (`project_q21_virt_filter_propagation`)
-and the BASIC-into-GROUP fold (`project_v4_basic_into_group_fold`).
-
-### Attempted fixes + why they fail (2026-06-24) — READ BEFORE RETRYING
-
-The verbosity is one concrete mechanism: the virtual FILTER bucket materializes as
-a **GROUP CTE** (q62 `cooperative`) that GROUPs at the fact's own row grain — a
-**vacuous DISTINCT, no aggregate outputs** — carrying the dim joins + the CASE
-columns; the consuming aggregate then reads it as a second CTE. v3 inlines the
-CASE into one grouped SELECT. Three intuitively-correct fixes were tried and
-reverted (clean base verified: q62 = 3077 chars, `days_30` present, no spurious
-`web_returns`):
-
-1. **Don't create the FILTER concept-graph node** (descend into the filter in
-   `concept_graph._upstream_aggregate`). BREAKS CORRECTNESS: v4 requires every
-   lineage concept to be a graph node. The aggregate's lineage still says
-   `sum(_virt_filter)`; with no node, `_compute_concept_sets` finds it
-   unsourceable and **silently drops the whole `days_30` aggregate chain** (output
-   columns vanish; a degenerate `FULL JOIN web_returns` appears). Same failure
-   whether done in the concept graph or by reassigning the FILTER bucket's members
-   into the AGGREGATE bucket in `group_graph` — the materializer treats bucket
-   members as node *outputs*, not inline intermediates.
-
-2. **Relax `parent_is_ineligible` (CollapseSingleParent) to fold an AGGREGATE
-   child into a GROUP parent.** UNSAFE IN GENERAL: a keyed DISTINCT that genuinely
-   dedups (`count(customer.id)` over `distinct customer` from a fact) would
-   double-count if folded. q62 is safe only because `(item, order)` is the fact
-   PK, so its group is *vacuous* — but the optimizer can't tell a vacuous group
-   from a deduplicating one without source-datasource grain (the planner has this;
-   the CTE layer doesn't carry it cleanly). `MergeIrrelevantGroupBy` sidesteps this
-   only because it merges a *scalar* child and *keeps* the group.
-
-The real fix needs one of: (a) detect the FILTER group is vacuous
-(`parent.grain ⊇ its source datasource grain`) and fold it — requires threading
-source grain to the optimizer or doing it in the planner; or (b) render a
-row-preserving virtual FILTER as a `FilterNode`/projection (`SourceType.FILTER`),
-not a `GroupNode` — then the existing `CollapseSingleParent` AGGREGATE path folds
-it safely (FILTER source type is already eligible). (b) is likely cleaner but
-needs locating where the v4 FILTER bucket picks `GroupNode` + a regression sweep,
-since a virtual filter's grain == its source row grain (the GROUP is always
-vacuous for these), so the grouping looks defensive/removable. Either way: verify
-with `python -m local_scripts.v4_size_compare` AND a full v4 correctness sweep —
-the naive fixes pass a glance but silently drop rows/columns.
+Lives in `aggregate.py` + `strategy_builder.py`. A row-preserving aggregate input
+(`Derivation.ROOT`/`BASIC`/`FILTER`, lineage not crossing a row-shape barrier) is
+now rendered **inline** in the consuming aggregate's `GroupNode` —
+`sum(CASE WHEN p THEN x ELSE NULL END)` in one grouped SELECT — instead of
+materializing it as a separate CTE joined back on the fact PK. `gen_aggregate`
+expands the aggregate's `input_concepts` to the render inputs; `_parent_nodes_for`
+replaces a row-preserving BASIC/FILTER parent with its row-stream predecessors when
+the group is renderable from them; the vacuous input-grain normalization GroupNode
+is skipped. Guarded so q08-style disjoint filters (existence args) stay separate.
+Cleared q62 (3073→2160, == v3) plus q23/q94/etc. Locked by
+`tests/core/processing/test_v4_virt_filter_extra_cte.py`.
 
 ## Phase boundary contract
 
@@ -233,8 +180,12 @@ Still-watch areas:
 
 ## Next cleanup loop
 
-1. Remove `test_ninety_seven_two` from `v4_known_failing.py` (now xpasses; empties
-   the `_RESULT` bucket). Re-confirm in a full-suite run first.
+1. DONE (2026-06-25): pruned 11 entries that pass in isolation (verified stable over
+   3–4 runs each) — `test_select_literal_is_rendered_in_projection`,
+   `test_exact_match_merge_preserves_subgraph_filters`, `test_adhoc08`, `test_in_select`,
+   `test_group_by_with_existing`, and tpc-ds `test_twenty_three`, `test_sixty_two`,
+   `test_sixty_nine`, `test_ninety_four`, `test_ninety_seven_one`, `test_ninety_seven_two`.
+   The `_RESULT` bucket is gone. Remaining 30 entries still fail in isolation.
 2. Split the `_MODELING` entries into `_INLINE` or `_TPCDS_SIZE` (all are SHAPE per
    the classifier — no rows diffs left).
 3. Re-run `local_scripts/v4_classify.py` after any planner change, and a full v4

@@ -110,6 +110,55 @@ order by region_name asc;
 
 _BASIC_EXPECTED_ROWS = [("east", 9.0), ("west", 6.0)]
 
+_COMBINED_MODEL = """
+key line_id int;
+property line_id.amt float;
+property line_id.discount float;
+property line_id.ship int;
+property line_id.ord int;
+property line_id.days <- ship - ord;
+property line_id.net_amount <- amt - discount;
+
+key region_id int;
+property region_id.region_name string;
+property line_id.region_id int;
+
+datasource facts (
+    lid: line_id,
+    amt: amt,
+    discount: discount,
+    ship: ship,
+    ord: ord,
+    rid: region_id,
+)
+grain (line_id)
+query '''
+select 1 lid, 5.0 amt, 1.0 discount, 40 ship, 10 ord, 1 rid union all
+select 2 lid, 7.0 amt, 2.0 discount, 20 ship, 10 ord, 1 rid union all
+select 3 lid, 9.0 amt, 3.0 discount, 60 ship, 10 ord, 2 rid
+''';
+
+datasource regions (
+    rid: region_id,
+    rname: region_name,
+)
+grain (region_id)
+query '''
+select 1 rid, 'east' rname union all select 2 rid, 'west' rname
+''';
+"""
+
+_COMBINED_QUERY = """
+select
+    region_name,
+    count(line_id) -> line_count,
+    sum(net_amount) -> total_net,
+    coalesce(sum(filter amt where days > 30),0) -> late_amt,
+order by region_name asc;
+"""
+
+_COMBINED_EXPECTED_ROWS = [("east", 2, 9.0, 0.0), ("west", 1, 6.0, 9.0)]
+
 _HAVING_BASIC_KEY_MODEL = """
 key order_id int;
 key item_id int;
@@ -179,6 +228,18 @@ def _gen_basic_sql(v4: bool) -> str:
         CONFIG.use_v4_discovery = prior
 
 
+def _gen_combined_sql(v4: bool) -> str:
+    prior = CONFIG.use_v4_discovery
+    CONFIG.use_v4_discovery = v4
+    try:
+        env = Environment()
+        env, _ = env.parse(_COMBINED_MODEL)
+        engine = Dialects.DUCK_DB.default_executor(environment=env)
+        return engine.generate_sql(_COMBINED_QUERY)[-1]
+    finally:
+        CONFIG.use_v4_discovery = prior
+
+
 def _run(v4: bool):
     prior = CONFIG.use_v4_discovery
     CONFIG.use_v4_discovery = v4
@@ -201,6 +262,19 @@ def _run_basic(v4: bool):
         engine = Dialects.DUCK_DB.default_executor(environment=env)
         rows = engine.execute_text(_BASIC_QUERY)[-1].fetchall()
         return [(r[0], float(r[1])) for r in rows]
+    finally:
+        CONFIG.use_v4_discovery = prior
+
+
+def _run_combined(v4: bool):
+    prior = CONFIG.use_v4_discovery
+    CONFIG.use_v4_discovery = v4
+    try:
+        env = Environment()
+        env, _ = env.parse(_COMBINED_MODEL)
+        engine = Dialects.DUCK_DB.default_executor(environment=env)
+        rows = engine.execute_text(_COMBINED_QUERY)[-1].fetchall()
+        return [(r[0], r[1], float(r[2]), float(r[3])) for r in rows]
     finally:
         CONFIG.use_v4_discovery = prior
 
@@ -257,6 +331,21 @@ def test_basic_aggregate_input_no_extra_cte_under_v4():
     assert ' as "net_amount"' not in v3_sql
     assert ' as "net_amount"' not in v4_sql
     assert "sum(" in v4_sql
+    assert v4_sql.lower().count("select") == v3_sql.lower().count("select")
+
+
+def test_root_basic_and_filter_inputs_share_compatible_aggregate():
+    assert _run_combined(v4=False) == _COMBINED_EXPECTED_ROWS
+    assert _run_combined(v4=True) == _COMBINED_EXPECTED_ROWS
+
+    v3_sql = _gen_combined_sql(v4=False)
+    v4_sql = _gen_combined_sql(v4=True)
+
+    assert ' as "net_amount"' not in v4_sql
+    assert ' as "days"' not in v4_sql
+    assert ' as "_virt_filter' not in v4_sql
+    assert "count(" in v4_sql
+    assert '"quizzical"."ship" - "quizzical"."ord"' in v4_sql
     assert v4_sql.lower().count("select") == v3_sql.lower().count("select")
 
 

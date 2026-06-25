@@ -47,7 +47,7 @@ FROM
 WHERE
     ( "catalog_sales_date_date"."D_YEAR" = 1999 or ( "catalog_sales_date_date"."D_YEAR" = 1998 and "catalog_sales_date_date"."D_MOY" = 12 ) or ( "catalog_sales_date_date"."D_YEAR" = 2000 and "catalog_sales_date_date"."D_MOY" = 1 ) ) and "catalog_sales_date_date"."D_YEAR" = 1999
 ),
-sweltering as (
+abhorrent as (
 SELECT
     "abundant"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
     "abundant"."catalog_sales_date_month_of_year" as "catalog_sales_date_month_of_year",
@@ -70,7 +70,7 @@ FROM
 WHERE
     "thoughtful"."catalog_sales_date_year" = 1999
 ),
-vacuous as (
+juicy as (
 SELECT
     "abundant"."sum_sales" as "sum_sales",
     coalesce("abundant"."catalog_sales_call_center_name","cooperative"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
@@ -90,17 +90,17 @@ GROUP BY
     4,
     5,
     coalesce("abundant"."catalog_sales_date_month_of_year","cooperative"."catalog_sales_date_month_of_year")),
-young as (
+concerned as (
 SELECT
-    "vacuous"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
-    "vacuous"."catalog_sales_date_year" as "catalog_sales_date_year",
-    "vacuous"."catalog_sales_item_brand_name" as "catalog_sales_item_brand_name",
-    "vacuous"."catalog_sales_item_category" as "catalog_sales_item_category",
-    avg("vacuous"."sum_sales") as "avg_monthly_sales"
+    "juicy"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
+    "juicy"."catalog_sales_date_year" as "catalog_sales_date_year",
+    "juicy"."catalog_sales_item_brand_name" as "catalog_sales_item_brand_name",
+    "juicy"."catalog_sales_item_category" as "catalog_sales_item_category",
+    avg("juicy"."sum_sales") as "avg_monthly_sales"
 FROM
-    "vacuous"
+    "juicy"
 WHERE
-    "vacuous"."catalog_sales_date_year" = 1999
+    "juicy"."catalog_sales_date_year" = 1999
 
 GROUP BY
     1,
@@ -110,50 +110,50 @@ GROUP BY
 HAVING
     "avg_monthly_sales" > 0
 ),
-sparkling as (
+young as (
 SELECT
     "abundant"."catalog_sales_date_month_of_year" as "catalog_sales_date_month_of_year",
-    "abundant"."sum_sales" - "young"."avg_monthly_sales" as "sum_minus_avg",
+    "abundant"."sum_sales" - "concerned"."avg_monthly_sales" as "sum_minus_avg",
     "abundant"."sum_sales" as "sum_sales",
-    "young"."avg_monthly_sales" as "avg_monthly_sales",
-    coalesce("abundant"."catalog_sales_call_center_name","young"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
-    coalesce("abundant"."catalog_sales_date_year","young"."catalog_sales_date_year") as "catalog_sales_date_year",
-    coalesce("abundant"."catalog_sales_item_brand_name","young"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
-    coalesce("abundant"."catalog_sales_item_category","young"."catalog_sales_item_category") as "catalog_sales_item_category"
+    "concerned"."avg_monthly_sales" as "avg_monthly_sales",
+    coalesce("abundant"."catalog_sales_call_center_name","concerned"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
+    coalesce("abundant"."catalog_sales_date_year","concerned"."catalog_sales_date_year") as "catalog_sales_date_year",
+    coalesce("abundant"."catalog_sales_item_brand_name","concerned"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
+    coalesce("abundant"."catalog_sales_item_category","concerned"."catalog_sales_item_category") as "catalog_sales_item_category"
 FROM
     "abundant"
-    RIGHT OUTER JOIN "young" on "abundant"."catalog_sales_call_center_name" = "young"."catalog_sales_call_center_name" AND "abundant"."catalog_sales_date_year" = "young"."catalog_sales_date_year" AND "abundant"."catalog_sales_item_brand_name" = "young"."catalog_sales_item_brand_name" AND "abundant"."catalog_sales_item_category" is not distinct from "young"."catalog_sales_item_category"
+    RIGHT OUTER JOIN "concerned" on "abundant"."catalog_sales_call_center_name" = "concerned"."catalog_sales_call_center_name" AND "abundant"."catalog_sales_date_year" = "concerned"."catalog_sales_date_year" AND "abundant"."catalog_sales_item_brand_name" = "concerned"."catalog_sales_item_brand_name" AND "abundant"."catalog_sales_item_category" is not distinct from "concerned"."catalog_sales_item_category"
 WHERE
-    coalesce("abundant"."catalog_sales_date_year","young"."catalog_sales_date_year") = 1999
+    coalesce("abundant"."catalog_sales_date_year","concerned"."catalog_sales_date_year") = 1999
 )
 SELECT
-    coalesce("sparkling"."catalog_sales_item_category","sweltering"."catalog_sales_item_category") as "catalog_sales_item_category",
-    coalesce("sparkling"."catalog_sales_item_brand_name","sweltering"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
-    coalesce("sparkling"."catalog_sales_call_center_name","sweltering"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
-    coalesce("sparkling"."catalog_sales_date_year","sweltering"."catalog_sales_date_year") as "catalog_sales_date_year",
-    coalesce("sparkling"."catalog_sales_date_month_of_year","sweltering"."catalog_sales_date_month_of_year") as "catalog_sales_date_month_of_year",
-    "sparkling"."avg_monthly_sales" as "avg_monthly_sales",
-    "sparkling"."sum_sales" as "sum_sales",
-    "sweltering"."psum" as "psum",
-    "sweltering"."nsum" as "nsum"
+    coalesce("abhorrent"."catalog_sales_item_category","young"."catalog_sales_item_category") as "catalog_sales_item_category",
+    coalesce("abhorrent"."catalog_sales_item_brand_name","young"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
+    coalesce("abhorrent"."catalog_sales_call_center_name","young"."catalog_sales_call_center_name") as "catalog_sales_call_center_name",
+    coalesce("abhorrent"."catalog_sales_date_year","young"."catalog_sales_date_year") as "catalog_sales_date_year",
+    coalesce("abhorrent"."catalog_sales_date_month_of_year","young"."catalog_sales_date_month_of_year") as "catalog_sales_date_month_of_year",
+    "young"."avg_monthly_sales" as "avg_monthly_sales",
+    "young"."sum_sales" as "sum_sales",
+    "abhorrent"."psum" as "psum",
+    "abhorrent"."nsum" as "nsum"
 FROM
-    "sweltering"
-    RIGHT OUTER JOIN "sparkling" on "sweltering"."catalog_sales_call_center_name" = "sparkling"."catalog_sales_call_center_name" AND "sweltering"."catalog_sales_date_month_of_year" = "sparkling"."catalog_sales_date_month_of_year" AND "sweltering"."catalog_sales_date_year" = "sparkling"."catalog_sales_date_year" AND "sweltering"."catalog_sales_item_brand_name" = "sparkling"."catalog_sales_item_brand_name" AND "sweltering"."catalog_sales_item_category" is not distinct from "sparkling"."catalog_sales_item_category"
+    "abhorrent"
+    RIGHT OUTER JOIN "young" on "abhorrent"."catalog_sales_call_center_name" = "young"."catalog_sales_call_center_name" AND "abhorrent"."catalog_sales_date_month_of_year" = "young"."catalog_sales_date_month_of_year" AND "abhorrent"."catalog_sales_date_year" = "young"."catalog_sales_date_year" AND "abhorrent"."catalog_sales_item_brand_name" = "young"."catalog_sales_item_brand_name" AND "abhorrent"."catalog_sales_item_category" is not distinct from "young"."catalog_sales_item_category"
 WHERE
-    coalesce("sparkling"."catalog_sales_date_year","sweltering"."catalog_sales_date_year") = 1999 and "sparkling"."avg_monthly_sales" > 0 and CASE
-	WHEN "sparkling"."avg_monthly_sales" > 0 THEN abs("sparkling"."sum_sales" - "sparkling"."avg_monthly_sales") / "sparkling"."avg_monthly_sales"
+    coalesce("abhorrent"."catalog_sales_date_year","young"."catalog_sales_date_year") = 1999 and "young"."avg_monthly_sales" > 0 and CASE
+	WHEN "young"."avg_monthly_sales" > 0 THEN abs("young"."sum_sales" - "young"."avg_monthly_sales") / "young"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    "sparkling"."sum_minus_avg" asc nulls first,
-    coalesce("sparkling"."catalog_sales_item_category","sweltering"."catalog_sales_item_category") asc,
-    coalesce("sparkling"."catalog_sales_item_brand_name","sweltering"."catalog_sales_item_brand_name") asc,
-    coalesce("sparkling"."catalog_sales_call_center_name","sweltering"."catalog_sales_call_center_name") asc,
-    coalesce("sparkling"."catalog_sales_date_year","sweltering"."catalog_sales_date_year") asc,
-    coalesce("sparkling"."catalog_sales_date_month_of_year","sweltering"."catalog_sales_date_month_of_year") asc,
-    "sparkling"."avg_monthly_sales" asc,
-    "sparkling"."sum_sales" asc,
-    "sweltering"."psum" asc,
-    "sweltering"."nsum" asc
+    "young"."sum_minus_avg" asc nulls first,
+    coalesce("abhorrent"."catalog_sales_item_category","young"."catalog_sales_item_category") asc,
+    coalesce("abhorrent"."catalog_sales_item_brand_name","young"."catalog_sales_item_brand_name") asc,
+    coalesce("abhorrent"."catalog_sales_call_center_name","young"."catalog_sales_call_center_name") asc,
+    coalesce("abhorrent"."catalog_sales_date_year","young"."catalog_sales_date_year") asc,
+    coalesce("abhorrent"."catalog_sales_date_month_of_year","young"."catalog_sales_date_month_of_year") asc,
+    "young"."avg_monthly_sales" asc,
+    "young"."sum_sales" asc,
+    "abhorrent"."psum" asc,
+    "abhorrent"."nsum" asc
 LIMIT (100)

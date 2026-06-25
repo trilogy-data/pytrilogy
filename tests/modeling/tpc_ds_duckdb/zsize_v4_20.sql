@@ -44,7 +44,7 @@ FROM
 WHERE
     "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 ),
-uneven as (
+abundant as (
 SELECT
     "cooperative"."revenue" as "revenue",
     coalesce("cooperative"."cs_item_class","thoughtful"."cs_item_class") as "cs_item_class"
@@ -58,15 +58,15 @@ GROUP BY
     coalesce("cooperative"."cs_item_current_price","thoughtful"."cs_item_current_price"),
     coalesce("cooperative"."cs_item_desc","thoughtful"."cs_item_desc"),
     coalesce("cooperative"."cs_item_text_id","thoughtful"."cs_item_text_id")),
-juicy as (
+yummy as (
 SELECT
-    "uneven"."cs_item_class" as "cs_item_class",
-    sum("uneven"."revenue") as "_virt_agg_sum_9832457364876792"
+    "abundant"."cs_item_class" as "cs_item_class",
+    sum("abundant"."revenue") as "_virt_agg_sum_9832457364876792"
 FROM
-    "uneven"
+    "abundant"
 GROUP BY
     1),
-vacuous as (
+juicy as (
 SELECT
     "cooperative"."cs_item_category" as "cs_item_category",
     "cooperative"."cs_item_class" as "cs_item_class",
@@ -74,24 +74,24 @@ SELECT
     "cooperative"."cs_item_desc" as "cs_item_desc",
     "cooperative"."cs_item_text_id" as "cs_item_text_id",
     "cooperative"."revenue" as "revenue",
-    "juicy"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
+    "yummy"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
 FROM
     "cooperative"
-    INNER JOIN "juicy" on "cooperative"."cs_item_class" is not distinct from "juicy"."cs_item_class")
+    INNER JOIN "yummy" on "cooperative"."cs_item_class" is not distinct from "yummy"."cs_item_class")
 SELECT
-    "vacuous"."cs_item_text_id" as "cs_item_text_id",
-    "vacuous"."cs_item_desc" as "cs_item_desc",
-    "vacuous"."cs_item_category" as "cs_item_category",
-    "vacuous"."cs_item_class" as "cs_item_class",
-    "vacuous"."cs_item_current_price" as "cs_item_current_price",
-    "vacuous"."revenue" as "revenue",
-    ( "vacuous"."revenue" * 100.0 ) / ("vacuous"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+    "juicy"."cs_item_text_id" as "cs_item_text_id",
+    "juicy"."cs_item_desc" as "cs_item_desc",
+    "juicy"."cs_item_category" as "cs_item_category",
+    "juicy"."cs_item_class" as "cs_item_class",
+    "juicy"."cs_item_current_price" as "cs_item_current_price",
+    "juicy"."revenue" as "revenue",
+    ( "juicy"."revenue" * 100.0 ) / ("juicy"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
 FROM
-    "vacuous"
+    "juicy"
 ORDER BY 
-    "vacuous"."cs_item_category" asc nulls first,
-    "vacuous"."cs_item_class" asc nulls first,
-    "vacuous"."cs_item_text_id" asc nulls first,
-    "vacuous"."cs_item_desc" asc nulls first,
+    "juicy"."cs_item_category" asc nulls first,
+    "juicy"."cs_item_class" asc nulls first,
+    "juicy"."cs_item_text_id" asc nulls first,
+    "juicy"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first
 LIMIT (100)
