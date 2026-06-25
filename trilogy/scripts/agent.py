@@ -165,6 +165,12 @@ MAX_SUBMIT_KICKBACKS = 2
 # gave up after N turns" from "agent process died unexpectedly".
 EXIT_ITERATION_EXHAUSTED = 2
 
+
+class IterationExhaustedError(click.ClickException):
+    """Agent ran out of iterations without returning control."""
+
+    exit_code = EXIT_ITERATION_EXHAUSTED
+
 REVIEWER_SYSTEM_PROMPT = (
     "You check ONE narrow thing: did the agent ITSELF signal it was not finished "
     "when it called return_control_to_user? You receive ONLY the agent's most "
@@ -590,11 +596,9 @@ def _run_turn(
                         )
                         continue
                 return
-    exc = click.ClickException(
+    raise IterationExhaustedError(
         f"Agent exhausted {max_iterations} iterations without returning control."
     )
-    exc.exit_code = EXIT_ITERATION_EXHAUSTED
-    raise exc
 
 
 @argument("command", type=str)
