@@ -517,3 +517,110 @@ def test_shared_union_arms_collapse_to_single_union():
     assert sql.count('as "ds_a"') == 1, sql
     assert sql.count('as "ds_b"') == 1, sql
     assert sql.count('as "ds_c"') == 1, sql
+
+
+# An enum-partitioned fact where the FK that links a measure to its dimension is
+# carried directly on the fact for some channels (A, B) but, for channel C, lives
+# on a SIBLING table (`sale_c`) keyed by the same (oid, chan). Satisfying the C arm
+# of the fact union therefore requires MERGING `ret_c` (the measure) with `sale_c`
+# (the FK): its requested fields span two sources. A union projects only the
+# columns common to every branch, so `dim_id` (absent from `ret_c` alone) gets
+# dropped and the measure loses correlation to its dimension. Mirrors TPC-DS q05,
+# where a web return's return-site comes from web_sales, not web_returns.
+PREQL_UNION_ARM_SPANS_SOURCES = """
+key oid int;
+key chan enum<string>['A', 'B', 'C'];
+key dim_id int;
+property dim_id.dim_text string;
+property <oid, chan>.amt float;
+key k int;
+property k.v float;
+
+partial datasource ret_a (oid:oid, raw(''' 'A' '''):chan, aid:?dim_id, amt:amt)
+grain (oid, chan) complete where chan = 'A'
+query ''' select 1 as oid, 100 as aid, 11.0 as amt union all select 2 as oid, 200 as aid, 20.0 as amt ''';
+
+partial datasource ret_b (oid:oid, raw(''' 'B' '''):chan, bid:?dim_id, amt:amt)
+grain (oid, chan) complete where chan = 'B'
+query ''' select 3 as oid, 200 as bid, 30.0 as amt ''';
+
+partial datasource ret_c (oid:oid, raw(''' 'C' '''):chan, amt:amt)
+grain (oid, chan) complete where chan = 'C'
+query ''' select 4 as oid, 40.0 as amt union all select 5 as oid, 55.0 as amt ''';
+
+partial datasource sale_c (oid:oid, raw(''' 'C' '''):chan, cid:?dim_id)
+grain (oid, chan) complete where chan = 'C'
+query ''' select 4 as oid, 100 as cid union all select 5 as oid, 300 as cid ''';
+
+partial datasource dim_a (raw(''' 'A' '''):chan, did:dim_id, dtext:dim_text)
+grain (dim_id, chan) complete where chan = 'A'
+query ''' select 100 as did, 'p100' as dtext union all select 200 as did, 'p200' as dtext ''';
+
+partial datasource dim_b (raw(''' 'B' '''):chan, did:dim_id, dtext:dim_text)
+grain (dim_id, chan) complete where chan = 'B'
+query ''' select 100 as did, 'p100' as dtext union all select 200 as did, 'p200' as dtext ''';
+
+partial datasource dim_c (raw(''' 'C' '''):chan, did:dim_id, dtext:dim_text)
+grain (dim_id, chan) complete where chan = 'C'
+query ''' select 100 as did, 'p100' as dtext union all select 300 as did, 'p300' as dtext ''';
+
+datasource other (k:k, v:v) grain (k) query ''' select 1 as k, 7.0 as v ''';
+"""
+
+# p100: A/oid1 (11) + C/oid4 (40) = 51; p200: A/oid2 (20) + B/oid3 (30) = 50;
+# p300: C/oid5 (55). C's measure must correlate to its FK via sale_c.
+_EXPECTED_RETURNS = [("ep100", 51.0), ("ep200", 50.0), ("ep300", 55.0)]
+
+
+def test_enum_union_arm_spanning_multiple_sources_row_grain():
+    # The core defect, with no union/aggregate to obscure it: a plain row-grain
+    # select of (entity-via-partial-FK, measure). The measure union drops dim_id
+    # (ret_c lacks it) and joins the dimension on the enum key `chan` alone, so a
+    # measure pairs with EVERY entity sharing its channel — inventing (ent, amt)
+    # pairs that no row carries. The five real pairs (one per oid) are the only
+    # correct rows.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_UNION_ARM_SPANS_SOURCES)
+    results = executor.execute_text("""
+where dim_id is not null
+select concat('e', dim_text) as ent, amt as m order by ent, m;
+""")[0].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("ep100", 11.0),
+        ("ep100", 40.0),
+        ("ep200", 20.0),
+        ("ep200", 30.0),
+        ("ep300", 55.0),
+    ]
+
+
+def test_enum_union_arm_spanning_multiple_sources_aggregated():
+    # Control: with an explicit aggregate the measure is sourced at dim_id grain,
+    # which pulls in the sale_c FK bridge, so this already resolves correctly.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_UNION_ARM_SPANS_SOURCES)
+    results = executor.execute_text("""
+where dim_id is not null
+select concat('e', dim_text) as ent, sum(amt) as total order by ent;
+""")[0].fetchall()
+    assert [tuple(r) for r in results] == _EXPECTED_RETURNS
+
+
+def test_enum_union_arm_spanning_multiple_sources_in_tvf():
+    # The same split arm inside a multi-arm union(...) TVF: the arm is resolved at
+    # row grain and does NOT carry the grain key (oid) in its output, so the
+    # planner has no grain-key bridge to pull `sale_c` in for the C branch. The
+    # measure union can then only join the dimension on the low-cardinality enum
+    # key (chan), and C's measure fans out / broadcasts (ep300 picks up all of C,
+    # ep100/ep200 inflate). The per-enum source search must instead recognize a
+    # mergeable set (ret_c |x| sale_c) so every branch provides dim_id.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_UNION_ARM_SPANS_SOURCES)
+    results = executor.execute_text("""
+with combined as union(
+  (select 'zzz' as ent, v as m where k = 1),
+  (where dim_id is not null select concat('e', dim_text) as ent, amt as m)
+) -> (entity, meas);
+select combined.entity, sum(combined.meas) as total order by combined.entity;
+""")[0].fetchall()
+    assert [tuple(r) for r in results] == _EXPECTED_RETURNS + [("zzz", 7.0)]
