@@ -130,6 +130,31 @@ CTE. The fix adds an aggregate's `by` grouping keys (and row-preserving inputs) 
 rather than re-sourcing. q47 went 8 CTEs / 9 JOINs / 2 fact-scans → **4 / 5 / 1** (near
 v3's 3). New stable passes: q12 (== v3), q20, q50. Full sweep 4153 passed / 0 failed.
 
+### Remaining size shapes — next targets (2026-06-25)
+
+Structural fingerprints (v3 → v4) of the 7 still-failing size queries (q02 excluded —
+it's the invalid-SQL bug, see `v4_q02_invalid_alias_handoff.md`). Three patterns:
+
+1. **Passthrough-projection bloat — biggest lever.** v4 emits pure single-source
+   projection CTEs (no join/group/agg/window/where) that just re-project columns and
+   should fold into their consumer. **q76: 12 of 22 CTEs are trivially foldable**
+   (v3 13 → v4 22 CTEs, *same* 9 joins / 2 unions). Also inflates q73, q47, q2.2.
+   `_fold_passthrough_parents` is supposed to absorb row-preserving projections — find
+   why it doesn't fire here. Highest bang (q76 is the largest), lowest risk.
+2. **Dimension-projection re-join — q81 & q30.alt (identical fingerprint:
+   v3 4 CTEs/5 joins/2 groups → v4 5/9/4).** Same family as q47: the coarser-grain
+   `avg` reuse is already fixed by the join-stream spike (`juicy` reuses `abundant`),
+   but the **wide customer/address dimension join gets its own CTE (`cooperative`,
+   4 joins) and is re-joined** to the aggregate instead of folding the dims into the
+   aggregate/final. One fix should clear both.
+3. **Aggregate over-split — q73 (v3 1 CTE → v4 4).** v3 renders all joins + dims +
+   GROUP in a single SELECT; v4 splits the dim projections into their own CTEs first.
+   Overlaps heavily with (1).
+
+q47 (7868) and q57 (6900) are already just over ceiling — pattern (1) alone may tip
+them under. Recommended order: (1) passthrough folding, then (2) the q81/q30.alt
+dimension re-join.
+
 ## Phase boundary contract
 
 The intended v4 path is:
