@@ -55,6 +55,7 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, dependency_subgraph, edge_kind
+from .functional_dependency import build_fd_determines
 from .models import (
     FinalAssemblyContract,
     FinalContributorContract,
@@ -116,6 +117,18 @@ def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     if combined is None:
         return None
     return BuildWhereClause(conditional=combined)
+
+
+def _root_atoms_satisfiable_from(
+    atoms: list[BoolExpr],
+    concepts: list[BuildConcept],
+) -> list[BoolExpr]:
+    available = {concept.address for concept in concepts}
+    return [
+        atom
+        for atom in atoms
+        if all(concept_satisfiable(arg, available) for arg in atom.row_arguments)
+    ]
 
 
 def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
@@ -617,6 +630,51 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             )
             dropped.add(id(a))
     return [p for p in parents if id(p) not in dropped]
+
+
+def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
+    if not isinstance(node, SelectNode):
+        return node
+    if (
+        node.datasource is not None
+        or len(node.parents) != 1
+        or node.conditions is not None
+        or node.preexisting_conditions is not None
+        or node.ordering is not None
+        or node.existence_concepts
+        or node.force_group
+    ):
+        return node
+    parent = node.parents[0]
+    visible = {concept.address for concept in parent.usable_outputs}
+    if not node.output_concepts:
+        return node
+    if any(concept.address not in visible for concept in node.output_concepts):
+        return node
+    if any(concept.address not in visible for concept in node.input_concepts):
+        return node
+    collapsed = parent.copy()
+    collapsed.set_output_concepts(list(node.output_concepts), rebuild=False)
+    collapsed.hidden_concepts = set(node.hidden_concepts)
+    collapsed.partial_concepts = collapsed.derive_partials(list(node.partial_concepts))
+    collapsed.nullable_concepts = list(node.nullable_concepts)
+    collapsed.rollup_concepts = list(node.rollup_concepts)
+    collapsed.resolution_cache = None
+    return collapsed
+
+
+def _elide_passthrough_tree(
+    node: StrategyNode, seen: dict[int, StrategyNode] | None = None
+) -> StrategyNode:
+    seen = seen or {}
+    node_id = id(node)
+    if node_id in seen:
+        return seen[node_id]
+    node.parents = [_elide_passthrough_tree(parent, seen) for parent in node.parents]
+    node.resolution_cache = None
+    collapsed = _elide_single_parent_passthrough(node)
+    seen[node_id] = collapsed
+    return collapsed
 
 
 def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
@@ -1494,6 +1552,32 @@ def _final_contributor_contracts(
     return {gid: contracts[gid] for gid in contributing}
 
 
+def _relevant_root_preserve_keys(
+    environment: BuildEnvironment,
+    output_concepts: list[BuildConcept],
+    preserve_keys: frozenset[str],
+) -> frozenset[str]:
+    if not preserve_keys:
+        return frozenset()
+    output_addresses = {concept.address for concept in output_concepts}
+    relevant: set[str] = set()
+    for key in preserve_keys:
+        if key in output_addresses:
+            relevant.add(key)
+            continue
+        if any(
+            build_fd_determines(
+                environment,
+                {key},
+                concept.address,
+                include_empty_grain=False,
+            )
+            for concept in output_concepts
+        ):
+            relevant.add(key)
+    return frozenset(relevant)
+
+
 def _group_to_grain_if_required(
     node: StrategyNode,
     mandatory_list: list[BuildConcept],
@@ -1752,10 +1836,14 @@ def _assemble_final_node(
         is_root = attrs[gid].derivation == Derivation.ROOT
         contributor_contract = contracts_by_gid[gid]
         preserve_keys = contributor_contract.preserve_keys & final_merge_grain
+        group_concepts = list(per_group[gid])
+        if is_root:
+            preserve_keys = _relevant_root_preserve_keys(
+                environment, group_concepts, preserve_keys
+            )
         projection_grain = (
             final_merge_grain if is_root else contributor_contract.projection_grain
         )
-        group_concepts = list(per_group[gid])
         if is_root and preserve_keys:
             seen_group_concepts = {concept.address for concept in group_concepts}
             # Carry the merge grain's join KEYS onto the root scan, but never a
@@ -1772,6 +1860,9 @@ def _assemble_final_node(
                 and c.derivation != Derivation.ROWSET
             )
         if is_root:
+            root_conditions = _wrap_atoms(
+                _root_atoms_satisfiable_from(_atoms_at(attrs, gid), group_concepts)
+            )
             fresh = _fresh_final_root_projection(
                 group_concepts,
                 environment,
@@ -1781,7 +1872,7 @@ def _assemble_final_node(
                 # The fresh re-source must keep the root group's own WHERE
                 # (e.g. `x = 1`); dropping it silently widened the scan and the
                 # constant sibling's `1=1` merge returned the unfiltered rows.
-                conditions=_wrap_atoms(_atoms_at(attrs, gid)),
+                conditions=root_conditions,
             )
             if fresh is not None:
                 node = fresh
@@ -2072,6 +2163,7 @@ def build_strategy_node(
         )
         if node is None:
             continue
+        node = _elide_single_parent_passthrough(node)
         # Attach existence parents+concepts for any SubselectComparison
         # atoms at this group. Done post-build so the generators stay
         # ignorant of existence handling — the host node just learns it
@@ -2102,6 +2194,7 @@ def build_strategy_node(
         source_policy,
     )
     if final is not None:
+        final = _elide_passthrough_tree(final)
         if _has_unsourced_leaf(final):
             # A parent-less, datasource-less node that outputs a ROOT concept (a
             # base column that must come from a datasource) has no source for it —

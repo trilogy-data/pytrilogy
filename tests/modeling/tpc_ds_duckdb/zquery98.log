@@ -47,7 +47,7 @@ FROM
     \"cheerful\"
 GROUP BY
     1),
-abundant as (
+thoughtful as (
 SELECT
     \"cooperative\".\"item_revenue\" as \"item_revenue\",
     \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",

@@ -1,5 +1,34 @@
 # Bug: q02 v4 renders an `INVALID_ALIAS` sentinel → invalid SQL (empty identifier)
 
+Status: FIXED (2026-06-25). `test_two` now passes under v4 (ParserException gone;
+stays xfail-listed only for borderline `_TPCDS_SIZE`). Root cause was the OPTIMIZER,
+not initial condition placement (see correction below).
+
+## Fix
+
+1. **Planner (real bug) — `union_dim_pushdown.py`.** `UnionDimPushdown` resolved
+   the date-dim join target via `_find_dim_cte_for_qds`, whose raw-id fallback
+   matches *any* CTE whose `base_datasource` is `date_dim` — wrongly including the
+   `relevent_week_seq` filter CTE (a GROUP over `date_dim` exposing only that one
+   derived column). It then pushed the `week_seq in relevent_week_seq` filter into
+   the union branches joined to that derivative CTE, which can't render `week_seq`.
+   New `_dim_cte_exposes` guard in `_resolve_push_context` requires the resolved
+   dim CTE to actually output the FK right key + pushed dim concepts; otherwise the
+   push bails (filter stays correctly on the post-date-join consumer). Locked by
+   `test_union_dim_pushdown.py::test_dim_cte_exposes_rejects_filter_derivative_of_dim`.
+2. **Renderer (fail-loud) — `execute.py`.** The `get_alias` fallback no longer
+   swallows the source-map miss into an `INVALID_ALIAS` string emitted into SQL; it
+   raises (a source-map miss is a planner gap). Test updated:
+   `test_get_alias_skips_source_mismatch_and_raises_on_miss`.
+
+Correction to the original diagnosis below: the filter is NOT injected at the union
+scan at planning time. It's correctly placed on the post-date-join consumer; the
+optimizer's `union_dim_pushdown` (combined with `inline_datasource` +
+`predicate_pushdown`) is what relocated it onto the union branches. Disabling any
+one of those three alone produced valid SQL.
+
+---
+
 Status: OPEN, pre-existing (NOT caused by the 2026-06-25 size fixes — reproduces
 with both reverted). Masked in the suite because `test_two` is xfail-listed
 (`_TPCDS_SIZE`), so the failure currently looks like a size entry.

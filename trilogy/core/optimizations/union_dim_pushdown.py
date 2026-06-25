@@ -587,12 +587,24 @@ class UnionDimPushdown(OptimizationRule):
 
     # ---- transform ----
 
+    def _dim_cte_exposes(self, dim_cte: CTE | UnionCTE, d: _DimDescriptor) -> bool:
+        """The resolved dim CTE must actually expose the dim columns we intend to
+        join (FK right key + pushed dim concepts). ``_find_dim_cte_for_qds``'s
+        raw-id fallback matches *any* CTE whose base datasource is the dim — which
+        wrongly includes a filtered/aggregated derivative of the dim (e.g. q02's
+        ``relevent_week_seq`` CTE, a GROUP over ``date_dim`` exposing only that one
+        derived column). Joining that as the dim renders columns it doesn't have."""
+        out = {c.address for c in dim_cte.output_columns}
+        needed = {c.address for c in d.dim_concepts}
+        needed |= {p.right.address for p in d.key_pairs}
+        return needed.issubset(out)
+
     def _resolve_push_context(
         self, consumers: list[CTE], d: _DimDescriptor
     ) -> _PushContext | None:
         for c in consumers:
             found = _find_dim_cte_for_qds(c, d.join_qds_id)
-            if found is not None:
+            if found is not None and self._dim_cte_exposes(found, d):
                 return _PushContext(dim_cte=found, source_consumer=c)
         return None
 

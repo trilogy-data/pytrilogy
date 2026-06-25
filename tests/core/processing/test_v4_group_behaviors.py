@@ -77,6 +77,7 @@ from trilogy.core.processing.v4_helper.source_policy import STRICT_SOURCE_POLICY
 from trilogy.core.processing.v4_helper.strategy_builder import (
     ParentBuild,
     _apply_input_contracts,
+    _elide_passthrough_tree,
     _filter_intrinsic_pushdown_safe,
     _final_contributor_contracts,
     _fold_passthrough_parents,
@@ -1283,6 +1284,42 @@ def test_fold_passthrough_keeps_shape_barrier_parent():
     folded = _fold_passthrough_parents([barrier, carrier])
 
     assert folded == [barrier, carrier]
+
+
+def test_elide_passthrough_tree_collapses_linear_identity_projection():
+    env = BuildEnvironment()
+    key = _build_concept("item.id", Purpose.KEY)
+    name = _build_concept(
+        "item.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={key.address},
+        keys={key.address},
+    )
+    metric = _build_concept("metric", Purpose.METRIC)
+    source = SelectNode(
+        input_concepts=[key, name, metric],
+        output_concepts=[key, name, metric],
+        environment=env,
+    )
+    first = SelectNode(
+        input_concepts=[key, name],
+        output_concepts=[key, name],
+        parents=[source],
+        environment=env,
+    )
+    second = SelectNode(
+        input_concepts=[name],
+        output_concepts=[name],
+        parents=[first],
+        environment=env,
+    )
+
+    collapsed = _elide_passthrough_tree(second)
+
+    assert isinstance(collapsed, SelectNode)
+    assert collapsed.parents == []
+    assert [concept.address for concept in collapsed.output_concepts] == [name.address]
 
 
 def test_parent_projection_uses_declared_contract_not_shape_barrier():

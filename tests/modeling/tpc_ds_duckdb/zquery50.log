@@ -6,7 +6,7 @@ comp_size = 1903
 generated_sql = """
 
 WITH 
-cheerful as (
+yummy as (
 SELECT
     \"store_sales_return_date_date\".\"D_DATE_SK\" - \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"days_to_return\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
@@ -21,9 +21,7 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3,
-    4),
+    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\"),
 thoughtful as (
 SELECT
     \"cheerful\".\"store_sales_store_id\" as \"store_sales_store_id\",
@@ -33,7 +31,13 @@ SELECT
     count(CASE WHEN \"cheerful\".\"days_to_return\" > 60 and \"cheerful\".\"days_to_return\" <= 90 THEN \"cheerful\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_4020156712075239\",
     count(CASE WHEN \"cheerful\".\"days_to_return\" > 90 and \"cheerful\".\"days_to_return\" <= 120 THEN \"cheerful\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_5623669394588902\"
 FROM
-    \"cheerful\"
+    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
+    INNER JOIN \"memory\".\"store_returns\" as \"physical_sales_store_returns\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_store_returns\".\"SR_ITEM_SK\" AND \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"physical_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_return_date_date\" on \"physical_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"physical_sales_return_date_date\".\"D_DATE_SK\"
+WHERE
+    \"physical_sales_return_date_date\".\"D_YEAR\" = 2001 and \"physical_sales_return_date_date\".\"D_MOY\" = 8 and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_store_returns\".\"SR_CUSTOMER_SK\" and \"physical_sales_store_sales\".\"SS_STORE_SK\" is not null
+
 GROUP BY
     1,
     \"cheerful\".\"store_sales_ticket_number\"),
@@ -46,7 +50,7 @@ SELECT
     sum(\"thoughtful\".\"_virt_agg_count_7691116690045464\") as \"days_30\",
     sum(\"thoughtful\".\"_virt_agg_count_7969998780980378\") as \"days_120_plus\"
 FROM
-    \"thoughtful\"
+    \"yummy\"
 GROUP BY
     1)
 SELECT

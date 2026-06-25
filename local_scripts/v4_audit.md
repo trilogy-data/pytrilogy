@@ -57,6 +57,40 @@ of the size-analysis work below.
 
 ## Size / verbosity analysis (2026-06-25)
 
+### Core diagnostic tool: `local_scripts/discovery_v4.py`
+
+Use `discovery_v4.py` as the primary graph/strategy diagnostic harness before making
+size fixes. It already renders the v4 concept graph, merged group graph, and final
+reordered group graph; the `--diagnostics` mode also writes searchable sidecars for
+the planner contracts and materialized strategy tree.
+
+```bash
+.venv/Scripts/python.exe local_scripts/discovery_v4.py --query 81 --diagnostics --diagnostics-dir local_scripts/v4_diagnostics --no-sql
+.venv/Scripts/python.exe local_scripts/discovery_v4.py --query query30-alt.preql --diagnostics --diagnostics-dir local_scripts/v4_diagnostics --no-sql
+```
+
+Outputs:
+
+- `local_scripts/<stem>.png` - concept graph.
+- `local_scripts/<stem>_groups.png` - merged group graph.
+- `local_scripts/<stem>_groups_reordered.png` - final group graph after reordering.
+- `local_scripts/v4_diagnostics/<stem>_diagnostics.json` - machine-readable concepts,
+  groups, edges, contracts, and strategy nodes.
+- `local_scripts/v4_diagnostics/<stem>_groups.md` - group attrs, IO, edge kinds,
+  input contracts, and FINAL contract.
+- `local_scripts/v4_diagnostics/<stem>_groups_merged.md` - same for the merged group
+  graph.
+- `local_scripts/v4_diagnostics/<stem>_strategy.md` - materialized `StrategyNode`
+  tree with datasource choices and repeated parent reuse marked.
+
+Read these before eyeballing SQL. Fast loop:
+
+1. Inspect `__final__` in `<stem>_groups.md` to see merge grain and contributor
+   contracts.
+2. Search `<stem>_strategy.md` for repeated datasources or unexpected fact tables.
+3. Use `<stem>_diagnostics.json` for scripted summaries when comparing two queries
+   or checking whether a fix changed contracts vs only physical assembly.
+
 Goal: v4 should produce **equal-or-less** verbose SQL than v3. The `_TPCDS_SIZE`
 entries are queries where v4's rows are correct but the SQL is longer (more CTEs /
 less compact) than v3's, tripping the per-test `assert len(query) < ceiling`.
@@ -146,7 +180,22 @@ it's the invalid-SQL bug, see `v4_q02_invalid_alias_handoff.md`). Three patterns
    `avg` reuse is already fixed by the join-stream spike (`juicy` reuses `abundant`),
    but the **wide customer/address dimension join gets its own CTE (`cooperative`,
    4 joins) and is re-joined** to the aggregate instead of folding the dims into the
-   aggregate/final. One fix should clear both.
+   aggregate/final. One fix should clear both. `discovery_v4 --diagnostics` confirms
+   the current failure mode:
+   - q81 FINAL merge grain is `cr.billing_customer.id, cr.return_address.state`;
+     the root contributor still preserves both keys and outputs 21 mixed fact/date/
+     return-address/customer concepts. The strategy tree sources
+     `cr.catalog_returns`, `cr.date.date`, and `cr.return_address.customer_address`
+     three times, while billing-customer/address dimensions are sourced twice.
+   - q30.alt has the same shape with `web_returns.billing_customer.id,
+     web_returns.return_address.state`; its root contributor outputs 18 mixed
+     concepts and repeats `web_returns.web_returns`, return date, and return address
+     sources three times.
+   - The likely lever is to avoid forcing final wide dimension projections through
+     a fact-backed root contributor when the requested customer outputs are FD-sourced
+     from `billing_customer.id`. Preserve the aggregate/final merge boundary when it
+     is required for `customer_state > scaled_state`, but source final-only customer
+     dimensions from the customer/address path instead of the returns join-stream.
 3. **Aggregate over-split — q73 (v3 1 CTE → v4 4).** v3 renders all joins + dims +
    GROUP in a single SELECT; v4 splits the dim projections into their own CTEs first.
    Overlaps heavily with (1).
