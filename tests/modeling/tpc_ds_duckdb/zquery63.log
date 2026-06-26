@@ -27,11 +27,13 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    1)
+    1),
+abundant as (
 SELECT
     coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
-    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
+    coalesce(\"cheerful\".\"physical_sales_item_manager_id\",\"cooperative\".\"physical_sales_item_manager_id\") as \"physical_sales_item_manager_id\"
 FROM
     \"cheerful\"
     INNER JOIN \"cooperative\" on \"cheerful\".\"store_sales_item_manager_id\" is not distinct from \"cooperative\".\"store_sales_item_manager_id\"
@@ -40,7 +42,13 @@ WHERE
 	WHEN \"cooperative\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_monthly_sales\") / \"cooperative\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
-
+)
+SELECT
+    \"abundant\".\"physical_sales_item_manager_id\" as \"physical_sales_item_manager_id\",
+    \"abundant\".\"sum_sales\" as \"sum_sales\",
+    \"abundant\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+FROM
+    \"abundant\"
 ORDER BY 
     coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") asc,
     \"cooperative\".\"avg_monthly_sales\" asc,

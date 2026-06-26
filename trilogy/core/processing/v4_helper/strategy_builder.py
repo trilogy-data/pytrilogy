@@ -216,6 +216,14 @@ def _existence_for_group(
     return existence_concepts, existence_parents
 
 
+def _deep_copy_node(node: StrategyNode) -> StrategyNode:
+    """`copy()` shallow-shares `parents`; this recursively copies the whole
+    subtree so the result shares no node object with the original tree."""
+    clone = node.copy()
+    clone.parents = [_deep_copy_node(p) for p in node.parents]
+    return clone
+
+
 def _existence_parents_for(
     concepts: list[BuildConcept],
     built: dict[str, StrategyNode],
@@ -230,7 +238,17 @@ def _existence_parents_for(
             if any(o.address == concept.address for o in source_node.output_concepts):
                 if id(source_node) not in seen_parents:
                     seen_parents.add(id(source_node))
-                    existence_parents.append(source_node.copy())
+                    # `copy()` shallow-shares parents, so a candidate whose
+                    # subtree contains `skip` would wire `skip -> candidate ->
+                    # ... -> skip`, a row-stream cycle that recurses forever in
+                    # `resolve()`. Deep-copy that subtree so the shared node
+                    # becomes an independent duplicate (verbose but acyclic).
+                    if skip is not None and any(
+                        n is skip for n in _strategy_nodes(source_node)
+                    ):
+                        existence_parents.append(_deep_copy_node(source_node))
+                    else:
+                        existence_parents.append(source_node.copy())
                 break
     return existence_parents
 

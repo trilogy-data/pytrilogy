@@ -6,7 +6,7 @@ comp_size = 2939
 generated_sql = """
 
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
@@ -33,7 +33,7 @@ SELECT
     \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
-abundant as (
+uneven as (
 SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
@@ -98,8 +98,8 @@ GROUP BY
     4,
     5,
     6,
-    \"abundant\".\"sales_date_year\"),
-juicy as (
+    7),
+sparkling as (
 SELECT
     \"juicy\".\"sales_item_brand_id\" as \"_curr_i_brand_id\",
     \"juicy\".\"sales_item_category_id\" as \"_curr_i_category_id\",
@@ -173,6 +173,6 @@ WHERE
     cast(\"sweltering\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"young\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
 
 ORDER BY 
-    \"sales_cnt_diff\" asc nulls first,
-    \"sales_amt_diff\" asc nulls first
+    \"rambunctious\".\"sales_cnt_diff\" asc nulls first,
+    \"rambunctious\".\"sales_amt_diff\" asc nulls first
 LIMIT (100)"""

@@ -29,7 +29,7 @@ SELECT
     SUBSTRING("sales_item_items"."I_ITEM_DESC",1,30) as "sales_item_desc_truncated"
 FROM
     "memory"."item" as "sales_item_items"),
-busy as (
+divergent as (
 SELECT
     "sweltering"."sales_billing_customer_id" as "_best_customers_best_customer_id",
     sum("sweltering"."sales_quantity" * "sweltering"."sales_sales_price") as "customer_total_overall"
@@ -61,7 +61,7 @@ GROUP BY
 HAVING
     count("uneven"."sales_order_id") > 4
 ),
-friendly as (
+scrawny as (
 SELECT
     max("late"."customer_total_in_window") as "_max_total_cmax"
 FROM
@@ -72,40 +72,40 @@ SELECT
 FROM
     "vacuous"
     LEFT OUTER JOIN "yummy" on "vacuous"."sales_item_id" = "yummy"."_frequent_items_frequent_item_id"),
-divergent as (
+kaput as (
 SELECT
-    "friendly"."_max_total_cmax" as "max_total_cmax"
+    "scrawny"."_max_total_cmax" as "max_total_cmax"
 FROM
-    "friendly"),
+    "scrawny"),
 sparkling as (
 SELECT
     "young"."_frequent_items_frequent_item_id" as "_frequent_items_frequent_item_id"
 FROM
     "young"),
-puzzled as (
+protective as (
 SELECT
-    "busy"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
+    "divergent"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
 FROM
-    "busy"
-    INNER JOIN "divergent" on 1=1
+    "divergent"
+    INNER JOIN "kaput" on 1=1
 WHERE
-    "busy"."customer_total_overall" > 0.5 * "divergent"."max_total_cmax"
+    "divergent"."customer_total_overall" > 0.5 * "kaput"."max_total_cmax"
 ),
 abhorrent as (
 SELECT
     "sparkling"."_frequent_items_frequent_item_id" as "frequent_items_frequent_item_id"
 FROM
     "sparkling"),
-waggish as (
+premium as (
 SELECT
-    "puzzled"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
+    "protective"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
 FROM
-    "puzzled"),
-rambunctious as (
+    "protective"),
+puzzled as (
 SELECT
-    "waggish"."_best_customers_best_customer_id" as "best_customers_best_customer_id"
+    "premium"."_best_customers_best_customer_id" as "best_customers_best_customer_id"
 FROM
-    "waggish"),
+    "premium"),
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
@@ -117,7 +117,7 @@ FROM
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select abhorrent."frequent_items_frequent_item_id" from abhorrent where abhorrent."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select rambunctious."best_customers_best_customer_id" from rambunctious where rambunctious."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select abhorrent."frequent_items_frequent_item_id" from abhorrent where abhorrent."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select puzzled."best_customers_best_customer_id" from puzzled where puzzled."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 
 UNION ALL
 SELECT
@@ -130,7 +130,7 @@ FROM
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_store_sales_unified"."SS_ITEM_SK" in (select abhorrent."frequent_items_frequent_item_id" from abhorrent where abhorrent."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select rambunctious."best_customers_best_customer_id" from rambunctious where rambunctious."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_store_sales_unified"."SS_ITEM_SK" in (select abhorrent."frequent_items_frequent_item_id" from abhorrent where abhorrent."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select puzzled."best_customers_best_customer_id" from puzzled where puzzled."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 
 UNION ALL
 SELECT
@@ -143,7 +143,7 @@ FROM
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_web_sales_unified"."WS_ITEM_SK" in (select abhorrent."frequent_items_frequent_item_id" from abhorrent where abhorrent."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select rambunctious."best_customers_best_customer_id" from rambunctious where rambunctious."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_web_sales_unified"."WS_ITEM_SK" in (select abhorrent."frequent_items_frequent_item_id" from abhorrent where abhorrent."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select puzzled."best_customers_best_customer_id" from puzzled where puzzled."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 ),
 questionable as (
 SELECT
@@ -155,7 +155,7 @@ SELECT
 FROM
     "thoughtful"
     LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "thoughtful"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK"),
-puffy as (
+waggish as (
 SELECT
     "questionable"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
     "questionable"."sales_billing_customer_last_name" as "sales_billing_customer_last_name",
@@ -169,13 +169,13 @@ HAVING
     "sales_total" > 0
 )
 SELECT
-    "puffy"."sales_billing_customer_last_name" as "c_last_name",
-    "puffy"."sales_billing_customer_first_name" as "c_first_name",
-    "puffy"."sales_total" as "sales_total"
+    "waggish"."sales_billing_customer_last_name" as "c_last_name",
+    "waggish"."sales_billing_customer_first_name" as "c_first_name",
+    "waggish"."sales_total" as "sales_total"
 FROM
-    "puffy"
+    "waggish"
 ORDER BY 
     "c_last_name" asc nulls first,
     "c_first_name" asc nulls first,
-    "puffy"."sales_total" asc nulls first
+    "waggish"."sales_total" asc nulls first
 LIMIT (100)

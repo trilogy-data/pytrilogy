@@ -36,6 +36,15 @@ _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
     "exceeds the v3-tuned length ceiling (more CTEs / less compact)"
 )
+# Genuine v4 crashes (NOT size/shape). The existence-recursion crash (q10/q2.1/rowset)
+# was FIXED 2026-06-25: `_existence_parents_for` deep-copies a cyclic existence-parent
+# subtree, and `gen_root` resolves multi-arg existence sources at build time. Those
+# three reverted to _TPCDS_SIZE / _INLINE. _CRASH_INVALID_REF (filter-over-constant)
+# remains -- see local_scripts/v4_existence_recursion_handoff.md part B.
+_CRASH_INVALID_REF = (
+    "v4 ValueError: filter-over-constant renders an unresolvable concept reference "
+    "into the SELECT (dialect/base.py:2370)"
+)
 V4_KNOWN_FAILING: dict[str, str] = {
     # --- optimization: CTE-shape snapshot diffs ---
     "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining": _INLINE,
@@ -55,10 +64,12 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
     "tests/modeling/stocks/test_stocks.py::test_provider_name": _MODELING,
     "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous": _MODELING,
-    "tests/modeling/usa_names/test_names.py::test_filter_constant": _MODELING,
+    "tests/modeling/usa_names/test_names.py::test_filter_constant": _CRASH_INVALID_REF,
     # --- tpc-h: adhoc07 shape ---
     "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07": _MODELING,
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---
+    # NOTE: test_two (q02) and test_seventy_six (q76) now PASS in isolation (verified
+    # 8x / 3x, 2026-06-25); kept listed until a full v4 sweep confirms, then prune.
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
@@ -70,6 +81,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one": _TPCDS_SIZE,
     # --- tpc-ds non-benchmark: result / feature regressions ---
-    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _MODELING,
+    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _INLINE,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,
 }

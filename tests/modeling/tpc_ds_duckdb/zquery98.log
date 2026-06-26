@@ -31,19 +31,6 @@ FROM
 WHERE
     \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
 ),
-questionable as (
-SELECT
-    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
-    \"physical_sales_item_items\".\"I_CLASS\" as \"physical_sales_item_class\",
-    \"physical_sales_item_items\".\"I_CURRENT_PRICE\" as \"physical_sales_item_current_price\",
-    \"physical_sales_item_items\".\"I_ITEM_DESC\" as \"physical_sales_item_desc\",
-    \"physical_sales_item_items\".\"I_ITEM_ID\" as \"physical_sales_item_text_id\",
-    \"physical_sales_item_items\".\"I_ITEM_SK\" as \"physical_sales_item_id\"
-FROM
-    \"memory\".\"item\" as \"physical_sales_item_items\"
-WHERE
-    \"physical_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
-),
 cooperative as (
 SELECT
     \"cheerful\".\"store_sales_item_id\" as \"store_sales_item_id\",
@@ -52,7 +39,7 @@ FROM
     \"cheerful\"
 GROUP BY
     1),
-abundant as (
+thoughtful as (
 SELECT
     \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
     sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"

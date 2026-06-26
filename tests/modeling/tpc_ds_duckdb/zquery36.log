@@ -1,6 +1,6 @@
 query_id = "36"
-generator = "v3"
-gen_length = 2330
+generator = "v4"
+gen_length = 2380
 preql_size = 1101
 comp_size = 1844
 generated_sql = """
@@ -24,23 +24,24 @@ cooperative as (
 SELECT
     \"thoughtful\".\"ss_item_category\" as \"ss_item_category\",
     \"thoughtful\".\"ss_item_class\" as \"ss_item_class\",
-    CASE
-	WHEN grouping(\"thoughtful\".\"ss_item_class\") = 0 THEN \"thoughtful\".\"ss_item_category\"
-	ELSE null
-	END as \"partition_cat\",
-    cast(sum(\"thoughtful\".\"ss_net_profit\") as numeric(15,4)) / cast(sum(\"thoughtful\".\"ss_ext_sales_price\") as numeric(15,4)) as \"gross_margin\",
-    grouping(\"thoughtful\".\"ss_item_category\") + grouping(\"thoughtful\".\"ss_item_class\") as \"lochierarchy\"
+    grouping(\"thoughtful\".\"ss_item_category\") as \"g_cat\",
+    grouping(\"thoughtful\".\"ss_item_class\") as \"g_class\",
+    sum(\"thoughtful\".\"ss_ext_sales_price\") as \"sales_sum\",
+    sum(\"thoughtful\".\"ss_net_profit\") as \"profit_sum\"
 FROM
     \"thoughtful\"
 GROUP BY
     ROLLUP (1, 2)),
 questionable as (
 SELECT
-    \"cooperative\".\"gross_margin\" as \"gross_margin\",
-    \"cooperative\".\"lochierarchy\" as \"lochierarchy\",
+    \"cooperative\".\"g_cat\" + \"cooperative\".\"g_class\" as \"lochierarchy\",
     \"cooperative\".\"ss_item_category\" as \"ss_item_category\",
     \"cooperative\".\"ss_item_class\" as \"ss_item_class\",
-    rank() over (partition by \"cooperative\".\"lochierarchy\",\"cooperative\".\"partition_cat\" order by \"cooperative\".\"gross_margin\" asc ) as \"rank_within_parent\"
+    cast(\"cooperative\".\"profit_sum\" as numeric(15,4)) / cast(\"cooperative\".\"sales_sum\" as numeric(15,4)) as \"gross_margin\",
+    rank() over (partition by \"cooperative\".\"g_cat\" + \"cooperative\".\"g_class\",CASE
+	WHEN \"cooperative\".\"g_class\" = 0 THEN \"cooperative\".\"ss_item_category\"
+	ELSE null
+	END order by cast(\"cooperative\".\"profit_sum\" as numeric(15,4)) / cast(\"cooperative\".\"sales_sum\" as numeric(15,4)) asc ) as \"rank_within_parent\"
 FROM
     \"cooperative\")
 SELECT
@@ -51,12 +52,6 @@ SELECT
     \"questionable\".\"rank_within_parent\" as \"rank_within_parent\"
 FROM
     \"questionable\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5
 ORDER BY 
     \"questionable\".\"lochierarchy\" desc nulls first,
     CASE

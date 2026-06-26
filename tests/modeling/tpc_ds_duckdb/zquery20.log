@@ -1,6 +1,6 @@
 query_id = "20"
-generator = "v3"
-gen_length = 1869
+generator = "v4"
+gen_length = 2314
 preql_size = 625
 comp_size = 819
 generated_sql = """
@@ -34,22 +34,33 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    1)
+    1),
+abundant as (
 SELECT
-    \"cheerful\".\"cs_item_text_id\" as \"cs_item_text_id\",
-    \"cheerful\".\"cs_item_desc\" as \"cs_item_desc\",
     \"cheerful\".\"cs_item_category\" as \"cs_item_category\",
     \"cheerful\".\"cs_item_class\" as \"cs_item_class\",
     \"cheerful\".\"cs_item_current_price\" as \"cs_item_current_price\",
+    \"cheerful\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"cheerful\".\"cs_item_text_id\" as \"cs_item_text_id\",
     \"cheerful\".\"revenue\" as \"revenue\",
-    ( \"cheerful\".\"revenue\" * 100.0 ) / (\"cooperative\".\"_virt_agg_sum_9832457364876792\") as \"revenue_ratio\"
+    \"cooperative\".\"_virt_agg_sum_9832457364876792\" as \"_virt_agg_sum_9832457364876792\"
 FROM
     \"cheerful\"
-    INNER JOIN \"cooperative\" on \"cheerful\".\"cs_item_class\" is not distinct from \"cooperative\".\"cs_item_class\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"cs_item_class\" is not distinct from \"cooperative\".\"cs_item_class\")
+SELECT
+    \"abundant\".\"cs_item_text_id\" as \"cs_item_text_id\",
+    \"abundant\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"abundant\".\"cs_item_category\" as \"cs_item_category\",
+    \"abundant\".\"cs_item_class\" as \"cs_item_class\",
+    \"abundant\".\"cs_item_current_price\" as \"cs_item_current_price\",
+    \"abundant\".\"revenue\" as \"revenue\",
+    ( \"abundant\".\"revenue\" * 100.0 ) / (\"abundant\".\"_virt_agg_sum_9832457364876792\") as \"revenue_ratio\"
+FROM
+    \"abundant\"
 ORDER BY 
-    \"cheerful\".\"cs_item_category\" asc nulls first,
-    \"cheerful\".\"cs_item_class\" asc nulls first,
-    \"cheerful\".\"cs_item_text_id\" asc nulls first,
-    \"cheerful\".\"cs_item_desc\" asc nulls first,
+    \"abundant\".\"cs_item_category\" asc nulls first,
+    \"abundant\".\"cs_item_class\" asc nulls first,
+    \"abundant\".\"cs_item_text_id\" asc nulls first,
+    \"abundant\".\"cs_item_desc\" asc nulls first,
     \"revenue_ratio\" asc nulls first
 LIMIT (100)"""
