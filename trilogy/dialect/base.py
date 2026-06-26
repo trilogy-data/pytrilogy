@@ -1,5 +1,5 @@
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
@@ -15,6 +15,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from trilogy.dialect.config import DialectConfig
+    from trilogy.engine import ResultProtocol
 
 from jinja2 import Template
 
@@ -697,6 +698,11 @@ class BaseDialect:
     # Whether the dialect supports a QUALIFY clause, used to lower a window
     # function appearing in a `having` condition. False dialects reject instead.
     SUPPORTS_QUALIFY = False
+    # Whether this dialect can produce a full-result summary — per-column stats
+    # over the query with its output LIMIT removed. Off by default; gates whether
+    # `run` returns it. Dialects that set it True must override
+    # ``summarize_result``.
+    SUPPORTS_RESULT_SUMMARY = False
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
@@ -2384,6 +2390,37 @@ class BaseDialect:
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final
+
+    def compile_without_limit(self, query: ProcessedQuery) -> str:
+        """Re-render the query SQL with its output LIMIT removed — structurally
+        (clear the output CTE's limit and recompile), never by editing the SQL
+        text. The output LIMIT lives on the final CTE (``query.ctes[-1]``, also
+        ``query.base``); inner-CTE limits (e.g. a rowset's own limit) are
+        deliberately preserved."""
+        if not query.ctes or query.ctes[-1].limit is None:
+            return self.compile_statement(replace(query, limit=None))
+        new_last = replace(query.ctes[-1], limit=None)
+        unlimited = replace(
+            query,
+            ctes=[*query.ctes[:-1], new_last],
+            limit=None,
+            base=new_last if query.base is query.ctes[-1] else query.base,
+        )
+        return self.compile_statement(unlimited)
+
+    def summarize_result(
+        self, query: ProcessedQuery, run_sql: Callable[[str], "ResultProtocol"]
+    ) -> "tuple[list[dict], int] | None":
+        """Per-column stats (non_null / nulls / distinct / min / max) plus the
+        row count over the FULL result — the query with its LIMIT removed — so a
+        consumer reads true cardinality, not the LIMIT-bounded prefix.
+
+        Gated by ``SUPPORTS_RESULT_SUMMARY``; the base implementation is not
+        provided. ``run_sql`` runs a raw SQL string and returns a result with
+        ``keys()`` / ``fetchall()``."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement summarize_result"
+        )
 
     def compile_statement_with_params(
         self,

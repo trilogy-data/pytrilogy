@@ -1,4 +1,3 @@
-import re
 import traceback
 from datetime import datetime
 from typing import Any, Union
@@ -9,7 +8,6 @@ from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedValidateStatement,
 )
-from trilogy.dialect.enums import Dialects
 from trilogy.dialect.results import ChartResult
 from trilogy.execution.state import RefreshPlan
 from trilogy.execution.state import RefreshResult as StateRefreshResult
@@ -45,57 +43,6 @@ from trilogy.utility import safe_open
 def get_statement_type(statement: PROCESSED_STATEMENT_TYPES) -> str:
     """Get the type/class name of a statement."""
     return type(statement).__name__
-
-
-def _compute_full_result_stats(
-    exec: Executor, query: ProcessedQuery, columns: list[str]
-) -> "tuple[list[dict], int] | None":
-    """SPIKE (duckdb-only): re-render the query with its LIMIT removed, wrap it
-    in a per-column aggregate, and run that to get non-null / distinct / min /
-    max over the FULL result — so the stats block reflects true cardinality
-    instead of the limited, ORDER-BY-biased prefix. Returns (stats, total_rows)
-    or ``None`` on any failure (caller falls back to the limited-prefix stats)."""
-    try:
-        # The LIMIT is baked into the base CTE, not query.limit, so strip the
-        # trailing `LIMIT (n)` off the compiled SQL (duckdb-only; the template
-        # renders `LIMIT (n)`, parenthesized, no OFFSET).
-        inner = exec.generator.compile_statement(query)
-        inner = re.sub(
-            r"\s*LIMIT\s+\(?\s*\d+\s*\)?\s*;?\s*$", "", inner, flags=re.IGNORECASE
-        )
-        q = exec.generator.QUOTE_CHARACTER
-        parts: list[str] = []
-        for i, col in enumerate(columns):
-            c = f"{q}{col}{q}"
-            parts += [
-                f"count({c}) as nn{i}",
-                f"count(distinct {c}) as nd{i}",
-                f"min({c}) as mn{i}",
-                f"max({c}) as mx{i}",
-            ]
-        parts.append("count(*) as total_n")
-        stats_sql = f"SELECT {', '.join(parts)} FROM (\n{inner}\n) _full_result"
-        row = exec.execute_raw_sql(stats_sql).fetchone()
-        if row is None:
-            return None
-        total = row[-1]
-        stats: list[dict] = []
-        for i, col in enumerate(columns):
-            nn, nd, mn, mx = row[i * 4 : i * 4 + 4]
-            entry: dict = {
-                "column": col,
-                "non_null": nn,
-                "nulls": total - nn,
-                "distinct": nd,
-            }
-            if mn is not None:
-                entry["min"] = mn
-            if mx is not None:
-                entry["max"] = mx
-            stats.append(entry)
-        return stats, total
-    except Exception:
-        return None
 
 
 def execute_single_statement(
@@ -145,18 +92,21 @@ def execute_single_statement(
             if raw_results
             else None
         )
-        # SPIKE: when the result hit its own LIMIT (a biased prefix) and we're on
-        # duckdb in JSON mode, compute stats over the FULL un-limited result so
+        # When the result hit its own LIMIT (a biased prefix) and the dialect
+        # supports it, ask the dialect to summarize the FULL un-limited result so
         # the stats block is trustworthy. Best-effort: failures fall back silently.
         if (
             results is not None
             and is_json_mode()
-            and exec.dialect == Dialects.DUCK_DB
+            and exec.generator.SUPPORTS_RESULT_SUMMARY
             and isinstance(query, ProcessedQuery)
             and query.limit is not None
             and len(results.rows) >= query.limit
         ):
-            full = _compute_full_result_stats(exec, query, list(results.columns))
+            try:
+                full = exec.generator.summarize_result(query, exec.execute_raw_sql)
+            except Exception:
+                full = None
             if full is not None:
                 results.full_column_stats, results.full_row_count = full
 

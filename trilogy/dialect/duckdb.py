@@ -7,8 +7,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from typing import Callable
+
     from trilogy.constants import Rendering
+    from trilogy.core.statements.execute import ProcessedQuery
     from trilogy.dialect.config import DialectConfig
+    from trilogy.engine import ResultProtocol
     from trilogy.staging import StagingConfig
 
 from jinja2 import Template
@@ -372,10 +376,40 @@ class DuckDBDialect(BaseDialect):
     GROUP_MODE = GroupMode.BY_INDEX
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_ALIAS_IN_HAVING = True
+    SUPPORTS_RESULT_SUMMARY = True
     NULL_WRAPPER = staticmethod(null_wrapper)
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
     HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"
     COLUMN_NOT_FOUND_PATTERN = "does not have a column named"
+
+    def summarize_result(
+        self, query: ProcessedQuery, run_sql: Callable[[str], "ResultProtocol"]
+    ) -> "tuple[list[dict], int] | None":
+        """Full-result column stats via DuckDB ``SUMMARIZE`` over the un-limited
+        query (one pass; ``distinct`` is ``approx_unique`` — HLL-approximate)."""
+        sql = self.compile_without_limit(query)
+        result = run_sql(f"SUMMARIZE (\n{sql}\n)")
+        ix = {name: i for i, name in enumerate(result.keys())}
+        stats: list[dict] = []
+        total = 0
+        for r in result.fetchall():
+            count = r[ix["count"]] or 0
+            total = count
+            npct = r[ix["null_percentage"]]
+            nulls = round(count * float(npct) / 100) if npct is not None else 0
+            entry: dict = {
+                "column": r[ix["column_name"]],
+                "non_null": count - nulls,
+                "nulls": nulls,
+                "distinct": r[ix["approx_unique"]],
+            }
+            mn, mx = r[ix["min"]], r[ix["max"]]
+            if mn is not None:
+                entry["min"] = mn
+            if mx is not None:
+                entry["max"] = mx
+            stats.append(entry)
+        return stats, total
 
     def __init__(
         self,

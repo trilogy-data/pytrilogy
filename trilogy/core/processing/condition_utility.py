@@ -211,7 +211,9 @@ def is_scalar_condition(
     if isinstance(element, PARENTHETICAL_TYPES):
         return is_scalar_condition(element.content, materialized)
     elif isinstance(element, SUBSELECT_TYPES):
-        return True
+        # A membership is placed by its left operand (the set is sourced
+        # separately); an aggregate left (`grouping(a) in (0,1)`) must reach HAVING.
+        return is_scalar_condition(element.left, materialized)
     elif isinstance(element, COMPARISON_TYPES):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized

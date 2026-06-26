@@ -2477,6 +2477,30 @@ def test_grouping_sum_in_having_with_membership_filter_colocates():
     ]
 
 
+def test_grouping_membership_in_having_routes_to_having_not_where():
+    """Bug: a `grouping()` membership (`grouping(a) in (0,1)`) in HAVING was
+    classified scalar and rendered in the pre-aggregation WHERE (DuckDB rejects
+    `grouping()` there), while `grouping(a) = 0` correctly went to HAVING. A
+    membership must be placed by its left operand, so an aggregate/grouping left
+    reaches HAVING."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    query = """
+auto total <- sum(x) by rollup a, b;
+select a, b, total
+having (grouping(a) + grouping(b)) in (0, 1)
+order by a asc, b asc nulls last;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "ROLLUP" in sql
+    assert "HAVING" in sql
+    assert "WHERE" not in sql
+    results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
+    assert results == [(1, 1, 10), (1, 2, 20), (1, None, 30)]
+
+
 def test_duckdb_rollup_passthrough_outer_no_regroup():
     # Regression: when an outer CTE projects rollup-aggregate outputs that are
     # forwarded passthroughs from a parent CTE which already applied the

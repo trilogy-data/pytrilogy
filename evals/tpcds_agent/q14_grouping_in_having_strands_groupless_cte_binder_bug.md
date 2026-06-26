@@ -4,8 +4,12 @@
 `trilogy/parsing/v2/select_finalize.py` promotes each HAVING `grouping()`/`grouping_id()` to a
 hidden SELECT output (materializing it inside the ROLLUP CTE) and substitutes the HAVING ref to it.
 Test: `tests/engine/test_duckdb.py::test_grouping_sum_in_having_with_membership_filter_colocates`.
-(Standalone `grouping() in (literal-list)` without a membership filter is a SEPARATE pre-existing
-bug — membership `in` in HAVING routes to pre-agg WHERE where grouping is invalid — still open.)
+A SECOND, separate bug surfaced and was also fixed: standalone `grouping() in (literal-list)`
+(no membership filter) routed grouping into the pre-agg WHERE (invalid). Root: `is_scalar_condition`
+(`trilogy/core/processing/condition_utility.py`) returned True unconditionally for a membership
+(`SubselectComparison`), ignoring its left operand; fixed to place a membership by its left operand
+so an aggregate/grouping left reaches HAVING. Test:
+`tests/engine/test_duckdb.py::test_grouping_membership_in_having_routes_to_having_not_where`.
 Minimal trigger needs the combination below (grouping-in-HAVING alone is fine).
 **Surfaced by:** TPC-DS q14 enriched eval (run `20260625-183939`, trace line ~7949).
 **Severity:** HIGH — generates invalid SQL; blocks the "restrict rollup to specific grouping levels"
