@@ -2362,11 +2362,28 @@ class Factory:
             for s, t, jt in self.scoped_joins
             if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
         }
+        # INNER join onto a rowset: the collapsed-away source must NOT be
+        # substituted onto the rowset canonical. Substitution would attach the
+        # source's datasource binding to the rowset concept, letting discovery
+        # source the rowset key from that raw column and silently SKIP the
+        # rowset's own lineage (its WHERE filter) entirely — wrong results for
+        # one key, invalid SQL for several (the keys source inconsistently). The
+        # rowset must materialize from its lineage and INNER-join as a
+        # restriction, exactly like the OUTER-rowset identity path. So these
+        # sources keep their own identity + a pseudonym to the canonical instead
+        # of being swapped. Regular fact/dim INNER joins stay on substitution
+        # (multi-way parity + dependent-grain collapse rely on it).
+        self.scoped_rowset_inner_sources: set[str] = {
+            s
+            for s, t, jt in self.scoped_joins
+            if jt is JoinType.INNER and (_is_rowset_keyed(s) or _is_rowset_keyed(t))
+        }
         self.scoped_key_merge_map = {
             source: target
             for source, target in self.scoped_merge_map.items()
             if source not in full_join_sources
             and source not in self.scoped_rowset_outer_targets
+            and source not in self.scoped_rowset_inner_sources
         }
         self.scoped_merge_sources: set[str] = set()
         # OUTER-join keys with a datasource/rowset binding (ROOT/ROWSET) keep
@@ -2766,6 +2783,7 @@ class Factory:
             and base.address not in self._source_identity_addresses
             and base.address not in self.scoped_rowset_outer_sources
             and base.address not in self.scoped_rowset_outer_targets
+            and base.address not in self.scoped_rowset_inner_sources
         ):
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:

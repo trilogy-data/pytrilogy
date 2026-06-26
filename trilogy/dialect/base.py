@@ -227,6 +227,14 @@ PARENTHETICAL_ITEMS = (BuildParenthetical,)
 # parsing; FLOAT is excluded because DuckDB parses dotted literals as
 # DECIMAL, which would change result types from float to Decimal.
 INLINE_SAFE_PARAM_DATATYPES = frozenset({DataType.INTEGER, DataType.BOOL})
+
+
+def _constant_bindable(lineage: BuildFunction) -> bool:
+    """A CONSTANT whose value is a MagicConstants (e.g. NULL) can't be bound — no
+    driver can transform the enum into a value. Render it inline instead."""
+    return not (lineage.arguments and isinstance(lineage.arguments[0], MagicConstants))
+
+
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
@@ -1092,6 +1100,7 @@ class BaseDialect:
                 and self.rendering.parameters is True
                 and c.datatype.data_type != DataType.MAP
                 and c.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+                and _constant_bindable(c.lineage)
             ):
                 rval = f":{c.safe_address}"
             else:
@@ -1527,6 +1536,7 @@ class BaseDialect:
                 and self.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
                 and e.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+                and _constant_bindable(e.lineage)
                 # only bind the literal where it's first materialized; if it's
                 # already a column in a source CTE (e.g. an ORDER BY term sourced
                 # from a join), reference that column instead of re-emitting the

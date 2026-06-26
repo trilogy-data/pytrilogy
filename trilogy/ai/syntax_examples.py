@@ -461,15 +461,15 @@ select enroll.student_id;
         title="Set intersection / difference on a multi-column key (presence per group)",
         summary=(
             "count tuples present in / absent from other groups via per-group "
-            "presence flags — the multi-column INTERSECT/EXCEPT idiom (NOT concat + `in`)"
+            "presence flags — the multi-column INTERSECT/EXCEPT idiom"
         ),
         body="""\
 # To intersect or difference rows on a MULTI-COLUMN key (the SQL INTERSECT /
 # EXCEPT of several columns), group by the full key tuple and build a presence
 # flag per set with `sum(case when <set> then 1 else 0 end)`. Grouping keeps
 # NULL key parts as their own group (correct INTERSECT/EXCEPT semantics).
-# Do NOT concat the columns into one string and use `in`/`not in` — concat drops
-# NULLs and gives the wrong count.
+# (Be careful concatenating nullable fields into a single key — concat over a
+# NULL yields NULL, so coalesce nullable parts first.)
 import enrollments as enroll;
 
 # Presence of each (student_id, course) tuple among completed vs open enrollments.

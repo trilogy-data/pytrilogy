@@ -349,6 +349,20 @@ def _emit_results_json(
     if omitted:
         shown.append(f"<redacted {omitted} rows>")
     shown += [list(r) for r in tail]
+    # Prefer FULL-result stats (SPIKE: query re-run without its LIMIT) when
+    # available — they describe the whole result, not the displayed prefix. Else
+    # fall back to prefix stats (+ the LIMIT-bias caveat) only when rows elided.
+    if results.full_column_stats is not None:
+        col_stats: "list[dict] | None" = results.full_column_stats
+        stats_note: "str | None" = (
+            "column_stats are computed over the FULL result "
+            f"({results.full_row_count} rows, the query re-run with its LIMIT "
+            "removed) — non_null/distinct/min/max reflect true cardinality, not "
+            "the displayed prefix."
+        )
+    else:
+        col_stats = _column_stats(list(results.columns), rows) if omitted else None
+        stats_note = _LIMIT_BOUNDED_STATS_NOTE if (limit_bounded and omitted) else None
     emit_event(
         "result",
         columns=list(results.columns),
@@ -357,10 +371,9 @@ def _emit_results_json(
         displayed=len(head) + len(tail),
         truncated=omitted > 0 or None,
         omitted=omitted or None,
-        column_stats=_column_stats(list(results.columns), rows) if omitted else None,
-        column_stats_note=(
-            _LIMIT_BOUNDED_STATS_NOTE if (limit_bounded and omitted) else None
-        ),
+        column_stats=col_stats,
+        column_stats_note=stats_note,
+        full_row_count=results.full_row_count,
         limit_bounded=limit_bounded,
         fetch_ceiling_hit=hit_fetch_ceiling or None,
     )

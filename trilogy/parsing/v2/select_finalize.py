@@ -44,6 +44,7 @@ from trilogy.core.enums import (
     ConceptSource,
     FunctionClass,
     FunctionType,
+    Modifier,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
@@ -71,8 +72,10 @@ from trilogy.core.statements.author import (
     MultiSelectStatement,
     PersistStatement,
     RowsetDerivationStatement,
+    SelectItem,
     SelectStatement,
 )
+from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
 
@@ -830,6 +833,93 @@ def _fix_projection_grouping_mode(
             wrapper.grouping_sets = [list(g) for g in grouping_sets]
 
 
+def _grouping_arg_key(wrapper: AggregateWrapper) -> tuple[Any, tuple[str, ...]]:
+    """Mode/`by`-insensitive identity of a grouping wrapper (operator + args).
+    Two ``grouping(a)`` wrappers share a key regardless of their grouping mode,
+    so a HAVING wrapper can reuse an equivalent already projected in the SELECT."""
+    return (
+        wrapper.function.operator,
+        tuple(_concept_address(a) for a in wrapper.function.arguments),
+    )
+
+
+def _existing_grouping_outputs(
+    select: SelectStatement,
+) -> dict[tuple[Any, tuple[str, ...]], ConceptRef]:
+    """SELECT outputs that are themselves a ``grouping()``/``grouping_id()``
+    wrapper, keyed mode-insensitively so a HAVING grouping can point at one
+    instead of injecting a duplicate output."""
+    results: dict[tuple[Any, tuple[str, ...]], ConceptRef] = {}
+    for item in select.selection:
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        fn = item.content.function
+        if isinstance(fn, AggregateWrapper) and _is_standard_grouping_aggregate(fn):
+            results.setdefault(_grouping_arg_key(fn), item.content.output.reference)
+    return results
+
+
+def _promote_having_grouping_to_outputs(
+    select: SelectStatement, context: RuleContext
+) -> None:
+    """A ``grouping()``/``grouping_id()`` in HAVING (restricting a rollup to
+    specific levels) has no independent grain — its grain *is* the rollup's. But
+    when a downstream CTE is introduced (e.g. a rowset-membership filter pushes
+    the aggregate behind an extra layer), the bare ``grouping(col)`` strands in a
+    groupless scope and DuckDB rejects it ("GROUPING function is not supported
+    here"). Promote each such wrapper to a hidden SELECT output, which co-locates
+    it in the ROLLUP CTE, and point the HAVING reference at that output — exactly
+    the manual ``select ..., --grouping(...) as g having ... g ...`` workaround.
+
+    Runs before the SELECT loop so the injected outputs are materialized through
+    the normal machinery. Aggregates other than grouping are left to the existing
+    HAVING validation: only grouping is unconditionally safe to co-locate.
+    """
+    if not select.having_clause:
+        return
+    spec = _select_rollup_spec(select, context)
+    if spec is None:
+        return
+    wrappers = _collect_standard_grouping_wrappers(select.having_clause.conditional)
+    if not wrappers:
+        return
+    mode, by, grouping_sets = spec
+    reuse = _existing_grouping_outputs(select)
+    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
+    for wrapper in wrappers:
+        wrapper.by = list(by)
+        wrapper.grouping = mode
+        wrapper.grouping_sets = [list(g) for g in grouping_sets]
+        sig = _aggregate_full_signature(wrapper)
+        if sig is None or sig in sig_to_ref:
+            continue
+        existing = reuse.get(_grouping_arg_key(wrapper))
+        if existing is not None:
+            sig_to_ref[sig] = existing
+            continue
+        concept = arbitrary_to_concept(wrapper, context.environment)
+        select.selection.append(
+            SelectItem(
+                content=ConceptTransform(function=wrapper, output=concept),
+                modifiers=[Modifier.HIDDEN],
+            )
+        )
+        # Seed local_concepts so grain calc (which runs next, before the SELECT
+        # loop materializes the item) can resolve the freshly minted output.
+        select.local_concepts[concept.address] = concept
+        sig_to_ref[sig] = concept.reference
+
+    def match(node: Any) -> ConceptRef | None:
+        sig = _aggregate_full_signature(node)
+        return sig_to_ref.get(sig) if sig is not None else None
+
+    new_conditional = _substitute_condition_tree(
+        select.having_clause.conditional, match
+    )
+    if new_conditional is not select.having_clause.conditional:
+        select.having_clause.conditional = new_conditional
+
+
 def _order_match_signature(
     node: Any, rename: Mapping[str, str]
 ) -> tuple[Any, ...] | None:
@@ -1038,6 +1128,9 @@ def finalize_select_statement(
     ``select_as_definition`` writes through SemanticState so no parse-time
     mutation of ``environment.concepts`` is required.
     """
+    # Promote any HAVING grouping() to a hidden output before the SELECT loop so
+    # it materializes in the ROLLUP CTE instead of stranding downstream.
+    _promote_having_grouping_to_outputs(select, context)
     merged = _merged_local_concepts(select, context)
     select.grain = _calculate_grain(select, context, merged)
     output_addresses: set[str] = set()

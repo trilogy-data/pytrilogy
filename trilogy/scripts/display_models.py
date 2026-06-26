@@ -8,6 +8,11 @@ from pathlib import Path
 class ResultSet:
     rows: list[tuple]
     columns: list[str]
+    # SPIKE (duckdb-only): per-column stats over the FULL result (query re-run
+    # with its LIMIT removed), so the stats block reflects true cardinality
+    # rather than the limited, ORDER-BY-biased prefix. None when not computed.
+    full_column_stats: "list[dict] | None" = None
+    full_row_count: "int | None" = None
 
 
 @dataclass(frozen=True)

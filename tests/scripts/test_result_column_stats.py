@@ -82,6 +82,26 @@ def test_emit_flags_limit_bounded_result_and_scopes_stats(capsys):
     assert ch["distinct"] == 1  # the misleading-looking stat, now scoped by the note
 
 
+def test_emit_prefers_full_result_stats_over_prefix(capsys):
+    # SPIKE: full-result stats (query re-run without LIMIT) override the biased
+    # prefix stats — the q05 "distinct=1 in the limited prefix" misread.
+    rs = ResultSet(
+        rows=[("catalog channel", i) for i in range(100)],
+        columns=["channel", "n"],
+        full_column_stats=[
+            {"column": "channel", "non_null": 690, "nulls": 0, "distinct": 2},
+            {"column": "n", "non_null": 690, "nulls": 0, "distinct": 690},
+        ],
+        full_row_count=690,
+    )
+    payload = _emit_capture(rs, cap=10, capsys=capsys, query_limit=100)
+    assert payload["full_row_count"] == 690
+    ch = next(s for s in payload["column_stats"] if s["column"] == "channel")
+    assert ch["distinct"] == 2  # the TRUE cardinality, not the prefix's 1
+    assert "FULL result" in payload["column_stats_note"]
+    assert payload["limit_bounded"] == 100  # rows shown are still a prefix
+
+
 def test_emit_no_limit_flag_when_result_under_limit(capsys):
     rows = [("CATALOG", i) for i in range(30)]
     payload = _emit_capture(

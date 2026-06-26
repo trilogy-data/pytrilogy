@@ -211,6 +211,17 @@ order by ct desc;
     ]
 
 
+def test_null_constant_renders_inline_not_bound():
+    """A `null` literal in a projection must render inline as SQL `null`, not as a
+    bind parameter — the constant's value is `MagicConstants.NULL`, which the DB
+    driver can't transform into a bound value. q05 subtotal/grand-total rows."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    sql = engine.generate_sql("select 1 as x, null as y;")[-1]
+    assert ":y" not in sql
+    results = engine.execute_text("select 1 as x, null as y;")[-1].fetchall()
+    assert [tuple(r) for r in results] == [(1, None)]
+
+
 _COMPOSITE_ROLLUP_MODEL = """
 key chan int;
 key oid int;
@@ -2402,6 +2413,67 @@ def test_grouping_id_in_case_over_named_rollup_executes():
         (1, 2, 20, 0),
         (1, None, 30, 1),
         (None, None, 30, 2),
+    ]
+
+
+_GROUPING_HAVING_MODEL = """
+key a int;
+key b int?;
+key c int?;
+property <a, b, c>.x int;
+datasource test_data (
+    a: a,
+    b: b,
+    c: c,
+    x: x
+)
+grain (a, b, c)
+query '''
+    select 1 as a, 1 as b, 1 as c, 10 as x
+    union all
+    select 1 as a, 2 as b, 1 as c, 20 as x
+    union all
+    select 2 as a, 1 as b, 2 as c, 30 as x
+''';
+"""
+
+# `grouping()` summed in HAVING (to keep only certain rollup levels) together with
+# a rowset-membership filter (`a in qualifying.a`) that forces an extra filter/join
+# CTE. The membership filter strands the rollup behind a downstream CTE and the
+# grouping() in HAVING renders against that groupless CTE.
+_GROUPING_HAVING_QUERY = """
+with qualifying as
+select a where x > 5;
+auto total <- sum(x) by rollup a, b, c;
+auto overall_avg <- avg(x) by *;
+select
+    a, b, c,
+    total,
+    --overall_avg
+where a in qualifying.a
+having total > overall_avg
+  and (grouping(a) + grouping(b) + grouping(c)) in (0, 1, 4)
+order by a asc, b asc nulls last, c asc nulls last;
+"""
+
+
+def test_grouping_sum_in_having_with_membership_filter_colocates():
+    """Bug: a `grouping()` sum in HAVING that restricts rollup levels, when a
+    rowset-membership filter pushes the aggregate behind an extra CTE, stranded
+    the `grouping(col)` in that groupless join/filter CTE — DuckDB rejects it
+    ('GROUPING function is not supported here'). The grouping wrappers must align
+    with the rollup spec so they co-locate in the ROLLUP CTE."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_HAVING_MODEL)
+    sql = executor.generate_sql(_GROUPING_HAVING_QUERY)[-1]
+    assert "ROLLUP" in sql
+    # grouping() must not render against the outer groupless filter/join CTE.
+    results = list(executor.execute_raw_sql(sql).fetchall())
+    assert [tuple(r) for r in results] == [
+        (2, 1, 2, 30),
+        (2, 1, None, 30),
     ]
 
 

@@ -226,8 +226,12 @@ _MATRIX: list[tuple[str, str, list, str | None]] = [
     ("single", "k_aw", [(1, 1000.0), (2, 2000.0), (3, 3000.0)], None),
     ("inner", "k", [(1,), (2,)], None),
     ("inner", "count", [(2,)], None),
-    ("inner", "k_aw", [(1, 1000.0), (2, 2000.0), (3, 3000.0)], None),
-    ("inner", "k_bv", [(1, 100.0), (2, 200.0), (4, 400.0)], None),
+    # The rowset body INNER-joins a.aid=b.bid -> keys {1,2}. Reading the key back
+    # (joined to either dimension) retains that restriction: {1,2}, not the full
+    # dimension. (Before the INNER-onto-rowset identity fix the rowset's filter was
+    # silently dropped and these returned the full {1,2,3}/{1,2,4}.)
+    ("inner", "k_aw", [(1, 1000.0), (2, 2000.0)], None),
+    ("inner", "k_bv", [(1, 100.0), (2, 200.0)], None),
     ("left", "k", [(1,), (2,), (3,)], None),
     ("left", "count", [(3,)], None),
     ("left", "k_aw", [(1, 1000.0), (2, 2000.0), (3, 3000.0)], None),
