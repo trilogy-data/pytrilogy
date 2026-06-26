@@ -1,6 +1,6 @@
 query_id = "10"
 generator = "v4"
-gen_length = 8894
+gen_length = 10203
 preql_size = 1997
 comp_size = 1858
 generated_sql = """
@@ -100,27 +100,50 @@ sparkling as (
 SELECT
     \"young\".\"sales_purchasing_customer_id\" as \"sales_purchasing_customer_id\"
 FROM
-    \"young\")
+    \"young\"),
+sweltering as (
 SELECT
+    \"abhorrent\".\"sales_purchasing_customer_demographics_college_dependent_count\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
+    \"abhorrent\".\"sales_purchasing_customer_demographics_credit_rating\" as \"sales_purchasing_customer_demographics_credit_rating\",
+    \"abhorrent\".\"sales_purchasing_customer_demographics_dependent_count\" as \"sales_purchasing_customer_demographics_dependent_count\",
+    \"abhorrent\".\"sales_purchasing_customer_demographics_education_status\" as \"sales_purchasing_customer_demographics_education_status\",
+    \"abhorrent\".\"sales_purchasing_customer_demographics_employed_dependent_count\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
     \"abhorrent\".\"sales_purchasing_customer_demographics_gender\" as \"sales_purchasing_customer_demographics_gender\",
     \"abhorrent\".\"sales_purchasing_customer_demographics_marital_status\" as \"sales_purchasing_customer_demographics_marital_status\",
-    \"abhorrent\".\"sales_purchasing_customer_demographics_education_status\" as \"sales_purchasing_customer_demographics_education_status\",
-    count(\"abhorrent\".\"sales_purchasing_customer_id\") as \"cnt1\",
     \"abhorrent\".\"sales_purchasing_customer_demographics_purchase_estimate\" as \"sales_purchasing_customer_demographics_purchase_estimate\",
-    count(\"abhorrent\".\"sales_purchasing_customer_id\") as \"cnt2\",
-    \"abhorrent\".\"sales_purchasing_customer_demographics_credit_rating\" as \"sales_purchasing_customer_demographics_credit_rating\",
-    count(\"abhorrent\".\"sales_purchasing_customer_id\") as \"cnt3\",
-    \"abhorrent\".\"sales_purchasing_customer_demographics_dependent_count\" as \"sales_purchasing_customer_demographics_dependent_count\",
-    count(\"abhorrent\".\"sales_purchasing_customer_id\") as \"cnt4\",
-    \"abhorrent\".\"sales_purchasing_customer_demographics_employed_dependent_count\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
-    count(\"abhorrent\".\"sales_purchasing_customer_id\") as \"cnt5\",
-    \"abhorrent\".\"sales_purchasing_customer_demographics_college_dependent_count\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
-    count(\"abhorrent\".\"sales_purchasing_customer_id\") as \"cnt6\"
+    \"abhorrent\".\"sales_purchasing_customer_id\" as \"sales_purchasing_customer_id\"
 FROM
     \"abhorrent\"
 WHERE
     \"abhorrent\".\"sales_purchasing_customer_id\" in (select vacuous.\"store_buyers\" from vacuous where vacuous.\"store_buyers\" is not null) and \"abhorrent\".\"sales_purchasing_customer_id\" in (select concerned.\"webcat_buyers\" from concerned where concerned.\"webcat_buyers\" is not null)
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9)
+SELECT
+    \"sweltering\".\"sales_purchasing_customer_demographics_gender\" as \"sales_purchasing_customer_demographics_gender\",
+    \"sweltering\".\"sales_purchasing_customer_demographics_marital_status\" as \"sales_purchasing_customer_demographics_marital_status\",
+    \"sweltering\".\"sales_purchasing_customer_demographics_education_status\" as \"sales_purchasing_customer_demographics_education_status\",
+    count(\"sweltering\".\"sales_purchasing_customer_id\") as \"cnt1\",
+    \"sweltering\".\"sales_purchasing_customer_demographics_purchase_estimate\" as \"sales_purchasing_customer_demographics_purchase_estimate\",
+    count(\"sweltering\".\"sales_purchasing_customer_id\") as \"cnt2\",
+    \"sweltering\".\"sales_purchasing_customer_demographics_credit_rating\" as \"sales_purchasing_customer_demographics_credit_rating\",
+    count(\"sweltering\".\"sales_purchasing_customer_id\") as \"cnt3\",
+    \"sweltering\".\"sales_purchasing_customer_demographics_dependent_count\" as \"sales_purchasing_customer_demographics_dependent_count\",
+    count(\"sweltering\".\"sales_purchasing_customer_id\") as \"cnt4\",
+    \"sweltering\".\"sales_purchasing_customer_demographics_employed_dependent_count\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
+    count(\"sweltering\".\"sales_purchasing_customer_id\") as \"cnt5\",
+    \"sweltering\".\"sales_purchasing_customer_demographics_college_dependent_count\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
+    count(\"sweltering\".\"sales_purchasing_customer_id\") as \"cnt6\"
+FROM
+    \"sweltering\"
 GROUP BY
     1,
     2,
@@ -131,11 +154,11 @@ GROUP BY
     11,
     13
 ORDER BY 
-    \"abhorrent\".\"sales_purchasing_customer_demographics_gender\" asc,
-    \"abhorrent\".\"sales_purchasing_customer_demographics_marital_status\" asc,
-    \"abhorrent\".\"sales_purchasing_customer_demographics_education_status\" asc,
-    \"abhorrent\".\"sales_purchasing_customer_demographics_purchase_estimate\" asc,
-    \"abhorrent\".\"sales_purchasing_customer_demographics_credit_rating\" asc,
-    \"abhorrent\".\"sales_purchasing_customer_demographics_dependent_count\" asc,
-    \"abhorrent\".\"sales_purchasing_customer_demographics_employed_dependent_count\" asc,
-    \"abhorrent\".\"sales_purchasing_customer_demographics_college_dependent_count\" asc"""
+    \"sweltering\".\"sales_purchasing_customer_demographics_gender\" asc,
+    \"sweltering\".\"sales_purchasing_customer_demographics_marital_status\" asc,
+    \"sweltering\".\"sales_purchasing_customer_demographics_education_status\" asc,
+    \"sweltering\".\"sales_purchasing_customer_demographics_purchase_estimate\" asc,
+    \"sweltering\".\"sales_purchasing_customer_demographics_credit_rating\" asc,
+    \"sweltering\".\"sales_purchasing_customer_demographics_dependent_count\" asc,
+    \"sweltering\".\"sales_purchasing_customer_demographics_employed_dependent_count\" asc,
+    \"sweltering\".\"sales_purchasing_customer_demographics_college_dependent_count\" asc"""

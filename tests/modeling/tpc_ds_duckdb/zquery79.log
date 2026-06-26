@@ -1,6 +1,6 @@
 query_id = "79"
 generator = "v4"
-gen_length = 4638
+gen_length = 4444
 preql_size = 1117
 comp_size = 1188
 generated_sql = """
@@ -29,8 +29,7 @@ GROUP BY
     3,
     4,
     5,
-    6,
-    \"store_sales_store_sales\".\"SS_STORE_SK\"),
+    6),
 abundant as (
 SELECT
     \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_sale_address_id\",
@@ -61,15 +60,7 @@ SELECT
     \"abundant\".\"profit\" as \"profit\"
 FROM
     \"abundant\"
-    FULL JOIN \"cooperative\" on \"abundant\".\"store_sales_customer_id\" = \"cooperative\".\"store_sales_customer_id\" AND \"abundant\".\"store_sales_sale_address_id\" is not distinct from \"cooperative\".\"store_sales_sale_address_id\" AND \"abundant\".\"store_sales_store_city\" is not distinct from \"cooperative\".\"store_sales_store_city\" AND \"abundant\".\"store_sales_ticket_number\" = \"cooperative\".\"store_sales_ticket_number\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    coalesce(\"abundant\".\"store_sales_sale_address_id\",\"cooperative\".\"store_sales_sale_address_id\")
+    INNER JOIN \"cooperative\" on \"abundant\".\"store_sales_customer_id\" = \"cooperative\".\"store_sales_customer_id\" AND \"abundant\".\"store_sales_sale_address_id\" is not distinct from \"cooperative\".\"store_sales_sale_address_id\" AND \"abundant\".\"store_sales_store_city\" is not distinct from \"cooperative\".\"store_sales_store_city\" AND \"abundant\".\"store_sales_ticket_number\" = \"cooperative\".\"store_sales_ticket_number\"
 ORDER BY 
     \"cooperative\".\"store_sales_customer_last_name\" asc nulls first,
     \"cooperative\".\"store_sales_customer_first_name\" asc nulls first,

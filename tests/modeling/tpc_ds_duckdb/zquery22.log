@@ -1,6 +1,6 @@
 query_id = "22"
 generator = "v4"
-gen_length = 1941
+gen_length = 2375
 preql_size = 609
 comp_size = 486
 generated_sql = """
@@ -28,21 +28,30 @@ SELECT
     \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
     \"cheerful\".\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\"
 FROM
-    \"cheerful\")
+    \"cheerful\"),
+cooperative as (
 SELECT
-    \"thoughtful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
     \"thoughtful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
-    \"thoughtful\".\"inventory_item_class\" as \"inventory_item_class\",
     \"thoughtful\".\"inventory_item_category\" as \"inventory_item_category\",
-    avg(\"thoughtful\".\"inventory_quantity_on_hand\") as \"qoh\"
+    \"thoughtful\".\"inventory_item_class\" as \"inventory_item_class\",
+    \"thoughtful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
+    \"thoughtful\".\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\"
 FROM
-    \"thoughtful\"
+    \"thoughtful\")
+SELECT
+    \"cooperative\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
+    \"cooperative\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
+    \"cooperative\".\"inventory_item_class\" as \"inventory_item_class\",
+    \"cooperative\".\"inventory_item_category\" as \"inventory_item_category\",
+    avg(\"cooperative\".\"inventory_quantity_on_hand\") as \"qoh\"
+FROM
+    \"cooperative\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
 ORDER BY 
     \"qoh\" asc nulls first,
-    \"thoughtful\".\"inventory_item_product_name\" asc nulls first,
-    \"thoughtful\".\"inventory_item_brand_name\" asc nulls first,
-    \"thoughtful\".\"inventory_item_class\" asc nulls first,
-    \"thoughtful\".\"inventory_item_category\" asc nulls first
+    \"cooperative\".\"inventory_item_product_name\" asc nulls first,
+    \"cooperative\".\"inventory_item_brand_name\" asc nulls first,
+    \"cooperative\".\"inventory_item_class\" asc nulls first,
+    \"cooperative\".\"inventory_item_category\" asc nulls first
 LIMIT (100)"""

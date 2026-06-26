@@ -1,6 +1,6 @@
 query_id = "01"
 generator = "v4"
-gen_length = 1958
+gen_length = 1962
 preql_size = 459
 comp_size = 689
 generated_sql = """
@@ -31,7 +31,7 @@ FROM
 GROUP BY
     1,
     2),
-uneven as (
+yummy as (
 SELECT
     \"questionable\".\"returns_store_id\" as \"returns_store_id\",
     avg(\"questionable\".\"total_returns\") as \"avg_store_returns\"
@@ -39,20 +39,20 @@ FROM
     \"questionable\"
 GROUP BY
     1),
-juicy as (
+vacuous as (
 SELECT
     \"wakeful\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
 FROM
     \"questionable\"
-    INNER JOIN \"uneven\" on \"questionable\".\"returns_store_id\" = \"uneven\".\"returns_store_id\"
+    INNER JOIN \"yummy\" on \"questionable\".\"returns_store_id\" = \"yummy\".\"returns_store_id\"
     INNER JOIN \"wakeful\" on \"questionable\".\"returns_billing_customer_id\" = \"wakeful\".\"returns_billing_customer_id\"
 WHERE
-    \"questionable\".\"total_returns\" > ( 1.2 * \"uneven\".\"avg_store_returns\" )
+    \"questionable\".\"total_returns\" > ( 1.2 * \"yummy\".\"avg_store_returns\" )
 )
 SELECT
-    \"juicy\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+    \"vacuous\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
 FROM
-    \"juicy\"
+    \"vacuous\"
 ORDER BY 
-    \"juicy\".\"returns_billing_customer_text_id\" asc
+    \"vacuous\".\"returns_billing_customer_text_id\" asc
 LIMIT (100)"""

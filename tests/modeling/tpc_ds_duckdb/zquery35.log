@@ -1,6 +1,6 @@
 query_id = "35"
 generator = "v4"
-gen_length = 8531
+gen_length = 9217
 preql_size = 2175
 comp_size = 1745
 generated_sql = """
@@ -57,6 +57,7 @@ FROM
 cheerful as (
 SELECT
     \"customer_address_customer_address\".\"CA_STATE\" as \"customer_address_state\",
+    \"customer_customers\".\"C_CURRENT_CDEMO_SK\" as \"customer_demographics_id\",
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
     \"customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
     \"customer_demographics_customer_demographics\".\"CD_DEP_COUNT\" as \"customer_demographics_dependent_count\",
@@ -70,23 +71,14 @@ FROM
 WHERE
     \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"customer_customers\".\"C_CUSTOMER_SK\" in (select sweltering.\"store_buyers_store_cust_id\" from sweltering where sweltering.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select divergent.\"web_buyers_web_cust_id\" from divergent where divergent.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"catalog_buyers_cat_cust_id\" from juicy where juicy.\"catalog_buyers_cat_cust_id\" is not null) )
 ),
-protective as (
+premium as (
 SELECT
     \"cheerful\".\"customer_address_state\" as \"customer_address_state\",
     \"cheerful\".\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
     \"cheerful\".\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
     \"cheerful\".\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
     \"cheerful\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
-    \"cheerful\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    avg(\"cheerful\".\"customer_demographics_college_dependent_count\") as \"avg3\",
-    avg(\"cheerful\".\"customer_demographics_dependent_count\") as \"avg1\",
-    avg(\"cheerful\".\"customer_demographics_employed_dependent_count\") as \"avg2\",
-    max(\"cheerful\".\"customer_demographics_college_dependent_count\") as \"max3\",
-    max(\"cheerful\".\"customer_demographics_dependent_count\") as \"max1\",
-    max(\"cheerful\".\"customer_demographics_employed_dependent_count\") as \"max2\",
-    min(\"cheerful\".\"customer_demographics_college_dependent_count\") as \"min3\",
-    min(\"cheerful\".\"customer_demographics_dependent_count\") as \"min1\",
-    min(\"cheerful\".\"customer_demographics_employed_dependent_count\") as \"min2\"
+    \"cheerful\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\"
 FROM
     \"cheerful\"
 GROUP BY
@@ -95,7 +87,8 @@ GROUP BY
     3,
     4,
     5,
-    6),
+    6,
+    \"cheerful\".\"customer_demographics_id\"),
 busy as (
 SELECT
     \"cheerful\".\"customer_address_state\" as \"customer_address_state\",
@@ -115,34 +108,60 @@ GROUP BY
     3,
     4,
     5,
+    6),
+waggish as (
+SELECT
+    \"premium\".\"customer_address_state\" as \"customer_address_state\",
+    \"premium\".\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
+    \"premium\".\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
+    \"premium\".\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
+    \"premium\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
+    \"premium\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
+    avg(\"premium\".\"customer_demographics_college_dependent_count\") as \"avg3\",
+    avg(\"premium\".\"customer_demographics_dependent_count\") as \"avg1\",
+    avg(\"premium\".\"customer_demographics_employed_dependent_count\") as \"avg2\",
+    max(\"premium\".\"customer_demographics_college_dependent_count\") as \"max3\",
+    max(\"premium\".\"customer_demographics_dependent_count\") as \"max1\",
+    max(\"premium\".\"customer_demographics_employed_dependent_count\") as \"max2\",
+    min(\"premium\".\"customer_demographics_college_dependent_count\") as \"min3\",
+    min(\"premium\".\"customer_demographics_dependent_count\") as \"min1\",
+    min(\"premium\".\"customer_demographics_employed_dependent_count\") as \"min2\"
+FROM
+    \"premium\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
     6)
 SELECT
-    coalesce(\"busy\".\"customer_address_state\",\"protective\".\"customer_address_state\") as \"customer_address_state\",
-    coalesce(\"busy\".\"customer_demographics_gender\",\"protective\".\"customer_demographics_gender\") as \"customer_demographics_gender\",
-    coalesce(\"busy\".\"customer_demographics_marital_status\",\"protective\".\"customer_demographics_marital_status\") as \"customer_demographics_marital_status\",
-    coalesce(\"busy\".\"customer_demographics_dependent_count\",\"protective\".\"customer_demographics_dependent_count\") as \"customer_demographics_dependent_count\",
+    coalesce(\"busy\".\"customer_address_state\",\"waggish\".\"customer_address_state\") as \"customer_address_state\",
+    coalesce(\"busy\".\"customer_demographics_gender\",\"waggish\".\"customer_demographics_gender\") as \"customer_demographics_gender\",
+    coalesce(\"busy\".\"customer_demographics_marital_status\",\"waggish\".\"customer_demographics_marital_status\") as \"customer_demographics_marital_status\",
+    coalesce(\"busy\".\"customer_demographics_dependent_count\",\"waggish\".\"customer_demographics_dependent_count\") as \"customer_demographics_dependent_count\",
     coalesce(\"busy\".\"cnt1\",0) as \"cnt1\",
-    \"protective\".\"min1\" as \"min1\",
-    \"protective\".\"max1\" as \"max1\",
-    \"protective\".\"avg1\" as \"avg1\",
-    coalesce(\"busy\".\"customer_demographics_employed_dependent_count\",\"protective\".\"customer_demographics_employed_dependent_count\") as \"customer_demographics_employed_dependent_count\",
+    \"waggish\".\"min1\" as \"min1\",
+    \"waggish\".\"max1\" as \"max1\",
+    \"waggish\".\"avg1\" as \"avg1\",
+    coalesce(\"busy\".\"customer_demographics_employed_dependent_count\",\"waggish\".\"customer_demographics_employed_dependent_count\") as \"customer_demographics_employed_dependent_count\",
     coalesce(\"busy\".\"cnt2\",0) as \"cnt2\",
-    \"protective\".\"min2\" as \"min2\",
-    \"protective\".\"max2\" as \"max2\",
-    \"protective\".\"avg2\" as \"avg2\",
-    coalesce(\"busy\".\"customer_demographics_college_dependent_count\",\"protective\".\"customer_demographics_college_dependent_count\") as \"customer_demographics_college_dependent_count\",
+    \"waggish\".\"min2\" as \"min2\",
+    \"waggish\".\"max2\" as \"max2\",
+    \"waggish\".\"avg2\" as \"avg2\",
+    coalesce(\"busy\".\"customer_demographics_college_dependent_count\",\"waggish\".\"customer_demographics_college_dependent_count\") as \"customer_demographics_college_dependent_count\",
     coalesce(\"busy\".\"cnt3\",0) as \"cnt3\",
-    \"protective\".\"min3\" as \"min3\",
-    \"protective\".\"max3\" as \"max3\",
-    \"protective\".\"avg3\" as \"avg3\"
+    \"waggish\".\"min3\" as \"min3\",
+    \"waggish\".\"max3\" as \"max3\",
+    \"waggish\".\"avg3\" as \"avg3\"
 FROM
-    \"protective\"
-    INNER JOIN \"busy\" on \"protective\".\"customer_address_state\" is not distinct from \"busy\".\"customer_address_state\" AND \"protective\".\"customer_demographics_college_dependent_count\" = \"busy\".\"customer_demographics_college_dependent_count\" AND \"protective\".\"customer_demographics_dependent_count\" = \"busy\".\"customer_demographics_dependent_count\" AND \"protective\".\"customer_demographics_employed_dependent_count\" = \"busy\".\"customer_demographics_employed_dependent_count\" AND \"protective\".\"customer_demographics_gender\" = \"busy\".\"customer_demographics_gender\" AND \"protective\".\"customer_demographics_marital_status\" = \"busy\".\"customer_demographics_marital_status\"
+    \"waggish\"
+    INNER JOIN \"busy\" on \"waggish\".\"customer_address_state\" is not distinct from \"busy\".\"customer_address_state\" AND \"waggish\".\"customer_demographics_college_dependent_count\" = \"busy\".\"customer_demographics_college_dependent_count\" AND \"waggish\".\"customer_demographics_dependent_count\" = \"busy\".\"customer_demographics_dependent_count\" AND \"waggish\".\"customer_demographics_employed_dependent_count\" = \"busy\".\"customer_demographics_employed_dependent_count\" AND \"waggish\".\"customer_demographics_gender\" = \"busy\".\"customer_demographics_gender\" AND \"waggish\".\"customer_demographics_marital_status\" = \"busy\".\"customer_demographics_marital_status\"
 ORDER BY 
-    coalesce(\"busy\".\"customer_address_state\",\"protective\".\"customer_address_state\") asc nulls first,
-    coalesce(\"busy\".\"customer_demographics_gender\",\"protective\".\"customer_demographics_gender\") asc nulls first,
-    coalesce(\"busy\".\"customer_demographics_marital_status\",\"protective\".\"customer_demographics_marital_status\") asc nulls first,
-    coalesce(\"busy\".\"customer_demographics_dependent_count\",\"protective\".\"customer_demographics_dependent_count\") asc nulls first,
-    coalesce(\"busy\".\"customer_demographics_employed_dependent_count\",\"protective\".\"customer_demographics_employed_dependent_count\") asc nulls first,
-    coalesce(\"busy\".\"customer_demographics_college_dependent_count\",\"protective\".\"customer_demographics_college_dependent_count\") asc nulls first
+    coalesce(\"busy\".\"customer_address_state\",\"waggish\".\"customer_address_state\") asc nulls first,
+    coalesce(\"busy\".\"customer_demographics_gender\",\"waggish\".\"customer_demographics_gender\") asc nulls first,
+    coalesce(\"busy\".\"customer_demographics_marital_status\",\"waggish\".\"customer_demographics_marital_status\") asc nulls first,
+    coalesce(\"busy\".\"customer_demographics_dependent_count\",\"waggish\".\"customer_demographics_dependent_count\") asc nulls first,
+    coalesce(\"busy\".\"customer_demographics_employed_dependent_count\",\"waggish\".\"customer_demographics_employed_dependent_count\") asc nulls first,
+    coalesce(\"busy\".\"customer_demographics_college_dependent_count\",\"waggish\".\"customer_demographics_college_dependent_count\") asc nulls first
 LIMIT (100)"""

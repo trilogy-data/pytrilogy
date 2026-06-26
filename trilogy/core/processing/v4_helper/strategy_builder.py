@@ -750,27 +750,6 @@ def _aggregate_row_preserving_input_addresses(outputs: list[BuildConcept]) -> se
     return addresses
 
 
-def _row_preserving_function_inputs(
-    arg: BuildConcept | BuildConceptArgs,
-) -> list[BuildConcept] | None:
-    if isinstance(arg, BuildConcept):
-        if (
-            arg.derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
-            and not _lineage_crosses_row_shape_barrier(arg)
-        ):
-            return [arg]
-        return None
-    output: list[BuildConcept] = []
-    for concept_arg in arg.concept_arguments:
-        if not isinstance(concept_arg, BuildConcept):
-            continue
-        nested = _row_preserving_function_inputs(concept_arg)
-        if nested is None:
-            return None
-        output.extend(nested)
-    return output
-
-
 def _group_filter_has_existence(
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
@@ -814,12 +793,20 @@ def _aggregate_inputs_are_row_preserving(
         if not isinstance(concept.lineage, BuildAggregateWrapper):
             continue
         for arg in concept.lineage.function.arguments:
-            if not isinstance(arg, (BuildConcept, BuildConceptArgs)):
+            # Only a top-level row-preserving BuildConcept arg lets the aggregate
+            # skip input-grain normalization. Recursing into an inline function
+            # arg (`sum(a - coalesce(b, 0))`) to collect its leaves wrongly
+            # skipped normalization even when the parent rows weren't yet at the
+            # aggregate's input grain -- miscounting (q97) and desyncing a renamed
+            # ROLLUP key from its GROUP BY (q80: invalid SQL).
+            if not isinstance(arg, BuildConcept):
                 return False
-            arg_inputs = _row_preserving_function_inputs(arg)
-            if arg_inputs is None:
+            if (
+                arg.derivation not in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                or _lineage_crosses_row_shape_barrier(arg)
+            ):
                 return False
-            row_preserving_inputs.extend(arg_inputs)
+            row_preserving_inputs.append(arg)
     if not row_preserving_inputs:
         return False
     available = {

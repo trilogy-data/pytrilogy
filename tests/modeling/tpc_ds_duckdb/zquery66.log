@@ -1,6 +1,6 @@
 query_id = "66"
 generator = "v4"
-gen_length = 23543
+gen_length = 23557
 preql_size = 3140
 comp_size = 7431
 generated_sql = """
@@ -44,7 +44,7 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638
 ),
-sparkling as (
+abhorrent as (
 SELECT
     \"sales_warehouse_warehouse\".\"w_city\" as \"w_city\",
     \"sales_warehouse_warehouse\".\"w_country\" as \"w_country\",
@@ -74,15 +74,17 @@ FROM
 WHERE
     \"cheerful\".\"sales_channel\" in ('WEB','CATALOG')
 ),
-vacuous as (
+concerned as (
 SELECT
+    \"uneven\".\"sales_date_year\" as \"sales_date_year\",
     \"uneven\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
     \"uneven\".\"sales_warehouse_square_feet\" as \"sales_warehouse_square_feet\"
 FROM
     \"uneven\"
 GROUP BY
     1,
-    2),
+    2,
+    3),
 yummy as (
 SELECT
     \"uneven\".\"sales_date_year\" as \"sales_date_year\",
@@ -140,22 +142,22 @@ FROM
 GROUP BY
     1,
     2),
-concerned as (
+young as (
 SELECT
-    \"vacuous\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
-    \"yummy\".\"sales_date_year\" as \"year_\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_2014640433814088\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_3651932559080414\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"may_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_2102584067696897\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_6604918674978475\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"jun_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_2468284946303603\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_7473911402984384\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"jul_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_3813288240508571\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_1253382858169910\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"apr_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_4665781553992687\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_2260763000029726\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"dec_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_4924005396887403\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8787508376971500\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"sep_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_6358102539688215\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_2249692701087616\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"feb_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_723293561413419\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_310910867076343\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"oct_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_840498784474899\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_2424977536630565\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"aug_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_9192727666116952\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8777233818641405\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"jan_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_9710525340558271\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8261526428573745\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"mar_sales_per_sq_foot\",
-    ( coalesce(\"yummy\".\"_virt_agg_sum_9859160249451646\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8234256934233961\",0) / \"vacuous\".\"sales_warehouse_square_feet\" ) as \"nov_sales_per_sq_foot\",
+    \"concerned\".\"sales_date_year\" as \"year_\",
+    \"concerned\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_2014640433814088\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_3651932559080414\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"may_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_2102584067696897\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_6604918674978475\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"jun_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_2468284946303603\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_7473911402984384\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"jul_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_3813288240508571\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_1253382858169910\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"apr_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_4665781553992687\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_2260763000029726\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"dec_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_4924005396887403\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8787508376971500\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"sep_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_6358102539688215\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_2249692701087616\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"feb_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_723293561413419\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_310910867076343\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"oct_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_840498784474899\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_2424977536630565\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"aug_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_9192727666116952\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8777233818641405\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"jan_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_9710525340558271\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8261526428573745\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"mar_sales_per_sq_foot\",
+    ( coalesce(\"yummy\".\"_virt_agg_sum_9859160249451646\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"yummy\".\"_virt_agg_sum_8234256934233961\",0) / \"concerned\".\"sales_warehouse_square_feet\" ) as \"nov_sales_per_sq_foot\",
     :ship_carriers as \"ship_carriers\",
     coalesce(\"yummy\".\"_virt_agg_sum_125612841134723\",0) + coalesce(\"yummy\".\"_virt_agg_sum_3020021264871168\",0) as \"apr_net\",
     coalesce(\"yummy\".\"_virt_agg_sum_1458042978411700\",0) + coalesce(\"yummy\".\"_virt_agg_sum_9049194871999961\",0) as \"may_net\",
@@ -182,57 +184,57 @@ SELECT
     coalesce(\"yummy\".\"_virt_agg_sum_9710525340558271\",0) + coalesce(\"yummy\".\"_virt_agg_sum_8261526428573745\",0) as \"mar_sales\",
     coalesce(\"yummy\".\"_virt_agg_sum_9859160249451646\",0) + coalesce(\"yummy\".\"_virt_agg_sum_8234256934233961\",0) as \"nov_sales\"
 FROM
-    \"vacuous\"
-    INNER JOIN \"yummy\" on \"vacuous\".\"sales_warehouse_id\" = \"yummy\".\"sales_warehouse_id\")
-SELECT
-    \"sparkling\".\"w_warehouse_name\" as \"w_warehouse_name\",
-    \"sparkling\".\"w_warehouse_sq_ft\" as \"w_warehouse_sq_ft\",
-    \"sparkling\".\"w_city\" as \"w_city\",
-    \"sparkling\".\"w_county\" as \"w_county\",
-    \"sparkling\".\"w_state\" as \"w_state\",
-    \"sparkling\".\"w_country\" as \"w_country\",
-    \"concerned\".\"ship_carriers\" as \"ship_carriers\",
-    \"concerned\".\"year_\" as \"year_\",
-    \"concerned\".\"jan_sales\" as \"jan_sales\",
-    \"concerned\".\"feb_sales\" as \"feb_sales\",
-    \"concerned\".\"mar_sales\" as \"mar_sales\",
-    \"concerned\".\"apr_sales\" as \"apr_sales\",
-    \"concerned\".\"may_sales\" as \"may_sales\",
-    \"concerned\".\"jun_sales\" as \"jun_sales\",
-    \"concerned\".\"jul_sales\" as \"jul_sales\",
-    \"concerned\".\"aug_sales\" as \"aug_sales\",
-    \"concerned\".\"sep_sales\" as \"sep_sales\",
-    \"concerned\".\"oct_sales\" as \"oct_sales\",
-    \"concerned\".\"nov_sales\" as \"nov_sales\",
-    \"concerned\".\"dec_sales\" as \"dec_sales\",
-    \"concerned\".\"jan_sales_per_sq_foot\" as \"jan_sales_per_sq_foot\",
-    \"concerned\".\"feb_sales_per_sq_foot\" as \"feb_sales_per_sq_foot\",
-    \"concerned\".\"mar_sales_per_sq_foot\" as \"mar_sales_per_sq_foot\",
-    \"concerned\".\"apr_sales_per_sq_foot\" as \"apr_sales_per_sq_foot\",
-    \"concerned\".\"may_sales_per_sq_foot\" as \"may_sales_per_sq_foot\",
-    \"concerned\".\"jun_sales_per_sq_foot\" as \"jun_sales_per_sq_foot\",
-    \"concerned\".\"jul_sales_per_sq_foot\" as \"jul_sales_per_sq_foot\",
-    \"concerned\".\"aug_sales_per_sq_foot\" as \"aug_sales_per_sq_foot\",
-    \"concerned\".\"sep_sales_per_sq_foot\" as \"sep_sales_per_sq_foot\",
-    \"concerned\".\"oct_sales_per_sq_foot\" as \"oct_sales_per_sq_foot\",
-    \"concerned\".\"nov_sales_per_sq_foot\" as \"nov_sales_per_sq_foot\",
-    \"concerned\".\"dec_sales_per_sq_foot\" as \"dec_sales_per_sq_foot\",
-    \"concerned\".\"jan_net\" as \"jan_net\",
-    \"concerned\".\"feb_net\" as \"feb_net\",
-    \"concerned\".\"mar_net\" as \"mar_net\",
-    \"concerned\".\"apr_net\" as \"apr_net\",
-    \"concerned\".\"may_net\" as \"may_net\",
-    \"concerned\".\"jun_net\" as \"jun_net\",
-    \"concerned\".\"jul_net\" as \"jul_net\",
-    \"concerned\".\"aug_net\" as \"aug_net\",
-    \"concerned\".\"sep_net\" as \"sep_net\",
-    \"concerned\".\"oct_net\" as \"oct_net\",
-    \"concerned\".\"nov_net\" as \"nov_net\",
-    \"concerned\".\"dec_net\" as \"dec_net\"
-FROM
     \"concerned\"
-    INNER JOIN \"sparkling\" on \"concerned\".\"sales_warehouse_id\" = \"sparkling\".\"sales_warehouse_id\"
+    INNER JOIN \"yummy\" on \"concerned\".\"sales_date_year\" = \"yummy\".\"sales_date_year\" AND \"concerned\".\"sales_warehouse_id\" = \"yummy\".\"sales_warehouse_id\")
+SELECT
+    \"abhorrent\".\"w_warehouse_name\" as \"w_warehouse_name\",
+    \"abhorrent\".\"w_warehouse_sq_ft\" as \"w_warehouse_sq_ft\",
+    \"abhorrent\".\"w_city\" as \"w_city\",
+    \"abhorrent\".\"w_county\" as \"w_county\",
+    \"abhorrent\".\"w_state\" as \"w_state\",
+    \"abhorrent\".\"w_country\" as \"w_country\",
+    \"young\".\"ship_carriers\" as \"ship_carriers\",
+    \"young\".\"year_\" as \"year_\",
+    \"young\".\"jan_sales\" as \"jan_sales\",
+    \"young\".\"feb_sales\" as \"feb_sales\",
+    \"young\".\"mar_sales\" as \"mar_sales\",
+    \"young\".\"apr_sales\" as \"apr_sales\",
+    \"young\".\"may_sales\" as \"may_sales\",
+    \"young\".\"jun_sales\" as \"jun_sales\",
+    \"young\".\"jul_sales\" as \"jul_sales\",
+    \"young\".\"aug_sales\" as \"aug_sales\",
+    \"young\".\"sep_sales\" as \"sep_sales\",
+    \"young\".\"oct_sales\" as \"oct_sales\",
+    \"young\".\"nov_sales\" as \"nov_sales\",
+    \"young\".\"dec_sales\" as \"dec_sales\",
+    \"young\".\"jan_sales_per_sq_foot\" as \"jan_sales_per_sq_foot\",
+    \"young\".\"feb_sales_per_sq_foot\" as \"feb_sales_per_sq_foot\",
+    \"young\".\"mar_sales_per_sq_foot\" as \"mar_sales_per_sq_foot\",
+    \"young\".\"apr_sales_per_sq_foot\" as \"apr_sales_per_sq_foot\",
+    \"young\".\"may_sales_per_sq_foot\" as \"may_sales_per_sq_foot\",
+    \"young\".\"jun_sales_per_sq_foot\" as \"jun_sales_per_sq_foot\",
+    \"young\".\"jul_sales_per_sq_foot\" as \"jul_sales_per_sq_foot\",
+    \"young\".\"aug_sales_per_sq_foot\" as \"aug_sales_per_sq_foot\",
+    \"young\".\"sep_sales_per_sq_foot\" as \"sep_sales_per_sq_foot\",
+    \"young\".\"oct_sales_per_sq_foot\" as \"oct_sales_per_sq_foot\",
+    \"young\".\"nov_sales_per_sq_foot\" as \"nov_sales_per_sq_foot\",
+    \"young\".\"dec_sales_per_sq_foot\" as \"dec_sales_per_sq_foot\",
+    \"young\".\"jan_net\" as \"jan_net\",
+    \"young\".\"feb_net\" as \"feb_net\",
+    \"young\".\"mar_net\" as \"mar_net\",
+    \"young\".\"apr_net\" as \"apr_net\",
+    \"young\".\"may_net\" as \"may_net\",
+    \"young\".\"jun_net\" as \"jun_net\",
+    \"young\".\"jul_net\" as \"jul_net\",
+    \"young\".\"aug_net\" as \"aug_net\",
+    \"young\".\"sep_net\" as \"sep_net\",
+    \"young\".\"oct_net\" as \"oct_net\",
+    \"young\".\"nov_net\" as \"nov_net\",
+    \"young\".\"dec_net\" as \"dec_net\"
+FROM
+    \"young\"
+    INNER JOIN \"abhorrent\" on \"young\".\"sales_warehouse_id\" = \"abhorrent\".\"sales_warehouse_id\"
 ORDER BY 
-    \"sparkling\".\"w_warehouse_name\" asc nulls first,
-    \"concerned\".\"year_\" asc nulls first
+    \"abhorrent\".\"w_warehouse_name\" asc nulls first,
+    \"young\".\"year_\" asc nulls first
 LIMIT (100)"""

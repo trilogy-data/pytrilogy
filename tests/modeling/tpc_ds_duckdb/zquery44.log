@@ -1,12 +1,12 @@
 query_id = "44"
 generator = "v4"
-gen_length = 3098
+gen_length = 3056
 preql_size = 1003
 comp_size = 1462
 generated_sql = """
 
 WITH 
-cooperative as (
+questionable as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
     \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\"
@@ -30,88 +30,88 @@ SELECT
     \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_descending_worst_performing\"
 FROM
     \"memory\".\"item\" as \"ss_item_items\"),
-questionable as (
+abundant as (
 SELECT
-    \"cooperative\".\"ss_item_id\" as \"ss_item_id\",
-    avg(\"cooperative\".\"ss_net_profit\") as \"item_avg_profit\"
+    \"questionable\".\"ss_item_id\" as \"ss_item_id\",
+    avg(\"questionable\".\"ss_net_profit\") as \"item_avg_profit\"
 FROM
-    \"cooperative\"
+    \"questionable\"
 GROUP BY
     1),
-thoughtful as (
+cooperative as (
 SELECT
     \"wakeful\".\"_addr_null_threshold_threshold\" as \"addr_null_threshold_threshold\"
 FROM
     \"wakeful\"),
-abundant as (
+yummy as (
 SELECT
-    \"questionable\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"questionable\".\"ss_item_id\" as \"ss_item_id\"
+    \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"abundant\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"questionable\" on \"cooperative\".\"ss_item_id\" = \"questionable\".\"ss_item_id\"
-    INNER JOIN \"thoughtful\" on 1=1
+    \"questionable\"
+    INNER JOIN \"abundant\" on \"questionable\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
+    INNER JOIN \"cooperative\" on 1=1
 WHERE
-    \"questionable\".\"item_avg_profit\" > 0.9 * \"thoughtful\".\"addr_null_threshold_threshold\"
+    \"abundant\".\"item_avg_profit\" > 0.9 * \"cooperative\".\"addr_null_threshold_threshold\"
 
 GROUP BY
     1,
     2),
-juicy as (
-SELECT
-    \"abundant\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"abundant\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
-    rank() over (order by \"abundant\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
-FROM
-    \"abundant\"),
 young as (
 SELECT
-    \"juicy\".\"_descending_rnk_d\" as \"_descending_rnk_d\",
-    \"quizzical\".\"_descending_worst_performing\" as \"_descending_worst_performing\"
+    \"yummy\".\"ss_item_id\" as \"ss_item_id\",
+    rank() over (order by \"yummy\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
+    rank() over (order by \"yummy\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
-    \"juicy\"
-    INNER JOIN \"quizzical\" on \"juicy\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
-GROUP BY
-    1,
-    2),
-vacuous as (
+    \"yummy\"),
+sweltering as (
 SELECT
-    \"juicy\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\",
-    \"quizzical\".\"_ascending_best_performing\" as \"_ascending_best_performing\"
+    \"quizzical\".\"_descending_worst_performing\" as \"_descending_worst_performing\",
+    \"young\".\"_descending_rnk_d\" as \"_descending_rnk_d\"
 FROM
-    \"juicy\"
-    INNER JOIN \"quizzical\" on \"juicy\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
+    \"young\"
+    INNER JOIN \"quizzical\" on \"young\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
 GROUP BY
     1,
     2),
 sparkling as (
 SELECT
-    \"young\".\"_descending_rnk_d\" as \"rnk\",
-    \"young\".\"_descending_worst_performing\" as \"descending_worst_performing\"
+    \"quizzical\".\"_ascending_best_performing\" as \"_ascending_best_performing\",
+    \"young\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\"
 FROM
-    \"young\"),
-concerned as (
+    \"young\"
+    INNER JOIN \"quizzical\" on \"young\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
+GROUP BY
+    1,
+    2),
+late as (
 SELECT
-    \"vacuous\".\"_ascending_best_performing\" as \"ascending_best_performing\",
-    \"vacuous\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
+    \"sweltering\".\"_descending_rnk_d\" as \"rnk\",
+    \"sweltering\".\"_descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"vacuous\")
+    \"sweltering\"),
+abhorrent as (
 SELECT
-    \"sparkling\".\"rnk\" as \"rnk\",
-    \"concerned\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"sparkling\".\"descending_worst_performing\" as \"descending_worst_performing\"
+    \"sparkling\".\"_ascending_best_performing\" as \"ascending_best_performing\",
+    \"sparkling\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
 FROM
-    \"sparkling\"
-    INNER JOIN \"concerned\" on \"sparkling\".\"rnk\" = \"concerned\".\"ascending_rnk_a\"
+    \"sparkling\")
+SELECT
+    \"late\".\"rnk\" as \"rnk\",
+    \"abhorrent\".\"ascending_best_performing\" as \"ascending_best_performing\",
+    \"late\".\"descending_worst_performing\" as \"descending_worst_performing\"
+FROM
+    \"late\"
+    INNER JOIN \"abhorrent\" on \"late\".\"rnk\" = \"abhorrent\".\"ascending_rnk_a\"
 WHERE
-    \"sparkling\".\"rnk\" < 11
+    \"late\".\"rnk\" < 11
 
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"sparkling\".\"rnk\" asc nulls first,
-    \"concerned\".\"ascending_best_performing\" desc nulls first,
-    \"sparkling\".\"descending_worst_performing\" desc nulls first
+    \"late\".\"rnk\" asc nulls first,
+    \"abhorrent\".\"ascending_best_performing\" desc nulls first,
+    \"late\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""

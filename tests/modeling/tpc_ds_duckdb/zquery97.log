@@ -1,6 +1,6 @@
 query_id = "97"
 generator = "v4"
-gen_length = 2838
+gen_length = 2830
 preql_size = 1209
 comp_size = 1159
 generated_sql = """
@@ -47,7 +47,7 @@ FROM
 GROUP BY
     \"thoughtful\".\"sales_billing_customer_id\",
     \"thoughtful\".\"sales_item_id\"),
-uneven as (
+yummy as (
 SELECT
     \"questionable\".\"_pair_presence_catalog_present\" as \"pair_presence_catalog_present\",
     \"questionable\".\"_pair_presence_store_present\" as \"pair_presence_store_present\"
@@ -55,16 +55,16 @@ FROM
     \"questionable\")
 SELECT
     sum(CASE
-	WHEN \"uneven\".\"pair_presence_store_present\" >= 1 and \"uneven\".\"pair_presence_catalog_present\" = 0 THEN 1
+	WHEN \"yummy\".\"pair_presence_store_present\" >= 1 and \"yummy\".\"pair_presence_catalog_present\" = 0 THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"uneven\".\"pair_presence_store_present\" = 0 and \"uneven\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"yummy\".\"pair_presence_store_present\" = 0 and \"yummy\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"uneven\".\"pair_presence_store_present\" >= 1 and \"uneven\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"yummy\".\"pair_presence_store_present\" >= 1 and \"yummy\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"uneven\""""
+    \"yummy\""""

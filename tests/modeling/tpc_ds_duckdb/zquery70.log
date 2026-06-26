@@ -1,6 +1,6 @@
 query_id = "70"
 generator = "v4"
-gen_length = 3053
+gen_length = 3285
 preql_size = 1303
 comp_size = 1258
 generated_sql = """
@@ -64,40 +64,47 @@ WHERE
 ),
 juicy as (
 SELECT
+    \"yummy\".\"ss_net_profit\" as \"ss_net_profit\",
     \"yummy\".\"ss_store_county\" as \"ss_store_county\",
-    \"yummy\".\"ss_store_state\" as \"ss_store_state\",
-    grouping(\"yummy\".\"ss_store_county\") as \"g_county\",
-    grouping(\"yummy\".\"ss_store_state\") as \"g_state\",
-    sum(\"yummy\".\"ss_net_profit\") as \"total_sum\"
+    \"yummy\".\"ss_store_state\" as \"ss_store_state\"
 FROM
-    \"yummy\"
-GROUP BY
-    ROLLUP (2, 1)),
+    \"yummy\"),
 vacuous as (
 SELECT
-    \"juicy\".\"g_state\" + \"juicy\".\"g_county\" as \"lochierarchy\",
     \"juicy\".\"ss_store_county\" as \"ss_store_county\",
     \"juicy\".\"ss_store_state\" as \"ss_store_state\",
-    \"juicy\".\"total_sum\" as \"total_sum\",
-    rank() over (partition by \"juicy\".\"g_state\" + \"juicy\".\"g_county\",CASE
-	WHEN \"juicy\".\"g_county\" = 0 THEN \"juicy\".\"ss_store_state\"
-	ELSE null
-	END order by \"juicy\".\"total_sum\" desc ) as \"rank_within_parent\"
+    grouping(\"juicy\".\"ss_store_county\") as \"g_county\",
+    grouping(\"juicy\".\"ss_store_state\") as \"g_state\",
+    sum(\"juicy\".\"ss_net_profit\") as \"total_sum\"
 FROM
-    \"juicy\")
+    \"juicy\"
+GROUP BY
+    ROLLUP (2, 1)),
+concerned as (
 SELECT
+    \"vacuous\".\"g_state\" + \"vacuous\".\"g_county\" as \"lochierarchy\",
+    \"vacuous\".\"ss_store_county\" as \"ss_store_county\",
+    \"vacuous\".\"ss_store_state\" as \"ss_store_state\",
     \"vacuous\".\"total_sum\" as \"total_sum\",
-    \"vacuous\".\"ss_store_state\" as \"s_state\",
-    \"vacuous\".\"ss_store_county\" as \"s_county\",
-    \"vacuous\".\"lochierarchy\" as \"lochierarchy\",
-    \"vacuous\".\"rank_within_parent\" as \"rank_within_parent\"
+    rank() over (partition by \"vacuous\".\"g_state\" + \"vacuous\".\"g_county\",CASE
+	WHEN \"vacuous\".\"g_county\" = 0 THEN \"vacuous\".\"ss_store_state\"
+	ELSE null
+	END order by \"vacuous\".\"total_sum\" desc ) as \"rank_within_parent\"
 FROM
-    \"vacuous\"
+    \"vacuous\")
+SELECT
+    \"concerned\".\"total_sum\" as \"total_sum\",
+    \"concerned\".\"ss_store_state\" as \"s_state\",
+    \"concerned\".\"ss_store_county\" as \"s_county\",
+    \"concerned\".\"lochierarchy\" as \"lochierarchy\",
+    \"concerned\".\"rank_within_parent\" as \"rank_within_parent\"
+FROM
+    \"concerned\"
 ORDER BY 
-    \"vacuous\".\"lochierarchy\" desc nulls first,
+    \"concerned\".\"lochierarchy\" desc nulls first,
     CASE
-	WHEN \"vacuous\".\"lochierarchy\" = 0 THEN \"vacuous\".\"ss_store_state\"
+	WHEN \"concerned\".\"lochierarchy\" = 0 THEN \"concerned\".\"ss_store_state\"
 	ELSE null
 	END asc nulls first,
-    \"vacuous\".\"rank_within_parent\" asc nulls first
+    \"concerned\".\"rank_within_parent\" asc nulls first
 LIMIT (100)"""

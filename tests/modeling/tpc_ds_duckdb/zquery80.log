@@ -1,6 +1,6 @@
 query_id = "80"
-generator = "v3"
-gen_length = 6982
+generator = "v4"
+gen_length = 7551
 preql_size = 1211
 comp_size = 3674
 generated_sql = """
@@ -121,7 +121,19 @@ SELECT
 	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN 'catalog channel'
 	WHEN \"vacuous\".\"sales_channel\" = 'WEB' THEN 'web channel'
 	ELSE null
+	END as \"channel\",
+    CASE
+	WHEN \"vacuous\".\"sales_channel\" = 'STORE' THEN 'store channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN 'catalog channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'WEB' THEN 'web channel'
+	ELSE null
 	END as \"channel_label\",
+    CASE
+	WHEN \"vacuous\".\"sales_channel\" = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
+	ELSE null
+	END as \"id\",
     CASE
 	WHEN \"vacuous\".\"sales_channel\" = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
 	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")

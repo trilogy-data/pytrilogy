@@ -1,6 +1,6 @@
 query_id = "24"
 generator = "v4"
-gen_length = 3897
+gen_length = 3903
 preql_size = 707
 comp_size = 1264
 generated_sql = """
@@ -45,7 +45,7 @@ GROUP BY
     1,
     2,
     3),
-juicy as (
+vacuous as (
 SELECT
     avg(\"uneven\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
 FROM
@@ -56,8 +56,8 @@ SELECT
     \"questionable\".\"store_sales_store_name\" as \"store_sales_store_name\",
     \"questionable\".\"peach_sales\" as \"peach_sales\"
 FROM
-    \"juicy\"
+    \"vacuous\"
     INNER JOIN \"questionable\" on 1=1
 WHERE
-    \"questionable\".\"peach_sales\" > 0.05 * \"juicy\".\"avg_store_customer_sales\"
+    \"questionable\".\"peach_sales\" > 0.05 * \"vacuous\".\"avg_store_customer_sales\"
 """

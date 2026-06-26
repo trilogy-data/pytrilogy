@@ -1,6 +1,6 @@
 query_id = "53"
 generator = "v4"
-gen_length = 2483
+gen_length = 2474
 preql_size = 1398
 comp_size = 1808
 generated_sql = """
@@ -20,7 +20,7 @@ WHERE
 GROUP BY
     1,
     \"store_sales_date_date\".\"D_QOY\"),
-cooperative as (
+questionable as (
 SELECT
     \"cheerful\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
     avg(\"cheerful\".\"sum_sales\") as \"avg_quarterly_sales\"
@@ -28,28 +28,28 @@ FROM
     \"cheerful\"
 GROUP BY
     1),
-abundant as (
+uneven as (
 SELECT
     \"cheerful\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
-    \"cooperative\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
+    \"questionable\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
     \"cheerful\"
-    INNER JOIN \"cooperative\" on \"cheerful\".\"store_sales_item_manufacturer_id\" = \"cooperative\".\"store_sales_item_manufacturer_id\"
+    INNER JOIN \"questionable\" on \"cheerful\".\"store_sales_item_manufacturer_id\" = \"questionable\".\"store_sales_item_manufacturer_id\"
 WHERE
     CASE
-	WHEN \"cooperative\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_quarterly_sales\") / \"cooperative\".\"avg_quarterly_sales\"
+	WHEN \"questionable\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"questionable\".\"avg_quarterly_sales\") / \"questionable\".\"avg_quarterly_sales\"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    \"abundant\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
-    \"abundant\".\"sum_sales\" as \"sum_sales\",
-    \"abundant\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
+    \"uneven\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
+    \"uneven\".\"sum_sales\" as \"sum_sales\",
+    \"uneven\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
-    \"abundant\"
+    \"uneven\"
 ORDER BY 
-    \"abundant\".\"avg_quarterly_sales\" asc,
-    \"abundant\".\"sum_sales\" asc,
-    \"abundant\".\"store_sales_item_manufacturer_id\" asc
+    \"uneven\".\"avg_quarterly_sales\" asc,
+    \"uneven\".\"sum_sales\" asc,
+    \"uneven\".\"store_sales_item_manufacturer_id\" asc
 LIMIT (100)"""

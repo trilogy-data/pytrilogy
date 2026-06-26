@@ -1,6 +1,6 @@
 query_id = "12"
 generator = "v4"
-gen_length = 2026
+gen_length = 2030
 preql_size = 669
 comp_size = 749
 generated_sql = """
@@ -27,7 +27,7 @@ GROUP BY
     3,
     4,
     5),
-cooperative as (
+questionable as (
 SELECT
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
     sum(\"cheerful\".\"itemrevenue\") as \"itemclassrevenue\"
@@ -42,10 +42,10 @@ SELECT
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
     \"cheerful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     \"cheerful\".\"itemrevenue\" as \"itemrevenue\",
-    (\"cheerful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
+    (\"cheerful\".\"itemrevenue\" * 100.0) / \"questionable\".\"itemclassrevenue\" as \"revenueratio\"
 FROM
     \"cheerful\"
-    INNER JOIN \"cooperative\" on \"cheerful\".\"web_sales_item_class\" is not distinct from \"cooperative\".\"web_sales_item_class\"
+    INNER JOIN \"questionable\" on \"cheerful\".\"web_sales_item_class\" is not distinct from \"questionable\".\"web_sales_item_class\"
 ORDER BY 
     \"cheerful\".\"web_sales_item_category\" asc,
     \"cheerful\".\"web_sales_item_class\" asc,
