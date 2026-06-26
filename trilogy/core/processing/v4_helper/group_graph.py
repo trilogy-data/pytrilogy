@@ -1448,18 +1448,46 @@ def _lineage_predecessors(
     ]
 
 
-def _best_existing_regraft_parent(
+def _regraft_candidate(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
+    *,
+    allow_partial: bool,
 ) -> str | None:
+    """Find the richest row-compatible sibling to source `gid`'s inputs.
+
+    A candidate must share an ancestor with `gid` (row-compatible), carry `gid`'s
+    label, not be a descendant of `gid`, and cover some of its inputs.
+
+    With `allow_partial=False` the candidate must cover *all* of `gid`'s inputs:
+    `gid` is redirected onto it as a single parent, no join, so grain is
+    irrelevant.
+
+    With `allow_partial=True` a candidate covering a non-empty *proper subset*
+    is also eligible — it becomes the SPINE and the remaining inputs join onto
+    it. This is what lets a scalar BASIC over two sibling aggregates (q47/q57:
+    `sum_minus_avg = sum_sales - avg_monthly_sales`) source its spine through a
+    same-grain WINDOW sibling that already exposes `sum_sales`, while the coarser
+    `avg` rides in via the BASIC's existing lineage parents — collapsing v4's
+    redundant intermediate merge into v3's single inline join. The partial case
+    is join-bearing, so it is gated for safety: the BASIC's grain must equal the
+    spine's (1:1, no fan-out) and every remaining input must already be built by
+    `gid`'s current lineage parents.
+    """
     current = attrs[gid]
     needed = set(current.input_concepts)
     if not needed:
         return None
+    # Concepts a partial-coverage spine may lean on for the inputs it lacks.
+    pred_outputs: set[str] = set()
+    if allow_partial:
+        for pred in _lineage_predecessors(group_graph, group_edges, gid):
+            pred_outputs |= set(attrs[pred].output_concepts)
     my_ancestors = nx.ancestors(group_graph, gid)
     best_gid: str | None = None
-    best_score: tuple[int, int, int] = (-1, -1, -1)
+    best_score: tuple[int, ...] = ()
     for candidate in group_graph.nodes:
         if candidate in (gid, FINAL_NODE_ID):
             continue
@@ -1473,78 +1501,37 @@ def _best_existing_regraft_parent(
             continue
         if gid in candidate_ancestors:
             continue
-        if not needed <= set(cattrs.output_concepts):
+        covered = needed & set(cattrs.output_concepts)
+        if not covered:
             continue
+        full = covered >= needed
+        if not full:
+            # Partial spine: join-bearing, so gate hard. Only BASIC consumers,
+            # WINDOW spine, exact-grain 1:1, remainder already built upstream.
+            # The WINDOW gate is load-bearing, not incidental: dropping it (so
+            # grain equality alone admits any same-grain sibling) lets the scorer
+            # pick a grouping sibling as spine, which `_fold_descendant_
+            # contributors` does not collapse — regressing the q47/q57 one-join
+            # consolidation and the aggregate-over-aggregate lock. Spine
+            # *selection*, not just 1:1 safety, depends on it.
+            if not allow_partial or current.derivation != Derivation.BASIC:
+                continue
+            if cattrs.derivation != Derivation.WINDOW:
+                continue
+            if cattrs.grain_components != current.grain_components:
+                continue
+            if not (needed - covered) <= pred_outputs:
+                continue
+        # Full coverage wins over partial; then prefer the richest source. In
+        # full-only mode `full`/`covered` are constant so the tail decides,
+        # matching the original (ancestors, grouping, outputs) ordering.
         score = (
+            int(full),
+            len(covered),
             len(candidate_ancestors),
             int(cattrs.derivation in GROUPING_DERIVATIONS),
             len(cattrs.output_concepts),
         )
-        if score > best_score:
-            best_score = score
-            best_gid = candidate
-    return best_gid
-
-
-def _spine_regraft_parent(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-) -> str | None:
-    """Pick a same-grain WINDOW sibling to source a BASIC's aggregate *spine*.
-
-    A scalar BASIC combining two sibling aggregates (q47/q57:
-    `sum_minus_avg = sum_sales - avg_monthly_sales`) has no single full-coverage
-    parent — one sibling carries `sum_sales`, the other `avg`. v3 makes the
-    window (which already exposes `sum_sales` *and* the per-month windows) the
-    spine and joins the coarser `avg` onto it, computing the difference inline.
-    v4 instead merges the two bare aggregates in a standalone CTE, then re-joins
-    the window — one extra join + projection block for no rows difference.
-
-    Adding a lineage edge from such a window sibling lets the BASIC source its
-    spine input through the window (the now-redundant bare aggregate drops out by
-    `needed`-dedup) so the window's own outputs ride through, and
-    `_fold_descendant_contributors` collapses both into one FINAL contributor.
-    Gated hard: candidate must be a WINDOW at the *exact same grain* (1:1 join,
-    no fan-out) covering a non-empty proper subset of the BASIC's inputs, with
-    every remaining input still covered by the BASIC's current lineage parents.
-    """
-    current = attrs[gid]
-    if current.derivation != Derivation.BASIC:
-        return None
-    needed = set(current.input_concepts)
-    if not needed:
-        return None
-    lineage_preds = _lineage_predecessors(group_graph, group_edges, gid)
-    pred_outputs: set[str] = set()
-    for pred in lineage_preds:
-        pred_outputs |= set(attrs[pred].output_concepts)
-    my_ancestors = nx.ancestors(group_graph, gid)
-    best_gid: str | None = None
-    best_score: tuple[int, int] = (-1, -1)
-    for candidate in group_graph.nodes:
-        if candidate in (gid, FINAL_NODE_ID):
-            continue
-        cattrs = attrs[candidate]
-        if cattrs.derivation != Derivation.WINDOW:
-            continue
-        if cattrs.label != current.label:
-            continue
-        if cattrs.grain_components != current.grain_components:
-            continue
-        if gid in nx.ancestors(group_graph, candidate):
-            continue
-        if not (my_ancestors & nx.ancestors(group_graph, candidate)):
-            continue
-        covered = needed & set(cattrs.output_concepts)
-        # Proper, non-empty subset: a full-coverage parent is handled earlier;
-        # zero coverage means the window is irrelevant to this basic.
-        if not covered or covered >= needed:
-            continue
-        if not (needed - covered) <= pred_outputs:
-            continue
-        score = (len(covered), len(cattrs.output_concepts))
         if score > best_score:
             best_score = score
             best_gid = candidate
@@ -1627,13 +1614,17 @@ def _regraft_group_sources(
             continue
         if attrs[gid].derivation not in _REGRAFTABLE_DERIVATIONS:
             continue
-        parent_gid = _best_existing_regraft_parent(group_graph, attrs, gid)
+        parent_gid = _regraft_candidate(
+            group_graph, group_edges, attrs, gid, allow_partial=False
+        )
         if parent_gid is None:
             parent_gid = _synthetic_dimension_regraft_parent(
                 group_graph, group_edges, attrs, buckets, concept_attrs, gid
             )
         if parent_gid is None:
-            parent_gid = _spine_regraft_parent(group_graph, group_edges, attrs, gid)
+            parent_gid = _regraft_candidate(
+                group_graph, group_edges, attrs, gid, allow_partial=True
+            )
         if parent_gid is None or group_graph.has_edge(parent_gid, gid):
             continue
         add_edge(group_graph, group_edges, parent_gid, gid, EdgeKind.LINEAGE)

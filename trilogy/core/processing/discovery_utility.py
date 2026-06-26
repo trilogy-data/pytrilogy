@@ -764,7 +764,9 @@ def raise_if_disconnected_for(
     concepts = list(outputs)
     output_addresses = {c.address for c in concepts}
     if conditions:
-        concepts += [c for c in conditions.row_arguments if c.address not in seen]
+        concepts += [
+            c for c in conditions.row_arguments if c.address not in output_addresses
+        ]
     raise_if_disconnected(environment, concepts, g, island_rowsets=island_rowsets)
 
 

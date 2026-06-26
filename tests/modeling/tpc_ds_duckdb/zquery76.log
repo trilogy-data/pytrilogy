@@ -1,6 +1,6 @@
 query_id = "76"
-generator = "v3"
-gen_length = 7793
+generator = "v4"
+gen_length = 9880
 preql_size = 2137
 comp_size = 1708
 generated_sql = """
@@ -251,28 +251,17 @@ SELECT
     \"resonant\".\"___tvf_arm_1_sales_cnt\" as \"sales_cnt\",
     \"resonant\".\"___tvf_arm_1_sales_amt\" as \"sales_amt\"
 FROM
-    \"charming\"),
-waggish as (
+    \"resonant\")
 SELECT
-    \"puzzled\".\"channel\" as \"channel\",
-    \"puzzled\".\"col_name\" as \"col_name\",
-    \"puzzled\".\"d_qoy\" as \"d_qoy\",
-    \"puzzled\".\"d_year\" as \"d_year\",
-    \"puzzled\".\"i_category\" as \"i_category\",
-    \"puzzled\".\"sales_amt\" as \"sales_amt\",
-    \"puzzled\".\"sales_cnt\" as \"sales_cnt\"
+    \"elated\".\"channel\" as \"q76_results_channel\",
+    \"elated\".\"col_name\" as \"q76_results_col_name\",
+    \"elated\".\"d_year\" as \"q76_results_d_year\",
+    \"elated\".\"d_qoy\" as \"q76_results_d_qoy\",
+    \"elated\".\"i_category\" as \"q76_results_i_category\",
+    \"elated\".\"sales_cnt\" as \"q76_results_sales_cnt\",
+    \"elated\".\"sales_amt\" as \"q76_results_sales_amt\"
 FROM
-    \"puzzled\")
-SELECT
-    \"waggish\".\"channel\" as \"q76_results_channel\",
-    \"waggish\".\"col_name\" as \"q76_results_col_name\",
-    \"waggish\".\"d_year\" as \"q76_results_d_year\",
-    \"waggish\".\"d_qoy\" as \"q76_results_d_qoy\",
-    \"waggish\".\"i_category\" as \"q76_results_i_category\",
-    \"waggish\".\"sales_cnt\" as \"q76_results_sales_cnt\",
-    \"waggish\".\"sales_amt\" as \"q76_results_sales_amt\"
-FROM
-    \"waggish\"
+    \"elated\"
 ORDER BY 
     \"q76_results_channel\" asc nulls first,
     \"q76_results_col_name\" asc nulls first,
