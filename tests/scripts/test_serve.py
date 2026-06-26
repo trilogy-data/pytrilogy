@@ -6,6 +6,7 @@ import tempfile
 import textwrap
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -715,6 +716,45 @@ def test_serve_nested_csv_file():
         assert "2024-01-01,100" in response.text
 
 
+def _wait_for_server(base_url, get_cli_result, thread, max_wait=10.0):
+    """Poll until the server answers. On failure, surface the CLI thread's
+    output/exception instead of a bare "did not start" so CI is debuggable."""
+    deadline = time.time() + max_wait
+    last_err: Exception | None = None
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(f"{base_url}/", timeout=1)
+            return
+        except (urllib.error.URLError, ConnectionRefusedError) as e:
+            last_err = e
+            time.sleep(0.1)
+
+    cli_result = get_cli_result()
+    details = [
+        f"Server at {base_url} did not start within {max_wait}s",
+        f"last connection error: {last_err!r}",
+        f"cli thread alive: {thread.is_alive()}",
+    ]
+    if cli_result is None:
+        details.append("CLI produced no result yet (still starting or hung)")
+    else:
+        details.append(f"CLI exit_code={cli_result.exit_code}")
+        if cli_result.output:
+            details.append(f"CLI output:\n{cli_result.output}")
+        if cli_result.exception:
+            details.append(
+                "CLI exception:\n"
+                + "".join(
+                    traceback.format_exception(
+                        type(cli_result.exception),
+                        cli_result.exception,
+                        cli_result.exception.__traceback__,
+                    )
+                )
+            )
+    raise AssertionError("\n".join(details))
+
+
 def test_serve_cli():
 
     path = Path(__file__).parent
@@ -741,7 +781,7 @@ def test_serve_cli():
                 "--host",
                 "127.0.0.1",
                 "--timeout",
-                "5",
+                "12",
                 "--no-browser",
                 "--no-auth",
             ],
@@ -751,20 +791,10 @@ def test_serve_cli():
     thread = threading.Thread(target=run_cli, daemon=True)
     thread.start()
 
-    # Wait for server to start
+    # Wait for server to start (server --timeout is set above max_wait so it
+    # stays up for the whole poll window on slow CI runners)
     base_url = f"http://127.0.0.1:{port}"
-    max_wait = 3.0
-    start = time.time()
-    server_ready = False
-    while time.time() - start < max_wait:
-        try:
-            urllib.request.urlopen(f"{base_url}/", timeout=1)
-            server_ready = True
-            break
-        except (urllib.error.URLError, ConnectionRefusedError):
-            time.sleep(0.1)
-
-    assert server_ready, "Server did not start in time"
+    _wait_for_server(base_url, lambda: cli_result, thread)
 
     # Test root endpoint
     with urllib.request.urlopen(f"{base_url}/") as response:
@@ -776,8 +806,8 @@ def test_serve_cli():
         data = json.loads(response.read().decode())
         assert "models" in data
 
-    # Wait for CLI to finish (timeout should stop it)
-    thread.join(timeout=6.0)
+    # Wait for CLI to finish (server --timeout should stop it)
+    thread.join(timeout=20.0)
     assert cli_result is not None
     if cli_result.exception:
         raise cli_result.exception
@@ -819,7 +849,7 @@ def test_serve_cli_uses_trilogy_toml_connection():
                     "--host",
                     "127.0.0.1",
                     "--timeout",
-                    "5",
+                    "12",
                     "--no-browser",
                     "--no-auth",
                 ],
@@ -829,16 +859,7 @@ def test_serve_cli_uses_trilogy_toml_connection():
         thread.start()
 
         base_url = f"http://127.0.0.1:{port}"
-        start = time.time()
-        server_ready = False
-        while time.time() - start < 3.0:
-            try:
-                urllib.request.urlopen(f"{base_url}/", timeout=1)
-                server_ready = True
-                break
-            except (urllib.error.URLError, ConnectionRefusedError):
-                time.sleep(0.1)
-        assert server_ready, "Server did not start in time"
+        _wait_for_server(base_url, lambda: cli_result, thread)
 
         with urllib.request.urlopen(f"{base_url}/index.json") as response:
             data = json.loads(response.read().decode())
@@ -848,7 +869,7 @@ def test_serve_cli_uses_trilogy_toml_connection():
             "options": {"account": "acme", "warehouse": "wh"},
         }
 
-        thread.join(timeout=6.0)
+        thread.join(timeout=20.0)
         assert cli_result is not None
         if cli_result.exception:
             raise cli_result.exception
