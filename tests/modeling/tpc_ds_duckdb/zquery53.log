@@ -1,6 +1,6 @@
 query_id = "53"
-generator = "v3"
-gen_length = 2248
+generator = "v4"
+gen_length = 2483
 preql_size = 1398
 comp_size = 1808
 generated_sql = """
@@ -43,13 +43,13 @@ WHERE
 	END > 0.1
 )
 SELECT
-    \"abundant\".\"physical_sales_item_manufacturer_id\" as \"physical_sales_item_manufacturer_id\",
+    \"abundant\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
     \"abundant\".\"sum_sales\" as \"sum_sales\",
     \"abundant\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
     \"abundant\"
 ORDER BY 
-    \"cooperative\".\"avg_quarterly_sales\" asc,
-    \"cheerful\".\"sum_sales\" asc,
-    \"cheerful\".\"store_sales_item_manufacturer_id\" asc
+    \"abundant\".\"avg_quarterly_sales\" asc,
+    \"abundant\".\"sum_sales\" asc,
+    \"abundant\".\"store_sales_item_manufacturer_id\" asc
 LIMIT (100)"""

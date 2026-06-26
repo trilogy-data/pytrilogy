@@ -1,7 +1,7 @@
 query_id = "24"
 generator = "v4"
-gen_length = 4089
-preql_size = 758
+gen_length = 3897
+preql_size = 707
 comp_size = 1264
 generated_sql = """
 
@@ -19,12 +19,12 @@ WHERE
     \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_address_customer_address\".\"CA_COUNTRY\")  and SR_RETURN_TIME_SK IS NOT NULL is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_address_customer_address\".\"CA_ZIP\"
 
 GROUP BY
-    \"physical_sales_customer_customers\".\"C_FIRST_NAME\",
-    \"physical_sales_customer_customers\".\"C_LAST_NAME\",
-    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\",
-    \"physical_sales_store_sales\".\"SS_ITEM_SK\",
-    \"physical_sales_store_sales\".\"SS_STORE_SK\",
-    \"physical_sales_store_store\".\"S_STORE_NAME\"),
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\",
+    \"store_sales_customer_customers\".\"C_LAST_NAME\",
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_STORE_SK\",
+    \"store_sales_store_store\".\"S_STORE_NAME\"),
 questionable as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
@@ -47,7 +47,7 @@ GROUP BY
     3),
 juicy as (
 SELECT
-    avg(\"uneven\".\"_virt_agg_sum_5757395975543459\") as \"avg_store_customer_sales\"
+    avg(\"uneven\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
 FROM
     \"uneven\")
 SELECT

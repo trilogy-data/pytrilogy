@@ -1,7 +1,7 @@
 query_id = "29"
 generator = "v4"
-gen_length = 8036
-preql_size = 1620
+gen_length = 7678
+preql_size = 1545
 comp_size = 1089
 generated_sql = """
 
@@ -9,14 +9,14 @@ WITH
 uneven as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" as \"catalog_sales_quantity\",
-    \"physical_sales_item_items\".\"I_ITEM_DESC\" as \"physical_sales_item_desc\",
-    \"physical_sales_item_items\".\"I_ITEM_ID\" as \"physical_sales_item_text_id\",
-    \"physical_sales_store_returns\".\"SR_RETURN_QUANTITY\" as \"physical_sales_return_quantity\",
-    \"physical_sales_store_sales\".\"SS_QUANTITY\" as \"physical_sales_quantity\",
-    \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
-    \"physical_sales_store_store\".\"S_STORE_ID\" as \"physical_sales_store_text_id\",
-    \"physical_sales_store_store\".\"S_STORE_NAME\" as \"physical_sales_store_name\",
-    coalesce(\"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",\"physical_sales_item_items\".\"I_ITEM_SK\",\"physical_sales_store_returns\".\"SR_ITEM_SK\",\"physical_sales_store_sales\".\"SS_ITEM_SK\") as \"physical_sales_item_id\"
+    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_text_id\",
+    \"store_sales_store_returns\".\"SR_RETURN_QUANTITY\" as \"store_sales_return_quantity\",
+    \"store_sales_store_sales\".\"SS_QUANTITY\" as \"store_sales_quantity\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    coalesce(\"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") as \"store_sales_item_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
@@ -27,29 +27,29 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_MOY\" = 9 and \"physical_sales_date_date\".\"D_YEAR\" = 1999 and \"physical_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"physical_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
+    \"store_sales_date_date\".\"D_MOY\" = 9 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"store_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
 ),
 yummy as (
 SELECT
     \"uneven\".\"catalog_sales_quantity\" as \"correlated_catalog_sales_quantity\",
-    \"uneven\".\"physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
-    \"uneven\".\"physical_sales_item_id\" as \"correlated_physical_sales_item_id\",
-    \"uneven\".\"physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
-    \"uneven\".\"physical_sales_quantity\" as \"correlated_physical_sales_quantity\",
-    \"uneven\".\"physical_sales_return_quantity\" as \"correlated_physical_sales_return_quantity\",
-    \"uneven\".\"physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
-    \"uneven\".\"physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
-    \"uneven\".\"physical_sales_ticket_number\" as \"correlated_physical_sales_ticket_number\"
+    \"uneven\".\"store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"uneven\".\"store_sales_item_id\" as \"correlated_store_sales_item_id\",
+    \"uneven\".\"store_sales_item_text_id\" as \"correlated_store_sales_item_text_id\",
+    \"uneven\".\"store_sales_quantity\" as \"correlated_store_sales_quantity\",
+    \"uneven\".\"store_sales_return_quantity\" as \"correlated_store_sales_return_quantity\",
+    \"uneven\".\"store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    \"uneven\".\"store_sales_store_text_id\" as \"correlated_store_sales_store_text_id\",
+    \"uneven\".\"store_sales_ticket_number\" as \"correlated_store_sales_ticket_number\"
 FROM
     \"uneven\"),
 concerned as (
 SELECT
-    \"yummy\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
-    \"yummy\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
-    \"yummy\".\"correlated_physical_sales_quantity\" as \"correlated_physical_sales_quantity\",
-    \"yummy\".\"correlated_physical_sales_return_quantity\" as \"correlated_physical_sales_return_quantity\",
-    \"yummy\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
-    \"yummy\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\"
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_text_id\" as \"correlated_store_sales_item_text_id\",
+    \"yummy\".\"correlated_store_sales_quantity\" as \"correlated_store_sales_quantity\",
+    \"yummy\".\"correlated_store_sales_return_quantity\" as \"correlated_store_sales_return_quantity\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    \"yummy\".\"correlated_store_sales_store_text_id\" as \"correlated_store_sales_store_text_id\"
 FROM
     \"yummy\"
 GROUP BY
@@ -59,14 +59,14 @@ GROUP BY
     4,
     5,
     6,
-    \"yummy\".\"correlated_physical_sales_item_id\",
-    \"yummy\".\"correlated_physical_sales_ticket_number\"),
+    \"yummy\".\"correlated_store_sales_item_id\",
+    \"yummy\".\"correlated_store_sales_ticket_number\"),
 juicy as (
 SELECT
-    \"yummy\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
-    \"yummy\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
-    \"yummy\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
-    \"yummy\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_text_id\" as \"correlated_store_sales_item_text_id\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    \"yummy\".\"correlated_store_sales_store_text_id\" as \"correlated_store_sales_store_text_id\",
     sum(\"yummy\".\"correlated_catalog_sales_quantity\") as \"catalog_sales_quantity\"
 FROM
     \"yummy\"
@@ -80,12 +80,12 @@ HAVING
 ),
 young as (
 SELECT
-    \"concerned\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
-    \"concerned\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
-    \"concerned\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
-    \"concerned\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
-    sum(\"concerned\".\"correlated_physical_sales_quantity\") as \"store_sales_quantity\",
-    sum(\"concerned\".\"correlated_physical_sales_return_quantity\") as \"store_returns_quantity\"
+    \"concerned\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"concerned\".\"correlated_store_sales_item_text_id\" as \"correlated_store_sales_item_text_id\",
+    \"concerned\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    \"concerned\".\"correlated_store_sales_store_text_id\" as \"correlated_store_sales_store_text_id\",
+    sum(\"concerned\".\"correlated_store_sales_quantity\") as \"store_sales_quantity\",
+    sum(\"concerned\".\"correlated_store_sales_return_quantity\") as \"store_returns_quantity\"
 FROM
     \"concerned\"
 GROUP BY
@@ -97,17 +97,17 @@ sparkling as (
 SELECT
     \"young\".\"store_returns_quantity\" as \"store_returns_quantity\",
     \"young\".\"store_sales_quantity\" as \"store_sales_quantity\",
-    \"yummy\".\"correlated_physical_sales_item_desc\" as \"correlated_physical_sales_item_desc\",
-    \"yummy\".\"correlated_physical_sales_item_desc\" as \"store_sales_item_desc\",
-    \"yummy\".\"correlated_physical_sales_item_text_id\" as \"correlated_physical_sales_item_text_id\",
-    \"yummy\".\"correlated_physical_sales_item_text_id\" as \"store_sales_item_name\",
-    \"yummy\".\"correlated_physical_sales_store_name\" as \"correlated_physical_sales_store_name\",
-    \"yummy\".\"correlated_physical_sales_store_name\" as \"store_name\",
-    \"yummy\".\"correlated_physical_sales_store_text_id\" as \"correlated_physical_sales_store_text_id\",
-    \"yummy\".\"correlated_physical_sales_store_text_id\" as \"store_sales_store_text_id\"
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_text_id\" as \"correlated_store_sales_item_text_id\",
+    \"yummy\".\"correlated_store_sales_item_text_id\" as \"store_sales_item_name\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"store_name\",
+    \"yummy\".\"correlated_store_sales_store_text_id\" as \"correlated_store_sales_store_text_id\",
+    \"yummy\".\"correlated_store_sales_store_text_id\" as \"store_sales_store_text_id\"
 FROM
     \"yummy\"
-    INNER JOIN \"young\" on \"yummy\".\"correlated_physical_sales_item_desc\" = \"young\".\"correlated_physical_sales_item_desc\" AND \"yummy\".\"correlated_physical_sales_item_text_id\" = \"young\".\"correlated_physical_sales_item_text_id\" AND \"yummy\".\"correlated_physical_sales_store_name\" = \"young\".\"correlated_physical_sales_store_name\" AND \"yummy\".\"correlated_physical_sales_store_text_id\" = \"young\".\"correlated_physical_sales_store_text_id\")
+    INNER JOIN \"young\" on \"yummy\".\"correlated_store_sales_item_desc\" = \"young\".\"correlated_store_sales_item_desc\" AND \"yummy\".\"correlated_store_sales_item_text_id\" = \"young\".\"correlated_store_sales_item_text_id\" AND \"yummy\".\"correlated_store_sales_store_name\" = \"young\".\"correlated_store_sales_store_name\" AND \"yummy\".\"correlated_store_sales_store_text_id\" = \"young\".\"correlated_store_sales_store_text_id\")
 SELECT
     \"sparkling\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"sparkling\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
@@ -118,7 +118,7 @@ SELECT
     \"juicy\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\"
 FROM
     \"sparkling\"
-    INNER JOIN \"juicy\" on \"sparkling\".\"correlated_physical_sales_item_desc\" = \"juicy\".\"correlated_physical_sales_item_desc\" AND \"sparkling\".\"correlated_physical_sales_item_text_id\" = \"juicy\".\"correlated_physical_sales_item_text_id\" AND \"sparkling\".\"correlated_physical_sales_store_name\" = \"juicy\".\"correlated_physical_sales_store_name\" AND \"sparkling\".\"correlated_physical_sales_store_text_id\" = \"juicy\".\"correlated_physical_sales_store_text_id\"
+    INNER JOIN \"juicy\" on \"sparkling\".\"correlated_store_sales_item_desc\" = \"juicy\".\"correlated_store_sales_item_desc\" AND \"sparkling\".\"correlated_store_sales_item_text_id\" = \"juicy\".\"correlated_store_sales_item_text_id\" AND \"sparkling\".\"correlated_store_sales_store_name\" = \"juicy\".\"correlated_store_sales_store_name\" AND \"sparkling\".\"correlated_store_sales_store_text_id\" = \"juicy\".\"correlated_store_sales_store_text_id\"
 GROUP BY
     1,
     2,

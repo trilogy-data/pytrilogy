@@ -56,21 +56,6 @@ FROM
     \"thoughtful\"),
 cheerful as (
 SELECT
-    \"concerned\".\"_web_buyers_web_cust_id\" as \"web_buyers_web_cust_id\"
-FROM
-    \"concerned\"),
-vacuous as (
-SELECT
-    \"uneven\".\"_store_buyers_store_cust_id\" as \"store_buyers_store_cust_id\"
-FROM
-    \"uneven\"),
-abundant as (
-SELECT
-    \"cheerful\".\"_catalog_buyers_cat_cust_id\" as \"catalog_buyers_cat_cust_id\"
-FROM
-    \"cheerful\"),
-macho as (
-SELECT
     \"customer_address_customer_address\".\"CA_STATE\" as \"customer_address_state\",
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
     \"customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",

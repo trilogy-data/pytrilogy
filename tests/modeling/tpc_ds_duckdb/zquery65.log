@@ -1,79 +1,28 @@
 query_id = "65"
-generator = "v3"
-gen_length = 2442
+generator = "v4"
+gen_length = 2384
 preql_size = 670
 comp_size = 1062
 generated_sql = """
 
 WITH 
-wakeful as (
-SELECT
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
-    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1176 AND 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
-
-GROUP BY
-    1,
-    2),
-abundant as (
+thoughtful as (
 SELECT
     \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_WHOLESALE_COST\" as \"store_sales_item_wholesale_cost\",
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"wakeful\".\"item_revenue\" as \"item_revenue\",
-    \"wakeful\".\"store_sales_store_id\" as \"store_sales_store_id\"
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\",
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"revenue\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"wakeful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"wakeful\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"),
-thoughtful as (
-SELECT
-    \"wakeful\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    avg(\"wakeful\".\"item_revenue\") as \"store_avg_revenue\"
-FROM
-    \"wakeful\"
-GROUP BY
-    1)
-SELECT
-    \"abundant\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"abundant\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"abundant\".\"item_revenue\" as \"revenue\",
-    \"abundant\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    \"abundant\".\"store_sales_item_wholesale_cost\" as \"store_sales_item_wholesale_cost\",
-    \"abundant\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
-FROM
-    \"abundant\"
-    INNER JOIN \"thoughtful\" on \"abundant\".\"store_sales_store_id\" = \"thoughtful\".\"store_sales_store_id\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"physical_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1176 AND 1187 and \"physical_sales_store_sales\".\"SS_STORE_SK\" is not null
-
-GROUP BY
-    1,
-    2),
-abundant as (
-SELECT
-    \"physical_sales_item_items\".\"I_BRAND\" as \"physical_sales_item_brand_name\",
-    \"physical_sales_item_items\".\"I_CURRENT_PRICE\" as \"physical_sales_item_current_price\",
-    \"physical_sales_item_items\".\"I_ITEM_DESC\" as \"physical_sales_item_desc\",
-    \"physical_sales_item_items\".\"I_WHOLESALE_COST\" as \"physical_sales_item_wholesale_cost\",
-    \"physical_sales_store_sales\".\"SS_STORE_SK\" as \"physical_sales_store_id\",
-    \"physical_sales_store_store\".\"S_STORE_NAME\" as \"physical_sales_store_name\",
-    sum(\"physical_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\",
-    sum(\"physical_sales_store_sales\".\"SS_SALES_PRICE\") as \"revenue\"
-FROM
-    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
-WHERE
-    \"physical_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1176 AND 1187 and \"physical_sales_store_sales\".\"SS_STORE_SK\" is not null
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1176 AND 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
@@ -82,25 +31,25 @@ GROUP BY
     4,
     5,
     6,
-    \"physical_sales_item_items\".\"I_ITEM_SK\"),
+    \"store_sales_item_items\".\"I_ITEM_SK\"),
 abundant as (
 SELECT
-    \"thoughtful\".\"physical_sales_store_id\" as \"physical_sales_store_id\",
+    \"thoughtful\".\"store_sales_store_id\" as \"store_sales_store_id\",
     avg(\"thoughtful\".\"item_revenue\") as \"store_avg_revenue\"
 FROM
     \"thoughtful\"
 GROUP BY
     1)
 SELECT
-    \"thoughtful\".\"physical_sales_store_name\" as \"physical_sales_store_name\",
-    \"thoughtful\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
+    \"thoughtful\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"thoughtful\".\"revenue\" as \"revenue\",
-    \"thoughtful\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
-    \"thoughtful\".\"physical_sales_item_wholesale_cost\" as \"physical_sales_item_wholesale_cost\",
-    \"thoughtful\".\"physical_sales_item_brand_name\" as \"physical_sales_item_brand_name\"
+    \"thoughtful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"thoughtful\".\"store_sales_item_wholesale_cost\" as \"store_sales_item_wholesale_cost\",
+    \"thoughtful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"abundant\" on \"thoughtful\".\"physical_sales_store_id\" = \"abundant\".\"physical_sales_store_id\"
+    INNER JOIN \"abundant\" on \"thoughtful\".\"store_sales_store_id\" = \"abundant\".\"store_sales_store_id\"
 WHERE
     \"thoughtful\".\"revenue\" <= 0.1 * \"abundant\".\"store_avg_revenue\"
 
@@ -113,6 +62,6 @@ GROUP BY
     6,
     \"abundant\".\"store_avg_revenue\"
 ORDER BY 
-    \"abundant\".\"store_sales_store_name\" asc nulls first,
-    \"abundant\".\"store_sales_item_desc\" asc nulls first
+    \"thoughtful\".\"store_sales_store_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_item_desc\" asc nulls first
 LIMIT (100)"""

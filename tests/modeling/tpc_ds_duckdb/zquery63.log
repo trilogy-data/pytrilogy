@@ -1,6 +1,6 @@
 query_id = "63"
-generator = "v3"
-gen_length = 2320
+generator = "v4"
+gen_length = 2487
 preql_size = 1372
 comp_size = 1795
 generated_sql = """
@@ -30,10 +30,9 @@ GROUP BY
     1),
 abundant as (
 SELECT
-    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
     \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
-    coalesce(\"cheerful\".\"physical_sales_item_manager_id\",\"cooperative\".\"physical_sales_item_manager_id\") as \"physical_sales_item_manager_id\"
+    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\"
 FROM
     \"cheerful\"
     INNER JOIN \"cooperative\" on \"cheerful\".\"store_sales_item_manager_id\" is not distinct from \"cooperative\".\"store_sales_item_manager_id\"
@@ -44,13 +43,13 @@ WHERE
 	END > 0.1
 )
 SELECT
-    \"abundant\".\"physical_sales_item_manager_id\" as \"physical_sales_item_manager_id\",
+    \"abundant\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
     \"abundant\".\"sum_sales\" as \"sum_sales\",
     \"abundant\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
     \"abundant\"
 ORDER BY 
-    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") asc,
-    \"cooperative\".\"avg_monthly_sales\" asc,
-    \"cheerful\".\"sum_sales\" asc
+    \"abundant\".\"store_sales_item_manager_id\" asc,
+    \"abundant\".\"avg_monthly_sales\" asc,
+    \"abundant\".\"sum_sales\" asc
 LIMIT (100)"""

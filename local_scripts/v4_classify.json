@@ -1,22 +1,22 @@
 [
   {
     "node": "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [
       "SHAPE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...eful\" on 1=1'",
     "expected": [
       "SHAPE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
@@ -31,12 +31,12 @@
   },
   {
     "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
@@ -61,12 +61,12 @@
   },
   {
     "node": "tests/persistence/test_basic_persistence.py::test_persist_with_where",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: assert 'CASE' not in 'SELECT\\n\\tC...lse\\n\\tEND\\n'",
     "expected": [
       "SHAPE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
@@ -81,22 +81,22 @@
   },
   {
     "node": "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
@@ -125,20 +125,20 @@
   },
   {
     "node": "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "ROWS",
       "SHAPE",
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/usa_names/test_names.py::test_filter_constant",
     "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "detail": "ValueError: Invalid reference string found in query: SELECT",
     "expected": [
       "CRASH",
       "TIMEOUT"
@@ -148,40 +148,40 @@
   },
   {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "ROWS",
       "SHAPE",
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one",
     "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "detail": "_duckdb.BinderException: Binder Error: Values list \"yummy\" does not have a column named \"web_sales_date_id\"",
     "expected": [
       "SIZE"
     ],
@@ -190,52 +190,56 @@
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
-    "downgrade": false
+    "escalation": false,
+    "downgrade": true
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
-    "downgrade": false
+    "escalation": false,
+    "downgrade": false,
+    "nondeterministic": [
+      "SIZE",
+      "XPASS"
+    ]
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
@@ -250,34 +254,34 @@
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
-    "escalation": true,
-    "downgrade": false
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
-    "expected": [
-      "SHAPE"
-    ],
-    "escalation": true,
+    "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query",
-    "bucket": "CRASH",
-    "detail": "NameError: name 'seen' is not defined",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "ROWS",
       "SHAPE",
       "SIZE"
     ],
-    "escalation": true,
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
+    "expected": [
+      "SHAPE"
+    ],
+    "escalation": false,
     "downgrade": false
   }
 ]

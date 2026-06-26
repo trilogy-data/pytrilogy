@@ -1467,14 +1467,19 @@ def _regraft_candidate(
 
     With `allow_partial=True` a candidate covering a non-empty *proper subset*
     is also eligible — it becomes the SPINE and the remaining inputs join onto
-    it. This is what lets a scalar BASIC over two sibling aggregates (q47/q57:
-    `sum_minus_avg = sum_sales - avg_monthly_sales`) source its spine through a
-    same-grain WINDOW sibling that already exposes `sum_sales`, while the coarser
-    `avg` rides in via the BASIC's existing lineage parents — collapsing v4's
-    redundant intermediate merge into v3's single inline join. The partial case
-    is join-bearing, so it is gated for safety: the BASIC's grain must equal the
-    spine's (1:1, no fan-out) and every remaining input must already be built by
-    `gid`'s current lineage parents.
+    it. This lets a scalar BASIC over two sibling aggregates (q47/q57:
+    `sum_minus_avg = sum_sales - avg_monthly_sales`) source its spine through the
+    most-derived same-grain stream, while the coarser `avg` rides in via the
+    BASIC's existing lineage parents — collapsing v4's redundant intermediate
+    merge into v3's single inline join. The partial case is join-bearing, so it
+    is gated for safety: the BASIC's grain must equal the spine's (1:1, no
+    fan-out) and every remaining input must already be built by `gid`'s current
+    lineage parents. Among eligible spines the DEEPEST (most ancestors) wins —
+    see the scoring note. Notably the spine need not be the candidate with the
+    *most* coverage: in q47/q57 the lag window (which exposes only the grain
+    keys, not `sum_sales`) is preferred over the bare `sum_sales` aggregate
+    because it sits downstream of it, so the aggregate folds in and the window —
+    itself a required output — never has to be re-joined.
     """
     current = attrs[gid]
     needed = set(current.input_concepts)
@@ -1506,29 +1511,27 @@ def _regraft_candidate(
             continue
         full = covered >= needed
         if not full:
-            # Partial spine: join-bearing, so gate hard. Only BASIC consumers,
-            # WINDOW spine, exact-grain 1:1, remainder already built upstream.
-            # The WINDOW gate is load-bearing, not incidental: dropping it (so
-            # grain equality alone admits any same-grain sibling) lets the scorer
-            # pick a grouping sibling as spine, which `_fold_descendant_
-            # contributors` does not collapse — regressing the q47/q57 one-join
-            # consolidation and the aggregate-over-aggregate lock. Spine
-            # *selection*, not just 1:1 safety, depends on it.
+            # Partial spine: join-bearing, so gate for safety only. Any
+            # non-ROOT/BASIC sibling at the BASIC's exact grain (1:1, no fan-out)
+            # is eligible iff the inputs it lacks are already built upstream; the
+            # right one is chosen by depth below, not by derivation type.
             if not allow_partial or current.derivation != Derivation.BASIC:
-                continue
-            if cattrs.derivation != Derivation.WINDOW:
                 continue
             if cattrs.grain_components != current.grain_components:
                 continue
             if not (needed - covered) <= pred_outputs:
                 continue
-        # Full coverage wins over partial; then prefer the richest source. In
-        # full-only mode `full`/`covered` are constant so the tail decides,
-        # matching the original (ancestors, grouping, outputs) ordering.
+        # Selection: full coverage (a single redirect, no join) always wins. Among
+        # partial spines, prefer the DEEPEST same-grain candidate (most ancestors)
+        # — the most-derived stream at that grain. Every shallower same-grain node
+        # folds into it and nothing downstream remains to re-join, so a window
+        # built over the base aggregate beats the bare aggregate without naming a
+        # type (q47/q57: the lag window, not the sum, is the spine). Coverage then
+        # breaks ties (fewer remainder joins), then grouping, then richness.
         score = (
             int(full),
-            len(covered),
             len(candidate_ancestors),
+            len(covered),
             int(cattrs.derivation in GROUPING_DERIVATIONS),
             len(cattrs.output_concepts),
         )

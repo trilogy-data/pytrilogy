@@ -1,6 +1,6 @@
 query_id = "97"
-generator = "v3"
-gen_length = 2479
+generator = "v4"
+gen_length = 2838
 preql_size = 1209
 comp_size = 1159
 generated_sql = """
@@ -45,26 +45,26 @@ SELECT
 FROM
     \"thoughtful\"
 GROUP BY
-    \"cheerful\".\"sales_billing_customer_id\",
-    \"cheerful\".\"sales_item_id\"),
-abundant as (
+    \"thoughtful\".\"sales_billing_customer_id\",
+    \"thoughtful\".\"sales_item_id\"),
+uneven as (
 SELECT
-    \"cooperative\".\"_pair_presence_catalog_present\" as \"pair_presence_catalog_present\",
-    \"cooperative\".\"_pair_presence_store_present\" as \"pair_presence_store_present\"
+    \"questionable\".\"_pair_presence_catalog_present\" as \"pair_presence_catalog_present\",
+    \"questionable\".\"_pair_presence_store_present\" as \"pair_presence_store_present\"
 FROM
-    \"cooperative\")
+    \"questionable\")
 SELECT
     sum(CASE
-	WHEN \"abundant\".\"pair_presence_store_present\" >= 1 and \"abundant\".\"pair_presence_catalog_present\" = 0 THEN 1
+	WHEN \"uneven\".\"pair_presence_store_present\" >= 1 and \"uneven\".\"pair_presence_catalog_present\" = 0 THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"pair_presence_store_present\" = 0 and \"abundant\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"uneven\".\"pair_presence_store_present\" = 0 and \"uneven\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"pair_presence_store_present\" >= 1 and \"abundant\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"uneven\".\"pair_presence_store_present\" >= 1 and \"uneven\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"abundant\""""
+    \"uneven\""""
