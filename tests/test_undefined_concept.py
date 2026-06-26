@@ -59,6 +59,37 @@ def test_undefined_concept_in_nested_aggregate_raises():
         env.parse("select sum(totally_made_up_concept) + sum(x) as foo;")
 
 
+def test_undefined_concept_in_coalesce_raises_undefined_not_type_error():
+    """An undefined concept used inside a type-checking function (coalesce) must
+    raise the clean UndefinedConceptException (with suggestions) — not a confusing
+    `coalesce must be of the same type {STRING, UNKNOWN}` error from the undefined
+    arg resolving to a phantom UNKNOWN-typed concept before the undefined check."""
+    env = Environment()
+    env.parse(
+        "key id int;\n"
+        "property id.login string;\n"
+        "datasource ids (id:id, login:login) grain (id) address ids;"
+    )
+    with pytest.raises(UndefinedConceptException) as exc:
+        env.parse("select coalesce(login, made_up_concept) as x;")
+    assert "made_up_concept" in str(exc.value)
+    assert "same type" not in str(exc.value)
+
+
+def test_genuine_coalesce_type_mismatch_still_raises():
+    from trilogy.core.functions import InvalidSyntaxException
+
+    env = Environment()
+    env.parse(
+        "key id int;\n"
+        "property id.login string;\n"
+        "property id.amt int;\n"
+        "datasource ids (id:id, login:login, amt:amt) grain (id) address ids;"
+    )
+    with pytest.raises(InvalidSyntaxException):
+        env.parse("select coalesce(login, amt) as x;")
+
+
 def _dict_with(*keys: str) -> EnvironmentConceptDict:
     d = EnvironmentConceptDict()
     for k in keys:

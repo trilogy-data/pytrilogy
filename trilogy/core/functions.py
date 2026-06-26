@@ -1211,6 +1211,21 @@ class FunctionFactory:
         else:
             full_args = []
         final_output_type: CONCRETE_TYPES
+        # An unresolved reference is deferred to an UndefinedConcept (UNKNOWN type)
+        # during select parsing. Computing an output type over it here can raise a
+        # confusing error (e.g. coalesce's same-type check on {STRING, UNKNOWN})
+        # that masks the real problem. Defer: emit an UNKNOWN-typed Function so
+        # select finalization reports the clean UndefinedConceptException (with
+        # suggestions) instead.
+        if any(isinstance(x, UndefinedConcept) for x in full_args):
+            return Function(
+                operator=operator,
+                arguments=full_args,  # type: ignore
+                output_datatype=DataType.UNKNOWN,
+                output_purpose=output_purpose or Purpose.PROPERTY,
+                valid_inputs=valid_inputs,
+                arg_count=arg_count,
+            )
         if config.output_type_function:
 
             final_output_type = config.output_type_function(full_args)

@@ -2373,10 +2373,18 @@ class Factory:
         # sources keep their own identity + a pseudonym to the canonical instead
         # of being swapped. Regular fact/dim INNER joins stay on substitution
         # (multi-way parity + dependent-grain collapse rely on it).
+        # INNER equality is symmetric, so union-find may pick EITHER endpoint as
+        # the group canonical and may collapse the other one transitively (a
+        # repeated-left-anchor star join `a=b, a=c` roots a,c onto b even though
+        # c was never an authored source). Every collapsed endpoint — not just
+        # the authored source — must keep its identity, or a rowset spoke gets
+        # substituted onto the canonical and loses its own WHERE filter.
         self.scoped_rowset_inner_sources: set[str] = {
-            s
+            addr
             for s, t, jt in self.scoped_joins
             if jt is JoinType.INNER and (_is_rowset_keyed(s) or _is_rowset_keyed(t))
+            for addr in (s, t)
+            if addr in self.scoped_merge_map
         }
         self.scoped_key_merge_map = {
             source: target
@@ -2397,8 +2405,14 @@ class Factory:
         scoped_pseudonym_sources: set[str] = set()
         for s, t, jt in self.scoped_joins:
             if jt is JoinType.INNER:
-                self.scoped_merge_sources.add(s)
-                scoped_pseudonym_sources.add(s)
+                # Symmetric equality: wire every collapsed endpoint (see the
+                # scoped_rowset_inner_sources note above), not just the authored
+                # source, so a transitively-collapsed spoke stays sourceable via
+                # its pseudonym back to the group canonical.
+                for addr in (s, t):
+                    if addr in self.scoped_merge_map:
+                        self.scoped_merge_sources.add(addr)
+                        scoped_pseudonym_sources.add(addr)
             elif jt is JoinType.LEFT_OUTER and not _is_binding_keyed(t):
                 # LEFT collapses target->source; the target is the partial side.
                 # A derived target lacks a binding to carry partiality, so it
