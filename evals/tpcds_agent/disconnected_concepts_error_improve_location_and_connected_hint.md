@@ -71,3 +71,32 @@ equivalent is found.
 This is NOT a planner bug — q75's query is genuinely disconnected and the framework is right to
 reject it. It's purely that the message doesn't point the agent at the real fix (chain through the
 existing import) and lacks a location. Both are mechanical message improvements.
+
+## Resolution (2026-06-26)
+
+Both improvements landed in `format_disconnected_subgraphs_error`
+(`trilogy/core/processing/discovery_utility.py`). Message behavior is unchanged when no environment
+is threaded or no connected equivalent exists (the old "join or merge" line stays as a fallback).
+
+**Improvement 2 (connected nested equivalents):** new `connected_equivalent_suggestions` helper.
+Extracted the connectivity-component computation into `_component_map` (shared with
+`disconnected_components` so reachability is judged identically). Picks the largest subgraph as the
+steer-toward target, scans `environment.concepts` for a concept whose path ends with a disconnected
+concept's full stripped path under an extra (chainable) namespace prefix AND is in the target's
+connected component (e.g. `date.year` -> `all_sales.date.year`), preferring the shortest such
+prefix. When matches exist the message lists per-concept "did you mean `<connected>`?" lines and
+replaces the join/merge hint with "chain through that import" guidance. `environment` (+ graph +
+`island_rowsets`) threaded into the formatter at all three raise sites (`raise_if_disconnected`,
+v3 `get_query_node` dead-end, `get_priority_concept`).
+
+**Improvement 1 (statement location):** the formatter takes an optional `line_number` and renders
+`...one connected query (statement at line N).`. v4 pre-gate passes
+`build_statement.meta.line_number` through `raise_if_disconnected_for`; v3 raises from deep in
+discovery without it, so `get_query_node` wraps the v3 discovery call and injects the line via
+`_with_line_location`. Required fixing `SelectStatement.as_lineage` (`core/statements/author.py`),
+which had dropped `meta` (so `BuildSelectLineage.meta.line_number` was always None).
+
+**Tests:** `tests/core/processing/test_disconnected_components_e2e.py` —
+`test_message_suggests_connected_nested_equivalent` (faithful separate-import repro via tmp_path
+imports) and `test_message_includes_failing_statement_line`. Existing message/fallback tests
+unchanged and still green. Full `ruff`/`mypy`/`black` clean.
