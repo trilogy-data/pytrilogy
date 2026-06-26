@@ -444,10 +444,27 @@ def _parent_nodes_for(
             expanded: list[tuple[str, StrategyNode]] = []
             changed = False
             for pgid, node in candidates:
+                # Don't fold a row-preserving group whose output is ALSO produced
+                # by another already-built node (a condition-phase twin
+                # materialized as its own CTE). Folding it here re-roots the
+                # aggregate on the grandparent, but the resolver then binds the
+                # folded column to that sibling CTE -- which isn't in the
+                # aggregate's FROM -> dangling reference (test_or_membership: the
+                # `_virt_filter` sum input is co-produced by the `in cat_qual /
+                # web_qual` membership feeder CTE).
+                pgid_outputs = set(attrs[pgid].primary_members)
+                co_materialized = any(
+                    other != pgid
+                    and attrs[other].depth_label == DepthLabel.D1
+                    and pgid_outputs
+                    & {concept.address for concept in built_other.output_concepts}
+                    for other, built_other in built.items()
+                )
                 row_preserving_input = (
                     attrs[pgid].derivation
                     in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
                     and attrs[pgid].derivation != Derivation.ROOT
+                    and not co_materialized
                     and set(attrs[pgid].primary_members).issubset(
                         inline_input_addresses
                     )
@@ -808,6 +825,16 @@ def _aggregate_inputs_are_row_preserving(
                 return False
             row_preserving_inputs.append(arg)
     if not row_preserving_inputs:
+        return False
+    # All-ROOT inputs are raw scan columns: the parent emits rows at the
+    # datasource's natural (line) grain, which is usually FINER than the
+    # aggregate's input grain (e.g. `count(order_number)` reads item|order line
+    # rows). Skipping normalization then aggregates the un-deduped rows and
+    # over-counts (q16: 818 vs 233). Force normalization so the inputs are
+    # regrouped to the aggregate's input grain first. A correctness floor until
+    # a true parent-row-grain signal can prove the skip safe (which would keep
+    # q23/q94 compact) -- see local_scripts notes / the v4 verbosity follow-up.
+    if all(arg.derivation == Derivation.ROOT for arg in row_preserving_inputs):
         return False
     available = {
         output.address for parent in parents for output in parent.output_concepts

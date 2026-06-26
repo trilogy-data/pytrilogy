@@ -36,6 +36,20 @@ _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
     "exceeds the v3-tuned length ceiling (more CTEs / less compact)"
 )
+# q23/q94: correct rows but over the v3 length ceiling because v4 now force-
+# normalizes all-ROOT aggregate inputs to the input grain (the all-ROOT guard in
+# `_aggregate_inputs_are_row_preserving`). That guard is a CORRECTNESS floor --
+# without it `count(order_number)` over un-deduped line rows over-counts (q16:
+# 818 vs 233). q23/q94 were compact only by skipping that dedup, which was
+# correct-by-data-luck. A grain-aware skip (normalize only when the parent rows
+# are genuinely finer than the input grain) would restore their compactness, but
+# there is no reliable parent-row-grain signal at that point yet -- deferred to a
+# v4-focused pass. Do NOT relax the q23/q94 ceilings (v3 must keep holding them).
+_TPCDS_SIZE_NORMALIZE = (
+    "v4 TPC-DS verbosity: correct rows, but over the v3 ceiling because the "
+    "all-ROOT input-grain normalization (a q16 correctness floor) adds CTEs; "
+    "needs a grain-aware skip -- see project_v4_verbosity_regressions_0626"
+)
 # Genuine v4 crashes (NOT size/shape). The existence-recursion crash (q10/q2.1/rowset)
 # was FIXED 2026-06-25: `_existence_parents_for` deep-copies a cyclic existence-parent
 # subtree, and `gen_root` resolves multi-arg existence sources at build time. Those
@@ -79,6 +93,10 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one": _TPCDS_SIZE,
+    # q23/q94: over ceiling only because of the q16 all-ROOT normalization
+    # correctness floor (2026-06-26); rows correct. Re-optimize in a v4 pass.
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three": _TPCDS_SIZE_NORMALIZE,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ninety_four": _TPCDS_SIZE_NORMALIZE,
     # --- tpc-ds non-benchmark: result / feature regressions ---
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _INLINE,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,

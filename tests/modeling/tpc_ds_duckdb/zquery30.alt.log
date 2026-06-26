@@ -1,6 +1,6 @@
 query_id = "30.alt"
 generator = "v4"
-gen_length = 9006
+gen_length = 10079
 preql_size = 2007
 comp_size = 1507
 generated_sql = """
@@ -71,7 +71,39 @@ SELECT
     \"cooperative\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\",
     \"cooperative\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
-    \"cooperative\"
+    \"cooperative\"),
+sparkling as (
+SELECT
+    \"questionable\".\"web_returns_billing_customer_id\" as \"web_returns_billing_customer_id\",
+    \"uneven\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
+FROM
+    \"questionable\"
+    INNER JOIN \"uneven\" on \"questionable\".\"web_returns_billing_customer_id\" = \"uneven\".\"web_returns_billing_customer_id\" AND \"questionable\".\"web_returns_return_address_state\" is not distinct from \"uneven\".\"web_returns_return_address_state\"
+    INNER JOIN \"vacuous\" on \"questionable\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
+WHERE
+    \"uneven\".\"customer_state_returns_2002\" > \"vacuous\".\"scaled_state_returns_2002\"
+
+GROUP BY
+    1,
+    2,
+    \"questionable\".\"web_returns_return_address_state\"),
+abundant as (
+SELECT
+    \"questionable\".\"web_returns_billing_customer_birth_country\" as \"web_returns_billing_customer_birth_country\",
+    \"questionable\".\"web_returns_billing_customer_birth_day\" as \"web_returns_billing_customer_birth_day\",
+    \"questionable\".\"web_returns_billing_customer_birth_month\" as \"web_returns_billing_customer_birth_month\",
+    \"questionable\".\"web_returns_billing_customer_birth_year\" as \"web_returns_billing_customer_birth_year\",
+    \"questionable\".\"web_returns_billing_customer_email_address\" as \"web_returns_billing_customer_email_address\",
+    \"questionable\".\"web_returns_billing_customer_first_name\" as \"web_returns_billing_customer_first_name\",
+    \"questionable\".\"web_returns_billing_customer_id\" as \"web_returns_billing_customer_id\",
+    \"questionable\".\"web_returns_billing_customer_last_name\" as \"web_returns_billing_customer_last_name\",
+    \"questionable\".\"web_returns_billing_customer_last_review_date\" as \"web_returns_billing_customer_last_review_date\",
+    \"questionable\".\"web_returns_billing_customer_login\" as \"web_returns_billing_customer_login\",
+    \"questionable\".\"web_returns_billing_customer_preferred_cust_flag\" as \"web_returns_billing_customer_preferred_cust_flag\",
+    \"questionable\".\"web_returns_billing_customer_salutation\" as \"web_returns_billing_customer_salutation\",
+    \"questionable\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\"
+FROM
+    \"questionable\"
 GROUP BY
     1,
     2,
@@ -85,53 +117,36 @@ GROUP BY
     10,
     11,
     12,
-    13,
-    14),
-sparkling as (
+    13)
 SELECT
-    \"cooperative\".\"web_returns_billing_customer_id\" as \"web_returns_billing_customer_id\",
-    \"uneven\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
-    coalesce(\"cooperative\".\"web_returns_return_address_state\",\"uneven\".\"web_returns_return_address_state\",\"vacuous\".\"web_returns_return_address_state\") as \"web_returns_return_address_state\"
-FROM
-    \"uneven\"
-    INNER JOIN \"cooperative\" on \"uneven\".\"web_returns_billing_customer_id\" = \"cooperative\".\"web_returns_billing_customer_id\" AND \"uneven\".\"web_returns_return_address_state\" is not distinct from \"cooperative\".\"web_returns_return_address_state\"
-    INNER JOIN \"vacuous\" on \"uneven\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
-WHERE
-    \"uneven\".\"customer_state_returns_2002\" > \"vacuous\".\"scaled_state_returns_2002\"
-
-GROUP BY
-    1,
-    2,
-    3)
-SELECT
-    \"questionable\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\",
-    \"questionable\".\"web_returns_billing_customer_salutation\" as \"web_returns_billing_customer_salutation\",
-    \"questionable\".\"web_returns_billing_customer_first_name\" as \"web_returns_billing_customer_first_name\",
-    \"questionable\".\"web_returns_billing_customer_last_name\" as \"web_returns_billing_customer_last_name\",
-    \"questionable\".\"web_returns_billing_customer_preferred_cust_flag\" as \"web_returns_billing_customer_preferred_cust_flag\",
-    \"questionable\".\"web_returns_billing_customer_birth_day\" as \"web_returns_billing_customer_birth_day\",
-    \"questionable\".\"web_returns_billing_customer_birth_month\" as \"web_returns_billing_customer_birth_month\",
-    \"questionable\".\"web_returns_billing_customer_birth_year\" as \"web_returns_billing_customer_birth_year\",
-    \"questionable\".\"web_returns_billing_customer_birth_country\" as \"web_returns_billing_customer_birth_country\",
-    \"questionable\".\"web_returns_billing_customer_login\" as \"web_returns_billing_customer_login\",
-    \"questionable\".\"web_returns_billing_customer_email_address\" as \"web_returns_billing_customer_email_address\",
-    \"questionable\".\"web_returns_billing_customer_last_review_date\" as \"web_returns_billing_customer_last_review_date\",
+    \"abundant\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\",
+    \"abundant\".\"web_returns_billing_customer_salutation\" as \"web_returns_billing_customer_salutation\",
+    \"abundant\".\"web_returns_billing_customer_first_name\" as \"web_returns_billing_customer_first_name\",
+    \"abundant\".\"web_returns_billing_customer_last_name\" as \"web_returns_billing_customer_last_name\",
+    \"abundant\".\"web_returns_billing_customer_preferred_cust_flag\" as \"web_returns_billing_customer_preferred_cust_flag\",
+    \"abundant\".\"web_returns_billing_customer_birth_day\" as \"web_returns_billing_customer_birth_day\",
+    \"abundant\".\"web_returns_billing_customer_birth_month\" as \"web_returns_billing_customer_birth_month\",
+    \"abundant\".\"web_returns_billing_customer_birth_year\" as \"web_returns_billing_customer_birth_year\",
+    \"abundant\".\"web_returns_billing_customer_birth_country\" as \"web_returns_billing_customer_birth_country\",
+    \"abundant\".\"web_returns_billing_customer_login\" as \"web_returns_billing_customer_login\",
+    \"abundant\".\"web_returns_billing_customer_email_address\" as \"web_returns_billing_customer_email_address\",
+    \"abundant\".\"web_returns_billing_customer_last_review_date\" as \"web_returns_billing_customer_last_review_date\",
     \"sparkling\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"sparkling\"
-    LEFT OUTER JOIN \"questionable\" on \"sparkling\".\"web_returns_billing_customer_id\" = \"questionable\".\"web_returns_billing_customer_id\" AND \"sparkling\".\"web_returns_return_address_state\" is not distinct from \"questionable\".\"web_returns_return_address_state\"
+    INNER JOIN \"abundant\" on \"sparkling\".\"web_returns_billing_customer_id\" = \"abundant\".\"web_returns_billing_customer_id\"
 ORDER BY 
-    \"questionable\".\"web_returns_billing_customer_text_id\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_salutation\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_first_name\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_last_name\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_preferred_cust_flag\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_birth_day\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_birth_month\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_birth_year\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_birth_country\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_login\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_email_address\" asc nulls first,
-    \"questionable\".\"web_returns_billing_customer_last_review_date\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_text_id\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_salutation\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_first_name\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_last_name\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_preferred_cust_flag\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_birth_day\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_birth_month\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_birth_year\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_birth_country\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_login\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_email_address\" asc nulls first,
+    \"abundant\".\"web_returns_billing_customer_last_review_date\" asc nulls first,
     \"sparkling\".\"customer_state_returns_2002\" asc nulls first
 LIMIT (100)"""
