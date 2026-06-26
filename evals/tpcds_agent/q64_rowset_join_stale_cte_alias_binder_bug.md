@@ -1,7 +1,7 @@
 # Bug: scoped join onto a rowset + a second composite fact join → invalid SQL referencing a stale CTE alias (q64)
 
-**Status:** OPEN — confirmed, 100% deterministic with the exact query (below). Minimal trigger not
-fully isolated (needs the multi-dimension-join complexity); load-bearing element identified.
+**Status:** FIXED (2026-06-26). Root cause + fix below. Regression test:
+`tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_q64_rowset_join_with_second_fact_join_hoist`.
 **Surfaced by:** TPC-DS q64 enriched eval (run `20260626-135713`). The agent flagged it itself:
 *"likely a Trilogy bug or the catalog_item_agg rowset has an aliasing problem."*
 **Severity:** HIGH — generates SQL DuckDB rejects.
@@ -75,15 +75,30 @@ So the trigger is the **combination**: scoped join onto a rowset **+** a composi
 join to another fact **+** the wider dimension-join graph (store / sale_address / customer.address /
 customer date-dims). Under that, the rowset CTE is emitted/referenced under a stale alias.
 
-## Likely fix area
+## Root cause + fix
 
-Same family as the (fixed) q14 multi-key scoped-join-onto-rowset BinderException
-(`project_q14_multikey_join_and_grouping_having_binder_bugs.md`) — but a manifestation that fix
-doesn't cover: when **multiple** scoped joins (a rowset join + a composite fact join) coexist with a
-broad dimension-join graph, the rowset CTE's alias/column-name resolution diverges (a downstream
-projection points at `cooperative.item_id` instead of the rowset CTE's `_catalog_item_agg_item_id`).
-Inspect the CTE aliasing / `get_alias` path for a rowset referenced as a join target when there are
-≥2 scoped joins and the rowset is also consumed via membership + measure comparison.
+Not a `get_alias` bug per se — it's a stale `source_map` left behind by the **`JoinHoist`**
+optimization (`trilogy/core/optimizations/join_hoist.py`).
+
+The plan (CTE names random): the rowset materializes as `cooperative`; the big grouped store_sales
+CTE `late` INNER-joins `cooperative` to apply the rowset's `cat_ext_list_price > 2*cat_refund`
+filter; a thin pass-through CTE `macho` reads `late` AND carries the rowset key
+`catalog_item_agg.item_id` forward (sourced from `cooperative`); the final CTE `scrawny` re-joins
+`cooperative` to `macho` on that key. JoinHoist sees the same `macho→cooperative` INNER join already
+present on the shared grouped parent `late`, so it **hoists it away from `macho`** (q73-style dedup)
+and drops `cooperative` from `macho.parent_ctes`.
+
+`_hoist_join` redirects the join's **left (FK) key** address out of the stripped dim (lines ~493),
+but `macho` outputs the join's **right (dim) key** address (`catalog_item_agg.item_id`, the rowset's
+own key) — that entry stayed pointing at the now-removed `cooperative`, so the renderer emitted
+`"cooperative"."item_id"` against a `FROM "late"`.
+
+Fix: in `_hoist_join`, redirect the **right** join-key address too, gated on the post-hoist join
+being INNER (left == right for every surviving row) and the two addresses differing. It redirects to
+the FK source CTE (`late`), and `get_alias`'s pseudonym closure renders it as `late.ss_item_text_id`
+(the scoped INNER join already established `ss.item.text_id` ⟷ `catalog_item_agg.item_id` as mutual
+pseudonyms). Same family as the (fixed) q14 multi-key scoped-join-onto-rowset BinderException
+(`project_q14_multikey_join_and_grouping_having_binder_bugs.md`) but a distinct mechanism.
 
 ## Repro harness
 

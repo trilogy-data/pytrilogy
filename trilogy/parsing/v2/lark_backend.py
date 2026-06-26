@@ -14,6 +14,7 @@ from trilogy.parsing.v2.errors import (
     detect_definition_after_clause,
     detect_group_by,
     detect_missing_signature_semicolon,
+    detect_star_argument,
     detect_subselect,
 )
 from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
@@ -143,6 +144,11 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     wrapped_by_pos = detect_by_on_wrapped_aggregate(text, pos)
     if wrapped_by_pos is not None:
         raise create_syntax_error(212, wrapped_by_pos, text)
+
+    # 223: `*` passed as a function argument (the SQL `count(*)` idiom).
+    star_pos = detect_star_argument(text, pos)
+    if star_pos is not None:
+        raise create_syntax_error(223, star_pos, text)
 
     sub_pos = detect_subselect(text, pos)
     if sub_pos is not None:

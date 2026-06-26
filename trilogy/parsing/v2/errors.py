@@ -68,6 +68,14 @@ ERROR_CODES: dict[int, str] = {
         "its `-> (...)` output signature, then start the consuming `select` on the "
         "next line. Example: `with u as union(...) -> (channel, np); select ...`."
     ),
+    223: (
+        "`*` is not a valid argument — Trilogy has no `*` row-marker, so "
+        "`count(*)` / `sum(*)` don't parse. To count rows at the query grain, "
+        "count a key field: `count(<key>)` (counts are already distinct) — e.g. "
+        "`count(store_sales.id)`; to count a related dimension's rows, count its "
+        "key (`count(customer.id)`). For any other aggregate, pass the column you "
+        "mean, e.g. `sum(store_sales.ext_sales_price)`."
+    ),
 }
 
 
@@ -280,6 +288,41 @@ def detect_by_on_wrapped_aggregate(text: str, pos: int) -> int | None:
     if _AGG_CALL_RE.search(text, open_paren + 1, i) is None:
         return None
     return by_pos
+
+
+def detect_star_argument(text: str, pos: int) -> int | None:
+    """Locate a `*` passed as the sole argument to a function call — the SQL
+    `count(*)` idiom, which Trilogy doesn't support (there is no `*` row-marker).
+    Returns the position of the wrapping function name, or None. Both backends
+    report the failure right at the `*`, so scan a small window past ``pos`` to
+    find it. Shared by both grammar backends; purely textual (no reparse)."""
+    star = pos
+    while star < len(text) and text[star] in " \t\r\n":
+        star += 1
+    if star >= len(text) or text[star] != "*":
+        return None
+    # A lone star: the next non-space char must close the call.
+    j = star + 1
+    while j < len(text) and text[j] in " \t\r\n":
+        j += 1
+    if j >= len(text) or text[j] != ")":
+        return None
+    # The char before the star must open the call.
+    k = star - 1
+    while k >= 0 and text[k] in " \t\r\n":
+        k -= 1
+    if k < 0 or text[k] != "(":
+        return None
+    # A function name must precede the `(`.
+    k -= 1
+    while k >= 0 and text[k] in " \t\r\n":
+        k -= 1
+    name_end = k + 1
+    while k >= 0 and (text[k].isalnum() or text[k] == "_"):
+        k -= 1
+    if k + 1 == name_end:
+        return None
+    return k + 1
 
 
 _TVF_SIGNATURE_RE = re.compile(r"->\s*\(")

@@ -46,6 +46,64 @@ limit 10
     assert results[0].avg_sales_rank != 1.0
 
 
+def test_q64_rowset_join_with_second_fact_join_hoist(engine_sf001):
+    """Regression for the q64 stale-CTE-alias BinderException.
+
+    A scoped INNER join onto a filtering rowset (`catalog_item_agg`) carries the
+    rowset's key forward as a pass-through CTE's own output. When a SECOND
+    composite fact join (`ss<->pr`) and the broad dimension-join graph let
+    JoinHoist lift the rowset join up to the shared grouped parent, the hoist
+    used to drop the rowset CTE from the pass-through's parents but leave its
+    join-key source_map entry pointing at the now-absent CTE — emitting
+    `"cooperative"."item_id"` against a FROM that only had `late`
+    (`BinderException: Referenced table "cooperative" not found`). The dim
+    (right) join key must redirect to the FK source like the FK (left) key does.
+    """
+    query = """
+import store_sales as ss;
+import physical_returns as pr;
+import catalog_sales as cs;
+import catalog_returns as cr;
+
+with catalog_item_agg as
+select
+  cs.item.text_id as item_id,
+  sum(cs.ext_list_price) as cat_ext_list_price,
+  sum(cr.refunded_cash + cr.reversed_charge + cr.store_credit) as cat_refund
+left join cs.order_number = cr.order_number and cs.item.id = cr.item.id
+;
+
+where ss.item.text_id in catalog_item_agg.item_id
+  and catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
+  and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
+  and ss.item.current_price between 65 and 74
+  and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
+  and ss.date.year in (1999, 2000)
+select
+  ss.item.product_name, ss.item.text_id as item_id,
+  ss.store.name as store_name, ss.store.zip as store_zip,
+  ss.sale_address.street_number as sale_street_number, ss.sale_address.street_name as sale_street_name,
+  ss.sale_address.city as sale_city, ss.sale_address.zip as sale_zip,
+  ss.customer.address.street_number as cust_street_number, ss.customer.address.street_name as cust_street_name,
+  ss.customer.address.city as cust_city, ss.customer.address.zip as cust_zip,
+  ss.date.year as sale_year,
+  ss.customer.first_sales_date.year as first_sales_year,
+  ss.customer.first_shipto_date.year as first_shipto_year,
+  count(ss.line_item) as line_count,
+  sum(ss.ext_wholesale_cost) as wholesale_cost_sum,
+  sum(ss.ext_list_price) as list_price_sum,
+  sum(ss.coupon_amt) as coupon_amt_sum
+inner join ss.ticket_number = pr.ticket_number and ss.item.id = pr.item.id
+inner join ss.item.text_id = catalog_item_agg.item_id
+order by ss.item.product_name, ss.store.name
+limit 100;
+"""
+    sql = engine_sf001.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    # executes against DuckDB without a BinderException
+    engine_sf001.execute_raw_sql(sql)
+
+
 def test_copy_perf():
     env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
