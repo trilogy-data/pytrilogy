@@ -10,16 +10,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
-    "bucket": "SHAPE",
-    "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...eful\" on 1=1'",
-    "expected": [
-      "SHAPE"
-    ],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
     "bucket": "SHAPE",
     "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
@@ -30,9 +20,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
     "bucket": "SHAPE",
-    "detail": "AssertionError:",
+    "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...eful\" on 1=1'",
     "expected": [
       "SHAPE"
     ],
@@ -43,6 +33,16 @@
     "node": "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate",
     "bucket": "SHAPE",
     "detail": "AssertionError: assert local.user_post_count@Grain<local.user_id> in [local.avg_user_post_count@Grain<Abstract>]",
+    "expected": [
+      "SHAPE"
+    ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
@@ -136,17 +136,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/usa_names/test_names.py::test_filter_constant",
-    "bucket": "CRASH",
-    "detail": "ValueError: Invalid reference string found in query: SELECT",
-    "expected": [
-      "CRASH",
-      "TIMEOUT"
-    ],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
@@ -179,16 +168,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one",
-    "bucket": "CRASH",
-    "detail": "_duckdb.BinderException: Binder Error: Values list \"yummy\" does not have a column named \"web_sales_date_id\"",
-    "expected": [
-      "SIZE"
-    ],
-    "escalation": true,
-    "downgrade": false
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
     "bucket": "SIZE",
     "detail": "AssertionError:",
@@ -209,21 +188,7 @@
     "downgrade": true
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
-    "bucket": "SIZE",
-    "detail": "AssertionError:",
-    "expected": [
-      "SIZE"
-    ],
-    "escalation": false,
-    "downgrade": false,
-    "nondeterministic": [
-      "SIZE",
-      "XPASS"
-    ]
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one",
     "bucket": "SIZE",
     "detail": "AssertionError:",
     "expected": [
@@ -233,7 +198,37 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
+    "bucket": "XPASS",
+    "detail": "",
+    "expected": [
+      "SIZE"
+    ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven",
+    "bucket": "XPASS",
+    "detail": "",
+    "expected": [
+      "SIZE"
+    ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
+    "expected": [
+      "SIZE"
+    ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
     "bucket": "SIZE",
     "detail": "AssertionError:",
     "expected": [
@@ -253,11 +248,11 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
-    "bucket": "SIZE",
+    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",
+    "bucket": "SHAPE",
     "detail": "AssertionError:",
     "expected": [
-      "SIZE"
+      "SHAPE"
     ],
     "escalation": false,
     "downgrade": false
@@ -270,16 +265,6 @@
       "ROWS",
       "SHAPE",
       "SIZE"
-    ],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:",
-    "expected": [
-      "SHAPE"
     ],
     "escalation": false,
     "downgrade": false

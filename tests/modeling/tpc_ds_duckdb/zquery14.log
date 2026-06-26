@@ -1,6 +1,6 @@
 query_id = "14"
 generator = "v4"
-gen_length = 10114
+gen_length = 10514
 preql_size = 1701
 comp_size = 4229
 generated_sql = """
@@ -119,13 +119,22 @@ FROM
     \"late\"),
 macho as (
 SELECT
+    \"late\".\"sales_item_brand_id\" as \"_l0_filtered_brand_l0\",
     \"late\".\"sales_item_brand_id\" as \"sales_item_brand_id\",
+    \"late\".\"sales_item_category_id\" as \"_l0_filtered_category_l0\",
     \"late\".\"sales_item_category_id\" as \"sales_item_category_id\",
+    \"late\".\"sales_item_class_id\" as \"_l0_filtered_class_l0\",
     \"late\".\"sales_item_class_id\" as \"sales_item_class_id\",
     \"late\".\"sales_list_price\" as \"sales_list_price\",
     \"late\".\"sales_quantity\" as \"sales_quantity\",
     \"late\".\"sales_row_one\" as \"sales_row_one\",
     (cast(\"late\".\"sales_item_brand_id\" as string) || '|' || cast(\"late\".\"sales_item_class_id\" as string) || '|' || cast(\"late\".\"sales_item_category_id\" as string)) as \"tuple_key\",
+    CASE
+	WHEN \"late\".\"sales_channel\" = 'STORE' THEN 'store'
+	WHEN \"late\".\"sales_channel\" = 'CATALOG' THEN 'catalog'
+	WHEN \"late\".\"sales_channel\" = 'WEB' THEN 'web'
+	ELSE null
+	END as \"_l0_filtered_channel_l0\",
     CASE
 	WHEN \"late\".\"sales_channel\" = 'STORE' THEN 'store'
 	WHEN \"late\".\"sales_channel\" = 'CATALOG' THEN 'catalog'

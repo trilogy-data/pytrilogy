@@ -1,6 +1,6 @@
 query_id = "2.1"
 generator = "v4"
-gen_length = 56637
+gen_length = 59625
 preql_size = 1471
 comp_size = 2566
 generated_sql = """
@@ -68,6 +68,7 @@ SELECT
     \"yummy\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"yummy\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"yummy\".\"web_sales_date_id\" as \"date_id\",
+    \"yummy\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"yummy\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"yummy\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"yummy\".\"date_year\" in (2001,2002) THEN \"yummy\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -79,9 +80,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"juicy\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"juicy\" on \"thoughtful\".\"catalog_sales_item_id\" = \"juicy\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"juicy\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"juicy\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"juicy\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"juicy\".\"web_sales_order_number\"
@@ -93,6 +94,7 @@ SELECT
     \"vacuous\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"vacuous\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"vacuous\".\"web_sales_date_id\" as \"date_id\",
+    \"vacuous\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"vacuous\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"vacuous\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"vacuous\".\"date_year\" in (2001,2002) THEN \"vacuous\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -104,9 +106,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"concerned\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"concerned\" on \"thoughtful\".\"catalog_sales_item_id\" = \"concerned\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"concerned\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"concerned\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"concerned\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"concerned\".\"web_sales_order_number\"
@@ -118,6 +120,7 @@ SELECT
     \"young\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"young\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"young\".\"web_sales_date_id\" as \"date_id\",
+    \"young\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"young\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"young\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"young\".\"date_year\" in (2001,2002) THEN \"young\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -129,9 +132,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"sparkling\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"sparkling\" on \"thoughtful\".\"catalog_sales_item_id\" = \"sparkling\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"sparkling\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"sparkling\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"sparkling\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"sparkling\".\"web_sales_order_number\"
@@ -143,6 +146,7 @@ SELECT
     \"abhorrent\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"abhorrent\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"abhorrent\".\"web_sales_date_id\" as \"date_id\",
+    \"abhorrent\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"abhorrent\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"abhorrent\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"abhorrent\".\"date_year\" in (2001,2002) THEN \"abhorrent\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -154,9 +158,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"sweltering\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"sweltering\" on \"thoughtful\".\"catalog_sales_item_id\" = \"sweltering\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"sweltering\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"sweltering\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"sweltering\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"sweltering\".\"web_sales_order_number\"
@@ -168,6 +172,7 @@ SELECT
     \"late\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"late\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"late\".\"web_sales_date_id\" as \"date_id\",
+    \"late\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"late\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"late\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"late\".\"date_year\" in (2001,2002) THEN \"late\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -179,9 +184,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"macho\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"macho\" on \"thoughtful\".\"catalog_sales_item_id\" = \"macho\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"macho\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"macho\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"macho\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"macho\".\"web_sales_order_number\"
@@ -193,6 +198,7 @@ SELECT
     \"scrawny\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"scrawny\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"scrawny\".\"web_sales_date_id\" as \"date_id\",
+    \"scrawny\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"scrawny\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"scrawny\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"scrawny\".\"date_year\" in (2001,2002) THEN \"scrawny\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -204,9 +210,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"friendly\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"friendly\" on \"thoughtful\".\"catalog_sales_item_id\" = \"friendly\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"friendly\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"friendly\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"friendly\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"friendly\".\"web_sales_order_number\"
@@ -218,6 +224,7 @@ SELECT
     \"kaput\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"kaput\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"kaput\".\"web_sales_date_id\" as \"date_id\",
+    \"kaput\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"kaput\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"kaput\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"kaput\".\"date_year\" in (2001,2002) THEN \"kaput\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -229,9 +236,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"divergent\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"divergent\" on \"thoughtful\".\"catalog_sales_item_id\" = \"divergent\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"divergent\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"divergent\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"divergent\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"divergent\".\"web_sales_order_number\"
@@ -243,6 +250,7 @@ SELECT
     \"busy\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"busy\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"busy\".\"web_sales_date_id\" as \"date_id\",
+    \"busy\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"busy\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"busy\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"busy\".\"date_year\" in (2001,2002) THEN \"busy\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -254,9 +262,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"charming\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"charming\" on \"thoughtful\".\"catalog_sales_item_id\" = \"charming\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"charming\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"charming\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"charming\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"charming\".\"web_sales_order_number\"
@@ -268,6 +276,7 @@ SELECT
     \"protective\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"protective\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"protective\".\"web_sales_date_id\" as \"date_id\",
+    \"protective\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"protective\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"protective\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"protective\".\"date_year\" in (2001,2002) THEN \"protective\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -279,9 +288,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"premium\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"premium\" on \"thoughtful\".\"catalog_sales_item_id\" = \"premium\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"premium\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"premium\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"premium\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"premium\".\"web_sales_order_number\"
@@ -293,6 +302,7 @@ SELECT
     \"puzzled\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"puzzled\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"puzzled\".\"web_sales_date_id\" as \"date_id\",
+    \"puzzled\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"puzzled\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"puzzled\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"puzzled\".\"date_year\" in (2001,2002) THEN \"puzzled\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -304,9 +314,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"thoughtful\".\"web_sales_date_id\",\"waggish\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"waggish\" on \"thoughtful\".\"catalog_sales_item_id\" = \"waggish\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"waggish\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"waggish\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"waggish\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"waggish\".\"web_sales_order_number\"
@@ -318,6 +328,7 @@ SELECT
     \"rambunctious\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"rambunctious\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"rambunctious\".\"web_sales_date_id\" as \"date_id\",
+    \"rambunctious\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"rambunctious\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"rambunctious\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"rambunctious\".\"date_year\" in (2001,2002) THEN \"rambunctious\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -329,9 +340,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"puffy\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"puffy\" on \"thoughtful\".\"catalog_sales_item_id\" = \"puffy\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"puffy\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"puffy\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"puffy\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"puffy\".\"web_sales_order_number\"
@@ -343,6 +354,7 @@ SELECT
     \"hard\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"hard\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"hard\".\"web_sales_date_id\" as \"date_id\",
+    \"hard\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"hard\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"hard\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"hard\".\"date_year\" in (2001,2002) THEN \"hard\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -354,9 +366,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"sedate\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"sedate\" on \"thoughtful\".\"catalog_sales_item_id\" = \"sedate\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"sedate\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"sedate\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"sedate\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"sedate\".\"web_sales_order_number\"
@@ -368,6 +380,7 @@ SELECT
     \"yellow\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"yellow\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"yellow\".\"web_sales_date_id\" as \"date_id\",
+    \"yellow\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"yellow\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"yellow\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"yellow\".\"date_year\" in (2001,2002) THEN \"yellow\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -379,9 +392,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"resonant\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"resonant\" on \"thoughtful\".\"catalog_sales_item_id\" = \"resonant\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"resonant\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"resonant\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"resonant\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"resonant\".\"web_sales_order_number\"
@@ -393,6 +406,7 @@ SELECT
     \"dapper\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"dapper\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"dapper\".\"web_sales_date_id\" as \"date_id\",
+    \"dapper\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"dapper\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"dapper\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"dapper\".\"date_year\" in (2001,2002) THEN \"dapper\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -404,9 +418,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"courageous\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"courageous\" on \"thoughtful\".\"catalog_sales_item_id\" = \"courageous\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"courageous\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"courageous\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"courageous\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"courageous\".\"web_sales_order_number\"
@@ -418,6 +432,7 @@ SELECT
     \"vast\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"vast\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"vast\".\"web_sales_date_id\" as \"date_id\",
+    \"vast\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"vast\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"vast\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"vast\".\"date_year\" in (2001,2002) THEN \"vast\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -429,9 +444,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"cool\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"cool\" on \"thoughtful\".\"catalog_sales_item_id\" = \"cool\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"cool\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"cool\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"cool\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"cool\".\"web_sales_order_number\"
@@ -443,6 +458,7 @@ SELECT
     \"elated\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"elated\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"elated\".\"web_sales_date_id\" as \"date_id\",
+    \"elated\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"elated\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"elated\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"elated\".\"date_year\" in (2001,2002) THEN \"elated\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -454,9 +470,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"thoughtful\".\"web_sales_date_id\",\"wary\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"wary\" on \"thoughtful\".\"catalog_sales_item_id\" = \"wary\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"wary\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"wary\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"wary\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"wary\".\"web_sales_order_number\"
@@ -468,6 +484,7 @@ SELECT
     \"bewildered\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"bewildered\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"bewildered\".\"web_sales_date_id\" as \"date_id\",
+    \"bewildered\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"bewildered\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"bewildered\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"bewildered\".\"date_year\" in (2001,2002) THEN \"bewildered\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -479,9 +496,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"level\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"level\" on \"thoughtful\".\"catalog_sales_item_id\" = \"level\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"level\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"level\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"level\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"level\".\"web_sales_order_number\"
@@ -493,6 +510,7 @@ SELECT
     \"wooden\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"wooden\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"wooden\".\"web_sales_date_id\" as \"date_id\",
+    \"wooden\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"wooden\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"wooden\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"wooden\".\"date_year\" in (2001,2002) THEN \"wooden\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -504,9 +522,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"ceaseless\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"ceaseless\" on \"thoughtful\".\"catalog_sales_item_id\" = \"ceaseless\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"ceaseless\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"ceaseless\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"ceaseless\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"ceaseless\".\"web_sales_order_number\"
@@ -518,6 +536,7 @@ SELECT
     \"tearful\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"tearful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"tearful\".\"web_sales_date_id\" as \"date_id\",
+    \"tearful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"tearful\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"tearful\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"tearful\".\"date_year\" in (2001,2002) THEN \"tearful\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -529,9 +548,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"cloudy\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"cloudy\" on \"thoughtful\".\"catalog_sales_item_id\" = \"cloudy\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"cloudy\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"cloudy\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"cloudy\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"cloudy\".\"web_sales_order_number\"
@@ -543,6 +562,7 @@ SELECT
     \"gullible\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"gullible\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"gullible\".\"web_sales_date_id\" as \"date_id\",
+    \"gullible\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"gullible\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"gullible\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"gullible\".\"date_year\" in (2001,2002) THEN \"gullible\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -554,9 +574,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"flashy\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"flashy\" on \"thoughtful\".\"catalog_sales_item_id\" = \"flashy\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"flashy\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"flashy\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"flashy\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"flashy\".\"web_sales_order_number\"
@@ -568,6 +588,7 @@ SELECT
     \"trite\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"trite\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"trite\".\"web_sales_date_id\" as \"date_id\",
+    \"trite\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"trite\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"trite\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"trite\".\"date_year\" in (2001,2002) THEN \"trite\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -579,9 +600,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"quick\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"quick\" on \"thoughtful\".\"catalog_sales_item_id\" = \"quick\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"quick\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"quick\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"quick\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"quick\".\"web_sales_order_number\"
@@ -593,6 +614,7 @@ SELECT
     \"nondescript\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"nondescript\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"nondescript\".\"web_sales_date_id\" as \"date_id\",
+    \"nondescript\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"nondescript\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"nondescript\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"nondescript\".\"date_year\" in (2001,2002) THEN \"nondescript\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -604,9 +626,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"round\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"round\" on \"thoughtful\".\"catalog_sales_item_id\" = \"round\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"round\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"round\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"round\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"round\".\"web_sales_order_number\"
@@ -618,6 +640,7 @@ SELECT
     \"slow\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"slow\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"slow\".\"web_sales_date_id\" as \"date_id\",
+    \"slow\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"slow\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"slow\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"slow\".\"date_year\" in (2001,2002) THEN \"slow\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -629,9 +652,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"spiritual\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"spiritual\" on \"thoughtful\".\"catalog_sales_item_id\" = \"spiritual\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"spiritual\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"spiritual\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"spiritual\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"spiritual\".\"web_sales_order_number\"
@@ -643,6 +666,7 @@ SELECT
     \"brave\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"brave\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"brave\".\"web_sales_date_id\" as \"date_id\",
+    \"brave\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"brave\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"brave\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"brave\".\"date_year\" in (2001,2002) THEN \"brave\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -654,9 +678,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"tenuous\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"tenuous\" on \"thoughtful\".\"catalog_sales_item_id\" = \"tenuous\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"tenuous\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"tenuous\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"tenuous\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"tenuous\".\"web_sales_order_number\"
@@ -668,6 +692,7 @@ SELECT
     \"abstracted\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"abstracted\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"abstracted\".\"web_sales_date_id\" as \"date_id\",
+    \"abstracted\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"abstracted\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"abstracted\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"abstracted\".\"date_year\" in (2001,2002) THEN \"abstracted\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -679,9 +704,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"colossal\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"colossal\" on \"thoughtful\".\"catalog_sales_item_id\" = \"colossal\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"colossal\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"colossal\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"colossal\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"colossal\".\"web_sales_order_number\"
@@ -693,6 +718,7 @@ SELECT
     \"sloppy\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"sloppy\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"sloppy\".\"web_sales_date_id\" as \"date_id\",
+    \"sloppy\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"sloppy\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"sloppy\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"sloppy\".\"date_year\" in (2001,2002) THEN \"sloppy\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -704,9 +730,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"obsolete\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"obsolete\" on \"thoughtful\".\"catalog_sales_item_id\" = \"obsolete\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"obsolete\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"obsolete\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"obsolete\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"obsolete\".\"web_sales_order_number\"
@@ -718,6 +744,7 @@ SELECT
     \"elegant\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"elegant\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"elegant\".\"web_sales_date_id\" as \"date_id\",
+    \"elegant\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"elegant\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"elegant\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"elegant\".\"date_year\" in (2001,2002) THEN \"elegant\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -729,9 +756,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"fabulous\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"fabulous\" on \"thoughtful\".\"catalog_sales_item_id\" = \"fabulous\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"fabulous\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"fabulous\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"fabulous\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"fabulous\".\"web_sales_order_number\"
@@ -743,6 +770,7 @@ SELECT
     \"vivacious\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"vivacious\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"vivacious\".\"web_sales_date_id\" as \"date_id\",
+    \"vivacious\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"vivacious\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"vivacious\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"vivacious\".\"date_year\" in (2001,2002) THEN \"vivacious\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -754,9 +782,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"exuberant\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"exuberant\" on \"thoughtful\".\"catalog_sales_item_id\" = \"exuberant\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"exuberant\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"exuberant\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"exuberant\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"exuberant\".\"web_sales_order_number\"
@@ -768,6 +796,7 @@ SELECT
     \"faithful\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"faithful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"faithful\".\"web_sales_date_id\" as \"date_id\",
+    \"faithful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"faithful\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"faithful\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"faithful\".\"date_year\" in (2001,2002) THEN \"faithful\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -779,9 +808,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"helpless\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"helpless\" on \"thoughtful\".\"catalog_sales_item_id\" = \"helpless\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"helpless\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"helpless\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"helpless\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"helpless\".\"web_sales_order_number\"
@@ -793,6 +822,7 @@ SELECT
     \"odd\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"odd\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"odd\".\"web_sales_date_id\" as \"date_id\",
+    \"odd\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"odd\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"odd\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"odd\".\"date_year\" in (2001,2002) THEN \"odd\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"
@@ -804,9 +834,9 @@ SELECT
     \"thoughtful\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
     \"thoughtful\".\"date_year\" as \"date_year\",
-    \"thoughtful\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"thoughtful\".\"web_sales_item_id\" as \"web_sales_item_id\",
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    coalesce(\"sordid\".\"web_sales_date_id\",\"thoughtful\".\"web_sales_date_id\") as \"web_sales_date_id\"
 FROM
     \"thoughtful\"
     RIGHT OUTER JOIN \"sordid\" on \"thoughtful\".\"catalog_sales_item_id\" = \"sordid\".\"catalog_sales_item_id\" AND \"thoughtful\".\"catalog_sales_order_number\" = \"sordid\".\"catalog_sales_order_number\" AND \"thoughtful\".\"web_sales_date_id\" is not distinct from \"sordid\".\"date_id\" AND \"thoughtful\".\"web_sales_item_id\" = \"sordid\".\"web_sales_item_id\" AND \"thoughtful\".\"web_sales_order_number\" = \"sordid\".\"web_sales_order_number\"
@@ -818,6 +848,7 @@ SELECT
     \"blue\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"blue\".\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     \"blue\".\"web_sales_date_id\" as \"date_id\",
+    \"blue\".\"web_sales_date_id\" as \"web_sales_date_id\",
     \"blue\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"blue\".\"web_sales_order_number\" as \"web_sales_order_number\",
     CASE WHEN \"blue\".\"date_year\" in (2001,2002) THEN \"blue\".\"date_week_seq\" ELSE NULL END as \"relevent_week_seq\"

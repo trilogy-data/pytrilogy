@@ -64,7 +64,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
     "tests/modeling/stocks/test_stocks.py::test_provider_name": _MODELING,
     "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous": _MODELING,
-    "tests/modeling/usa_names/test_names.py::test_filter_constant": _CRASH_INVALID_REF,
     # --- tpc-h: adhoc07 shape ---
     "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07": _MODELING,
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---

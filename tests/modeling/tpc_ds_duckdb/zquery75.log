@@ -1,6 +1,6 @@
 query_id = "75"
 generator = "v4"
-gen_length = 11648
+gen_length = 11868
 preql_size = 1815
 comp_size = 2939
 generated_sql = """
@@ -229,6 +229,10 @@ FROM
     \"macho\"),
 rambunctious as (
 SELECT
+    \"kaput\".\"prev_i_brand_id\" as \"prev_i_brand_id\",
+    \"kaput\".\"prev_i_category_id\" as \"prev_i_category_id\",
+    \"kaput\".\"prev_i_class_id\" as \"prev_i_class_id\",
+    \"kaput\".\"prev_i_manufact_id\" as \"prev_i_manufact_id\",
     \"kaput\".\"prev_prev_cnt\" as \"prev_yr_cnt\",
     \"waggish\".\"curr_curr_amt\" - \"kaput\".\"prev_prev_amt\" as \"sales_amt_diff\",
     \"waggish\".\"curr_curr_cnt\" - \"kaput\".\"prev_prev_cnt\" as \"sales_cnt_diff\",
