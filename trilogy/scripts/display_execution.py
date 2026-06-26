@@ -355,10 +355,8 @@ def _emit_results_json(
     if results.full_column_stats is not None:
         col_stats: "list[dict] | None" = results.full_column_stats
         stats_note: "str | None" = (
-            "column_stats are computed over the FULL result "
-            f"({results.full_row_count} rows, the query re-run with its LIMIT "
-            "removed) — non_null/distinct/min/max reflect true cardinality, not "
-            "the displayed prefix."
+            "column_stats are computed over complete result "
+            f"({results.full_row_count} rows, without limit applied)."
         )
     else:
         col_stats = _column_stats(list(results.columns), rows) if omitted else None
@@ -385,7 +383,7 @@ def print_results_table(
     """Print query results using Rich tables or fallback.
 
     ``row_limit`` is the displayed-rows ceiling. ``None`` keeps the legacy
-    default (50 rows shown, one extra fetched as a "more exist" sentinel).
+    default (one extra fetched as a "more exist" sentinel).
     ``query_limit`` is the statement's own ``LIMIT`` (if any), surfaced in JSON
     mode so a consumer knows the result is a prefix of the full set."""
     cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
