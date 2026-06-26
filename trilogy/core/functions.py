@@ -1211,13 +1211,30 @@ class FunctionFactory:
         else:
             full_args = []
         final_output_type: CONCRETE_TYPES
-        # An unresolved reference is deferred to an UndefinedConcept (UNKNOWN type)
-        # during select parsing. Computing an output type over it here can raise a
-        # confusing error (e.g. coalesce's same-type check on {STRING, UNKNOWN})
-        # that masks the real problem. Defer: emit an UNKNOWN-typed Function so
-        # select finalization reports the clean UndefinedConceptException (with
-        # suggestions) instead.
-        if any(isinstance(x, UndefinedConcept) for x in full_args):
+        has_undefined = any(isinstance(x, UndefinedConcept) for x in full_args)
+        try:
+            if config.output_type_function:
+                final_output_type = config.output_type_function(full_args)
+            elif not base_output_type:
+                final_output_type = merge_datatypes(
+                    [arg_to_datatype(x) for x in full_args]
+                )
+            elif base_output_type:
+                final_output_type = base_output_type
+            else:
+                raise SyntaxError(f"Could not determine output type for {operator}")
+        except Exception:
+            # An unresolved reference is deferred to an UndefinedConcept (UNKNOWN
+            # type) during select parsing. Computing an output type over it can
+            # raise a confusing error (e.g. coalesce's same-type check on
+            # {STRING, UNKNOWN}) that masks the real problem. Defer: emit an
+            # UNKNOWN-typed Function so select finalization reports the clean
+            # UndefinedConceptException (with suggestions) instead. Only do this
+            # when an undefined arg is actually present and was the cause —
+            # functions whose output type is independent of that arg (e.g. CAST to
+            # an explicit target) compute fine and keep their real type.
+            if not has_undefined:
+                raise
             return Function(
                 operator=operator,
                 arguments=full_args,  # type: ignore
@@ -1226,16 +1243,6 @@ class FunctionFactory:
                 valid_inputs=valid_inputs,
                 arg_count=arg_count,
             )
-        if config.output_type_function:
-
-            final_output_type = config.output_type_function(full_args)
-        elif not base_output_type:
-
-            final_output_type = merge_datatypes([arg_to_datatype(x) for x in full_args])
-        elif base_output_type:
-            final_output_type = base_output_type
-        else:
-            raise SyntaxError(f"Could not determine output type for {operator}")
         if isinstance(final_output_type, TraitDataType) and self.environment:
             final_output_type = TraitDataType(
                 type=final_output_type.type,
