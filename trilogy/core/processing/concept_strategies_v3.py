@@ -653,7 +653,7 @@ def source_query_concepts(
         groups = disconnected_components(environment, required, g)
         if len(groups) > 1:
             raise DisconnectedConceptsException(
-                format_disconnected_subgraphs_error(groups),
+                format_disconnected_subgraphs_error(groups, environment, g),
                 subgraphs=[[c.address for c in group] for group in groups],
             )
         raise UnresolvableQueryException(

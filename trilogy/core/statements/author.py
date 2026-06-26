@@ -207,6 +207,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             },
             hidden_components=self.hidden_components,
             grain=self.grain,
+            meta=self.meta,
             scoped_joins=[
                 (j.source_address, j.target_address, j.join_type)
                 for j in self.join_clauses

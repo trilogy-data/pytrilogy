@@ -115,6 +115,28 @@ Cross-category charts land in `evals/tpcds_agent/charts/`:
 `dashboard_<category>.png` (per leg), `funnel.{png,md}` (rendered when ≥2 legs
 ran), and `trilogy_failures_<category>.md` (per-leg failure detail).
 
+### Mining a run for framework bugs
+
+`error_scan.py` turns a run's per-query `agent_log.qNN.jsonl` traces into one
+markdown report: for every failing `trilogy` call it captures the **trigger**,
+the **error message**, the **query that produced it**, and the agent's **next
+thought** — so you can quickly separate real framework bugs from agent thrash on
+well-messaged errors.
+
+```bash
+# Latest run, all queries -> <run>/error_scan.md
+python evals/tpcds_agent/error_scan.py
+
+# Specific run + a subset of queries to a custom path
+python evals/tpcds_agent/error_scan.py --run results/20260626-125555 \
+  --query-ids 5,11,14 --out scan.md
+```
+
+Defaults to the most recent run dir; `--max-query-chars` / `--max-thought-chars`
+bound the per-error excerpts. It handles both file-write forms (`--content` and
+stdin) and inline `run --import … <query>` calls when recovering the producing
+query.
+
 ### Metrics
 
 - **Query pass rate** — generated queries matching the reference, with per-query

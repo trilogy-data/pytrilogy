@@ -15,6 +15,7 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
     UnresolvableQueryException,
 )
 from trilogy.core.graph_models import ReferenceGraph
@@ -551,6 +552,20 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     return None
 
 
+def _with_line_location(
+    exc: DisconnectedConceptsException, line_number: int | None
+) -> DisconnectedConceptsException:
+    """Inject the failing statement's line into a disconnected-subgraph message
+    (the v3 raise sites don't have it). No-op if already located or line unknown."""
+    marker = "one connected query"
+    if line_number is None or f"{marker} (statement at line" in exc.message:
+        return exc
+    msg = exc.message.replace(
+        f"{marker}.", f"{marker} (statement at line {line_number}).", 1
+    )
+    return DisconnectedConceptsException(msg, subgraphs=exc.subgraphs)
+
+
 def _raise_if_disconnected(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -561,6 +576,11 @@ def _raise_if_disconnected(
     + WHERE row args) span unconnected reference-graph components. Delegates to the
     shared ``raise_if_disconnected_for`` so the top-level and nested-rowset checks
     stay one code path."""
+    line_number = (
+        build_statement.meta.line_number
+        if isinstance(build_statement, BuildSelectLineage)
+        else None
+    )
     raise_if_disconnected_for(
         list(build_statement.output_components),
         conditions,
@@ -571,6 +591,7 @@ def _raise_if_disconnected(
         # derived from one), so disable it and let v4 discovery decide. v3 keeps
         # islanding because it only consults this AFTER discovery already failed.
         island_rowsets=False,
+        line_number=line_number,
     )
 
 
@@ -728,13 +749,24 @@ def get_query_node(
         f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
     )
 
-    ods: StrategyNode = source_query_concepts(
-        output_concepts=search_concepts,
-        environment=build_environment,
-        g=graph,
-        conditions=build_statement.where_clause,
-        history=history,
+    # v3 raises the disconnected-subgraph error from deep in discovery, where the
+    # statement's line isn't threaded; inject it here (the v4 pre-gate already
+    # carries it). Harmless no-op when the message already names a line.
+    line_number = (
+        build_statement.meta.line_number
+        if isinstance(build_statement, BuildSelectLineage)
+        else None
     )
+    try:
+        ods: StrategyNode = source_query_concepts(
+            output_concepts=search_concepts,
+            environment=build_environment,
+            g=graph,
+            conditions=build_statement.where_clause,
+            history=history,
+        )
+    except DisconnectedConceptsException as e:
+        raise _with_line_location(e, line_number) from e
     if not ods:
         raise ValueError(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"

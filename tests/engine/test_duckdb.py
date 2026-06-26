@@ -211,6 +211,33 @@ order by ct desc;
     ]
 
 
+def test_grouping_over_rollup_wrapped_in_expression_colocates():
+    """A `by rollup` aggregate wrapped in an expression (`coalesce(... , 0)`, the
+    canonical zero-filled-rollup idiom) still anchors `grouping()`. The rollup
+    spec must be found by walking into the item lineage, not only when the item
+    is itself the bare AggregateWrapper — otherwise grouping() is falsely
+    rejected as 'requires a by rollup'. q05."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select
+    brand,
+    coalesce(sum(amount) by rollup brand, 0) as m,
+    grouping(brand) as g
+having m > 0
+order by g, brand;
+"""
+    sql = engine.generate_sql(text)[-1]
+    # grouping() colocates with the rollup CTE, never re-emitted groupless.
+    assert "grouping(" not in sql.split("ORDER BY")[-1], sql
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("A", 30.0, 0),
+        ("B", 130.0, 0),
+        (None, 160.0, 1),
+    ]
+
+
 def test_null_constant_renders_inline_not_bound():
     """A `null` literal in a projection must render inline as SQL `null`, not as a
     bind parameter — the constant's value is `MagicConstants.NULL`, which the DB

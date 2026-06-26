@@ -727,23 +727,58 @@ def _item_lineage(item: Any, context: RuleContext) -> Any:
     return concept.lineage
 
 
+def _collect_rollup_wrappers(node: Any) -> list[AggregateWrapper]:
+    """All non-STANDARD (ROLLUP/CUBE/GROUPING SETS) aggregate wrappers anywhere
+    in an expression tree, so a rollup nested inside ``coalesce(...)``,
+    ``round(...)``, arithmetic, a ``case``, etc. is still detected. Mirrors the
+    traversal in ``_collect_standard_grouping_wrappers``."""
+    if (
+        isinstance(node, AggregateWrapper)
+        and node.grouping != AggregateGroupingMode.STANDARD
+    ):
+        return [cast(AggregateWrapper, node)]
+    found: list[AggregateWrapper] = []
+    if isinstance(node, Comparison):
+        found += _collect_rollup_wrappers(node.left)
+        found += _collect_rollup_wrappers(node.right)
+    elif isinstance(node, Conditional):
+        found += _collect_rollup_wrappers(node.left)
+        found += _collect_rollup_wrappers(node.right)
+    elif isinstance(node, Parenthetical):
+        found += _collect_rollup_wrappers(node.content)
+    elif isinstance(node, Between):
+        found += _collect_rollup_wrappers(node.left)
+        found += _collect_rollup_wrappers(node.low)
+        found += _collect_rollup_wrappers(node.high)
+    elif isinstance(node, CaseWhen):
+        found += _collect_rollup_wrappers(node.comparison)
+        found += _collect_rollup_wrappers(node.expr)
+    elif isinstance(node, CaseElse):
+        found += _collect_rollup_wrappers(node.expr)
+    elif isinstance(node, AggregateWrapper):
+        for arg in node.function.arguments:
+            found += _collect_rollup_wrappers(arg)
+    elif isinstance(node, Function):
+        for arg in node.arguments:
+            found += _collect_rollup_wrappers(arg)
+    return found
+
+
 def _select_rollup_spec(
     select: SelectStatement,
     context: RuleContext,
 ) -> tuple[AggregateGroupingMode, list[Any], list[list[Any]]] | None:
     """The query's non-STANDARD grouping spec (mode, by, grouping_sets) taken
     from a ROLLUP/CUBE/GROUPING SETS aggregate referenced in the SELECT
-    projection (inline or by name)."""
+    projection (inline or by name) — including one nested inside an expression
+    such as ``coalesce(sum(x) by rollup …, 0)``."""
     for item in select.selection:
         lineage = _item_lineage(item, context)
-        if (
-            isinstance(lineage, AggregateWrapper)
-            and lineage.grouping != AggregateGroupingMode.STANDARD
-        ):
+        for wrapper in _collect_rollup_wrappers(lineage):
             return (
-                lineage.grouping,
-                list(lineage.by),
-                [list(g) for g in lineage.grouping_sets],
+                wrapper.grouping,
+                list(wrapper.by),
+                [list(g) for g in wrapper.grouping_sets],
             )
     return None
 
@@ -1091,8 +1126,8 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             snippet = ", ".join(f"--{a}" for a in missing)
             raise SyntaxError(
                 f"HAVING references {refs}, which {verb} not in the SELECT "
-                f"projection (line {line_no}). To filter output rows, add {obj} to "
-                f"SELECT — prefix each with `--` so {subj} {stay} out of the output "
+                f"projection (line {line_no}). To make them available, you may add {obj} to "
+                f" the SELECT. Prefix each with `--` so {subj} {stay} out of the output "
                 f"rows, keeping your HAVING as-is:\n"
                 f"    select <your existing columns>, {snippet}\n"
                 f"Or move {obj} to WHERE to filter before aggregation; for an "
