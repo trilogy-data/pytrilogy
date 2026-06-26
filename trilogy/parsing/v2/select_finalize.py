@@ -36,7 +36,7 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, NamedTuple, cast
+from typing import Any, Callable, Iterable, Iterator, Mapping, NamedTuple, cast
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import (
@@ -56,16 +56,20 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    FilterItem,
     Function,
+    FunctionCallWrapper,
     Grain,
     NavigationWindowItem,
     NumberingWindowItem,
     OrderBy,
     OrderItem,
     Parenthetical,
+    SubselectItem,
     UndefinedConcept,
     UndefinedConceptFull,
 )
+from trilogy.core.models.core import ListWrapper, MapWrapper, TupleWrapper
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
     ConceptTransform,
@@ -727,41 +731,79 @@ def _item_lineage(item: Any, context: RuleContext) -> Any:
     return concept.lineage
 
 
-def _collect_rollup_wrappers(node: Any) -> list[AggregateWrapper]:
-    """All non-STANDARD (ROLLUP/CUBE/GROUPING SETS) aggregate wrappers anywhere
-    in an expression tree, so a rollup nested inside ``coalesce(...)``,
-    ``round(...)``, arithmetic, a ``case``, etc. is still detected. Mirrors the
-    traversal in ``_collect_standard_grouping_wrappers``."""
-    if (
-        isinstance(node, AggregateWrapper)
-        and node.grouping != AggregateGroupingMode.STANDARD
-    ):
+def _child_exprs(node: Any) -> Iterator[Any]:
+    """Direct child expressions of a composite ``Expr`` node — the value-bearing
+    sub-expressions an aggregate could be nested in. Covers every non-leaf member
+    of the ``Expr`` union (author.py); leaves (``ConceptRef``, scalars) yield
+    nothing. Filter/window/subselect carry their value in ``content``/``arguments``
+    only — their ``where``/``order_by`` are conditions, not part of the projected
+    value, so they are intentionally not descended here.
+
+    Keep in sync with the ``Expr`` union; ``test_aggregate_wrapper_collection``'s
+    exhaustiveness guard fails if a new composite type is added without coverage.
+    """
+    if isinstance(node, (Comparison, Conditional)):
+        yield node.left
+        yield node.right
+    elif isinstance(node, Between):
+        yield node.left
+        yield node.low
+        yield node.high
+    elif isinstance(node, Parenthetical):
+        yield node.content
+    elif isinstance(node, CaseWhen):
+        yield node.comparison
+        yield node.expr
+    elif isinstance(node, CaseElse):
+        yield node.expr
+    elif isinstance(node, AggregateWrapper):
+        yield from node.function.arguments
+    elif isinstance(node, Function):
+        yield from node.arguments
+    elif isinstance(node, FunctionCallWrapper):
+        # `def` macro expansion (`@rollup_agg(x)`): body in `content`, call args.
+        yield node.content
+        yield from node.args
+    elif isinstance(node, FilterItem):
+        yield node.content
+    elif isinstance(node, NavigationWindowItem):
+        yield node.content
+    elif isinstance(node, NumberingWindowItem):
+        yield from node.arguments
+    elif isinstance(node, SubselectItem):
+        yield node.content
+    elif isinstance(node, (TupleWrapper, ListWrapper)):
+        yield from node
+    elif isinstance(node, MapWrapper):
+        yield from node.keys()
+        yield from node.values()
+
+
+def _collect_aggregate_wrappers(
+    node: Any, predicate: Callable[[Any], bool]
+) -> list[AggregateWrapper]:
+    """Every ``AggregateWrapper`` matching ``predicate`` anywhere in an expression
+    tree — so a target agg nested inside ``coalesce(...)``, a ``case``, a ``def``
+    macro, a window, a filter, etc. is still found. A matching node is returned
+    without descending into it (an aggregate won't nest a same-class aggregate)."""
+    if predicate(node):
         return [cast(AggregateWrapper, node)]
     found: list[AggregateWrapper] = []
-    if isinstance(node, Comparison):
-        found += _collect_rollup_wrappers(node.left)
-        found += _collect_rollup_wrappers(node.right)
-    elif isinstance(node, Conditional):
-        found += _collect_rollup_wrappers(node.left)
-        found += _collect_rollup_wrappers(node.right)
-    elif isinstance(node, Parenthetical):
-        found += _collect_rollup_wrappers(node.content)
-    elif isinstance(node, Between):
-        found += _collect_rollup_wrappers(node.left)
-        found += _collect_rollup_wrappers(node.low)
-        found += _collect_rollup_wrappers(node.high)
-    elif isinstance(node, CaseWhen):
-        found += _collect_rollup_wrappers(node.comparison)
-        found += _collect_rollup_wrappers(node.expr)
-    elif isinstance(node, CaseElse):
-        found += _collect_rollup_wrappers(node.expr)
-    elif isinstance(node, AggregateWrapper):
-        for arg in node.function.arguments:
-            found += _collect_rollup_wrappers(arg)
-    elif isinstance(node, Function):
-        for arg in node.arguments:
-            found += _collect_rollup_wrappers(arg)
+    for child in _child_exprs(node):
+        found += _collect_aggregate_wrappers(child, predicate)
     return found
+
+
+def _is_rollup_wrapper(node: Any) -> bool:
+    return (
+        isinstance(node, AggregateWrapper)
+        and node.grouping != AggregateGroupingMode.STANDARD
+    )
+
+
+def _collect_rollup_wrappers(node: Any) -> list[AggregateWrapper]:
+    """All non-STANDARD (ROLLUP/CUBE/GROUPING SETS) aggregate wrappers in a tree."""
+    return _collect_aggregate_wrappers(node, _is_rollup_wrapper)
 
 
 def _select_rollup_spec(
@@ -794,33 +836,7 @@ def _is_standard_grouping_aggregate(node: Any) -> bool:
 def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
     """All STANDARD-mode ``grouping()``/``grouping_id()`` wrappers anywhere in an
     expression tree (e.g. nested inside a ``case`` that derives a rollup level)."""
-    if _is_standard_grouping_aggregate(node):
-        return [cast(AggregateWrapper, node)]
-    found: list[AggregateWrapper] = []
-    if isinstance(node, Comparison):
-        found += _collect_standard_grouping_wrappers(node.left)
-        found += _collect_standard_grouping_wrappers(node.right)
-    elif isinstance(node, Conditional):
-        found += _collect_standard_grouping_wrappers(node.left)
-        found += _collect_standard_grouping_wrappers(node.right)
-    elif isinstance(node, Parenthetical):
-        found += _collect_standard_grouping_wrappers(node.content)
-    elif isinstance(node, Between):
-        found += _collect_standard_grouping_wrappers(node.left)
-        found += _collect_standard_grouping_wrappers(node.low)
-        found += _collect_standard_grouping_wrappers(node.high)
-    elif isinstance(node, CaseWhen):
-        found += _collect_standard_grouping_wrappers(node.comparison)
-        found += _collect_standard_grouping_wrappers(node.expr)
-    elif isinstance(node, CaseElse):
-        found += _collect_standard_grouping_wrappers(node.expr)
-    elif isinstance(node, AggregateWrapper):
-        for arg in node.function.arguments:
-            found += _collect_standard_grouping_wrappers(arg)
-    elif isinstance(node, Function):
-        for arg in node.arguments:
-            found += _collect_standard_grouping_wrappers(arg)
-    return found
+    return _collect_aggregate_wrappers(node, _is_standard_grouping_aggregate)
 
 
 def _fix_projection_grouping_mode(

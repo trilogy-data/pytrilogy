@@ -135,6 +135,9 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
         self.hidden: set[str] = set()
+        # Leading namespaces of rowset outputs; bounds leaf-shorthand resolution
+        # (`rs.col` -> `rs.a.b.col`) to rowset namespaces. Populated by add_rowset.
+        self.rowset_namespaces: set[str] = set()
         self._resolving: set[str] = set()
         self._overlay_stack: list[Mapping[str, Concept]] = []
         self.populate_default_concepts()
@@ -146,6 +149,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         new.undefined = self.undefined
         new.fail_on_missing = self.fail_on_missing
         new.hidden = set(self.hidden)
+        new.rowset_namespaces = set(self.rowset_namespaces)
         return new
 
     def populate_default_concepts(self):
@@ -286,6 +290,10 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             derived = self._try_resolve_derived(key)
             if derived is not None:
                 return derived
+            # leaf-shorthand on a rowset output (`rs.col` -> `rs.a.b.col`)
+            shorthand = self._try_resolve_namespace_suffix(key)
+            if shorthand is not None:
+                return shorthand
             if not self.fail_on_missing:
                 if "." in key:
                     ns, rest = key.rsplit(".", 1)
@@ -304,6 +312,32 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
                 self.undefined[key] = undefined
                 return undefined
         self.raise_undefined(key, line_no, file)
+
+    def _try_resolve_namespace_suffix(self, key: str) -> Concept | None:
+        """Resolve `rs.col` to a rowset output `rs.<...>.col` when exactly one
+        output under namespace `rs` matches the shorthand as an ordered dotted
+        subsequence. Two matches -> ambiguity error; zero -> caller's undefined.
+        Scoped to rowset namespaces so it never collapses import paths."""
+        q_segs = key.split(".")
+        if len(q_segs) < 2 or q_segs[0] not in self.rowset_namespaces:
+            return None
+        prefix = q_segs[0] + "."
+        candidates = [
+            k
+            for k in self.data
+            if k != key
+            and k.startswith(prefix)
+            and _is_subsequence(q_segs, k.split("."))
+        ]
+        if len(candidates) == 1:
+            return self.data[candidates[0]]
+        if len(candidates) > 1:
+            raise UndefinedConceptException(
+                f"Ambiguous reference {key!r}: matches {sorted(candidates)}. "
+                "Qualify the full path to disambiguate.",
+                sorted(candidates),
+            )
+        return None
 
     def _try_resolve_derived(self, key: str) -> Concept | None:
         """Lazily resolve a derived concept like 'signup_date.year' by checking
@@ -504,6 +538,7 @@ class Environment:
 
     def add_rowset(self, name: str, lineage: SelectLineage):
         self.named_statements[name] = lineage
+        self.concepts.rowset_namespaces.add(name)
 
     @staticmethod
     def merge_to_join(

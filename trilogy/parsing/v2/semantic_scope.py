@@ -100,6 +100,17 @@ class SymbolTable:
     def lookup(self, address: str) -> SymbolDefinition | None:
         return self.current.lookup(address)
 
+    def visible_addresses(self) -> Iterator[str]:
+        """Every declared address visible from the current scope (inner first)."""
+        seen: set[str] = set()
+        scope: SemanticScope | None = self.current
+        while scope is not None:
+            for address in scope.definitions:
+                if address not in seen:
+                    seen.add(address)
+                    yield address
+            scope = scope.parent
+
     def reference(self, address: str) -> SymbolReference | None:
         found = self.lookup(address)
         if found is None:

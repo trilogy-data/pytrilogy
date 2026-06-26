@@ -14,6 +14,7 @@ from trilogy.parsing.v2.errors import (
     detect_definition_after_clause,
     detect_group_by,
     detect_missing_signature_semicolon,
+    detect_select_distinct,
     detect_star_argument,
     detect_subselect,
 )
@@ -149,6 +150,11 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     star_pos = detect_star_argument(text, pos)
     if star_pos is not None:
         raise create_syntax_error(223, star_pos, text)
+
+    # 224: SQL-style `SELECT DISTINCT` (Trilogy is implicitly distinct by grain).
+    distinct_pos = detect_select_distinct(text, pos)
+    if distinct_pos is not None:
+        raise create_syntax_error(224, distinct_pos, text)
 
     sub_pos = detect_subselect(text, pos)
     if sub_pos is not None:

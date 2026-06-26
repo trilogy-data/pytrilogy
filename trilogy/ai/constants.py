@@ -21,7 +21,7 @@ Models include facts + dimensions. Nullability and fanout are handled automatica
 
 | Goal | Use |
 |---|---|
-| Typical query | no select, no merge, access joins through dot-paths |
+| Typical query | no select, no merge, all fields accessed through dot-paths |
 | Blend two models on shared keys inside one query | scoped `inner\|left\|full join` (the default) |
 | Make a connection universal to all queries in a file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
@@ -57,12 +57,18 @@ ORDER BY?
 LIMIT?
 ```
 
-A named query - a rowset is defined by a select with a preceding `WITH <name>`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
-A select without WITH is an anonymous query whose outputs are not reusable by name. 
+A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
 
 A rowset creates a "new" model with all concepts namespaced; `abc.def` output in a rowset called `foo` is
 referenced as `foo.abc.def`. Use joins to merge the rowset outputs back into the global namespace if needed.
 
+with funky as
+where customer = 'funky_monkey'
+SELECT
+    order.id,
+;
+
+Is accessed as `select funk.order.id`;
 
 Full annotated example: `trilogy agent-info syntax example query-structure`.
 
@@ -74,6 +80,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 - **No subselects.** "Filter the fact by an attribute of a related entity" → reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
+- **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
 - Since there are no underlying tables, `sum(1)`/`count(1)` is only meaningful grouped by a grain field (e.g. `sum(1) by x as count`).
 
 ### Fields and aliases
@@ -88,21 +95,33 @@ WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inl
 
 WHERE pushdown scoping. WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
 ```
-where x = 3
-select --sum(x.y) as total_y
-having total_y > 10
+where thing.key = 3
+select 
+    thing.prop,
+    --sum(thing.val) as total_val
+having 
+    total_val > 10
 ```
 HAVING references the projection only. Select what you filter on; hide it with a leading -- to keep it out of the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering to one year AFTER a lead/lag over the full series:
 ```
-select student.state, --sum(enroll.credits) as total_credits, --enroll.year
-having total_credits > 1000 and enroll.year = 2020
+select 
+    student.state, 
+    --sum(enroll.credits) as total_credits, 
+    --enroll.year
+having 
+    total_credits > 1000 
+    and enroll.year = 2020
 ```
 
-HAVING aggregates inherit the output grain — a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total. Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
+HAVING aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total. Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
 ```
 auto grand_total <- sum(enroll.credits) by *;
-select student.id, --sum(enroll.credits) as student_total
-having student_total > 0.0001 * grand_total
+
+select 
+    student.id, 
+    --sum(enroll.credits) as student_total
+having 
+    student_total > 0.0001 * grand_total
 ```
 
 Aggregates in WHERE. To filter rows by an aggregate over pre-filter inputs, write the aggregate directly in WHERE with inline grouping agg(x) by grain (add an inline ? condition if needed):
@@ -119,7 +138,7 @@ auto big_zip <- student.zip ? (count(student.id ? student.honors = true) by stud
 where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 ```
 
-**Anti-join / semi-join.** A fact model contains the full set of dimensional members (all students appear in `fact.students`), so:
+ A fact model contains the full set of dimensional members (all students appear in `fact.students`), so:
 - No matching record (anti-join): `where students.id not in enroll.student_id` is typically a tautology — `enroll.student_id` references the student table and contains all students. Use e.g. `where enroll.id is null select enroll.student.id` instead.
 - Has a matching record (semi-join): `where students.id in ([some other student_list])` effectively filters across models that are not explicitly merged but share an ID (e.g. IDs from an external source).
 
@@ -164,7 +183,7 @@ Default to windows for **self-referential queries** — relating a row to other 
 - Cast with `::type`, e.g. `"2020-01-01"::date`.
 - Date parts have no quotes: `date_part(enroll.date, year)`, never `date_part(enroll.date, 'year')`. Prefer idiomatic function forms when available: `year(enroll.date)`.
 - All functions take parentheses; zero-argument functions use empty ones (`current_date()`).
-- Comments use `#` only, per line.
+- Comments use `#` only, per line. -- is NOT a comment.
 - When several columns share the same calculation, factor it into a `def` macro (invoked with `@name(...)`); for complex logic, break the query into reusable concept declarations.
 
 ## Worked examples

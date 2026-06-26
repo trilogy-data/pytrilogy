@@ -76,6 +76,13 @@ ERROR_CODES: dict[int, str] = {
         "key (`count(customer.id)`). For any other aggregate, pass the column you "
         "mean, e.g. `sum(store_sales.ext_sales_price)`."
     ),
+    224: (
+        "Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword — a select is "
+        "already grouped by its non-aggregate columns, so listing the columns you "
+        "want already returns distinct rows. Remove `distinct`: write "
+        "`select s.channel, s.channel_dim_text_id` (not "
+        "`select distinct s.channel, ...`)."
+    ),
 }
 
 
@@ -113,6 +120,25 @@ def detect_subselect(text: str, pos: int) -> int | None:
     if closed_before_pos:
         return None
     return open_paren
+
+
+_SELECT_DISTINCT_RE = re.compile(r"\bselect\s+(distinct)\b", re.IGNORECASE)
+
+
+def detect_select_distinct(text: str, pos: int) -> int | None:
+    """Locate a SQL-style ``SELECT DISTINCT`` (Trilogy groups by the non-aggregate
+    select columns automatically, so distinctness is implicit). Both backends read
+    ``distinct`` as a bare expression and fail just after it (on the next column,
+    as a missing-alias [201]), so scan from the statement start to just past
+    ``pos`` and take the nearest ``select distinct``. Returns the ``distinct``
+    keyword position, or None. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    match = None
+    for cand in _SELECT_DISTINCT_RE.finditer(text, stmt_start, pos + 2):
+        match = cand
+    if match is None:
+        return None
+    return match.start(1)
 
 
 _GROUP_BY_RE = re.compile(r"\bgroup\s+by\b", re.IGNORECASE)

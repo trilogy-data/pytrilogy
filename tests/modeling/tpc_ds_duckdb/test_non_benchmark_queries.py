@@ -2,8 +2,11 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from trilogy import Dialects, Executor
 from trilogy.constants import CONFIG
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import BuildAggregateWrapper, BuildGrain
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
@@ -102,6 +105,53 @@ limit 100;
     assert "INVALID_REFERENCE_BUG" not in sql
     # executes against DuckDB without a BinderException
     engine_sf001.execute_raw_sql(sql)
+
+
+def test_q64_nested_membership_two_source_agg_clean_error(engine):
+    """A nested membership (`final_item <- qual_item ? qual_item in cat_qual_item`)
+    whose inner RHS (`cat_qual_item`) is itself filtered by a comparison of two
+    aggregates from DIFFERENT, unmergeable facts (`sum(cs.*) by cs.item.text_id`
+    vs `sum(cr.*) by cr.item.text_id`) is genuinely unsourceable. It used to emit
+    a dangling existence subquery against a non-existent CTE (the
+    `INVALID_REFERENCE_BUG` sentinel) and crash with a raw ``ValueError``. The
+    filter-node existence sourcing now propagates the failure so the search
+    reports the same clean ``UnresolvableQueryException`` as the equivalent
+    direct membership (`where ss.k in cat_qual_item`)."""
+    query = """
+import store_sales as ss;
+import catalog_sales as cs;
+import catalog_returns as cr;
+
+auto qual_item     <- cs.item.text_id ? cs.item.current_price between 65 and 74;
+auto cat_ext_list  <- sum(cs.ext_list_price) by cs.item.text_id;
+auto cat_refund    <- sum(coalesce(cr.refunded_cash, 0)) by cr.item.text_id;
+auto cat_qual_item <- cs.item.text_id ? cat_ext_list > cat_refund;
+auto final_item    <- qual_item ? qual_item in cat_qual_item;
+
+where ss.item.text_id in final_item
+select ss.item.text_id, count(ss.line_item) as cnt;
+"""
+    with pytest.raises(UnresolvableQueryException):
+        engine.generate_sql(query)
+
+
+def test_q64_nested_membership_single_source_agg_compiles(engine):
+    """Guard the fix above doesn't over-bail: the same nested-membership shape with
+    a SOURCEABLE inner filter (single-source aggregate vs a literal) still plans."""
+    query = """
+import store_sales as ss;
+import catalog_sales as cs;
+
+auto qual_item     <- cs.item.text_id ? cs.item.current_price between 65 and 74;
+auto cat_ext_list  <- sum(cs.ext_list_price) by cs.item.text_id;
+auto cat_qual_item <- cs.item.text_id ? cat_ext_list > 100;
+auto final_item    <- qual_item ? qual_item in cat_qual_item;
+
+where ss.item.text_id in final_item
+select ss.item.text_id, count(ss.line_item) as cnt;
+"""
+    sql = engine.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
 
 
 def test_copy_perf():

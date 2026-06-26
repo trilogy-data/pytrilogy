@@ -432,6 +432,9 @@ class RowsetStatementPlan(StatementPlanBase):
                     continue
                 seen.add(rowset_address)
                 hydrator.symbol_table.declare(rowset_address, output_name, target_ns)
+                hydrator.environment.concepts.rowset_namespaces.add(
+                    rowset_address.split(".", 1)[0]
+                )
             return
         for literal in find_concept_literals(self.syntax):
             source_address = extract_concept_name_from_literal(literal, namespace)
@@ -442,6 +445,9 @@ class RowsetStatementPlan(StatementPlanBase):
                 continue
             seen.add(rowset_address)
             hydrator.symbol_table.declare(rowset_address, source_name, target_ns)
+            hydrator.environment.concepts.rowset_namespaces.add(
+                rowset_address.split(".", 1)[0]
+            )
         for transform_name in find_select_transform_targets(self.syntax):
             target_ns = rowset_output_namespace(self.rowset_name, namespace, namespace)
             rowset_address = f"{target_ns}.{transform_name}"
@@ -449,6 +455,9 @@ class RowsetStatementPlan(StatementPlanBase):
                 continue
             seen.add(rowset_address)
             hydrator.symbol_table.declare(rowset_address, transform_name, target_ns)
+            hydrator.environment.concepts.rowset_namespaces.add(
+                rowset_address.split(".", 1)[0]
+            )
 
     def bind(self, hydrator: "NativeHydrator") -> None:
         # Forward references inside a rowset derive clause (e.g. coalesce(level0.qoh1, ...))

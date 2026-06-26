@@ -18,7 +18,7 @@ import ship_mode as ship_mode;
 
 key channel enum<string>['WEB', 'CATALOG', 'STORE']; # the channel for the sale/return: WEB, CATALOG, or STORE
 key channel_dim_id int; # the ID of the store/web/site for order (web_site_id, catalog_id, or store_id as appropriate)
-key return_channel_dim_id int; # the ID of the store/web/site used for the return (web_site_id, catalog_id, or store_id as appropriate)
+key return_channel_dim_id int; # the ID of the store/web/site used for the return (web_site_id, catalog_id, or store_id as appropriate). Any value in here is in channel_dim_id.
 key outlet_id int; # the channel's selling-outlet surrogate id, per channel: store_sk (STORE), call_center_sk (CATALOG), web_page_sk (WEB). Distinct from channel_dim_id (which is store/web_site/catalog_page).
 key order_id int; # the ID of the order (ticket number for store, order number for web/catalog)
 

@@ -266,54 +266,66 @@ order by enroll.year asc nulls first;
         name="union-stack-channels",
         title="Stack rows from several sources/channels with the union(...) TVF",
         summary=(
-            "`with combined as union((armA), (armB), ...) -> (o1, o2, ...)` row-STACKS "
-            "self-contained selects positionally (SQL UNION ALL) — the PREFERRED way to "
-            "combine channels/sources; reference outputs as `combined.o1`"
+            "`with combined as union((armA), (armB), (armC), ...) -> (o1, o2, ...)` "
+            "row-STACKS self-contained inline selects positionally (SQL UNION ALL) — "
+            "the PREFERRED way to combine channels/sources; pass TWO OR MORE arms, one "
+            "per source; reference outputs as `combined.o1`"
         ),
         body="""\
-# `union(...)` is a relational table-valued function: it STACKS the rows of two
-# or more self-contained `select` arms, positionally (like SQL `UNION ALL`), into
-# one named result. Use it to combine CHANNELS / SOURCES / labeled populations —
-# one arm per source. It is a row STACK, NOT a key-join: arms are matched by
-# COLUMN POSITION, so every arm must project the same number of columns, in the
-# same order and types, as the trailing `-> (...)` output list. (In a real model
-# each arm is typically a DIFFERENT source/fact; here two subsets of one model
-# stand in for that.)
+# `union(...)` is a relational table-valued function: it STACKS the rows of TWO OR
+# MORE self-contained `select` arms, positionally (like SQL `UNION ALL`), into one
+# named result. Use it to combine CHANNELS / SOURCES / labeled populations — ONE
+# ARM PER SOURCE, and there is NO fixed arm count (this example stacks THREE). It
+# is a row STACK, NOT a key-join: arms are matched by COLUMN POSITION, so every arm
+# must project the same number of columns, in the same order and types, as the
+# trailing `-> (...)` output list. (In a real model each arm is typically a
+# DIFFERENT source/fact — e.g. store, catalog, web sales; here three subsets of one
+# model stand in for those three channels.)
 import enrollments as enroll;
 
-# Each arm is fully independent (its own `where`, its own aggregation). The arms'
-# i-th column maps to the i-th name in the `-> (...)` output list; the surface
-# names inside each arm need not match — only POSITION does.
-with by_status as union(
-    (where enroll.completed = true
+# IMPORTANT: each arm is an INLINE, self-contained select written directly inside
+# the `union(...)` — you CANNOT pass the name of a previously-defined rowset as an
+# arm; put the full select logic (its own `where`, its own aggregation) in the arm.
+# The arms' i-th column maps to the i-th name in the `-> (...)` output list; the
+# surface names inside each arm need not match — only POSITION does. Each arm may
+# group by its own dims (here `course`), so an arm can emit MANY rows.
+with by_channel as union(
+    (where enroll.department = 'Biology'
      select
-        'completed' as status,
-        enroll.department as department,
+        'Biology' as channel,
+        enroll.course as course,
         count(enroll.id) as enrollments,
     ),
-    (where enroll.completed = false
+    (where enroll.department = 'Chemistry'
      select
-        'incomplete' as status,
-        enroll.department as department,
+        'Chemistry' as channel,
+        enroll.course as course,
+        count(enroll.id) as enrollments,
+    ),
+    (where enroll.department = 'Physics'
+     select
+        'Physics' as channel,
+        enroll.course as course,
         count(enroll.id) as enrollments,
     )
-) -> (status, department, enrollments);
+) -> (channel, course, enrollments);
 
 # Reference the stacked outputs as `<rowset>.<output>`.
 select
-    by_status.status,
-    by_status.department,
-    by_status.enrollments,
-order by by_status.enrollments desc nulls first
+    by_channel.channel,
+    by_channel.course,
+    by_channel.enrollments,
+order by by_channel.channel, by_channel.enrollments desc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
 # NOTES:
-#  - The trailing `-> (status, department, enrollments)` NAMES the positional
-#    outputs; column order / count / type must line up across every arm.
+#  - Pass TWO OR MORE arms — add a fourth/fifth the same way; one arm per source.
+#  - The trailing `-> (channel, course, enrollments)` NAMES the positional outputs;
+#    column order / count / type must line up across every arm.
 #  - Every union output is treated as a KEY (grain component). To RE-AGGREGATE the
-#    stack (e.g. a grand total across statuses), wrap it in an outer aggregate:
-#        select sum(by_status.enrollments) by rollup by_status.status as total;
+#    stack (e.g. a grand total across channels), wrap it in an outer aggregate:
+#        select sum(by_channel.enrollments) by rollup by_channel.channel as total;
 #  - An arm may carry its OWN query-scoped join (`select ... left join a = b`
 #    after its select list) — localize each source's join to the arm that needs it.
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
