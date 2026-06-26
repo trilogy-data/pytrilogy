@@ -61,7 +61,6 @@ _CRASH_INVALID_REF = (
 )
 V4_KNOWN_FAILING: dict[str, str] = {
     # --- optimization: CTE-shape snapshot diffs ---
-    "tests/optimization/test_inlining.py::test_non_nullable_null_guard_does_not_block_datasource_inlining": _INLINE,
     "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection": _INLINE,
     "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection": _INLINE,
     # --- complex: shape diffs (assert on SQL, not crashes) ---
@@ -81,17 +80,13 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- tpc-h: adhoc07 shape ---
     "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07": _MODELING,
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---
-    # NOTE: test_two (q02) and test_seventy_six (q76) now PASS in isolation (verified
-    # 8x / 3x, 2026-06-25); kept listed until a full v4 sweep confirms, then prune.
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two": _TPCDS_SIZE,
+    # Pruned 2026-06-26 (pass in isolation + tracked-group + full sweep): test_two (q02),
+    # test_forty_seven (q47), test_fifty_seven (q57), test_seventy_six (q76).
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_seven": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one": _TPCDS_SIZE,
     # q23/q94: over ceiling only because of the q16 all-ROOT normalization
     # correctness floor (2026-06-26); rows correct. Re-optimize in a v4 pass.

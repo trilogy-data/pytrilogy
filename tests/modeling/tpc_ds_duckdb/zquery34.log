@@ -1,31 +1,12 @@
 query_id = "34"
-generator = "v4"
-gen_length = 3446
+generator = "v3"
+gen_length = 2744
 preql_size = 1444
 comp_size = 1449
 generated_sql = """
 
 WITH 
-wakeful as (
-SELECT
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
-    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
-    \"store_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"store_sales_customer_preferred_cust_flag\",
-    \"store_sales_customer_customers\".\"C_SALUTATION\" as \"store_sales_customer_salutation\",
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
-WHERE
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-abundant as (
+cooperative as (
 SELECT
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
@@ -48,18 +29,18 @@ HAVING
     \"cnt\" BETWEEN 15 AND 20
 )
 SELECT
-    \"wakeful\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"wakeful\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    \"wakeful\".\"store_sales_customer_salutation\" as \"store_sales_customer_salutation\",
-    \"wakeful\".\"store_sales_customer_preferred_cust_flag\" as \"store_sales_customer_preferred_cust_flag\",
-    \"abundant\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    \"abundant\".\"cnt\" as \"cnt\"
+    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
+    \"store_sales_customer_customers\".\"C_SALUTATION\" as \"store_sales_customer_salutation\",
+    \"store_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"store_sales_customer_preferred_cust_flag\",
+    \"cooperative\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    \"cooperative\".\"cnt\" as \"cnt\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"abundant\" on \"wakeful\".\"store_sales_customer_id\" = \"abundant\".\"store_sales_customer_id\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
-    \"wakeful\".\"store_sales_customer_last_name\" asc nulls first,
-    \"wakeful\".\"store_sales_customer_first_name\" asc nulls first,
-    \"wakeful\".\"store_sales_customer_salutation\" asc nulls first,
-    \"wakeful\".\"store_sales_customer_preferred_cust_flag\" desc nulls first,
-    \"abundant\".\"store_sales_ticket_number\" asc nulls first"""
+    \"store_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
+    \"store_sales_customer_customers\".\"C_SALUTATION\" asc nulls first,
+    \"store_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" desc nulls first,
+    \"cooperative\".\"store_sales_ticket_number\" asc nulls first"""

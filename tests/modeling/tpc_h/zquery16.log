@@ -1,14 +1,17 @@
 query_id = "16"
-generator = "v4"
-gen_length = 779
+generator = "v3"
+gen_length = 1015
 preql_size = 392
 comp_size = 552
 generated_sql = """
+
+WITH 
+cheerful as (
 SELECT
     \"part\".\"p_brand\" as \"brand\",
-    \"part\".\"p_type\" as \"type\",
     \"part\".\"p_size\" as \"size\",
-    count(distinct \"partsupp\".\"ps_suppkey\") as \"supplier_cnt\"
+    \"part\".\"p_type\" as \"type\",
+    \"partsupp\".\"ps_suppkey\" as \"supplier_id\"
 FROM
     \"memory\".\"partsupp\" as \"partsupp\"
     INNER JOIN \"memory\".\"part\" as \"part\" on \"partsupp\".\"ps_partkey\" = \"part\".\"p_partkey\"
@@ -19,9 +22,21 @@ WHERE
 GROUP BY
     1,
     2,
+    3,
+    4)
+SELECT
+    \"cheerful\".\"brand\" as \"brand\",
+    \"cheerful\".\"type\" as \"type\",
+    \"cheerful\".\"size\" as \"size\",
+    count(distinct \"cheerful\".\"supplier_id\") as \"supplier_cnt\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1,
+    2,
     3
 ORDER BY 
     \"supplier_cnt\" desc,
-    \"part\".\"p_brand\" asc,
-    \"part\".\"p_type\" asc,
-    \"part\".\"p_size\" asc"""
+    \"cheerful\".\"brand\" asc,
+    \"cheerful\".\"type\" asc,
+    \"cheerful\".\"size\" asc"""

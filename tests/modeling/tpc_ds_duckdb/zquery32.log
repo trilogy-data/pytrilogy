@@ -1,6 +1,6 @@
 query_id = "32"
-generator = "v4"
-gen_length = 1228
+generator = "v3"
+gen_length = 1238
 preql_size = 403
 comp_size = 527
 generated_sql = """
@@ -20,10 +20,13 @@ WHERE
 thoughtful as (
 SELECT
     \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
-    1.3 * avg(CASE WHEN cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date THEN \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"avg_item_disc\"
+    avg(\"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_5510773609506287\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
+
 GROUP BY
     1)
 SELECT
@@ -32,6 +35,6 @@ FROM
     \"cheerful\"
     INNER JOIN \"thoughtful\" on \"cheerful\".\"item_id\" = \"thoughtful\".\"item_id\"
 WHERE
-    \"cheerful\".\"discount_amount\" > \"thoughtful\".\"avg_item_disc\"
+    \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_5510773609506287\"
 
 LIMIT (100)"""

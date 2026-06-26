@@ -1,6 +1,6 @@
 query_id = "63"
-generator = "v4"
-gen_length = 2479
+generator = "v3"
+gen_length = 2320
 preql_size = 1372
 comp_size = 1795
 generated_sql = """
@@ -20,36 +20,29 @@ WHERE
 GROUP BY
     1,
     \"store_sales_date_date\".\"D_MOY\"),
-questionable as (
+cooperative as (
 SELECT
     \"cheerful\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
     avg(\"cheerful\".\"sum_sales\") as \"avg_monthly_sales\"
 FROM
     \"cheerful\"
 GROUP BY
-    1),
-uneven as (
+    1)
 SELECT
+    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
-    \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
-    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"questionable\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\"
+    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
     \"cheerful\"
-    INNER JOIN \"questionable\" on \"cheerful\".\"store_sales_item_manager_id\" is not distinct from \"questionable\".\"store_sales_item_manager_id\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"store_sales_item_manager_id\" is not distinct from \"cooperative\".\"store_sales_item_manager_id\"
 WHERE
     CASE
-	WHEN \"questionable\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"
+	WHEN \"cooperative\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_monthly_sales\") / \"cooperative\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
-)
-SELECT
-    \"uneven\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
-    \"uneven\".\"sum_sales\" as \"sum_sales\",
-    \"uneven\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
-FROM
-    \"uneven\"
+
 ORDER BY 
-    \"uneven\".\"store_sales_item_manager_id\" asc,
-    \"uneven\".\"avg_monthly_sales\" asc,
-    \"uneven\".\"sum_sales\" asc
+    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") asc,
+    \"cooperative\".\"avg_monthly_sales\" asc,
+    \"cheerful\".\"sum_sales\" asc
 LIMIT (100)"""

@@ -1,12 +1,12 @@
 query_id = "75"
-generator = "v4"
-gen_length = 11868
+generator = "v3"
+gen_length = 7427
 preql_size = 1815
 comp_size = 2939
 generated_sql = """
 
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
@@ -33,7 +33,7 @@ SELECT
     \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
-uneven as (
+abundant as (
 SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
@@ -78,24 +78,19 @@ FROM
 WHERE
     \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"sales_item_items\".\"I_CATEGORY\" = 'Books'
 ),
-quizzical as (
+juicy as (
 SELECT
-    2001 as \"prev_year\",
-    2002 as \"year_\"
-),
-vacuous as (
-SELECT
+    \"abundant\".\"sales_date_year\" as \"sales_date_year\",
+    \"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0) as \"amt_per_row\",
+    \"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0) as \"cnt_per_row\",
     \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
     \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
-    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\",
-    \"uneven\".\"sales_date_year\" as \"sales_date_year\",
-    \"uneven\".\"sales_ext_sales_price\" - coalesce(\"thoughtful\".\"sales_return_amount\",0.0) as \"amt_per_row\",
-    \"uneven\".\"sales_quantity\" - coalesce(\"thoughtful\".\"sales_return_quantity\",0) as \"cnt_per_row\"
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
-    \"uneven\"
-    LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"sales_channel\" = \"thoughtful\".\"sales_channel\" AND \"uneven\".\"sales_item_id\" = \"thoughtful\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"thoughtful\".\"sales_order_id\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"uneven\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+    \"abundant\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,
@@ -106,51 +101,35 @@ GROUP BY
     7),
 sparkling as (
 SELECT
-    \"vacuous\".\"amt_per_row\" as \"deduped_amt_per_row\",
-    \"vacuous\".\"cnt_per_row\" as \"deduped_cnt_per_row\",
-    \"vacuous\".\"sales_date_year\" as \"deduped_sales_date_year\",
-    \"vacuous\".\"sales_item_brand_id\" as \"deduped_sales_item_brand_id\",
-    \"vacuous\".\"sales_item_category_id\" as \"deduped_sales_item_category_id\",
-    \"vacuous\".\"sales_item_class_id\" as \"deduped_sales_item_class_id\",
-    \"vacuous\".\"sales_item_manufacturer_id\" as \"deduped_sales_item_manufacturer_id\"
+    \"juicy\".\"sales_item_brand_id\" as \"_curr_i_brand_id\",
+    \"juicy\".\"sales_item_category_id\" as \"_curr_i_category_id\",
+    \"juicy\".\"sales_item_class_id\" as \"_curr_i_class_id\",
+    \"juicy\".\"sales_item_manufacturer_id\" as \"_curr_i_manufact_id\",
+    sum(\"juicy\".\"amt_per_row\") as \"_curr_curr_amt\",
+    sum(\"juicy\".\"cnt_per_row\") as \"_curr_curr_cnt\"
 FROM
-    \"vacuous\"),
-divergent as (
-SELECT
-    \"sparkling\".\"deduped_amt_per_row\" as \"deduped_amt_per_row\",
-    \"sparkling\".\"deduped_cnt_per_row\" as \"deduped_cnt_per_row\",
-    \"sparkling\".\"deduped_sales_item_brand_id\" as \"deduped_sales_item_brand_id\",
-    \"sparkling\".\"deduped_sales_item_category_id\" as \"deduped_sales_item_category_id\",
-    \"sparkling\".\"deduped_sales_item_class_id\" as \"deduped_sales_item_class_id\",
-    \"sparkling\".\"deduped_sales_item_manufacturer_id\" as \"deduped_sales_item_manufacturer_id\"
-FROM
-    \"sparkling\"
+    \"juicy\"
 WHERE
-    \"sparkling\".\"deduped_sales_date_year\" = 2002
-),
-abhorrent as (
+    \"juicy\".\"sales_date_year\" = 2002
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+vacuous as (
 SELECT
-    \"sparkling\".\"deduped_amt_per_row\" as \"deduped_amt_per_row\",
-    \"sparkling\".\"deduped_cnt_per_row\" as \"deduped_cnt_per_row\",
-    \"sparkling\".\"deduped_sales_item_brand_id\" as \"deduped_sales_item_brand_id\",
-    \"sparkling\".\"deduped_sales_item_category_id\" as \"deduped_sales_item_category_id\",
-    \"sparkling\".\"deduped_sales_item_class_id\" as \"deduped_sales_item_class_id\",
-    \"sparkling\".\"deduped_sales_item_manufacturer_id\" as \"deduped_sales_item_manufacturer_id\"
+    \"juicy\".\"sales_item_brand_id\" as \"_prev_i_brand_id\",
+    \"juicy\".\"sales_item_category_id\" as \"_prev_i_category_id\",
+    \"juicy\".\"sales_item_class_id\" as \"_prev_i_class_id\",
+    \"juicy\".\"sales_item_manufacturer_id\" as \"_prev_i_manufact_id\",
+    sum(\"juicy\".\"amt_per_row\") as \"_prev_prev_amt\",
+    sum(\"juicy\".\"cnt_per_row\") as \"_prev_prev_cnt\"
 FROM
-    \"sparkling\"
+    \"juicy\"
 WHERE
-    \"sparkling\".\"deduped_sales_date_year\" = 2001
-),
-busy as (
-SELECT
-    \"divergent\".\"deduped_sales_item_brand_id\" as \"deduped_sales_item_brand_id\",
-    \"divergent\".\"deduped_sales_item_category_id\" as \"deduped_sales_item_category_id\",
-    \"divergent\".\"deduped_sales_item_class_id\" as \"deduped_sales_item_class_id\",
-    \"divergent\".\"deduped_sales_item_manufacturer_id\" as \"deduped_sales_item_manufacturer_id\",
-    sum(\"divergent\".\"deduped_amt_per_row\") as \"_curr_curr_amt\",
-    sum(\"divergent\".\"deduped_cnt_per_row\") as \"_curr_curr_cnt\"
-FROM
-    \"divergent\"
+    \"juicy\".\"sales_date_year\" = 2001
+
 GROUP BY
     1,
     2,
@@ -158,110 +137,42 @@ GROUP BY
     4),
 sweltering as (
 SELECT
-    \"abhorrent\".\"deduped_sales_item_brand_id\" as \"deduped_sales_item_brand_id\",
-    \"abhorrent\".\"deduped_sales_item_category_id\" as \"deduped_sales_item_category_id\",
-    \"abhorrent\".\"deduped_sales_item_class_id\" as \"deduped_sales_item_class_id\",
-    \"abhorrent\".\"deduped_sales_item_manufacturer_id\" as \"deduped_sales_item_manufacturer_id\",
-    sum(\"abhorrent\".\"deduped_amt_per_row\") as \"_prev_prev_amt\",
-    sum(\"abhorrent\".\"deduped_cnt_per_row\") as \"_prev_prev_cnt\"
+    \"sparkling\".\"_curr_curr_amt\" as \"curr_curr_amt\",
+    \"sparkling\".\"_curr_curr_cnt\" as \"curr_curr_cnt\",
+    \"sparkling\".\"_curr_i_brand_id\" as \"curr_i_brand_id\",
+    \"sparkling\".\"_curr_i_category_id\" as \"curr_i_category_id\",
+    \"sparkling\".\"_curr_i_class_id\" as \"curr_i_class_id\",
+    \"sparkling\".\"_curr_i_manufact_id\" as \"curr_i_manufact_id\"
 FROM
-    \"abhorrent\"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-protective as (
+    \"sparkling\"),
+young as (
 SELECT
-    \"busy\".\"_curr_curr_amt\" as \"_curr_curr_amt\",
-    \"busy\".\"_curr_curr_cnt\" as \"_curr_curr_cnt\",
-    \"divergent\".\"deduped_sales_item_brand_id\" as \"_curr_i_brand_id\",
-    \"divergent\".\"deduped_sales_item_category_id\" as \"_curr_i_category_id\",
-    \"divergent\".\"deduped_sales_item_class_id\" as \"_curr_i_class_id\",
-    \"divergent\".\"deduped_sales_item_manufacturer_id\" as \"_curr_i_manufact_id\"
+    \"vacuous\".\"_prev_i_brand_id\" as \"prev_i_brand_id\",
+    \"vacuous\".\"_prev_i_category_id\" as \"prev_i_category_id\",
+    \"vacuous\".\"_prev_i_class_id\" as \"prev_i_class_id\",
+    \"vacuous\".\"_prev_i_manufact_id\" as \"prev_i_manufact_id\",
+    \"vacuous\".\"_prev_prev_amt\" as \"prev_prev_amt\",
+    \"vacuous\".\"_prev_prev_cnt\" as \"prev_prev_cnt\"
 FROM
-    \"divergent\"
-    INNER JOIN \"busy\" on \"divergent\".\"deduped_sales_item_brand_id\" = \"busy\".\"deduped_sales_item_brand_id\" AND \"divergent\".\"deduped_sales_item_category_id\" = \"busy\".\"deduped_sales_item_category_id\" AND \"divergent\".\"deduped_sales_item_class_id\" = \"busy\".\"deduped_sales_item_class_id\" AND \"divergent\".\"deduped_sales_item_manufacturer_id\" = \"busy\".\"deduped_sales_item_manufacturer_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6),
-macho as (
+    \"vacuous\")
 SELECT
-    \"abhorrent\".\"deduped_sales_item_brand_id\" as \"_prev_i_brand_id\",
-    \"abhorrent\".\"deduped_sales_item_category_id\" as \"_prev_i_category_id\",
-    \"abhorrent\".\"deduped_sales_item_class_id\" as \"_prev_i_class_id\",
-    \"abhorrent\".\"deduped_sales_item_manufacturer_id\" as \"_prev_i_manufact_id\",
-    \"sweltering\".\"_prev_prev_amt\" as \"_prev_prev_amt\",
-    \"sweltering\".\"_prev_prev_cnt\" as \"_prev_prev_cnt\"
+    2001 as \"prev_year\",
+    2002 as \"year_\",
+    \"sweltering\".\"curr_i_brand_id\" as \"curr_i_brand_id\",
+    \"sweltering\".\"curr_i_class_id\" as \"curr_i_class_id\",
+    \"sweltering\".\"curr_i_category_id\" as \"curr_i_category_id\",
+    \"sweltering\".\"curr_i_manufact_id\" as \"curr_i_manufact_id\",
+    \"young\".\"prev_prev_cnt\" as \"prev_yr_cnt\",
+    \"sweltering\".\"curr_curr_cnt\" as \"curr_yr_cnt\",
+    \"sweltering\".\"curr_curr_cnt\" - \"young\".\"prev_prev_cnt\" as \"sales_cnt_diff\",
+    \"sweltering\".\"curr_curr_amt\" - \"young\".\"prev_prev_amt\" as \"sales_amt_diff\"
 FROM
-    \"abhorrent\"
-    INNER JOIN \"sweltering\" on \"abhorrent\".\"deduped_sales_item_brand_id\" = \"sweltering\".\"deduped_sales_item_brand_id\" AND \"abhorrent\".\"deduped_sales_item_category_id\" = \"sweltering\".\"deduped_sales_item_category_id\" AND \"abhorrent\".\"deduped_sales_item_class_id\" = \"sweltering\".\"deduped_sales_item_class_id\" AND \"abhorrent\".\"deduped_sales_item_manufacturer_id\" = \"sweltering\".\"deduped_sales_item_manufacturer_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6),
-waggish as (
-SELECT
-    \"protective\".\"_curr_curr_amt\" as \"curr_curr_amt\",
-    \"protective\".\"_curr_curr_cnt\" as \"curr_curr_cnt\",
-    \"protective\".\"_curr_i_brand_id\" as \"curr_i_brand_id\",
-    \"protective\".\"_curr_i_category_id\" as \"curr_i_category_id\",
-    \"protective\".\"_curr_i_class_id\" as \"curr_i_class_id\",
-    \"protective\".\"_curr_i_manufact_id\" as \"curr_i_manufact_id\"
-FROM
-    \"protective\"),
-kaput as (
-SELECT
-    \"macho\".\"_prev_i_brand_id\" as \"prev_i_brand_id\",
-    \"macho\".\"_prev_i_category_id\" as \"prev_i_category_id\",
-    \"macho\".\"_prev_i_class_id\" as \"prev_i_class_id\",
-    \"macho\".\"_prev_i_manufact_id\" as \"prev_i_manufact_id\",
-    \"macho\".\"_prev_prev_amt\" as \"prev_prev_amt\",
-    \"macho\".\"_prev_prev_cnt\" as \"prev_prev_cnt\"
-FROM
-    \"macho\"),
-rambunctious as (
-SELECT
-    \"kaput\".\"prev_i_brand_id\" as \"prev_i_brand_id\",
-    \"kaput\".\"prev_i_category_id\" as \"prev_i_category_id\",
-    \"kaput\".\"prev_i_class_id\" as \"prev_i_class_id\",
-    \"kaput\".\"prev_i_manufact_id\" as \"prev_i_manufact_id\",
-    \"kaput\".\"prev_prev_cnt\" as \"prev_yr_cnt\",
-    \"waggish\".\"curr_curr_amt\" - \"kaput\".\"prev_prev_amt\" as \"sales_amt_diff\",
-    \"waggish\".\"curr_curr_cnt\" - \"kaput\".\"prev_prev_cnt\" as \"sales_cnt_diff\",
-    \"waggish\".\"curr_curr_cnt\" as \"curr_yr_cnt\",
-    \"waggish\".\"curr_i_brand_id\" as \"curr_i_brand_id\",
-    \"waggish\".\"curr_i_category_id\" as \"curr_i_category_id\",
-    \"waggish\".\"curr_i_class_id\" as \"curr_i_class_id\",
-    \"waggish\".\"curr_i_manufact_id\" as \"curr_i_manufact_id\"
-FROM
-    \"waggish\"
-    INNER JOIN \"kaput\" on \"waggish\".\"curr_i_brand_id\" = \"kaput\".\"prev_i_brand_id\" AND \"waggish\".\"curr_i_category_id\" = \"kaput\".\"prev_i_category_id\" AND \"waggish\".\"curr_i_class_id\" = \"kaput\".\"prev_i_class_id\" AND \"waggish\".\"curr_i_manufact_id\" = \"kaput\".\"prev_i_manufact_id\")
-SELECT
-    \"quizzical\".\"prev_year\" as \"prev_year\",
-    \"quizzical\".\"year_\" as \"year_\",
-    \"rambunctious\".\"curr_i_brand_id\" as \"curr_i_brand_id\",
-    \"rambunctious\".\"curr_i_class_id\" as \"curr_i_class_id\",
-    \"rambunctious\".\"curr_i_category_id\" as \"curr_i_category_id\",
-    \"rambunctious\".\"curr_i_manufact_id\" as \"curr_i_manufact_id\",
-    \"rambunctious\".\"prev_yr_cnt\" as \"prev_yr_cnt\",
-    \"rambunctious\".\"curr_yr_cnt\" as \"curr_yr_cnt\",
-    \"rambunctious\".\"sales_cnt_diff\" as \"sales_cnt_diff\",
-    \"rambunctious\".\"sales_amt_diff\" as \"sales_amt_diff\"
-FROM
-    \"rambunctious\"
-    LEFT OUTER JOIN \"quizzical\" on 1=1
+    \"sweltering\"
+    INNER JOIN \"young\" on \"sweltering\".\"curr_i_brand_id\" = \"young\".\"prev_i_brand_id\" AND \"sweltering\".\"curr_i_category_id\" = \"young\".\"prev_i_category_id\" AND \"sweltering\".\"curr_i_class_id\" = \"young\".\"prev_i_class_id\" AND \"sweltering\".\"curr_i_manufact_id\" = \"young\".\"prev_i_manufact_id\"
 WHERE
-    cast(\"rambunctious\".\"curr_yr_cnt\" as numeric(17,2)) / cast(\"rambunctious\".\"prev_yr_cnt\" as numeric(17,2)) < 0.9
+    cast(\"sweltering\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"young\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
 
 ORDER BY 
-    \"rambunctious\".\"sales_cnt_diff\" asc nulls first,
-    \"rambunctious\".\"sales_amt_diff\" asc nulls first
+    \"sales_cnt_diff\" asc nulls first,
+    \"sales_amt_diff\" asc nulls first
 LIMIT (100)"""

@@ -1,11 +1,22 @@
 query_id = "18"
-generator = "v4"
-gen_length = 1623
+generator = "v3"
+gen_length = 1292
 preql_size = 317
 comp_size = 543
 generated_sql = """
 
 WITH 
+quizzical as (
+SELECT
+    \"lineitem\".\"l_orderkey\" as \"order_id\",
+    sum(\"lineitem\".\"l_quantity\") as \"qty_per_order\"
+FROM
+    \"memory\".\"lineitem\" as \"lineitem\"
+GROUP BY
+    1
+HAVING
+    \"qty_per_order\" > 300
+),
 thoughtful as (
 SELECT
     \"order_customer_customers\".\"c_custkey\" as \"order_customer_id\",
@@ -18,38 +29,18 @@ FROM
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"order_customer_customers\".\"c_custkey\" = \"order_orders\".\"o_custkey\"
 WHERE
     \"order_orders\".\"o_orderkey\" is not null
-),
-quizzical as (
+)
 SELECT
-    \"lineitem\".\"l_orderkey\" as \"order_id\",
-    sum(\"lineitem\".\"l_quantity\") as \"qty_per_order\"
-FROM
-    \"memory\".\"lineitem\" as \"lineitem\"
-GROUP BY
-    1
-HAVING
-    \"qty_per_order\" > 300
-),
-cooperative as (
-SELECT
-    \"thoughtful\".\"order_customer_id\" as \"order_customer_id\",
     \"thoughtful\".\"order_customer_name\" as \"order_customer_name\",
-    \"thoughtful\".\"order_date\" as \"order_date\",
+    \"thoughtful\".\"order_customer_id\" as \"order_customer_id\",
     \"thoughtful\".\"order_id\" as \"order_id\",
-    \"thoughtful\".\"order_total_price\" as \"order_total_price\"
-FROM
-    \"thoughtful\")
-SELECT
-    \"cooperative\".\"order_customer_name\" as \"order_customer_name\",
-    \"cooperative\".\"order_customer_id\" as \"order_customer_id\",
-    \"quizzical\".\"order_id\" as \"order_id\",
-    \"cooperative\".\"order_date\" as \"order_date\",
-    \"cooperative\".\"order_total_price\" as \"order_total_price\",
+    \"thoughtful\".\"order_date\" as \"order_date\",
+    \"thoughtful\".\"order_total_price\" as \"order_total_price\",
     \"quizzical\".\"qty_per_order\" as \"qty_per_order\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"quizzical\" on \"cooperative\".\"order_id\" = \"quizzical\".\"order_id\"
+    \"thoughtful\"
+    INNER JOIN \"quizzical\" on \"thoughtful\".\"order_id\" = \"quizzical\".\"order_id\"
 ORDER BY 
-    \"cooperative\".\"order_total_price\" desc,
-    \"cooperative\".\"order_date\" asc
+    \"thoughtful\".\"order_total_price\" desc,
+    \"thoughtful\".\"order_date\" asc
 LIMIT (100)"""

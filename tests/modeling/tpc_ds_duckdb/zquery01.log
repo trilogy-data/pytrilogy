@@ -1,12 +1,12 @@
 query_id = "01"
-generator = "v4"
-gen_length = 1962
+generator = "v3"
+gen_length = 1699
 preql_size = 459
 comp_size = 689
 generated_sql = """
 
 WITH 
-questionable as (
+thoughtful as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_billing_customer_id\",
     \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
@@ -21,38 +21,30 @@ WHERE
 GROUP BY
     1,
     2),
-wakeful as (
+abundant as (
 SELECT
-    \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_text_id\",
-    \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_billing_customer_id\"
+    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
+    avg(\"thoughtful\".\"total_returns\") as \"avg_store_returns\"
 FROM
-    \"memory\".\"store_returns\" as \"returns_store_returns\"
-    INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"returns_store_returns\".\"SR_CUSTOMER_SK\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\"
-GROUP BY
-    1,
-    2),
-yummy as (
-SELECT
-    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"questionable\".\"total_returns\") as \"avg_store_returns\"
-FROM
-    \"questionable\"
+    \"thoughtful\"
 GROUP BY
     1),
-vacuous as (
+questionable as (
 SELECT
-    \"wakeful\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+    \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_text_id\",
+    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
+    \"thoughtful\".\"total_returns\" as \"total_returns\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"thoughtful\".\"returns_billing_customer_id\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\")
+SELECT
+    \"questionable\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
 FROM
     \"questionable\"
-    INNER JOIN \"yummy\" on \"questionable\".\"returns_store_id\" = \"yummy\".\"returns_store_id\"
-    INNER JOIN \"wakeful\" on \"questionable\".\"returns_billing_customer_id\" = \"wakeful\".\"returns_billing_customer_id\"
+    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"
 WHERE
-    \"questionable\".\"total_returns\" > ( 1.2 * \"yummy\".\"avg_store_returns\" )
-)
-SELECT
-    \"vacuous\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
-FROM
-    \"vacuous\"
+    \"questionable\".\"total_returns\" > ( 1.2 * \"abundant\".\"avg_store_returns\" )
+
 ORDER BY 
-    \"vacuous\".\"returns_billing_customer_text_id\" asc
+    \"questionable\".\"returns_billing_customer_text_id\" asc
 LIMIT (100)"""

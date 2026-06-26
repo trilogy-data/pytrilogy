@@ -1,6 +1,6 @@
 query_id = "28"
-generator = "v4"
-gen_length = 103841
+generator = "v3"
+gen_length = 88000
 preql_size = 2694
 comp_size = 2056
 generated_sql = """
@@ -1177,178 +1177,7 @@ SELECT
 	ELSE null
 	END = 6 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
 	ELSE null
-	END) ELSE NULL END as \"_virt_filter_lp_cntd_3811294399709285\",
-    avg(CASE
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 1 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 2 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 3 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 4 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 5 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 6 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	ELSE null
-	END) as \"lp_avg\",
-    count(CASE
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 1 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 2 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 3 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 4 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 5 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 6 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	ELSE null
-	END) as \"lp_cnt\",
-    count(distinct CASE
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 1 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 8 AND 18 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 459 AND 1459 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 57 AND 77 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 2 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 90 AND 100 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 2323 AND 3323 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 31 AND 51 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 3 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 142 AND 152 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 12214 AND 13214 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 79 AND 99 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 4 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 135 AND 145 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 6071 AND 7071 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 38 AND 58 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 5 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 122 AND 132 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 836 AND 1836 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 17 AND 37 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	WHEN CASE
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 0 AND 5 THEN 1
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 6 AND 10 THEN 2
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 11 AND 15 THEN 3
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 16 AND 20 THEN 4
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
-	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
-	ELSE null
-	END = 6 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" BETWEEN 154 AND 164 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" BETWEEN 7326 AND 8326 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" BETWEEN 7 AND 27 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\"
-	ELSE null
-	END) as \"lp_cntd\"
+	END) ELSE NULL END as \"_virt_filter_lp_cntd_3811294399709285\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
 WHERE
@@ -1363,112 +1192,26 @@ GROUP BY
 	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 21 AND 25 THEN 5
 	WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END),
-abundant as (
+	END)
 SELECT
-    \"quizzical\".\"_virt_filter_lp_cntd_3739216114026085\" as \"_virt_filter_lp_cntd_3739216114026085\",
-    \"quizzical\".\"_virt_filter_lp_cntd_3811294399709285\" as \"_virt_filter_lp_cntd_3811294399709285\",
-    \"quizzical\".\"_virt_filter_lp_cntd_5327557161933280\" as \"_virt_filter_lp_cntd_5327557161933280\",
-    \"quizzical\".\"_virt_filter_lp_cntd_5736325163174944\" as \"_virt_filter_lp_cntd_5736325163174944\",
-    \"quizzical\".\"_virt_filter_lp_cntd_7690745280661633\" as \"_virt_filter_lp_cntd_7690745280661633\",
-    \"quizzical\".\"_virt_filter_lp_cntd_7846943073851735\" as \"_virt_filter_lp_cntd_7846943073851735\"
+    max(\"quizzical\".\"_virt_filter_lp_avg_9807684414024497\") as \"B1_LP\",
+    max(\"quizzical\".\"_virt_filter_lp_cnt_2224516900884374\") as \"B1_CNT\",
+    max(\"quizzical\".\"_virt_filter_lp_cntd_5327557161933280\") as \"B1_CNTD\",
+    max(\"quizzical\".\"_virt_filter_lp_avg_2861588206160358\") as \"B2_LP\",
+    max(\"quizzical\".\"_virt_filter_lp_cnt_6858115141264011\") as \"B2_CNT\",
+    max(\"quizzical\".\"_virt_filter_lp_cntd_7846943073851735\") as \"B2_CNTD\",
+    max(\"quizzical\".\"_virt_filter_lp_avg_2850673729313768\") as \"B3_LP\",
+    max(\"quizzical\".\"_virt_filter_lp_cnt_894357222675893\") as \"B3_CNT\",
+    max(\"quizzical\".\"_virt_filter_lp_cntd_5736325163174944\") as \"B3_CNTD\",
+    max(\"quizzical\".\"_virt_filter_lp_avg_4880359626544039\") as \"B4_LP\",
+    max(\"quizzical\".\"_virt_filter_lp_cnt_3577078747089769\") as \"B4_CNT\",
+    max(\"quizzical\".\"_virt_filter_lp_cntd_7690745280661633\") as \"B4_CNTD\",
+    max(\"quizzical\".\"_virt_filter_lp_avg_284549201004209\") as \"B5_LP\",
+    max(\"quizzical\".\"_virt_filter_lp_cnt_1394773238248231\") as \"B5_CNT\",
+    max(\"quizzical\".\"_virt_filter_lp_cntd_3739216114026085\") as \"B5_CNTD\",
+    max(\"quizzical\".\"_virt_filter_lp_avg_9446332470240154\") as \"B6_LP\",
+    max(\"quizzical\".\"_virt_filter_lp_cnt_8966209673081292\") as \"B6_CNT\",
+    max(\"quizzical\".\"_virt_filter_lp_cntd_3811294399709285\") as \"B6_CNTD\"
 FROM
     \"quizzical\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"quizzical\".\"lp_cntd\"),
-cooperative as (
-SELECT
-    \"quizzical\".\"_virt_filter_lp_cnt_1394773238248231\" as \"_virt_filter_lp_cnt_1394773238248231\",
-    \"quizzical\".\"_virt_filter_lp_cnt_2224516900884374\" as \"_virt_filter_lp_cnt_2224516900884374\",
-    \"quizzical\".\"_virt_filter_lp_cnt_3577078747089769\" as \"_virt_filter_lp_cnt_3577078747089769\",
-    \"quizzical\".\"_virt_filter_lp_cnt_6858115141264011\" as \"_virt_filter_lp_cnt_6858115141264011\",
-    \"quizzical\".\"_virt_filter_lp_cnt_894357222675893\" as \"_virt_filter_lp_cnt_894357222675893\",
-    \"quizzical\".\"_virt_filter_lp_cnt_8966209673081292\" as \"_virt_filter_lp_cnt_8966209673081292\"
-FROM
-    \"quizzical\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"quizzical\".\"lp_cnt\"),
-cheerful as (
-SELECT
-    \"quizzical\".\"_virt_filter_lp_avg_284549201004209\" as \"_virt_filter_lp_avg_284549201004209\",
-    \"quizzical\".\"_virt_filter_lp_avg_2850673729313768\" as \"_virt_filter_lp_avg_2850673729313768\",
-    \"quizzical\".\"_virt_filter_lp_avg_2861588206160358\" as \"_virt_filter_lp_avg_2861588206160358\",
-    \"quizzical\".\"_virt_filter_lp_avg_4880359626544039\" as \"_virt_filter_lp_avg_4880359626544039\",
-    \"quizzical\".\"_virt_filter_lp_avg_9446332470240154\" as \"_virt_filter_lp_avg_9446332470240154\",
-    \"quizzical\".\"_virt_filter_lp_avg_9807684414024497\" as \"_virt_filter_lp_avg_9807684414024497\"
-FROM
-    \"quizzical\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"quizzical\".\"lp_avg\"),
-uneven as (
-SELECT
-    max(\"abundant\".\"_virt_filter_lp_cntd_3739216114026085\") as \"B5_CNTD\",
-    max(\"abundant\".\"_virt_filter_lp_cntd_3811294399709285\") as \"B6_CNTD\",
-    max(\"abundant\".\"_virt_filter_lp_cntd_5327557161933280\") as \"B1_CNTD\",
-    max(\"abundant\".\"_virt_filter_lp_cntd_5736325163174944\") as \"B3_CNTD\",
-    max(\"abundant\".\"_virt_filter_lp_cntd_7690745280661633\") as \"B4_CNTD\",
-    max(\"abundant\".\"_virt_filter_lp_cntd_7846943073851735\") as \"B2_CNTD\"
-FROM
-    \"abundant\"),
-questionable as (
-SELECT
-    max(\"cooperative\".\"_virt_filter_lp_cnt_1394773238248231\") as \"B5_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_2224516900884374\") as \"B1_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_3577078747089769\") as \"B4_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_6858115141264011\") as \"B2_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_894357222675893\") as \"B3_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_8966209673081292\") as \"B6_CNT\"
-FROM
-    \"cooperative\"),
-thoughtful as (
-SELECT
-    max(\"cheerful\".\"_virt_filter_lp_avg_284549201004209\") as \"B5_LP\",
-    max(\"cheerful\".\"_virt_filter_lp_avg_2850673729313768\") as \"B3_LP\",
-    max(\"cheerful\".\"_virt_filter_lp_avg_2861588206160358\") as \"B2_LP\",
-    max(\"cheerful\".\"_virt_filter_lp_avg_4880359626544039\") as \"B4_LP\",
-    max(\"cheerful\".\"_virt_filter_lp_avg_9446332470240154\") as \"B6_LP\",
-    max(\"cheerful\".\"_virt_filter_lp_avg_9807684414024497\") as \"B1_LP\"
-FROM
-    \"cheerful\")
-SELECT
-    \"thoughtful\".\"B1_LP\" as \"B1_LP\",
-    \"questionable\".\"B1_CNT\" as \"B1_CNT\",
-    \"uneven\".\"B1_CNTD\" as \"B1_CNTD\",
-    \"thoughtful\".\"B2_LP\" as \"B2_LP\",
-    \"questionable\".\"B2_CNT\" as \"B2_CNT\",
-    \"uneven\".\"B2_CNTD\" as \"B2_CNTD\",
-    \"thoughtful\".\"B3_LP\" as \"B3_LP\",
-    \"questionable\".\"B3_CNT\" as \"B3_CNT\",
-    \"uneven\".\"B3_CNTD\" as \"B3_CNTD\",
-    \"thoughtful\".\"B4_LP\" as \"B4_LP\",
-    \"questionable\".\"B4_CNT\" as \"B4_CNT\",
-    \"uneven\".\"B4_CNTD\" as \"B4_CNTD\",
-    \"thoughtful\".\"B5_LP\" as \"B5_LP\",
-    \"questionable\".\"B5_CNT\" as \"B5_CNT\",
-    \"uneven\".\"B5_CNTD\" as \"B5_CNTD\",
-    \"thoughtful\".\"B6_LP\" as \"B6_LP\",
-    \"questionable\".\"B6_CNT\" as \"B6_CNT\",
-    \"uneven\".\"B6_CNTD\" as \"B6_CNTD\"
-FROM
-    \"thoughtful\"
-    FULL JOIN \"questionable\" on 1=1
-    FULL JOIN \"uneven\" on 1=1
 LIMIT (100)"""

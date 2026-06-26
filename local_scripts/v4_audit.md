@@ -1,17 +1,15 @@
-# v4 compatibility audit (last refreshed 2026-06-25, post full-sweep)
+# v4 compatibility audit (last refreshed 2026-06-26, post full-sweep)
 
 This file is the current handoff for v4 discovery work. The authoritative skip list is
 `tests/v4_known_failing.py`; reclassify with `python local_scripts/v4_classify.py`
-when changing planner behavior. The classifier now (2026-06-25) buckets SIZE separately
-from SHAPE, runs each test worst-of-N (`V4_CLASSIFY_REPEATS`, default 3) to hedge against
-transient cross-run variance in the parallel harness (individual tests are deterministic
-in isolation — re-run a flaky-looking one serially to confirm), and **exits non-zero on a
-label ESCALATION** — an observed bucket more severe than the `v4_known_failing.py` reason
-allows (e.g. a CRASH filed under `_TPCDS_SIZE`). That guard exists because exactly that
-drift hid 4 crashes until 2026-06-25. It still only re-checks tests already on the skip
-list, so it is blind to regressions in tests added since the list was last curated —
-**a fresh full v4 sweep is the only way to confirm parity** after any new PR. Run it,
-don't trust the classifier alone:
+when changing planner behavior. The classifier buckets SIZE separately from SHAPE, runs
+each test worst-of-N (`V4_CLASSIFY_REPEATS`, default 3) to hedge transient cross-run
+variance in the parallel harness, and **exits non-zero on a label ESCALATION** — an
+observed bucket more severe than the `v4_known_failing.py` reason allows (e.g. a CRASH
+under `_TPCDS_SIZE`). The classifier runs each test in ISOLATION, which is *pessimistic*:
+many entries that fail alone pass in the full suite. So it only re-checks listed tests
+and can't confirm a prune by itself — **a full v4 sweep is the parity gate**, and a safe
+prune needs the entry passing in isolation AND in-suite:
 
 ```bash
 TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
@@ -19,69 +17,52 @@ TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
 
 ## Distance to swapping v4 on by default
 
-**Short answer: no wrong-rows remain, but there ARE 4 hidden crashes still to fix
-plus plan verbosity and a batch of shape-assert tests. Correctness is close, not done.**
+**Short answer: no wrong-rows, no crashes. What's left is plan verbosity on ~8 TPC-DS
+queries plus a batch of cosmetic shape-assert tests. Correctness is there.**
 
-v4 discovery is still off by default (`CONFIG.use_v4_discovery = False`). The full v4
-sweep below shows **0 failed**, but that is only because the crashes below are
-xfail-listed (and were *mis-bucketed* as size/shape, so they read as cosmetic). They
-are real correctness blockers. What stands between us and the flip, in rough order of
-effort:
+v4 discovery is still off by default (`CONFIG.use_v4_discovery = False`). As of 2026-06-26
+the full sweep is **0 failed** and the classifier reports **0 CRASH / 0 escalations**. All
+the crashes that were open on 2026-06-25 are fixed (existence-source `RecursionError`
+family, q2.1 union `BinderException`, `test_filter_constant` invalid-ref). What remains
+before flipping the default:
 
-1. **Genuine crashes (correctness) — 4 tests, 2 root causes.** Hidden under
-   `_TPCDS_SIZE`/`_MODELING` until the 2026-06-25 re-run.
-   - **Existence-source `RecursionError`** — `test_ten` (q10), `test_two_one` (q2.1),
-     and `test_rowset_arithmetic_argument_keeps_precedence`. `_attach_existence_sources`
-     attaches an existence parent whose shared subtree re-includes the node →
-     cyclic `resolve()` (`strategy_builder.py:340`). One fix clears all three.
-   - **Invalid-reference `ValueError`** — `test_filter_constant` (filter over a
-     constant renders an unresolvable reference, `dialect/base.py:2370`).
-   - Handoff: `local_scripts/v4_existence_recursion_handoff.md`. **Fix these first.**
-2. **Plan verbosity — 6 `_TPCDS_SIZE` tests** (q2.2, q30.alt, q47, q57, q73, q81).
-   Rows match the reference but the SQL trips `assert len(query) < ceiling`. The
-   substantive non-crash engineering. Handoff:
-   `local_scripts/v4_verbosity_handoff.md` (passthrough folding is the biggest lever;
-   q81/q30.alt dimension re-join in `v4_dimension_projection_rejoin_handoff.md`).
-3. **Cosmetic shape-assert tests — 10 `_INLINE` + 5 `_MODELING`.** Assert exact CTE/SQL
-   shape; v4's rows match but the string differs. To flip the default each must be
-   conditioned on `CONFIG.use_v4_discovery` or accepted. Mechanical, not risky.
+1. **Plan verbosity — 8 `_TPCDS_SIZE` tests** (q10, q2.1, q2.2, q30.alt, q73, q81 +
+   q23/q94). Rows match; the SQL trips `assert len(query) < ceiling`. The only
+   substantive engineering left. q23/q94 are a *deliberate* trade — the q16 all-ROOT
+   input-grain normalization (a correctness floor) adds CTEs; they need a grain-aware
+   skip. Handoffs: `v4_verbosity_handoff.md`, `v4_dimension_projection_rejoin_handoff.md`
+   (q81), and `project_v4_verbosity_regressions_0626` (q23/q94).
+2. **Cosmetic shape-assert tests — 10 `_INLINE` + 5 `_MODELING`.** Rows match, the SQL
+   string differs. To flip the default each must be conditioned on
+   `CONFIG.use_v4_discovery` or accepted. Mechanical, not risky.
 
-**q02 is NOT a blocker — it is already fixed** (`test_two` passes 8/8 in isolation;
-the earlier "renders an empty `""` identifier" claim was stale). q76 (`test_seventy_six`)
-also now passes. Both are prune-eligible from `v4_known_failing.py` pending a full sweep.
-
-## Correctness: at parity (full sweep 2026-06-25)
+## Correctness: at parity (full sweep 2026-06-26)
 
 Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
 
-**4153 passed, 20 skipped, 5 xfailed, 27 xpassed, 82 errors — 0 failed (exit 0).**
+**4281 passed, 20 skipped, 7 xfailed, 25 xpassed, 82 errors — 0 failed (exit 0, 8m35s).**
 
-- **0 failed** — no untracked wrong-rows / crash / invalid-render regressions.
+- **0 failed** — no wrong-rows / crash / invalid-render regressions.
 - The **82 errors** are all `tests/engine/test_clickhouse_server.py` — clickhouse.cloud
   connection errors, environmental (no local server). Ignore.
-- **xfailed / xpassed** are the tracked `v4_known_failing.py` entries. The list is
-  non-strict, so a now-passing entry shows xpassed and keeps the gate green rather than
-  flipping it red. To prune one, verify it passes in ISOLATION (`pytest <nodeid>` with
-  the env var), not just in the full suite.
+- **25 xpassed / 7 xfailed** are tracked `v4_known_failing.py` entries. NB the full suite
+  is *more* favorable than isolation — only ~5 of these xpass in isolation too. Prune
+  only entries that pass in BOTH (see below); the rest pass only with full-suite ordering
+  and would flip red if run alone.
 
-## Current tracked state — mostly SHAPE/SIZE, plus 4 hidden crashes
+## Current tracked state — SHAPE/SIZE only (no correctness)
 
-`tests/v4_known_failing.py` tracks the following (no wrong-rows, but the `_CRASH_*`
-entries are genuine correctness blockers, not cosmetic):
+`tests/v4_known_failing.py` tracks **23 entries** (after pruning 5 confirmed-passing on
+2026-06-26: q02, q47, q57, q76, `test_non_nullable_null_guard`). No crash labels remain.
 
-| bucket | meaning |
-| --- | --- |
-| `_INLINE` | SQL/CTE shape differs from v3; rows match. Cosmetic. |
-| `_MODELING` | modeling-sweep shape/CTE diffs; rows match. Cosmetic. |
-| `_TPCDS_SIZE` | rows match the official reference, generated SQL exceeds v3-tuned length ceilings. Verbosity. |
-| `_CRASH_EXISTENCE_RECURSION` | v4 RecursionError (existence-source cycle). Correctness. |
-| `_CRASH_INVALID_REF` | v4 renders an unresolvable reference. Correctness. |
+| bucket | count | meaning |
+| --- | --- | --- |
+| `_INLINE` | 10 | SQL/CTE shape differs from v3; rows match. Cosmetic. |
+| `_MODELING` | 5 | modeling-sweep shape/CTE diffs; rows match. Cosmetic. |
+| `_TPCDS_SIZE` | 6 | rows match the reference, SQL over the v3 length ceiling. Verbosity. |
+| `_TPCDS_SIZE_NORMALIZE` | 2 | q23/q94 — over ceiling because the q16 correctness floor (all-ROOT input-grain normalization) adds CTEs. Needs a grain-aware skip. |
 
-27 entries (re-bucketed 2026-06-25): 10 `_INLINE`, 5 `_MODELING`, 8 `_TPCDS_SIZE`
-(includes q02/q76 which now pass in isolation — prune pending a full sweep), 3
-`_CRASH_EXISTENCE_RECURSION`, 1 `_CRASH_INVALID_REF`. Two open themes: **the 4 crashes**
-(fix first — `v4_existence_recursion_handoff.md`) and **plan verbosity** (the size work
-below — `v4_verbosity_handoff.md`).
+The one open theme is **plan verbosity** (the size work below — `v4_verbosity_handoff.md`).
 
 ## Size / verbosity analysis (2026-06-25)
 

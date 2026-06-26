@@ -1,6 +1,6 @@
 query_id = "89"
-generator = "v4"
-gen_length = 4039
+generator = "v3"
+gen_length = 4119
 preql_size = 1566
 comp_size = 965
 generated_sql = """
@@ -30,7 +30,7 @@ GROUP BY
     4,
     5,
     6),
-abundant as (
+questionable as (
 SELECT
     \"thoughtful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
     \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
@@ -45,31 +45,31 @@ GROUP BY
     3,
     4)
 SELECT
-    coalesce(\"abundant\".\"store_sales_item_category\",\"thoughtful\".\"store_sales_item_category\") as \"store_sales_item_category\",
+    coalesce(\"questionable\".\"store_sales_item_category\",\"thoughtful\".\"store_sales_item_category\") as \"store_sales_item_category\",
     \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    coalesce(\"abundant\".\"store_sales_item_brand_name\",\"thoughtful\".\"store_sales_item_brand_name\") as \"store_sales_item_brand_name\",
-    coalesce(\"abundant\".\"store_sales_store_name\",\"thoughtful\".\"store_sales_store_name\") as \"store_sales_store_name\",
-    coalesce(\"abundant\".\"store_sales_store_company_name\",\"thoughtful\".\"store_sales_store_company_name\") as \"store_sales_store_company_name\",
+    coalesce(\"questionable\".\"store_sales_item_brand_name\",\"thoughtful\".\"store_sales_item_brand_name\") as \"store_sales_item_brand_name\",
+    coalesce(\"questionable\".\"store_sales_store_name\",\"thoughtful\".\"store_sales_store_name\") as \"store_sales_store_name\",
+    coalesce(\"questionable\".\"store_sales_store_company_name\",\"thoughtful\".\"store_sales_store_company_name\") as \"store_sales_store_company_name\",
     \"thoughtful\".\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
     \"thoughtful\".\"sum_sales\" as \"sum_sales\",
-    \"abundant\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+    \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"abundant\" on \"thoughtful\".\"store_sales_item_brand_name\" = \"abundant\".\"store_sales_item_brand_name\" AND \"thoughtful\".\"store_sales_item_category\" is not distinct from \"abundant\".\"store_sales_item_category\" AND \"thoughtful\".\"store_sales_store_company_name\" is not distinct from \"abundant\".\"store_sales_store_company_name\" AND \"thoughtful\".\"store_sales_store_name\" is not distinct from \"abundant\".\"store_sales_store_name\"
+    INNER JOIN \"questionable\" on \"thoughtful\".\"store_sales_item_brand_name\" = \"questionable\".\"store_sales_item_brand_name\" AND \"thoughtful\".\"store_sales_item_category\" is not distinct from \"questionable\".\"store_sales_item_category\" AND \"thoughtful\".\"store_sales_store_company_name\" is not distinct from \"questionable\".\"store_sales_store_company_name\" AND \"thoughtful\".\"store_sales_store_name\" is not distinct from \"questionable\".\"store_sales_store_name\"
 WHERE
     CASE
-	WHEN \"abundant\".\"avg_monthly_sales\" != 0 THEN abs(\"thoughtful\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\") / \"abundant\".\"avg_monthly_sales\"
+	WHEN \"questionable\".\"avg_monthly_sales\" != 0 THEN abs(\"thoughtful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    \"thoughtful\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\" asc,
-    coalesce(\"abundant\".\"store_sales_store_name\",\"thoughtful\".\"store_sales_store_name\") asc,
-    coalesce(\"abundant\".\"store_sales_item_category\",\"thoughtful\".\"store_sales_item_category\") asc,
+    \"thoughtful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\" asc,
+    coalesce(\"questionable\".\"store_sales_store_name\",\"thoughtful\".\"store_sales_store_name\") asc,
+    coalesce(\"questionable\".\"store_sales_item_category\",\"thoughtful\".\"store_sales_item_category\") asc,
     \"thoughtful\".\"store_sales_item_class\" asc,
-    coalesce(\"abundant\".\"store_sales_item_brand_name\",\"thoughtful\".\"store_sales_item_brand_name\") asc,
-    coalesce(\"abundant\".\"store_sales_store_company_name\",\"thoughtful\".\"store_sales_store_company_name\") asc,
+    coalesce(\"questionable\".\"store_sales_item_brand_name\",\"thoughtful\".\"store_sales_item_brand_name\") asc,
+    coalesce(\"questionable\".\"store_sales_store_company_name\",\"thoughtful\".\"store_sales_store_company_name\") asc,
     \"thoughtful\".\"store_sales_date_month_of_year\" asc,
     \"thoughtful\".\"sum_sales\" asc,
-    \"abundant\".\"avg_monthly_sales\" asc
+    \"questionable\".\"avg_monthly_sales\" asc
 LIMIT (100)"""
