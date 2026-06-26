@@ -251,7 +251,7 @@ function_binding_item    = { IDENTIFIER ~ function_binding_type? ~ function_bind
 function_binding_list    = { function_binding_item ~ ("," ~ function_binding_item)* ~ ","? }
 
 _DEF_TABLE     = @{ ^"def" ~ (" " | "\t" | "\r" | "\n")+ ~ ^"table" ~ (" " | "\t" | "\r" | "\n")+ }
-raw_function   = { ^"def" ~ IDENTIFIER ~ "(" ~ function_binding_list ~ ")" ~ "->" ~ conditional }
+raw_function   = { ^"def" ~ IDENTIFIER ~ ("(" ~ function_binding_list? ~ ")")? ~ "->" ~ conditional }
 table_function = { _DEF_TABLE ~ IDENTIFIER ~ "(" ~ function_binding_list? ~ ")" ~ "->" ~ ^"select" ~ expr ~ subselect_where? ~ subselect_order? ~ subselect_limit? }
 
 // =============================================================================

@@ -78,8 +78,14 @@ def raw_function(
 ) -> FunctionDeclaration:
     args = hydrated_children(node, hydrate)
     identity = str(args[0])
-    function_arguments: list[ArgBinding] = args[1]
-    output = args[2]
+    # The binding list is optional (`def name() -> ...` is a zero-arg macro);
+    # when absent there are only two children: the name and the output expr.
+    if len(args) >= 3:
+        function_arguments: list[ArgBinding] = args[1]
+        output = args[2]
+    else:
+        function_arguments = []
+        output = args[1]
     return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
 

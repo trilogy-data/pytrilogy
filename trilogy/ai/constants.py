@@ -60,7 +60,8 @@ LIMIT?
 A named query - a rowset is defined by a select with a preceding `WITH <name>`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
 A select without WITH is an anonymous query whose outputs are not reusable by name. 
 
-A rowset creates a "new" model; use joins to merge the rowset outputs back into the global namespace if needed.
+A rowset creates a "new" model with all concepts namespaced; `abc.def` output in a rowset called `foo` is
+referenced as `foo.abc.def`. Use joins to merge the rowset outputs back into the global namespace if needed.
 
 
 Full annotated example: `trilogy agent-info syntax example query-structure`.
@@ -77,11 +78,10 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 
 ### Fields and aliases
 
-- All fields exist in a global namespace; always use the full path (`enroll.student.id`).
+- Always use the full path (`enroll.student.id`) for a field; namespacing matters.
 - Every new expression in the select output must be aliased with `as` (e.g. `sum(births) as all_births`).
 - Aliases cannot appear inside calculations or in WHERE/HAVING/ORDER clauses: `sum(credits) as total_credits` is valid; `(sum(credits) as total_credits) + 1 as credits_plus_one` is not. Never alias a field to an existing name.
-- Always use a reasonable `LIMIT` on final queries if unspecified, unless the request is a time series or line chart.
-
+- Use a context dependent reasonable `LIMIT` on final queries if unspecified (data for charts typically must be complete)
 ## Filtering
 
 WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).

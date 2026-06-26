@@ -167,7 +167,9 @@ def main() -> int:
     parser.add_argument("--run", type=Path, help="run dir (default: latest)")
     parser.add_argument("--query-ids", help="comma-separated, e.g. 5,11,14")
     parser.add_argument(
-        "--out", type=Path, help="output md (default: <run>/error_scan.md)"
+        "--out",
+        type=Path,
+        help="output md (default: evals/tpcds_agent/error_scan_<run>.md)",
     )
     parser.add_argument("--max-query-chars", type=int, default=2200)
     parser.add_argument("--max-thought-chars", type=int, default=700)
@@ -177,7 +179,8 @@ def main() -> int:
     if not run.is_absolute():
         run = Path.cwd() / run
     ids = [int(x) for x in args.query_ids.split(",")] if args.query_ids else None
-    out_path = args.out or run / "error_scan.md"
+    # Default to the (findable) eval dir, not buried inside the run dir.
+    out_path = args.out or SPEC.eval_dir / f"error_scan_{run.name}.md"
 
     report, total = build_report(run, ids, args.max_query_chars, args.max_thought_chars)
     out_path.write_text(report, encoding="utf-8")

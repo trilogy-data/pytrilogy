@@ -3,3 +3,11 @@
 [3/5] Running agent per query (10 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
   [q02] starting (worker _worker_1)
   [q05] starting (worker _worker_0)
+  [q05] done in 315s (exit 0, score=fail)
+  [q11] starting (worker _worker_0)
+  [q11] done in 55s (exit 0, score=pass)
+  [q14] starting (worker _worker_0)
+  [q02] done in 461s (exit 2, score=exhausted)
+  [q17] starting (worker _worker_1)
+  [q14] done in 94s (exit 0, score=fail)
+  [q23] starting (worker _worker_0)
