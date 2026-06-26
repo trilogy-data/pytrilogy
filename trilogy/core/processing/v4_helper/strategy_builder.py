@@ -646,6 +646,12 @@ def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
     ):
         return node
     parent = node.parents[0]
+    # A UNION output is rendered by member-substitution from sibling columns of
+    # the parent scan; collapsing the projection into the scan drops those
+    # member columns (set_output_concepts keeps only the union outputs) and the
+    # union concept then renders as a bare, undefined column.
+    if any(c.derivation == Derivation.UNION for c in node.output_concepts):
+        return node
     visible = {concept.address for concept in parent.usable_outputs}
     if not node.output_concepts:
         return node

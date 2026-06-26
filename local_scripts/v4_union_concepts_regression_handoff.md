@@ -1,8 +1,23 @@
 # Regression: v4 union-concept branches render invalid SQL (union_concepts)
 
-Status: OPEN, **correctness regression** (invalid SQL / `BinderException`). Introduced
-by commit `350dcab60 more_fixes` (the q81 dimension-rejoin + q02 commit; strategy_builder
-+97). Passes through `921032cd5`; first fails at `350dcab60`.
+Status: **FIXED** (2026-06-25). Was a correctness regression (invalid SQL /
+`BinderException`) introduced by `350dcab60 more_fixes` — specifically the new
+`_elide_single_parent_passthrough` in strategy_builder.py.
+
+Fix: `_elide_single_parent_passthrough` now bails when any output concept has
+`Derivation.UNION`. A union arm's SelectNode-over-scan performs member
+substitution (each branch's local column → the union output); collapsing it into
+the datasource scan via `set_output_concepts([union outputs])` dropped the member
+columns the union concept needs, so it rendered as a bare/undefined column. The
+bug was hash-seed nondeterministic (the elide order varied), so a single passing
+run did not prove correctness.
+
+Verified: `test_v4_parity[union_concepts]` passes (5x for nondeterminism); full
+21/21 parity; full v4 sweep 4161 passed / 0 failed (82 errors are environmental
+clickhouse.cloud connection errors). Size wins from 350dcab60 unaffected (elide
+still applies to non-union nodes).
+
+--- original handoff below ---
 
 `test_v4_parity[union_concepts]` (a curated `cases/` parity case — these are supposed
 to pass) crashes under v4.

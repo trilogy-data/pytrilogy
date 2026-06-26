@@ -58,14 +58,6 @@ FROM
 WHERE
     \"wakeful\".\"customer_address_city\" != \"juicy\".\"bought_bought_city\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
 ORDER BY 
     \"wakeful\".\"customer_last_name\" asc nulls first,
     \"wakeful\".\"customer_first_name\" asc nulls first,
