@@ -25,11 +25,10 @@ re-joined the window node (`questionable`) — two joins where v3 needs one. v3 
 window the spine (it already exposes `sum_sales`) and joins `avg` straight onto it,
 computing the difference inline. The fix adds a group-graph lineage edge from the
 same-grain WINDOW sibling to the BASIC so the window's outputs ride through and
-`_fold_descendant_contributors` collapses them into one FINAL contributor. Verified
-stable across 5 hash seeds; broader v4 modeling sweep failure set unchanged; q72's
-nondeterministic flake is unrelated (identical SQL with/without the change). Lock:
-`tests/core/processing/test_v4_window_avg_difference.py`. (q47/q57 still listed in
-`v4_known_failing.py` — prune after a full sweep; they now xpass.)
+`_fold_descendant_contributors` collapses them into one FINAL contributor. Broader v4
+modeling sweep failure set unchanged; q72 emits identical SQL with/without the change
+(unaffected). Lock: `tests/core/processing/test_v4_window_avg_difference.py`. (q47/q57
+still listed in `v4_known_failing.py` — prune after a full sweep; they now xpass.)
 
 (Already cleared by the 2026-06-25 size fixes and now PASSING in isolation — prune from
 `v4_known_failing.py` after a full sweep: q02 `test_two`, q76 `test_seventy_six`.)

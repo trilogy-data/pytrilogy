@@ -757,17 +757,30 @@ def raise_if_disconnected_for(
     WHERE row args): raise the typed subgraph error when they span unconnected
     reference-graph components. Crossjoinable (single-row/constant) concepts are
     skipped by ``disconnected_components``, so e.g. two ungrouped scalar aggregates
-    still resolve via cross-join. Shared verbatim by the top-level select and
-    nested rowset inner selects — rowset discovery is recursive query discovery, so
-    the connectivity diagnostic must be identical. See ``disconnected_components``
-    for ``island_rowsets`` (the v4 pre-gate passes ``False``)."""
+    still resolve via cross-join. A disconnected subgraph consisting solely of
+    aggregate WHERE row-args is a global filter gate (not a missing join) and is
+    dropped before counting — see ``_is_global_aggregate_gate``. Shared verbatim by
+    the top-level select and nested rowset inner selects — rowset discovery is
+    recursive query discovery, so the connectivity diagnostic must be identical. See
+    ``disconnected_components`` for ``island_rowsets`` (the v4 pre-gate passes
+    ``False``)."""
     concepts = list(outputs)
     output_addresses = {c.address for c in concepts}
     if conditions:
         concepts += [
             c for c in conditions.row_arguments if c.address not in output_addresses
         ]
-    raise_if_disconnected(environment, concepts, g, island_rowsets=island_rowsets)
+    subgraphs = disconnected_components(
+        environment, concepts, g, island_rowsets=island_rowsets
+    )
+    subgraphs = [
+        grp for grp in subgraphs if not _is_global_aggregate_gate(grp, output_addresses)
+    ]
+    if len(subgraphs) > 1:
+        raise DisconnectedConceptsException(
+            format_disconnected_subgraphs_error(subgraphs),
+            subgraphs=[[c.address for c in group] for group in subgraphs],
+        )
 
 
 def format_disconnected_subgraphs_error(

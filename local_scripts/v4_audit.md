@@ -3,9 +3,10 @@
 This file is the current handoff for v4 discovery work. The authoritative skip list is
 `tests/v4_known_failing.py`; reclassify with `python local_scripts/v4_classify.py`
 when changing planner behavior. The classifier now (2026-06-25) buckets SIZE separately
-from SHAPE, runs each test worst-of-N (`V4_CLASSIFY_REPEATS`, default 3) to defeat the
-hash-seed nondeterminism of union/rowset queries, and **exits non-zero on a label
-ESCALATION** — an observed bucket more severe than the `v4_known_failing.py` reason
+from SHAPE, runs each test worst-of-N (`V4_CLASSIFY_REPEATS`, default 3) to hedge against
+transient cross-run variance in the parallel harness (individual tests are deterministic
+in isolation — re-run a flaky-looking one serially to confirm), and **exits non-zero on a
+label ESCALATION** — an observed bucket more severe than the `v4_known_failing.py` reason
 allows (e.g. a CRASH filed under `_TPCDS_SIZE`). That guard exists because exactly that
 drift hid 4 crashes until 2026-06-25. It still only re-checks tests already on the skip
 list, so it is blind to regressions in tests added since the list was last curated —

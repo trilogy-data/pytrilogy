@@ -19,9 +19,11 @@ and reports, asymmetrically:
   - downgrades -- observed LESS severe than the label's floor (e.g. a CRASH-labeled
     test that renders SIZE on this seed). Harmless/informational; does NOT fail.
 
-Many union/rowset entries are hash-seed nondeterministic (crash on one seed, oversized
-SQL on another), so each test is run REPEATS times (default 3, env V4_CLASSIFY_REPEATS)
-and the WORST outcome is kept -- a test that EVER crashes is a crash blocker.
+Individual tests are deterministic in isolation, but running many in parallel here can
+introduce transient cross-run variance (e.g. a borderline size test flips over/under its
+ceiling under contention). So each test is run REPEATS times (default 3, env
+V4_CLASSIFY_REPEATS) and the WORST outcome is kept, so a transient never masks a real
+crash/escalation. Re-run any test flagged "varied" in isolation -- it will be stable.
 
 Writes local_scripts/v4_classify.json + prints a summary table. NB: this only
 re-checks tests already on the skip list; a regression in a test NOT listed is
@@ -100,8 +102,8 @@ def _expected_buckets(reason: str) -> set[str] | None:
     return None  # unknown label -> report bucket, don't assert a mismatch
 
 
-# Worst-to-best severity. Used both to keep the worst of N nondeterministic runs and
-# to compare an empirical bucket against its label's allowed set.
+# Worst-to-best severity. Used both to keep the worst of the N repeat runs and to
+# compare an empirical bucket against its label's allowed set.
 SEVERITY = {
     "CRASH": 6,
     "TIMEOUT": 5,
@@ -206,11 +208,10 @@ def classify_one(node: str) -> dict:
     return _finalize(node, bucket, reason[:200])
 
 
-# Several entries (union/rowset queries) are hash-seed nondeterministic: the SAME test
-# crashes on one seed and renders valid-but-oversized SQL on another. A single run
-# therefore mis-files the crash as SIZE. We run each node REPEATS times and keep the
-# WORST outcome -- a test that EVER crashes is a crash blocker. (Memory note: union
-# queries are nondeterministic, run ~5x; bump V4_CLASSIFY_REPEATS for a thorough pass.)
+# Tests are deterministic in isolation, but the parallel pool below can show transient
+# cross-run variance (contention flips a borderline size test, etc.). Run each node
+# REPEATS times and keep the WORST outcome so a transient never masks a real crash.
+# Bump V4_CLASSIFY_REPEATS for a more thorough pass.
 REPEATS = int(os.environ.get("V4_CLASSIFY_REPEATS", "3"))
 
 
@@ -218,7 +219,7 @@ def _worst(runs: list[dict]) -> dict:
     worst = max(runs, key=lambda r: SEVERITY.get(r["bucket"], 4))
     seen = {r["bucket"] for r in runs}
     if len(seen) > 1:
-        worst = {**worst, "nondeterministic": sorted(seen)}
+        worst = {**worst, "varied": sorted(seen)}
     return worst
 
 
@@ -240,9 +241,7 @@ def main() -> int:
 
     by_node = {n: _worst(rs) for n, rs in runs.items()}
     for n, r in sorted(by_node.items()):
-        nd = (
-            " ~nondet" + str(r["nondeterministic"]) if r.get("nondeterministic") else ""
-        )
+        nd = " ~varied" + str(r["varied"]) if r.get("varied") else ""
         print(f"[{r['bucket']:7}] {n}{nd}")
 
     results = list(by_node.values())
@@ -253,11 +252,14 @@ def main() -> int:
     for b, c in counts.most_common():
         print(f"  {b:8} {c}")
 
-    nondet = [r for r in results if r.get("nondeterministic")]
-    if nondet:
-        print("\n--- NONDETERMINISTIC (bucket varied across runs; worst kept) ---")
-        for r in nondet:
-            print(f"  {r['node']}  {r['nondeterministic']} -> {r['bucket']}")
+    varied = [r for r in results if r.get("varied")]
+    if varied:
+        print(
+            "\n--- VARIED ACROSS PARALLEL RUNS (worst kept; re-run in isolation to "
+            "confirm — tests are deterministic there) ---"
+        )
+        for r in varied:
+            print(f"  {r['node']}  {r['varied']} -> {r['bucket']}")
     by_bucket = defaultdict(list)
     for r in results:
         by_bucket[r["bucket"]].append(r)
@@ -286,10 +288,10 @@ def main() -> int:
     if downgrades:
         print(
             "\n--- label downgrades (observed LESS severe than the reason; harmless, "
-            "often an intermittent/seed-dependent label -- verify before pruning) ---"
+            "often an over-conservative label -- verify before pruning) ---"
         )
         for r in downgrades:
-            nd = f" {r['nondeterministic']}" if r.get("nondeterministic") else ""
+            nd = f" {r['varied']}" if r.get("varied") else ""
             print(f"  {r['node']}  got {r['bucket']}, label allows {r['expected']}{nd}")
     # Only escalations fail the run; downgrades and XPASS are informational.
     return 1 if escalations else 0

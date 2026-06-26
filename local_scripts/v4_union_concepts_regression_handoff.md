@@ -8,14 +8,11 @@ Fix: `_elide_single_parent_passthrough` now bails when any output concept has
 `Derivation.UNION`. A union arm's SelectNode-over-scan performs member
 substitution (each branch's local column → the union output); collapsing it into
 the datasource scan via `set_output_concepts([union outputs])` dropped the member
-columns the union concept needs, so it rendered as a bare/undefined column. The
-bug was hash-seed nondeterministic (the elide order varied), so a single passing
-run did not prove correctness.
+columns the union concept needs, so it rendered as a bare/undefined column.
 
-Verified: `test_v4_parity[union_concepts]` passes (5x for nondeterminism); full
-21/21 parity; full v4 sweep 4161 passed / 0 failed (82 errors are environmental
-clickhouse.cloud connection errors). Size wins from 350dcab60 unaffected (elide
-still applies to non-union nodes).
+Verified: `test_v4_parity[union_concepts]` passes; full 21/21 parity; full v4 sweep
+4161 passed / 0 failed (82 errors are environmental clickhouse.cloud connection
+errors). Size wins from 350dcab60 unaffected (elide still applies to non-union nodes).
 
 --- original handoff below ---
 
