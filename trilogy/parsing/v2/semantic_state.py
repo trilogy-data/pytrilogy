@@ -530,10 +530,14 @@ class ConceptLookup:
         before the rowset statement stages any concept; COLLECT_SYMBOLS has
         already declared the full output paths by then."""
         addrs = {a for a in self._env.concepts.data if a.startswith(prefix)}
-        addrs.update(a for a, _ in self._state.pending_concepts() if a.startswith(prefix))
+        addrs.update(
+            a for a, _ in self._state.pending_concepts() if a.startswith(prefix)
+        )
         if self._symbol_table is not None:
             addrs.update(
-                a for a in self._symbol_table.visible_addresses() if a.startswith(prefix)
+                a
+                for a in self._symbol_table.visible_addresses()
+                if a.startswith(prefix)
             )
         return addrs
 

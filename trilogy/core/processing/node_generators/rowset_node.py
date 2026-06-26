@@ -196,6 +196,34 @@ def gen_rowset_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]} with grain {node.grain}"
     )
+    # A WHERE pushed up to this rowset can compare its outputs against *other*
+    # scoped-joined rowsets (q11/q23 period/channel comparisons). Those operands
+    # aren't in this rowset's outputs; source them alongside this rowset's output
+    # as one scoped-join merge and apply the predicate to that merge. Returning
+    # the bare node would silently drop the filter (or strand it as an
+    # unsatisfiable condition upstream). Sourcing without the condition avoids
+    # re-entering this branch for each operand rowset.
+    if conditions:
+        have = {x.address for x in node.output_concepts}
+        condition_targets = [
+            environment.concepts[r.address]
+            for r in conditions.row_arguments
+            if r.address not in have and r.address in environment.concepts
+        ]
+        if condition_targets:
+            merged = source_concepts(
+                mandatory_list=[concept] + local_optional + condition_targets,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+                conditions=None,
+                history=history,
+            )
+            if merged:
+                merged.add_condition(conditions.conditional)
+                merged.set_preexisting_conditions(conditions.conditional)
+                return merged
+
     remaining = unsatisfied_optionals(local_optional, node)
     if not remaining:
         logger.info(
