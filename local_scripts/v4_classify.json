@@ -10,16 +10,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
-    "expected": [
-      "SHAPE"
-    ],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection",
     "bucket": "SHAPE",
     "detail": "assert 'FULL JOIN' not in '\\nWITH \\nqu...eful\" on 1=1'",
@@ -30,9 +20,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate",
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
     "bucket": "SHAPE",
-    "detail": "AssertionError: assert local.user_post_count@Grain<local.user_id> in [local.avg_user_post_count@Grain<Abstract>]",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
     "expected": [
       "SHAPE"
     ],
@@ -43,6 +33,16 @@
     "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
+    "expected": [
+      "SHAPE"
+    ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: assert local.user_post_count@Grain<local.user_id> in [local.avg_user_post_count@Grain<Abstract>]",
     "expected": [
       "SHAPE"
     ],
@@ -168,6 +168,16 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
+    "expected": [
+      "SIZE"
+    ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two",
     "bucket": "SIZE",
     "detail": "AssertionError:",
@@ -186,16 +196,6 @@
     ],
     "escalation": false,
     "downgrade": true
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one",
-    "bucket": "SIZE",
-    "detail": "AssertionError:",
-    "expected": [
-      "SIZE"
-    ],
-    "escalation": false,
-    "downgrade": false
   },
   {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_seven",
@@ -228,9 +228,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
-    "bucket": "SIZE",
-    "detail": "AssertionError:",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [
       "SIZE"
     ],
@@ -238,9 +238,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_six",
-    "bucket": "XPASS",
-    "detail": "",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one",
+    "bucket": "SIZE",
+    "detail": "AssertionError:",
     "expected": [
       "SIZE"
     ],
