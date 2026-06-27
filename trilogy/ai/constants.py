@@ -40,7 +40,7 @@ merge <a> into <b> is the persistent equivalent of a join (whole query/file). Pr
 
 union (row stacking)
 
-union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result. Arms match by column position (same count/order/types as outputs) and may contain full SQL including subfilters and joins. Usable in a rowset — with combined as union(...) -> (...) with outputs using standard rowset namespaceing <rowset_name>.<path>.
+union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result. Arms match by column position (same count/order/types as outputs) and may contain full trilogy select statements (with their own filters + local joins). Usable in a rowset — with combined as union(...) -> (...) with outputs using standard rowset namespaceing <rowset_name>.<path>.
 
 Full example: trilogy agent-info syntax example union-stack-channels.
 
@@ -245,20 +245,6 @@ order by
     total_enrollments desc;
 ```
 
-**Shared rollup spec via `def`.** When several columns share the same calculation, factor it out:
-
-```
-def by_geo(metric) -> avg(metric::numeric(12,2))
-    by rollup student.country, student.state, student.county;
-
-select
-    student.country,
-    student.state,
-    student.county,
-    @by_geo(enroll.credits)      as avg_credits,
-    @by_geo(enroll.grade_points) as avg_grade_points
-limit 100;
-```
 """
 
 

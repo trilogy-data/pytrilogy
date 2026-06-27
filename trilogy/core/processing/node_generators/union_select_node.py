@@ -127,17 +127,36 @@ def gen_union_select_node(
     if not unsatisfied_optionals(local_optional, node):
         return node
 
-    # Enrich via the shared machinery: source the join keys (the union outputs)
-    # plus the missing optionals and FULL-merge them back onto the union.
-    return gen_enrichment_node(
-        node,
-        join_keys=list(ordered_outputs),
-        local_optional=local_optional,
-        environment=environment,
-        g=g,
-        depth=depth,
-        source_concepts=source_concepts,
-        log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
-        history=history,
-        conditions=conditions,
-    )
+    # Enrichment re-sources the union outputs (the join keys) alongside the
+    # missing optionals. When an optional is itself an aggregate *of* this
+    # union's outputs (e.g. a downstream rowset that sums the union columns),
+    # it can never be satisfied by enriching the union at its own grain, and
+    # re-sourcing the union outputs routes straight back here with the same
+    # optional set — an infinite loop. Guard re-entry for an in-progress
+    # (union, optionals) pair so the inner search bottoms out; the outer
+    # search then sources the union cleanly and aggregates it downstream.
+    with history.merge_in_progress(
+        [concept] + local_optional, conditions=conditions
+    ) as already_in_progress:
+        if already_in_progress:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} skipping union enrichment, "
+                f"already in a recursion for these concepts"
+            )
+            # Hand back the bare union (its own outputs); the unsatisfiable
+            # optionals are sourced separately one level up.
+            return node
+        # Enrich via the shared machinery: source the join keys (the union
+        # outputs) plus the missing optionals and FULL-merge them back on.
+        return gen_enrichment_node(
+            node,
+            join_keys=list(ordered_outputs),
+            local_optional=local_optional,
+            environment=environment,
+            g=g,
+            depth=depth,
+            source_concepts=source_concepts,
+            log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
+            history=history,
+            conditions=conditions,
+        )

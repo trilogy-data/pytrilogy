@@ -494,6 +494,45 @@ order by klabel asc;
     assert [tuple(r) for r in results] == [("one", 40), ("two", 10)]
 
 
+def test_rowset_over_union_rowset_multiref_downstream_no_recursion():
+    # A rowset (`rolled`) that aggregates a union-rowset (`combined`), consumed by
+    # a downstream select that references rolled's grain columns in CASE labels
+    # AND order-by alongside the measures, used to overflow the planner stack
+    # (uncaught RecursionError, q05). Root cause: `_carry_order_by_concepts` walked
+    # the order-by handle `rolled.k` past the materializing `rolled` rowset all the
+    # way to the inner union column (`local._combined_k`) and pulled THAT into the
+    # query grain — splitting it off the rolled node (disconnect) and forcing the
+    # union to be enriched with aggregates of itself (recursion). The carry must
+    # stop at the outer rowset's own output handle.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id as k, val as v, 0 as w),
+    (where yr = 2002 select item_id as k, 0 as v, val as w)
+) -> (k, v, w);
+
+with rolled as
+select combined.k,
+       sum(combined.v) as sv, sum(combined.w) as sw
+by rollup (combined.k);
+
+select
+  case when rolled.k is null then 'all' else cast(rolled.k as string) end as klabel,
+  coalesce(rolled.sv, 0) as sv,
+  coalesce(rolled.sv, 0) - coalesce(rolled.sw, 0) as net
+order by rolled.k asc nulls first;
+"""
+    results = executor.execute_text(query)[0].fetchall()
+    # rollup grand-total row (k null) first, then per-item; item 1: v=10 (2001),
+    # w=30 (2002); item 2: v=5, w=5.
+    assert [tuple(r) for r in results] == [
+        ("all", 15, -20),
+        ("1", 10, -20),
+        ("2", 5, 0),
+    ]
+
+
 def test_tvf_union_inline_from():
     # Inline `from union(...) -> (...)`: bare output names resolve in the
     # trailing select; same UNION semantics as the named form.

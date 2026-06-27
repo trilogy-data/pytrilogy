@@ -548,7 +548,19 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     if isinstance(lineage, BuildMultiSelectLineage):
         return concept
     if isinstance(lineage, BuildRowsetItem):
-        return _find_source_target(lineage.content)
+        # A handle whose own rowset IS the union/multiselect renders via
+        # find_source at the union node — carry the inner union column it wraps.
+        if isinstance(lineage.rowset.select, MultiSelectLineage):
+            return _find_source_target(lineage.content)
+        # A plain SELECT/aggregate rowset (e.g. a rollup over a union-rowset)
+        # materializes this grain column as a real output its own node exposes.
+        # Recursing on to the inner union column would split the carried key off
+        # the outer rowset's node and disconnect the query — carry THIS handle
+        # instead, but only when it ultimately wraps a union that needs the
+        # find_source carry at all (a plain inner column needs no carry).
+        if _find_source_target(lineage.content) is not None:
+            return concept
+        return None
     return None
 
 

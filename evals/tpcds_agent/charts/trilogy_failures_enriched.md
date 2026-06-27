@@ -1,226 +1,386 @@
-# Trilogy failure analysis — 20260627-131753
+# Trilogy failure analysis — 20260627-155703
 
-- Run `20260627-131753` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 222 | failed: 20 (9%)
+- Run `20260627-155703` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 230 | failed: 30 (13%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 9 | 45% |
-| `syntax-parse` | 9 | 45% |
-| `syntax-missing-alias` | 1 | 5% |
-| `join-resolution` | 1 | 5% |
+| `other` | 22 | 73% |
+| `syntax-parse` | 7 | 23% |
+| `syntax-missing-alias` | 1 | 3% |
 
 ## Detail
 
 ### `other`
 
-- `trilogy `
+- `trilogy run query02.preql`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 69 column 13 (char 2770). Re-issue the call with valid JSON arguments.
+  Syntax error in query02.preql: Ambiguous reference 'next_year.week_seq': matches ['next_year.weekly_dow.sales.date.week_seq', 'next_year.weekly_dow.week_seq']. Qualify the full path to disambiguate.
   ```
-- `trilogy run query14.preql`
+- `trilogy run query02.preql`
 
   ```text
-  Syntax error in query14.preql: HAVING references 'local.overall_avg', which is not in the SELECT projection (line 24). To make them available, you may add it to  the SELECT. Prefix each with `--` so it stays out of the output rows, keeping your HAVING as-is:
-      select <your existing columns>, --local.overall_avg
-  Or move it to WHERE to filter before aggregation; for an aggregate condition on a non-output grain, write `agg(x) by grain` inline in WHERE.
+  Resolution error in query02.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 27). The requested concepts split into 8 disconnected subgraphs: {curr.ws, nxt.tot}; {local._virt_filter_tot_3658236264874198}; {local._virt_filter_tot_4662246062701109}; {local._virt_filter_tot_4994720592717996}; {local._virt_filter_tot_7113132754175075}; {local._virt_filter_tot_7838499380833314}; {local._virt_filter_tot_7907278579064643}; {local._virt_filter_tot_8654975212883761}. Are you missing a join or merge statement to relate them?
   ```
-- `trilogy file read query17.preql`
+- `trilogy run query02.preql`
+
+  ```text
+  Syntax error in query02.preql: Ambiguous reference 'ratios.ws': matches ['ratios.curr.ws', 'ratios.nxt.ws']. Qualify the full path to disambiguate.
+  ```
+- `trilogy file read query02.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-  Unexpected error in query64.preql: Invalid reference string found in query:
-  WITH
-  quizzical as (
-  SELECT
-      sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0)) as "_catalog_item_refunds_cat_refund_total"
-  FROM
-      "catalog_returns" as "cr_catalog_returns"
-  GROUP BY
-      "cr_catalog_returns"."CR_ITEM_SK"),
-  wakeful as (
-  SELECT
-      "quizzical"."_catalog_item_refunds_cat_refund_total" as "catalog_item_refunds_cat_refund_total"
-  FROM
-      "quizzical"),
-  cheerful as (
-  SELECT
-      INVALID_REFERENCE_BUG as "qualifying_items_q_item_id"
-  FROM
-      "wakeful"
-  WHERE
-      sum(INVALID_REFERENCE_BUG) > 2 * coalesce("wakeful"."catalog_item_refunds_cat_refund_total",0)
-
-  GROUP BY
-      1),
-  macho as (
-  SELECT
-      "ss_customer_address_customer_address"."CA_CITY" as "ss_customer_address_city",
-      "ss_customer_address_customer_address"."CA_STREET_NAME" as "ss_customer_address_street_name",
-      "ss_customer_address_customer_address"."CA_STREET_NUMBER" as "ss_customer_address_street_number",
-      "ss_customer_address_customer_address"."CA_ZIP" as "ss_customer_address_zip",
-      "ss_customer_first_sales_date_date"."D_YEAR" as "ss_customer_first_sales_date_year",
-      "ss_customer_first_shipto_date_date"."D_YEAR" as "ss_customer_first_shipto_date_year",
-      "ss_date_date"."D_YEAR" as "ss_date_year",
-      "ss_item_items"."I_ITEM_ID" as "ss_item_text_id",
-      "ss_item_items"."I_PRODUCT_NAME" as "ss_item_product_name",
-      "ss_sale_address_customer_address"."CA_CITY" as "ss_sale_address_city",
-      "ss_sale_address_customer_address"."CA_STREET_NAME" as "ss_sale_address_street_name",
-      "ss_sale_address_customer_address"."CA_STREET_NUMBER" as "ss_sale_address_street_number",
-      "ss_sale_address_customer_address"."CA_ZIP" as "ss_sale_address_zip",
-      "ss_store_store"."S_STORE_NAME" as "ss_store_name",
-      "ss_store_store"."S_ZIP" as "ss_store_zip"
-  FROM
-      "store_sales" as "ss_store_sales"
-      INNER JOIN "date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-      INNER JOIN "customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
-      INNER JOIN "store_returns" as "pr_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "pr_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "pr_store_returns"."SR_TICKET_NUMBER"
-      INNER JOIN "customer_demographics" as "ss_customer_demographic_customer_demographics" on "ss_store_sales"."SS_CDEMO_SK" = "ss_customer_demographic_customer_demographics"."CD_DEMO_SK"
-      INNER JOIN "customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
-      INNER JOIN "item" as "ss_item_items" on "pr_store_returns"."SR_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
-      LEFT OUTER JOIN "store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-      LEFT OUTER JOIN "customer_address" as "ss_sale_address_customer_address" on "ss_store_sales"."SS_ADDR_SK" = "ss_sale_address_customer_address"."CA_ADDRESS_SK"
-      LEFT OUTER JOIN "customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
-      LEFT OUTER JOIN "date_dim" as "ss_customer_first_sales_date_date" on "ss_customer_customers"."C_FIRST_SALES_DATE_SK" = "ss_customer_first_sales_date_date"."D_DATE_SK"
-      LEFT OUTER JOIN "date_dim" as "ss_customer_first_shipto_date_date" on "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" = "ss_customer_first_shipto_date_date"."D_DATE_SK"
-  WHERE
-      "ss_date_date"."D_YEAR" = 1999 and "pr_store_returns"."SR_ITEM_SK" in (select cheerful."qualifying_items_q_item_id" from cheerful where cheerful."qualifying_items_q_item_id" is not null) and "pr_store_returns"."SR_ITEM_SK" = "pr_store_returns"."SR_ITEM_SK" and "pr_store_returns"."SR_TICKET_NUMBER" = "pr_store_returns"."SR_TICKET_NUMBER" and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13,
-      14,
-      15,
-      "pr_store_returns"."SR_ITEM_SK",
-      "pr_store_returns"."SR_TICKET_NUMBER",
-      "ss_store_sales"."SS_COUPON_AMT",
-      "ss_store_sales"."SS_EXT_LIST_PRICE",
-      "ss_store_sales"."SS_EXT_WHOLESALE_COST",
-      (cast("pr_store_returns"."SR_TICKET_NUMBER" as string) || '-' || cast("pr_store_returns"."SR_ITEM_SK" as string))),
-  scrawny as (
-  SELECT
-      "macho"."ss_item_product_name" as "_store_agg_1999_product_name"
-  FROM
-      "macho"
-  GROUP BY
-      1,
-      "macho"."ss_customer_address_city",
-      "macho"."ss_customer_address_street_name",
-      "macho"."ss_customer_address_street_number",
-      "macho"."ss_customer_address_zip",
-      "macho"."ss_customer_first_sales_date_year",
-      "macho"."ss_customer_first_shipto_date_year",
-      "macho"."ss_date_year",
-      "macho"."ss_item_text_id",
-      "macho"."ss_sale_address_city",
-      "macho"."ss_sale_address_street_name",
-      "macho"."ss_sale_address_street_number",
-      "macho"."ss_sale_address_zip",
-      "macho"."ss_store_name",
-      "macho"."ss_store_zip"),
-  friendly as (
-  SELECT
-      "scrawny"."_store_agg_1999_product_name" as "store_agg_1999_product_name"
-  FROM
-      "scrawny")
-  SELECT
-      "friendly"."store_agg_1999_product_name" as "store_agg_1999_product_name"
-  FROM
-      "friendly"
-  GROUP BY
-      1
-  LIMIT (10), this should never occur. Please create an issue to report this.
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-  Unexpected error in query64.preql: Invalid reference string found in query:
-  WITH
-  quizzical as (
-  SELECT
-      sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0)) as "_catalog_item_refunds_cat_refund_total"
-  FROM
-      "catalog_returns" as "cr_catalog_returns"
-  GROUP BY
-      "cr_catalog_returns"."CR_ITEM_SK"),
-  wakeful as (
-  SELECT
-      "quizzical"."_catalog_item_refunds_cat_refund_total" as "catalog_item_refunds_cat_refund_total"
-  FROM
-      "quizzical")
-  SELECT
-      INVALID_REFERENCE_BUG as "qualifying_items_q_item_id"
-  FROM
-      "wakeful"
-  WHERE
-      sum(INVALID_REFERENCE_BUG) > 2 * coalesce("wakeful"."catalog_item_refunds_cat_refund_total",0)
-
-  GROUP BY
-      1
-  LIMIT (10), this should never occur. Please create an issue to report this.
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-  Unexpected error in query64.preql: Invalid reference string found in query:
-  WITH
-  quizzical as (
-  SELECT
-      "cr_catalog_returns"."CR_ITEM_SK" as "_catalog_item_refunds_ref_item_id",
-      sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0)) as "_catalog_item_refunds_cat_refund_total"
-  FROM
-      "catalog_returns" as "cr_catalog_returns"
-  GROUP BY
-      1),
-  wakeful as (
-  SELECT
-      "quizzical"."_catalog_item_refunds_cat_refund_total" as "catalog_item_refunds_cat_refund_total",
-      "quizzical"."_catalog_item_refunds_ref_item_id" as "catalog_item_refunds_ref_item_id"
-  FROM
-      "quizzical"),
-  cheerful as (
-  SELECT
-      "wakeful"."catalog_item_refunds_ref_item_id" as "catalog_item_refunds_ref_item_id"
-  FROM
-      "wakeful"
-  WHERE
-      sum(INVALID_REFERENCE_BUG) <= 2 * "wakeful"."catalog_item_refunds_cat_refund_total"
-
-  GROUP BY
-      1,
-      "wakeful"."catalog_item_refunds_cat_refund_total")
-  SELECT
-      count("cheerful"."catalog_item_refunds_ref_item_id") as "item_count"
-  FROM
-      "cheerful", this should never occur. Please create an issue to report this.
-  ```
-- `trilogy run query64.preql`
-
-  ```text
-  Resolution error in query64.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {cs.item.id}
   ```
 - `trilogy file read raw/all_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 43 column 12 (char 1845). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run query05.preql`
+
+  ```text
+  Syntax error in query05.preql: ORDER BY contains aggregate `grouping(coalesce(ref:sales_data._sch,ref:returns_data._rch))` (line 25), which is not a SELECT output. Aggregates cannot be computed in the ordering scope; add it to SELECT — prefix with `--` to keep it out of the output rows — and order by the alias, e.g. `select ..., --grouping(coalesce(ref:sales_data._sch,ref:returns_data._rch)) as g order by g desc`.
+  ```
+- `trilogy run query05.preql`
+
+  ```text
+  Syntax error in query05.preql: ORDER BY contains aggregate `grouping(coalesce(ref:sales_data._sch,ref:returns_data._rch))` (line 25), which is not a SELECT output. Aggregates cannot be computed in the ordering scope; add it to SELECT — prefix with `--` to keep it out of the output rows — and order by the alias, e.g. `select ..., --grouping(coalesce(ref:sales_data._sch,ref:returns_data._rch)) as g order by g desc`.
+  ```
+- `trilogy run query05.preql`
+
+  ```text
+  Unexpected error in query05.preql: (_duckdb.BinderException) Binder Error: GROUPING child "COALESCE('CATALOG', sparkling.returns_data__rch)" must be a grouping column
+
+  LINE 219:     grouping(coalesce( 'CATALOG' ,"sparkling"."returns_data__rch...
+                ^
+  [SQL:
+  WITH
+  scrawny as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "s_channel_dim_id",
+      "s_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "s_channel_dim_text_id"
+  FROM
+      "catalog_page" as "s_catalog_dim_unified"
+  WHERE
+      "s_catalog_dim_unified"."CP_CATALOG_PAGE_ID" is not null
+
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_dim_unified"."S_STORE_SK" as "s_channel_dim_id",
+      "s_store_dim_unified"."S_STORE_ID" as "s_channel_dim_text_id"
+  FROM
+      "store" as "s_store_dim_unified"
+  WHERE
+      "s_store_dim_unified"."S_STORE_ID" is not null
+
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_dim_unified"."web_site_sk" as "s_channel_dim_id",
+      "s_web_dim_unified"."web_site_id" as "s_channel_dim_text_id"
+  FROM
+      "web_site" as "s_web_dim_unified"
+  WHERE
+      "s_web_dim_unified"."web_site_id" is not null
+  ),
+  divergent as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "s_channel_dim_id",
+      "s_catalog_sales_unified"."CS_SOLD_DATE_SK" as "s_date_id",
+      "s_catalog_sales_unified"."CS_NET_PROFIT" as "s_net_profit"
+  FROM
+      "catalog_sales" as "s_catalog_sales_unified"
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_sales_unified"."SS_STORE_SK" as "s_channel_dim_id",
+      "s_store_sales_unified"."SS_SOLD_DATE_SK" as "s_date_id",
+      "s_store_sales_unified"."SS_NET_PROFIT" as "s_net_profit"
+  FROM
+      "store_sales" as "s_store_sales_unified"
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_sales_unified"."WS_WEB_SITE_SK" as "s_channel_dim_id",
+      "s_web_sales_unified"."WS_SOLD_DATE_SK" as "s_date_id",
+      "s_web_sales_unified"."WS_NET_PROFIT" as "s_net_profit"
+  FROM
+      "web_sales" as "s_web_sales_unified"),
+  cheerful as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_SK" as "s_return_channel_dim_id",
+      "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_ID" as "s_return_channel_dim_text_id"
+  FROM
+      "catalog_page" as "s_catalog_dim_return_unified"
+  WHERE
+      "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_ID" is not null
+
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_dim_return_unified"."S_STORE_SK" as "s_return_channel_dim_id",
+      "s_store_dim_return_unified"."S_STORE_ID" as "s_return_channel_dim_text_id"
+  FROM
+      "store" as "s_store_dim_return_unified"
+  WHERE
+      "s_store_dim_return_unified"."S_STORE_ID" is not null
+
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_dim_return_unified"."web_site_sk" as "s_return_channel_dim_id",
+      "s_web_dim_return_unified"."web_site_id" as "s_return_channel_dim_text_id"
+  FROM
+      "web_site" as "s_web_dim_return_unified"
+  WHERE
+      "s_web_dim_return_unified"."web_site_id" is not null
+  ),
+  abundant as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_returns_unified"."CR_ITEM_SK" as "s_item_id",
+      "s_catalog_returns_unified"."CR_ORDER_NUMBER" as "s_order_id",
+      "s_catalog_returns_unified"."CR_RETURN_AMOUNT" as "s_return_amount",
+      "s_catalog_returns_unified"."CR_RETURNED_DATE_SK" as "s_return_date_id",
+      "s_catalog_returns_unified"."CR_NET_LOSS" as "s_return_net_loss"
+  FROM
+      "catalog_returns" as "s_catalog_returns_unified"
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_returns_unified"."SR_ITEM_SK" as "s_item_id",
+      "s_store_returns_unified"."SR_TICKET_NUMBER" as "s_order_id",
+      "s_store_returns_unified"."SR_RETURN_AMT" as "s_return_amount",
+      "s_store_returns_unified"."SR_RETURNED_DATE_SK" as "s_return_date_id",
+      "s_store_returns_unified"."SR_NET_LOSS" as "s_return_net_loss"
+  FROM
+      "store_returns" as "s_store_returns_unified"
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_returns_unified"."WR_ITEM_SK" as "s_item_id",
+      "s_web_returns_unified"."WR_ORDER_NUMBER" as "s_order_id",
+      "s_web_returns_unified"."WR_RETURN_AMT" as "s_return_amount",
+      "s_web_returns_unified"."WR_RETURNED_DATE_SK" as "s_return_date_id",
+      "s_web_returns_unified"."WR_NET_LOSS" as "s_return_net_loss"
+  FROM
+      "web_returns" as "s_web_returns_unified"),
+  yummy as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_returns_unified"."CR_ITEM_SK" as "s_item_id",
+      "s_catalog_returns_unified"."CR_ORDER_NUMBER" as "s_order_id",
+      "s_catalog_returns_unified"."CR_CATALOG_PAGE_SK" as "s_return_channel_dim_id"
+  FROM
+      "catalog_returns" as "s_catalog_returns_unified"
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_returns_unified"."SR_ITEM_SK" as "s_item_id",
+      "s_store_returns_unified"."SR_TICKET_NUMBER" as "s_order_id",
+      "s_store_returns_unified"."SR_STORE_SK" as "s_return_channel_dim_id"
+  FROM
+      "store_returns" as "s_store_returns_unified"
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_sales_unified"."WS_ITEM_SK" as "s_item_id",
+      "s_web_sales_unified"."WS_ORDER_NUMBER" as "s_order_id",
+      "s_web_sales_unified"."WS_WEB_SITE_SK" as "s_return_channel_dim_id"
+  FROM
+      "web_sales" as "s_web_sales_unified"),
+  charming as (
+  SELECT
+      "divergent"."s_channel" as "_sales_data__sch",
+      "scrawny"."s_channel_dim_text_id" as "_sales_data__eid",
+      sum(coalesce("divergent"."s_net_profit",0)) as "_sales_data__gross_sales"
+  FROM
+      "divergent"
+      INNER JOIN "scrawny" on "divergent"."s_channel" = "scrawny"."s_channel" AND "divergent"."s_channel_dim_id" = "scrawny"."s_channel_dim_id"
+      INNER JOIN "date_dim" as "s_date_date" on "divergent"."s_date_id" = "s_date_date"."D_DATE_SK"
+  WHERE
+      cast("s_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' and "scrawny"."s_channel_dim_text_id" is not null
+
+  GROUP BY
+      1,
+      2),
+  vacuous as (
+  SELECT
+      "cheerful"."s_return_channel_dim_text_id" as "_returns_data__reid",
+      coalesce("abundant"."s_channel","cheerful"."s_channel","yummy"."s_channel") as "_returns_data__rch",
+      sum(coalesce("abundant"."s_return_amount",0)) as "_returns_data__total_returns",
+      sum(coalesce("abundant"."s_return_net_loss",0)) as "_returns_data__return_loss"
+  FROM
+      "yummy"
+      INNER JOIN "abundant" on "yummy"."s_channel" = "abundant"."s_channel" AND "yummy"."s_item_id" = "abundant"."s_item_id" AND "yummy"."s_order_id" = "abundant"."s_order_id"
+      INNER JOIN "date_dim" as "s_return_date_date" on "abundant"."s_return_date_id" = "s_return_date_date"."D_DATE_SK"
+      INNER JOIN "cheerful" on "yummy"."s_return_channel_dim_id" = "cheerful"."s_return_channel_dim_id" AND coalesce("yummy"."s_channel", "abundant"."s_channel") = "cheerful"."s_channel"
+  WHERE
+      cast("s_return_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' and "cheerful"."s_return_channel_dim_text_id" is not null
+
+  GROUP BY
+      1,
+      2),
+  premium as (
+  SELECT
+      "charming"."_sales_data__eid" as "sales_data__eid",
+      "charming"."_sales_data__gross_sales" as "sales_data__gross_sales",
+      "charming"."_sales_data__sch" as "sales_data__sch"
+  FROM
+      "charming"),
+  young as (
+  SELECT
+      "vacuous"."_returns_data__rch" as "returns_data__rch",
+      "vacuous"."_returns_data__reid" as "returns_data__reid",
+      "vacuous"."_returns_data__return_loss" as "returns_data__return_loss",
+      "vacuous"."_returns_data__total_returns" as "returns_data__total_returns"
+  FROM
+      "vacuous"),
+  puzzled as (
+  SELECT
+      "premium"."sales_data__gross_sales" as "sales_data__gross_sales",
+      "young"."returns_data__return_loss" as "returns_data__return_loss",
+      "young"."returns_data__total_returns" as "returns_data__total_returns",
+      coalesce("premium"."sales_data__eid","young"."returns_data__reid") as "returns_data__reid",
+      coalesce("premium"."sales_data__eid","young"."returns_data__reid") as "sales_data__eid",
+      coalesce("premium"."sales_data__sch","young"."returns_data__rch") as "returns_data__rch",
+      coalesce("premium"."sales_data__sch","young"."returns_data__rch") as "sales_data__sch",
+      coalesce(coalesce("premium"."sales_data__eid","young"."returns_data__reid"),coalesce("premium"."sales_data__eid","young"."returns_data__reid")) as "_virt_func_coalesce_8286327182651781",
+      coalesce(coalesce("premium"."sales_data__sch","young"."returns_data__rch"),coalesce("premium"."sales_data__sch","young"."returns_data__rch")) as "_virt_func_coalesce_9650987905243674"
+  FROM
+      "premium"
+      FULL JOIN "young" on "premium"."sales_data__eid" = "young"."returns_data__reid" AND "premium"."sales_data__sch" = "young"."returns_data__rch"),
+  sparkling as (
+  SELECT
+      "young"."returns_data__rch" as "returns_data__rch",
+      "young"."returns_data__reid" as "returns_data__reid",
+      coalesce( 'CATALOG' ,"young"."returns_data__rch") as "_virt_func_coalesce_9650987905243674",
+      coalesce("young"."returns_data__reid","young"."returns_data__reid") as "_virt_func_coalesce_8286327182651781"
+  FROM
+      "young"
+  GROUP BY
+      1,
+      2,
+      3,
+      4),
+  abhorrent as (
+  SELECT
+      "sparkling"."_virt_func_coalesce_8286327182651781" as "_virt_func_coalesce_8286327182651781",
+      "sparkling"."_virt_func_coalesce_9650987905243674" as "_virt_func_coalesce_9650987905243674",
+      grouping(coalesce( 'CATALOG' ,"sparkling"."returns_data__rch")) as "_g1",
+      grouping(coalesce( 'CATALOG' ,"sparkling"."returns_data__rch")) as "_virt_agg_grouping_1635810502380519",
+      grouping(coalesce("sparkling"."returns_data__reid","sparkling"."returns_data__reid")) as "_virt_agg_grouping_4828181370496500"
+  FROM
+      "sparkling"
+  GROUP BY
+      ROLLUP (2, 1))
+  SELECT
+      CASE
+  	WHEN "abhorrent"."_virt_agg_grouping_1635810502380519" = 1 THEN 'grand total'
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'STORE' THEN 'store channel'
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'CATALOG' THEN 'catalog channel'
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'WEB' THEN 'web channel'
+  	END as "channel_name",
+      CASE
+  	WHEN "abhorrent"."_virt_agg_grouping_4828181370496500" = 1 THEN null
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'STORE' THEN ('store' || coalesce("puzzled"."sales_data__eid","puzzled"."returns_data__reid"))
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'CATALOG' THEN ('catalog_page' || coalesce("puzzled"."sales_data__eid","puzzled"."returns_data__reid"))
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'WEB' THEN ('web_site' || coalesce("puzzled"."sales_data__eid","puzzled"."returns_data__reid"))
+  	END as "entity_id",
+      coalesce("puzzled"."sales_data__gross_sales",0) as "total_gross_sales",
+      coalesce("puzzled"."returns_data__total_returns",0) as "total_returns",
+      coalesce("puzzled"."sales_data__gross_sales",0) - coalesce("puzzled"."returns_data__return_loss",0) as "net_profit"
+  FROM
+      "puzzled"
+      FULL JOIN "abhorrent" on "puzzled"."_virt_func_coalesce_8286327182651781" is not distinct from "abhorrent"."_virt_func_coalesce_8286327182651781" AND "puzzled"."_virt_func_coalesce_9650987905243674" is not distinct from "abhorrent"."_virt_func_coalesce_9650987905243674"
+  ORDER BY
+      "abhorrent"."_g1" asc nulls first,
+      CASE
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'STORE' THEN 1
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'CATALOG' THEN 2
+  	WHEN coalesce("puzzled"."sales_data__sch","puzzled"."returns_data__rch") = 'WEB' THEN 3
+  	ELSE 0
+  	END asc nulls first,
+      coalesce("puzzled"."sales_data__eid","puzzled"."returns_data__reid") asc nulls first
+  LIMIT (100)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy file read query11.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query14.preql`
+
+  ```text
+  Syntax error in query14.preql: HAVING references 'local.overall_avg_sale', which is not in the SELECT projection (line 9). To make them available, you may add it to  the SELECT. Prefix each with `--` so it stays out of the output rows, keeping your HAVING as-is:
+      select <your existing columns>, --local.overall_avg_sale
+  Or move it to WHERE to filter before aggregation; for an aggregate condition on a non-output grain, write `agg(x) by grain` inline in WHERE.
+  ```
+- `trilogy file read query14.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/physical_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy database describe store_returns`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy run --import raw.physical_returns:sr select sr.ticket_number, sr.return_amount, sr.return_quantity, limit 1;`
+
+  ```text
+  Syntax error in stdin: Undefined concept: sr.return_quantity (line 2, col 44, in SELECT). Suggestions: ['sr.return_amount', 'sr.return_date.id', 'sr.return_date.year']
+  ```
+- `trilogy run query23.preql`
+
+  ```text
+  Syntax error in query23.preql: HAVING references 'local.max_customer_total', which is not in the SELECT projection (line 25). To make them available, you may add it to  the SELECT. Prefix each with `--` so it stays out of the output rows, keeping your HAVING as-is:
+      select <your existing columns>, --local.max_customer_total
+  Or move it to WHERE to filter before aggregation; for an aggregate condition on a non-output grain, write `agg(x) by grain` inline in WHERE.
+  ```
+- `trilogy file read query54.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+  Syntax error in query64.preql: Undefined concept: store_sales.customer_demographics.marital_status (line 27, col 9, in WHERE). Suggestions: ['store_sales.customer.demographics.marital_status', 'store_sales.return_customer.demographics.marital_status', 'store_sales.customer_demographic.marital_status', 'catalog_returns.sales.ship_customer.demographics.marital_status', 'catalog_returns.sales.bill_customer.demographics.marital_status', 'catalog_returns.sales.bill_customer_demographic.marital_status']
+  ```
+- `trilogy run --import raw/all_sales:s select s.date.year as yr, s.item.brand_id as brand, s.item.class_id as cls, s.item.category_id as cat, s.item.manufactur…io where s.item.category='Books' and yr in (2001,2002) having prev_qty is not null and ratio < 0.9 order by qty - prev_qty, amt - prev_amt limit 100;`
+
+  ```text
+  trilogy error: subprocess timed out after 600s.
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  Syntax error in query75.preql: Ambiguous reference 'yearly_with_lag.year': matches ['yearly_with_lag.yearly.deduped.year', 'yearly_with_lag.yearly.year']. Qualify the full path to disambiguate.
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  Syntax error in query75.preql: Ambiguous reference 'yearly_lag.yr': matches ['yearly_lag.yearly.deduped.yr', 'yearly_lag.yearly.yr']. Qualify the full path to disambiguate.
   ```
 - `trilogy file read raw/all_sales.preql`
 
@@ -230,181 +390,155 @@
 
 ### `syntax-parse`
 
-- `trilogy file write query05.preql --content import raw.all_sales as s;
-# Sales arm: get gross sales and net profit by channel entity
-with sales_arm as
-where s…
-by rollup (combined.channel_type, combined.entity_id)
-order by combined.channel_type asc nulls first, combined.entity_id asc nulls first
-limit 100;
-`
+- `trilogy file write query02.preql --content import raw.all_sales as sales;
+
+# Current year's weekly day-of-week sales (WEB + CATALOG)
+rowset curr as
+where sal… = 6) / max(nxt.tot ? nxt.dow = 6), 2) as saturday,
+inner join curr.ws + 53 = nxt.ws
+inner join curr.dow = nxt.dow
+order by curr.ws asc nulls first
+;`
 
   ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
+  refused to write 'query02.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [222]: Missing `;` — a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+   --> 4:1
+    |
+  4 | rowset curr as
+    | ^---
+    |
+    = expected EOI, block, or show_statement
   Location:
-  ...es, total_returns, net_profit) ???  select     case when groupin...
+  ...of-week sales (WEB + CATALOG) ??? rowset curr as where sales.cha...
 
-  Write stats: received 2469 chars / 2469 bytes; tail: …' nulls first, combined.entity_id asc nulls first\\nlimit 100;\\n'.
+  Write stats: received 1509 chars / 1509 bytes; tail: …'r join curr.dow = nxt.dow\\norder by curr.ws asc nulls first\\n;'.
   ```
-- `trilogy file write query14.preql -e -c import raw.all_sales as sales;
+- `trilogy file write query14.preql --content import raw.all_sales as s;
 
-# Per-line sale value (quantity * list_price)
-auto line_value <- sales.quantity * sale…        sales.item.brand_id asc nulls first,
-         sales.item.class_id asc nulls first,
-         sales.item.category_id asc nulls first
+# Overall average sale value (quantity * list_price) across all three channels in 1999…e
+order by
+    s.channel nulls first,
+    s.item.brand_id nulls first,
+    s.item.class_id nulls first,
+    s.item.category_id nulls first
 limit 100;`
 
   ```text
   refused to write 'query14.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 25:33
+    --> 21:1
      |
-  25 |   and struct(sales.item.brand_id, sales.item.class_id, sales.item.category_id)
-     |                                 ^---
+  21 | having
+     | ^---
      |
-     = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+     = expected limit or order_by
   Location:
-  ...and struct(sales.item.brand_id ??? , sales.item.class_id, sales.i...
+  ...class_id, s.item.category_id) ??? having     -- For the per-chan...
 
-  Write stats: received 1570 chars / 1570 bytes; tail: …',\\n         sales.item.category_id asc nulls first\\nlimit 100;'.
+  Write stats: received 1092 chars / 1092 bytes; tail: …'d nulls first,\\n    s.item.category_id nulls first\\nlimit 100;'.
   ```
-- `trilogy file write query23.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
+- `trilogy run --import raw.store_sales:ss where ss.date.year = 2001 and ss.return_date.year in (2001, 2002) select ss.item.text_id, count(ss.ticket_number) as cnt group by ss.item.text_id order by cnt desc limit 10;`
 
-# ─────────────────────…ales
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY — remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...ount(ss.ticket_number) as cnt ??? group by ss.item.text_id order...
+  ```
+- `trilogy file write query23.preql -e -c import raw.store_sales as store;
+import raw.catalog_sales as catalog;
+import raw.web_sales as web;
+import raw.item as …les
 order by
     combined_sales.last_name asc nulls first,
     combined_sales.first_name asc nulls first,
     total_sales asc nulls first
-limit 100;`
+limit 100;
+`
 
   ```text
   refused to write 'query23.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [104]: Definition or statement after WHERE/SELECT? Concept definitions (`auto`/`property`/`key`/`metric`/`rowset`), `def`, `datasource`, and `import` are top-level statements and must appear BEFORE the `where`/`select` block — they cannot sit inside a query. Move this statement above your `where`, and make sure each statement ends with `;`. Example: put `auto x <- sum(sales.amount) by store.id;` above `where ... select ...`.
-  Location:
-  ...sales as union(     (         ??? import raw.catalog_sales as cs...
-
-  Write stats: received 2753 chars / 3309 bytes; tail: …' asc nulls first,\\n    total_sales asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write query23.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# ─────────────────────…ales
-order by
-    combined_sales.last_name asc nulls first,
-    combined_sales.first_name asc nulls first,
-    total_sales asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'query23.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [211]: Expression in `by` clause must be wrapped in parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.
-  Location:
-  ...e.year between 2000 and 2003) ??? by substring(ss.item.desc, 1,
-
-  Write stats: received 2444 chars / 3000 bytes; tail: …' asc nulls first,\\n    total_sales asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy run --import raw.catalog_sales:cs --import raw.web_sales:ws select count(*) from (select cs.bill_customer.id as cid where cs.sold_date.year = 2000 and cs.sold_date.month_of_year = 2 limit 100) as t;`
-
-  ```text
-  Syntax error in stdin: Syntax [223]: `*` is not a valid argument — Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) — e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
-  Location:
-  ...t raw.web_sales as ws; select ??? count(*) from (select cs.bill_...
-  ```
-- `trilogy run select date.id, date.date, date.month_of_year, date.month_seq, date.year from raw/date.preql where date.year = 1998 and date.month_of_year = 12; duckdb`
-
-  ```text
-  Syntax error in stdin: Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
-  Location:
-  ...ar, date.month_seq, date.year ??? from raw/date.preql where date...
-  ```
-- `trilogy file write query64.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.catalog_returns as cr;
-import raw.physica…= catalog_ret_item_stats.ret_item_id
-where catalog_item_stats.cat_ext_list_price > 2 * coalesce(catalog_ret_item_stats.cat_refund_total, 0)
-limit 20;`
-
-  ```text
-  refused to write 'query64.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 12:5
+    --> 38:5
      |
-  12 |     --sum(coalesce(cr3.refunded_cash,0)+coalesce(cr3.reversed_charge,0)+coalesce(cr3.store_credit,0)) as cat_refund_total
+  38 |     where catalog.sold_date.year = 2000
      |     ^---
      |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+     = expected tvf_rel_arg
   Location:
-  ...ce) as cat_ext_list_price     ??? --sum(coalesce(cr3.refunded_ca...
+   union(     # Catalog arm     ??? where catalog.sold_date.year =...
 
-  Write stats: received 1096 chars / 1096 bytes; tail: …'alesce(catalog_ret_item_stats.cat_refund_total, 0)\\nlimit 20;'.
+  Write stats: received 2563 chars / 2563 bytes; tail: …'asc nulls first,\\n    total_sales asc nulls first\\nlimit 100;\\n'.
   ```
-- `trilogy file write query64.preql --content import raw.catalog_sales as cs;
-import raw.catalog_returns as cr;
-
-with catalog_item_sales as
-select
-    cs.item.i…_item_sales.cat_item_id = catalog_item_refunds.ref_item_id
-where catalog_item_sales.cat_ext_list_price <= 2 * catalog_item_refunds.cat_refund_total
-;`
+- `trilogy file write query54.preql --content import raw.catalog_sales as catalog;
+import raw.web_sales as web;
+import raw.store_sales as store;
+import raw.date…ment_times_50
+where store.customer.id in eligible_customer_ids
+order by segment nulls first, customer_count nulls first, segment_times_50
+limit 100;
+`
 
   ```text
-  refused to write 'query64.preql': not syntactically valid Trilogy.
+  refused to write 'query54.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [223]: `*` is not a valid argument — Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) — e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
+    --> 23:39
+     |
+  23 | auto eligible_customer_ids <- distinct(union(catalog_customers, web_customers));
+     |                                       ^---
+     |
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ...as cat_refund_total ;  select ??? count(*) as item_count inner j...
+  ...gible_customer_ids <- distinct ??? (union(catalog_customers, web_...
 
-  Write stats: received 568 chars / 568 bytes; tail: …'xt_list_price <= 2 * catalog_item_refunds.cat_refund_total\\n;'.
+  Write stats: received 1661 chars / 1661 bytes; tail: …'st, customer_count nulls first, segment_times_50\\nlimit 100;\\n'.
   ```
-- `trilogy file write query64.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.catalog_returns as cr;
-import raw.physica…   sum(ss.coupon_amt) as total_coupon_amt
-left join pr.item.id = ss.item.id
-left join pr.ticket_number = ss.ticket_number
-;
+- `trilogy file write query54.preql --content import raw.catalog_sales as catalog;
+import raw.web_sales as web;
+import raw.store_sales as store;
 
-select count(*) as cnt
-;`
+# month_seq of…store.customer.id in cat_cust or store.customer.id in web_cust
+order by segment nulls first, customer_count nulls first, segment_times_50
+limit 100;
+`
 
   ```text
-  refused to write 'query64.preql': not syntactically valid Trilogy.
+  refused to write 'query54.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [223]: `*` is not a valid argument — Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) — e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
+    --> 29:46
+     |
+  29 | auto segment <- round(cust_total_price / 50) by store.customer.id;
+     |                                              ^---
+     |
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-   = ss.ticket_number ;  select ??? count(*) as cnt ;
+   round(cust_total_price / 50) ??? by store.customer.id;  # Count...
 
-  Write stats: received 1714 chars / 1714 bytes; tail: …'ticket_number = ss.ticket_number\\n;\\n\\nselect count(*) as cnt\\n;'.
+  Write stats: received 1487 chars / 1487 bytes; tail: …'st, customer_count nulls first, segment_times_50\\nlimit 100;\\n'.
+  ```
+- `trilogy run --import raw/all_sales:s select s.item.brand_id, s.item.class_id, s.item.category_id, s.item.manufacturer_id, s.date.year, sum(coalesce(s.quantit…0)) as net_amt where s.item.category='Books' and s.date.year in (2001,2002) group by brand_id, class_id, category_id, manufacturer_id, year limit 10;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY — remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...nd s.date.year in (2001,2002) ??? group by brand_id, class_id, c...
   ```
 
 ### `syntax-missing-alias`
 
-- `trilogy run --import raw.catalog_sales:cs select count(cs.order_number) where cs.sold_date.year = 2000 and cs.sold_date.month_of_year = 2 limit 10;`
+- `trilogy run --import raw.catalog_sales:catalog --import raw.web_sales:web --import raw.store_sales:store 
+auto dec1998_month_seq <- 1187;
+auto cat_cust <- ca…date.month_seq between 1188 and 1190
+  and store.store.county = store.customer.address.county
+  and store.store.state = store.customer.address.state;`
 
   ```text
-  Syntax error in stdin: Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `count(cs.order_number) as order_number_count`
+  Syntax error in stdin: Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `count_distinct(store.customer.id) as id_count_distinct`
   Location:
-  ...select count(cs.order_number) ??? where cs.sold_date.year = 2000...
-  ```
-
-### `join-resolution`
-
-- `trilogy run query64.preql`
-
-  ```text
-  Resolution error in query64.preql: Could not resolve connections for query with output ['local.qualifying_item_id<Purpose.PROPERTY>Derivation.FILTER>'] from current model.
+  ...t_distinct(store.customer.id) ??? where (store.customer.id in ca...
   ```
