@@ -210,7 +210,14 @@ def gen_rowset_node(
             for r in conditions.row_arguments
             if r.address not in have and r.address in environment.concepts
         ]
-        if condition_targets:
+        # Only intercept when an operand lives in ANOTHER scoped rowset (the
+        # q11/q23 cross-rowset comparison): those operands can't be pushed down,
+        # so we merge the rowsets and apply the predicate post-join. A plain base
+        # concept (e.g. an outer `yr=1999` filter feeding an outer aggregate) must
+        # instead flow through the normal enrich path so the condition is pushed
+        # down into the scan — applying it here would compute the aggregate
+        # unfiltered and filter too late.
+        if any(t.derivation == Derivation.ROWSET for t in condition_targets):
             merged = source_concepts(
                 mandatory_list=[concept] + local_optional + condition_targets,
                 environment=environment,

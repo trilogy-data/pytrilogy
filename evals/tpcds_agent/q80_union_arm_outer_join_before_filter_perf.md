@@ -210,10 +210,19 @@ outer-joined table (e.g. `A LEFT JOIN B` then `B INNER JOIN C`).
 
 ## Fix (implemented 2026-06-26)
 
-`reorder_inner_before_left` in `trilogy/dialect/common.py`, called at the render boundary in
-`base.py` (`final_joins = reorder_inner_before_left(cte.joins or [], cte.base_name)`). Chose the
-render boundary because arm CTEs assemble their join list by concatenation (`self.joins +
-other.joins`), not via `resolve_join_order_v2`, so that was the one chokepoint covering every path.
+Implemented as a standard config-gated CTE optimization rule: `OrderInnerJoinsFirst` in
+`trilogy/core/optimizations/order_inner_joins.py`, flag `CONFIG.optimizations.order_inner_joins_first`
+(default on), appended **last** in `build_optimization_rule_plan` with
+`depends_on=(upgrade_join_on_guards.final, upgrade_outer_key_set_equivalence)`. The `depends_on`
+declares the real constraint — it must run after the join-type upgrade passes settle INNER↔OUTER,
+so the FULL/RIGHT barrier logic sees final types. Per-CTE reorder via the standard
+`optimize(cte, inverse_map)` contract (idempotent; `UnionCTE` has no FROM/JOIN, skipped).
+
+This is the single point every CTE's join list passes through, regardless of how the joins were
+assembled (`get_node_joins` vs. the concatenated arm/scoped-join path that q80's arm CTEs use —
+`self.joins + other.joins`). Earlier iterations (render-layer in `dialect/base.py`; a post-optimize
+loop in `query_processor.process_query`; a `resolve_join_order_v2` change that never fired because
+those arm CTEs don't reach it) were superseded by the optimization-rule form.
 
 **Correctness model (why a render-time reorder is safe without re-running content preservation):**
 - An INNER join is only bubbled ahead of **LEFT OUTER** joins, and only when none of the sources
@@ -224,8 +233,9 @@ other.joins`), not via `resolve_join_order_v2`, so that was the one chokepoint c
   filter on the anchor legitimately drops rows a reorder would resurrect. Nothing crosses them.
   Unnest / non-`Join` entries are barriers too. Relative order is otherwise preserved.
 
-**Validation:** q80 1.1s / 29 rows (per-arm A/B earlier proved 152.93s→0.54s, identical 3,453
-rows). Full suite `pytest -m "not adventureworks_execution"`: 4452 passed, the 5 failures are all
-pre-existing (verified identical with the reorder disabled). Unit tests:
+**Validation:** q80 ~1.1–1.4s / 29 rows (per-arm A/B earlier proved 152.93s→0.54s, identical 3,453
+rows). Full suite `pytest -m "not adventureworks_execution"`: **4470 passed, 0 failed**. Tests:
 `tests/test_join_order_inner_before_left.py` (INNER-before-LEFT, FULL/RIGHT barriers,
-dependency-respect, no-op cases).
+dependency-respect, no-ops) and `tests/optimization/test_optimization_pipeline.py`
+(rule appears last with the right `depends_on` when enabled; absent when disabled). Gating verified
+end-to-end: flag off → original LEFT-first order, flag on → INNER-first.

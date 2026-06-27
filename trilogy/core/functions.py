@@ -87,11 +87,19 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
     # Bucket by base family so that traits + parameterized variants of the
     # same family (e.g. numeric(15,2)::usd, numeric::usd) collapse together.
     reps = _representative_types(processed)
-    if len(reps) != 1:
-        raise InvalidSyntaxException(
-            f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)} for {str(args)}"
-        )
-    return reps[0]
+    if len(reps) == 1:
+        return reps[0]
+    # Distinct families are fine when pairwise compatible (e.g. mixing FLOAT /
+    # NUMERIC / INTEGER) — coalesce to their merged type, matching CASE and SQL
+    # (`coalesce(sum(x)::float, 0::numeric)`). Only genuinely-incompatible
+    # families (e.g. FLOAT vs STRING) are an error.
+    for i, a in enumerate(reps):
+        if any(not is_compatible_datatype(a, b) for b in reps[i + 1 :]):
+            raise InvalidSyntaxException(
+                f"All arguments to coalesce must be of compatible types, have "
+                f"{set(arg_to_datatype(x) for x in args)} for {str(args)}"
+            )
+    return merge_datatypes(reps)
 
 
 def get_transform_output_type(args: list[Any]) -> CONCRETE_TYPES:

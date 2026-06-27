@@ -6,6 +6,7 @@ from .join_hoist import JoinHoist
 from .join_upgrade import UpgradeJoinOnGuards
 from .merge_irrelevant_group_by import MergeIrrelevantGroupBy
 from .null_safe_join import SimplifyNullSafeJoins
+from .order_inner_joins import OrderInnerJoinsFirst
 from .predicate_pushdown import PredicatePushdown, PredicatePushdownRemove
 from .strip_redundant_not_null import StripRedundantNotNull
 from .union_dim_pushdown import UnionDimPushdown
@@ -27,4 +28,5 @@ __all__ = [
     "HideUnusedConcepts",
     "UnionDimPushdown",
     "StripRedundantNotNull",
+    "OrderInnerJoinsFirst",
 ]

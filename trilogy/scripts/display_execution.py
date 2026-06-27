@@ -355,7 +355,7 @@ def _emit_results_json(
     if results.full_column_stats is not None:
         col_stats: "list[dict] | None" = results.full_column_stats
         stats_note: "str | None" = (
-            "column_stats are computed over complete result "
+            "column_stats are computed over the FULL result "
             f"({results.full_row_count} rows, without limit applied)."
         )
     else:

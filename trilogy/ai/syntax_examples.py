@@ -531,6 +531,45 @@ order by unique_sc.course asc;
 """,
     ),
     SyntaxExample(
+        name="rollup",
+        title="Subtotals + grand total in one pass with `by rollup`",
+        summary=(
+            "`agg(x) by rollup d1, d2` computes the aggregate at every level "
+            "(leaf, per-d1 subtotal, grand total) in one pass; `grouping(d)` = 1 on "
+            "a rolled-up row — use it to LABEL subtotal/total rows and to sort by level"
+        ),
+        body="""\
+# `agg(x) by rollup d1, d2` computes the aggregate at MULTIPLE grain levels in one
+# pass — the grouping sets (d1, d2), (d1), () — i.e. per-(d1,d2) leaf rows, a
+# subtotal per d1, and a grand total. (`by cube d1, d2` = every combination.)
+import enrollments as enroll;
+
+# `grouping(d)` = 1 when d is ROLLED UP on a row (a subtotal/grand-total row), 0 on
+# a leaf — use it to LABEL those rows: the rolled-up dimension is otherwise NULL
+# and would collide with any genuine NULL in the data.
+select
+    case when grouping(enroll.department) = 1 then 'ALL DEPARTMENTS'
+         else enroll.department end as department,
+    case when grouping(enroll.course) = 1 then 'all courses'
+         else enroll.course end as course,
+    sum(enroll.credits) by rollup enroll.department, enroll.course as total_credits,
+    --grouping(enroll.department) + grouping(enroll.course) as _level
+order by _level asc, department asc nulls first, course asc nulls first
+limit 100;
+
+# ---------------------------------------------------------------------------
+# NOTES:
+#  - SORT BY LEVEL (leaves, then subtotals, then grand total): ORDER BY cannot
+#    compute a fresh aggregate, so PROJECT the level (`grouping(a) + grouping(b)`)
+#    as a HIDDEN (`--`) column and sort by its alias — `_level` above.
+#  - NULL-safe / COMPOSITE measures: put `by rollup` on EVERY operand —
+#    `(sum(a) by rollup d1, d2) - (sum(b) by rollup d1, d2) as net`. Binding it to
+#    one operand (`sum(a) - sum(b) by rollup ...`) leaves the others at LEAF grain,
+#    so they come out NULL on the subtotal/grand-total rows. To zero-fill a single
+#    measure, wrap the whole aggregate: `coalesce(sum(a) by rollup d1, d2, 0)`.
+""",
+    ),
+    SyntaxExample(
         name="rank-over-rollup",
         title="Rank within each rollup level (one window over the rollup)",
         summary=(

@@ -53,7 +53,7 @@ select
     sales.item.class_id as class_l0,
     sales.item.category_id as category_l0,
     sum(sales.quantity * sales.list_price) as bucket_sum_l0,
-    sum(sales.row_one) as bucket_count_l0,
+    sum(sales.sale_line_item_counter) as bucket_count_l0,
     --avg_sales.average_sales,
 having
     bucket_sum_l0 > avg_sales.average_sales

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import Join
-from trilogy.dialect.common import reorder_inner_before_left
+from trilogy.core.optimizations.order_inner_joins import order_inner_joins_before_left
 
 
 def _join(right: str, jointype: JoinType, lefts: list[str]) -> Join:
@@ -25,7 +25,7 @@ def _join(right: str, jointype: JoinType, lefts: list[str]) -> Join:
 
 
 def _order(joins: list[Join], base: str) -> list[str]:
-    return [j.right_cte.name for j in reorder_inner_before_left(joins, base)]
+    return [j.right_cte.name for j in order_inner_joins_before_left(joins, base)]
 
 
 def test_inner_bubbles_ahead_of_left():

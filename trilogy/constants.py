@@ -54,6 +54,7 @@ class Optimizations:
     strip_redundant_not_null: bool = True
     join_hoist: bool = True
     union_dim_pushdown: bool = True
+    order_inner_joins_first: bool = True
 
 
 @dataclass

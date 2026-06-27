@@ -144,11 +144,7 @@ from trilogy.core.table_processor import (
     process_create_statement,
 )
 from trilogy.core.utility import safe_quote
-from trilogy.dialect.common import (
-    render_join,
-    render_unnest,
-    reorder_inner_before_left,
-)
+from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import safe_open
 
@@ -1995,7 +1991,7 @@ class BaseDialect:
         if not cte.render_from_clause:
             final_joins = []
         else:
-            final_joins = reorder_inner_before_left(cte.joins or [], cte.base_name)
+            final_joins = cte.joins or []
         where: BoolExpr | None = None
         having: BoolExpr | None = None
         qualify: BoolExpr | None = None

@@ -17,9 +17,10 @@ import warehouse as warehouse;
 import ship_mode as ship_mode;
 
 key channel enum<string>['WEB', 'CATALOG', 'STORE']; # the channel for the sale/return: WEB, CATALOG, or STORE
-key channel_dim_id int; # the ID of the store/web/site for order (web_site_id, catalog_id, or store_id as appropriate)
-key return_channel_dim_id int; # the ID of the store/web/site used for the return (web_site_id, catalog_id, or store_id as appropriate). Any value in here is in channel_dim_id.
-key outlet_id int; # the channel's selling-outlet surrogate id, per channel: store_sk (STORE), call_center_sk (CATALOG), web_page_sk (WEB). Distinct from channel_dim_id (which is store/web_site/catalog_page).
+key channel_dim_id int; # the ID of the store/web/site for each order (web_site_id, catalog_id, or store_id as appropriate)
+key return_channel_dim_id int; # the ID of the store/web/site used for the return; Unrelated to channel_id
+
+key outlet_id int; # the channel's selling-outlet surrogate id, per channel: store (STORE), call cent for (CATALOG), web_page (WEB). Distinct from channel_dim_id (which is store/web_site/catalog_page).
 key order_id int; # the ID of the order (ticket number for store, order number for web/catalog)
 
 # return identifier
@@ -51,7 +52,7 @@ properties <order_id, channel, item.id> (
     return_quantity int?, # Units returned on the line. GOTCHA: NULL even when a return exists (is_returned=true) for some TPC-DS rows. Presence is independent of this measure — don't coalesce to 0 unless asked (the reference keeps the NULL through its derived percentages/averages).
     return_net_loss float?, # Net financial loss on the return for the line.
     is_returned bool?, # Marks a returned line. Sourced only as raw true from the returns datasources, so it is true-or-NULL here (no explicit false): test "not returned" as `is_returned is null`, not `= false`.
-    row_one int?, # Constant 1 from the sales datasources only (NOT return-only rows): counts sale presence. Use is_returned for return presence; `row_one ? is_returned` counts lines with BOTH a sale and a return.
+    sale_line_item_counter int?, # counter of sales rows (NOT return-only rows). Use is_returned for return presence; `sale_line_item_counter ? is_returned` counts lines with BOTH a sale and a return.
 );
 
 partial datasource web_sales_unified (
@@ -82,7 +83,7 @@ partial datasource web_sales_unified (
     WS_NET_PROFIT: net_profit,
     WS_NET_PAID: net_paid,
     WS_NET_PAID_INC_TAX: net_paid_inc_tax,
-    raw(''' 1 '''): row_one,
+    raw(''' 1 '''): sale_line_item_counter,
 )
 grain (item.id, order_id, channel)
 complete where channel = 'WEB'
@@ -115,7 +116,7 @@ partial datasource catalog_sales_unified (
     CS_NET_PROFIT: net_profit,
     CS_NET_PAID: net_paid,
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
-    raw(''' 1 '''): row_one,
+    raw(''' 1 '''): sale_line_item_counter,
 )
 grain (item.id, order_id, channel)
 complete where channel = 'CATALOG'
@@ -148,7 +149,7 @@ partial datasource store_sales_unified (
     SS_NET_PROFIT: net_profit,
     SS_NET_PAID: net_paid,
     SS_NET_PAID_INC_TAX: net_paid_inc_tax,
-    raw(''' 1 '''): row_one,
+    raw(''' 1 '''): sale_line_item_counter,
 )
 grain (item.id, order_id, channel)
 complete where channel = 'STORE'

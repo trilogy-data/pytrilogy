@@ -19,6 +19,7 @@ def _optimization_flags(**overrides: bool) -> Iterator[None]:
         "strip_redundant_not_null",
         "union_dim_pushdown",
         "hide_unused_concepts",
+        "order_inner_joins_first",
     }
     original = {field: getattr(CONFIG.optimizations, field) for field in fields}
     try:
@@ -137,3 +138,27 @@ def test_pipeline_refires_group_merge_after_shape_cleanup():
     assert by_name[
         "merge_irrelevant_group_by.after_predicate_remove"
     ].refires_after == ("predicate_pushdown.remove",)
+
+
+def test_pipeline_orders_inner_joins_last_after_join_type_upgrades():
+    with _optimization_flags(
+        upgrade_condition_joins=True,
+        upgrade_outer_key_set_equivalence=True,
+        order_inner_joins_first=True,
+    ):
+        plan = build_optimization_rule_plan()
+
+    names = [phase.name for phase in plan]
+    assert names[-1] == "order_inner_joins_first"
+    by_name = {phase.name: phase for phase in plan}
+    assert by_name["order_inner_joins_first"].depends_on == (
+        "upgrade_join_on_guards.final",
+        "upgrade_outer_key_set_equivalence",
+    )
+
+
+def test_pipeline_omits_inner_join_ordering_when_disabled():
+    with _optimization_flags(predicate_pushdown=True):
+        plan = build_optimization_rule_plan()
+
+    assert "order_inner_joins_first" not in [phase.name for phase in plan]

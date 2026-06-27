@@ -328,6 +328,39 @@ def filter_relevant_subgraphs(
     ]
 
 
+def inject_property_key_terminals(
+    all_concepts: List[BuildConcept],
+    environment: BuildEnvironment,
+) -> List[BuildConcept]:
+    """Force the key of each requested property into the resolution as a mandatory
+    terminal, but only when that key is itself a foreign key bound at a finer grain
+    (i.e. the key has its own keys). Without it the minimal-tree search can bridge
+    the property's dimension straight to the anchor on a coarser shared grain
+    component (a non-unique key → fan-out) instead of routing through the
+    intermediate datasource that carries the key. Base entity keys (no keys of
+    their own) sit directly on the anchor, so forcing them only perturbs the plan;
+    only materialized keys can anchor a join."""
+    existing = {c.address for c in all_concepts}
+    additions: List[BuildConcept] = []
+    for c in all_concepts:
+        for key_addr in c.keys or set():
+            if key_addr in existing:
+                continue
+            key = environment.concepts.get(key_addr)
+            if (
+                key is None
+                or not key.keys
+                or key.canonical_address
+                not in environment.materialized_canonical_concepts
+            ):
+                continue
+            existing.add(key_addr)
+            additions.append(key)
+    if not additions:
+        return all_concepts
+    return unique(all_concepts + additions, "address")
+
+
 def resolve_weak_components(
     all_concepts: List[BuildConcept],
     environment: BuildEnvironment,
@@ -336,6 +369,7 @@ def resolve_weak_components(
     accept_partial: bool = False,
     search_conditions: BuildWhereClause | None = None,
 ) -> list[list[BuildConcept]] | None:
+    all_concepts = inject_property_key_terminals(all_concepts, environment)
     break_flag = False
     found = []
     search_graph = environment_graph.copy()

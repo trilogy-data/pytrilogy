@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.enums import ComparisonOperator, ConceptSource, JoinType, Modifier
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    ConceptSource,
+    JoinType,
+    Modifier,
+)
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
+    Conditional,
     Expr,
     HavingClause,
     Metadata,
@@ -70,9 +77,20 @@ def select_statement(
         elif atype is FromClause:
             from_clause_val = arg
         elif atype is WhereClause:
+            # Agents commonly split row filters across a pre-`select` `where` and
+            # a post-join `where`; both mean "filter input rows", so AND them into
+            # one clause rather than erroring (post-aggregation filtering is
+            # `having`, never a second `where`).
             if where is not None:
-                raise fail(node, "Multiple where clauses are not supported")
-            where = arg
+                where = WhereClause(
+                    conditional=Conditional(
+                        left=where.conditional,
+                        right=arg.conditional,
+                        operator=BooleanOperator.AND,
+                    )
+                )
+            else:
+                where = arg
         elif atype is HavingClause:
             having = arg
     if not select_items:
