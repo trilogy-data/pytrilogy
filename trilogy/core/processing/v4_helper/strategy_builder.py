@@ -50,10 +50,12 @@ from .condition_injection import (
 from .constants import (
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
 )
 from .edges import EdgeMap, dependency_subgraph, edge_kind
+from .functional_dependency import build_fd_determines
 from .models import (
     FinalAssemblyContract,
     FinalContributorContract,
@@ -73,6 +75,12 @@ from .source_policy import STRICT_SOURCE_POLICY, SourcePolicy
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE,
     Derivation.GROUP_TO,
+}
+
+_ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS = {
+    Derivation.ROOT,
+    Derivation.BASIC,
+    Derivation.FILTER,
 }
 
 
@@ -109,6 +117,18 @@ def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     if combined is None:
         return None
     return BuildWhereClause(conditional=combined)
+
+
+def _root_atoms_satisfiable_from(
+    atoms: list[BoolExpr],
+    concepts: list[BuildConcept],
+) -> list[BoolExpr]:
+    available = {concept.address for concept in concepts}
+    return [
+        atom
+        for atom in atoms
+        if all(concept_satisfiable(arg, available) for arg in atom.row_arguments)
+    ]
 
 
 def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
@@ -196,6 +216,14 @@ def _existence_for_group(
     return existence_concepts, existence_parents
 
 
+def _deep_copy_node(node: StrategyNode) -> StrategyNode:
+    """`copy()` shallow-shares `parents`; this recursively copies the whole
+    subtree so the result shares no node object with the original tree."""
+    clone = node.copy()
+    clone.parents = [_deep_copy_node(p) for p in node.parents]
+    return clone
+
+
 def _existence_parents_for(
     concepts: list[BuildConcept],
     built: dict[str, StrategyNode],
@@ -210,7 +238,17 @@ def _existence_parents_for(
             if any(o.address == concept.address for o in source_node.output_concepts):
                 if id(source_node) not in seen_parents:
                     seen_parents.add(id(source_node))
-                    existence_parents.append(source_node.copy())
+                    # `copy()` shallow-shares parents, so a candidate whose
+                    # subtree contains `skip` would wire `skip -> candidate ->
+                    # ... -> skip`, a row-stream cycle that recurses forever in
+                    # `resolve()`. Deep-copy that subtree so the shared node
+                    # becomes an independent duplicate (verbose but acyclic).
+                    if skip is not None and any(
+                        n is skip for n in _strategy_nodes(source_node)
+                    ):
+                        existence_parents.append(_deep_copy_node(source_node))
+                    else:
+                        existence_parents.append(source_node.copy())
                 break
     return existence_parents
 
@@ -394,6 +432,76 @@ def _parent_nodes_for(
         if node is not None:
             candidates.append((pgid, node))
 
+    if attrs[gid].derivation == Derivation.AGGREGATE:
+        inline_input_addresses = _aggregate_row_preserving_input_addresses(
+            [
+                concept
+                for addr in attrs[gid].primary_members
+                if (concept := _concept_at(environment, addr)) is not None
+            ]
+        )
+        while True:
+            expanded: list[tuple[str, StrategyNode]] = []
+            changed = False
+            for pgid, node in candidates:
+                # Don't fold a row-preserving group whose output is ALSO produced
+                # by another already-built node (a condition-phase twin
+                # materialized as its own CTE). Folding it here re-roots the
+                # aggregate on the grandparent, but the resolver then binds the
+                # folded column to that sibling CTE -- which isn't in the
+                # aggregate's FROM -> dangling reference (test_or_membership: the
+                # `_virt_filter` sum input is co-produced by the `in cat_qual /
+                # web_qual` membership feeder CTE).
+                pgid_outputs = set(attrs[pgid].primary_members)
+                co_materialized = any(
+                    other != pgid
+                    and attrs[other].depth_label == DepthLabel.D1
+                    and pgid_outputs
+                    & {concept.address for concept in built_other.output_concepts}
+                    for other, built_other in built.items()
+                )
+                row_preserving_input = (
+                    attrs[pgid].derivation
+                    in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                    and attrs[pgid].derivation != Derivation.ROOT
+                    and not co_materialized
+                    and set(attrs[pgid].primary_members).issubset(
+                        inline_input_addresses
+                    )
+                    and node.conditions is None
+                    and not node.force_group
+                    and not node.existence_concepts
+                    and not _contains_shape_barrier(node)
+                    and not _group_filter_has_existence(attrs, environment, pgid)
+                )
+                if not row_preserving_input:
+                    expanded.append((pgid, node))
+                    continue
+                input_parents = [
+                    (fgid, built[fgid])
+                    for fgid in group_graph.predecessors(pgid)
+                    if fgid != FINAL_NODE_ID
+                    and edge_kind(group_edges, fgid, pgid) != EdgeKind.EXISTENCE
+                    and fgid in built
+                ]
+                available = {
+                    output.address
+                    for _, input_parent in input_parents
+                    for output in input_parent.output_concepts
+                }
+                if input_parents and _group_renderable_from(
+                    attrs, environment, pgid, available
+                ):
+                    expanded.extend(input_parents)
+                    changed = True
+                else:
+                    expanded.append((pgid, node))
+            deduped = list(dict(expanded).items())
+            if not changed or deduped == candidates:
+                candidates = deduped
+                break
+            candidates = deduped
+
     def provides(pgid: str, node: StrategyNode) -> set[str]:
         if isinstance(node, FilterNode) and node.conditions is not None:
             return set(attrs[pgid].primary_members) & needed
@@ -559,6 +667,57 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     return [p for p in parents if id(p) not in dropped]
 
 
+def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
+    if not isinstance(node, SelectNode):
+        return node
+    if (
+        node.datasource is not None
+        or len(node.parents) != 1
+        or node.conditions is not None
+        or node.preexisting_conditions is not None
+        or node.ordering is not None
+        or node.existence_concepts
+        or node.force_group
+    ):
+        return node
+    parent = node.parents[0]
+    # A UNION output is rendered by member-substitution from sibling columns of
+    # the parent scan; collapsing the projection into the scan drops those
+    # member columns (set_output_concepts keeps only the union outputs) and the
+    # union concept then renders as a bare, undefined column.
+    if any(c.derivation == Derivation.UNION for c in node.output_concepts):
+        return node
+    visible = {concept.address for concept in parent.usable_outputs}
+    if not node.output_concepts:
+        return node
+    if any(concept.address not in visible for concept in node.output_concepts):
+        return node
+    if any(concept.address not in visible for concept in node.input_concepts):
+        return node
+    collapsed = parent.copy()
+    collapsed.set_output_concepts(list(node.output_concepts), rebuild=False)
+    collapsed.hidden_concepts = set(node.hidden_concepts)
+    collapsed.partial_concepts = collapsed.derive_partials(list(node.partial_concepts))
+    collapsed.nullable_concepts = list(node.nullable_concepts)
+    collapsed.rollup_concepts = list(node.rollup_concepts)
+    collapsed.resolution_cache = None
+    return collapsed
+
+
+def _elide_passthrough_tree(
+    node: StrategyNode, seen: dict[int, StrategyNode] | None = None
+) -> StrategyNode:
+    seen = seen or {}
+    node_id = id(node)
+    if node_id in seen:
+        return seen[node_id]
+    node.parents = [_elide_passthrough_tree(parent, seen) for parent in node.parents]
+    node.resolution_cache = None
+    collapsed = _elide_single_parent_passthrough(node)
+    seen[node_id] = collapsed
+    return collapsed
+
+
 def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
     seen: set[str] = set()
     output: list[BuildConcept] = []
@@ -571,6 +730,116 @@ def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
         output.append(current)
         stack.extend(row_lineage_arguments(current))
     return output
+
+
+def _lineage_crosses_row_shape_barrier(
+    concept: BuildConcept, seen: set[str] | None = None
+) -> bool:
+    seen = seen or set()
+    if concept.address in seen:
+        return False
+    seen.add(concept.address)
+    if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+        return True
+    return any(
+        _lineage_crosses_row_shape_barrier(arg, seen)
+        for arg in row_lineage_arguments(concept)
+    )
+
+
+def _aggregate_row_preserving_inputs(concept: BuildConcept) -> list[BuildConcept]:
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return []
+    return [
+        arg
+        for arg in concept.lineage.function.arguments
+        if isinstance(arg, BuildConcept)
+        and arg.derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+        and not _lineage_crosses_row_shape_barrier(arg)
+    ]
+
+
+def _aggregate_row_preserving_input_addresses(outputs: list[BuildConcept]) -> set[str]:
+    addresses: set[str] = set()
+    for concept in outputs:
+        for input_concept in _aggregate_row_preserving_inputs(concept):
+            addresses.update(arg.address for arg in _row_lineage_closure(input_concept))
+    return addresses
+
+
+def _group_filter_has_existence(
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    gid: str,
+) -> bool:
+    for addr in attrs[gid].primary_members:
+        concept = _concept_at(environment, addr)
+        if not concept or not isinstance(concept.lineage, BuildFilterItem):
+            continue
+        if concept.lineage.where.existence_arguments:
+            return True
+    return False
+
+
+def _group_renderable_from(
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    gid: str,
+    available: set[str],
+) -> bool:
+    for addr in attrs[gid].primary_members:
+        concept = _concept_at(environment, addr)
+        if (
+            concept is None
+            or _lineage_crosses_row_shape_barrier(concept)
+            or not concept_satisfiable(concept, available)
+        ):
+            return False
+    return True
+
+
+def _aggregate_inputs_are_row_preserving(
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    parents: list[StrategyNode],
+) -> bool:
+    row_preserving_inputs: list[BuildConcept] = []
+    for concept in outputs:
+        if concept.address not in primary_addrs:
+            continue
+        if not isinstance(concept.lineage, BuildAggregateWrapper):
+            continue
+        for arg in concept.lineage.function.arguments:
+            # Only a top-level row-preserving BuildConcept arg lets the aggregate
+            # skip input-grain normalization. Recursing into an inline function
+            # arg (`sum(a - coalesce(b, 0))`) to collect its leaves wrongly
+            # skipped normalization even when the parent rows weren't yet at the
+            # aggregate's input grain -- miscounting (q97) and desyncing a renamed
+            # ROLLUP key from its GROUP BY (q80: invalid SQL).
+            if not isinstance(arg, BuildConcept):
+                return False
+            if (
+                arg.derivation not in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                or _lineage_crosses_row_shape_barrier(arg)
+            ):
+                return False
+            row_preserving_inputs.append(arg)
+    if not row_preserving_inputs:
+        return False
+    # All-ROOT inputs are raw scan columns: the parent emits rows at the
+    # datasource's natural (line) grain, which is usually FINER than the
+    # aggregate's input grain (e.g. `count(order_number)` reads item|order line
+    # rows). Skipping normalization then aggregates the un-deduped rows and
+    # over-counts (q16: 818 vs 233). Force normalization so the inputs are
+    # regrouped to the aggregate's input grain first. A correctness floor until
+    # a true parent-row-grain signal can prove the skip safe (which would keep
+    # q23/q94 compact) -- see local_scripts notes / the v4 verbosity follow-up.
+    if all(arg.derivation == Derivation.ROOT for arg in row_preserving_inputs):
+        return False
+    available = {
+        output.address for parent in parents for output in parent.output_concepts
+    }
+    return all(concept_satisfiable(arg, available) for arg in row_preserving_inputs)
 
 
 def _widen_merge_join_keys(
@@ -1141,6 +1410,23 @@ def _add_needed_concept(needed: set[str], concept: BuildConcept) -> None:
         needed.update(concept.grain.components)
 
 
+def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> None:
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        if concept.lineage is None:
+            return
+        for arg in concept.lineage.concept_arguments:
+            _add_needed_concept(needed, arg)
+        return
+    for arg in concept.lineage.function.concept_arguments:
+        _add_needed_concept(needed, arg)
+    for group_key in concept.lineage.by:
+        needed.add(group_key.address)
+    for input_concept in _aggregate_row_preserving_inputs(concept):
+        for row_input in _row_lineage_closure(input_concept):
+            if row_input.address != input_concept.address:
+                _add_needed_concept(needed, row_input)
+
+
 def _wrap_for_grain(
     parent_node: StrategyNode,
     needed_concepts: list[BuildConcept],
@@ -1302,6 +1588,32 @@ def _final_contributor_contracts(
             + ", ".join(sorted(missing_contracts))
         )
     return {gid: contracts[gid] for gid in contributing}
+
+
+def _relevant_root_preserve_keys(
+    environment: BuildEnvironment,
+    output_concepts: list[BuildConcept],
+    preserve_keys: frozenset[str],
+) -> frozenset[str]:
+    if not preserve_keys:
+        return frozenset()
+    output_addresses = {concept.address for concept in output_concepts}
+    relevant: set[str] = set()
+    for key in preserve_keys:
+        if key in output_addresses:
+            relevant.add(key)
+            continue
+        if any(
+            build_fd_determines(
+                environment,
+                {key},
+                concept.address,
+                include_empty_grain=False,
+            )
+            for concept in output_concepts
+        ):
+            relevant.add(key)
+    return frozenset(relevant)
 
 
 def _group_to_grain_if_required(
@@ -1562,10 +1874,14 @@ def _assemble_final_node(
         is_root = attrs[gid].derivation == Derivation.ROOT
         contributor_contract = contracts_by_gid[gid]
         preserve_keys = contributor_contract.preserve_keys & final_merge_grain
+        group_concepts = list(per_group[gid])
+        if is_root:
+            preserve_keys = _relevant_root_preserve_keys(
+                environment, group_concepts, preserve_keys
+            )
         projection_grain = (
             final_merge_grain if is_root else contributor_contract.projection_grain
         )
-        group_concepts = list(per_group[gid])
         if is_root and preserve_keys:
             seen_group_concepts = {concept.address for concept in group_concepts}
             # Carry the merge grain's join KEYS onto the root scan, but never a
@@ -1582,6 +1898,9 @@ def _assemble_final_node(
                 and c.derivation != Derivation.ROWSET
             )
         if is_root:
+            root_conditions = _wrap_atoms(
+                _root_atoms_satisfiable_from(_atoms_at(attrs, gid), group_concepts)
+            )
             fresh = _fresh_final_root_projection(
                 group_concepts,
                 environment,
@@ -1591,7 +1910,7 @@ def _assemble_final_node(
                 # The fresh re-source must keep the root group's own WHERE
                 # (e.g. `x = 1`); dropping it silently widened the scan and the
                 # constant sibling's `1=1` merge returned the unfiltered rows.
-                conditions=_wrap_atoms(_atoms_at(attrs, gid)),
+                conditions=root_conditions,
             )
             if fresh is not None:
                 node = fresh
@@ -1734,10 +2053,10 @@ def build_strategy_node(
         for c in outputs:
             needed.add(c.address)
             if c.address in primary_addrs and c.lineage is not None:
-                for arg in c.lineage.concept_arguments:
-                    if derivation in _AGGREGATING_DERIVATIONS:
-                        _add_needed_concept(needed, arg)
-                    else:
+                if derivation in _AGGREGATING_DERIVATIONS:
+                    _add_aggregate_needed_concepts(needed, c)
+                else:
+                    for arg in c.lineage.concept_arguments:
                         needed.add(arg.address)
         if injected is not None:
             for arg in condition_row_args(injected):
@@ -1833,6 +2152,9 @@ def build_strategy_node(
             and a.aggregate_input_grain
             and a.aggregate_input_grain != a.grain_components
             and parents
+            and not _aggregate_inputs_are_row_preserving(
+                outputs, primary_addrs, parents
+            )
         ):
             normalize_addrs = set(a.aggregate_input_grain)
             for c in outputs:
@@ -1879,6 +2201,7 @@ def build_strategy_node(
         )
         if node is None:
             continue
+        node = _elide_single_parent_passthrough(node)
         # Attach existence parents+concepts for any SubselectComparison
         # atoms at this group. Done post-build so the generators stay
         # ignorant of existence handling — the host node just learns it
@@ -1909,6 +2232,7 @@ def build_strategy_node(
         source_policy,
     )
     if final is not None:
+        final = _elide_passthrough_tree(final)
         if _has_unsourced_leaf(final):
             # A parent-less, datasource-less node that outputs a ROOT concept (a
             # base column that must come from a datasource) has no source for it —

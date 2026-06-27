@@ -1,6 +1,6 @@
 query_id = "05"
-generator = "v4"
-gen_length = 10200
+generator = "v3"
+gen_length = 10211
 preql_size = 1432
 comp_size = 4238
 generated_sql = """
@@ -152,8 +152,7 @@ SELECT
     CASE WHEN cast(\"s_date_date\".\"D_DATE\" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"abundant\".\"s_channel_dim_text_id\" is not null THEN \"sweltering\".\"s_ext_sales_price\" ELSE NULL END as \"_virt_filter_ext_sales_price_81501173194113\",
     CASE WHEN cast(\"s_date_date\".\"D_DATE\" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"abundant\".\"s_channel_dim_text_id\" is not null THEN \"sweltering\".\"s_net_profit\" ELSE NULL END as \"_virt_filter_net_profit_2654161333647466\",
     CASE WHEN cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"cheerful\".\"s_return_channel_dim_text_id\" is not null THEN \"vacuous\".\"s_return_amount\" ELSE NULL END as \"_virt_filter_return_amount_7146980734593598\",
-    CASE WHEN cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"cheerful\".\"s_return_channel_dim_text_id\" is not null THEN \"vacuous\".\"s_return_net_loss\" ELSE NULL END as \"_virt_filter_return_net_loss_7776255813480323\",
-    coalesce(\"abundant\".\"s_channel_dim_text_id\",\"cheerful\".\"s_return_channel_dim_text_id\") as \"entity_text\"
+    CASE WHEN cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"cheerful\".\"s_return_channel_dim_text_id\" is not null THEN \"vacuous\".\"s_return_net_loss\" ELSE NULL END as \"_virt_filter_return_net_loss_7776255813480323\"
 FROM
     \"sweltering\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"s_date_date\" on \"sweltering\".\"s_date_id\" = \"s_date_date\".\"D_DATE_SK\"
@@ -163,32 +162,34 @@ FROM
     FULL JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"vacuous\".\"s_return_date_id\" = \"s_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"young\".\"s_return_channel_dim_id\" = \"cheerful\".\"s_return_channel_dim_id\" AND coalesce(\"young\".\"s_channel\", \"sweltering\".\"s_channel\") = \"cheerful\".\"s_channel\"
 WHERE
-    ( cast(\"s_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' or cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' )
-),
-kaput as (
+    coalesce(\"abundant\".\"s_channel_dim_text_id\",\"cheerful\".\"s_return_channel_dim_text_id\") is not null and ( cast(\"s_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' or cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' )
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"abundant\".\"s_channel_dim_text_id\",
+    \"cheerful\".\"s_return_channel_dim_text_id\",
+    cast(\"s_date_date\".\"D_DATE\" as date),
+    cast(\"s_return_date_date\".\"D_DATE\" as date),
+    coalesce(\"abundant\".\"s_channel\",\"cheerful\".\"s_channel\",\"sweltering\".\"s_channel\",\"vacuous\".\"s_channel\",\"young\".\"s_channel\"),
+    coalesce(\"abundant\".\"s_channel_dim_text_id\",\"cheerful\".\"s_return_channel_dim_text_id\"),
+    coalesce(\"sweltering\".\"s_item_id\",\"vacuous\".\"s_item_id\",\"young\".\"s_item_id\"),
+    coalesce(\"sweltering\".\"s_order_id\",\"vacuous\".\"s_order_id\",\"young\".\"s_order_id\"))
 SELECT
-    \"scrawny\".\"_virt_filter_ext_sales_price_81501173194113\" as \"_virt_filter_ext_sales_price_81501173194113\",
-    \"scrawny\".\"_virt_filter_net_profit_2654161333647466\" as \"_virt_filter_net_profit_2654161333647466\",
-    \"scrawny\".\"_virt_filter_return_amount_7146980734593598\" as \"_virt_filter_return_amount_7146980734593598\",
-    \"scrawny\".\"_virt_filter_return_net_loss_7776255813480323\" as \"_virt_filter_return_net_loss_7776255813480323\",
     \"scrawny\".\"channel_label\" as \"channel_label\",
-    \"scrawny\".\"entity_id\" as \"entity_id\"
+    \"scrawny\".\"entity_id\" as \"entity_id\",
+    coalesce(sum(\"scrawny\".\"_virt_filter_ext_sales_price_81501173194113\"),0.0) as \"sales\",
+    coalesce(sum(\"scrawny\".\"_virt_filter_return_amount_7146980734593598\"),0.0) as \"returns\",
+    coalesce(sum(\"scrawny\".\"_virt_filter_net_profit_2654161333647466\"),0.0) - coalesce(sum(\"scrawny\".\"_virt_filter_return_net_loss_7776255813480323\"),0.0) as \"profit\"
 FROM
     \"scrawny\"
-WHERE
-    \"scrawny\".\"entity_text\" is not null
-)
-SELECT
-    \"kaput\".\"channel_label\" as \"channel_label\",
-    \"kaput\".\"entity_id\" as \"entity_id\",
-    coalesce(sum(\"kaput\".\"_virt_filter_ext_sales_price_81501173194113\"),0.0) as \"sales\",
-    coalesce(sum(\"kaput\".\"_virt_filter_return_amount_7146980734593598\"),0.0) as \"returns\",
-    coalesce(sum(\"kaput\".\"_virt_filter_net_profit_2654161333647466\"),0.0) - coalesce(sum(\"kaput\".\"_virt_filter_return_net_loss_7776255813480323\"),0.0) as \"profit\"
-FROM
-    \"kaput\"
 GROUP BY
     ROLLUP (1, 2)
 ORDER BY 
-    \"kaput\".\"channel_label\" asc nulls first,
-    \"kaput\".\"entity_id\" asc nulls first
+    \"scrawny\".\"channel_label\" asc nulls first,
+    \"scrawny\".\"entity_id\" asc nulls first
 LIMIT (100)"""

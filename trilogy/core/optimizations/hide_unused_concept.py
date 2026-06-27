@@ -60,6 +60,14 @@ class HideUnusedConcepts(OptimizationRule):
             self.debug(f"Analyzing usage of {cte.name} in {v.name}")
             child_used_map = render_cte_used_map(v)
             used.update(child_used_map.get(cte.name, set()))
+        # A child may consume a concept this CTE only carries under a pseudonym
+        # (e.g. a union merge exposes ``web_sales.date.id`` whose pseudonym is the
+        # canonical ``date.id`` the child renders); the child's used-map records
+        # the canonical address, so treat the physical pseudonym column as used too
+        # — otherwise we hide the column it physically reads, yielding invalid SQL.
+        for concept in cte.output_columns:
+            if concept.address not in used and concept.pseudonyms & used:
+                used.add(concept.address)
         self.debug(f"Used concepts for {cte.name}: {used}")
         add_to_hidden: list[BuildConcept] = []
         for concept in cte.output_columns:

@@ -730,6 +730,22 @@ def raise_if_disconnected(
         )
 
 
+def _is_global_aggregate_gate(
+    group: List[BuildConcept], output_addresses: set[str]
+) -> bool:
+    """True when a disconnected subgraph is a pure WHERE aggregate gate rather than
+    a missing join: every member is an aggregate row-arg (not an output) at a grain
+    absent from the outputs. Such a condition is a global filter gate — the planner
+    bridges it via the gate's grain and cross-joins/dedups the (constant) outputs,
+    matching v3 (e.g. `where sum(x) by name < ... select <const>`). A disconnected
+    raw-column arg (`where bv > 0`) implies a row-level correlation that genuinely
+    needs a join, so it is NOT a gate and must still raise."""
+    return all(
+        c.address not in output_addresses and c.derivation == Derivation.AGGREGATE
+        for c in group
+    )
+
+
 def raise_if_disconnected_for(
     outputs: List[BuildConcept],
     conditions: "BuildWhereClause | None",
@@ -741,15 +757,30 @@ def raise_if_disconnected_for(
     WHERE row args): raise the typed subgraph error when they span unconnected
     reference-graph components. Crossjoinable (single-row/constant) concepts are
     skipped by ``disconnected_components``, so e.g. two ungrouped scalar aggregates
-    still resolve via cross-join. Shared verbatim by the top-level select and
-    nested rowset inner selects — rowset discovery is recursive query discovery, so
-    the connectivity diagnostic must be identical. See ``disconnected_components``
-    for ``island_rowsets`` (the v4 pre-gate passes ``False``)."""
+    still resolve via cross-join. A disconnected subgraph consisting solely of
+    aggregate WHERE row-args is a global filter gate (not a missing join) and is
+    dropped before counting — see ``_is_global_aggregate_gate``. Shared verbatim by
+    the top-level select and nested rowset inner selects — rowset discovery is
+    recursive query discovery, so the connectivity diagnostic must be identical. See
+    ``disconnected_components`` for ``island_rowsets`` (the v4 pre-gate passes
+    ``False``)."""
     concepts = list(outputs)
-    seen = {c.address for c in concepts}
+    output_addresses = {c.address for c in concepts}
     if conditions:
-        concepts += [c for c in conditions.row_arguments if c.address not in seen]
-    raise_if_disconnected(environment, concepts, g, island_rowsets=island_rowsets)
+        concepts += [
+            c for c in conditions.row_arguments if c.address not in output_addresses
+        ]
+    subgraphs = disconnected_components(
+        environment, concepts, g, island_rowsets=island_rowsets
+    )
+    subgraphs = [
+        grp for grp in subgraphs if not _is_global_aggregate_gate(grp, output_addresses)
+    ]
+    if len(subgraphs) > 1:
+        raise DisconnectedConceptsException(
+            format_disconnected_subgraphs_error(subgraphs),
+            subgraphs=[[c.address for c in group] for group in subgraphs],
+        )
 
 
 def format_disconnected_subgraphs_error(

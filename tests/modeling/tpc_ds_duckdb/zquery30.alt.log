@@ -1,17 +1,23 @@
 query_id = "30.alt"
 generator = "v4"
-gen_length = 11670
+gen_length = 10079
 preql_size = 2007
 comp_size = 1507
 generated_sql = """
 
 WITH 
-concerned as (
+uneven as (
 SELECT
-    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_billing_customer_id\"
+    \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
+    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_billing_customer_id\",
+    sum(CASE WHEN \"web_returns_return_date_date\".\"D_YEAR\" = 2002 and \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null THEN \"web_returns_web_returns\".\"WR_RETURN_AMT\" ELSE NULL END) as \"customer_state_returns_2002\"
 FROM
     \"memory\".\"web_returns\" as \"web_returns_web_returns\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_returns_return_date_date\" on \"web_returns_web_returns\".\"WR_RETURNED_DATE_SK\" = \"web_returns_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"web_returns_return_address_customer_address\" on \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" = \"web_returns_return_address_customer_address\".\"CA_ADDRESS_SK\"
+WHERE
+    \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
+
 GROUP BY
     1,
     2),
@@ -40,28 +46,14 @@ FROM
 WHERE
     \"web_returns_billing_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
 ),
-uneven as (
+vacuous as (
 SELECT
-    \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_billing_customer_id\",
-    sum(CASE WHEN \"web_returns_return_date_date\".\"D_YEAR\" = 2002 and \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null THEN \"web_returns_web_returns\".\"WR_RETURN_AMT\" ELSE NULL END) as \"customer_state_returns_2002\"
+    \"uneven\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    1.2 * avg(\"uneven\".\"customer_state_returns_2002\") as \"scaled_state_returns_2002\"
 FROM
-    \"memory\".\"web_returns\" as \"web_returns_web_returns\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_returns_return_date_date\" on \"web_returns_web_returns\".\"WR_RETURNED_DATE_SK\" = \"web_returns_return_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"web_returns_return_address_customer_address\" on \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" = \"web_returns_return_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
-
+    \"uneven\"
 GROUP BY
-    1,
-    2),
-young as (
-SELECT
-    \"concerned\".\"web_returns_billing_customer_id\" as \"web_returns_billing_customer_id\",
-    \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\"
-FROM
-    \"concerned\"
-    INNER JOIN \"memory\".\"customer_address\" as \"web_returns_return_address_customer_address\" on \"concerned\".\"web_returns_return_address_id\" = \"web_returns_return_address_customer_address\".\"CA_ADDRESS_SK\"),
+    1),
 questionable as (
 SELECT
     \"cooperative\".\"web_returns_billing_customer_birth_country\" as \"web_returns_billing_customer_birth_country\",
@@ -82,15 +74,19 @@ FROM
     \"cooperative\"),
 sparkling as (
 SELECT
-    \"uneven\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
-    coalesce(\"uneven\".\"web_returns_return_address_state\",\"young\".\"web_returns_return_address_state\") as \"web_returns_return_address_state\"
+    \"questionable\".\"web_returns_billing_customer_id\" as \"web_returns_billing_customer_id\",
+    \"uneven\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
-    \"young\"
-    FULL JOIN \"uneven\" on \"young\".\"web_returns_billing_customer_id\" = \"uneven\".\"web_returns_billing_customer_id\" AND \"young\".\"web_returns_return_address_state\" is not distinct from \"uneven\".\"web_returns_return_address_state\"
+    \"questionable\"
+    INNER JOIN \"uneven\" on \"questionable\".\"web_returns_billing_customer_id\" = \"uneven\".\"web_returns_billing_customer_id\" AND \"questionable\".\"web_returns_return_address_state\" is not distinct from \"uneven\".\"web_returns_return_address_state\"
+    INNER JOIN \"vacuous\" on \"questionable\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
+WHERE
+    \"uneven\".\"customer_state_returns_2002\" > \"vacuous\".\"scaled_state_returns_2002\"
+
 GROUP BY
     1,
     2,
-    coalesce(\"uneven\".\"web_returns_billing_customer_id\",\"young\".\"web_returns_billing_customer_id\")),
+    \"questionable\".\"web_returns_return_address_state\"),
 abundant as (
 SELECT
     \"questionable\".\"web_returns_billing_customer_birth_country\" as \"web_returns_billing_customer_birth_country\",
@@ -105,8 +101,7 @@ SELECT
     \"questionable\".\"web_returns_billing_customer_login\" as \"web_returns_billing_customer_login\",
     \"questionable\".\"web_returns_billing_customer_preferred_cust_flag\" as \"web_returns_billing_customer_preferred_cust_flag\",
     \"questionable\".\"web_returns_billing_customer_salutation\" as \"web_returns_billing_customer_salutation\",
-    \"questionable\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\",
-    \"questionable\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
+    \"questionable\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\"
 FROM
     \"questionable\"
 GROUP BY
@@ -122,32 +117,7 @@ GROUP BY
     10,
     11,
     12,
-    13,
-    14),
-sweltering as (
-SELECT
-    \"sparkling\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    1.2 * avg(\"sparkling\".\"customer_state_returns_2002\") as \"scaled_state_returns_2002\"
-FROM
-    \"sparkling\"
-GROUP BY
-    1),
-macho as (
-SELECT
-    \"questionable\".\"web_returns_billing_customer_id\" as \"web_returns_billing_customer_id\",
-    \"questionable\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    \"uneven\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
-FROM
-    \"questionable\"
-    INNER JOIN \"uneven\" on \"questionable\".\"web_returns_billing_customer_id\" = \"uneven\".\"web_returns_billing_customer_id\" AND \"questionable\".\"web_returns_return_address_state\" is not distinct from \"uneven\".\"web_returns_return_address_state\"
-    INNER JOIN \"sweltering\" on \"questionable\".\"web_returns_return_address_state\" is not distinct from \"sweltering\".\"web_returns_return_address_state\"
-WHERE
-    \"uneven\".\"customer_state_returns_2002\" > \"sweltering\".\"scaled_state_returns_2002\"
-
-GROUP BY
-    1,
-    2,
-    3)
+    13)
 SELECT
     \"abundant\".\"web_returns_billing_customer_text_id\" as \"web_returns_billing_customer_text_id\",
     \"abundant\".\"web_returns_billing_customer_salutation\" as \"web_returns_billing_customer_salutation\",
@@ -161,10 +131,10 @@ SELECT
     \"abundant\".\"web_returns_billing_customer_login\" as \"web_returns_billing_customer_login\",
     \"abundant\".\"web_returns_billing_customer_email_address\" as \"web_returns_billing_customer_email_address\",
     \"abundant\".\"web_returns_billing_customer_last_review_date\" as \"web_returns_billing_customer_last_review_date\",
-    \"macho\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
+    \"sparkling\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
-    \"macho\"
-    LEFT OUTER JOIN \"abundant\" on \"macho\".\"web_returns_billing_customer_id\" = \"abundant\".\"web_returns_billing_customer_id\" AND \"macho\".\"web_returns_return_address_state\" is not distinct from \"abundant\".\"web_returns_return_address_state\"
+    \"sparkling\"
+    INNER JOIN \"abundant\" on \"sparkling\".\"web_returns_billing_customer_id\" = \"abundant\".\"web_returns_billing_customer_id\"
 ORDER BY 
     \"abundant\".\"web_returns_billing_customer_text_id\" asc nulls first,
     \"abundant\".\"web_returns_billing_customer_salutation\" asc nulls first,
@@ -178,5 +148,5 @@ ORDER BY
     \"abundant\".\"web_returns_billing_customer_login\" asc nulls first,
     \"abundant\".\"web_returns_billing_customer_email_address\" asc nulls first,
     \"abundant\".\"web_returns_billing_customer_last_review_date\" asc nulls first,
-    \"macho\".\"customer_state_returns_2002\" asc nulls first
+    \"sparkling\".\"customer_state_returns_2002\" asc nulls first
 LIMIT (100)"""

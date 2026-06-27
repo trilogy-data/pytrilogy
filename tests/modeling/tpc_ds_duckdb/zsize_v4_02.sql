@@ -1,0 +1,82 @@
+
+WITH 
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"),
+questionable as (
+SELECT
+    CASE WHEN "sales_date_date"."D_YEAR" in (2001,2002) THEN "sales_date_date"."D_WEEK_SEQ" ELSE NULL END as "relevent_week_seq"
+FROM
+    "memory"."date_dim" as "sales_date_date"
+GROUP BY
+    1),
+cooperative as (
+SELECT
+    "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "sales_date_date"."D_DOW" as "sales_date_day_of_week",
+    "sales_date_date"."D_WEEK_SEQ" as "sales_date_week_seq"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_WEEK_SEQ" in (select questionable."relevent_week_seq" from questionable where questionable."relevent_week_seq" is not null)
+),
+uneven as (
+SELECT
+    "cooperative"."sales_date_week_seq" as "sales_date_week_seq",
+    sum(CASE WHEN "cooperative"."sales_date_day_of_week" = 0 THEN "cooperative"."sales_ext_sales_price" ELSE NULL END) as "_virt_agg_sum_5898269946212687",
+    sum(CASE WHEN "cooperative"."sales_date_day_of_week" = 1 THEN "cooperative"."sales_ext_sales_price" ELSE NULL END) as "_virt_agg_sum_1215995592885356",
+    sum(CASE WHEN "cooperative"."sales_date_day_of_week" = 2 THEN "cooperative"."sales_ext_sales_price" ELSE NULL END) as "_virt_agg_sum_5503961012463124",
+    sum(CASE WHEN "cooperative"."sales_date_day_of_week" = 3 THEN "cooperative"."sales_ext_sales_price" ELSE NULL END) as "_virt_agg_sum_6232287870778562",
+    sum(CASE WHEN "cooperative"."sales_date_day_of_week" = 4 THEN "cooperative"."sales_ext_sales_price" ELSE NULL END) as "_virt_agg_sum_3226984322777641",
+    sum(CASE WHEN "cooperative"."sales_date_day_of_week" = 5 THEN "cooperative"."sales_ext_sales_price" ELSE NULL END) as "_virt_agg_sum_1755492547499297",
+    sum(CASE WHEN "cooperative"."sales_date_day_of_week" = 6 THEN "cooperative"."sales_ext_sales_price" ELSE NULL END) as "_virt_agg_sum_3160525683686265"
+FROM
+    "cooperative"
+GROUP BY
+    1),
+vacuous as (
+SELECT
+    "uneven"."_virt_agg_sum_1215995592885356" as "_virt_agg_sum_1215995592885356",
+    "uneven"."_virt_agg_sum_1755492547499297" as "_virt_agg_sum_1755492547499297",
+    "uneven"."_virt_agg_sum_3160525683686265" as "_virt_agg_sum_3160525683686265",
+    "uneven"."_virt_agg_sum_3226984322777641" as "_virt_agg_sum_3226984322777641",
+    "uneven"."_virt_agg_sum_5503961012463124" as "_virt_agg_sum_5503961012463124",
+    "uneven"."_virt_agg_sum_5898269946212687" as "_virt_agg_sum_5898269946212687",
+    "uneven"."_virt_agg_sum_6232287870778562" as "_virt_agg_sum_6232287870778562",
+    "uneven"."sales_date_week_seq" as "sales_date_week_seq",
+    lead("uneven"."_virt_agg_sum_1215995592885356", 53) over (order by "uneven"."sales_date_week_seq" asc ) as "_virt_window_lead_8434916643189094",
+    lead("uneven"."_virt_agg_sum_1755492547499297", 53) over (order by "uneven"."sales_date_week_seq" asc ) as "_virt_window_lead_1513977696668684",
+    lead("uneven"."_virt_agg_sum_3160525683686265", 53) over (order by "uneven"."sales_date_week_seq" asc ) as "_virt_window_lead_6726398054446491",
+    lead("uneven"."_virt_agg_sum_3226984322777641", 53) over (order by "uneven"."sales_date_week_seq" asc ) as "_virt_window_lead_7589933802981203",
+    lead("uneven"."_virt_agg_sum_5503961012463124", 53) over (order by "uneven"."sales_date_week_seq" asc ) as "_virt_window_lead_5402686874923245",
+    lead("uneven"."_virt_agg_sum_5898269946212687", 53) over (order by "uneven"."sales_date_week_seq" asc ) as "_virt_window_lead_3355739386573542",
+    lead("uneven"."_virt_agg_sum_6232287870778562", 53) over (order by "uneven"."sales_date_week_seq" asc ) as "_virt_window_lead_8846802885933861"
+FROM
+    "uneven")
+SELECT
+    "vacuous"."sales_date_week_seq" as "sales_date_week_seq",
+    round("vacuous"."_virt_agg_sum_5898269946212687" / ("vacuous"."_virt_window_lead_3355739386573542"),2) as "sunday_increase",
+    round("vacuous"."_virt_agg_sum_1215995592885356" / ("vacuous"."_virt_window_lead_8434916643189094"),2) as "monday_increase",
+    round("vacuous"."_virt_agg_sum_5503961012463124" / ("vacuous"."_virt_window_lead_5402686874923245"),2) as "tuesday_increase",
+    round("vacuous"."_virt_agg_sum_6232287870778562" / ("vacuous"."_virt_window_lead_8846802885933861"),2) as "wednesday_increase",
+    round("vacuous"."_virt_agg_sum_3226984322777641" / ("vacuous"."_virt_window_lead_7589933802981203"),2) as "thursday_increase",
+    round("vacuous"."_virt_agg_sum_1755492547499297" / ("vacuous"."_virt_window_lead_1513977696668684"),2) as "friday_increase",
+    round("vacuous"."_virt_agg_sum_3160525683686265" / ("vacuous"."_virt_window_lead_6726398054446491"),2) as "saturday_increase"
+FROM
+    "vacuous"
+WHERE
+    round("vacuous"."_virt_agg_sum_5898269946212687" / ("vacuous"."_virt_window_lead_3355739386573542"),2) is not null
+
+ORDER BY 
+    "vacuous"."sales_date_week_seq" asc nulls first
+LIMIT (100)

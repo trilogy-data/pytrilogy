@@ -98,16 +98,6 @@ def _resolve_root_condition_sources(
     return sources
 
 
-def _existence_arg_count(conditions: BuildWhereClause) -> int:
-    return len(
-        {
-            concept.address
-            for arg_group in conditions.existence_arguments or ()
-            for concept in arg_group
-        }
-    )
-
-
 def gen_root(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -179,12 +169,11 @@ def gen_root(
     if node is None or existence_conditions is None:
         return node
 
-    sources = (
-        _resolve_root_condition_sources(
-            node, existence_conditions, environment, g, history, source_policy
-        )
-        if _existence_arg_count(existence_conditions) == 1
-        else ConditionSources()
+    # Resolve every existence arg's source up front (single- and multi-arg alike).
+    # Deferring multi-arg cases to `_attach_existence_sources` left the union-member
+    # scans rendering the subselect with no wired source (INVALID_REFERENCE_BUG).
+    sources = _resolve_root_condition_sources(
+        node, existence_conditions, environment, g, history, source_policy
     )
     if not sources.row_parents:
         return SelectNode(

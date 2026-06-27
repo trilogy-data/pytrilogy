@@ -1,0 +1,4486 @@
+{
+  "concept_edges": [
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "[@condition]local._virt_agg_avg_3885168128306444",
+      "target": "[@condition]local.scaled_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "[@condition]local._virt_filter_return_amount_7190501181391118",
+      "target": "[@condition]local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "[@condition]local.customer_state_returns_2002",
+      "target": "[@condition]local._virt_agg_avg_3885168128306444"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": null,
+      "source": "[@condition]local.customer_state_returns_2002",
+      "target": "local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": null,
+      "source": "[@condition]local.scaled_state_returns_2002",
+      "target": "local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "local._virt_filter_return_amount_7190501181391118",
+      "target": "local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.billing_customer.id",
+      "target": "[@condition]local._virt_agg_avg_3885168128306444"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.billing_customer.id",
+      "target": "[@condition]local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.billing_customer.id",
+      "target": "local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_address.state",
+      "target": "[@condition]local._virt_agg_avg_3885168128306444"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_address.state",
+      "target": "[@condition]local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_address.state",
+      "target": "[@condition]local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_address.state",
+      "target": "local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_address.state",
+      "target": "local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_amount",
+      "target": "[@condition]local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_amount",
+      "target": "local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_date.year",
+      "target": "[@condition]local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.return_date.year",
+      "target": "local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.item.id",
+      "target": "[@condition]local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.item.id",
+      "target": "[@condition]local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.item.id",
+      "target": "local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.item.id",
+      "target": "local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.order_number",
+      "target": "[@condition]local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.order_number",
+      "target": "[@condition]local.customer_state_returns_2002"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.order_number",
+      "target": "local._virt_filter_return_amount_7190501181391118"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "web_returns.web_sales.order_number",
+      "target": "local.customer_state_returns_2002"
+    }
+  ],
+  "concepts": [
+    {
+      "address": "local._virt_agg_avg_3885168128306444",
+      "aggregate_input_grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "existence_only": false,
+      "grain": [
+        "web_returns.return_address.state"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": "standard",
+      "id": "[@condition]local._virt_agg_avg_3885168128306444",
+      "is_rename": false,
+      "keys": [
+        "web_returns.return_address.state"
+      ],
+      "purpose": "metric",
+      "rowset_name": null
+    },
+    {
+      "address": "local._virt_filter_return_amount_7190501181391118",
+      "aggregate_input_grain": [],
+      "depth": "d1",
+      "derivation": "filter",
+      "existence_only": false,
+      "grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "[@condition]local._virt_filter_return_amount_7190501181391118",
+      "is_rename": false,
+      "keys": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "local.customer_state_returns_2002",
+      "aggregate_input_grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": "standard",
+      "id": "[@condition]local.customer_state_returns_2002",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "purpose": "metric",
+      "rowset_name": null
+    },
+    {
+      "address": "local.scaled_state_returns_2002",
+      "aggregate_input_grain": [],
+      "depth": "d1",
+      "derivation": "basic",
+      "existence_only": false,
+      "grain": [
+        "web_returns.return_address.state"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "[@condition]local.scaled_state_returns_2002",
+      "is_rename": false,
+      "keys": [
+        "web_returns.return_address.state"
+      ],
+      "purpose": "metric",
+      "rowset_name": null
+    },
+    {
+      "address": "local._virt_filter_return_amount_7190501181391118",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "filter",
+      "existence_only": false,
+      "grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "local._virt_filter_return_amount_7190501181391118",
+      "is_rename": false,
+      "keys": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "local.customer_state_returns_2002",
+      "aggregate_input_grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": "standard",
+      "id": "local.customer_state_returns_2002",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "purpose": "metric",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.address.state",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.address.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.address.state",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.address.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.birth_country",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.birth_country",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.birth_day",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.birth_day",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.birth_month",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.birth_month",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.birth_year",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.birth_year",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.email_address",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.email_address",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.first_name",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.first_name",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.id",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.id",
+      "is_rename": false,
+      "keys": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "purpose": "key",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.last_name",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.last_name",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.last_review_date",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.last_review_date",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.login",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.login",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.preferred_cust_flag",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.preferred_cust_flag",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.salutation",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.salutation",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.billing_customer.text_id",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.billing_customer.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.billing_customer.text_id",
+      "is_rename": false,
+      "keys": [
+        "web_returns.billing_customer.id"
+      ],
+      "purpose": "unique_property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.return_address.state",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.return_address.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.return_address.state",
+      "is_rename": false,
+      "keys": [
+        "web_returns.return_address.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.return_amount",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.return_amount",
+      "is_rename": false,
+      "keys": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.return_date.year",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.return_date.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.return_date.year",
+      "is_rename": false,
+      "keys": [
+        "web_returns.return_date.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.web_sales.item.id",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.web_sales.item.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.web_sales.item.id",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "key",
+      "rowset_name": null
+    },
+    {
+      "address": "web_returns.web_sales.order_number",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "web_returns.web_sales.order_number"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "web_returns.web_sales.order_number",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "key",
+      "rowset_name": null
+    }
+  ],
+  "group_edges": [
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "post_condition",
+      "source": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": "post_condition",
+      "source": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "post_condition",
+      "source": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+      "target": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": "post_condition",
+      "source": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "post_condition",
+      "source": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "post_condition",
+      "source": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:root:root:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "post_condition",
+      "source": "grp:root:root:\u2205",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "post_condition",
+      "source": "grp:root:root:\u2205",
+      "target": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:root:root_d1:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec"
+    }
+  ],
+  "groups": [
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "local.customer_state_returns_2002 > local.scaled_state_returns_2002 and web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL"
+      ],
+      "depth": "final",
+      "derivation": "final",
+      "final_contract": {
+        "contributor_contracts": [
+          {
+            "group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+            "output_addresses": [
+              "local.customer_state_returns_2002",
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ]
+          },
+          {
+            "group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+            "output_addresses": [
+              "local._virt_agg_avg_3885168128306444",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "web_returns.return_address.state"
+            ]
+          },
+          {
+            "group_id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+            "output_addresses": [
+              "local.scaled_state_returns_2002",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+            "output_addresses": [
+              "web_returns.billing_customer.id",
+              "local._virt_filter_return_amount_7190501181391118",
+              "web_returns.web_sales.item.id",
+              "web_returns.web_sales.order_number",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+            "output_addresses": [
+              "local.customer_state_returns_2002",
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ]
+          },
+          {
+            "group_id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+            "output_addresses": [
+              "web_returns.billing_customer.preferred_cust_flag",
+              "web_returns.billing_customer.id",
+              "web_returns.billing_customer.login",
+              "local._virt_filter_return_amount_7190501181391118",
+              "web_returns.billing_customer.last_review_date",
+              "web_returns.billing_customer.first_name",
+              "web_returns.web_sales.item.id",
+              "web_returns.billing_customer.email_address",
+              "web_returns.billing_customer.last_name",
+              "web_returns.billing_customer.birth_country",
+              "web_returns.web_sales.order_number",
+              "web_returns.billing_customer.salutation",
+              "web_returns.billing_customer.birth_year",
+              "web_returns.billing_customer.text_id",
+              "web_returns.return_address.state",
+              "web_returns.billing_customer.birth_day",
+              "web_returns.billing_customer.birth_month"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root:\u2205",
+            "output_addresses": [
+              "web_returns.billing_customer.preferred_cust_flag",
+              "web_returns.billing_customer.id",
+              "web_returns.billing_customer.login",
+              "web_returns.billing_customer.last_review_date",
+              "web_returns.billing_customer.first_name",
+              "web_returns.web_sales.item.id",
+              "web_returns.billing_customer.email_address",
+              "web_returns.billing_customer.last_name",
+              "web_returns.billing_customer.birth_country",
+              "web_returns.web_sales.order_number",
+              "web_returns.billing_customer.salutation",
+              "web_returns.billing_customer.birth_year",
+              "web_returns.return_amount",
+              "web_returns.billing_customer.text_id",
+              "web_returns.return_address.state",
+              "web_returns.return_date.year",
+              "web_returns.billing_customer.birth_day",
+              "web_returns.billing_customer.birth_month"
+            ],
+            "preserve_keys": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root_d1:\u2205",
+            "output_addresses": [
+              "web_returns.billing_customer.id",
+              "web_returns.web_sales.item.id",
+              "web_returns.web_sales.order_number",
+              "web_returns.return_amount",
+              "web_returns.return_address.state",
+              "web_returns.return_date.year"
+            ],
+            "preserve_keys": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "projection_grain": []
+          }
+        ],
+        "deduplicate_to_grain": true,
+        "merge_grain": [
+          "web_returns.billing_customer.id",
+          "web_returns.return_address.state"
+        ],
+        "output_addresses": [
+          "web_returns.billing_customer.preferred_cust_flag",
+          "web_returns.billing_customer.id",
+          "web_returns.billing_customer.login",
+          "web_returns.billing_customer.last_review_date",
+          "web_returns.billing_customer.first_name",
+          "local.customer_state_returns_2002",
+          "web_returns.billing_customer.last_name",
+          "web_returns.billing_customer.email_address",
+          "web_returns.billing_customer.birth_country",
+          "web_returns.billing_customer.salutation",
+          "web_returns.billing_customer.birth_year",
+          "web_returns.billing_customer.text_id",
+          "web_returns.billing_customer.birth_day",
+          "web_returns.billing_customer.birth_month"
+        ],
+        "required_grain": [
+          "local.customer_state_returns_2002",
+          "web_returns.billing_customer.id",
+          "web_returns.billing_customer.text_id"
+        ]
+      },
+      "grain": [],
+      "hidden": [],
+      "id": "__final__",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "outputs": [],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "merge",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [],
+      "secondary_members": [],
+      "successors": []
+    },
+    {
+      "aggregate_input_grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "local._virt_filter_return_amount_7190501181391118",
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.web_sales.item.id",
+            "web_returns.billing_customer.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local.customer_state_returns_2002"
+      ],
+      "secondary_members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "lineage",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "constraint",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "local.customer_state_returns_2002",
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "members": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local._virt_agg_avg_3885168128306444"
+      ],
+      "secondary_members": [
+        "web_returns.return_address.state"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "kind": "lineage",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "basic",
+      "final_contract": null,
+      "grain": [
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "preserve_keys": [
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "local._virt_agg_avg_3885168128306444",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "members": [
+        "local.scaled_state_returns_2002"
+      ],
+      "outputs": [
+        "local.scaled_state_returns_2002",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "lineage",
+          "phase": "post_condition"
+        }
+      ],
+      "primary_members": [
+        "local.scaled_state_returns_2002"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "constraint",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "web_returns.return_address.state is not MagicConstants.NULL"
+      ],
+      "depth": "d1",
+      "derivation": "filter",
+      "final_contract": null,
+      "grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_grain": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_amount",
+            "web_returns.return_address.state",
+            "web_returns.return_date.year"
+          ]
+        }
+      ],
+      "inputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "conditions": [
+        "local.customer_state_returns_2002 > local.scaled_state_returns_2002"
+      ],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "local.scaled_state_returns_2002",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "local._virt_filter_return_amount_7190501181391118",
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root:\u2205",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.web_sales.item.id",
+            "web_returns.billing_customer.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "local.scaled_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "constraint",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "kind": "constraint",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "lineage",
+          "phase": "post_condition"
+        }
+      ],
+      "primary_members": [
+        "local.customer_state_returns_2002"
+      ],
+      "secondary_members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d*",
+      "derivation": "filter",
+      "final_contract": null,
+      "grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "hidden": [],
+      "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root:\u2205",
+          "preserve_keys": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_grain": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.preferred_cust_flag",
+            "web_returns.billing_customer.id",
+            "web_returns.billing_customer.login",
+            "web_returns.billing_customer.last_review_date",
+            "web_returns.billing_customer.first_name",
+            "web_returns.web_sales.item.id",
+            "web_returns.billing_customer.email_address",
+            "web_returns.billing_customer.last_name",
+            "web_returns.billing_customer.birth_country",
+            "web_returns.web_sales.order_number",
+            "web_returns.billing_customer.salutation",
+            "web_returns.billing_customer.birth_year",
+            "web_returns.return_amount",
+            "web_returns.billing_customer.text_id",
+            "web_returns.return_address.state",
+            "web_returns.return_date.year",
+            "web_returns.billing_customer.birth_day",
+            "web_returns.billing_customer.birth_month"
+          ]
+        }
+      ],
+      "inputs": [
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "lineage",
+          "phase": "post_condition"
+        }
+      ],
+      "primary_members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "web_returns.billing_customer.address.state = GA",
+        "web_returns.return_address.state is not MagicConstants.NULL"
+      ],
+      "depth": "root",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root:\u2205",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "outputs": [
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "root_d1",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root_d1:\u2205",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ]
+    }
+  ],
+  "merged_group_edges": [
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": null,
+      "source": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+      "target": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": null,
+      "source": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:root:root:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:root:root:\u2205",
+      "target": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:root:root:\u2205",
+      "target": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:root:root_d1:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec"
+    }
+  ],
+  "merged_groups": [
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "local.customer_state_returns_2002 > local.scaled_state_returns_2002 and web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL"
+      ],
+      "depth": "final",
+      "derivation": "final",
+      "final_contract": {
+        "contributor_contracts": [
+          {
+            "group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+            "output_addresses": [
+              "local.customer_state_returns_2002",
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ]
+          },
+          {
+            "group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+            "output_addresses": [
+              "local._virt_agg_avg_3885168128306444",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "web_returns.return_address.state"
+            ]
+          },
+          {
+            "group_id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+            "output_addresses": [
+              "local.scaled_state_returns_2002",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+            "output_addresses": [
+              "web_returns.billing_customer.id",
+              "local._virt_filter_return_amount_7190501181391118",
+              "web_returns.web_sales.item.id",
+              "web_returns.web_sales.order_number",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+            "output_addresses": [
+              "local.customer_state_returns_2002",
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ]
+          },
+          {
+            "group_id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+            "output_addresses": [
+              "web_returns.billing_customer.preferred_cust_flag",
+              "web_returns.billing_customer.id",
+              "web_returns.billing_customer.login",
+              "local._virt_filter_return_amount_7190501181391118",
+              "web_returns.billing_customer.last_review_date",
+              "web_returns.billing_customer.first_name",
+              "web_returns.web_sales.item.id",
+              "web_returns.billing_customer.email_address",
+              "web_returns.billing_customer.last_name",
+              "web_returns.billing_customer.birth_country",
+              "web_returns.web_sales.order_number",
+              "web_returns.billing_customer.salutation",
+              "web_returns.billing_customer.birth_year",
+              "web_returns.billing_customer.text_id",
+              "web_returns.return_address.state",
+              "web_returns.billing_customer.birth_day",
+              "web_returns.billing_customer.birth_month"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root:\u2205",
+            "output_addresses": [
+              "web_returns.billing_customer.preferred_cust_flag",
+              "web_returns.billing_customer.id",
+              "web_returns.billing_customer.login",
+              "web_returns.billing_customer.last_review_date",
+              "web_returns.billing_customer.first_name",
+              "web_returns.web_sales.item.id",
+              "web_returns.billing_customer.email_address",
+              "web_returns.billing_customer.last_name",
+              "web_returns.billing_customer.birth_country",
+              "web_returns.web_sales.order_number",
+              "web_returns.billing_customer.salutation",
+              "web_returns.billing_customer.birth_year",
+              "web_returns.return_amount",
+              "web_returns.billing_customer.text_id",
+              "web_returns.return_address.state",
+              "web_returns.return_date.year",
+              "web_returns.billing_customer.birth_day",
+              "web_returns.billing_customer.birth_month"
+            ],
+            "preserve_keys": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root_d1:\u2205",
+            "output_addresses": [
+              "web_returns.billing_customer.id",
+              "web_returns.web_sales.item.id",
+              "web_returns.web_sales.order_number",
+              "web_returns.return_amount",
+              "web_returns.return_address.state",
+              "web_returns.return_date.year"
+            ],
+            "preserve_keys": [
+              "web_returns.billing_customer.id",
+              "web_returns.return_address.state"
+            ],
+            "projection_grain": []
+          }
+        ],
+        "deduplicate_to_grain": true,
+        "merge_grain": [
+          "web_returns.billing_customer.id",
+          "web_returns.return_address.state"
+        ],
+        "output_addresses": [
+          "web_returns.billing_customer.preferred_cust_flag",
+          "web_returns.billing_customer.id",
+          "web_returns.billing_customer.login",
+          "web_returns.billing_customer.last_review_date",
+          "web_returns.billing_customer.first_name",
+          "local.customer_state_returns_2002",
+          "web_returns.billing_customer.last_name",
+          "web_returns.billing_customer.email_address",
+          "web_returns.billing_customer.birth_country",
+          "web_returns.billing_customer.salutation",
+          "web_returns.billing_customer.birth_year",
+          "web_returns.billing_customer.text_id",
+          "web_returns.billing_customer.birth_day",
+          "web_returns.billing_customer.birth_month"
+        ],
+        "required_grain": [
+          "local.customer_state_returns_2002",
+          "web_returns.billing_customer.id",
+          "web_returns.billing_customer.text_id"
+        ]
+      },
+      "grain": [],
+      "hidden": [],
+      "id": "__final__",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "outputs": [],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "merge",
+          "phase": null
+        }
+      ],
+      "primary_members": [],
+      "secondary_members": [],
+      "successors": []
+    },
+    {
+      "aggregate_input_grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "local._virt_filter_return_amount_7190501181391118",
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.web_sales.item.id",
+            "web_returns.billing_customer.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local.customer_state_returns_2002"
+      ],
+      "secondary_members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "constraint",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "local.customer_state_returns_2002",
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "members": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local._virt_agg_avg_3885168128306444"
+      ],
+      "secondary_members": [
+        "web_returns.return_address.state"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "basic",
+      "final_contract": null,
+      "grain": [
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "preserve_keys": [
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "local._virt_agg_avg_3885168128306444",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "members": [
+        "local.scaled_state_returns_2002"
+      ],
+      "outputs": [
+        "local.scaled_state_returns_2002",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local.scaled_state_returns_2002"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "constraint",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "web_returns.return_address.state is not MagicConstants.NULL"
+      ],
+      "depth": "d1",
+      "derivation": "filter",
+      "final_contract": null,
+      "grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_grain": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_amount",
+            "web_returns.return_address.state",
+            "web_returns.return_date.year"
+          ]
+        }
+      ],
+      "inputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "conditions": [
+        "local.customer_state_returns_2002 > local.scaled_state_returns_2002"
+      ],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "hidden": [],
+      "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "local.scaled_state_returns_2002",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.id",
+            "local._virt_filter_return_amount_7190501181391118",
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root:\u2205",
+          "preserve_keys": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_grain": [
+            "web_returns.billing_customer.id",
+            "web_returns.return_address.state"
+          ],
+          "required_outputs": [
+            "web_returns.web_sales.item.id",
+            "web_returns.billing_customer.id",
+            "web_returns.web_sales.order_number",
+            "web_returns.return_address.state"
+          ]
+        }
+      ],
+      "inputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "local.scaled_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "constraint",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]basic:d1:web_returns.return_address.state:sig:f5912e",
+          "kind": "constraint",
+          "phase": null
+        },
+        {
+          "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local.customer_state_returns_2002"
+      ],
+      "secondary_members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d*",
+      "derivation": "filter",
+      "final_contract": null,
+      "grain": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "hidden": [],
+      "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root:\u2205",
+          "preserve_keys": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_grain": [
+            "web_returns.web_sales.item.id",
+            "web_returns.web_sales.order_number"
+          ],
+          "required_outputs": [
+            "web_returns.billing_customer.preferred_cust_flag",
+            "web_returns.billing_customer.id",
+            "web_returns.billing_customer.login",
+            "web_returns.billing_customer.last_review_date",
+            "web_returns.billing_customer.first_name",
+            "web_returns.web_sales.item.id",
+            "web_returns.billing_customer.email_address",
+            "web_returns.billing_customer.last_name",
+            "web_returns.billing_customer.birth_country",
+            "web_returns.web_sales.order_number",
+            "web_returns.billing_customer.salutation",
+            "web_returns.billing_customer.birth_year",
+            "web_returns.return_amount",
+            "web_returns.billing_customer.text_id",
+            "web_returns.return_address.state",
+            "web_returns.return_date.year",
+            "web_returns.billing_customer.birth_day",
+            "web_returns.billing_customer.birth_month"
+          ]
+        }
+      ],
+      "inputs": [
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local._virt_filter_return_amount_7190501181391118"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "web_returns.billing_customer.address.state = GA",
+        "web_returns.return_address.state is not MagicConstants.NULL"
+      ],
+      "depth": "root",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root:\u2205",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "outputs": [
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:filter:d*:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "root_d1",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root_d1:\u2205",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "web_returns.return_date.year",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.billing_customer.id|web_returns.return_address.state:input:web_returns.web_sales.item.id|web_returns.web_sales.order_number",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:web_returns.return_address.state:input:web_returns.billing_customer.id|web_returns.return_address.state",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]filter:d1:web_returns.web_sales.item.id|web_returns.web_sales.order_number:sig:8f68ec",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    }
+  ],
+  "strategy_nodes": [
+    {
+      "conditions": null,
+      "datasource": "web_returns.billing_customer.address.customer_address",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.billing_customer.address.id>",
+      "hidden": [],
+      "id": "n0",
+      "inputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.text_id",
+        "web_returns.billing_customer.address.street_number",
+        "web_returns.billing_customer.address.street_name",
+        "web_returns.billing_customer.address.street_type",
+        "web_returns.billing_customer.address.suite_number",
+        "web_returns.billing_customer.address.city",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.address.zip",
+        "web_returns.billing_customer.address.county",
+        "web_returns.billing_customer.address.country",
+        "web_returns.billing_customer.address.gmt_offset",
+        "web_returns.billing_customer.address.location_type"
+      ],
+      "nullable": [
+        "web_returns.billing_customer.address.state"
+      ],
+      "outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.billing_customer.customers",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.billing_customer.id>",
+      "hidden": [],
+      "id": "n1",
+      "inputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.demographics.id",
+        "web_returns.billing_customer.household_demographic.id",
+        "web_returns.billing_customer.first_sales_date.id",
+        "web_returns.billing_customer.first_shipto_date.id",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.last_review_date"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.id"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.id"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.return_address.customer_address",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.return_address.id>",
+      "hidden": [],
+      "id": "n2",
+      "inputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.text_id",
+        "web_returns.return_address.street_number",
+        "web_returns.return_address.street_name",
+        "web_returns.return_address.street_type",
+        "web_returns.return_address.suite_number",
+        "web_returns.return_address.city",
+        "web_returns.return_address.state",
+        "web_returns.return_address.zip",
+        "web_returns.return_address.county",
+        "web_returns.return_address.country",
+        "web_returns.return_address.gmt_offset",
+        "web_returns.return_address.location_type"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.return_date.date",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.return_date.id>",
+      "hidden": [],
+      "id": "n3",
+      "inputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.text_id",
+        "web_returns.return_date._date_string",
+        "web_returns.return_date.date",
+        "web_returns.return_date.day_of_week",
+        "web_returns.return_date.day_of_month",
+        "web_returns.return_date.day_name",
+        "web_returns.return_date.week_seq",
+        "web_returns.return_date.month_of_year",
+        "web_returns.return_date.month_seq",
+        "web_returns.return_date.quarter",
+        "web_returns.return_date.quarter_name",
+        "web_returns.return_date.year"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.year"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.year"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.web_returns",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.web_sales.item.id,web_returns.web_sales.order_number>",
+      "hidden": [],
+      "id": "n4",
+      "inputs": [
+        "web_returns.return_date.id",
+        "web_returns.time.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.billing_customer.id",
+        "web_returns.refunded_customer.id",
+        "web_returns.returning_demographic.id",
+        "web_returns.refunded_demographic.id",
+        "web_returns.return_address.id",
+        "web_returns.refunded_address.id",
+        "web_returns.reason.id",
+        "web_returns.web_page.id",
+        "web_returns.return_amount",
+        "web_returns.return_quantity",
+        "web_returns.refunded_cash",
+        "web_returns.fee",
+        "web_returns.net_loss",
+        "web_returns.web_sales.order_number",
+        "web_returns.store.id"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_amount",
+        "web_returns.return_date.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_amount",
+        "web_returns.return_date.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ]
+    },
+    {
+      "conditions": "web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL",
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n5",
+      "inputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.return_amount",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ],
+      "parents": [
+        "n0",
+        "n1",
+        "n2",
+        "n3",
+        "n4"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.return_address.customer_address",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.return_address.id>",
+      "hidden": [],
+      "id": "n6",
+      "inputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.text_id",
+        "web_returns.return_address.street_number",
+        "web_returns.return_address.street_name",
+        "web_returns.return_address.street_type",
+        "web_returns.return_address.suite_number",
+        "web_returns.return_address.city",
+        "web_returns.return_address.state",
+        "web_returns.return_address.zip",
+        "web_returns.return_address.county",
+        "web_returns.return_address.country",
+        "web_returns.return_address.gmt_offset",
+        "web_returns.return_address.location_type"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.return_date.date",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.return_date.id>",
+      "hidden": [],
+      "id": "n7",
+      "inputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.text_id",
+        "web_returns.return_date._date_string",
+        "web_returns.return_date.date",
+        "web_returns.return_date.day_of_week",
+        "web_returns.return_date.day_of_month",
+        "web_returns.return_date.day_name",
+        "web_returns.return_date.week_seq",
+        "web_returns.return_date.month_of_year",
+        "web_returns.return_date.month_seq",
+        "web_returns.return_date.quarter",
+        "web_returns.return_date.quarter_name",
+        "web_returns.return_date.year"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.year"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.year"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.web_returns",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.web_sales.item.id,web_returns.web_sales.order_number>",
+      "hidden": [],
+      "id": "n8",
+      "inputs": [
+        "web_returns.return_date.id",
+        "web_returns.time.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.billing_customer.id",
+        "web_returns.refunded_customer.id",
+        "web_returns.returning_demographic.id",
+        "web_returns.refunded_demographic.id",
+        "web_returns.return_address.id",
+        "web_returns.refunded_address.id",
+        "web_returns.reason.id",
+        "web_returns.web_page.id",
+        "web_returns.return_amount",
+        "web_returns.return_quantity",
+        "web_returns.refunded_cash",
+        "web_returns.fee",
+        "web_returns.net_loss",
+        "web_returns.web_sales.order_number",
+        "web_returns.store.id"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_amount",
+        "web_returns.return_date.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_amount",
+        "web_returns.return_date.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n9",
+      "inputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.id",
+        "web_returns.return_amount",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ],
+      "parents": [
+        "n6",
+        "n7",
+        "n8"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ]
+    },
+    {
+      "conditions": "web_returns.return_address.state is not MagicConstants.NULL",
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": null,
+      "hidden": [],
+      "id": "n10",
+      "inputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.return_address.id",
+        "web_returns.return_amount"
+      ],
+      "parents": [
+        "n9"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "filter",
+      "type": "FilterNode",
+      "usable_outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.return_address.id",
+        "web_returns.return_amount"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n11",
+      "inputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.id",
+        "web_returns.return_amount",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ],
+      "parents": [
+        "n6",
+        "n7",
+        "n8"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n12",
+      "inputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.return_address.id",
+        "web_returns.return_amount"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.return_address.id",
+        "web_returns.return_amount"
+      ],
+      "parents": [
+        "n10",
+        "n11"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.return_address.id",
+        "web_returns.return_amount"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n13",
+      "inputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [
+        "n12"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n14",
+      "inputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [
+        "n12"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n15",
+      "inputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [
+        "n14"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n16",
+      "inputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.return_address.state"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "parents": [
+        "n15"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": null,
+      "hidden": [],
+      "id": "n17",
+      "inputs": [
+        "local._virt_agg_avg_3885168128306444",
+        "web_returns.return_address.state"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.scaled_state_returns_2002",
+        "web_returns.return_address.state"
+      ],
+      "parents": [
+        "n16"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "local.scaled_state_returns_2002",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n18",
+      "inputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "local.customer_state_returns_2002",
+        "local.scaled_state_returns_2002"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "local.customer_state_returns_2002",
+        "local.scaled_state_returns_2002"
+      ],
+      "parents": [
+        "n5",
+        "n13",
+        "n17"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "local.customer_state_returns_2002",
+        "local.scaled_state_returns_2002"
+      ]
+    },
+    {
+      "conditions": "local.customer_state_returns_2002 > local.scaled_state_returns_2002",
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": null,
+      "hidden": [],
+      "id": "n19",
+      "inputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "local.customer_state_returns_2002",
+        "local.scaled_state_returns_2002"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "local.customer_state_returns_2002",
+        "local.scaled_state_returns_2002"
+      ],
+      "parents": [
+        "n18"
+      ],
+      "partials": [],
+      "preexisting_conditions": "local.customer_state_returns_2002 > local.scaled_state_returns_2002",
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount",
+        "local.customer_state_returns_2002",
+        "local.scaled_state_returns_2002"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n20",
+      "inputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state",
+        "local.customer_state_returns_2002",
+        "web_returns.return_date.year",
+        "web_returns.return_amount"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [
+        "n19"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local.customer_state_returns_2002",
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.billing_customer.address.customer_address",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.billing_customer.address.id>",
+      "hidden": [],
+      "id": "n21",
+      "inputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.text_id",
+        "web_returns.billing_customer.address.street_number",
+        "web_returns.billing_customer.address.street_name",
+        "web_returns.billing_customer.address.street_type",
+        "web_returns.billing_customer.address.suite_number",
+        "web_returns.billing_customer.address.city",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.address.zip",
+        "web_returns.billing_customer.address.county",
+        "web_returns.billing_customer.address.country",
+        "web_returns.billing_customer.address.gmt_offset",
+        "web_returns.billing_customer.address.location_type"
+      ],
+      "nullable": [
+        "web_returns.billing_customer.address.state"
+      ],
+      "outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.billing_customer.customers",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.billing_customer.id>",
+      "hidden": [],
+      "id": "n22",
+      "inputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.demographics.id",
+        "web_returns.billing_customer.household_demographic.id",
+        "web_returns.billing_customer.first_sales_date.id",
+        "web_returns.billing_customer.first_shipto_date.id",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.last_review_date"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.return_address.customer_address",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.return_address.id>",
+      "hidden": [],
+      "id": "n23",
+      "inputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.text_id",
+        "web_returns.return_address.street_number",
+        "web_returns.return_address.street_name",
+        "web_returns.return_address.street_type",
+        "web_returns.return_address.suite_number",
+        "web_returns.return_address.city",
+        "web_returns.return_address.state",
+        "web_returns.return_address.zip",
+        "web_returns.return_address.county",
+        "web_returns.return_address.country",
+        "web_returns.return_address.gmt_offset",
+        "web_returns.return_address.location_type"
+      ],
+      "nullable": [
+        "web_returns.return_address.state"
+      ],
+      "outputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.return_address.id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.return_date.date",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.return_date.id>",
+      "hidden": [],
+      "id": "n24",
+      "inputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.text_id",
+        "web_returns.return_date._date_string",
+        "web_returns.return_date.date",
+        "web_returns.return_date.day_of_week",
+        "web_returns.return_date.day_of_month",
+        "web_returns.return_date.day_name",
+        "web_returns.return_date.week_seq",
+        "web_returns.return_date.month_of_year",
+        "web_returns.return_date.month_seq",
+        "web_returns.return_date.quarter",
+        "web_returns.return_date.quarter_name",
+        "web_returns.return_date.year"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.year"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.return_date.id",
+        "web_returns.return_date.year"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "web_returns.web_returns",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<web_returns.web_sales.item.id,web_returns.web_sales.order_number>",
+      "hidden": [],
+      "id": "n25",
+      "inputs": [
+        "web_returns.return_date.id",
+        "web_returns.time.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.billing_customer.id",
+        "web_returns.refunded_customer.id",
+        "web_returns.returning_demographic.id",
+        "web_returns.refunded_demographic.id",
+        "web_returns.return_address.id",
+        "web_returns.refunded_address.id",
+        "web_returns.reason.id",
+        "web_returns.web_page.id",
+        "web_returns.return_amount",
+        "web_returns.return_quantity",
+        "web_returns.refunded_cash",
+        "web_returns.fee",
+        "web_returns.net_loss",
+        "web_returns.web_sales.order_number",
+        "web_returns.store.id"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_amount",
+        "web_returns.return_date.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.return_address.id",
+        "web_returns.return_amount",
+        "web_returns.return_date.id",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ]
+    },
+    {
+      "conditions": "web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL",
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n26",
+      "inputs": [
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.return_amount",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ],
+      "parents": [
+        "n21",
+        "n22",
+        "n23",
+        "n24",
+        "n25"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": null,
+      "hidden": [],
+      "id": "n27",
+      "inputs": [
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.return_address.id",
+        "web_returns.return_address.state",
+        "web_returns.return_amount"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.return_address.id",
+        "web_returns.return_amount"
+      ],
+      "parents": [
+        "n26"
+      ],
+      "partials": [],
+      "preexisting_conditions": "web_returns.billing_customer.address.state = GA and web_returns.return_address.state is not MagicConstants.NULL",
+      "rollups": [],
+      "source_type": "filter",
+      "type": "FilterNode",
+      "usable_outputs": [
+        "local._virt_filter_return_amount_7190501181391118",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state",
+        "web_returns.web_sales.item.id",
+        "web_returns.web_sales.order_number",
+        "web_returns.return_date.id",
+        "web_returns.return_date.year",
+        "web_returns.billing_customer.address.id",
+        "web_returns.billing_customer.address.state",
+        "web_returns.return_address.id",
+        "web_returns.return_amount"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n28",
+      "inputs": [
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state"
+      ],
+      "parents": [
+        "n27"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.last_review_date",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.text_id",
+        "web_returns.return_address.state"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": "Grain<web_returns.billing_customer.id,web_returns.return_address.state>",
+      "hidden": [],
+      "id": "n29",
+      "inputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.last_review_date",
+        "local.customer_state_returns_2002"
+      ],
+      "nullable": [],
+      "outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.last_review_date",
+        "local.customer_state_returns_2002"
+      ],
+      "parents": [
+        "n20",
+        "n28"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.text_id",
+        "web_returns.billing_customer.salutation",
+        "web_returns.billing_customer.first_name",
+        "web_returns.billing_customer.last_name",
+        "web_returns.billing_customer.preferred_cust_flag",
+        "web_returns.billing_customer.birth_day",
+        "web_returns.billing_customer.birth_month",
+        "web_returns.billing_customer.birth_year",
+        "web_returns.billing_customer.birth_country",
+        "web_returns.billing_customer.login",
+        "web_returns.billing_customer.email_address",
+        "web_returns.billing_customer.last_review_date",
+        "local.customer_state_returns_2002"
+      ]
+    }
+  ]
+}

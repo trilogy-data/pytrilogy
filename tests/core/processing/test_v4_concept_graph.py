@@ -169,11 +169,13 @@ class TestAggregateInputGrain:
         ) == (frozenset())
 
     def test_sum_uses_argument_grain(self):
+        # The input grain is FD-minimized: `order_id` determines `store_id`, so the
+        # minimal row identity is `{order_id}` alone (not `{order_id, store_id}`).
         _, benv = _build(COUNT_MODEL)
         m = benv.concepts["local.value_per_store"]
         out_grain = frozenset(m.grain.components)
         assert _aggregate_input_grain(m, benv, out_grain) == frozenset(
-            {"local.order_id", "local.store_id"}
+            {"local.order_id"}
         )
 
     def test_inline_case_argument_contributes_fact_grain(self):
@@ -181,18 +183,27 @@ class TestAggregateInputGrain:
         must derive its input grain from the concepts referenced *inside* the
         expression, not just the output grain. The arg is a Function, not a
         bare BuildConcept, so walking only top-level concept args would miss it
-        and collapse the input grain to the output grain (the q2 fan-out)."""
+        and collapse the input grain to the output grain (the q2 fan-out).
+
+        The result is FD-minimized: `web_line` (the fact key) determines `date_id`,
+        so the minimal grain is `{web_line}` — still the fact grain (not collapsed
+        to the output grain `{date_id}`), which is what prevents the fan-out."""
         _, benv = _build(INLINE_CASE_MULTIFACT_MODEL)
         m = benv.concepts["local.web_dow_sales"]
         out_grain = frozenset(m.grain.components)
         assert _aggregate_input_grain(m, benv, out_grain) == frozenset(
-            {"local.date_id", "local.web_line"}
+            {"local.web_line"}
         )
 
     def test_inline_case_aggregates_over_disjoint_facts_split_input_grain(self):
         """Two same-output-grain aggregates whose inline arguments read
         different facts must produce DIFFERENT input grains — the signal that
-        keeps them in separate streams instead of one raw fact-to-fact join."""
+        keeps them in separate streams instead of one raw fact-to-fact join.
+
+        After FD-minimization each grain is its own fact key (`{web_line}` /
+        `{cat_line}`) rather than `out_grain ∪ {line}`; the anti-collapse signal is
+        therefore "differs from out_grain", and the split signal is the distinct
+        per-fact line keys."""
         _, benv = _build(INLINE_CASE_MULTIFACT_MODEL)
         web = benv.concepts["local.web_dow_sales"]
         cat = benv.concepts["local.cat_dow_sales"]
@@ -200,7 +211,7 @@ class TestAggregateInputGrain:
         web_input = _aggregate_input_grain(web, benv, out_grain)
         cat_input = _aggregate_input_grain(cat, benv, out_grain)
         assert web_input != cat_input
-        assert web_input > out_grain and cat_input > out_grain
+        assert web_input != out_grain and cat_input != out_grain
         assert "local.web_line" in web_input and "local.web_line" not in cat_input
         assert "local.cat_line" in cat_input and "local.cat_line" not in web_input
 

@@ -31,6 +31,7 @@ from trilogy.core.enums import Derivation
 
 from .constants import EdgeKind
 from .edges import EdgeMap, edge_kind
+from .functional_dependency import concept_attr_fd_closure, concept_attr_fd_determines
 from .models import ConceptAttrs, GroupBucket
 
 # Behaviors read node state from `concept_attrs` (the typed side dict keyed by
@@ -185,17 +186,16 @@ def can_preserve_grain_subset(
     unique date.id. The safety property holds: a blocked column just
     doesn't ride this group's CTE; if it's reachable through a different
     parent path, it'll still land where it's needed."""
-    if address in native_grain:
-        return True
-    if address not in concept_attrs:
-        return False
-    col_grain = concept_attrs[address].grain_components
-    if not col_grain:
-        return True
-    keys = concept_attrs[address].keys
-    if keys and keys <= native_grain:
-        return True
-    return col_grain <= native_grain
+    return concept_attr_fd_determines(concept_attrs, native_grain, address)
+
+
+def _attrs_for_address(
+    concept_attrs: dict[str, ConceptAttrs], address: str
+) -> ConceptAttrs | None:
+    return next(
+        (attrs for attrs in concept_attrs.values() if attrs.address == address),
+        None,
+    )
 
 
 def _lineage_parent_addrs(
@@ -231,20 +231,19 @@ def can_preserve_grouping(
     - a bare empty-grain column rides through only if it's a true CONSTANT — a
       row-varying empty-grain value (a CASE that isn't a key rename) would land
       in the SELECT with no GROUP BY entry, which is invalid SQL."""
-    if address in native_grain:
-        return True
-    if address not in concept_attrs:
+    node = _attrs_for_address(concept_attrs, address)
+    if node is None:
         return False
-    node = concept_attrs[address]
+    closure = concept_attr_fd_closure(
+        concept_attrs, native_grain, include_empty_grain=False
+    )
+    if address in closure:
+        return True
     col_grain = node.grain_components
-    if col_grain and col_grain <= native_grain:
-        return True
-    if node.keys and node.keys <= native_grain:
-        return True
     parents = _lineage_parent_addrs(
         concept_graph, concept_edges, concept_attrs, address
     )
-    if parents and parents <= native_grain:
+    if parents and parents <= closure:
         return True
     if not col_grain:
         return node.derivation == Derivation.CONSTANT

@@ -19,10 +19,11 @@ Outputs go to local_scripts/<stem>.png, <stem>_groups.png, and
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import matplotlib
 
@@ -49,6 +50,7 @@ from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     search_concepts,
 )
+from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.processing.v4_helper.constants import EdgeKind, EdgePhase
 from trilogy.core.processing.v4_helper.edges import (
     EdgeAttrs,
@@ -164,9 +166,9 @@ def _layered_layout(
     earlier). This makes rowset-internal pipelines (label='rowset_name')
     appear above the outer pipeline they feed into, even when there's no
     explicit cross-cluster edge connecting them."""
-    sub = graph.edge_subgraph(layering_edges).copy()
-    for n in graph.nodes:
-        sub.add_node(n)
+    sub: nx.DiGraph = nx.DiGraph()
+    sub.add_nodes_from(graph.nodes)
+    sub.add_edges_from((u, v) for u, v in layering_edges if graph.has_edge(u, v))
     try:
         generations = [list(g) for g in nx.topological_generations(sub)]
     except nx.NetworkXUnfeasible:
@@ -723,6 +725,353 @@ def render_group_digraph(
 
 
 # ---------------------------------------------------------------------------
+# Diagnostics
+# ---------------------------------------------------------------------------
+
+
+def _sorted_values(values: Any) -> list[str]:
+    return sorted(str(x) for x in values)
+
+
+def _format_values(values: Any) -> str:
+    items = _sorted_values(values)
+    return ", ".join(items) if items else "-"
+
+
+def _enum_value(value: Any) -> Any:
+    return getattr(value, "value", value)
+
+
+def _jsonify(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _jsonify(v) for k, v in value.items()}
+    if isinstance(value, (set, frozenset, tuple, list)):
+        return [_jsonify(v) for v in value]
+    if hasattr(value, "value"):
+        return value.value
+    if dataclass_is_instance(value):
+        return {k: _jsonify(v) for k, v in vars(value).items()}
+    return value
+
+
+def dataclass_is_instance(value: Any) -> bool:
+    return hasattr(value, "__dataclass_fields__")
+
+
+def _edge_record(edge: tuple[str, str], attrs: EdgeAttrs) -> dict[str, Any]:
+    return {
+        "source": edge[0],
+        "target": edge[1],
+        "kind": attrs.kind.value,
+        "phase": attrs.phase.value if attrs.phase is not None else None,
+        "alt_group": attrs.alt_group,
+    }
+
+
+def _group_record(
+    gid: str,
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict,
+) -> dict[str, Any]:
+    data = _group_data(attrs, gid)
+    raw = attrs.get(gid)
+    return {
+        "id": gid,
+        "depth": data.depth_label,
+        "derivation": data.derivation,
+        "grain": _sorted_values(data.grain_components),
+        "aggregate_input_grain": (
+            _sorted_values(raw.aggregate_input_grain) if raw is not None else []
+        ),
+        "members": _sorted_values(data.members),
+        "primary_members": _sorted_values(data.primary_members),
+        "secondary_members": _sorted_values(data.secondary_members),
+        "outputs": _sorted_values(raw.output_concepts) if raw is not None else [],
+        "inputs": _sorted_values(raw.input_concepts) if raw is not None else [],
+        "hidden": _sorted_values(raw.hidden_concepts) if raw is not None else [],
+        "conditions": list(data.conditions),
+        "predecessors": [
+            {
+                "id": pred,
+                "kind": _enum_value(edges[(pred, gid)].kind),
+                "phase": _enum_value(edges[(pred, gid)].phase),
+            }
+            for pred in sorted(graph.predecessors(gid))
+            if (pred, gid) in edges
+        ],
+        "successors": [
+            {
+                "id": succ,
+                "kind": _enum_value(edges[(gid, succ)].kind),
+                "phase": _enum_value(edges[(gid, succ)].phase),
+            }
+            for succ in sorted(graph.successors(gid))
+            if (gid, succ) in edges
+        ],
+        "input_contracts": (
+            [_jsonify(contract) for contract in raw.input_contracts]
+            if raw is not None
+            else []
+        ),
+        "final_contract": (
+            _jsonify(raw.final_contract)
+            if raw is not None and raw.final_contract is not None
+            else None
+        ),
+    }
+
+
+def _concept_record(node: str, attrs: dict) -> dict[str, Any]:
+    data = _concept_data(attrs, node)
+    raw = attrs.get(node)
+    return {
+        "id": node,
+        "address": raw.address if raw is not None else node,
+        "depth": data.depth_label,
+        "derivation": data.derivation,
+        "purpose": data.purpose,
+        "granularity": data.granularity,
+        "grain": _sorted_values(data.grain_components),
+        "aggregate_input_grain": (
+            _sorted_values(raw.aggregate_input_grain) if raw is not None else []
+        ),
+        "keys": _sorted_values(raw.keys) if raw is not None else [],
+        "rowset_name": raw.rowset_name if raw is not None else None,
+        "grouping_mode": raw.grouping_mode if raw is not None else None,
+        "is_rename": raw.is_rename if raw is not None else False,
+        "existence_only": raw.existence_only if raw is not None else False,
+    }
+
+
+def _strategy_source_name(node: StrategyNode) -> str | None:
+    datasource = getattr(node, "datasource", None)
+    return getattr(datasource, "identifier", None) or getattr(datasource, "name", None)
+
+
+def _strategy_record(
+    node: StrategyNode,
+    node_ids: dict[int, str],
+) -> dict[str, Any]:
+    return {
+        "id": node_ids[id(node)],
+        "type": node.__class__.__name__,
+        "source_type": node.source_type.value,
+        "datasource": _strategy_source_name(node),
+        "grain": str(node.grain) if node.grain is not None else None,
+        "force_group": node.force_group,
+        "parents": [node_ids[id(parent)] for parent in node.parents],
+        "outputs": [c.address for c in node.output_concepts],
+        "usable_outputs": [c.address for c in node.usable_outputs],
+        "inputs": [c.address for c in node.input_concepts],
+        "hidden": sorted(node.hidden_concepts),
+        "partials": [c.address for c in node.partial_concepts],
+        "rollups": [c.address for c in node.rollup_concepts],
+        "nullable": [c.address for c in node.nullable_concepts],
+        "existence": [c.address for c in node.existence_concepts],
+        "conditions": str(node.conditions) if node.conditions is not None else None,
+        "preexisting_conditions": (
+            str(node.preexisting_conditions)
+            if node.preexisting_conditions is not None
+            else None
+        ),
+    }
+
+
+def _collect_strategy_records(root: StrategyNode | None) -> list[dict[str, Any]]:
+    if root is None:
+        return []
+    ordered: list[StrategyNode] = []
+    seen: set[int] = set()
+
+    def visit(node: StrategyNode) -> None:
+        key = id(node)
+        if key in seen:
+            return
+        seen.add(key)
+        for parent in node.parents:
+            visit(parent)
+        ordered.append(node)
+
+    visit(root)
+    node_ids = {id(node): f"n{i}" for i, node in enumerate(ordered)}
+    return [_strategy_record(node, node_ids) for node in ordered]
+
+
+def _render_strategy_tree(root: StrategyNode | None) -> str:
+    if root is None:
+        return "_No strategy node._\n"
+    seen: set[int] = set()
+    lines: list[str] = []
+
+    def visit(node: StrategyNode, indent: int) -> None:
+        prefix = "  " * indent
+        source = _strategy_source_name(node)
+        suffix = f" datasource={source}" if source else ""
+        repeated = " (reused)" if id(node) in seen else ""
+        lines.append(
+            f"{prefix}- {node.__class__.__name__} source={node.source_type.value}"
+            f"{suffix}{repeated}"
+        )
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        lines.append(
+            f"{prefix}  outputs: {_format_values(c.address for c in node.output_concepts)}"
+        )
+        lines.append(
+            f"{prefix}  inputs: {_format_values(c.address for c in node.input_concepts)}"
+        )
+        hidden = _format_values(node.hidden_concepts)
+        if hidden != "-":
+            lines.append(f"{prefix}  hidden: {hidden}")
+        if node.conditions is not None:
+            lines.append(f"{prefix}  conditions: {node.conditions}")
+        for parent in node.parents:
+            visit(parent, indent + 1)
+
+    visit(root, 0)
+    return "\n".join(lines) + "\n"
+
+
+def _write_groups_markdown(
+    path: Path, records: list[dict[str, Any]], edge_records: list[dict[str, Any]]
+) -> None:
+    lines = [
+        "# V4 Group Diagnostics",
+        "",
+        f"- groups: {len(records)}",
+        f"- edges: {len(edge_records)}",
+        "",
+    ]
+    for record in records:
+        lines.extend(
+            [
+                f"## {record['id']}",
+                "",
+                f"- derivation: `{record['derivation']}`",
+                f"- depth: `{record['depth']}`",
+                f"- grain: `{_format_values(record['grain'])}`",
+                f"- aggregate input grain: `{_format_values(record['aggregate_input_grain'])}`",
+                f"- primary members: `{_format_values(record['primary_members'])}`",
+                f"- secondary members: `{_format_values(record['secondary_members'])}`",
+                f"- outputs: `{_format_values(record['outputs'])}`",
+                f"- inputs: `{_format_values(record['inputs'])}`",
+                f"- hidden: `{_format_values(record['hidden'])}`",
+                f"- predecessors: `{_format_values(p['id'] + ':' + p['kind'] for p in record['predecessors'])}`",
+                f"- successors: `{_format_values(s['id'] + ':' + s['kind'] for s in record['successors'])}`",
+            ]
+        )
+        if record["conditions"]:
+            lines.append(f"- conditions: `{'; '.join(record['conditions'])}`")
+        if record["input_contracts"]:
+            lines.append("- input contracts:")
+            lines.append("```json")
+            lines.append(
+                json.dumps(record["input_contracts"], indent=2, sort_keys=True)
+            )
+            lines.append("```")
+        if record["final_contract"]:
+            lines.append("- final contract:")
+            lines.append("```json")
+            lines.append(json.dumps(record["final_contract"], indent=2, sort_keys=True))
+            lines.append("```")
+        lines.append("")
+
+    lines.extend(["# Edges", ""])
+    for edge in edge_records:
+        phase = f" phase={edge['phase']}" if edge["phase"] else ""
+        alt = f" alt={edge['alt_group']}" if edge["alt_group"] else ""
+        lines.append(
+            f"- `{edge['source']}` -> `{edge['target']}` kind={edge['kind']}{phase}{alt}"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_strategy_markdown(path: Path, info: BuildInfo) -> None:
+    records = _collect_strategy_records(info.strategy_node)
+    lines = [
+        "# V4 Strategy Diagnostics",
+        "",
+        f"- strategy nodes: {len(records)}",
+        "",
+        "## Tree",
+        "",
+        _render_strategy_tree(info.strategy_node),
+        "## Records",
+        "",
+        "```json",
+        json.dumps(records, indent=2, sort_keys=True),
+        "```",
+        "",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_diagnostics(info: BuildInfo, stem: str, output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    group_records = [
+        _group_record(gid, info.group_graph, info.group_edges, info.group_attrs)
+        for gid in sorted(info.group_graph.nodes)
+    ]
+    merged_group_graph = (
+        info.merged_group_graph
+        if info.merged_group_graph.number_of_nodes()
+        else info.group_graph
+    )
+    merged_group_edges = (
+        info.merged_group_edges
+        if info.merged_group_graph.number_of_nodes()
+        else info.group_edges
+    )
+    merged_group_records = [
+        _group_record(gid, merged_group_graph, merged_group_edges, info.group_attrs)
+        for gid in sorted(merged_group_graph.nodes)
+    ]
+    concept_records = [
+        _concept_record(node, info.concept_attrs)
+        for node in sorted(info.concept_graph.nodes)
+    ]
+    payload = {
+        "groups": group_records,
+        "merged_groups": merged_group_records,
+        "concepts": concept_records,
+        "group_edges": [
+            _edge_record(edge, attrs)
+            for edge, attrs in sorted(info.group_edges.items())
+        ],
+        "merged_group_edges": [
+            _edge_record(edge, attrs)
+            for edge, attrs in sorted(merged_group_edges.items())
+        ],
+        "concept_edges": [
+            _edge_record(edge, attrs)
+            for edge, attrs in sorted(info.concept_edges.items())
+        ],
+        "strategy_nodes": _collect_strategy_records(info.strategy_node),
+    }
+
+    json_out = output_dir / f"{stem}_diagnostics.json"
+    groups_out = output_dir / f"{stem}_groups.md"
+    merged_groups_out = output_dir / f"{stem}_groups_merged.md"
+    strategy_out = output_dir / f"{stem}_strategy.md"
+    json_out.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    _write_groups_markdown(groups_out, group_records, payload["group_edges"])
+    _write_groups_markdown(
+        merged_groups_out, merged_group_records, payload["merged_group_edges"]
+    )
+    _write_strategy_markdown(strategy_out, info)
+    print(f"wrote {json_out}")
+    print(f"wrote {groups_out}")
+    print(f"wrote {merged_groups_out}")
+    print(f"wrote {strategy_out}")
+
+
+# ---------------------------------------------------------------------------
 # Plan generation
 # ---------------------------------------------------------------------------
 
@@ -978,6 +1327,17 @@ def main() -> None:
         action="store_true",
         help="Skip SQL compilation (graph rendering only).",
     )
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="Write searchable Markdown and JSON sidecars for v4 planner state.",
+    )
+    parser.add_argument(
+        "--diagnostics-dir",
+        type=Path,
+        default=OUT_DIR,
+        help="Directory for diagnostics sidecars. Defaults to local_scripts.",
+    )
     args = parser.parse_args()
 
     if args.query:
@@ -1013,6 +1373,8 @@ def main() -> None:
     print(f"wrote {concept_out}")
     print(f"wrote {group_out}")
     print(f"wrote {reordered_group_out}")
+    if args.diagnostics:
+        write_diagnostics(info, stem, args.diagnostics_dir)
 
     if not args.no_sql:
         sql = compile_sql(info, build_env, build_stmt)

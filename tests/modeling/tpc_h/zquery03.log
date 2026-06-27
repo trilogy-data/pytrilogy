@@ -1,6 +1,6 @@
 query_id = "03"
-generator = "v4"
-gen_length = 1473
+generator = "v3"
+gen_length = 1304
 preql_size = 298
 comp_size = 467
 generated_sql = """
@@ -8,45 +8,36 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") as \"revenue\",
     \"lineitem\".\"l_orderkey\" as \"order_id\",
-    \"order_orders\".\"o_orderdate\" as \"order_date\",
-    \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
     INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
 WHERE
     \"order_customer_customers\".\"c_mktsegment\" = 'BUILDING' and \"order_orders\".\"o_orderdate\" < date '1995-03-15' and \"lineitem\".\"l_shipdate\" > date '1995-03-15'
-),
-abundant as (
-SELECT
-    \"cheerful\".\"order_date\" as \"order_date\",
-    \"cheerful\".\"order_id\" as \"order_id\",
-    \"cheerful\".\"order_ship_priority\" as \"order_ship_priority\"
-FROM
-    \"cheerful\"
+
 GROUP BY
-    1,
-    2,
-    3),
+    1),
 cooperative as (
 SELECT
+    \"order_orders\".\"o_orderdate\" as \"order_date\",
+    \"order_orders\".\"o_orderkey\" as \"order_id\",
+    \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
+FROM
+    \"memory\".\"orders\" as \"order_orders\"
+WHERE
+    \"order_orders\".\"o_orderdate\" < date '1995-03-15'
+)
+SELECT
     \"cheerful\".\"order_id\" as \"order_id\",
-    sum(\"cheerful\".\"revenue\") as \"q_revenue\"
+    \"cheerful\".\"q_revenue\" as \"q_revenue\",
+    \"cooperative\".\"order_date\" as \"order_date\",
+    \"cooperative\".\"order_ship_priority\" as \"order_ship_priority\"
 FROM
     \"cheerful\"
-GROUP BY
-    1)
-SELECT
-    \"cooperative\".\"order_id\" as \"order_id\",
-    \"cooperative\".\"q_revenue\" as \"q_revenue\",
-    \"abundant\".\"order_date\" as \"order_date\",
-    \"abundant\".\"order_ship_priority\" as \"order_ship_priority\"
-FROM
-    \"abundant\"
-    INNER JOIN \"cooperative\" on \"abundant\".\"order_id\" = \"cooperative\".\"order_id\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"order_id\" = \"cooperative\".\"order_id\"
 ORDER BY 
-    \"cooperative\".\"q_revenue\" desc,
-    \"abundant\".\"order_date\" asc
+    \"cheerful\".\"q_revenue\" desc,
+    \"cooperative\".\"order_date\" asc
 LIMIT (10)"""

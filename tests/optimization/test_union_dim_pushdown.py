@@ -622,3 +622,37 @@ def test_union_dim_pushdown_propagates_existence_dependencies(test_environment):
 
     assert branch.existence_source_map[category_name.address] == ["category_parent"]
     assert branch.parent_ctes == [category_parent]
+
+
+def test_dim_cte_exposes_rejects_filter_derivative_of_dim(test_environment):
+    """A CTE built over the dim's base datasource but exposing only a derived
+    column (not the dim's own concepts) must not be accepted as the dim join
+    target — q02's ``relevent_week_seq`` GROUP over ``date_dim`` is the live
+    case that otherwise rendered an INVALID_ALIAS into the union branches."""
+    env = test_environment.materialize_for_select()
+    category = env.datasources["category"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+    category_name_length = env.concepts["category_name_length"]
+
+    descriptor = _DimDescriptor(
+        dim_qds=category,
+        join_qds_id=category.identifier,
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=category,
+            )
+        ],
+        dim_concepts=[category_id, category_name],
+        where_atoms=[],
+        strip_safe=True,
+    )
+    rule = UnionDimPushdown()
+
+    exposing = _branch_cte("dim_full", category, [category_id, category_name])
+    assert rule._dim_cte_exposes(exposing, descriptor) is True
+
+    derivative = _branch_cte("dim_derived", category, [category_name_length])
+    assert rule._dim_cte_exposes(derivative, descriptor) is False

@@ -1,0 +1,60 @@
+
+WITH 
+cheerful as (
+SELECT
+    "cs_item_items"."I_CATEGORY" as "cs_item_category",
+    "cs_item_items"."I_CLASS" as "cs_item_class",
+    "cs_item_items"."I_CURRENT_PRICE" as "cs_item_current_price",
+    "cs_item_items"."I_ITEM_DESC" as "cs_item_desc",
+    "cs_item_items"."I_ITEM_ID" as "cs_item_text_id",
+    sum("cs_catalog_sales"."CS_EXT_SALES_PRICE") as "revenue"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "cs_sold_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sold_date_date"."D_DATE_SK"
+WHERE
+    "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
+cooperative as (
+SELECT
+    "cheerful"."cs_item_class" as "cs_item_class",
+    sum("cheerful"."revenue") as "_virt_agg_sum_9832457364876792"
+FROM
+    "cheerful"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    "cheerful"."cs_item_category" as "cs_item_category",
+    "cheerful"."cs_item_class" as "cs_item_class",
+    "cheerful"."cs_item_current_price" as "cs_item_current_price",
+    "cheerful"."cs_item_desc" as "cs_item_desc",
+    "cheerful"."cs_item_text_id" as "cs_item_text_id",
+    "cheerful"."revenue" as "revenue",
+    "cooperative"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
+FROM
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class")
+SELECT
+    "abundant"."cs_item_text_id" as "cs_item_text_id",
+    "abundant"."cs_item_desc" as "cs_item_desc",
+    "abundant"."cs_item_category" as "cs_item_category",
+    "abundant"."cs_item_class" as "cs_item_class",
+    "abundant"."cs_item_current_price" as "cs_item_current_price",
+    "abundant"."revenue" as "revenue",
+    ( "abundant"."revenue" * 100.0 ) / ("abundant"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+FROM
+    "abundant"
+ORDER BY 
+    "abundant"."cs_item_category" asc nulls first,
+    "abundant"."cs_item_class" asc nulls first,
+    "abundant"."cs_item_text_id" asc nulls first,
+    "abundant"."cs_item_desc" asc nulls first,
+    "revenue_ratio" asc nulls first
+LIMIT (100)
