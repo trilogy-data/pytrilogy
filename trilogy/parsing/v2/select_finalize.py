@@ -245,33 +245,57 @@ def _calculate_grain(
     return result
 
 
-def _concept_address(c: Any) -> str:
+def _concept_address(c: Any, rename: Mapping[str, str] | None = None) -> str:
     if isinstance(c, (AggregateWrapper, Function)):
         nested = _render_aggregate(c)
         if nested:
             return nested
-    return c.address if hasattr(c, "address") else str(c)
+    addr = c.address if hasattr(c, "address") else str(c)
+    return rename.get(addr, addr) if rename is not None else addr
+
+
+def _macro_inner_aggregate(node: Any) -> Any | None:
+    """If ``node`` is a ``def``-macro invocation whose body is a single aggregate
+    (``@rollup_sales()`` -> ``sum(...) by rollup ...``), return that inner
+    aggregate node, else ``None``. Lets HAVING/SELECT aggregate matching see
+    through the ``FunctionCallWrapper`` produced by macro expansion."""
+    if isinstance(node, FunctionCallWrapper):
+        inner = node.content
+        if isinstance(inner, AggregateWrapper) or (
+            isinstance(inner, Function)
+            and inner.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return inner
+    return None
 
 
 def _aggregate_full_signature(
     node: Any,
+    rename: Mapping[str, str] | None = None,
 ) -> tuple[Any, tuple[str, ...], tuple[str, ...]] | None:
     """Signature (operator, args, by) for matching aggregates across SELECT/WHERE.
 
+    ``rename`` maps pure-rename SELECT sources to their alias addresses so a
+    SELECT ``by rollup sales.channel`` and a HAVING ``by ... local.channel``
+    (which finalize rewrites to the output grain) compare equal.
+
     Returns ``None`` for non-aggregate nodes.
     """
+    inner = _macro_inner_aggregate(node)
+    if inner is not None:
+        return _aggregate_full_signature(inner, rename)
     if isinstance(node, AggregateWrapper):
         return (
             node.function.operator,
-            tuple(_concept_address(a) for a in node.function.arguments),
-            tuple(sorted(_concept_address(c) for c in node.by)),
+            tuple(_concept_address(a, rename) for a in node.function.arguments),
+            tuple(sorted(_concept_address(c, rename) for c in node.by)),
         )
     if isinstance(node, Function) and (
         node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
     ):
         return (
             node.operator,
-            tuple(_concept_address(a) for a in node.arguments),
+            tuple(_concept_address(a, rename) for a in node.arguments),
             (),
         )
     return None
@@ -295,12 +319,13 @@ def _strip_local_namespace(address: str) -> str:
 
 def _select_aggregate_outputs(
     select: SelectStatement,
+    rename: Mapping[str, str] | None = None,
 ) -> list[tuple[tuple[Any, tuple[str, ...], tuple[str, ...]], str]]:
     """Return ``(signature, output_address)`` for aggregate-producing select items."""
     results: list[tuple[tuple[Any, tuple[str, ...], tuple[str, ...]], str]] = []
     for item in select.selection:
         if isinstance(item.content, ConceptTransform):
-            sig = _aggregate_full_signature(item.content.function)
+            sig = _aggregate_full_signature(item.content.function, rename)
             if sig is not None:
                 results.append((sig, item.content.output.address))
     return results
@@ -462,6 +487,15 @@ def _collect_condition_aggregates(node: Any) -> list[Any]:
     if isinstance(node, AggregateWrapper):
         found.append(node)
         return found
+    if _macro_inner_aggregate(node) is not None:
+        # `@rollup_agg()` macro wrapping a single aggregate — match as a whole.
+        found.append(node)
+        return found
+    if isinstance(node, FunctionCallWrapper):
+        found.extend(_collect_condition_aggregates(node.content))
+        for macro_arg in node.args:
+            found.extend(_collect_condition_aggregates(macro_arg))
+        return found
     if isinstance(node, Function) and (
         node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
     ):
@@ -589,12 +623,13 @@ def _substitute_condition_tree(node: Any, match_leaf: Any) -> Any:
 def _substitute_having_aggregates(
     node: Any,
     sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef],
+    rename: Mapping[str, str] | None = None,
 ) -> Any:
     """Rewrite a HAVING conditional tree, replacing matched aggregates with
     ``ConceptRef`` to the SELECT alias."""
 
     def match(n: Any) -> ConceptRef | None:
-        sig = _aggregate_full_signature(n)
+        sig = _aggregate_full_signature(n, rename)
         return sig_to_ref.get(sig) if sig is not None else None
 
     return _substitute_condition_tree(node, match)
@@ -618,10 +653,14 @@ def _validate_having_aggregates_match_select(
     """
     if not select.having_clause:
         return
-    select_aggs = _select_aggregate_outputs(select)
+    # A SELECT ``by rollup sales.channel`` keeps source names while finalize
+    # rewrites the matching HAVING ``by`` to its output aliases (``local.channel``)
+    # — normalize both sides through the pure-rename map so they match.
+    rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
+    select_aggs = _select_aggregate_outputs(select, rename)
     sig_to_alias_addr = {sig: addr for sig, addr in select_aggs}
     for node in _collect_condition_aggregates(select.having_clause.conditional):
-        sig = _aggregate_full_signature(node)
+        sig = _aggregate_full_signature(node, rename)
         if sig is None or sig in sig_to_alias_addr:
             continue
         _, _, by = sig
@@ -651,7 +690,7 @@ def _validate_having_aggregates_match_select(
         sig_to_ref[sig] = alias_concept.reference
     if sig_to_ref:
         new_conditional = _substitute_having_aggregates(
-            select.having_clause.conditional, sig_to_ref
+            select.having_clause.conditional, sig_to_ref, rename
         )
         if new_conditional is not select.having_clause.conditional:
             select.having_clause.conditional = new_conditional

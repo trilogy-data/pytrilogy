@@ -318,6 +318,77 @@ def _build_joinkeys(
     return result or ["1=1"]
 
 
+def _join_left_sources(join: Join) -> set[str]:
+    """CTE names a join's ON clause reads from (its left/anchor sources)."""
+    deps: set[str] = set()
+    for pair in join.joinkey_pairs or []:
+        if pair.cte is not None:
+            deps.add(pair.cte.name)
+    if join.left_cte is not None:
+        deps.add(join.left_cte.name)
+    return deps
+
+
+def reorder_inner_before_left(
+    joins: list[Join | InstantiatedUnnestJoin],
+    base_name: str | None,
+) -> list[Join | InstantiatedUnnestJoin]:
+    """Emit reducing INNER joins ahead of optional LEFT OUTER joins.
+
+    A selective INNER join placed *after* a non-reducing LEFT join forces the
+    engine to materialize the full outer-join product first — DuckDB does not push
+    the inner filter below the outer join — which can blow up runtime by orders of
+    magnitude (TPC-DS q80: 153s vs 0.5s for the same rows). Bubbling such inner
+    joins forward fixes it.
+
+    Correctness constraints, why this is safe:
+    - An INNER join only jumps ahead of a LEFT OUTER join, and only when none of
+      the sources its ON clause reads are produced by a deferred LEFT join. A LEFT
+      join preserves every left row and only adds (nullable) right columns, so an
+      INNER filter on non-LEFT columns commutes with it.
+    - FULL and RIGHT OUTER joins are hard barriers: they null-extend the anchor, so
+      a later INNER filter on the anchor legitimately drops rows that reordering
+      would resurrect. Nothing crosses them. Unnest/non-``Join`` entries are
+      barriers too. Relative order is otherwise preserved (stable).
+    """
+    if len(joins) < 2:
+        return joins
+
+    real = [j for j in joins if isinstance(j, Join)]
+    produced = {j.right_cte.name for j in real}
+    available: set[str] = {s for j in real for s in _join_left_sources(j)} - produced
+    if base_name:
+        available.add(base_name)
+
+    result: list[Join | InstantiatedUnnestJoin] = []
+    deferred: list[Join] = []
+
+    def flush() -> None:
+        for d in deferred:
+            result.append(d)
+            available.add(d.right_cte.name)
+        deferred.clear()
+
+    for join in joins:
+        if not isinstance(join, Join):
+            flush()
+            result.append(join)
+            continue
+        if join.jointype == JoinType.LEFT_OUTER:
+            deferred.append(join)
+        elif join.jointype == JoinType.INNER:
+            if not _join_left_sources(join) <= available:
+                flush()
+            result.append(join)
+            available.add(join.right_cte.name)
+        else:
+            flush()
+            result.append(join)
+            available.add(join.right_cte.name)
+    flush()
+    return result
+
+
 def render_join(
     join: Join | InstantiatedUnnestJoin,
     quote_character: str,

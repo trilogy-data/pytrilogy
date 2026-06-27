@@ -2556,6 +2556,35 @@ order by a asc, b asc nulls last;
     assert results == [(1, 1, 10), (1, 2, 20), (1, None, 30)]
 
 
+def test_rollup_macro_in_having_vs_scalar_colocates():
+    """Bug (q14): a `def` rollup macro in HAVING compared to a `by *` scalar
+    (`having @rollup_filter() > overall_avg`) rendered the macro's aggregate
+    INLINE in the post-aggregation filter, but its row-level inputs were already
+    aggregated away — emitting the `INVALID_REFERENCE_BUG` sentinel (uncaught
+    ValueError). The HAVING aggregate must be recognized through the macro's
+    `FunctionCallWrapper` and pointed at the matching SELECT alias, whose `by`
+    grain (source names) is normalized against the HAVING `by` (output aliases)."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    query = """
+def rollup_sales() -> sum(x) by rollup a, b;
+def rollup_sales_filter() -> sum(x) by rollup a, b;
+auto overall_avg <- avg(x) by *;
+select a, b,
+    @rollup_sales() as total,
+    --overall_avg
+having @rollup_sales_filter() > overall_avg
+order by a asc nulls first, b asc nulls first;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    assert "ROLLUP" in sql
+    results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
+    assert results == [(None, None, 30), (1, None, 30), (1, 2, 20)]
+
+
 def test_duckdb_rollup_passthrough_outer_no_regroup():
     # Regression: when an outer CTE projects rollup-aggregate outputs that are
     # forwarded passthroughs from a parent CTE which already applied the
