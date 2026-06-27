@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, List
 
-from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, logger
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -798,6 +798,61 @@ def raise_if_disconnected_for(
             format_disconnected_subgraphs_error(subgraphs),
             subgraphs=[[c.address for c in group] for group in subgraphs],
         )
+
+
+def connected_equivalent_suggestions(
+    environment: BuildEnvironment | None,
+    subgraphs: List[List[BuildConcept]],
+    g: "ReferenceGraph | None" = None,
+    island_rowsets: bool = True,
+) -> List[tuple[str, str]]:
+    """Detect the separate-import mistake: a model imported a second time as a
+    disconnected copy, so concepts like ``date.year`` split off from a measure that
+    already reaches them via a chainable import (``all_sales.date.year``).
+
+    Steer toward the largest subgraph (the connected target). For each concept in a
+    smaller, stranded subgraph, look for an environment concept whose address is the
+    stranded path under one extra namespace prefix AND that lands in the target's
+    connected component; shortest such prefix wins. Returns
+    ``(stranded_address, connected_address)`` pairs, or ``[]`` when no twin exists
+    (the caller then falls back to the generic join/merge hint). Reachability is
+    judged with ``_component_map`` so it matches ``disconnected_components``."""
+    if environment is None:
+        return []
+    comp_of, _ = _component_map(environment, g, island_rowsets)
+
+    def component_of(concept: BuildConcept) -> int | None:
+        for node in _anchor_nodes(concept):
+            if node in comp_of:
+                return comp_of[node]
+        return None
+
+    target = max(subgraphs, key=len)
+    target_comps = {component_of(c) for c in target} - {None}
+    if not target_comps:
+        return []
+
+    suggestions: List[tuple[str, str]] = []
+    for group in subgraphs:
+        if group is target:
+            continue
+        for concept in group:
+            stranded = concept.address
+            if VIRTUAL_CONCEPT_PREFIX in stranded:
+                continue
+            suffix = "." + stranded.removeprefix(f"{DEFAULT_NAMESPACE}.")
+            best: str | None = None
+            for candidate in environment.concepts.values():
+                addr = candidate.address
+                if VIRTUAL_CONCEPT_PREFIX in addr or not addr.endswith(suffix):
+                    continue
+                if component_of(candidate) not in target_comps:
+                    continue
+                if best is None or len(addr) < len(best):
+                    best = addr
+            if best is not None:
+                suggestions.append((stranded, best))
+    return suggestions
 
 
 def format_disconnected_subgraphs_error(

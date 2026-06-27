@@ -131,7 +131,6 @@ SELECT
 FROM
     \"vacuous\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"vacuous\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
     INNER JOIN \"cheerful\" on \"vacuous\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"vacuous\".\"sales_channel_dim_id\" = \"cheerful\".\"sales_channel_dim_id\"
     LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
 WHERE

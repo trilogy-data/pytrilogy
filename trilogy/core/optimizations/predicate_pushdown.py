@@ -22,6 +22,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_value_implies,
     conditions_mutually_exclusive,
+    gather_windows,
     is_scalar_condition,
 )
 from trilogy.utility import unique
@@ -188,13 +189,14 @@ def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
     input (e.g. q59's ``year_flag``, which is the lead's order key and feeds the
     partition expression but is not itself a partition key) changes
     lead/lag/rank results, so it must stay above the window. Window virt-concepts
-    aren't in ``source_map``, so detection keys off output-column lineage.
+    aren't in ``source_map``, so detection keys off output-column lineage —
+    including windows nested inside arithmetic (``sum(x) / lead(sum(x), N)``),
+    whose column lineage is a function with the window one level down.
     """
+    materialized = _parent_materialized_addrs(cte)
     window_lineages: list[BuildWindowItem] = []
     for col in cte.output_columns:
-        lineage = col.lineage
-        if isinstance(lineage, BuildWindowItem):
-            window_lineages.append(lineage)
+        window_lineages.extend(gather_windows(col.lineage, materialized))
     if not window_lineages:
         return True
     if not isinstance(candidate, BuildConceptArgs):
