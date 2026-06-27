@@ -849,19 +849,16 @@ def _select_rollup_spec(
     select: SelectStatement,
     context: RuleContext,
 ) -> tuple[AggregateGroupingMode, list[Any], list[list[Any]]] | None:
-    """The query's non-STANDARD grouping spec (mode, by, grouping_sets) taken
-    from a ROLLUP/CUBE/GROUPING SETS aggregate referenced in the SELECT
-    projection (inline or by name) — including one nested inside an expression
-    such as ``coalesce(sum(x) by rollup …, 0)``."""
-    for item in select.selection:
-        lineage = _item_lineage(item, context)
-        for wrapper in _collect_rollup_wrappers(lineage):
-            return (
-                wrapper.grouping,
-                list(wrapper.by),
-                [list(g) for g in wrapper.grouping_sets],
-            )
-    return None
+    """The query's SELECT-level grouping spec (mode, by, grouping_sets) from a
+    ``by rollup (…)`` / ``by cube (…)`` / ``by grouping sets (…)`` clause."""
+    grouping = select.grouping
+    if grouping is None:
+        return None
+    return (
+        grouping.mode,
+        list(grouping.by),
+        [list(g) for g in grouping.grouping_sets],
+    )
 
 
 def _is_standard_grouping_aggregate(node: Any) -> bool:
@@ -878,49 +875,77 @@ def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
     return _collect_aggregate_wrappers(node, _is_standard_grouping_aggregate)
 
 
-def _fix_projection_grouping_mode(
-    select: SelectStatement, context: RuleContext
-) -> None:
-    """``grouping()``/``grouping_id()`` are only meaningful inside the scope that
-    performs the ROLLUP/CUBE/GROUPING SETS. They parse with the default STANDARD
-    grouping mode, which keys them into a separate planner bucket from the rollup
-    aggregate; they then strand in a downstream groupless join/filter CTE and
-    render as ``grouping(col)`` with no GROUP BY (DuckDB: "GROUPING statement
-    cannot be used without groups").
+def _is_ungrouped_aggregate(node: Any) -> bool:
+    """A projection aggregate with no explicit ``by`` grain — the operand the
+    SELECT-level grouping spec applies to. Covers plain aggregates (sum/count/…)
+    and the ``grouping()``/``grouping_id()`` level indicators alike."""
+    return (
+        isinstance(node, AggregateWrapper)
+        and node.grouping == AggregateGroupingMode.STANDARD
+        and not node.by
+    )
 
-    A ``grouping()`` reached from the SELECT — directly, or nested inside a
-    ``case`` deriving the subtotal level, the TPC-DS-native idiom — just needs
-    its mode aligned with the query's rollup spec so it co-locates with the
-    rollup aggregate. Mutates each wrapper in place (they are dataclasses) so
-    by-name ``auto`` concepts are fixed at their canonical address.
-    """
-    spec = _select_rollup_spec(select, context)
+
+def _collect_ungrouped_aggregates_deep(
+    lineage: Any, context: RuleContext, seen: set[str]
+) -> list[AggregateWrapper]:
+    """Un-grouped aggregate wrappers reachable from a lineage, descending through
+    by-name ``ConceptRef``s into their concept lineages — so a named
+    ``auto t <- sum(x)`` (or a ``grouping()`` buried inside a derived level
+    concept) referenced in the SELECT still inherits the grouping spec. The
+    ``seen`` set guards against cyclic lineage."""
+    found: list[AggregateWrapper] = []
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in seen:
+            return found
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if concept is None or isinstance(
+            concept, (UndefinedConcept, UndefinedConceptFull)
+        ):
+            return found
+        return _collect_ungrouped_aggregates_deep(concept.lineage, context, seen)
+    if _is_ungrouped_aggregate(lineage):
+        found.append(cast(AggregateWrapper, lineage))
+    for child in _child_exprs(lineage):
+        found.extend(_collect_ungrouped_aggregates_deep(child, context, seen))
+    return found
+
+
+def _propagate_select_grouping(select: SelectStatement, context: RuleContext) -> None:
+    """Apply the SELECT-level ``by rollup (…)`` spec to every aggregate feeding the
+    projection that has no explicit ``by`` grain, so all measures — and the
+    ``grouping()`` level indicators — compute in ONE grouping pass.
+
+    This is what makes multi-level grouping a select property: there is no
+    per-aggregate rollup to distribute inconsistently, so the planner can never
+    split one measure's operands across grouping modes (the failure that emitted
+    invalid ``GROUP BY ROLLUP`` SQL). Mutates each wrapper in place (dataclasses)
+    so by-name ``auto`` concepts are fixed at their canonical address.
+
+    With no spec, a stray ``grouping()`` has no enclosing grouping set to anchor
+    it (its grain would be unresolvable and recurse) — reject it here."""
+    spec = select.grouping
     if spec is None:
-        # `grouping()` has no meaning without an enclosing grouping set. With no
-        # rollup/cube/grouping-sets aggregate to anchor it, a standard-mode
-        # wrapper reached from the SELECT gives its (possibly named) concept an
-        # unanchorable abstract grain whose resolution recurses. Reject it here.
-        for sitem in select.selection:
-            lineage = _item_lineage(sitem, context)
-            if lineage is None:
-                continue
-            if _collect_standard_grouping_wrappers(lineage):
+        # No grouping to propagate: just reject a stray projected grouping().
+        for item in select.selection:
+            lineage = _item_lineage(item, context)
+            if lineage is not None and _collect_standard_grouping_wrappers(lineage):
                 raise InvalidSyntaxException(
-                    "grouping()/grouping_id() requires a `by rollup`/`by cube`/"
-                    "grouping-sets aggregate in the enclosing select; it has no "
-                    "meaning without a grouping set (e.g. add `by rollup <dim>` "
-                    "to an aggregate in the select)."
+                    "grouping()/grouping_id() requires a `by rollup (…)`/"
+                    "`by cube (…)`/`by grouping sets (…)` clause on the enclosing "
+                    "select; it has no meaning without a grouping set."
                 )
         return
-    mode, by, grouping_sets = spec
-    for sitem in select.selection:
-        lineage = _item_lineage(sitem, context)
+    seen: set[str] = set()
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
         if lineage is None:
             continue
-        for wrapper in _collect_standard_grouping_wrappers(lineage):
-            wrapper.by = list(by)
-            wrapper.grouping = mode
-            wrapper.grouping_sets = [list(g) for g in grouping_sets]
+        for wrapper in _collect_ungrouped_aggregates_deep(lineage, context, seen):
+            wrapper.by = list(spec.by)
+            wrapper.grouping = spec.mode
+            wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
 
 
 def _grouping_arg_key(wrapper: AggregateWrapper) -> tuple[Any, tuple[str, ...]]:
@@ -1218,6 +1243,10 @@ def finalize_select_statement(
     ``select_as_definition`` writes through SemanticState so no parse-time
     mutation of ``environment.concepts`` is required.
     """
+    # Push the SELECT-level `by rollup (…)` spec onto every un-grouped projection
+    # aggregate before grain calc, so the select grain reflects the grouping keys
+    # and all measures share one grouping pass.
+    _propagate_select_grouping(select, context)
     # Promote any HAVING grouping() to a hidden output before the SELECT loop so
     # it materializes in the ROLLUP CTE instead of stranding downstream.
     _promote_having_grouping_to_outputs(select, context)
@@ -1320,7 +1349,6 @@ def finalize_select_statement(
     if undefined:
         raise_collected_undefined(context, undefined)
     select.grain = _calculate_grain(select, context, merged)
-    _fix_projection_grouping_mode(select, context)
     _validate_syntax(select, context)
 
 

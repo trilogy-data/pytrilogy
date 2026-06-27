@@ -76,12 +76,14 @@ class SyntaxNodeKind(str, Enum):
     AGGREGATE_FUNCTIONS = "aggregate_functions"
     AGGREGATE_OVER = "aggregate_over"
     AGGREGATE_ALL = "aggregate_all"
-    AGGREGATE_ROLLUP = "aggregate_rollup"
-    AGGREGATE_CUBE = "aggregate_cube"
-    AGGREGATE_GROUPING_SETS = "aggregate_grouping_sets"
     GROUPING_SET = "grouping_set"
     AGGREGATE_BY = "aggregate_by"
     AGGREGATE_PAREN_BY = "aggregate_paren_by"
+    # SELECT-level multi-level grouping
+    SELECT_GROUPING = "select_grouping"
+    SELECT_ROLLUP = "select_rollup"
+    SELECT_CUBE = "select_cube"
+    SELECT_GROUPING_SETS = "select_grouping_sets"
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
     GROUPING = "grouping"
@@ -411,12 +413,13 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "aggregate_functions": SyntaxNodeKind.AGGREGATE_FUNCTIONS,
     "aggregate_over": SyntaxNodeKind.AGGREGATE_OVER,
     "aggregate_all": SyntaxNodeKind.AGGREGATE_ALL,
-    "aggregate_rollup": SyntaxNodeKind.AGGREGATE_ROLLUP,
-    "aggregate_cube": SyntaxNodeKind.AGGREGATE_CUBE,
-    "aggregate_grouping_sets": SyntaxNodeKind.AGGREGATE_GROUPING_SETS,
     "grouping_set": SyntaxNodeKind.GROUPING_SET,
     "aggregate_by": SyntaxNodeKind.AGGREGATE_BY,
     "aggregate_paren_by": SyntaxNodeKind.AGGREGATE_PAREN_BY,
+    "select_grouping": SyntaxNodeKind.SELECT_GROUPING,
+    "select_rollup": SyntaxNodeKind.SELECT_ROLLUP,
+    "select_cube": SyntaxNodeKind.SELECT_CUBE,
+    "select_grouping_sets": SyntaxNodeKind.SELECT_GROUPING_SETS,
     "count": SyntaxNodeKind.COUNT,
     "count_distinct": SyntaxNodeKind.COUNT_DISTINCT,
     "grouping": SyntaxNodeKind.GROUPING,

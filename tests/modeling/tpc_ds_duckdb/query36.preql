@@ -6,11 +6,11 @@ import store_sales as ss;
 # total rows stay aligned. Real `grouping()` (not the rollup-NULL-pattern
 # trick) because some items have NULL category/class, so a NULL in the rollup
 # output is ambiguous between "data NULL" and "rolled up".
-auto profit_sum <- sum(ss.net_profit) by rollup ss.item.category, ss.item.class;
-auto sales_sum <- sum(ss.ext_sales_price) by rollup ss.item.category, ss.item.class;
+auto profit_sum <- sum(ss.net_profit);
+auto sales_sum <- sum(ss.ext_sales_price);
 auto gross_margin <- profit_sum::numeric(15, 4) / sales_sum::numeric(15, 4);
-auto g_cat <- grouping(ss.item.category) by rollup ss.item.category, ss.item.class;
-auto g_class <- grouping(ss.item.class) by rollup ss.item.category, ss.item.class;
+auto g_cat <- grouping(ss.item.category);
+auto g_class <- grouping(ss.item.class);
 auto lochierarchy <- g_cat + g_class;
 auto partition_cat <- case when g_class = 0 then ss.item.category else null end;
 auto rank_within_parent <- rank(ss.item.category, ss.item.class)
@@ -24,6 +24,7 @@ select
     ss.item.class as i_class,
     lochierarchy,
     rank_within_parent,
+by rollup (ss.item.category, ss.item.class)
 order by
     lochierarchy desc nulls first,
     case

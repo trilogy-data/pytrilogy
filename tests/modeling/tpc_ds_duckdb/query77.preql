@@ -93,9 +93,10 @@ with l0_union as union(
 select
     l0_union.u_channel as channel,
     l0_union.u_id as id,
-    sum(l0_union.u_sales) by rollup l0_union.u_channel, l0_union.u_id as sales,
-    sum(l0_union.u_returns) by rollup l0_union.u_channel, l0_union.u_id as returns_,
-    sum(l0_union.u_profit) by rollup l0_union.u_channel, l0_union.u_id as profit,
+    sum(l0_union.u_sales) as sales,
+    sum(l0_union.u_returns) as returns_,
+    sum(l0_union.u_profit) as profit,
+by rollup (l0_union.u_channel, l0_union.u_id)
 order by
     channel asc nulls first,
     id asc nulls first,

@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models.author import (
+    AggregateGrouping,
     Concept,
     ConceptRef,
     Conditional,
@@ -60,9 +61,13 @@ def select_statement(
     from_clause_val: FromClause | None = None
     where: WhereClause | None = None
     having: HavingClause | None = None
+    grouping: AggregateGrouping | None = None
     join_clauses: list[SelectJoin] = []
     for arg in args:
         atype = type(arg)
+        if atype is AggregateGrouping:
+            grouping = arg
+            continue
         if atype is list:
             # join_clause hydrates to list[SelectJoin]; select_list to
             # list[SelectItem]. Disambiguate on element type (both non-empty).
@@ -104,6 +109,7 @@ def select_statement(
         limit=limit,
         eligible_datasources=from_clause_val.sources if from_clause_val else None,
         join_clauses=join_clauses,
+        grouping=grouping,
         meta=metadata_from_meta(node.meta),
     )
 

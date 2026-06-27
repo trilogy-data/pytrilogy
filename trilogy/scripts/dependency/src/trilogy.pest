@@ -167,7 +167,7 @@ from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 // join_clause may appear before "select" (legacy) OR right after the select
 // list (preferred, SQL-like); both positions collect into the same join set.
 select_statement = {
-    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ having? ~ order_by? ~ limit?
+    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ having? ~ select_grouping? ~ order_by? ~ limit?
 }
 
 // query-scoped join: blends two otherwise-disjoint concepts on a shared key for
@@ -189,7 +189,7 @@ multi_select_statement = {
     ~ (^"merge" ~ select_statement)+
     ~ ^"align" ~ align_clause
     ~ (^"derive" ~ derive_clause)?
-    ~ having? ~ order_by? ~ limit?
+    ~ having? ~ select_grouping? ~ order_by? ~ limit?
 }
 
 align_item   = { select_hide_modifier? ~ IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
@@ -488,15 +488,24 @@ tvf_select_statement = { ^"from" ~ tvf_union_invocation ~ select_statement }
 // AGGREGATES
 // =============================================================================
 aggregate_all  = { "*" }
-aggregate_rollup = { ^"rollup" ~ (("(" ~ ")") | over_list) }
-aggregate_cube = { ^"cube" ~ over_list }
 grouping_set = { "(" ~ expr_over_list? ~ ")" }
-aggregate_grouping_sets = { ^"grouping" ~ ^"sets" ~ grouping_set ~ ("," ~ grouping_set)* }
 // Paren-wrapped expression list: `by (substring(x,1,2), other)`. Parens supply
 // the unambiguous boundary needed for arbitrary expressions; the build phase
 // materializes non-concept entries via instantiate_concept.
 aggregate_paren_by = { "(" ~ expr_over_list ~ ")" }
-aggregate_over = { ^"by" ~ (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | aggregate_paren_by | over_list) }
+// An aggregate's `by <grain>` never starts with a grouping keyword — those are
+// reserved for the SELECT-level `by rollup (…)` clause. The lookahead refuses
+// `by rollup`/`by cube`/`by grouping sets` here so they fall through to it.
+GROUPING_LEAD = @{ (^"rollup" | ^"cube" | ^"grouping") ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
+aggregate_over = { ^"by" ~ !GROUPING_LEAD ~ (aggregate_all | aggregate_paren_by | over_list) }
+
+// SELECT-level multi-level grouping (ROLLUP / CUBE / GROUPING SETS): a property
+// of the whole select, propagated by the planner to every aggregate with no
+// explicit `by` grain so all measures share ONE grouping pass.
+select_rollup = { ^"by" ~ ^"rollup" ~ "(" ~ expr_over_list? ~ ")" }
+select_cube = { ^"by" ~ ^"cube" ~ "(" ~ expr_over_list ~ ")" }
+select_grouping_sets = { ^"by" ~ ^"grouping" ~ ^"sets" ~ "(" ~ grouping_set ~ ("," ~ grouping_set)* ~ ")" }
+select_grouping = { select_rollup | select_cube | select_grouping_sets }
 
 // Mirrors lark's single-token regex: /(group)\s+([a-zA-Z_][a-zA-Z0-9_.]*)/i
 // Emits "group <identname>" as a single string so the hydrator's
@@ -831,6 +840,9 @@ SELECT_LIST_STOP = @{
       // a trailing comma before a post-select `<type> join` must not swallow the
       // join keyword as another select item.
       | JOIN_TYPE ~ (" " | "\t" | "\r" | "\n")+ ~ ^"join" ~ !(ASCII_ALPHANUMERIC | "_" | ".")
+      // a trailing comma before the SELECT-level `by rollup (…)` grouping clause
+      // must not swallow `by` as another select item (`by` is not reserved).
+      | ^"by" ~ (" " | "\t" | "\r" | "\n")+ ~ (^"rollup" | ^"cube" | ^"grouping") ~ !(ASCII_ALPHANUMERIC | "_" | ".")
     )
 }
 

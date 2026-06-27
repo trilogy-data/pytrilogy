@@ -17,9 +17,9 @@ having
 # into one rollup CTE, and the window runs directly over that CTE's rows, so
 # the NULL-keyed subtotal/total rows stay aligned. Mirrors the reference's
 # GROUP BY ROLLUP(state, county) with rank() OVER (PARTITION BY ...).
-auto total_sum <- sum(ss.net_profit) by rollup ss.store.state, ss.store.county;
-auto g_state <- grouping(ss.store.state) by rollup ss.store.state, ss.store.county;
-auto g_county <- grouping(ss.store.county) by rollup ss.store.state, ss.store.county;
+auto total_sum <- sum(ss.net_profit);
+auto g_state <- grouping(ss.store.state);
+auto g_county <- grouping(ss.store.county);
 auto lochierarchy <- g_state + g_county;
 # Partition by state only for the rows still resolved to a county (g_county=0);
 # subtotal/total rows partition on NULL. Matches the reference's
@@ -37,6 +37,7 @@ select
     ss.store.county as s_county,
     lochierarchy,
     rank_within_parent,
+by rollup (ss.store.state, ss.store.county)
 order by
     lochierarchy desc nulls first,
     case

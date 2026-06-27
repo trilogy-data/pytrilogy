@@ -98,23 +98,17 @@ def test_enrich_property_off_scoped_join_key_unchained_unresolvable():
 # path, so `store_name` splits into its own subgraph. Ideally this would source
 # the name at store grain and resolve; it currently raises in both forms. Full
 # queries inline for easy editing/debugging.
-ONE_ROWSET_UNALIASED = (
-    MODEL
-    + """
+ONE_ROWSET_UNALIASED = MODEL + """
 rowset agg_one <- where year = 2001 select store_id, count(sale_id) as cnt;
 select name as store_name, agg_one.cnt
 order by store_name asc;
 """
-)
 
-ONE_ROWSET_ALIASED = (
-    MODEL
-    + """
+ONE_ROWSET_ALIASED = MODEL + """
 rowset agg_one <- where year = 2001 select store_id as sk_a, count(sale_id) as cnt;
 select name as store_name, agg_one.cnt
 order by store_name asc;
 """
-)
 
 
 @pytest.mark.parametrize("query", [ONE_ROWSET_UNALIASED, ONE_ROWSET_ALIASED])

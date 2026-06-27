@@ -144,21 +144,23 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 
 ## Aggregation and grouping
 
-- Aggregates group at the query's automatic grain by default; override with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
+- Aggregates group at the query's automatic grain by default; override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens — function calls, casts, arithmetic: `avg(price) by (substring(phone, 1, 2))`.
-- **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) attaches to an aggregate's `by` clause and computes it at multiple grain levels in one pass:
-  - `agg(<expr>) by rollup d1, d2` → grouping sets `(d1, d2)`, `(d1)`, `()` — standard SQL ROLLUP, useful for subtotals + grand total.
-  - `agg(<expr>) by cube d1, d2` → every subset of the grouping keys.
-  - `agg(<expr>) by grouping sets (d1, d2), (d1), ()` → arbitrary explicit combinations; parens around each set; `()` is the grand total.
-  - The clause attaches to ONE aggregate. When several aggregates need the same expansion, wrap them in a `def` macro (or repeat the spec for each):
+- **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) is a property of the WHOLE select — a clause after the select list (before `order by`/`limit`) that computes the query at multiple grain levels in one pass. It applies to EVERY aggregate in the select that has no explicit `by` grain, so there is exactly one consistent grouping:
+  - `select d1, d2, agg(<expr>) as a by rollup (d1, d2)` → grouping sets `(d1, d2)`, `(d1)`, `()` — standard SQL ROLLUP, useful for subtotals + grand total.
+  - `select d1, d2, agg(<expr>) as a by cube (d1, d2)` → every subset of the grouping keys.
+  - `select d1, d2, agg(<expr>) as a by grouping sets ((d1, d2), (d1), ())` → arbitrary explicit combinations; parens around each set; `()` is the grand total.
+  - `by rollup ()` (empty) rolls up over the select's own automatic grain.
+  - Because it is select-level, multiple measures just share it — no per-aggregate repetition or macro needed:
 
     ```
-    def rollup_avg(metric) -> avg(metric::numeric(12,2)) by rollup enroll.department, enroll.year;
     select enroll.department, enroll.year,
-        @rollup_avg(enroll.credits) as agg1,
-        @rollup_avg(enroll.grade_points) as agg2;
+        avg(enroll.credits::numeric(12,2)) as agg1,
+        avg(enroll.grade_points::numeric(12,2)) as agg2
+    by rollup (enroll.department, enroll.year);
     ```
-  - `grouping(<field>)` returns 1 when the field has been rolled up at that row, 0 otherwise — use it (or a sum like `grouping(a) + grouping(b)`) to compute the hierarchy level. Detecting rollup rows by output NULL only works when the source has no real NULLs in those columns; when in doubt, prefer `grouping()`.
+  - A composite measure works the same — both operands roll up together because the clause covers the whole select: `sum(a) - sum(b) as net by rollup (d1, d2)`.
+  - `grouping(<field>)` returns 1 when the field has been rolled up at that row, 0 otherwise — use it (or a sum like `grouping(a) + grouping(b)`) to compute the hierarchy level. It needs a `by rollup`/`cube`/`grouping sets` clause on the select. Detecting rollup rows by output NULL only works when the source has no real NULLs in those columns; when in doubt, prefer `grouping()`.
 
 ## Window functions
 

@@ -23,9 +23,10 @@ where
 select
     channel_label as channel,
     id_label as id,
-    sum(sales.ext_sales_price) by rollup channel_label, id_label as sales_total,
-    sum(coalesce(sales.return_amount, 0)) by rollup channel_label, id_label as returns_total,
-    sum(profit_minus_loss) by rollup channel_label, id_label as profit_total,
+    sum(sales.ext_sales_price) as sales_total,
+    sum(coalesce(sales.return_amount, 0)) as returns_total,
+    sum(profit_minus_loss) as profit_total,
+by rollup (channel_label, id_label)
 order by
     channel asc nulls first,
     id asc nulls first

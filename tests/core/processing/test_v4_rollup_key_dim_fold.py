@@ -34,7 +34,8 @@ _QUERY = """
 select
   case when chan = 1 then 'aa' else 'bb' end as channel,
   concat('x', txt) as outlet,
-  sum(amt) by rollup chan, txt as sales,
+  sum(amt) as sales,
+by rollup (chan, txt)
 order by channel asc, sales asc, outlet asc nulls first;
 """
 

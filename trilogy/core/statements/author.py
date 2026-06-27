@@ -19,6 +19,7 @@ from trilogy.core.enums import (
     ValidationScope,
 )
 from trilogy.core.models.author import (
+    AggregateGrouping,
     AggregateWrapper,
     AlignClause,
     ArgBinding,
@@ -169,6 +170,9 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         default_factory=EnvironmentConceptDict
     )
     grain: Grain = field(default_factory=Grain)
+    # SELECT-level multi-level grouping (`by rollup (a, b)` etc.); propagated to
+    # un-grouped aggregates during finalize so every measure shares one grouping.
+    grouping: Optional[AggregateGrouping] = None
 
     def __post_init__(self):
         new = []

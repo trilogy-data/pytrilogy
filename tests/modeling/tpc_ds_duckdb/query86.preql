@@ -5,9 +5,9 @@ import web_sales as web_sales;
 # resolve into one rollup CTE and the window runs directly over it, so the
 # NULL-keyed subtotal/total rows stay aligned. Real `grouping()` (not the
 # rollup-NULL-pattern trick) because items can have NULL category/class.
-auto total_sum <- sum(web_sales.net_paid) by rollup web_sales.item.category, web_sales.item.class;
-auto g_cat <- grouping(web_sales.item.category) by rollup web_sales.item.category, web_sales.item.class;
-auto g_class <- grouping(web_sales.item.class) by rollup web_sales.item.category, web_sales.item.class;
+auto total_sum <- sum(web_sales.net_paid);
+auto g_cat <- grouping(web_sales.item.category);
+auto g_class <- grouping(web_sales.item.class);
 auto lochierarchy <- g_cat + g_class;
 auto partition_cat <- case when g_class = 0 then web_sales.item.category else null end;
 auto rank_within_parent <- rank(web_sales.item.category, web_sales.item.class)
@@ -21,6 +21,7 @@ select
     web_sales.item.class as i_class,
     lochierarchy,
     rank_within_parent,
+by rollup (web_sales.item.category, web_sales.item.class)
 order by
     lochierarchy desc nulls first,
     case

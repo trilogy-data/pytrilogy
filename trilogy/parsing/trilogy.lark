@@ -127,7 +127,7 @@
 
     // join_clause may appear before "select" (legacy) OR right after the select
     // list (preferred, SQL-like); both positions collect into the same join set.
-    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  having?  order_by?  limit?
+    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  having?  select_grouping? order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
     // for this select only (a query-local merge). The left key is the brought-in
@@ -146,7 +146,7 @@
     join_group: sum_chain (COMPARISON_OPERATOR sum_chain)+
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? order_by?  limit?
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? select_grouping? order_by?  limit?
 
     align_item: select_hide_modifier? IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 
@@ -582,16 +582,27 @@
 
     //aggregates can force a grain
     aggregate_all: "*"
-    aggregate_rollup: "ROLLUP"i ("(" ")" | over_list)
-    aggregate_cube: "CUBE"i over_list
     grouping_set: "(" expr_over_list? ")"
-    aggregate_grouping_sets: "GROUPING"i "SETS"i grouping_set ("," grouping_set)*
     // Paren-wrapped expression list: `by (substring(x,1,2), other)`. The surrounding
     // parens give an unambiguous boundary, so we can accept arbitrary expressions
     // here without conflicting with the select_list's comma the way bare `over_list`
     // would. Build phase materializes non-concept entries via instantiate_concept.
     aggregate_paren_by: "(" expr_over_list ")"
-    aggregate_over: ("BY"i (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | aggregate_paren_by | over_list))
+    aggregate_over: ("BY"i (aggregate_all | aggregate_paren_by | over_list))
+
+    // SELECT-level multi-level grouping (ROLLUP / CUBE / GROUPING SETS). It is a
+    // property of the whole select — the planner propagates it to every aggregate
+    // that has no explicit `by` grain, so all measures share ONE grouping pass
+    // (no per-aggregate rollup, which made inconsistent grouping possible). The
+    // `by rollup`/`by cube`/`by grouping sets` leads are single multi-word tokens
+    // so the LALR lexer never confuses them with an aggregate's own `by <grain>`.
+    _BY_ROLLUP: /by\s+rollup(?![A-Za-z0-9_.])/i
+    _BY_CUBE: /by\s+cube(?![A-Za-z0-9_.])/i
+    _BY_GROUPING_SETS: /by\s+grouping\s+sets(?![A-Za-z0-9_.])/i
+    select_grouping: select_rollup | select_cube | select_grouping_sets
+    select_rollup: _BY_ROLLUP "(" expr_over_list? ")"
+    select_cube: _BY_CUBE "(" expr_over_list ")"
+    select_grouping_sets: _BY_GROUPING_SETS "(" grouping_set ("," grouping_set)* ")"
     aggregate_functions: (count | count_distinct | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) aggregate_over?
 
     // date functions

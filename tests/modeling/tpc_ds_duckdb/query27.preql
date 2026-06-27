@@ -9,15 +9,12 @@ where
 select
     store_sales.item.text_id,
     store_sales.store.state,
-    grouping(store_sales.store.state) by rollup store_sales.item.text_id, store_sales.store.state as g_state,
-    avg(store_sales.quantity::numeric(12,2))
-            by rollup store_sales.item.text_id, store_sales.store.state as agg1,
-    avg(store_sales.list_price::numeric(12,2))
-            by rollup store_sales.item.text_id, store_sales.store.state as agg2,
-    avg(store_sales.coupon_amt::numeric(12,2))
-            by rollup store_sales.item.text_id, store_sales.store.state as agg3,
-    avg(store_sales.sales_price::numeric(12,2))
-            by rollup store_sales.item.text_id, store_sales.store.state as agg4,
+    grouping(store_sales.store.state) as g_state,
+    avg(store_sales.quantity::numeric(12,2)) as agg1,
+    avg(store_sales.list_price::numeric(12,2)) as agg2,
+    avg(store_sales.coupon_amt::numeric(12,2)) as agg3,
+    avg(store_sales.sales_price::numeric(12,2)) as agg4,
+by rollup (store_sales.item.text_id, store_sales.store.state)
 order by
     store_sales.item.text_id asc nulls first,
     store_sales.store.state asc nulls first

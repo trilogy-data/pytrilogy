@@ -759,7 +759,7 @@ auto channel_label <- channel;
 auto id_label <- entity_name;
 auto channel_out <- channel_label;
 auto id_out <- id_label;
-auto total <- sum(amount) by rollup channel_label, id_label;
+auto total <- sum(amount);
 """
 
 
@@ -901,7 +901,20 @@ class TestMultiGroupAssembly:
         }
 
     def test_rollup_aliases_project_from_grouped_contributor(self):
+        from trilogy.core.enums import AggregateGroupingMode
+        from trilogy.core.models.build import BuildGrain
+
         env, benv = _build(ROLLUP_ALIAS_MODEL)
+        # Rollup is a select-level clause; stamp it on the build concept directly
+        # to exercise the rolled-up node assembly in isolation.
+        total = benv.concepts["local.total"]
+        keys = [
+            benv.concepts["local.channel_label"],
+            benv.concepts["local.id_label"],
+        ]
+        total.lineage.grouping = AggregateGroupingMode.ROLLUP
+        total.lineage.by = keys
+        total.grain = BuildGrain.from_concepts(keys)
         info = _search(
             env,
             benv,
@@ -909,13 +922,15 @@ class TestMultiGroupAssembly:
         )
 
         assert info.strategy_node is not None
-        assert isinstance(info.strategy_node, SelectNode)
-        assert len(info.strategy_node.parents) == 1
+        # The rolled-up `total` resolves into a GroupNode; the renamed alias
+        # dims (channel_out, id_out) project off that grouped contributor.
         assert any(
             isinstance(node, GroupNode)
             and "local.total" in {concept.address for concept in node.output_concepts}
-            for node in _walk(info.strategy_node.parents[0])
+            for node in _walk(info.strategy_node)
         )
+        out = {c.address for c in info.strategy_node.output_concepts}
+        assert {"local.channel_out", "local.id_out", "local.total"} <= out
 
     def test_aggregate_normalizes_input_grain(self):
         """The builder normalizes aggregate inputs to argument grain before

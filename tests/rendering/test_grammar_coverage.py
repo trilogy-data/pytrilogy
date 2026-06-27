@@ -21,7 +21,6 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.models.author import (
-    AggregateWrapper,
     Concept,
     ConceptRef,
     Function,
@@ -89,13 +88,13 @@ def test_render_concept_derivation_statement():
 
 
 def test_render_aggregate_grouping_sets():
-    """``sum(x) by grouping sets (a, b), (a), ()`` — exercises grouping_sets render."""
+    """``by grouping sets ((a, b), (a), ())`` select-level clause render."""
     env = Environment()
     _, parsed = env.parse("""
 key a int;
 key b int;
 key x int;
-select sum(x) by grouping sets (a, b), (a), () as gx;
+select a, b, sum(x) as gx by grouping sets ((a, b), (a), ());
 """)
     rendered = Renderer().to_string(parsed[-1])
     assert "by grouping sets" in rendered, rendered
@@ -104,38 +103,31 @@ select sum(x) by grouping sets (a, b), (a), () as gx;
 
 
 def test_render_aggregate_by_cube():
-    """``sum(x) by cube a, b`` — exercises the cube branch."""
+    """``by cube (a, b)`` select-level clause render."""
     env = Environment()
     _, parsed = env.parse("""
 key a int;
 key b int;
 key x int;
-select sum(x) by cube a, b as gx;
+select a, b, sum(x) as gx by cube (a, b);
 """)
     rendered = Renderer().to_string(parsed[-1])
-    assert "by cube" in rendered, rendered
+    assert "by cube (a, b)" in rendered, rendered
 
 
-def test_render_aggregate_wrapper_grouping_sets_direct():
-    """Direct AggregateWrapper render for grouping_sets without parse."""
+def test_render_select_grouping_sets_direct():
+    """Direct render of a SELECT-level grouping spec without parse."""
     from trilogy.core.enums import AggregateGroupingMode
+    from trilogy.core.models.author import AggregateGrouping
 
     a = Concept(name="a", purpose=Purpose.KEY, datatype=DataType.INTEGER)
     b = Concept(name="b", purpose=Purpose.KEY, datatype=DataType.INTEGER)
-    x = Concept(name="x", purpose=Purpose.KEY, datatype=DataType.INTEGER)
-    agg = AggregateWrapper(
-        function=Function(
-            arguments=[x],
-            operator=FunctionType.SUM,
-            output_purpose=Purpose.METRIC,
-            output_datatype=DataType.INTEGER,
-            arg_count=1,
-        ),
-        by=[a, b],
-        grouping=AggregateGroupingMode.GROUPING_SETS,
-        grouping_sets=[[a], [b]],
+    grouping = AggregateGrouping(
+        mode=AggregateGroupingMode.GROUPING_SETS,
+        by=[a.reference, b.reference],
+        grouping_sets=[[a.reference], [b.reference]],
     )
-    rendered = Renderer().to_string(agg)
+    rendered = Renderer()._render_select_grouping(grouping)
     assert "by grouping sets" in rendered, rendered
     assert "(a)" in rendered, rendered
     assert "(b)" in rendered, rendered

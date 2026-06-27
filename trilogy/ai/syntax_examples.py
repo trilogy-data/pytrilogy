@@ -532,16 +532,20 @@ order by unique_sc.course asc;
     ),
     SyntaxExample(
         name="rollup",
-        title="Subtotals + grand total in one pass with `by rollup`",
+        title="Subtotals + grand total in one pass with `by rollup (…)`",
         summary=(
-            "`agg(x) by rollup d1, d2` computes the aggregate at every level "
-            "(leaf, per-d1 subtotal, grand total) in one pass; `grouping(d)` = 1 on "
-            "a rolled-up row — use it to LABEL subtotal/total rows and to sort by level"
+            "the select-level `by rollup (d1, d2)` clause computes EVERY aggregate "
+            "in the select at every level (leaf, per-d1 subtotal, grand total) in one "
+            "pass; `grouping(d)` = 1 on a rolled-up row — use it to LABEL "
+            "subtotal/total rows and to sort by level"
         ),
         body="""\
-# `agg(x) by rollup d1, d2` computes the aggregate at MULTIPLE grain levels in one
-# pass — the grouping sets (d1, d2), (d1), () — i.e. per-(d1,d2) leaf rows, a
-# subtotal per d1, and a grand total. (`by cube d1, d2` = every combination.)
+# A `by rollup (d1, d2)` clause AFTER the select list (before order by) computes
+# the whole select at MULTIPLE grain levels in one pass — the grouping sets
+# (d1, d2), (d1), () — i.e. per-(d1,d2) leaf rows, a subtotal per d1, and a grand
+# total. (`by cube (d1, d2)` = every combination; `by rollup ()` over the select's
+# own grain.) It applies to EVERY aggregate in the select, so all measures share
+# one consistent grouping.
 import enrollments as enroll;
 
 # `grouping(d)` = 1 when d is ROLLED UP on a row (a subtotal/grand-total row), 0 on
@@ -552,8 +556,9 @@ select
          else enroll.department end as department,
     case when grouping(enroll.course) = 1 then 'all courses'
          else enroll.course end as course,
-    sum(enroll.credits) by rollup enroll.department, enroll.course as total_credits,
+    sum(enroll.credits) as total_credits,
     --grouping(enroll.department) + grouping(enroll.course) as _level
+by rollup (enroll.department, enroll.course)
 order by _level asc, department asc nulls first, course asc nulls first
 limit 100;
 
@@ -562,11 +567,9 @@ limit 100;
 #  - SORT BY LEVEL (leaves, then subtotals, then grand total): ORDER BY cannot
 #    compute a fresh aggregate, so PROJECT the level (`grouping(a) + grouping(b)`)
 #    as a HIDDEN (`--`) column and sort by its alias — `_level` above.
-#  - NULL-safe / COMPOSITE measures: put `by rollup` on EVERY operand —
-#    `(sum(a) by rollup d1, d2) - (sum(b) by rollup d1, d2) as net`. Binding it to
-#    one operand (`sum(a) - sum(b) by rollup ...`) leaves the others at LEAF grain,
-#    so they come out NULL on the subtotal/grand-total rows. To zero-fill a single
-#    measure, wrap the whole aggregate: `coalesce(sum(a) by rollup d1, d2, 0)`.
+#  - COMPOSITE measures just work: `sum(a) - sum(b) as net` rolls up BOTH operands
+#    to the same levels because the `by rollup (…)` clause covers the whole select.
+#    To zero-fill a measure, wrap it: `coalesce(sum(a), 0) as a`.
 """,
     ),
     SyntaxExample(
@@ -581,12 +584,14 @@ limit 100;
 # multi-key window over the rollup output. `grouping()` gives the level; the
 # window partitions by (level, parent) so leaves rank within their parent and
 # subtotals rank among themselves — all in one pass. Do NOT write separate rank
-# concepts per level (they mis-rank across the wrong row set).
+# concepts per level (they mis-rank across the wrong row set). The aggregates and
+# grouping() level concepts are plain — the select's `by rollup (…)` clause stamps
+# the grouping onto all of them.
 import enrollments as enroll;
 
-auto total <- count(enroll.id) by rollup enroll.course, enroll.year;
-auto g_course <- grouping(enroll.course) by rollup enroll.course, enroll.year;
-auto g_year <- grouping(enroll.year) by rollup enroll.course, enroll.year;
+auto total <- count(enroll.id);
+auto g_course <- grouping(enroll.course);
+auto g_year <- grouping(enroll.year);
 auto level <- g_course + g_year;   # 0 = leaf, 1 = course subtotal, 2 = grand total
 auto parent <- case when g_year = 0 then enroll.course else null end;
 auto rnk <- rank(enroll.course, enroll.year)
@@ -599,21 +604,15 @@ select
     level,
     --parent,
     rnk,
+by rollup (enroll.course, enroll.year)
 order by level desc nulls first, parent asc nulls first, rnk asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
-# NOTE — composite aggregate over a rollup (a difference/ratio of sums):
-# put `by rollup` on EACH operand.
-#   GOOD: (sum(profit) by rollup enroll.course, enroll.year)
-#       - (sum(loss) by rollup enroll.course, enroll.year) as net
-# BAD: `sum(profit) - sum(loss) by rollup enroll.course, enroll.year` binds the
-# `by rollup` to the LAST operand only — `sum(profit)` then stays at leaf grain
-# and comes out NULL on the subtotal/grand-total rows. And the tidy-looking
-# `(sum(profit) - sum(loss)) by rollup ...` does NOT parse (a `by` clause
-# attaches to a single aggregate, not to a parenthesized expression). 
-#  Because it cannot generalize to complex parnetheses. Spell out
-# `by rollup` on every operand so they all roll up to the same levels.
+# NOTE — a composite aggregate over a rollup (a difference/ratio of sums) needs
+# NO special handling: `sum(profit) - sum(loss) as net` rolls up both operands
+# to the same levels, because `by rollup (…)` is a property of the whole select,
+# not of one aggregate.
 """,
     ),
     SyntaxExample(
