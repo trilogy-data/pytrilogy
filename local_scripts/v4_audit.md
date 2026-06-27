@@ -26,12 +26,21 @@ the crashes that were open on 2026-06-25 are fixed (existence-source `RecursionE
 family, q2.1 union `BinderException`, `test_filter_constant` invalid-ref). What remains
 before flipping the default:
 
-1. **Plan verbosity — 8 `_TPCDS_SIZE` tests** (q10, q2.1, q2.2, q30.alt, q73, q81 +
-   q23/q94). Rows match; the SQL trips `assert len(query) < ceiling`. The only
-   substantive engineering left. q23/q94 are a *deliberate* trade — the q16 all-ROOT
-   input-grain normalization (a correctness floor) adds CTEs; they need a grain-aware
+1. **Plan verbosity — 7 `_TPCDS_SIZE` tests** (q10, q2.1, q2.2, q30.alt, q73, q81 +
+   q23). Rows match; the SQL trips `assert len(query) < ceiling`. The only
+   substantive engineering left. q23 is a *deliberate* trade — the q16 all-ROOT
+   input-grain normalization (a correctness floor) adds CTEs; it needs a grain-aware
    skip. Handoffs: `v4_verbosity_handoff.md`, `v4_dimension_projection_rejoin_handoff.md`
-   (q81), and `project_v4_verbosity_regressions_0626` (q23/q94).
+   (q81), and `project_v4_verbosity_regressions_0626` (q23).
+   - **q94 FIXED + pruned 2026-06-27 (5271 → 3508, under the 5000 ceiling).** Root cause
+     was the per-consumer ROOT re-slice in `strategy_builder.parent_for_consumer`:
+     a `count(distinct order_number)` aggregate re-derived the entire conditioned
+     `web_sales ⋈ ship_address ⋈ ship_date ⋈ web_site` join (the dim joins are pinned by
+     the WHERE, so nothing could be pruned) just to read `order_number`. Fix: build the
+     narrow slice speculatively but adopt it ONLY when `_leaf_datasource_ids(sliced) <
+     _leaf_datasource_ids(node)` (it strictly drops a join); else share the already-built
+     ROOT and let column projection narrow it. **Also dropped q10 10208 → 8308** as a free
+     side effect (same shared-ROOT shape). Full sweep 0 failed; rows byte-identical.
    - **q2.1 catastrophic blowup FIXED 2026-06-26 (60696 → 10231, −83%).** Was a 9.6× self-
      referential membership-filter blowup (a distinct bug class, not ordinary verbosity);
      now ordinary ~1.4× verbosity (13 CTEs, down from 75). Fix: `_CleanFeederCache` in
@@ -62,15 +71,16 @@ Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
 
 ## Current tracked state — SHAPE/SIZE only (no correctness)
 
-`tests/v4_known_failing.py` tracks **23 entries** (after pruning 5 confirmed-passing on
-2026-06-26: q02, q47, q57, q76, `test_non_nullable_null_guard`). No crash labels remain.
+`tests/v4_known_failing.py` tracks **22 entries** (after pruning 5 on 2026-06-26: q02,
+q47, q57, q76, `test_non_nullable_null_guard`; and q94 on 2026-06-27). No crash labels
+remain.
 
 | bucket | count | meaning |
 | --- | --- | --- |
 | `_INLINE` | 10 | SQL/CTE shape differs from v3; rows match. Cosmetic. |
 | `_MODELING` | 5 | modeling-sweep shape/CTE diffs; rows match. Cosmetic. |
 | `_TPCDS_SIZE` | 6 | rows match the reference, SQL over the v3 length ceiling. Verbosity. |
-| `_TPCDS_SIZE_NORMALIZE` | 2 | q23/q94 — over ceiling because the q16 correctness floor (all-ROOT input-grain normalization) adds CTEs. Needs a grain-aware skip. |
+| `_TPCDS_SIZE_NORMALIZE` | 1 | q23 — over ceiling because the q16 correctness floor (all-ROOT input-grain normalization) adds CTEs. Needs a grain-aware skip. |
 
 The one open theme is **plan verbosity** (the size work below — `v4_verbosity_handoff.md`).
 

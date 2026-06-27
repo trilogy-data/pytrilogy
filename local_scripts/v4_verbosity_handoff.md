@@ -16,12 +16,29 @@ has no DB, over-reports, and for q2.1 reports a different blowup path entirely).
 | --- | --- | ---: | ---: | ---: | ---: |
 | **2.1** | `test_two_one` | 7500 | 6290 | **60696** | **9.6×** |
 | 73 | `test_seventy_three` | 3000 | 2701 | 5223 | 1.9× |
-| 94 | `test_ninety_four` | 5000 | 3549 | 5271 | 1.5× |
+| ~~94~~ | `test_ninety_four` | 5000 | 3549 | **3508** | **FIXED 2026-06-27 (was 5271) — pruned** |
 | 2.2 | `test_two_two` | 7500 | 6290 | 10273 | 1.6× |
-| 10 | `test_ten` | 7000 | 6420 | 10208 | 1.6× |
+| 10 | `test_ten` | 7000 | 6420 | **8308** | 1.3× (was 10208 — same shared-ROOT fix) |
 | 81 | `test_eighty_one` | 8000 | 7465 | 9096 | 1.2× |
 | 23 | `test_twenty_three` | 8500 | 8159 | 8515 | 1.04× |
 | 30.alt | `test_thirty_alt` | 12000 | 7152 | 10084 | length PASSES; fails STRUCTURE asserts |
+
+### *** q94: FIXED + pruned 2026-06-27 (5271 → 3508) ***
+
+The conditioned ROOT `web_sales ⋈ ship_address ⋈ ship_date ⋈ web_site` (filtered by
+date/state/company + multi-warehouse IN + not-returned NOT IN) was materialized TWICE:
+once for the `sum(ext_ship_cost/net_profit)` aggregate and once for
+`count(distinct order_number)`. At the group level it is a single shared `grp:root:root:∅`
+with two aggregate successors, but Stage 3 `parent_for_consumer` (strategy_builder.py)
+SLICES the ROOT per consumer: the count aggregate needs only `order_number` ⊂ the ROOT's
+4 outputs, so it called `build_node(... slice ...)` and re-derived the whole join — the
+WHERE pins all four dim joins, so the rebuild pruned nothing and just duplicated CTEs
+(`cooperative`/`abundant`/`concerned`). Fix: build the slice speculatively, then adopt it
+ONLY when `_leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)` (strict subset = it
+drops a join the slice no longer spans); otherwise share the already-built ROOT and let
+column projection narrow it. Principled — re-source only when it genuinely prunes a join,
+never to carry fewer columns. Bonus: q10 10208 → 8308 (identical shape). Full sweep 0
+failed; rows byte-identical.
 
 ### *** q2.1: catastrophic blowup FIXED 2026-06-26 (60696 → 10231, −83%) ***
 
