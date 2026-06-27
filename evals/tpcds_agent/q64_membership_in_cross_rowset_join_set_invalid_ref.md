@@ -1,6 +1,18 @@
-# Bug: membership in a set that is itself a cross-rowset-JOIN rowset → uncaught `INVALID_REFERENCE_BUG` crash (q64)
+# Bug: a cross-rowset-JOIN rowset whose own WHERE compares its operands → uncaught `INVALID_REFERENCE_BUG` crash (q64)
 
-**Status:** OPEN — minimal deterministic repro + bisection. Same `INVALID_REFERENCE_BUG` dangling-CTE
+**Status:** FIXED 2026-06-27. Root cause was NOT in membership/existence sourcing — the
+cross-rowset-join rowset `qual` crashes even when **selected directly** (no membership). In
+`gen_rowset_node`'s cross-rowset branch (rowset_node.py), the merge was sourced from
+`[concept] + local_optional + condition_targets`, where `condition_targets` *excludes* predicate
+operands already present in the rowset being processed (`have`). But the merge is sourced anew and
+does NOT inherit that rowset's outputs, so an operand living in it (here `item_sales.s_amt`, the
+measure being compared) was never produced by the merge — yet the predicate referencing it was
+applied → dangling CTE. Fix: source the merge against EVERY `conditions.row_arguments` (via
+`unique(... )`), and guard with `_condition_operands_resolved(...)` so the predicate is only applied
+when the merge actually produces all operands (else fall through, never emit the sentinel).
+Tests: `tests/test_cross_rowset_join_rowset_as_set.py` (direct select + membership set).
+
+(historical) Same `INVALID_REFERENCE_BUG` dangling-CTE
 family as the (FIXED) q2 cross-rowset-membership-existence bug, but a case that fix does NOT cover.
 **Surfaced by:** TPC-DS q64 (run `20260627-131753`) — the run's top token sink: **2.77M tokens / 60
 iterations / 8 errors**, of which **3× `Unexpected error: Invalid reference string found in query`**
@@ -41,6 +53,12 @@ select ss.item.text_id as id, sum(ss.ext_list_price) as lp;
 |---|---|
 | a **single** rowset (`select ... where cat_ext_list_price > 1000`) | **OK** |
 | a **cross-rowset JOIN** rowset (`left join ... where ...`, as above) | **ERR** (sentinel) |
+
+**Correction (matrix-tested):** membership is NOT required — `select qual.q_item` directly *also*
+crashes. The real trigger is the **cross-rowset-join rowset whose own WHERE compares its operand
+rowsets**; membership is just one consumer. (A matrix also found `out_B` — output taken from the
+*refund* rowset — happened not to crash pre-fix because the merge anchored on that side; the bug is
+sensitive to which operand the merge anchors on.)
 
 Nothing else from the original q64 is needed — no `physical_returns` join, no dimension columns, no
 marital filter, no scoped join on the consuming side. Just **membership in a set whose producer is a

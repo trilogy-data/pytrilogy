@@ -19,8 +19,23 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
+
+
+def _condition_operands_resolved(
+    conditions: BuildWhereClause, node: StrategyNode
+) -> bool:
+    """True when `node` can produce every row-operand the predicate references
+    (directly or via a pseudonym). A cross-rowset merge that drops an operand
+    must not have the predicate applied -- the renderer would emit a dangling
+    INVALID_REFERENCE_BUG CTE for the missing column."""
+    available: set[str] = set()
+    for c in node.output_concepts:
+        available.add(c.address)
+        available.update(c.pseudonyms)
+    return all(r.address in available for r in conditions.row_arguments)
 
 
 def _scoped_joins_for_rowset(
@@ -218,15 +233,28 @@ def gen_rowset_node(
         # down into the scan — applying it here would compute the aggregate
         # unfiltered and filter too late.
         if any(t.derivation == Derivation.ROWSET for t in condition_targets):
+            # Source the merge against EVERY concept the predicate references, not
+            # just the operands missing from this rowset (`condition_targets`). An
+            # operand that lives in *this* rowset (e.g. a measure compared against
+            # another rowset's measure) is in `node` but NOT in the fresh merge --
+            # the merge is sourced anew, it doesn't inherit `node`'s outputs. Omit
+            # it and the applied predicate references a column the merge never
+            # produced -> dangling INVALID_REFERENCE_BUG CTE (q64).
+            merge_inputs = unique(
+                [concept] + local_optional + list(conditions.row_arguments),
+                "address",
+            )
             merged = source_concepts(
-                mandatory_list=[concept] + local_optional + condition_targets,
+                mandatory_list=merge_inputs,
                 environment=environment,
                 g=g,
                 depth=depth + 1,
                 conditions=None,
                 history=history,
             )
-            if merged:
+            # Only apply the predicate if the merge actually produced every
+            # operand; otherwise fall through rather than emit a dangling CTE.
+            if merged and _condition_operands_resolved(conditions, merged):
                 merged.add_condition(conditions.conditional)
                 # A membership predicate (`x in <set>`) needs its existence set
                 # sourced as a parent here too -- otherwise the subselect renders

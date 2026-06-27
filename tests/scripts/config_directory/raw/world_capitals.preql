@@ -1,8 +1,4 @@
 # Datasource ingested from world_capitals
-<<<<<<< Updated upstream
-=======
-# Generated on 2026-04-04 16:50:34.618537
->>>>>>> Stashed changes
 import std.geography;
 
 key country string::country;

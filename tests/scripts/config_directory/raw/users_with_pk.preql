@@ -1,8 +1,4 @@
 # Datasource ingested from users_with_pk
-<<<<<<< Updated upstream
-=======
-# Generated on 2026-04-04 16:50:33.861538
->>>>>>> Stashed changes
 import std.net;
 
 key user_id enum<int>[1, 2, 3];
