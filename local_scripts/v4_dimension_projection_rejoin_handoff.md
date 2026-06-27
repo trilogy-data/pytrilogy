@@ -41,15 +41,29 @@ Three coupled changes, all principled, all shipped:
    re-scan (`covers_as_grouping_sibling`). ROOT-only — broadening to FILTER feeders
    drops a row-reducing WHERE the twin doesn't replicate (q30.alt rows).
 
-## Remaining to fully clear q81/q30.alt/q10 (NOT done — unsafe so far)
+## 2026-06-27 follow-up — condition-aware feeder drop LANDED (safe)
 
-The standalone-dim sourcing works; the size gap is the SECOND fact scan feeding the
-d0 aggregate through `filter:d*` (q81 catalog_returns ×2) and the no-op passthrough
-CTEs. The broadened (B) (drop FILTER feeders too) gets q81 to 8275/×1 but BREAKS
-q30.alt rows — a FILTER feeder applies a WHERE the grouping twin does not, so the
-subset check is unsound for FILTER. A safe version must compare condition atoms
-(drop the feeder only when the twin's accumulated conditions ⊇ the feeder's). Plus
-the (C) passthrough fold. Both deferred.
+The broadened (B) (drop any non-grouping feeder covered by a co-grain grouping
+sibling) is now SAFE via `_feeder_conditions_implied` (strategy_builder): drop the
+feeder only when the grouping sibling's subtree applies every row-reducing atom the
+feeder's subtree does (`_atoms_at` + `_accumulated_atoms_above`, compared as atom
+sets). q81's filter:d* feeder carries only the metric pre-filter the d1 twin also
+applies → drops (catalog_returns ×2→×1, **8987→8275**). q30.alt's feeder carries
+the POST-aggregate `address.state='GA'` (on its parent ROOT) the twin lacks → kept
+(rows stay correct). Full combined sweep (tpc_ds + engine + tpc_h + optimization +
+complex) 0 net-new failures; ruff/mypy/black clean.
+
+## Remaining to fully clear q81/q30.alt/q10 (still open)
+
+q81 is 8275 (>8000) only because of `cheerful` — a no-op merge-projection CTE
+(`SELECT 16 dims FROM wakeful`) the FINAL MergeNode emits for the dim contributor.
+It is NOT a `_elide_single_parent_passthrough` SelectNode (the elide doesn't see
+it) — it's created at the MergeNode→CTE rendering layer, so collapsing it means the
+merge referencing `wakeful` directly (CTE/dialect territory, riskier). q30.alt's
+×2 web_returns is the genuinely-needed GA-spine scan: `address.state` is filter-only
+(not selected), so the split's output-gate leaves it on the fact; eliminating it
+needs the dim bucket to carry a non-output filter column through the FINAL re-source
+without a dangling ref (the hard case from the original (A) lever #4). Both deferred.
 
 ---
 

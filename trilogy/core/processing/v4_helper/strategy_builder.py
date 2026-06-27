@@ -470,6 +470,33 @@ def _accumulated_atoms_above(
     return accumulated
 
 
+def _feeder_conditions_implied(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    feeder_gid: str,
+    sibling_gid: str,
+) -> bool:
+    """Whether every row-reducing condition in the feeder's subtree (the atoms at
+    it AND at its ancestors) is also applied in the grouping sibling's subtree.
+
+    A redundant fact-rescan feeder can only be dropped in favor of a co-grain
+    grouping sibling if the sibling's rows are filtered at least as much — else
+    dropping the feeder silently widens the row set. q81's feeder carries only the
+    metric's pre-filter (``return_address.state is not null``), which the d1 twin
+    also applies, so it drops. q30.alt's feeder carries the POST-aggregate
+    ``billing_customer.address.state = 'GA'`` (on its parent ROOT scan) that the
+    twin does NOT apply — keep it (dropping selects non-GA customers)."""
+    feeder = _atoms_at(attrs, feeder_gid) + _accumulated_atoms_above(
+        group_graph, attrs, feeder_gid
+    )
+    if not feeder:
+        return True
+    sibling = _atoms_at(attrs, sibling_gid) + _accumulated_atoms_above(
+        group_graph, attrs, sibling_gid
+    )
+    return all(atom in sibling for atom in feeder)
+
+
 def _parent_nodes_for(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -654,20 +681,25 @@ def _parent_nodes_for(
         for other_pgid, other_node in candidates:
             if other_pgid == pgid:
                 continue
-            # A ROOT scan parent whose entire contribution is already carried by a
-            # sibling GROUPING contributor (an aggregate/window at this grouping
+            # A row-feeder parent whose entire contribution is already carried by
+            # a sibling GROUPING contributor (an aggregate/window at this grouping
             # consumer's grain) is a redundant fact re-scan: the consumer reuses
-            # the sibling's already-grouped rows, so the ROOT only re-supplies the
-            # grouping keys the sibling holds (q81's `sparkling`). A ROOT that ALSO
-            # feeds raw recompute inputs has columns the aggregated sibling lacks,
-            # so its `provides` is not a subset and it survives. Restricted to ROOT
-            # (not a row-reducing FILTER, whose dropped WHERE the sibling may not
-            # replicate). Otherwise require the covering sibling be a lineage
-            # descendant (a passthrough re-exposing this parent's rows).
+            # the sibling's already-grouped rows, so the feeder only re-supplies
+            # grouping keys the sibling holds (q81's `sparkling` virt-filter
+            # passthrough). A feeder that ALSO feeds raw recompute inputs has
+            # columns the aggregated sibling lacks, so its `provides` is not a
+            # subset and it survives. Drop only when the sibling applies every
+            # row-reducing condition the feeder's subtree does — else the feeder
+            # narrows rows the sibling does not (q30.alt's post-aggregate GA
+            # filter) and `provides` (columns only) wouldn't catch it. Otherwise
+            # require the covering sibling be a lineage descendant.
             covers_as_grouping_sibling = (
                 attrs[gid].derivation in GROUPING_DERIVATIONS
-                and attrs[pgid].derivation == Derivation.ROOT
+                and attrs[pgid].derivation not in GROUPING_DERIVATIONS
+                and not node.existence_concepts
+                and not node.force_group
                 and attrs[other_pgid].derivation in GROUPING_DERIVATIONS
+                and _feeder_conditions_implied(group_graph, attrs, pgid, other_pgid)
             )
             if not (
                 covers_as_grouping_sibling

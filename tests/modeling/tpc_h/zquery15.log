@@ -1,6 +1,6 @@
 query_id = "15"
 generator = "v4"
-gen_length = 1792
+gen_length = 1387
 preql_size = 396
 comp_size = 560
 generated_sql = """
@@ -8,56 +8,40 @@ generated_sql = """
 WITH 
 quizzical as (
 SELECT
-    \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") as \"revenue\",
-    \"lineitem\".\"l_shipdate\" as \"ship_date\",
-    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\"
+    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
+    sum(CASE WHEN \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) as \"supplier_rev\"
 FROM
-    \"memory\".\"lineitem\" as \"lineitem\"),
-cheerful as (
-SELECT
-    \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
-    sum(CASE WHEN \"quizzical\".\"ship_date\" >= date '1996-01-01' and \"quizzical\".\"ship_date\" < date '1996-04-01' THEN \"quizzical\".\"revenue\" ELSE NULL END) as \"supplier_rev\"
-FROM
-    \"quizzical\"
+    \"memory\".\"lineitem\" as \"lineitem\"
 GROUP BY
     1),
-wakeful as (
+cheerful as (
 SELECT
-    \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\"
+    max(\"quizzical\".\"supplier_rev\") as \"max_supplier_rev\"
 FROM
     \"quizzical\"),
-thoughtful as (
+cooperative as (
 SELECT
-    max(\"cheerful\".\"supplier_rev\") as \"max_supplier_rev\"
+    \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"quizzical\".\"supplier_rev\" as \"supplier_rev\",
+    \"quizzical\".\"supplier_rev\" as \"total_revenue\"
 FROM
-    \"cheerful\"),
-questionable as (
-SELECT
-    \"cheerful\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"cheerful\".\"supplier_rev\" as \"supplier_rev\",
-    \"cheerful\".\"supplier_rev\" as \"total_revenue\"
-FROM
-    \"wakeful\"
-    INNER JOIN \"cheerful\" on \"wakeful\".\"part_supplier_id\" = \"cheerful\".\"part_supplier_id\"
-    INNER JOIN \"thoughtful\" on 1=1
+    \"cheerful\"
+    INNER JOIN \"quizzical\" on 1=1
 WHERE
-    \"cheerful\".\"supplier_rev\" = \"thoughtful\".\"max_supplier_rev\"
-
-GROUP BY
-    1,
-    2)
+    \"quizzical\".\"supplier_rev\" = \"cheerful\".\"max_supplier_rev\"
+)
 SELECT
-    \"questionable\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"cooperative\".\"part_supplier_id\" as \"part_supplier_id\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
     \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
     \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
-    \"questionable\".\"total_revenue\" as \"total_revenue\"
+    \"cooperative\".\"total_revenue\" as \"total_revenue\"
 FROM
     \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"questionable\" on \"part_supplier_supplier\".\"s_suppkey\" = \"questionable\".\"part_supplier_id\"
-    INNER JOIN \"thoughtful\" on 1=1
+    INNER JOIN \"cooperative\" on \"part_supplier_supplier\".\"s_suppkey\" = \"cooperative\".\"part_supplier_id\"
+    INNER JOIN \"cheerful\" on 1=1
 WHERE
-    \"questionable\".\"supplier_rev\" = \"thoughtful\".\"max_supplier_rev\"
+    \"cooperative\".\"supplier_rev\" = \"cheerful\".\"max_supplier_rev\"
 
 ORDER BY 
-    \"questionable\".\"part_supplier_id\" asc"""
+    \"cooperative\".\"part_supplier_id\" asc"""

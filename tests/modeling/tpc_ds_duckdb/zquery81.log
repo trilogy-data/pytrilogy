@@ -1,22 +1,11 @@
 query_id = "81"
 generator = "v4"
-gen_length = 8982
+gen_length = 8271
 preql_size = 1976
 comp_size = 1459
 generated_sql = """
 
 WITH 
-young as (
-SELECT
-    \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_billing_customer_id\",
-    \"cr_return_address_customer_address\".\"CA_STATE\" as \"cr_return_address_state\"
-FROM
-    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cr_return_address_customer_address\" on \"cr_catalog_returns\".\"CR_RETURNING_ADDR_SK\" = \"cr_return_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"cr_return_address_customer_address\".\"CA_STATE\" is not null
-),
 abundant as (
 SELECT
     \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_billing_customer_id\",
@@ -56,12 +45,6 @@ FROM
 WHERE
     \"cr_billing_customer_address_customer_address\".\"CA_STATE\" = 'GA'
 ),
-sparkling as (
-SELECT
-    \"young\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
-    \"young\".\"cr_return_address_state\" as \"cr_return_address_state\"
-FROM
-    \"young\"),
 juicy as (
 SELECT
     \"abundant\".\"cr_return_address_state\" as \"cr_return_address_state\",
@@ -90,21 +73,34 @@ SELECT
     \"wakeful\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\"
 FROM
     \"wakeful\"),
-abhorrent as (
+young as (
 SELECT
-    \"abundant\".\"customer_state\" as \"customer_state\",
-    coalesce(\"abundant\".\"cr_billing_customer_id\",\"sparkling\".\"cr_billing_customer_id\") as \"cr_billing_customer_id\"
+    \"abundant\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
+    \"abundant\".\"customer_state\" as \"customer_state\"
 FROM
-    \"sparkling\"
-    RIGHT OUTER JOIN \"abundant\" on \"sparkling\".\"cr_billing_customer_id\" = \"abundant\".\"cr_billing_customer_id\" AND \"sparkling\".\"cr_return_address_state\" is not distinct from \"abundant\".\"cr_return_address_state\"
-    INNER JOIN \"juicy\" on \"sparkling\".\"cr_return_address_state\" is not distinct from \"juicy\".\"cr_return_address_state\"
+    \"abundant\"
+    INNER JOIN \"juicy\" on \"abundant\".\"cr_return_address_state\" is not distinct from \"juicy\".\"cr_return_address_state\"
 WHERE
     \"abundant\".\"customer_state\" > \"juicy\".\"scaled_state\"
-
-GROUP BY
-    1,
-    2,
-    coalesce(\"abundant\".\"cr_return_address_state\",\"juicy\".\"cr_return_address_state\",\"sparkling\".\"cr_return_address_state\"))
+),
+sparkling as (
+SELECT
+    \"young\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
+    \"young\".\"customer_state\" as \"customer_state\"
+FROM
+    \"young\"),
+abhorrent as (
+SELECT
+    \"sparkling\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
+    \"sparkling\".\"customer_state\" as \"customer_state\"
+FROM
+    \"sparkling\"),
+sweltering as (
+SELECT
+    \"abhorrent\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
+    \"abhorrent\".\"customer_state\" as \"customer_state\"
+FROM
+    \"abhorrent\")
 SELECT
     \"cheerful\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\",
     \"cheerful\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",
@@ -121,10 +117,10 @@ SELECT
     \"cheerful\".\"cr_billing_customer_address_country\" as \"cr_billing_customer_address_country\",
     \"cheerful\".\"cr_billing_customer_address_gmt_offset\" as \"cr_billing_customer_address_gmt_offset\",
     \"cheerful\".\"cr_billing_customer_address_location_type\" as \"cr_billing_customer_address_location_type\",
-    \"abhorrent\".\"customer_state\" as \"customer_state\"
+    \"sweltering\".\"customer_state\" as \"customer_state\"
 FROM
-    \"abhorrent\"
-    INNER JOIN \"cheerful\" on \"abhorrent\".\"cr_billing_customer_id\" = \"cheerful\".\"cr_billing_customer_id\"
+    \"sweltering\"
+    INNER JOIN \"cheerful\" on \"sweltering\".\"cr_billing_customer_id\" = \"cheerful\".\"cr_billing_customer_id\"
 GROUP BY
     1,
     2,
@@ -159,5 +155,5 @@ ORDER BY
     \"cheerful\".\"cr_billing_customer_address_country\" asc nulls first,
     \"cheerful\".\"cr_billing_customer_address_gmt_offset\" asc nulls first,
     \"cheerful\".\"cr_billing_customer_address_location_type\" asc nulls first,
-    \"abhorrent\".\"customer_state\" asc nulls first
+    \"sweltering\".\"customer_state\" asc nulls first
 LIMIT (100)"""

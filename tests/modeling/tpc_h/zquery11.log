@@ -1,6 +1,6 @@
 query_id = "11"
 generator = "v4"
-gen_length = 2125
+gen_length = 2037
 preql_size = 355
 comp_size = 581
 generated_sql = """
@@ -49,15 +49,11 @@ SELECT
     \"abundant\".\"part_total_value\" as \"part_total_value\",
     \"abundant\".\"part_total_value\" as \"total_value\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"abundant\" on \"thoughtful\".\"id\" = \"abundant\".\"id\"
-    INNER JOIN \"questionable\" on 1=1
+    \"questionable\"
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"abundant\".\"part_total_value\" > \"questionable\".\"germany_total_value\" * 0.0001
-
-GROUP BY
-    1,
-    2)
+)
 SELECT
     \"uneven\".\"id\" as \"id\",
     \"uneven\".\"total_value\" as \"total_value\"
