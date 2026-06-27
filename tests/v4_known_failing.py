@@ -90,7 +90,10 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # (`_split_root_dimension_clusters`) sources the customer dims standalone
     # instead of re-rooting them on the fact; 5220->2737, under ceiling. Passes
     # in isolation + full sweep.
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one": _TPCDS_SIZE,
+    # q81 pruned 2026-06-27: dimension split + condition-aware feeder drop
+    # (`_feeder_conditions_implied`) + a post-pushdown CollapseSingleParent rerun
+    # with a PASSTHROUGH merge mode folding the bare dim-projection CTE; 9163->6567,
+    # under ceiling. v3 + v4 full sweeps clean.
     # q23: over ceiling only because of the q16 all-ROOT normalization
     # correctness floor (2026-06-26); rows correct. Re-optimize in a v4 pass.
     # q94 pruned 2026-06-27: the per-consumer ROOT re-slice fix (share a built

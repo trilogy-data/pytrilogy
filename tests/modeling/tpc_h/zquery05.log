@@ -1,6 +1,6 @@
 query_id = "05"
-generator = "v4"
-gen_length = 1849
+generator = "v3"
+gen_length = 1482
 preql_size = 305
 comp_size = 521
 generated_sql = """
@@ -8,8 +8,7 @@ generated_sql = """
 WITH 
 questionable as (
 SELECT
-    \"lineitem\".\"l_discount\" as \"discount\",
-    \"lineitem\".\"l_extendedprice\" as \"extended_price\",
+    \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") as \"revenue\",
     UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
@@ -24,19 +23,11 @@ WHERE
 GROUP BY
     1,
     2,
-    3,
     \"lineitem\".\"l_linenumber\",
-    \"lineitem\".\"l_orderkey\",
-    \"lineitem\".\"l_suppkey\",
-    \"order_customer_customers\".\"c_custkey\",
-    \"order_customer_customers\".\"c_nationkey\",
-    \"order_orders\".\"o_orderdate\",
-    \"part_supplier_nation_nation\".\"n_nationkey\",
-    \"part_supplier_nation_nation\".\"n_regionkey\",
-    \"part_supplier_nation_region_region\".\"r_name\")
+    \"lineitem\".\"l_orderkey\")
 SELECT
     \"questionable\".\"part_supplier_nation_name\" as \"part_supplier_nation_name\",
-    sum(\"questionable\".\"extended_price\" * (1 - \"questionable\".\"discount\")) as \"q_revenue\"
+    sum(\"questionable\".\"revenue\") as \"q_revenue\"
 FROM
     \"questionable\"
 GROUP BY
