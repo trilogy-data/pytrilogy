@@ -314,6 +314,11 @@ def test_sixteen(engine):
 
 
 def test_seventeen(engine):
+    # query17.preql/.sql widen the spec's 2001Q1 / Q1-Q3 windows to full-year
+    # 2001 sales and 2001-2002 return+catalog windows: the three-way
+    # store-sale/return/catalog same-(customer,item) join is empty at this
+    # scale with the spec quarters. Compare against the matching .sql file
+    # rather than PRAGMA, which still uses the spec constants (and is empty).
     query = run_query(engine, 17, sql_override=True)
     assert len(query) < 12000, query
 

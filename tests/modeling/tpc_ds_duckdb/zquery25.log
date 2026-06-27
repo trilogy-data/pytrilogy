@@ -1,6 +1,6 @@
 query_id = "25"
 generator = "v3"
-gen_length = 6889
+gen_length = 7072
 preql_size = 818
 comp_size = 1067
 generated_sql = """
@@ -26,7 +26,7 @@ SELECT
     \"analysis_store_store\".\"S_STORE_NAME\" as \"analysis_store_name\"
 FROM
     \"memory\".\"store_sales\" as \"analysis_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_store_returns\".\"SR_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_sale_date_date\" on \"analysis_store_sales\".\"SS_SOLD_DATE_SK\" = \"analysis_store_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"analysis_catalog_sales\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_catalog_sales\".\"CS_ITEM_SK\"
@@ -54,12 +54,12 @@ SELECT
     \"analysis_store_store\".\"S_STORE_NAME\" as \"analysis_store_name\"
 FROM
     \"memory\".\"store_sales\" as \"analysis_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_store_returns\".\"SR_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_sale_date_date\" on \"analysis_store_sales\".\"SS_SOLD_DATE_SK\" = \"analysis_store_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"wakeful\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"wakeful\".\"analysis_customer_id\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"wakeful\".\"analysis_item_id\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_catalog_date_date\" on \"wakeful\".\"analysis_catalog_date_id\" = \"analysis_catalog_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"wakeful\".\"analysis_item_id\" = \"analysis_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"analysis_store_store\" on \"analysis_store_sales\".\"SS_STORE_SK\" = \"analysis_store_store\".\"S_STORE_SK\"
 WHERE
     \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_sale_date_date\".\"D_MOY\" = 4 and \"analysis_store_return_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_return_date_date\".\"D_MOY\" BETWEEN 4 AND 10 and \"analysis_catalog_date_date\".\"D_YEAR\" = 2001 and \"analysis_catalog_date_date\".\"D_MOY\" BETWEEN 4 AND 10 and SR_RETURN_TIME_SK IS NOT NULL

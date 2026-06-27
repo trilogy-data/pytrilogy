@@ -1,8 +1,8 @@
 query_id = "17"
 generator = "v3"
-gen_length = 8107
-preql_size = 1439
-comp_size = 1764
+gen_length = 8166
+preql_size = 1375
+comp_size = 1588
 generated_sql = """
 
 WITH 
@@ -25,7 +25,7 @@ SELECT
     \"analysis_store_store\".\"S_STATE\" as \"analysis_store_state\"
 FROM
     \"memory\".\"store_sales\" as \"analysis_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_store_returns\".\"SR_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_sale_date_date\" on \"analysis_store_sales\".\"SS_SOLD_DATE_SK\" = \"analysis_store_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"analysis_catalog_sales\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_catalog_sales\".\"CS_ITEM_SK\"
@@ -33,7 +33,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"analysis_store_store\" on \"analysis_store_sales\".\"SS_STORE_SK\" = \"analysis_store_store\".\"S_STORE_SK\"
 WHERE
-    \"analysis_store_sale_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"analysis_store_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"analysis_catalog_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and SR_RETURN_TIME_SK IS NOT NULL
+    \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_return_date_date\".\"D_YEAR\" in (2001,2002) and \"analysis_catalog_date_date\".\"D_YEAR\" in (2001,2002) and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,
@@ -51,15 +51,15 @@ SELECT
     \"analysis_store_store\".\"S_STATE\" as \"analysis_store_state\"
 FROM
     \"memory\".\"store_sales\" as \"analysis_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_store_returns\".\"SR_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_sale_date_date\" on \"analysis_store_sales\".\"SS_SOLD_DATE_SK\" = \"analysis_store_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"wakeful\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"wakeful\".\"analysis_customer_id\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"wakeful\".\"analysis_item_id\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_catalog_date_date\" on \"wakeful\".\"analysis_catalog_date_id\" = \"analysis_catalog_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"wakeful\".\"analysis_item_id\" = \"analysis_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"analysis_store_store\" on \"analysis_store_sales\".\"SS_STORE_SK\" = \"analysis_store_store\".\"S_STORE_SK\"
 WHERE
-    \"analysis_store_sale_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"analysis_store_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"analysis_catalog_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and SR_RETURN_TIME_SK IS NOT NULL
+    \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_return_date_date\".\"D_YEAR\" in (2001,2002) and \"analysis_catalog_date_date\".\"D_YEAR\" in (2001,2002) and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,
