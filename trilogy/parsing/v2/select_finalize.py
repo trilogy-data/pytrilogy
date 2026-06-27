@@ -967,6 +967,7 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
                 )
         return
     _validate_grouping_args_are_concepts(select, context)
+    _normalize_grouping_args_to_rollup_keys(select, context)
     seen: set[str] = set()
     for item in select.selection:
         lineage = _item_lineage(item, context)
@@ -976,6 +977,39 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
             wrapper.by = list(spec.by)
             wrapper.grouping = spec.mode
             wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
+
+
+def _normalize_grouping_args_to_rollup_keys(
+    select: SelectStatement, context: RuleContext
+) -> None:
+    """Rewrite a ``grouping(<source>)`` argument to the rollup-key *alias* when the
+    key is projected under one (``sales.channel as channel`` + ``by rollup
+    (channel, …)``). DuckDB requires GROUPING's child to BE one of the GROUP BY
+    ROLLUP columns; the rollup groups by the materialized alias column, not the
+    source, so ``grouping(sales.channel)`` renders ``grouping(source_col)`` against
+    a column absent from the GROUP BY → BinderException ("GROUPING child must be a
+    grouping column"). Pointing the argument at the alias lines it up with the
+    GROUP BY. Only renames whose alias is an actual rollup key are rewritten."""
+    spec = select.grouping
+    if spec is None:
+        return
+    rollup_key_addrs = {k.address for k in spec.by if hasattr(k, "address")}
+    rename = {
+        src: ref
+        for src, ref in _alias_rename_map(select).items()
+        if ref.address in rollup_key_addrs
+    }
+    if not rename:
+        return
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
+        if lineage is None:
+            continue
+        for wrapper in _collect_standard_grouping_wrappers(lineage):
+            wrapper.function.arguments = [
+                rename.get(arg.address, arg) if isinstance(arg, ConceptRef) else arg
+                for arg in wrapper.function.arguments
+            ]
 
 
 def _grouping_arg_key(wrapper: AggregateWrapper) -> tuple[Any, tuple[str, ...]]:

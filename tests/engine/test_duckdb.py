@@ -293,6 +293,35 @@ by rollup (coalesce(brand, class));
         engine.generate_sql(text)
 
 
+def test_grouping_over_aliased_rollup_key_builds():
+    """`grouping(<source>)` over a `by rollup (<alias>)` whose key is that source
+    under an alias (`brand as b` + `by rollup (b)`) produced invalid SQL: the
+    rollup groups by the materialized alias column `b`, but `grouping(brand)`
+    rendered against the source column `brand`, which is not a GROUP BY key →
+    BinderException ("GROUPING child must be a grouping column"). Normalize the
+    grouping() argument to the rollup-key alias so it lines up with the GROUP BY.
+    q14 (channel/brand/class/category aliased rollup keys)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select
+    brand as b,
+    sum(amount) as total,
+    grouping(brand) as g
+by rollup (b)
+order by g, b;
+"""
+    sql = engine.generate_sql(text)[-1]
+    # grouping() must reference the aliased rollup-key column, not the source.
+    assert 'grouping("brand")' not in sql.replace('"quizzical".', "")
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("A", 30.0, 0),
+        ("B", 130.0, 0),
+        (None, 160.0, 1),
+    ]
+
+
 def test_grouping_over_named_expression_key_builds():
     """The fix for the above: name the expression as a concept and use it in both
     the rollup key and `grouping()`. The same intent now compiles and runs."""
