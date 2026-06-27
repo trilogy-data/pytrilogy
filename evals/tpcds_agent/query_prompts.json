@@ -90,7 +90,7 @@
   {
     "id": 17,
     "grade": "medium",
-    "prompt": "For store sales sold in fiscal quarter 2001Q1, joined to matching store returns from the same customer, item, and ticket whose return date falls in 2001Q1, 2001Q2, or 2001Q3, joined to catalog sales by the same customer (billed) and item whose sale date falls in those same three quarters, report per (item code, item description, store state): the count, average, sample standard deviation, and coefficient of variation (stddev divided by average) of three quantity measures - the store-sale ticket quantity, the store-return return quantity, and the catalog-sale ticket quantity. Order by item code, item description, then store state, all with nulls first; limit 100 rows."
+    "prompt": "For store sales sold in the year 2001, joined to matching store returns from the same customer, item, and ticket whose return date falls in the year 2001 or 2002, joined to catalog sales by the same customer (billed) and item whose sale date falls in the year 2001 or 2002, report per (item code, item description, store state): the count, average, sample standard deviation, and coefficient of variation (stddev divided by average) of three quantity measures - the store-sale ticket quantity, the store-return return quantity, and the catalog-sale ticket quantity. Order by item code, item description, then store state, all with nulls first; limit 100 rows."
   },
   {
     "id": 18,

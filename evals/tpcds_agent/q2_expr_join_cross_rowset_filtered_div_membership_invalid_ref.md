@@ -1,6 +1,22 @@
-# Bug: expression scoped-join key + cross-rowset filtered-output division + membership WHERE → uncaught `INVALID_REFERENCE_BUG` crash (q2)
+# Bug: cross-rowset filtered-output division + membership WHERE → uncaught `INVALID_REFERENCE_BUG` crash (q2)
 
-**Status:** OPEN — minimal deterministic repro + bisection. Same `INVALID_REFERENCE_BUG` sentinel
+**Status:** FIXED 2026-06-27. Root cause: `gen_rowset_node`'s cross-rowset WHERE branch
+(`rowset_node.py`, the q11/q23 path that merges operand rowsets and applies the predicate
+post-join) short-circuited the normal completion-merge path that sources a membership's
+existence set — so `weeks_in_2001`'s producer CTE was never materialized and the subselect
+rendered against a dangling `INVALID_REFERENCE_BUG` CTE. Fix: after `merged.add_condition(...)`,
+call `append_existence_check(merged, environment, g, conditions, history)` when the predicate has
+existence args. Tests: `tests/test_scoped_join_cross_rowset_membership_existence.py`.
+
+**Correction to the original bisection:** the EXPRESSION join key is NOT load-bearing — a matrix
+test showed a PLAIN key (`cur.ws = ftr.ws`) crashes too, as long as (a) the membership operand is
+in another scoped rowset (triggers the cross-rowset branch) and (b) the existence set is sourced
+from a *dimension* (so discovery routes it through that branch instead of inlining onto the fact
+scan). The q2 form happened to only expose it under the expression key because of its specific
+discovery ordering. The real trigger is **cross-rowset membership existence + dimension-sourced
+set**, join-key type irrelevant.
+
+(historical) Same `INVALID_REFERENCE_BUG` sentinel
 family as the (fixed) q64/q14 crashes, different trigger.
 **Surfaced by:** TPC-DS q2 (run `20260627-120644`). Surfaces as `Unexpected error: Invalid reference
 string found in query` (uncaught `ValueError`), so the agent gets no actionable message and loops

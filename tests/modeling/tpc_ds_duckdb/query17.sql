@@ -21,7 +21,7 @@ FROM store_sales,
      date_dim d3,
      store,
      item
-WHERE d1.d_quarter_name = '2001Q1'
+WHERE d1.d_year = 2001
   AND d1.d_date_sk = ss_sold_date_sk
   AND i_item_sk = ss_item_sk
   AND s_store_sk = ss_store_sk
@@ -29,15 +29,11 @@ WHERE d1.d_quarter_name = '2001Q1'
   AND ss_item_sk = sr_item_sk
   AND ss_ticket_number = sr_ticket_number
   AND sr_returned_date_sk = d2.d_date_sk
-  AND d2.d_quarter_name IN ('2001Q1',
-                            '2001Q2',
-                            '2001Q3')
+  AND d2.d_year IN (2001, 2002)
   AND sr_customer_sk = cs_bill_customer_sk
   AND sr_item_sk = cs_item_sk
   AND cs_sold_date_sk = d3.d_date_sk
-  AND d3.d_quarter_name IN ('2001Q1',
-                            '2001Q2',
-                            '2001Q3')
+  AND d3.d_year IN (2001, 2002)
 GROUP BY i_item_id,
          i_item_desc,
          s_state

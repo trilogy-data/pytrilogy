@@ -228,6 +228,17 @@ def gen_rowset_node(
             )
             if merged:
                 merged.add_condition(conditions.conditional)
+                # A membership predicate (`x in <set>`) needs its existence set
+                # sourced as a parent here too -- otherwise the subselect renders
+                # against a dangling CTE (INVALID_REFERENCE_BUG). The normal
+                # completion-merge path appends this; this cross-rowset branch
+                # short-circuits it, so mirror it explicitly.
+                if conditions.existence_arguments:
+                    from trilogy.core.processing.concept_strategies_v3 import (
+                        append_existence_check,
+                    )
+
+                    append_existence_check(merged, environment, g, conditions, history)
                 merged.set_preexisting_conditions(conditions.conditional)
                 return merged
 
