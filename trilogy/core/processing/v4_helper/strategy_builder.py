@@ -391,6 +391,17 @@ def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
     return nodes
 
 
+def _leaf_datasource_ids(node: StrategyNode) -> set[str]:
+    """The concrete datasources scanned in this subtree -- its physical join
+    footprint. Used to decide whether a per-consumer ROOT re-slice genuinely
+    prunes a join or merely re-derives the same conditioned scan."""
+    return {
+        n.datasource.identifier
+        for n in _strategy_nodes(node)
+        if isinstance(n, SelectNode) and n.datasource is not None
+    }
+
+
 def _attach_existence_to_node(
     node: StrategyNode,
     concepts: list[BuildConcept],
@@ -624,7 +635,17 @@ def _parent_nodes_for(
                     source_policy=source_policy,
                 )
             )
-        return sliced if sliced is not None else node.copy()
+        if sliced is None:
+            return node.copy()
+        # Adopt the narrower rebuild only when it strictly prunes the source set
+        # (drops a join the slice no longer spans). Otherwise re-deriving the
+        # same conditioned join just to carry fewer columns is pure CTE
+        # duplication -- share the already-built ROOT and let column projection
+        # narrow it (q94: a count(order_number) consumer of a filtered
+        # web_sales-dim join must not re-source the whole join).
+        if not (_leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)):
+            return node.copy()
+        return sliced
 
     parents: list[ParentBuild] = []
     for pgid, node in candidates:
