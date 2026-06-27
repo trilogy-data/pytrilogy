@@ -1,7 +1,7 @@
 # V4 Group Diagnostics
 
-- groups: 9
-- edges: 19
+- groups: 10
+- edges: 20
 
 ## __final__
 
@@ -14,7 +14,7 @@
 - outputs: `-`
 - inputs: `-`
 - hidden: `-`
-- predecessors: `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:merge, grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state:merge, grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f:merge, grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf:merge, grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:merge, grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf:merge, grp:root:root:∅:merge, grp:root:root_d1:∅:merge`
+- predecessors: `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:merge, grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state:merge, grp:[@condition]basic:d1:cr.return_address.state:sig:b60650:merge, grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f:merge, grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:merge, grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f:merge, grp:root:root:∅:dim:cr.billing_customer.id:merge, grp:root:root:∅:merge, grp:root:root_d1:∅:merge`
 - successors: `-`
 - conditions: `local.customer_state > local.scaled_state and cr.billing_customer.address.state = GA and cr.return_address.state is not MagicConstants.NULL`
 - final contract:
@@ -24,9 +24,9 @@
     {
       "group_id": "grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number",
       "output_addresses": [
+        "local.customer_state",
         "cr.return_address.state",
-        "cr.billing_customer.id",
-        "local.customer_state"
+        "cr.billing_customer.id"
       ],
       "preserve_keys": [],
       "projection_grain": [
@@ -37,8 +37,8 @@
     {
       "group_id": "grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state",
       "output_addresses": [
-        "cr.return_address.state",
-        "local._virt_agg_avg_7052944147524274"
+        "local._virt_agg_avg_7052944147524274",
+        "cr.return_address.state"
       ],
       "preserve_keys": [],
       "projection_grain": [
@@ -46,22 +46,22 @@
       ]
     },
     {
-      "group_id": "grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f",
+      "group_id": "grp:[@condition]basic:d1:cr.return_address.state:sig:b60650",
       "output_addresses": [
-        "cr.return_address.state",
-        "local.scaled_state"
+        "local.scaled_state",
+        "cr.return_address.state"
       ],
       "preserve_keys": [],
       "projection_grain": []
     },
     {
-      "group_id": "grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf",
+      "group_id": "grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f",
       "output_addresses": [
-        "cr.order_number",
-        "cr.billing_customer.id",
+        "local._virt_filter_return_amt_inc_tax_2184255153361204",
         "cr.item.id",
+        "cr.order_number",
         "cr.return_address.state",
-        "local._virt_filter_return_amt_inc_tax_2184255153361204"
+        "cr.billing_customer.id"
       ],
       "preserve_keys": [],
       "projection_grain": []
@@ -69,9 +69,9 @@
     {
       "group_id": "grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number",
       "output_addresses": [
+        "local.customer_state",
         "cr.return_address.state",
-        "cr.billing_customer.id",
-        "local.customer_state"
+        "cr.billing_customer.id"
       ],
       "preserve_keys": [],
       "projection_grain": [
@@ -80,17 +80,13 @@
       ]
     },
     {
-      "group_id": "grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf",
+      "group_id": "grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f",
       "output_addresses": [
-        "cr.billing_customer.id",
-        "cr.order_number",
-        "cr.billing_customer.salutation",
+        "local._virt_filter_return_amt_inc_tax_2184255153361204",
         "cr.item.id",
-        "cr.billing_customer.first_name",
-        "cr.billing_customer.text_id",
+        "cr.order_number",
         "cr.return_address.state",
-        "cr.billing_customer.last_name",
-        "local._virt_filter_return_amt_inc_tax_2184255153361204"
+        "cr.billing_customer.id"
       ],
       "preserve_keys": [],
       "projection_grain": []
@@ -98,27 +94,38 @@
     {
       "group_id": "grp:root:root:\u2205",
       "output_addresses": [
-        "cr.billing_customer.address.location_type",
-        "cr.billing_customer.address.country",
-        "cr.return_address.state",
-        "cr.billing_customer.address.zip",
-        "cr.billing_customer.address.state",
-        "cr.billing_customer.text_id",
-        "cr.billing_customer.address.county",
-        "cr.date.year",
         "cr.return_amt_inc_tax",
-        "cr.billing_customer.address.street_number",
-        "cr.billing_customer.address.gmt_offset",
-        "cr.billing_customer.first_name",
-        "cr.billing_customer.address.street_name",
-        "cr.billing_customer.address.suite_number",
-        "cr.billing_customer.last_name",
-        "cr.billing_customer.id",
-        "cr.order_number",
-        "cr.billing_customer.salutation",
-        "cr.billing_customer.address.city",
         "cr.item.id",
-        "cr.billing_customer.address.street_type"
+        "cr.order_number",
+        "cr.return_address.state",
+        "cr.billing_customer.id",
+        "cr.date.year"
+      ],
+      "preserve_keys": [
+        "cr.return_address.state",
+        "cr.billing_customer.id"
+      ],
+      "projection_grain": []
+    },
+    {
+      "group_id": "grp:root:root:\u2205:dim:cr.billing_customer.id",
+      "output_addresses": [
+        "cr.billing_customer.address.location_type",
+        "cr.billing_customer.salutation",
+        "cr.billing_customer.address.zip",
+        "cr.billing_customer.first_name",
+        "cr.billing_customer.address.gmt_offset",
+        "cr.billing_customer.last_name",
+        "cr.billing_customer.text_id",
+        "cr.billing_customer.address.city",
+        "cr.billing_customer.address.suite_number",
+        "cr.billing_customer.address.street_name",
+        "cr.billing_customer.id",
+        "cr.billing_customer.address.street_number",
+        "cr.billing_customer.address.street_type",
+        "cr.billing_customer.address.state",
+        "cr.billing_customer.address.country",
+        "cr.billing_customer.address.county"
       ],
       "preserve_keys": [
         "cr.return_address.state",
@@ -129,12 +136,12 @@
     {
       "group_id": "grp:root:root_d1:\u2205",
       "output_addresses": [
-        "cr.order_number",
-        "cr.billing_customer.id",
-        "cr.date.year",
         "cr.return_amt_inc_tax",
         "cr.item.id",
-        "cr.return_address.state"
+        "cr.order_number",
+        "cr.return_address.state",
+        "cr.billing_customer.id",
+        "cr.date.year"
       ],
       "preserve_keys": [
         "cr.return_address.state",
@@ -149,39 +156,39 @@
     "cr.billing_customer.id"
   ],
   "output_addresses": [
-    "cr.billing_customer.id",
+    "cr.billing_customer.address.location_type",
     "cr.billing_customer.salutation",
-    "cr.billing_customer.address.city",
-    "cr.billing_customer.address.street_number",
-    "cr.billing_customer.address.county",
+    "cr.billing_customer.last_name",
+    "cr.billing_customer.address.zip",
+    "cr.billing_customer.address.country",
     "cr.billing_customer.address.gmt_offset",
-    "cr.billing_customer.first_name",
     "cr.billing_customer.text_id",
     "local.customer_state",
-    "cr.billing_customer.address.country",
-    "cr.billing_customer.address.street_name",
+    "cr.billing_customer.address.city",
     "cr.billing_customer.address.suite_number",
-    "cr.billing_customer.address.location_type",
-    "cr.billing_customer.last_name",
+    "cr.billing_customer.address.street_name",
+    "cr.billing_customer.id",
+    "cr.billing_customer.address.street_number",
     "cr.billing_customer.address.street_type",
-    "cr.billing_customer.address.zip",
-    "cr.billing_customer.address.state"
+    "cr.billing_customer.address.state",
+    "cr.billing_customer.first_name",
+    "cr.billing_customer.address.county"
   ],
   "required_grain": [
-    "cr.billing_customer.id",
-    "cr.billing_customer.address.city",
-    "cr.billing_customer.address.street_number",
+    "cr.billing_customer.address.location_type",
+    "cr.billing_customer.address.zip",
     "cr.billing_customer.address.gmt_offset",
     "cr.billing_customer.text_id",
     "local.customer_state",
-    "cr.billing_customer.address.location_type",
-    "cr.billing_customer.address.country",
-    "cr.billing_customer.address.street_name",
+    "cr.billing_customer.address.city",
     "cr.billing_customer.address.suite_number",
-    "cr.billing_customer.address.county",
+    "cr.billing_customer.address.street_name",
+    "cr.billing_customer.id",
+    "cr.billing_customer.address.street_number",
     "cr.billing_customer.address.street_type",
-    "cr.billing_customer.address.zip",
-    "cr.billing_customer.address.state"
+    "cr.billing_customer.address.state",
+    "cr.billing_customer.address.country",
+    "cr.billing_customer.address.county"
   ]
 }
 ```
@@ -197,7 +204,7 @@
 - outputs: `cr.billing_customer.id, cr.return_address.state, local.customer_state`
 - inputs: `cr.billing_customer.id, cr.item.id, cr.order_number, cr.return_address.state, local._virt_filter_return_amt_inc_tax_2184255153361204`
 - hidden: `-`
-- predecessors: `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf:lineage, grp:root:root_d1:∅:lineage`
+- predecessors: `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f:lineage, grp:root:root_d1:∅:lineage`
 - successors: `__final__:merge, grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state:lineage, grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:constraint`
 - input contracts:
 ```json
@@ -206,7 +213,7 @@
     "channel": "row_stream",
     "consumer_group_id": "grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number",
     "may_project_dimension": true,
-    "parent_group_id": "grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf",
+    "parent_group_id": "grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f",
     "preserve_keys": [
       "cr.return_address.state",
       "cr.billing_customer.id"
@@ -216,11 +223,11 @@
       "cr.billing_customer.id"
     ],
     "required_outputs": [
-      "cr.order_number",
-      "cr.billing_customer.id",
+      "local._virt_filter_return_amt_inc_tax_2184255153361204",
       "cr.item.id",
+      "cr.order_number",
       "cr.return_address.state",
-      "local._virt_filter_return_amt_inc_tax_2184255153361204"
+      "cr.billing_customer.id"
     ]
   },
   {
@@ -237,10 +244,10 @@
       "cr.billing_customer.id"
     ],
     "required_outputs": [
-      "cr.return_address.state",
       "cr.order_number",
-      "cr.billing_customer.id",
-      "cr.item.id"
+      "cr.item.id",
+      "cr.return_address.state",
+      "cr.billing_customer.id"
     ]
   }
 ]
@@ -258,7 +265,7 @@
 - inputs: `cr.billing_customer.id, cr.return_address.state, local.customer_state`
 - hidden: `-`
 - predecessors: `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:lineage, grp:root:root_d1:∅:lineage`
-- successors: `__final__:merge, grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f:lineage`
+- successors: `__final__:merge, grp:[@condition]basic:d1:cr.return_address.state:sig:b60650:lineage`
 - input contracts:
 ```json
 [
@@ -276,9 +283,9 @@
       "cr.billing_customer.id"
     ],
     "required_outputs": [
+      "local.customer_state",
       "cr.return_address.state",
-      "cr.billing_customer.id",
-      "local.customer_state"
+      "cr.billing_customer.id"
     ]
   },
   {
@@ -302,7 +309,7 @@
 ]
 ```
 
-## grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f
+## grp:[@condition]basic:d1:cr.return_address.state:sig:b60650
 
 - derivation: `basic`
 - depth: `d1`
@@ -320,7 +327,7 @@
 [
   {
     "channel": "row_stream",
-    "consumer_group_id": "grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f",
+    "consumer_group_id": "grp:[@condition]basic:d1:cr.return_address.state:sig:b60650",
     "may_project_dimension": false,
     "parent_group_id": "grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state",
     "preserve_keys": [
@@ -330,14 +337,14 @@
       "cr.return_address.state"
     ],
     "required_outputs": [
-      "cr.return_address.state",
-      "local._virt_agg_avg_7052944147524274"
+      "local._virt_agg_avg_7052944147524274",
+      "cr.return_address.state"
     ]
   }
 ]
 ```
 
-## grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf
+## grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f
 
 - derivation: `filter`
 - depth: `d1`
@@ -356,7 +363,7 @@
 [
   {
     "channel": "row_stream",
-    "consumer_group_id": "grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf",
+    "consumer_group_id": "grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f",
     "may_project_dimension": true,
     "parent_group_id": "grp:root:root_d1:\u2205",
     "preserve_keys": [
@@ -368,12 +375,12 @@
       "cr.item.id"
     ],
     "required_outputs": [
-      "cr.order_number",
       "cr.return_amt_inc_tax",
-      "cr.date.year",
-      "cr.billing_customer.id",
       "cr.item.id",
-      "cr.return_address.state"
+      "cr.order_number",
+      "cr.return_address.state",
+      "cr.billing_customer.id",
+      "cr.date.year"
     ]
   }
 ]
@@ -390,7 +397,7 @@
 - outputs: `cr.billing_customer.id, cr.return_address.state, local.customer_state`
 - inputs: `cr.billing_customer.id, cr.item.id, cr.order_number, cr.return_address.state, local._virt_filter_return_amt_inc_tax_2184255153361204, local.scaled_state`
 - hidden: `-`
-- predecessors: `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:constraint, grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f:constraint, grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf:lineage, grp:root:root:∅:lineage`
+- predecessors: `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:constraint, grp:[@condition]basic:d1:cr.return_address.state:sig:b60650:constraint, grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f:lineage, grp:root:root:∅:lineage`
 - successors: `__final__:merge`
 - conditions: `local.customer_state > local.scaled_state`
 - input contracts:
@@ -418,7 +425,7 @@
     "channel": "row_stream",
     "consumer_group_id": "grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number",
     "may_project_dimension": true,
-    "parent_group_id": "grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f",
+    "parent_group_id": "grp:[@condition]basic:d1:cr.return_address.state:sig:b60650",
     "preserve_keys": [
       "cr.return_address.state",
       "cr.billing_customer.id"
@@ -428,15 +435,15 @@
       "cr.billing_customer.id"
     ],
     "required_outputs": [
-      "cr.return_address.state",
-      "local.scaled_state"
+      "local.scaled_state",
+      "cr.return_address.state"
     ]
   },
   {
     "channel": "row_stream",
     "consumer_group_id": "grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number",
     "may_project_dimension": true,
-    "parent_group_id": "grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf",
+    "parent_group_id": "grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f",
     "preserve_keys": [
       "cr.return_address.state",
       "cr.billing_customer.id"
@@ -446,11 +453,11 @@
       "cr.billing_customer.id"
     ],
     "required_outputs": [
-      "cr.order_number",
-      "cr.billing_customer.id",
+      "local._virt_filter_return_amt_inc_tax_2184255153361204",
       "cr.item.id",
+      "cr.order_number",
       "cr.return_address.state",
-      "local._virt_filter_return_amt_inc_tax_2184255153361204"
+      "cr.billing_customer.id"
     ]
   },
   {
@@ -467,16 +474,16 @@
       "cr.billing_customer.id"
     ],
     "required_outputs": [
-      "cr.return_address.state",
       "cr.order_number",
-      "cr.billing_customer.id",
-      "cr.item.id"
+      "cr.item.id",
+      "cr.return_address.state",
+      "cr.billing_customer.id"
     ]
   }
 ]
 ```
 
-## grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf
+## grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f
 
 - derivation: `filter`
 - depth: `d*`
@@ -484,8 +491,8 @@
 - aggregate input grain: `-`
 - primary members: `local._virt_filter_return_amt_inc_tax_2184255153361204`
 - secondary members: `-`
-- outputs: `cr.billing_customer.first_name, cr.billing_customer.id, cr.billing_customer.last_name, cr.billing_customer.salutation, cr.billing_customer.text_id, cr.item.id, cr.order_number, cr.return_address.state, local._virt_filter_return_amt_inc_tax_2184255153361204`
-- inputs: `cr.billing_customer.first_name, cr.billing_customer.id, cr.billing_customer.last_name, cr.billing_customer.salutation, cr.billing_customer.text_id, cr.date.year, cr.item.id, cr.order_number, cr.return_address.state, cr.return_amt_inc_tax`
+- outputs: `cr.billing_customer.id, cr.item.id, cr.order_number, cr.return_address.state, local._virt_filter_return_amt_inc_tax_2184255153361204`
+- inputs: `cr.billing_customer.id, cr.date.year, cr.item.id, cr.order_number, cr.return_address.state, cr.return_amt_inc_tax`
 - hidden: `-`
 - predecessors: `grp:root:root:∅:lineage`
 - successors: `__final__:merge, grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:lineage`
@@ -494,7 +501,7 @@
 [
   {
     "channel": "row_stream",
-    "consumer_group_id": "grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf",
+    "consumer_group_id": "grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f",
     "may_project_dimension": true,
     "parent_group_id": "grp:root:root:\u2205",
     "preserve_keys": [
@@ -506,16 +513,12 @@
       "cr.item.id"
     ],
     "required_outputs": [
-      "cr.order_number",
-      "cr.billing_customer.id",
-      "cr.billing_customer.salutation",
-      "cr.date.year",
-      "cr.item.id",
       "cr.return_amt_inc_tax",
-      "cr.billing_customer.first_name",
-      "cr.billing_customer.text_id",
+      "cr.item.id",
+      "cr.order_number",
       "cr.return_address.state",
-      "cr.billing_customer.last_name"
+      "cr.billing_customer.id",
+      "cr.date.year"
     ]
   }
 ]
@@ -527,14 +530,29 @@
 - depth: `root`
 - grain: `-`
 - aggregate input grain: `-`
-- primary members: `cr.billing_customer.address.city, cr.billing_customer.address.country, cr.billing_customer.address.county, cr.billing_customer.address.gmt_offset, cr.billing_customer.address.location_type, cr.billing_customer.address.state, cr.billing_customer.address.street_name, cr.billing_customer.address.street_number, cr.billing_customer.address.street_type, cr.billing_customer.address.suite_number, cr.billing_customer.address.zip, cr.billing_customer.first_name, cr.billing_customer.id, cr.billing_customer.last_name, cr.billing_customer.salutation, cr.billing_customer.text_id, cr.date.year, cr.item.id, cr.order_number, cr.return_address.state, cr.return_amt_inc_tax`
+- primary members: `cr.billing_customer.id, cr.date.year, cr.item.id, cr.order_number, cr.return_address.state, cr.return_amt_inc_tax`
 - secondary members: `-`
-- outputs: `cr.billing_customer.address.city, cr.billing_customer.address.country, cr.billing_customer.address.county, cr.billing_customer.address.gmt_offset, cr.billing_customer.address.location_type, cr.billing_customer.address.state, cr.billing_customer.address.street_name, cr.billing_customer.address.street_number, cr.billing_customer.address.street_type, cr.billing_customer.address.suite_number, cr.billing_customer.address.zip, cr.billing_customer.first_name, cr.billing_customer.id, cr.billing_customer.last_name, cr.billing_customer.salutation, cr.billing_customer.text_id, cr.date.year, cr.item.id, cr.order_number, cr.return_address.state, cr.return_amt_inc_tax`
+- outputs: `cr.billing_customer.id, cr.date.year, cr.item.id, cr.order_number, cr.return_address.state, cr.return_amt_inc_tax`
 - inputs: `-`
 - hidden: `-`
 - predecessors: `-`
-- successors: `__final__:merge, grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:lineage, grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf:lineage`
-- conditions: `cr.billing_customer.address.state = GA; cr.return_address.state is not MagicConstants.NULL`
+- successors: `__final__:merge, grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:lineage, grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f:lineage`
+- conditions: `cr.return_address.state is not MagicConstants.NULL`
+
+## grp:root:root:∅:dim:cr.billing_customer.id
+
+- derivation: `root`
+- depth: `root`
+- grain: `-`
+- aggregate input grain: `-`
+- primary members: `cr.billing_customer.address.city, cr.billing_customer.address.country, cr.billing_customer.address.county, cr.billing_customer.address.gmt_offset, cr.billing_customer.address.location_type, cr.billing_customer.address.state, cr.billing_customer.address.street_name, cr.billing_customer.address.street_number, cr.billing_customer.address.street_type, cr.billing_customer.address.suite_number, cr.billing_customer.address.zip, cr.billing_customer.first_name, cr.billing_customer.last_name, cr.billing_customer.salutation, cr.billing_customer.text_id`
+- secondary members: `-`
+- outputs: `cr.billing_customer.address.city, cr.billing_customer.address.country, cr.billing_customer.address.county, cr.billing_customer.address.gmt_offset, cr.billing_customer.address.location_type, cr.billing_customer.address.state, cr.billing_customer.address.street_name, cr.billing_customer.address.street_number, cr.billing_customer.address.street_type, cr.billing_customer.address.suite_number, cr.billing_customer.address.zip, cr.billing_customer.first_name, cr.billing_customer.id, cr.billing_customer.last_name, cr.billing_customer.salutation, cr.billing_customer.text_id`
+- inputs: `cr.billing_customer.id`
+- hidden: `-`
+- predecessors: `-`
+- successors: `__final__:merge`
+- conditions: `cr.billing_customer.address.state = GA`
 
 ## grp:root:root_d1:∅
 
@@ -548,7 +566,7 @@
 - inputs: `-`
 - hidden: `-`
 - predecessors: `-`
-- successors: `__final__:merge, grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:lineage, grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state:lineage, grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf:lineage`
+- successors: `__final__:merge, grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number:lineage, grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state:lineage, grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f:lineage`
 
 # Edges
 
@@ -556,18 +574,19 @@
 - `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` -> `grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state` kind=lineage
 - `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` -> `grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=constraint
 - `grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state` -> `__final__` kind=merge
-- `grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state` -> `grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f` kind=lineage
-- `grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f` -> `__final__` kind=merge
-- `grp:[@condition]basic:d1:cr.return_address.state:sig:cf7e2f` -> `grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=constraint
-- `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf` -> `__final__` kind=merge
-- `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf` -> `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=lineage
+- `grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state` -> `grp:[@condition]basic:d1:cr.return_address.state:sig:b60650` kind=lineage
+- `grp:[@condition]basic:d1:cr.return_address.state:sig:b60650` -> `__final__` kind=merge
+- `grp:[@condition]basic:d1:cr.return_address.state:sig:b60650` -> `grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=constraint
+- `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f` -> `__final__` kind=merge
+- `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f` -> `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=lineage
 - `grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` -> `__final__` kind=merge
-- `grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf` -> `__final__` kind=merge
-- `grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf` -> `grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=lineage
+- `grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f` -> `__final__` kind=merge
+- `grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f` -> `grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=lineage
 - `grp:root:root:∅` -> `__final__` kind=merge
 - `grp:root:root:∅` -> `grp:aggregate:d0:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=lineage
-- `grp:root:root:∅` -> `grp:filter:d*:cr.item.id|cr.order_number:sig:3aebaf` kind=lineage
+- `grp:root:root:∅` -> `grp:filter:d*:cr.item.id|cr.order_number:sig:87f58f` kind=lineage
+- `grp:root:root:∅:dim:cr.billing_customer.id` -> `__final__` kind=merge
 - `grp:root:root_d1:∅` -> `__final__` kind=merge
 - `grp:root:root_d1:∅` -> `grp:[@condition]aggregate:d1:cr.billing_customer.id|cr.return_address.state:input:cr.item.id|cr.order_number` kind=lineage
 - `grp:root:root_d1:∅` -> `grp:[@condition]aggregate:d1:cr.return_address.state:input:cr.billing_customer.id|cr.return_address.state` kind=lineage
-- `grp:root:root_d1:∅` -> `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:3aebaf` kind=lineage
+- `grp:root:root_d1:∅` -> `grp:[@condition]filter:d1:cr.item.id|cr.order_number:sig:87f58f` kind=lineage

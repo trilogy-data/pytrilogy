@@ -171,6 +171,7 @@ class IterationExhaustedError(click.ClickException):
 
     exit_code = EXIT_ITERATION_EXHAUSTED
 
+
 REVIEWER_SYSTEM_PROMPT = (
     "You check ONE narrow thing: did the agent ITSELF signal it was not finished "
     "when it called return_control_to_user? You receive ONLY the agent's most "

@@ -1,6 +1,6 @@
 query_id = "47"
-generator = "v3"
-gen_length = 5207
+generator = "v4"
+gen_length = 5819
 preql_size = 2146
 comp_size = 2473
 generated_sql = """
@@ -32,25 +32,6 @@ GROUP BY
     6),
 abundant as (
 SELECT
-    \"thoughtful\".\"store_sales_date_year\" as \"store_sales_date_year\",
-    \"thoughtful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"thoughtful\".\"store_sales_store_company_name\" as \"store_sales_store_company_name\",
-    \"thoughtful\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    avg(\"thoughtful\".\"sum_sales\") as \"avg_monthly_sales\"
-FROM
-    \"thoughtful\"
-WHERE
-    \"thoughtful\".\"store_sales_date_year\" = 1999
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-questionable as (
-SELECT
     \"thoughtful\".\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
     \"thoughtful\".\"store_sales_date_year\" as \"store_sales_date_year\",
     \"thoughtful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
@@ -61,37 +42,67 @@ SELECT
     lag(\"thoughtful\".\"sum_sales\", 1) over (partition by \"thoughtful\".\"store_sales_item_category\",\"thoughtful\".\"store_sales_item_brand_name\",\"thoughtful\".\"store_sales_store_name\",\"thoughtful\".\"store_sales_store_company_name\" order by \"thoughtful\".\"store_sales_date_year\" asc,\"thoughtful\".\"store_sales_date_month_of_year\" asc ) as \"psum\",
     lead(\"thoughtful\".\"sum_sales\", 1) over (partition by \"thoughtful\".\"store_sales_item_category\",\"thoughtful\".\"store_sales_item_brand_name\",\"thoughtful\".\"store_sales_store_name\",\"thoughtful\".\"store_sales_store_company_name\" order by \"thoughtful\".\"store_sales_date_year\" asc,\"thoughtful\".\"store_sales_date_month_of_year\" asc ) as \"nsum\"
 FROM
-    \"thoughtful\")
+    \"thoughtful\"),
+uneven as (
 SELECT
-    \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"questionable\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    \"questionable\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"questionable\".\"store_sales_store_company_name\" as \"store_sales_store_company_name\",
-    \"questionable\".\"store_sales_date_year\" as \"store_sales_date_year\",
-    \"questionable\".\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    \"abundant\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
-    \"questionable\".\"sum_sales\" as \"sum_sales\",
-    \"questionable\".\"psum\" as \"psum\",
-    \"questionable\".\"nsum\" as \"nsum\"
+    \"abundant\".\"store_sales_date_year\" as \"store_sales_date_year\",
+    \"abundant\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    \"abundant\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"abundant\".\"store_sales_store_company_name\" as \"store_sales_store_company_name\",
+    \"abundant\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    avg(\"abundant\".\"sum_sales\") as \"avg_monthly_sales\"
 FROM
-    \"questionable\"
-    RIGHT OUTER JOIN \"abundant\" on \"questionable\".\"store_sales_date_year\" = \"abundant\".\"store_sales_date_year\" AND \"questionable\".\"store_sales_item_brand_name\" = \"abundant\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"abundant\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"abundant\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" = \"abundant\".\"store_sales_store_name\"
+    \"abundant\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
+yummy as (
+SELECT
+    \"abundant\".\"nsum\" as \"nsum\",
+    \"abundant\".\"psum\" as \"psum\",
+    \"abundant\".\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    \"abundant\".\"sum_sales\" as \"sum_sales\",
+    \"uneven\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
+    coalesce(\"abundant\".\"store_sales_date_year\",\"uneven\".\"store_sales_date_year\") as \"store_sales_date_year\",
+    coalesce(\"abundant\".\"store_sales_item_brand_name\",\"uneven\".\"store_sales_item_brand_name\") as \"store_sales_item_brand_name\",
+    coalesce(\"abundant\".\"store_sales_item_category\",\"uneven\".\"store_sales_item_category\") as \"store_sales_item_category\",
+    coalesce(\"abundant\".\"store_sales_store_company_name\",\"uneven\".\"store_sales_store_company_name\") as \"store_sales_store_company_name\",
+    coalesce(\"abundant\".\"store_sales_store_name\",\"uneven\".\"store_sales_store_name\") as \"store_sales_store_name\"
+FROM
+    \"abundant\"
+    FULL JOIN \"uneven\" on \"abundant\".\"store_sales_date_year\" = \"uneven\".\"store_sales_date_year\" AND \"abundant\".\"store_sales_item_brand_name\" = \"uneven\".\"store_sales_item_brand_name\" AND \"abundant\".\"store_sales_item_category\" is not distinct from \"uneven\".\"store_sales_item_category\" AND \"abundant\".\"store_sales_store_company_name\" is not distinct from \"uneven\".\"store_sales_store_company_name\" AND \"abundant\".\"store_sales_store_name\" = \"uneven\".\"store_sales_store_name\")
+SELECT
+    \"yummy\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"yummy\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    \"yummy\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"yummy\".\"store_sales_store_company_name\" as \"store_sales_store_company_name\",
+    \"yummy\".\"store_sales_date_year\" as \"store_sales_date_year\",
+    \"yummy\".\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    \"yummy\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
+    \"yummy\".\"sum_sales\" as \"sum_sales\",
+    \"yummy\".\"psum\" as \"psum\",
+    \"yummy\".\"nsum\" as \"nsum\"
+FROM
+    \"yummy\"
 WHERE
-    \"questionable\".\"store_sales_date_year\" = 1999 and \"abundant\".\"avg_monthly_sales\" > 0 and CASE
-	WHEN \"abundant\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\") / \"abundant\".\"avg_monthly_sales\"
+    \"yummy\".\"store_sales_date_year\" = 1999 and \"yummy\".\"avg_monthly_sales\" > 0 and CASE
+	WHEN \"yummy\".\"avg_monthly_sales\" > 0 THEN abs(\"yummy\".\"sum_sales\" - \"yummy\".\"avg_monthly_sales\") / \"yummy\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    \"questionable\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\" asc,
-    \"questionable\".\"store_sales_item_category\" asc,
-    \"questionable\".\"store_sales_item_brand_name\" asc,
-    \"questionable\".\"store_sales_store_name\" asc,
-    \"questionable\".\"store_sales_store_company_name\" asc,
-    \"questionable\".\"store_sales_date_year\" asc,
-    \"questionable\".\"store_sales_date_month_of_year\" asc,
-    \"abundant\".\"avg_monthly_sales\" asc,
-    \"questionable\".\"sum_sales\" asc,
-    \"questionable\".\"psum\" asc,
-    \"questionable\".\"nsum\" asc
+    \"yummy\".\"sum_sales\" - \"yummy\".\"avg_monthly_sales\" asc,
+    \"yummy\".\"store_sales_item_category\" asc,
+    \"yummy\".\"store_sales_item_brand_name\" asc,
+    \"yummy\".\"store_sales_store_name\" asc,
+    \"yummy\".\"store_sales_store_company_name\" asc,
+    \"yummy\".\"store_sales_date_year\" asc,
+    \"yummy\".\"store_sales_date_month_of_year\" asc,
+    \"yummy\".\"avg_monthly_sales\" asc,
+    \"yummy\".\"sum_sales\" asc,
+    \"yummy\".\"psum\" asc,
+    \"yummy\".\"nsum\" asc
 LIMIT (100)"""

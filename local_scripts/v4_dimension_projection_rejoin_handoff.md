@@ -1,8 +1,59 @@
 # Size: dimension projection re-sourced through the fact (q81, q30.alt)
 
-Status: OPEN, `_TPCDS_SIZE` (rows correct, SQL too verbose). Affects `test_eighty_one`
-and `test_thirty_alt` — **identical structural fingerprint**, so one fix should clear
-both. Not a correctness bug; full v4 sweep is 0 failed.
+Status: PARTIAL (2026-06-27). The dimension-split landed; q73 FIXED (xpass,
+promoted out of the registry). q10/q81/q30.alt now source dims STANDALONE (rows
+correct, no fact re-root) but stay `_TPCDS_SIZE` xfail on the residual redundant
+fact-scan feeder (q81 8987>8000; q30.alt 4904 but `web_returns`==2). Zero net-new
+regressions across the full tpc_ds sweep AND the engine/tpc_h/optimization/complex
+sweep. q65 trap avoided.
+
+## 2026-06-27 landed — the split + its gates (read this first)
+
+Three coupled changes, all principled, all shipped:
+
+1. **`_split_root_dimension_clusters` (group_graph.py)** — the core fix. After
+   `_assign_groups`/`_fold_rollup_key_dims`, peel a single-entity FD dimension
+   cluster out of the keyed `grp:root:root:∅` bucket into its own
+   `grp:root:root:dim:<entity_key>` ROOT bucket. The dims then source standalone
+   (`customer ⋈ customer_address`) and FINAL joins on the entity key. FD is
+   resolved with `build_fd_determines` against the FULL environment (NOT
+   concept_attrs — the intermediate FK `customer.id → current_addr → address.city`
+   isn't a concept-graph node, so the side-table closure stops at the name dims).
+   FOUR gates, each guards a real regression found empirically:
+   - member must be a SELECTED output (else a filter-only dim like q30.alt's
+     `address.state` is peeled and the FINAL re-source drops its WHERE — wrong rows);
+   - member must NOT be a grouping key (q24 regroups by `customer.first_name,
+     store.name` — peeling those breaks the GROUP BY → fan-out);
+   - member must NOT be a pre-aggregate filter arg (`_pre_aggregate_filter_args`:
+     a WHERE clause with no aggregate term; q98's `category` must narrow the
+     class-total window pre-aggregate, not post-join);
+   - entity key must NOT sit inside a multi-key non-aggregate filter grain
+     (`_finer_filter_grains`; q20's `available_quantity` at `{part.id,supplier.id}`
+     needs supplier rows at partsupp grain → peeling strands the condition → crash).
+2. **`_projection_root_concepts` keys-skip (strategy_builder.py)** — don't expand
+   a self-grained identifier's `keys` (q81's `billing_customer.id` carries
+   `keys={item.id,order_number}`, the fact grain it was a grouping key over;
+   expanding drags the fact back into the pure dim scan). Property keys (address
+   FK) still expand.
+3. **(B) twin-reuse drop (strategy_builder.py)** — `_aggregate_reused_from_twin`
+   skips the recompute lineage in `needed` when a same-grain grouping twin already
+   produced the value; the parent loop then drops the now-redundant ROOT fact
+   re-scan (`covers_as_grouping_sibling`). ROOT-only — broadening to FILTER feeders
+   drops a row-reducing WHERE the twin doesn't replicate (q30.alt rows).
+
+## Remaining to fully clear q81/q30.alt/q10 (NOT done — unsafe so far)
+
+The standalone-dim sourcing works; the size gap is the SECOND fact scan feeding the
+d0 aggregate through `filter:d*` (q81 catalog_returns ×2) and the no-op passthrough
+CTEs. The broadened (B) (drop FILTER feeders too) gets q81 to 8275/×1 but BREAKS
+q30.alt rows — a FILTER feeder applies a WHERE the grouping twin does not, so the
+subset check is unsound for FILTER. A safe version must compare condition atoms
+(drop the feeder only when the twin's accumulated conditions ⊇ the feeder's). Plus
+the (C) passthrough fold. Both deferred.
+
+---
+
+## ORIGINAL HANDOFF (below) — superseded diagnosis, kept for context
 
 This is the *dimension* half of the q47 "join-stream" family. The 2026-06-25
 join-stream spike fixed aggregate REUSE (the coarser-grain `avg` now reads the
@@ -109,6 +160,38 @@ dimension group's grain and input contract (expect fact grain where it should be
 - Rows unchanged; full v4 sweep stays 0 failed; no regression in the join-stream
   aggregate-reuse win (q47/q57) or the dimension-projection crash lock
   (`test_v4_dimension_projection_group.py`).
+
+## 2026-06-27 investigation — root cause CONFIRMED + code-located + scope
+
+Re-confirmed by instrumentation (q10 and q81 share the SAME mechanism; q73/q30.alt too):
+
+- **`plan_source` in ISOLATION already does the right thing.** Calling `plan_source`
+  with `outputs={purchasing_customer.id, demographics.*}` (+ even the full county/gender/
+  buyer-subselect conditions) sources cleanly from `customers ⋈ customer_demographics ⋈
+  customer_address` — NO fact union, NO `date_dim`. So source-planning is NOT the bug.
+- **The bug is the GROUP GRAPH.** q10's single `grp:root:root:∅` declares BOTH the
+  customer-grain dims (FD by `purchasing_customer.id`) AND fact-grain feed columns
+  (`channel`, `date.month_of_year`, `date.year`) that only the buyer `filter:d1` needs.
+  q81 is identical: `grp:root:root:∅` lists the 16 `billing_customer.*` dims (all FD by
+  `billing_customer.id`) as ROOT **primary members**, conflated with `item.id`,
+  `order_number`, `date.year`, `return_address.state`, `return_amt_inc_tax`. Because the
+  dims and the fact-grain columns are ONE group, materialization sources them together
+  through the fact, and the demographics/dim consumer can't separate them.
+- **Why the existing `_synthetic_dimension_regraft_parent` (group_graph.py:1544) doesn't
+  fire:** it only regrafts a `Derivation.BASIC` group whose inputs are all FD on its
+  grain key onto a synthetic `grp:root:root:dim:<key>` bucket. In q10/q81 the dims are not
+  a BASIC group — they are ROOT **primary members** consumed directly by the FINAL merge.
+  So the single-entity FD-cluster machinery exists but doesn't cover the root-member case.
+
+**The fix (core, not yet landed):** split a single-entity FD dimension cluster OUT of the
+root group's primary members into its own `grp:root:root:dim:<entity_key>` bucket (entity
+key = the id the dims are FD by, which is ALSO a root member and a downstream aggregate's
+grouping key, so the FINAL join key is available). Source that bucket standalone
+(`customer ⋈ customer_address [⋈ customer_demographics]`) and have FINAL join it on the
+entity key. Gate HARD to single-entity FD clusters (q65 trap: multi-entity dims must ride
+the aggregate keys, never split). This extends `_synthetic_dimension_regraft_parent` to the
+root-member case and is coupled with (B)+(C) below. SUBSTANTIAL group-graph surgery (new
+bucket + FINAL contributor + join-key + cover routing) — needs full-sweep diff + q65 guard.
 
 ## 2026-06-25 investigation — refined root cause + why the naive fix regresses q65
 

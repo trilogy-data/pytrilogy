@@ -55,9 +55,9 @@ WHERE
 
 GROUP BY
     1),
-abhorrent as (
+uneven as (
 SELECT
-    "sales_purchasing_customer_customers"."C_CUSTOMER_SK" as "sales_purchasing_customer_id",
+    "cheerful"."sales_purchasing_customer_id" as "sales_purchasing_customer_id",
     "sales_purchasing_customer_demographics_customer_demographics"."CD_CREDIT_RATING" as "sales_purchasing_customer_demographics_credit_rating",
     "sales_purchasing_customer_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" as "sales_purchasing_customer_demographics_college_dependent_count",
     "sales_purchasing_customer_demographics_customer_demographics"."CD_DEP_COUNT" as "sales_purchasing_customer_demographics_dependent_count",
@@ -66,16 +66,6 @@ SELECT
     "sales_purchasing_customer_demographics_customer_demographics"."CD_GENDER" as "sales_purchasing_customer_demographics_gender",
     "sales_purchasing_customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "sales_purchasing_customer_demographics_marital_status",
     "sales_purchasing_customer_demographics_customer_demographics"."CD_PURCHASE_ESTIMATE" as "sales_purchasing_customer_demographics_purchase_estimate"
-FROM
-    "memory"."customer" as "sales_purchasing_customer_customers"
-    INNER JOIN "memory"."customer_address" as "sales_purchasing_customer_address_customer_address" on "sales_purchasing_customer_customers"."C_CURRENT_ADDR_SK" = "sales_purchasing_customer_address_customer_address"."CA_ADDRESS_SK"
-    INNER JOIN "memory"."customer_demographics" as "sales_purchasing_customer_demographics_customer_demographics" on "sales_purchasing_customer_customers"."C_CURRENT_CDEMO_SK" = "sales_purchasing_customer_demographics_customer_demographics"."CD_DEMO_SK"
-WHERE
-    "sales_purchasing_customer_address_customer_address"."CA_COUNTY" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and "sales_purchasing_customer_demographics_customer_demographics"."CD_GENDER" is not null and "sales_purchasing_customer_customers"."C_CUSTOMER_SK" in (select vacuous."store_buyers" from vacuous where vacuous."store_buyers" is not null) and "sales_purchasing_customer_customers"."C_CUSTOMER_SK" in (select concerned."webcat_buyers" from concerned where concerned."webcat_buyers" is not null)
-),
-uneven as (
-SELECT
-    "cheerful"."sales_purchasing_customer_id" as "sales_purchasing_customer_id"
 FROM
     "cheerful"
     LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
@@ -87,30 +77,17 @@ WHERE
 ),
 young as (
 SELECT
+    "uneven"."sales_purchasing_customer_demographics_college_dependent_count" as "sales_purchasing_customer_demographics_college_dependent_count",
+    "uneven"."sales_purchasing_customer_demographics_credit_rating" as "sales_purchasing_customer_demographics_credit_rating",
+    "uneven"."sales_purchasing_customer_demographics_dependent_count" as "sales_purchasing_customer_demographics_dependent_count",
+    "uneven"."sales_purchasing_customer_demographics_education_status" as "sales_purchasing_customer_demographics_education_status",
+    "uneven"."sales_purchasing_customer_demographics_employed_dependent_count" as "sales_purchasing_customer_demographics_employed_dependent_count",
+    "uneven"."sales_purchasing_customer_demographics_gender" as "sales_purchasing_customer_demographics_gender",
+    "uneven"."sales_purchasing_customer_demographics_marital_status" as "sales_purchasing_customer_demographics_marital_status",
+    "uneven"."sales_purchasing_customer_demographics_purchase_estimate" as "sales_purchasing_customer_demographics_purchase_estimate",
     "uneven"."sales_purchasing_customer_id" as "sales_purchasing_customer_id"
 FROM
-    "uneven"),
-sparkling as (
-SELECT
-    "young"."sales_purchasing_customer_id" as "sales_purchasing_customer_id"
-FROM
-    "young"),
-sweltering as (
-SELECT
-    "abhorrent"."sales_purchasing_customer_demographics_college_dependent_count" as "sales_purchasing_customer_demographics_college_dependent_count",
-    "abhorrent"."sales_purchasing_customer_demographics_credit_rating" as "sales_purchasing_customer_demographics_credit_rating",
-    "abhorrent"."sales_purchasing_customer_demographics_dependent_count" as "sales_purchasing_customer_demographics_dependent_count",
-    "abhorrent"."sales_purchasing_customer_demographics_education_status" as "sales_purchasing_customer_demographics_education_status",
-    "abhorrent"."sales_purchasing_customer_demographics_employed_dependent_count" as "sales_purchasing_customer_demographics_employed_dependent_count",
-    "abhorrent"."sales_purchasing_customer_demographics_gender" as "sales_purchasing_customer_demographics_gender",
-    "abhorrent"."sales_purchasing_customer_demographics_marital_status" as "sales_purchasing_customer_demographics_marital_status",
-    "abhorrent"."sales_purchasing_customer_demographics_purchase_estimate" as "sales_purchasing_customer_demographics_purchase_estimate",
-    "abhorrent"."sales_purchasing_customer_id" as "sales_purchasing_customer_id"
-FROM
-    "abhorrent"
-WHERE
-    "abhorrent"."sales_purchasing_customer_id" in (select vacuous."store_buyers" from vacuous where vacuous."store_buyers" is not null) and "abhorrent"."sales_purchasing_customer_id" in (select concerned."webcat_buyers" from concerned where concerned."webcat_buyers" is not null)
-
+    "uneven"
 GROUP BY
     1,
     2,
@@ -122,22 +99,22 @@ GROUP BY
     8,
     9)
 SELECT
-    "sweltering"."sales_purchasing_customer_demographics_gender" as "sales_purchasing_customer_demographics_gender",
-    "sweltering"."sales_purchasing_customer_demographics_marital_status" as "sales_purchasing_customer_demographics_marital_status",
-    "sweltering"."sales_purchasing_customer_demographics_education_status" as "sales_purchasing_customer_demographics_education_status",
-    count("sweltering"."sales_purchasing_customer_id") as "cnt1",
-    "sweltering"."sales_purchasing_customer_demographics_purchase_estimate" as "sales_purchasing_customer_demographics_purchase_estimate",
-    count("sweltering"."sales_purchasing_customer_id") as "cnt2",
-    "sweltering"."sales_purchasing_customer_demographics_credit_rating" as "sales_purchasing_customer_demographics_credit_rating",
-    count("sweltering"."sales_purchasing_customer_id") as "cnt3",
-    "sweltering"."sales_purchasing_customer_demographics_dependent_count" as "sales_purchasing_customer_demographics_dependent_count",
-    count("sweltering"."sales_purchasing_customer_id") as "cnt4",
-    "sweltering"."sales_purchasing_customer_demographics_employed_dependent_count" as "sales_purchasing_customer_demographics_employed_dependent_count",
-    count("sweltering"."sales_purchasing_customer_id") as "cnt5",
-    "sweltering"."sales_purchasing_customer_demographics_college_dependent_count" as "sales_purchasing_customer_demographics_college_dependent_count",
-    count("sweltering"."sales_purchasing_customer_id") as "cnt6"
+    "young"."sales_purchasing_customer_demographics_gender" as "sales_purchasing_customer_demographics_gender",
+    "young"."sales_purchasing_customer_demographics_marital_status" as "sales_purchasing_customer_demographics_marital_status",
+    "young"."sales_purchasing_customer_demographics_education_status" as "sales_purchasing_customer_demographics_education_status",
+    count("young"."sales_purchasing_customer_id") as "cnt1",
+    "young"."sales_purchasing_customer_demographics_purchase_estimate" as "sales_purchasing_customer_demographics_purchase_estimate",
+    count("young"."sales_purchasing_customer_id") as "cnt2",
+    "young"."sales_purchasing_customer_demographics_credit_rating" as "sales_purchasing_customer_demographics_credit_rating",
+    count("young"."sales_purchasing_customer_id") as "cnt3",
+    "young"."sales_purchasing_customer_demographics_dependent_count" as "sales_purchasing_customer_demographics_dependent_count",
+    count("young"."sales_purchasing_customer_id") as "cnt4",
+    "young"."sales_purchasing_customer_demographics_employed_dependent_count" as "sales_purchasing_customer_demographics_employed_dependent_count",
+    count("young"."sales_purchasing_customer_id") as "cnt5",
+    "young"."sales_purchasing_customer_demographics_college_dependent_count" as "sales_purchasing_customer_demographics_college_dependent_count",
+    count("young"."sales_purchasing_customer_id") as "cnt6"
 FROM
-    "sweltering"
+    "young"
 GROUP BY
     1,
     2,
@@ -148,11 +125,11 @@ GROUP BY
     11,
     13
 ORDER BY 
-    "sweltering"."sales_purchasing_customer_demographics_gender" asc,
-    "sweltering"."sales_purchasing_customer_demographics_marital_status" asc,
-    "sweltering"."sales_purchasing_customer_demographics_education_status" asc,
-    "sweltering"."sales_purchasing_customer_demographics_purchase_estimate" asc,
-    "sweltering"."sales_purchasing_customer_demographics_credit_rating" asc,
-    "sweltering"."sales_purchasing_customer_demographics_dependent_count" asc,
-    "sweltering"."sales_purchasing_customer_demographics_employed_dependent_count" asc,
-    "sweltering"."sales_purchasing_customer_demographics_college_dependent_count" asc
+    "young"."sales_purchasing_customer_demographics_gender" asc,
+    "young"."sales_purchasing_customer_demographics_marital_status" asc,
+    "young"."sales_purchasing_customer_demographics_education_status" asc,
+    "young"."sales_purchasing_customer_demographics_purchase_estimate" asc,
+    "young"."sales_purchasing_customer_demographics_credit_rating" asc,
+    "young"."sales_purchasing_customer_demographics_dependent_count" asc,
+    "young"."sales_purchasing_customer_demographics_employed_dependent_count" asc,
+    "young"."sales_purchasing_customer_demographics_college_dependent_count" asc
