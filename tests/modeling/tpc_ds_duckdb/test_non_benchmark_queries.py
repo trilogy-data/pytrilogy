@@ -64,7 +64,7 @@ def test_q64_rowset_join_with_second_fact_join_hoist(engine_sf001):
     """
     query = """
 import store_sales as ss;
-import physical_returns as pr;
+import store_returns as pr;
 import catalog_sales as cs;
 import catalog_returns as cr;
 
@@ -164,7 +164,7 @@ import customer as customer;
 import inventory as inventory;
 import item as item;
 import promotion as promotion;
-import physical_returns as physical_returns;
+import store_returns as physical_returns;
 import store_sales as store_sales;
 import store as store;
 import time as time;
@@ -192,7 +192,7 @@ import customer as customer;
 import inventory as inventory;
 import item as item;
 import promotion as promotion;
-import physical_returns as physical_returns;
+import store_returns as physical_returns;
 import store_sales as store_sales;
 import store as store;
 import time as time;

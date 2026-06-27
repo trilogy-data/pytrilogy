@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING
 
-from trilogy.core.enums import ConceptSource, Derivation
+from trilogy.core.enums import ConceptSource, Derivation, Granularity
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
@@ -205,6 +205,12 @@ def rowset_to_concepts_v2(
         if not x.grain.components and rowset_grain:
             x.grain = Grain(components=set(rowset_grain))
             x.keys = set(rowset_grain)
+            # A grain-less aggregate (e.g. `sum(x) as total`) inherited the
+            # inner aggregate's SINGLE_ROW granularity (abstract grain). Now
+            # that it carries the rowset's concrete grain it is one row per
+            # grain key — multi-row. Leaving it SINGLE_ROW makes downstream
+            # grouping treat it as a grand-total scalar (q54 cross-join bug).
+            x.granularity = Granularity.MULTI_ROW
         elif all(c in orig for c in x.grain.components):
             x.grain = Grain(components={orig[c].address for c in x.grain.components})
         else:

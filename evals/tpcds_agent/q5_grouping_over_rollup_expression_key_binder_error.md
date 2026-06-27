@@ -1,5 +1,21 @@
 # Bug: `grouping(<expr>)` over a `by rollup` whose key is that same expression → DuckDB BinderException "GROUPING child must be a grouping column" (q5)
 
+**Status:** FIXED 2026-06-27 — now raises a clean author-time `InvalidSyntaxException`
+instead of emitting invalid SQL. The fix is a **helpful error**, not making the query pass:
+`grouping()`/`grouping_id()` requires a concept (column) reference, not an inline expression.
+The working idiom is to name the expression as a concept and use it in both the rollup key
+and `grouping()` (e.g. `auto channel <- coalesce(a, b); select ..., grouping(channel) ... by rollup (channel)`).
+This was NOT rowset/full-join specific — ANY `grouping(<inline expr>)` over `by rollup (<that expr>)`
+failed, even single-source (`grouping(item_id*1)`, `grouping(coalesce(item_id,0))`).
+`by rollup (<expr>)` alone (no grouping over it) still works; `grouping(<plain concept>)` works.
+Fix: `_validate_grouping_args_are_concepts` in `trilogy/parsing/v2/select_finalize.py` (called from
+`_propagate_select_grouping`). Tests: `tests/engine/test_duckdb.py::test_grouping_over_inline_expression_key_raises_clean_error`
++ `::test_grouping_over_named_expression_key_builds`.
+
+---
+
+**(original report below)**
+
 **Status:** OPEN — deterministic repro + the exact bad SQL below.
 **Surfaced by:** TPC-DS q5 (run `20260627-155703`). Surfaces as
 `Unexpected error: (_duckdb.BinderException) Binder Error: GROUPING child "COALESCE('CATALOG',

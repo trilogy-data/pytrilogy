@@ -272,6 +272,48 @@ order by g, brand;
     ]
 
 
+def test_grouping_over_inline_expression_key_raises_clean_error():
+    """`grouping(<inline expression>)` over a `by rollup (<same expression>)` key
+    produced invalid SQL: the rollup key is materialized as a column and grouped
+    by position, but `grouping(coalesce(...))` re-inlines the expression and never
+    matches that column, so DuckDB rejected it with a raw BinderException
+    ("GROUPING child must be a grouping column"). Reject it at author time with
+    guidance to name the expression instead. The valid named form is covered by
+    `test_grouping_in_named_concept_with_rollup_builds`. q05."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select
+    case when grouping(coalesce(brand, class)) = 1 then 'tot'
+         else coalesce(brand, class) end as ch,
+    sum(amount) as total
+by rollup (coalesce(brand, class));
+"""
+    with raises(InvalidSyntaxException, match="concept .column. reference"):
+        engine.generate_sql(text)
+
+
+def test_grouping_over_named_expression_key_builds():
+    """The fix for the above: name the expression as a concept and use it in both
+    the rollup key and `grouping()`. The same intent now compiles and runs."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+auto ch <- coalesce(brand, class);
+select
+    case when grouping(ch) = 1 then 'tot' else ch end as label,
+    sum(amount) as total
+by rollup (ch)
+order by total asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("A", 30.0),
+        ("B", 130.0),
+        ("tot", 160.0),
+    ]
+
+
 def test_null_constant_renders_inline_not_bound():
     """A `null` literal in a projection must render inline as SQL `null`, not as a
     bind parameter — the constant's value is `MagicConstants.NULL`, which the DB

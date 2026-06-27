@@ -912,6 +912,35 @@ def _collect_ungrouped_aggregates_deep(
     return found
 
 
+def _validate_grouping_args_are_concepts(
+    select: SelectStatement, context: RuleContext
+) -> None:
+    """``grouping(arg)``/``grouping_id(arg)`` must reference a concept, not an
+    inline expression. DuckDB (and standard SQL) require the argument to *be* one
+    of the GROUP BY keys; the planner materializes a `by rollup (coalesce(a,b))`
+    key as a column and groups by position, but the inline ``grouping(coalesce(a,b))``
+    re-emits the expression and never matches that column → BinderException
+    ("GROUPING child must be a grouping column"). The fix is to name the
+    expression as a concept and use it in both places, so reject the inline form
+    here with that guidance rather than emitting invalid SQL."""
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
+        if lineage is None:
+            continue
+        for wrapper in _collect_standard_grouping_wrappers(lineage):
+            for arg in wrapper.function.arguments:
+                if isinstance(arg, ConceptRef):
+                    continue
+                raise InvalidSyntaxException(
+                    f"{wrapper.function.operator.value}() requires a concept "
+                    f"(column) reference as its argument, not an inline expression "
+                    f"like '{arg}'. Assign the expression to a named concept and "
+                    f"use that concept in both the grouping key and grouping() - "
+                    f"e.g. `auto channel <- coalesce(a, b); select ..., "
+                    f"grouping(channel) ... by rollup (channel)`."
+                )
+
+
 def _propagate_select_grouping(select: SelectStatement, context: RuleContext) -> None:
     """Apply the SELECT-level ``by rollup (…)`` spec to every aggregate feeding the
     projection that has no explicit ``by`` grain, so all measures — and the
@@ -937,6 +966,7 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
                     "select; it has no meaning without a grouping set."
                 )
         return
+    _validate_grouping_args_are_concepts(select, context)
     seen: set[str] = set()
     for item in select.selection:
         lineage = _item_lineage(item, context)

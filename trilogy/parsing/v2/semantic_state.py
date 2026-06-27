@@ -541,6 +541,36 @@ class ConceptLookup:
             )
         return addrs
 
+    def _collapse_alias_matches(self, matches: list[str]) -> list[str]:
+        """Drop matches that are stale name-form aliases of another match, not
+        distinct outputs. A nested rowset records BOTH the written shorthand path
+        by which it referenced a column (`y.base.week_seq`, a symbol-table
+        forward-ref) AND the canonical full path of the real concept that
+        shorthand resolved to (`y.base.s.week_seq`). Both subsequence-match a
+        downstream `y.week_seq`, but they denote ONE output -> false ambiguity.
+        A forward-only match (no real concept) that is an ordered subsequence of
+        a real-concept match is that concept's alias; keep only the canonical.
+        Genuine ambiguity (`s.date.week_seq` vs `s.return_date.week_seq`, both
+        real, neither a subsequence of the other) is untouched."""
+        if len(matches) < 2:
+            return matches
+        real: list[str] = []
+        forward: list[str] = []
+        for addr in matches:
+            existing = self._existing_concept(addr)
+            if existing is not None and not isinstance(existing, UndefinedConceptFull):
+                real.append(addr)
+            else:
+                forward.append(addr)
+        if not real:
+            return matches
+        kept_forward = [
+            f
+            for f in forward
+            if not any(_is_subsequence(f.split("."), r.split(".")) for r in real)
+        ]
+        return real + kept_forward
+
     def _resolve_rowset_suffix(self, address: str) -> Concept | None:
         """Resolve a rowset leaf-shorthand (`rs.col`) to the full output path
         (`rs.a.b.col`) when exactly one rowset output under namespace `rs`
@@ -560,6 +590,7 @@ class ConceptLookup:
                 for addr in self._rowset_output_addresses(prefix)
                 if addr != candidate and _is_subsequence(q_segs, addr.split("."))
             ]
+            matches = self._collapse_alias_matches(matches)
             if len(matches) == 1:
                 target = matches[0]
                 existing = self._existing_concept(target)

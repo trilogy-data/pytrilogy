@@ -33,7 +33,7 @@ import customer as customer;
 import inventory as inventory;
 import item as item;
 import promotion as promotion;
-import physical_returns as physical_returns;
+import store_returns as physical_returns;
 import store_sales as store_sales;
 import store as store;
 import time as time;

@@ -120,3 +120,84 @@ def test_shorthand_query_builds_and_executes(tmp_path):
         "select base.week_seq, base.day_sales order by base.week_seq;"
     ).fetchall()
     assert rows == [(5, 30.0)]
+
+
+def test_nested_rowset_shorthand_not_falsely_ambiguous(tmp_path):
+    # A nested rowset passing through an unaliased deep-path output keeps BOTH a
+    # symbol-table forward-ref (the written shorthand `y1999.base.week_seq`) AND
+    # the canonical concept (`y1999.base.s.week_seq`). A downstream leaf-shorthand
+    # `y1999.week_seq` subsequence-matches both but they are one output: the
+    # resolver must collapse the alias instead of reporting false ambiguity (q64).
+    env = _env(tmp_path)
+    exe = Dialects.DUCK_DB.default_executor(environment=env)
+    q = exe.generate_sql(
+        "with base as select s.week_seq, sum(s.ext_sales_price) as m;\n"
+        "with y1999 as select base.week_seq, base.m;\n"
+        "select y1999.week_seq, y1999.m;"
+    )
+    assert q
+
+
+def test_nested_rowset_shorthand_executes_consistently(tmp_path):
+    env = _env(tmp_path)
+    exe = Dialects.DUCK_DB.default_executor(environment=env)
+    exe.execute_raw_sql(
+        "CREATE TABLE sales AS SELECT * FROM (VALUES "
+        "(1, 10.0, 'WEB', 5, 'Mon'),(2, 20.0, 'CATALOG', 5, 'Mon'),"
+        "(3, 5.0, 'STORE', 6, 'Tue')) t(id, ext, channel, week_seq, day_name);"
+    )
+    # both the leaf-shorthand and the full canonical path must give the same rows
+    short = exe.execute_query(
+        "with base as select s.week_seq, sum(s.ext_sales_price) as m;\n"
+        "with y1999 as select base.week_seq, base.m;\n"
+        "select y1999.week_seq, y1999.m order by y1999.week_seq;"
+    ).fetchall()
+    full = exe.execute_query(
+        "with base as select s.week_seq, sum(s.ext_sales_price) as m;\n"
+        "with y1999 as select base.week_seq, base.m;\n"
+        "select y1999.base.s.week_seq, y1999.m order by y1999.base.s.week_seq;"
+    ).fetchall()
+    assert short == full == [(5, 30.0), (6, 5.0)]
+
+
+@pytest.mark.parametrize("depth", [2, 3, 4])
+def test_arbitrary_rowset_nesting_resolves_via_leaf_shorthand(tmp_path, depth):
+    # Stack `depth` rowsets each re-selecting the prior layer's passed-through
+    # week_seq via leaf-shorthand; the deepest leaf-shorthand must still resolve
+    # to one canonical concept regardless of how many alias layers accumulate.
+    env = _env(tmp_path)
+    lines = ["with r0 as select s.week_seq, sum(s.ext_sales_price) as m;"]
+    for i in range(1, depth):
+        lines.append(f"with r{i} as select r{i - 1}.week_seq, r{i - 1}.m;")
+    last = depth - 1
+    lines.append(f"select r{last}.week_seq, r{last}.m;")
+    exe = Dialects.DUCK_DB.default_executor(environment=env)
+    assert exe.generate_sql("\n".join(lines))
+
+
+def test_nested_rowset_self_join_shorthand(tmp_path):
+    # q64's shape: two child rowsets off one base, self-joined on the passed-
+    # through key, each side projected via leaf-shorthand.
+    env = _env(tmp_path)
+    exe = Dialects.DUCK_DB.default_executor(environment=env)
+    assert exe.generate_sql(
+        "with base as select s.week_seq, sum(s.ext_sales_price) as m;\n"
+        "with y1999 as where base.week_seq = 5 select base.week_seq, base.m;\n"
+        "with y2000 as where base.week_seq = 6 select base.week_seq, base.m;\n"
+        "INNER JOIN y1999.week_seq = y2000.week_seq "
+        "SELECT y1999.week_seq, y1999.m, y2000.m;"
+    )
+
+
+def test_nested_rowset_genuine_ambiguity_still_raises(tmp_path):
+    # Collapsing alias forms must NOT mask a real two-output ambiguity: a nested
+    # rowset passing through two distinct week_seq outputs leaves `y.week_seq`
+    # genuinely ambiguous.
+    env = _env(tmp_path)
+    env.parse(
+        "with base as select s.week_seq -> sold.week_seq, "
+        "s.week_seq + 1 -> returned.week_seq;"
+    )
+    env.parse("with nested as select base.sold.week_seq, base.returned.week_seq;")
+    with pytest.raises(UndefinedConceptException):
+        env.concepts["nested.week_seq"]

@@ -427,6 +427,57 @@ select 4 as line_id, 2 as item_id, 2002 as yr, 5 as val
 """
 
 
+_HISTOGRAM_FIXTURE = """
+key sale_id int;
+property sale_id.sale_cust int;
+property sale_id.amount int;
+
+datasource sales (
+    sale_id,
+    sale_cust,
+    amount,
+)
+grain (sale_id)
+query '''
+select 1 as sale_id, 1 as sale_cust, 5 as amount union all
+select 2 as sale_id, 1 as sale_cust, 5 as amount union all
+select 3 as sale_id, 2 as sale_cust, 4 as amount union all
+select 4 as sale_id, 2 as sale_cust, 6 as amount union all
+select 5 as sale_id, 3 as sale_cust, 10 as amount union all
+select 6 as sale_id, 3 as sale_cust, 10 as amount union all
+select 7 as sale_id, 4 as sale_cust, 25 as amount union all
+select 8 as sale_id, 4 as sale_cust, 25 as amount union all
+select 9 as sale_id, 5 as sale_cust, 20 as amount union all
+select 10 as sale_id, 5 as sale_cust, 30 as amount
+''';
+"""
+
+
+def test_rowset_aggregate_output_bucketed_and_counted_groups_per_bucket():
+    # Two-level aggregation (TPC-DS q54 histogram shape): a rowset holds a
+    # per-customer total (`sum(amount) by cust`); the outer query buckets that
+    # total and counts customers per bucket. The grain-less aggregate output
+    # inherited the inner aggregate's SINGLE_ROW granularity, so the derived
+    # bucket key read as a scalar — it was dropped from the select grain, the
+    # count was computed UNGROUPED (grand total), and CROSS-JOINed (FULL JOIN
+    # ON 1=1) to every bucket. Every bucket reported the total count (5).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_HISTOGRAM_FIXTURE)
+    query = """
+with cust_totals as
+select sale_cust as cust, sum(amount) as total;
+
+select round(cust_totals.total / 10) as seg, count(cust_totals.cust) as cnt
+where cust_totals.total is not null
+order by seg asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "on 1=1" not in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # c1=10,c2=10 -> seg 1; c3=20 -> seg 2; c4=50,c5=50 -> seg 5
+    assert results == [(1, 2), (2, 1), (5, 2)]
+
+
 def test_tvf_union_named():
     # A named relational `union(...)` TVF: a column-positional row stack of two
     # arms. Output is exactly the bound columns; the result is a SQL UNION ALL
