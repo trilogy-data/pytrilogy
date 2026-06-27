@@ -21,7 +21,7 @@ GROUP BY
     3,
     4,
     5),
-cooperative as (
+questionable as (
 SELECT
     "cheerful"."cs_item_class" as "cs_item_class",
     sum("cheerful"."revenue") as "_virt_agg_sum_9832457364876792"
@@ -29,7 +29,7 @@ FROM
     "cheerful"
 GROUP BY
     1),
-abundant as (
+uneven as (
 SELECT
     "cheerful"."cs_item_category" as "cs_item_category",
     "cheerful"."cs_item_class" as "cs_item_class",
@@ -37,24 +37,24 @@ SELECT
     "cheerful"."cs_item_desc" as "cs_item_desc",
     "cheerful"."cs_item_text_id" as "cs_item_text_id",
     "cheerful"."revenue" as "revenue",
-    "cooperative"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
+    "questionable"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
 FROM
     "cheerful"
-    INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class")
+    INNER JOIN "questionable" on "cheerful"."cs_item_class" is not distinct from "questionable"."cs_item_class")
 SELECT
-    "abundant"."cs_item_text_id" as "cs_item_text_id",
-    "abundant"."cs_item_desc" as "cs_item_desc",
-    "abundant"."cs_item_category" as "cs_item_category",
-    "abundant"."cs_item_class" as "cs_item_class",
-    "abundant"."cs_item_current_price" as "cs_item_current_price",
-    "abundant"."revenue" as "revenue",
-    ( "abundant"."revenue" * 100.0 ) / ("abundant"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+    "uneven"."cs_item_text_id" as "cs_item_text_id",
+    "uneven"."cs_item_desc" as "cs_item_desc",
+    "uneven"."cs_item_category" as "cs_item_category",
+    "uneven"."cs_item_class" as "cs_item_class",
+    "uneven"."cs_item_current_price" as "cs_item_current_price",
+    "uneven"."revenue" as "revenue",
+    ( "uneven"."revenue" * 100.0 ) / ("uneven"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
 FROM
-    "abundant"
+    "uneven"
 ORDER BY 
-    "abundant"."cs_item_category" asc nulls first,
-    "abundant"."cs_item_class" asc nulls first,
-    "abundant"."cs_item_text_id" asc nulls first,
-    "abundant"."cs_item_desc" asc nulls first,
+    "uneven"."cs_item_category" asc nulls first,
+    "uneven"."cs_item_class" asc nulls first,
+    "uneven"."cs_item_text_id" asc nulls first,
+    "uneven"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first
 LIMIT (100)

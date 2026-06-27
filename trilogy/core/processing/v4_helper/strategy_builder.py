@@ -14,6 +14,7 @@ style fall back inside `v4_node_generators.dispatch.build_node`."""
 
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -224,10 +225,75 @@ def _deep_copy_node(node: StrategyNode) -> StrategyNode:
     return clone
 
 
+class _CleanFeederCache:
+    """Builds a STANDALONE source for an existence (`IN <subselect>`) concept,
+    independent of the already-built strategy tree.
+
+    When the only built group producing an existence concept is a lineage
+    descendant of its own consumer (a self-referential membership like
+    `week_seq in relevent_week_seq`, whose `relevent_week_seq` filter group reads
+    the membership-conditioned ROOT), wiring that built node as the subselect
+    feeder forms a cycle. `_existence_parents_for` would otherwise `_deep_copy_
+    node` the whole conditioned subtree to break it -- acyclic but catastrophically
+    verbose (q2.1: the deep copy fires per consumer and compounds into a 60k-char
+    re-filter chain). The set Y in `X in Y` is by definition the UNFILTERED set, so
+    re-source it from its own lineage (no outer conditions) once and share the
+    result. Cached per address; returns independent copies so each consumer owns
+    its parent pointer."""
+
+    def __init__(
+        self,
+        environment: BuildEnvironment,
+        g: ReferenceGraph,
+        history: History,
+        source_policy: SourcePolicy,
+    ) -> None:
+        self._environment = environment
+        self._g = g
+        self._history = history
+        self._source_policy = source_policy
+        self._cache: dict[str, StrategyNode | None] = {}
+
+    def get(self, concept: BuildConcept) -> StrategyNode | None:
+        if concept.address not in self._cache:
+            self._cache[concept.address] = self._build(concept)
+        node = self._cache[concept.address]
+        return node.copy() if node is not None else None
+
+    def _build(self, concept: BuildConcept) -> StrategyNode | None:
+        from trilogy.core.processing.concept_strategies_v4 import (
+            V4History,
+            search_concepts,
+        )
+
+        v4_history = cast(V4History, self._history)
+        search = [
+            self._environment.concepts[address]
+            for address in sorted({concept.address, *(concept.keys or set())})
+            if address in self._environment.concepts
+        ]
+        if not search:
+            return None
+        info = search_concepts(
+            mandatory_list=search,
+            history=V4History(
+                base_environment=v4_history.base_environment,
+                build_caches=v4_history.build_caches,
+            ),
+            environment=self._environment,
+            depth=1,
+            g=self._g,
+            conditions=[],
+            source_policy=self._source_policy,
+        )
+        return info.strategy_node
+
+
 def _existence_parents_for(
     concepts: list[BuildConcept],
     built: dict[str, StrategyNode],
     skip: StrategyNode | None = None,
+    feeder_cache: "_CleanFeederCache | None" = None,
 ) -> list[StrategyNode]:
     existence_parents: list[StrategyNode] = []
     seen_parents: set[int] = set()
@@ -236,16 +302,26 @@ def _existence_parents_for(
             if skip is not None and source_node is skip:
                 continue
             if any(o.address == concept.address for o in source_node.output_concepts):
+                # `copy()` shallow-shares parents, so a candidate whose subtree
+                # contains `skip` would wire `skip -> candidate -> ... -> skip`, a
+                # row-stream cycle that recurses forever in `resolve()`. The set in
+                # `X in <candidate>` is the UNFILTERED set, so re-source it
+                # standalone (no outer conditions) and share that acyclic feeder --
+                # far cheaper than deep-copying the whole conditioned subtree per
+                # consumer (q2.1: the deep copy compounds to 60k chars). Fall back
+                # to the deep copy only when no standalone feeder can be built, so
+                # the cycle is still broken (acyclic, just verbose).
+                is_cyclic = skip is not None and any(
+                    n is skip for n in _strategy_nodes(source_node)
+                )
+                if is_cyclic and feeder_cache is not None:
+                    feeder = feeder_cache.get(concept)
+                    if feeder is not None:
+                        existence_parents.append(feeder)
+                        break
                 if id(source_node) not in seen_parents:
                     seen_parents.add(id(source_node))
-                    # `copy()` shallow-shares parents, so a candidate whose
-                    # subtree contains `skip` would wire `skip -> candidate ->
-                    # ... -> skip`, a row-stream cycle that recurses forever in
-                    # `resolve()`. Deep-copy that subtree so the shared node
-                    # becomes an independent duplicate (verbose but acyclic).
-                    if skip is not None and any(
-                        n is skip for n in _strategy_nodes(source_node)
-                    ):
+                    if is_cyclic:
                         existence_parents.append(_deep_copy_node(source_node))
                     else:
                         existence_parents.append(source_node.copy())
@@ -319,6 +395,7 @@ def _attach_existence_to_node(
     node: StrategyNode,
     concepts: list[BuildConcept],
     built: dict[str, StrategyNode],
+    feeder_cache: "_CleanFeederCache | None" = None,
 ) -> None:
     if not concepts:
         return
@@ -331,7 +408,9 @@ def _attach_existence_to_node(
     }
     node.parents = list(node.parents) + [
         parent
-        for parent in _existence_parents_for(concepts, built, skip=node)
+        for parent in _existence_parents_for(
+            concepts, built, skip=node, feeder_cache=feeder_cache
+        )
         if any(
             output.address not in existing_parent_outputs
             for output in parent.output_concepts
@@ -345,17 +424,20 @@ def _attach_existence_sources(
     built: dict[str, StrategyNode],
     condition_hosts: dict[str, StrategyNode],
     environment: BuildEnvironment,
+    feeder_cache: "_CleanFeederCache | None" = None,
 ) -> None:
     for gid, host in condition_hosts.items():
         ex_concepts, ex_parents = _existence_for_group(attrs, built, environment, gid)
         if not ex_concepts:
             continue
-        _attach_existence_to_node(host, ex_concepts, built)
+        _attach_existence_to_node(host, ex_concepts, built, feeder_cache)
         if ex_parents:
             host.rebuild_cache()
     for root in built.values():
         for node in _strategy_nodes(root):
-            _attach_existence_to_node(node, _node_existence_concepts(node), built)
+            _attach_existence_to_node(
+                node, _node_existence_concepts(node), built, feeder_cache
+            )
 
 
 def _accumulated_atoms_above(
@@ -2220,7 +2302,8 @@ def build_strategy_node(
 
     if not built:
         return None
-    _attach_existence_sources(attrs, built, condition_hosts, environment)
+    feeder_cache = _CleanFeederCache(environment, g, history, source_policy)
+    _attach_existence_sources(attrs, built, condition_hosts, environment, feeder_cache)
     final = _assemble_final_node(
         group_graph,
         attrs,
@@ -2244,7 +2327,9 @@ def build_strategy_node(
             # are left alone.
             return None
         for node in _strategy_nodes(final):
-            _attach_existence_to_node(node, _node_existence_concepts(node), built)
+            _attach_existence_to_node(
+                node, _node_existence_concepts(node), built, feeder_cache
+            )
     return final
 
 

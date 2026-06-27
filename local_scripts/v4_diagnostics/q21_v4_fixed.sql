@@ -158,45 +158,63 @@ GROUP BY
     1),
 macho as (
 SELECT
-    "late"."_virt_agg_sum_2293560889657522" as "_virt_agg_sum_2293560889657522",
-    "late"."_virt_agg_sum_5332872165953971" as "_virt_agg_sum_5332872165953971",
-    "late"."_virt_agg_sum_6823422966658347" as "_virt_agg_sum_6823422966658347",
-    "late"."_virt_agg_sum_8086371301050807" as "_virt_agg_sum_8086371301050807",
-    "late"."_virt_agg_sum_8302396398525202" as "_virt_agg_sum_8302396398525202",
-    "late"."_virt_agg_sum_8833754379564371" as "_virt_agg_sum_8833754379564371",
-    "late"."_virt_agg_sum_9238538473336606" as "_virt_agg_sum_9238538473336606",
-    "young"."_virt_agg_sum_2131371712943644" as "_virt_agg_sum_2131371712943644",
-    "young"."_virt_agg_sum_3727603509126659" as "_virt_agg_sum_3727603509126659",
-    "young"."_virt_agg_sum_4518379598128005" as "_virt_agg_sum_4518379598128005",
-    "young"."_virt_agg_sum_5446384850356435" as "_virt_agg_sum_5446384850356435",
-    "young"."_virt_agg_sum_7224794219444244" as "_virt_agg_sum_7224794219444244",
-    "young"."_virt_agg_sum_733654448721027" as "_virt_agg_sum_733654448721027",
-    "young"."_virt_agg_sum_7662941318754865" as "_virt_agg_sum_7662941318754865",
-    "young"."date_week_seq" as "date_week_seq",
-    lead("late"."_virt_agg_sum_2293560889657522" + "young"."_virt_agg_sum_3727603509126659", 53) over (order by "young"."date_week_seq" asc ) as "_virt_window_lead_9386088415621209",
-    lead("late"."_virt_agg_sum_5332872165953971" + "young"."_virt_agg_sum_7662941318754865", 53) over (order by "young"."date_week_seq" asc ) as "_virt_window_lead_1615489443759951",
-    lead("late"."_virt_agg_sum_6823422966658347" + "young"."_virt_agg_sum_733654448721027", 53) over (order by "young"."date_week_seq" asc ) as "_virt_window_lead_1732363590168359",
-    lead("late"."_virt_agg_sum_8086371301050807" + "young"."_virt_agg_sum_2131371712943644", 53) over (order by "young"."date_week_seq" asc ) as "_virt_window_lead_9762136461725141",
-    lead("late"."_virt_agg_sum_8302396398525202" + "young"."_virt_agg_sum_7224794219444244", 53) over (order by "young"."date_week_seq" asc ) as "_virt_window_lead_4790424210530227",
-    lead("late"."_virt_agg_sum_8833754379564371" + "young"."_virt_agg_sum_4518379598128005", 53) over (order by "young"."date_week_seq" asc ) as "_virt_window_lead_9976629776715537",
-    lead("late"."_virt_agg_sum_9238538473336606" + "young"."_virt_agg_sum_5446384850356435", 53) over (order by "young"."date_week_seq" asc ) as "_virt_window_lead_7125692363367989"
+    "late"."_virt_agg_sum_2293560889657522" + "young"."_virt_agg_sum_3727603509126659" as "wednesday_sales",
+    "late"."_virt_agg_sum_5332872165953971" + "young"."_virt_agg_sum_7662941318754865" as "saturday_sales",
+    "late"."_virt_agg_sum_6823422966658347" + "young"."_virt_agg_sum_733654448721027" as "tuesday_sales",
+    "late"."_virt_agg_sum_8086371301050807" + "young"."_virt_agg_sum_2131371712943644" as "thursday_sales",
+    "late"."_virt_agg_sum_8302396398525202" + "young"."_virt_agg_sum_7224794219444244" as "monday_sales",
+    "late"."_virt_agg_sum_8833754379564371" + "young"."_virt_agg_sum_4518379598128005" as "friday_sales",
+    "late"."_virt_agg_sum_9238538473336606" + "young"."_virt_agg_sum_5446384850356435" as "sunday_sales",
+    "young"."date_week_seq" as "date_week_seq"
 FROM
     "late"
-    INNER JOIN "young" on "late"."date_week_seq" = "young"."date_week_seq")
+    INNER JOIN "young" on "late"."date_week_seq" = "young"."date_week_seq"),
+friendly as (
 SELECT
     "macho"."date_week_seq" as "date_week_seq",
-    round(( "macho"."_virt_agg_sum_9238538473336606" + "macho"."_virt_agg_sum_5446384850356435" ) / ("macho"."_virt_window_lead_7125692363367989"),2) as "sunday_increase",
-    round(( "macho"."_virt_agg_sum_8302396398525202" + "macho"."_virt_agg_sum_7224794219444244" ) / ("macho"."_virt_window_lead_4790424210530227"),2) as "monday_increase",
-    round(( "macho"."_virt_agg_sum_6823422966658347" + "macho"."_virt_agg_sum_733654448721027" ) / ("macho"."_virt_window_lead_1732363590168359"),2) as "tuesday_increase",
-    round(( "macho"."_virt_agg_sum_2293560889657522" + "macho"."_virt_agg_sum_3727603509126659" ) / ("macho"."_virt_window_lead_9386088415621209"),2) as "wednesday_increase",
-    round(( "macho"."_virt_agg_sum_8086371301050807" + "macho"."_virt_agg_sum_2131371712943644" ) / ("macho"."_virt_window_lead_9762136461725141"),2) as "thursday_increase",
-    round(( "macho"."_virt_agg_sum_8833754379564371" + "macho"."_virt_agg_sum_4518379598128005" ) / ("macho"."_virt_window_lead_9976629776715537"),2) as "friday_increase",
-    round(( "macho"."_virt_agg_sum_5332872165953971" + "macho"."_virt_agg_sum_7662941318754865" ) / ("macho"."_virt_window_lead_1615489443759951"),2) as "saturday_increase"
+    lead("macho"."friday_sales", 53) over (order by "macho"."date_week_seq" asc ) as "_virt_window_lead_6651551761445993",
+    lead("macho"."monday_sales", 53) over (order by "macho"."date_week_seq" asc ) as "_virt_window_lead_9809563217267406",
+    lead("macho"."saturday_sales", 53) over (order by "macho"."date_week_seq" asc ) as "_virt_window_lead_5767709179323528",
+    lead("macho"."sunday_sales", 53) over (order by "macho"."date_week_seq" asc ) as "_virt_window_lead_3949607449893123",
+    lead("macho"."thursday_sales", 53) over (order by "macho"."date_week_seq" asc ) as "_virt_window_lead_2497781736791521",
+    lead("macho"."tuesday_sales", 53) over (order by "macho"."date_week_seq" asc ) as "_virt_window_lead_5067641372653397",
+    lead("macho"."wednesday_sales", 53) over (order by "macho"."date_week_seq" asc ) as "_virt_window_lead_315641373767519"
 FROM
-    "macho"
+    "macho"),
+kaput as (
+SELECT
+    "friendly"."_virt_window_lead_2497781736791521" as "_virt_window_lead_2497781736791521",
+    "friendly"."_virt_window_lead_315641373767519" as "_virt_window_lead_315641373767519",
+    "friendly"."_virt_window_lead_3949607449893123" as "_virt_window_lead_3949607449893123",
+    "friendly"."_virt_window_lead_5067641372653397" as "_virt_window_lead_5067641372653397",
+    "friendly"."_virt_window_lead_5767709179323528" as "_virt_window_lead_5767709179323528",
+    "friendly"."_virt_window_lead_6651551761445993" as "_virt_window_lead_6651551761445993",
+    "friendly"."_virt_window_lead_9809563217267406" as "_virt_window_lead_9809563217267406",
+    "macho"."date_week_seq" as "date_week_seq",
+    "macho"."friday_sales" as "friday_sales",
+    "macho"."monday_sales" as "monday_sales",
+    "macho"."saturday_sales" as "saturday_sales",
+    "macho"."sunday_sales" as "sunday_sales",
+    "macho"."thursday_sales" as "thursday_sales",
+    "macho"."tuesday_sales" as "tuesday_sales",
+    "macho"."wednesday_sales" as "wednesday_sales"
+FROM
+    "friendly"
+    INNER JOIN "macho" on "friendly"."date_week_seq" = "macho"."date_week_seq")
+SELECT
+    "kaput"."date_week_seq" as "date_week_seq",
+    round(( "kaput"."sunday_sales" ) / ("kaput"."_virt_window_lead_3949607449893123"),2) as "sunday_increase",
+    round(( "kaput"."monday_sales" ) / ("kaput"."_virt_window_lead_9809563217267406"),2) as "monday_increase",
+    round(( "kaput"."tuesday_sales" ) / ("kaput"."_virt_window_lead_5067641372653397"),2) as "tuesday_increase",
+    round(( "kaput"."wednesday_sales" ) / ("kaput"."_virt_window_lead_315641373767519"),2) as "wednesday_increase",
+    round(( "kaput"."thursday_sales" ) / ("kaput"."_virt_window_lead_2497781736791521"),2) as "thursday_increase",
+    round(( "kaput"."friday_sales" ) / ("kaput"."_virt_window_lead_6651551761445993"),2) as "friday_increase",
+    round(( "kaput"."saturday_sales" ) / ("kaput"."_virt_window_lead_5767709179323528"),2) as "saturday_increase"
+FROM
+    "kaput"
 WHERE
-    round(( "macho"."_virt_agg_sum_9238538473336606" + "macho"."_virt_agg_sum_5446384850356435" ) / ("macho"."_virt_window_lead_7125692363367989"),2) is not null
+    round(( "kaput"."sunday_sales" ) / ("kaput"."_virt_window_lead_3949607449893123"),2) is not null
 
 ORDER BY 
-    "macho"."date_week_seq" asc nulls first
+    "kaput"."date_week_seq" asc nulls first
 LIMIT (100)

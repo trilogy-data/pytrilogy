@@ -32,6 +32,16 @@ before flipping the default:
    input-grain normalization (a correctness floor) adds CTEs; they need a grain-aware
    skip. Handoffs: `v4_verbosity_handoff.md`, `v4_dimension_projection_rejoin_handoff.md`
    (q81), and `project_v4_verbosity_regressions_0626` (q23/q94).
+   - **q2.1 catastrophic blowup FIXED 2026-06-26 (60696 → 10231, −83%).** Was a 9.6× self-
+     referential membership-filter blowup (a distinct bug class, not ordinary verbosity);
+     now ordinary ~1.4× verbosity (13 CTEs, down from 75). Fix: `_CleanFeederCache` in
+     `strategy_builder.py` re-sources a self-referential `IN`-set feeder STANDALONE instead
+     of deep-copying the conditioned subtree (which had fired 15015× → 60696 chars). Rows
+     unchanged; tpc_ds failure set net-zero; membership family green. Detail in
+     `v4_verbosity_handoff.md` "*** q2.1 ***". Still over the 7500 ceiling — the residual is
+     shared passthrough-projection bloat (q2.2/q73). q73's real gap is filter-hoist-to-WHERE
+     + dim re-join, NOT just passthrough folding (also in the handoff). Use
+     `local_scripts/v4_real_size.py` (real fixture) over `v4_size_compare` (proxy over-reports).
 2. **Cosmetic shape-assert tests — 10 `_INLINE` + 5 `_MODELING`.** Rows match, the SQL
    string differs. To flip the default each must be conditioned on
    `CONFIG.use_v4_discovery` or accepted. Mechanical, not risky.
@@ -137,11 +147,14 @@ pruned from `v4_known_failing.py`.
 | 94 | 5000 | 3544 | 5265 | 4810 | **PASS** |
 | 97.1 | 4250 | 2989 | 2357 | 2357 | **PASS** |
 
-Note (proxy table is stale on a few real verdicts; re-measured 2026-06-25 against the
-real `engine` fixture): **q02 and q76 now PASS** their tests (the proxy over-reports
-because it skips inlining). **q10 and q2.1 are CRASHES, not size** — they
-`RecursionError` in the *real* test too (the existence-source cycle), not only in the
-generation proxy as previously claimed. See `v4_existence_recursion_handoff.md`.
+Note (proxy table is stale; re-measured 2026-06-26 against the real `engine` fixture via
+`local_scripts/v4_real_size.py` — trust that over both this proxy table and
+`v4_size_compare`): **q02 and q76 now PASS** their tests. **q10 and q2.1 no longer crash**
+(the existence-recursion fix landed); both are now SIZE. q10 = 10208 (1.6×). **q2.1 =
+60696 (9.6×)** — the self-ref membership-filter blowup, the single biggest prize; see
+`v4_verbosity_handoff.md`. Real-fixture v3/v4: q10 6420/10208, q2.1 6290/60696, q2.2
+6290/10273, q30.alt 7152/10084 (length ok, fails structure), q73 2701/5223, q81
+7465/9096, q23 8159/8515, q94 3549/5271.
 
 **Genuinely failing on size now (6):** 2.2, 30.alt, 47, 57, 73, 81. The join-stream
 spike cut these substantially (q47 11568→7868, q57 10267→6900) but they remain over
