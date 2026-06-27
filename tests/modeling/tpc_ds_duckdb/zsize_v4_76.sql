@@ -30,48 +30,42 @@ FROM
 WHERE
     "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
 ),
-rambunctious as (
+waggish as (
 SELECT
     "ws_date_date"."D_QOY" as "ws_date_quarter",
     "ws_date_date"."D_YEAR" as "ws_date_year",
-    "ws_item_items"."I_CATEGORY" as "ws_item_category",
-    "ws_item_items"."I_ITEM_SK" as "ws_item_id",
     "ws_web_sales"."WS_EXT_SALES_PRICE" as "ws_ext_sales_price",
+    "ws_web_sales"."WS_ITEM_SK" as "ws_item_id",
     "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number"
 FROM
     "memory"."web_sales" as "ws_web_sales"
     INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "ws_item_items" on "ws_web_sales"."WS_ITEM_SK" = "ws_item_items"."I_ITEM_SK"
 WHERE
     "ws_web_sales"."WS_SHIP_CUSTOMER_SK" is null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
 ),
-sweltering as (
+abhorrent as (
 SELECT
     "ss_date_date"."D_QOY" as "ss_date_quarter",
     "ss_date_date"."D_YEAR" as "ss_date_year",
-    "ss_item_items"."I_CATEGORY" as "ss_item_category",
-    "ss_item_items"."I_ITEM_SK" as "ss_item_id",
     "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
+    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
     "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
     "ss_store_sales"."SS_STORE_SK" is null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
 ),
-cooperative as (
+thoughtful as (
 SELECT
     "cs_catalog_sales"."CS_EXT_SALES_PRICE" as "cs_ext_sales_price",
     "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
     "cs_date_date"."D_QOY" as "cs_date_quarter",
-    "cs_date_date"."D_YEAR" as "cs_date_year",
-    "cs_item_items"."I_CATEGORY" as "cs_item_category"
+    "cs_date_date"."D_YEAR" as "cs_date_year"
 FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
 WHERE
     "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
 ),
@@ -105,12 +99,38 @@ SELECT
 	END as "cs_row_flag"
 FROM
     "quizzical"),
+rambunctious as (
+SELECT
+    "waggish"."ws_date_quarter" as "ws_date_quarter",
+    "waggish"."ws_date_year" as "ws_date_year",
+    "waggish"."ws_ext_sales_price" as "ws_ext_sales_price",
+    "waggish"."ws_item_id" as "ws_item_id",
+    "waggish"."ws_order_number" as "ws_order_number"
+FROM
+    "waggish"),
+sweltering as (
+SELECT
+    "abhorrent"."ss_date_quarter" as "ss_date_quarter",
+    "abhorrent"."ss_date_year" as "ss_date_year",
+    "abhorrent"."ss_ext_sales_price" as "ss_ext_sales_price",
+    "abhorrent"."ss_item_id" as "ss_item_id",
+    "abhorrent"."ss_ticket_number" as "ss_ticket_number"
+FROM
+    "abhorrent"),
+cooperative as (
+SELECT
+    "thoughtful"."cs_date_quarter" as "cs_date_quarter",
+    "thoughtful"."cs_date_year" as "cs_date_year",
+    "thoughtful"."cs_ext_sales_price" as "cs_ext_sales_price",
+    "thoughtful"."cs_item_id" as "cs_item_id",
+    "thoughtful"."cs_order_number" as "cs_order_number"
+FROM
+    "thoughtful"),
 puffy as (
 SELECT
     "rambunctious"."ws_date_quarter" as "ws_date_quarter",
     "rambunctious"."ws_date_year" as "ws_date_year",
     "rambunctious"."ws_ext_sales_price" as "ws_ext_sales_price",
-    "rambunctious"."ws_item_category" as "ws_item_category",
     "rambunctious"."ws_item_id" as "ws_item_id",
     "rambunctious"."ws_order_number" as "ws_order_number"
 FROM
@@ -120,7 +140,6 @@ SELECT
     "sweltering"."ss_date_quarter" as "ss_date_quarter",
     "sweltering"."ss_date_year" as "ss_date_year",
     "sweltering"."ss_ext_sales_price" as "ss_ext_sales_price",
-    "sweltering"."ss_item_category" as "ss_item_category",
     "sweltering"."ss_item_id" as "ss_item_id",
     "sweltering"."ss_ticket_number" as "ss_ticket_number"
 FROM
@@ -130,85 +149,57 @@ SELECT
     "cooperative"."cs_date_quarter" as "cs_date_quarter",
     "cooperative"."cs_date_year" as "cs_date_year",
     "cooperative"."cs_ext_sales_price" as "cs_ext_sales_price",
-    "cooperative"."cs_item_category" as "cs_item_category",
     "cooperative"."cs_item_id" as "cs_item_id",
     "cooperative"."cs_order_number" as "cs_order_number"
 FROM
     "cooperative"),
-hard as (
-SELECT
-    "puffy"."ws_date_quarter" as "ws_date_quarter",
-    "puffy"."ws_date_year" as "ws_date_year",
-    "puffy"."ws_ext_sales_price" as "ws_ext_sales_price",
-    "puffy"."ws_item_category" as "ws_item_category",
-    "puffy"."ws_item_id" as "ws_item_id",
-    "puffy"."ws_order_number" as "ws_order_number"
-FROM
-    "puffy"),
-macho as (
-SELECT
-    "late"."ss_date_quarter" as "ss_date_quarter",
-    "late"."ss_date_year" as "ss_date_year",
-    "late"."ss_ext_sales_price" as "ss_ext_sales_price",
-    "late"."ss_item_category" as "ss_item_category",
-    "late"."ss_item_id" as "ss_item_id",
-    "late"."ss_ticket_number" as "ss_ticket_number"
-FROM
-    "late"),
-abundant as (
-SELECT
-    "questionable"."cs_date_quarter" as "cs_date_quarter",
-    "questionable"."cs_date_year" as "cs_date_year",
-    "questionable"."cs_ext_sales_price" as "cs_ext_sales_price",
-    "questionable"."cs_item_category" as "cs_item_category",
-    "questionable"."cs_item_id" as "cs_item_id",
-    "questionable"."cs_order_number" as "cs_order_number"
-FROM
-    "questionable"),
 resonant as (
 SELECT
-    "hard"."ws_date_quarter" as "___tvf_arm_1_d_qoy",
-    "hard"."ws_date_year" as "___tvf_arm_1_d_year",
-    "hard"."ws_item_category" as "___tvf_arm_1_i_category",
+    "puffy"."ws_date_quarter" as "___tvf_arm_1_d_qoy",
+    "puffy"."ws_date_year" as "___tvf_arm_1_d_year",
+    "ws_item_items"."I_CATEGORY" as "___tvf_arm_1_i_category",
     :___tvf_arm_1_channel as "___tvf_arm_1_channel",
     :___tvf_arm_1_col_name as "___tvf_arm_1_col_name",
-    sum("hard"."ws_ext_sales_price") as "___tvf_arm_1_sales_amt",
+    sum("puffy"."ws_ext_sales_price") as "___tvf_arm_1_sales_amt",
     sum("yellow"."ws_row_flag") as "___tvf_arm_1_sales_cnt"
 FROM
     "yellow"
-    INNER JOIN "hard" on "yellow"."ws_item_id" = "hard"."ws_item_id" AND "yellow"."ws_order_number" = "hard"."ws_order_number"
+    INNER JOIN "puffy" on "yellow"."ws_item_id" = "puffy"."ws_item_id" AND "yellow"."ws_order_number" = "puffy"."ws_order_number"
+    INNER JOIN "memory"."item" as "ws_item_items" on "yellow"."ws_item_id" = "ws_item_items"."I_ITEM_SK"
 GROUP BY
     1,
     2,
     3),
 kaput as (
 SELECT
-    "macho"."ss_date_quarter" as "___tvf_arm_0_d_qoy",
-    "macho"."ss_date_year" as "___tvf_arm_0_d_year",
-    "macho"."ss_item_category" as "___tvf_arm_0_i_category",
+    "late"."ss_date_quarter" as "___tvf_arm_0_d_qoy",
+    "late"."ss_date_year" as "___tvf_arm_0_d_year",
+    "ss_item_items"."I_CATEGORY" as "___tvf_arm_0_i_category",
     :___tvf_arm_0_channel as "___tvf_arm_0_channel",
     :___tvf_arm_0_col_name as "___tvf_arm_0_col_name",
     sum("friendly"."ss_row_flag") as "___tvf_arm_0_sales_cnt",
-    sum("macho"."ss_ext_sales_price") as "___tvf_arm_0_sales_amt"
+    sum("late"."ss_ext_sales_price") as "___tvf_arm_0_sales_amt"
 FROM
     "friendly"
-    INNER JOIN "macho" on "friendly"."ss_item_id" = "macho"."ss_item_id" AND "friendly"."ss_ticket_number" = "macho"."ss_ticket_number"
+    INNER JOIN "late" on "friendly"."ss_item_id" = "late"."ss_item_id" AND "friendly"."ss_ticket_number" = "late"."ss_ticket_number"
+    INNER JOIN "memory"."item" as "ss_item_items" on "friendly"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
 GROUP BY
     1,
     2,
     3),
 uneven as (
 SELECT
-    "abundant"."cs_date_quarter" as "___tvf_arm_2_d_qoy",
-    "abundant"."cs_date_year" as "___tvf_arm_2_d_year",
-    "abundant"."cs_item_category" as "___tvf_arm_2_i_category",
+    "cs_item_items"."I_CATEGORY" as "___tvf_arm_2_i_category",
+    "questionable"."cs_date_quarter" as "___tvf_arm_2_d_qoy",
+    "questionable"."cs_date_year" as "___tvf_arm_2_d_year",
     :___tvf_arm_2_channel as "___tvf_arm_2_channel",
     :___tvf_arm_2_col_name as "___tvf_arm_2_col_name",
-    sum("abundant"."cs_ext_sales_price") as "___tvf_arm_2_sales_amt",
-    sum("highfalutin"."cs_row_flag") as "___tvf_arm_2_sales_cnt"
+    sum("highfalutin"."cs_row_flag") as "___tvf_arm_2_sales_cnt",
+    sum("questionable"."cs_ext_sales_price") as "___tvf_arm_2_sales_amt"
 FROM
-    "abundant"
-    INNER JOIN "highfalutin" on "abundant"."cs_item_id" = "highfalutin"."cs_item_id" AND "abundant"."cs_order_number" = "highfalutin"."cs_order_number"
+    "questionable"
+    INNER JOIN "highfalutin" on "questionable"."cs_item_id" = "highfalutin"."cs_item_id" AND "questionable"."cs_order_number" = "highfalutin"."cs_order_number"
+    INNER JOIN "memory"."item" as "cs_item_items" on "questionable"."cs_item_id" = "cs_item_items"."I_ITEM_SK"
 GROUP BY
     1,
     2,

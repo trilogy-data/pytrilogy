@@ -1,6 +1,6 @@
 query_id = "21"
-generator = "v3"
-gen_length = 1623
+generator = "v4"
+gen_length = 1653
 preql_size = 510
 comp_size = 802
 generated_sql = """
@@ -8,16 +8,18 @@ generated_sql = """
 WITH 
 highfalutin as (
 SELECT
+    \"lineitem\".\"l_commitdate\" as \"commit_date\",
     \"lineitem\".\"l_orderkey\" as \"order_id\",
-    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
-    CASE WHEN \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\" THEN \"lineitem\".\"l_suppkey\" ELSE NULL END as \"_virt_filter_id_1852383943558009\"
+    \"lineitem\".\"l_receiptdate\" as \"receipt_date\",
+    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 GROUP BY
     1,
     2,
-    3),
-uneven as (
+    3,
+    4),
+abundant as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
@@ -30,7 +32,7 @@ FROM
 WHERE
     UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'SAUDI ARABIA' and \"order_orders\".\"o_orderstatus\" = 'F' and \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\"
 ),
-thoughtful as (
+wakeful as (
 SELECT
     \"highfalutin\".\"order_id\" as \"order_id\"
 FROM
@@ -38,17 +40,17 @@ FROM
 GROUP BY
     1
 HAVING
-    count(\"highfalutin\".\"part_supplier_id\") > 1 and count(\"highfalutin\".\"_virt_filter_id_1852383943558009\") = 1
+    count(\"highfalutin\".\"part_supplier_id\") > 1 and count(CASE WHEN \"highfalutin\".\"receipt_date\" > \"highfalutin\".\"commit_date\" THEN \"highfalutin\".\"part_supplier_id\" ELSE NULL END) = 1
 )
 SELECT
-    \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
-    sum(\"uneven\".\"line_item\") as \"numwait\"
+    \"abundant\".\"part_supplier_name\" as \"part_supplier_name\",
+    sum(\"abundant\".\"line_item\") as \"numwait\"
 FROM
-    \"uneven\"
-    INNER JOIN \"thoughtful\" on \"uneven\".\"order_id\" = \"thoughtful\".\"order_id\"
+    \"abundant\"
+    INNER JOIN \"wakeful\" on \"abundant\".\"order_id\" = \"wakeful\".\"order_id\"
 GROUP BY
     1
 ORDER BY 
     \"numwait\" desc,
-    \"uneven\".\"part_supplier_name\" asc
+    \"abundant\".\"part_supplier_name\" asc
 LIMIT (100)"""

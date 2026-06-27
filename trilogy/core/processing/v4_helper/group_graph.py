@@ -24,6 +24,7 @@ from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import BuildConcept, BuildGrain, BuildWhereClause
+from trilogy.core.models.build_environment import BuildEnvironment
 
 from .condition_placement import plan_condition_placements
 from .constants import (
@@ -46,7 +47,7 @@ from .edges import (
     lineage_subgraph,
     remove_edge,
 )
-from .functional_dependency import concept_attr_fd_determines
+from .functional_dependency import build_fd_determines, concept_attr_fd_determines
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import (
@@ -313,6 +314,207 @@ def _lineage_leaf_addresses(
                 visited.add(p)
                 stack.append(p)
     return leaves
+
+
+def _finest_determining_key(
+    determiners: list[str], environment: BuildEnvironment
+) -> str | None:
+    """Among candidate keys that all determine some member, the one determined by
+    every other (the finest / most-downstream key). A dim FD by ``customer.id``
+    is also transitively FD by the fact grain that determines ``customer.id``;
+    the finest key is ``customer.id``. Returns None when no single key is finest
+    (the member is FD by ≥2 incomparable entities — q65's cross-entity case —
+    and must stay on the fact bucket, riding the aggregate keys)."""
+    finest = [
+        k
+        for k in determiners
+        if all(
+            other == k
+            or build_fd_determines(environment, {other}, k, include_empty_grain=False)
+            for other in determiners
+        )
+    ]
+    return finest[0] if len(finest) == 1 else None
+
+
+def _pre_aggregate_filter_args(
+    conditions: list[BuildWhereClause],
+) -> frozenset[str]:
+    """Row-arg addresses of WHERE clauses that contain NO aggregate term — pure
+    pre-aggregate filters that narrow the rows feeding an aggregate (q98's
+    ``item.category in (...)``, which also bounds the class-total window).
+
+    A clause that DOES carry an aggregate is a HAVING-style post-aggregate filter
+    (q81's ``customer_state > scaled_state and address.state = 'GA'``): its dim
+    args filter the OUTPUT after aggregation, so peeling them to a post-aggregate
+    dim join is faithful. A pre-aggregate filter column peeled that way would move
+    the WHERE after the aggregate (wrong sums / wrong window denominator)."""
+    args: set[str] = set()
+    for clause in conditions:
+        if any(
+            arg.derivation == Derivation.AGGREGATE for arg in clause.concept_arguments
+        ):
+            continue
+        args |= {arg.address for arg in clause.row_arguments}
+    return frozenset(args)
+
+
+def _finer_filter_grains(
+    conditions: list[BuildWhereClause],
+) -> frozenset[frozenset[str]]:
+    """Grains of non-aggregate filter args that live at a multi-key grain — a
+    WHERE/HAVING term needing fact-grain rows finer than any single entity (q20's
+    ``part.available_quantity > …``, a partsupp measure at ``{part.id,
+    supplier.id}``). An entity whose key sits inside such a grain must NOT be
+    peeled: its rows are needed at the finer grain to evaluate the filter, and a
+    standalone single-key dim scan can't serve it (condition becomes unplaceable).
+    Aggregate args are excluded — they are their own grouping contributor."""
+    return frozenset(
+        frozenset(arg.grain.components)
+        for clause in conditions
+        for arg in clause.row_arguments
+        if arg.derivation != Derivation.AGGREGATE
+        and arg.grain is not None
+        and len(arg.grain.components) > 1
+    )
+
+
+def _split_root_dimension_clusters(
+    buckets: dict[str, GroupBucket],
+    primary_group: dict[str, str],
+    environment: BuildEnvironment,
+    output_addresses: frozenset[str],
+    pre_aggregate_filter_args: frozenset[str],
+    finer_filter_grains: frozenset[frozenset[str]],
+) -> None:
+    """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
+    their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
+
+    A wide output dimension projection (q81's 16 ``billing_customer.*`` columns)
+    lands in the single keyed root bucket alongside the fact-grain columns it
+    converges with at the FINAL projection. Sourced together they re-root on the
+    fact (``catalog_returns ⋈ date_dim ⋈ …``) and dedup back to customer grain —
+    the joins v3 avoids by sourcing the dims from their own tables keyed by
+    ``billing_customer.id``.
+
+    When a subset of a root bucket's members is functionally determined by a
+    single entity key that is ALSO a downstream grouping key (so the FINAL merge
+    already produces that key as a join column), that subset can source
+    independently from its own dim tables and join on the key. Each such cluster
+    becomes its own ROOT bucket. Per-entity: q65's ``item.desc`` (FD by item.id)
+    and ``store.name`` (FD by store.id) each get their own bucket and join the
+    aggregate on their key — matching v3's ``wakeful ⋈ item ⋈ store``. A member
+    FD by two incomparable entities only co-occurs through the fact and stays put.
+
+    FD is resolved against the full build environment (not the concept-graph
+    side-table), so the chain through an intermediate FK that the query never
+    names — ``customer.id → customer.current_addr → address.city`` — is visible.
+    ``include_empty_grain=False`` so a constant is never treated as a dim member.
+    """
+    grouping_keys: set[str] = set()
+    for bucket in buckets.values():
+        if bucket.derivation in GROUPING_DERIVATIONS:
+            grouping_keys |= set(bucket.grain_components)
+    if not grouping_keys:
+        return
+    for gid in list(buckets):
+        bucket = buckets[gid]
+        if (
+            bucket.derivation != Derivation.ROOT
+            or bucket.depth_label != DepthLabel.ROOT
+            or bucket.discriminator  # skip single_row / existence / split variants
+        ):
+            continue
+        member_addrs = set(bucket.primary_members)
+        # Candidate entity keys: a member that is a downstream grouping key (so a
+        # FINAL join column exists) and functionally determines another member.
+        # Exclude a key a finer-grain filter needs at fact grain (q20): peeling it
+        # to a single-key dim scan strands that filter (unplaceable condition).
+        candidates = [
+            addr
+            for addr in member_addrs
+            if addr in grouping_keys
+            and not any(addr in grain for grain in finer_filter_grains)
+            and any(
+                other != addr
+                and build_fd_determines(
+                    environment, {addr}, other, include_empty_grain=False
+                )
+                for other in member_addrs
+            )
+        ]
+        if not candidates:
+            continue
+        assignment: dict[str, str] = {}
+        for addr in member_addrs:
+            if addr in candidates:
+                continue
+            # Only peel a SELECTED dimension column. A filter-only member
+            # (a WHERE arg the query never projects, e.g. q30.alt's
+            # `billing_customer.address.state = 'GA'`) must stay on the fact
+            # bucket: moving it to a standalone dim scan that the FINAL re-source
+            # rebuilds from the projected columns alone silently drops its WHERE
+            # (the column isn't an output, so it's never sourced) — wrong rows.
+            # Left in place, the fact contributor still applies the filter.
+            if addr not in output_addresses:
+                continue
+            # Never peel a member that is itself a grouping key of some aggregate:
+            # it is a grouping DIMENSION the query re-aggregates over (q24 regroups
+            # by `customer.first_name, last_name, store.name`), not a passthrough.
+            # It must stay at fact grain for that GROUP BY; routing it to a
+            # standalone dim scan joined on the entity id breaks the regroup
+            # (cross-join fan-out).
+            if addr in grouping_keys:
+                continue
+            # Never peel a pre-aggregate filter column: its WHERE must stay on the
+            # fact rows feeding the aggregate, but a peeled column carries its
+            # filter to a post-aggregate dim join (q98's `category` would drop from
+            # the class-total window). Left in place, the fact applies it correctly.
+            if addr in pre_aggregate_filter_args:
+                continue
+            determiners = [
+                k
+                for k in candidates
+                if build_fd_determines(
+                    environment, {k}, addr, include_empty_grain=False
+                )
+            ]
+            if not determiners:
+                continue
+            finest = _finest_determining_key(determiners, environment)
+            if finest is not None:
+                assignment[addr] = finest
+        if not assignment:
+            continue
+        clusters: dict[str, list[int]] = defaultdict(list)
+        for idx, addr in enumerate(bucket.primary_members):
+            if addr in assignment:
+                clusters[assignment[addr]].append(idx)
+        moved: set[int] = set()
+        for key, indices in clusters.items():
+            dim_bucket = GroupBucket(
+                depth_label=DepthLabel.ROOT,
+                derivation=Derivation.ROOT,
+                grain_components=frozenset(),
+                label=bucket.label,
+            )
+            dim_bucket.discriminator = f"dim:{key}"
+            for idx in indices:
+                addr = bucket.primary_members[idx]
+                node_id = bucket.primary_node_ids[idx]
+                dim_bucket.primary_members.append(addr)
+                dim_bucket.primary_node_ids.append(node_id)
+                dim_bucket.member_depths[addr] = bucket.member_depths.get(
+                    addr, DepthLabel.ROOT
+                )
+                moved.add(idx)
+            dim_gid = _group_id_for(dim_bucket)
+            buckets[dim_gid] = dim_bucket
+            for idx in indices:
+                primary_group[bucket.primary_node_ids[idx]] = dim_gid
+        kept = [i for i in range(len(bucket.primary_members)) if i not in moved]
+        bucket.primary_members = [bucket.primary_members[i] for i in kept]
+        bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
 
 
 def _fold_rollup_key_dims(
@@ -1289,6 +1491,7 @@ def build_group_graph(
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
     *,
+    environment: BuildEnvironment | None = None,
     return_merged_graph: Literal[False] = False,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]: ...
 
@@ -1302,6 +1505,7 @@ def build_group_graph(
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
     *,
+    environment: BuildEnvironment | None = None,
     return_merged_graph: Literal[True],
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]: ...
 
@@ -1314,6 +1518,7 @@ def build_group_graph(
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
     *,
+    environment: BuildEnvironment | None = None,
     return_merged_graph: bool = False,
 ) -> (
     tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]
@@ -1351,6 +1556,15 @@ def build_group_graph(
     _fold_rollup_key_dims(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
+    if environment is not None:
+        _split_root_dimension_clusters(
+            buckets,
+            primary_group,
+            environment,
+            output_addresses,
+            _pre_aggregate_filter_args(conditions),
+            _finer_filter_grains(conditions),
+        )
     d1_calc_roots, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs
     )

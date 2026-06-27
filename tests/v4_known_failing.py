@@ -86,7 +86,10 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_three": _TPCDS_SIZE,
+    # q73 pruned 2026-06-27: the single-entity FD dimension-cluster split
+    # (`_split_root_dimension_clusters`) sources the customer dims standalone
+    # instead of re-rooting them on the fact; 5220->2737, under ceiling. Passes
+    # in isolation + full sweep.
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one": _TPCDS_SIZE,
     # q23: over ceiling only because of the q16 all-ROOT normalization
     # correctness floor (2026-06-26); rows correct. Re-optimize in a v4 pass.

@@ -818,6 +818,7 @@ def _build_from_graph(
         conditions,
         mandatory_list,
         datasource_columns,
+        environment=environment,
         return_merged_graph=True,
     )
     strategy_node = build_strategy_node(

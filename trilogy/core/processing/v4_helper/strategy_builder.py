@@ -654,7 +654,25 @@ def _parent_nodes_for(
         for other_pgid, other_node in candidates:
             if other_pgid == pgid:
                 continue
-            if pgid not in nx.ancestors(group_graph, other_pgid):
+            # A ROOT scan parent whose entire contribution is already carried by a
+            # sibling GROUPING contributor (an aggregate/window at this grouping
+            # consumer's grain) is a redundant fact re-scan: the consumer reuses
+            # the sibling's already-grouped rows, so the ROOT only re-supplies the
+            # grouping keys the sibling holds (q81's `sparkling`). A ROOT that ALSO
+            # feeds raw recompute inputs has columns the aggregated sibling lacks,
+            # so its `provides` is not a subset and it survives. Restricted to ROOT
+            # (not a row-reducing FILTER, whose dropped WHERE the sibling may not
+            # replicate). Otherwise require the covering sibling be a lineage
+            # descendant (a passthrough re-exposing this parent's rows).
+            covers_as_grouping_sibling = (
+                attrs[gid].derivation in GROUPING_DERIVATIONS
+                and attrs[pgid].derivation == Derivation.ROOT
+                and attrs[other_pgid].derivation in GROUPING_DERIVATIONS
+            )
+            if not (
+                covers_as_grouping_sibling
+                or pgid in nx.ancestors(group_graph, other_pgid)
+            ):
                 continue
             if my_provides <= provides(other_pgid, other_node):
                 covered_by_descendant = True
@@ -1474,9 +1492,18 @@ def _projection_root_concepts(
     addresses: set[str] = set()
     for concept in concepts:
         addresses.add(concept.address)
-        if concept.grain is not None:
-            addresses.update(concept.grain.components)
-        addresses.update(concept.keys or set())
+        grain_components = (
+            frozenset(concept.grain.components) if concept.grain else frozenset()
+        )
+        addresses.update(grain_components)
+        # A property's keys identify the row it belongs to (address.city ->
+        # address.id), so the dim scan needs them. But a self-grained identifier
+        # (grain == {itself}) may carry keys that are a COARSER parent grain it
+        # was once a grouping key over (catalog_returns' billing_customer.id keyed
+        # by {item.id, order_number}); expanding those drags the fact into an
+        # otherwise pure dimension scan. Skip keys for such identifiers.
+        if grain_components != {concept.address}:
+            addresses.update(concept.keys or set())
     return [
         c
         for address in sorted(addresses)
@@ -1528,6 +1555,31 @@ def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> N
         for row_input in _row_lineage_closure(input_concept):
             if row_input.address != input_concept.address:
                 _add_needed_concept(needed, row_input)
+
+
+def _aggregate_reused_from_twin(
+    address: str,
+    gid: str,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+) -> bool:
+    """Whether an aggregate value of `gid` is already produced by another built
+    grouping group at the SAME grain — its pre-condition d1 twin. Such a value is
+    read through (the GroupNode resolves it from the twin parent), not recomputed,
+    so its raw inputs need not enter `gid`'s `needed` set. Grain equality gates
+    out a coarser re-aggregation (avg-of-sum), which genuinely recomputes."""
+    grain = attrs[gid].grain_components
+    for other_gid, other_node in built.items():
+        if other_gid == gid:
+            continue
+        other = attrs[other_gid]
+        if other.derivation not in GROUPING_DERIVATIONS:
+            continue
+        if other.grain_components != grain:
+            continue
+        if any(o.address == address for o in other_node.output_concepts):
+            return True
+    return False
 
 
 def _wrap_for_grain(
@@ -2157,7 +2209,16 @@ def build_strategy_node(
             needed.add(c.address)
             if c.address in primary_addrs and c.lineage is not None:
                 if derivation in _AGGREGATING_DERIVATIONS:
-                    _add_aggregate_needed_concepts(needed, c)
+                    # A post-condition aggregate that REUSES a same-grain twin
+                    # (its pre-condition d1 sibling already materialized this
+                    # value) reads the value through, not recompute — so its raw
+                    # recompute inputs (the input-grain keys, measure columns)
+                    # don't belong in `needed`. Pulling them keeps a redundant
+                    # fact-rescan ROOT parent alive that only re-supplies grouping
+                    # keys the twin already carries (q81 sparkling, q30.alt second
+                    # web_returns). Treat it like a passthrough: skip its lineage.
+                    if not _aggregate_reused_from_twin(c.address, gid, attrs, built):
+                        _add_aggregate_needed_concepts(needed, c)
                 else:
                     for arg in c.lineage.concept_arguments:
                         needed.add(arg.address)
