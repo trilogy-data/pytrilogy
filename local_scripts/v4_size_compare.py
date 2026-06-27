@@ -11,10 +11,10 @@ from pathlib import Path
 
 sys.setrecursionlimit(20000)
 
+from tests.modeling.tpc_ds_duckdb.query_size import query_size
 from trilogy import Dialects
 from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
-from tests.modeling.tpc_ds_duckdb.query_size import query_size
 
 WORKING = Path("tests/modeling/tpc_ds_duckdb")
 

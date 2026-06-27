@@ -1,0 +1,39 @@
+
+WITH 
+cooperative as (
+SELECT
+    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
+    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
+    count("store_sales_store_sales"."SS_ITEM_SK") as "ticket_cnt"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."household_demographics" as "store_sales_household_demographic_household_demographics" on "store_sales_store_sales"."SS_HDEMO_SK" = "store_sales_household_demographic_household_demographics"."HD_DEMO_SK"
+WHERE
+    "store_sales_store_sales"."SS_CUSTOMER_SK" is not null and "store_sales_date_date"."D_DOM" >= 1 and "store_sales_date_date"."D_DOM" <= 2 and ( "store_sales_household_demographic_household_demographics"."HD_BUY_POTENTIAL" = '>10000' or "store_sales_household_demographic_household_demographics"."HD_BUY_POTENTIAL" = 'Unknown' ) and "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 0 and ( CASE
+	WHEN "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 0 THEN ("store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" * 1.0) / "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT"
+	ELSE null
+	END ) > 1 and "store_sales_date_date"."D_YEAR" in (1999,2000,2001) and "store_sales_store_store"."S_COUNTY" in ('Orange County','Bronx County','Franklin Parish','Williamson County')
+
+GROUP BY
+    1,
+    2
+HAVING
+    "ticket_cnt" >= 1 and "ticket_cnt" <= 5
+)
+SELECT
+    "store_sales_customer_customers"."C_LAST_NAME" as "store_sales_customer_last_name",
+    "store_sales_customer_customers"."C_FIRST_NAME" as "store_sales_customer_first_name",
+    "store_sales_customer_customers"."C_SALUTATION" as "store_sales_customer_salutation",
+    "store_sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "store_sales_customer_preferred_cust_flag",
+    "cooperative"."store_sales_ticket_number" as "store_sales_ticket_number",
+    "cooperative"."ticket_cnt" as "ticket_cnt"
+FROM
+    "cooperative"
+    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "cooperative"."store_sales_customer_id" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+ORDER BY 
+    "cooperative"."ticket_cnt" desc,
+    "store_sales_customer_customers"."C_LAST_NAME" asc,
+    "cooperative"."store_sales_ticket_number" asc,
+    "store_sales_customer_customers"."C_CUSTOMER_SK" asc

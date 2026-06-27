@@ -75,12 +75,12 @@ FROM
 young as (
 SELECT
     "abundant"."customer_state" as "customer_state",
-    "cooperative"."cr_billing_customer_id" as "cr_billing_customer_id",
-    coalesce("abundant"."cr_return_address_state","cooperative"."cr_return_address_state","juicy"."cr_return_address_state") as "cr_return_address_state"
+    "questionable"."cr_billing_customer_id" as "cr_billing_customer_id",
+    "questionable"."cr_return_address_state" as "cr_return_address_state"
 FROM
-    "abundant"
-    INNER JOIN "cooperative" on "abundant"."cr_billing_customer_id" = "cooperative"."cr_billing_customer_id" AND "abundant"."cr_return_address_state" is not distinct from "cooperative"."cr_return_address_state"
-    INNER JOIN "juicy" on "abundant"."cr_return_address_state" is not distinct from "juicy"."cr_return_address_state"
+    "questionable"
+    INNER JOIN "abundant" on "questionable"."cr_billing_customer_id" = "abundant"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "abundant"."cr_return_address_state"
+    INNER JOIN "juicy" on "questionable"."cr_return_address_state" is not distinct from "juicy"."cr_return_address_state"
 WHERE
     "abundant"."customer_state" > "juicy"."scaled_state"
 

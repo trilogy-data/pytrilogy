@@ -6,15 +6,121 @@ is the main engineering left before v4 can be flipped on by default. For the gen
 *crashes* that were mis-bucketed here, see `v4_existence_recursion_handoff.md` (q10,
 q2.1 are crashes, NOT size; q02 and q76 are already passing).
 
-## Scope: 6 queries genuinely over ceiling (verbosity only)
+## Real-fixture sizes (re-measured 2026-06-26, `local_scripts/v4_real_size.py`)
+
+Run `.venv/Scripts/python.exe -m local_scripts.v4_real_size` for the REAL engine-fixture
+lengths (DB imported -> inlining applies). Trust these over `v4_size_compare` (the proxy
+has no DB, over-reports, and for q2.1 reports a different blowup path entirely).
+
+| q | test | ceil | v3 | v4 | ratio |
+| --- | --- | ---: | ---: | ---: | ---: |
+| **2.1** | `test_two_one` | 7500 | 6290 | **60696** | **9.6×** |
+| 73 | `test_seventy_three` | 3000 | 2701 | 5223 | 1.9× |
+| 94 | `test_ninety_four` | 5000 | 3549 | 5271 | 1.5× |
+| 2.2 | `test_two_two` | 7500 | 6290 | 10273 | 1.6× |
+| 10 | `test_ten` | 7000 | 6420 | 10208 | 1.6× |
+| 81 | `test_eighty_one` | 8000 | 7465 | 9096 | 1.2× |
+| 23 | `test_twenty_three` | 8500 | 8159 | 8515 | 1.04× |
+| 30.alt | `test_thirty_alt` | 12000 | 7152 | 10084 | length PASSES; fails STRUCTURE asserts |
+
+### *** q2.1: catastrophic blowup FIXED 2026-06-26 (60696 → 10231, −83%) ***
+
+**FIXED** by `_CleanFeederCache` in `strategy_builder.py`. The 9.6×/60696-char blowup is
+gone — q2.1 is now 10231 (13 CTEs, down from 75; 1 null-safe join, down from 32), ordinary
+1.4× verbosity in the same league as q2.2/q10. Rows unchanged (53, byte-identical to ref).
+Still over the 7500 ceiling, but the *distinct* self-ref bug class is resolved; the residual
+is the shared passthrough-projection bloat (pattern 1 below), now common with q2.2/q73.
+
+**Root cause + fix (landed):** the membership `week_seq in relevent_week_seq` sits on the
+shared ROOT, which is a lineage ancestor of the `relevent_week_seq` filter group. The
+group-graph drops that existence edge as a back-edge (group_graph.py ~491), so the feeder is
+wired post-build by `_attach_existence_sources`. `_existence_parents_for` found only the
+(cyclic) filter-group node — whose subtree reads the membership-conditioned ROOT — and
+`_deep_copy_node`'d the whole subtree to break the cycle, **15015× recursive copies**,
+compounding to 60696 chars. Fix: the set `Y` in `X in Y` is the UNFILTERED set, so when the
+only feeder is cyclic, re-source it STANDALONE via `search_concepts(conditions=[])` once and
+share the acyclic result (`_CleanFeederCache`), instead of deep-copying the conditioned
+subtree. Deep-copy retained as fallback when no standalone feeder builds (preserves the
+crash fix). tpc_ds failure set unchanged (12 isolation fails identical with/without — net
+zero); membership family (or_membership/existence/recursion) all green; mypy/ruff clean.
+
+#### Historical: the original diagnosis (kept for context)
+
+q2.1 WAS a **9.6× / 60696-char blowup** from a
+self-referential membership filter that re-materialized in a ~30-layer fixpoint chain.
+Rows are CORRECT (53 rows, byte-identical to `query02.sql` reference — verified
+2026-06-26). The query: `relevent_week_seq <- date.week_seq ? date.year in (2001,2002)`
+plus `where date.week_seq in relevent_week_seq`, feeding 7 weekday conditional sums
+(× web_sales + catalog_sales) and 7 `round_lag` windows.
+
+**Group graph is CLEAN** (~8 nodes: root → {1 filter:date.id producing relevent_week_seq,
+2 aggregates at week_seq, 1 window}; aggregates → basic:week_seq → {basic:date.id, window};
+all → final). The explosion is **entirely Stage 3 materialization** (75 CTEs from ~8
+groups). The first membership application is correct and shared (`questionable` = clean
+date_dim scan of relevent_week_seq; `thoughtful`'s WHERE uses `select questionable...`).
+But then the planner re-derives relevent_week_seq from the *already-filtered* fact stream
+(`thoughtful` = web_sales ⋈ catalog_sales ⋈ date) and re-applies the membership, producing
+a linear chain: `thoughtful → project relevent → RIGHT JOIN thoughtful WHERE week_seq in
+relevent → project relevent again → re-filter → …` ~30 deep (32 `is not distinct from`
+null-safe re-joins to `thoughtful`).
+
+Root cause sits in **`strategy_builder._build_node` condition handling** — `parent_for_consumer`
+(strategy_builder.py:510) builds a per-consumer sliced ROOT with `conditions=_wrap_atoms(
+attrs[pgid].condition_atoms)`, and the membership condition's RHS concept (relevent_week_seq)
+is derived from the SAME root grain being conditioned, so condition injection
+(`condition_injection.inject_condition_at_node` + the fixed-point combine) never detects it
+has reached steady state and keeps re-sourcing+re-filtering. This is the deferred
+"dual-existence / self-ref filter recursion" noted in `project_v4_q02_invalid_alias_union_dim`.
+
+**Fix is high-value but high-risk** (touches the membership-filter family: q02, q08
+or_membership, `test_or_membership`). The correct shape: build the relevent_week_seq filter
+ONCE (the filter group already exists + is built as `questionable`), reference it as a
+single shared IN-subquery feeder, and recognize the membership is idempotent so applying it
+once is sufficient — never re-derive relevent_week_seq from the post-filter stream. Needs a
+full v4 sweep diffed for membership-family regressions before landing.
+
+#### Confirmed mechanism + a viable fix direction (investigated 2026-06-26)
+
+CONFIRMED by instrumentation (NOT speculation):
+- The membership atom `week_seq in relevent_week_seq` is placed (by
+  `condition_placement.plan_condition_placements`, reason `UPSTREAM_MOST`) on the shared
+  `grp:root:root:∅`. ROOT is a lineage ANCESTOR of the filter group
+  `grp:[@condition]filter:d1:date.id` that PRODUCES `relevent_week_seq`. **Filtering an
+  ancestor of the set's producer by membership-in-that-set is the self-reference.**
+- At materialization, the filter group's built node therefore reads the *conditioned* ROOT,
+  so its subtree contains the conditioned MergeNode. When `_attach_existence_sources`
+  wires the membership's existence feeder, `_existence_parents_for` finds only that one
+  (cyclic) producer node, hits the `_deep_copy_node` "verbose but acyclic" branch
+  (strategy_builder.py ~246), and duplicates the whole subtree — **`_deep_copy_node` fired
+  15015× for q2.1** (recursive subtree copies), compounding to 60696 chars. The deep-copy
+  is LOAD-BEARING: it replaced the earlier `RecursionError` crash (see
+  `project_v4_existence_recursion_fixed`), so you cannot just delete it.
+
+VIABLE DIRECTION (partially validated — do NOT ship as-is): push the membership OFF ROOT
+onto the row-stream consumers (the aggregates/window) that are NOT ancestors of the
+producer, leaving ROOT (and thus the set producer) reading UNFILTERED rows. A prototype in
+`plan_condition_placements` — exclude from `restricted` any gid in
+`{producer} ∪ nx.ancestors(lineage_ancestors_graph, producer)` when a non-ancestor
+placement remains — **improved q10 10208→8706 with no break**, but **raised `IndexError`
+on q2.1/q2.2** (`discovery_utility.calculate_effective_parent_grain`: a GroupNode parent
+with no datasources). Root of the break: when the membership lands on a consumer group, the
+existence feeder is not wired onto that consumer (the current attach only handles
+condition-host ROOTs), so the consumer materializes an unresolvable node. **To land this:
+finish the consumer-side existence-feeder wiring** (mirror `_attach_existence_sources` /
+`_existence_for_group` for a membership injected at a non-ROOT consumer), then the placement
+push-down breaks the cycle cleanly for the whole family. Reverted in the tree; reproduce
+from this note. Full sweep + membership-family diff required.
+
+## Scope: queries genuinely over ceiling (verbosity only)
 
 Re-measured 2026-06-25 in isolation (`TRILOGY_V4_DISCOVERY=1`, real `engine` fixture):
 
 | q | test | over by | dominant pattern |
 | --- | --- | --- | --- |
+| 2.1 | `test_two_one` | **9.6×** | **self-ref membership filter re-materialization (see above)** |
 | 2.2 | `test_two_two` | size | passthrough bloat + multi-fact many-sibling |
 | 30.alt | `test_thirty_alt` | size | dimension re-join (pattern 2) |
-| 73 | `test_seventy_three` | size | aggregate over-split + passthrough + dim re-join |
+| 73 | `test_seventy_three` | size | filter-hoist-to-WHERE + dim re-join (NOT just passthrough — see note) |
 | 81 | `test_eighty_one` | size | dimension re-join (pattern 2) |
 
 FIXED 2026-06-25 (`_spine_regraft_parent` in `group_graph.py`): **q47 `test_forty_seven`
@@ -76,11 +182,27 @@ grain (v3: 1 join). **Full write-up with refined root cause and a regression tra
 Read it before touching this — a naive fix got q81 under ceiling but regressed q65;
 the robust fix must be per-entity / FD-cluster aware. Higher risk than pattern 1.
 
-### 3. Aggregate over-split — q73
+### 3. Aggregate over-split — q73 (root cause refined 2026-06-26)
 
-v3 renders all joins + dims + GROUP in a single SELECT; v4 splits the dim projections
-into their own CTEs first (v3 1 CTE → v4 4). Overlaps heavily with pattern 1 — try the
-passthrough fold first and re-measure q73 before treating this as separate.
+q73 needs MORE than passthrough folding — diffing v3 (2701, **1 CTE**) vs v4 (5223, 4 CTEs)
+shows TWO independent gaps:
+
+1. **Filter-hoist-to-WHERE.** v3 hoists the `count(item ? <pred>)` filter to a plain
+   `WHERE <pred>` on the join and `count(SS_ITEM_SK)` over survivors. v4 renders it as
+   `_virt_filter_id = CASE WHEN <pred> THEN item ELSE NULL END` then `count(_virt_filter_id)`
+   (equivalent — count skips nulls), but to do so it carries ALL six filter input columns
+   (`date_day_of_month, date_year, buy_potential, dependent_count, vehicle_count,
+   store_county`) through the wide `cooperative` CTE and a separate `questionable` projection
+   CTE. When a filtered aggregate is the ONLY measure of its group, hoisting the predicate to
+   WHERE (instead of CASE-inside-count) drops all those carried columns + the projection CTE.
+2. **Dimension re-join (same as pattern 2).** v3 joins the `customer` table at the END keyed
+   by the aggregated `customer_id`, so the 4 customer name/flag dims come straight off
+   `customer`. v4 carries them through `cooperative` at fact grain and adds `abundant`
+   (a GROUP BY customer_id + 4 dims) to dedup — the wide-dim-via-fact-dedup fingerprint.
+
+So q73's `questionable` passthrough fold is real but minor; the wins are the filter-hoist
+(gap 1) and the dimension re-join (gap 2, the q81/q30.alt family). Try gap 1 first — it is
+local (a filtered-sole-aggregate WHERE-hoist) and lower-risk than the dim re-join.
 
 ## Acceptance
 
