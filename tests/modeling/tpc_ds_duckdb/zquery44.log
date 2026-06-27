@@ -1,12 +1,12 @@
 query_id = "44"
-generator = "v4"
-gen_length = 2957
+generator = "v3"
+gen_length = 3060
 preql_size = 1003
 comp_size = 1462
 generated_sql = """
 
 WITH 
-wakeful as (
+highfalutin as (
 SELECT
     avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"_addr_null_threshold_threshold\"
 FROM
@@ -14,7 +14,7 @@ FROM
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" = 1 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
 ),
-questionable as (
+cooperative as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
     avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"item_avg_profit\"
@@ -25,89 +25,93 @@ WHERE
 
 GROUP BY
     1),
-quizzical as (
+questionable as (
 SELECT
-    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_ascending_best_performing\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_descending_worst_performing\"
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\"
 FROM
-    \"memory\".\"item\" as \"ss_item_items\"),
-cooperative as (
-SELECT
-    \"wakeful\".\"_addr_null_threshold_threshold\" as \"addr_null_threshold_threshold\"
-FROM
-    \"wakeful\"),
-yummy as (
-SELECT
-    \"questionable\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"questionable\".\"ss_item_id\" as \"ss_item_id\"
-FROM
-    \"cooperative\"
-    INNER JOIN \"questionable\" on 1=1
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    \"questionable\".\"item_avg_profit\" > 0.9 * \"cooperative\".\"addr_null_threshold_threshold\"
-),
-juicy as (
-SELECT
-    \"yummy\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"yummy\".\"ss_item_id\" as \"ss_item_id\"
-FROM
-    \"yummy\"),
-vacuous as (
-SELECT
-    \"juicy\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
-FROM
-    \"juicy\"),
-sweltering as (
-SELECT
-    \"quizzical\".\"_descending_worst_performing\" as \"_descending_worst_performing\",
-    \"vacuous\".\"_descending_rnk_d\" as \"_descending_rnk_d\"
-FROM
-    \"vacuous\"
-    INNER JOIN \"quizzical\" on \"vacuous\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
-GROUP BY
-    1,
-    2),
-sparkling as (
-SELECT
-    \"quizzical\".\"_ascending_best_performing\" as \"_ascending_best_performing\",
-    \"vacuous\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\"
-FROM
-    \"vacuous\"
-    INNER JOIN \"quizzical\" on \"vacuous\".\"ss_item_id\" = \"quizzical\".\"ss_item_id\"
-GROUP BY
-    1,
-    2),
-late as (
-SELECT
-    \"sweltering\".\"_descending_rnk_d\" as \"rnk\",
-    \"sweltering\".\"_descending_worst_performing\" as \"descending_worst_performing\"
-FROM
-    \"sweltering\"),
-abhorrent as (
-SELECT
-    \"sparkling\".\"_ascending_best_performing\" as \"ascending_best_performing\",
-    \"sparkling\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
-FROM
-    \"sparkling\")
-SELECT
-    \"late\".\"rnk\" as \"rnk\",
-    \"abhorrent\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"late\".\"descending_worst_performing\" as \"descending_worst_performing\"
-FROM
-    \"late\"
-    INNER JOIN \"abhorrent\" on \"late\".\"rnk\" = \"abhorrent\".\"ascending_rnk_a\"
-WHERE
-    \"late\".\"rnk\" < 11
+    \"ss_store_sales\".\"SS_STORE_SK\" = 1
 
 GROUP BY
     1,
-    2,
-    3
+    \"ss_store_sales\".\"SS_STORE_SK\"),
+cheerful as (
+SELECT
+    \"highfalutin\".\"_addr_null_threshold_threshold\" as \"addr_null_threshold_threshold\"
+FROM
+    \"highfalutin\"),
+abundant as (
+SELECT
+    \"cooperative\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"cooperative\".\"ss_item_id\" as \"ss_item_id\"
+FROM
+    \"questionable\"
+    INNER JOIN \"cooperative\" on \"questionable\".\"ss_item_id\" = \"cooperative\".\"ss_item_id\"),
+uneven as (
+SELECT
+    \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"abundant\".\"ss_item_id\" as \"ss_item_id\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"abundant\" on 1=1
+WHERE
+    \"abundant\".\"item_avg_profit\" > 0.9 * \"cheerful\".\"addr_null_threshold_threshold\"
+
+GROUP BY
+    1,
+    2),
+yummy as (
+SELECT
+    \"uneven\".\"ss_item_id\" as \"ss_item_id\",
+    rank() over (order by \"uneven\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
+    rank() over (order by \"uneven\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
+FROM
+    \"uneven\"),
+concerned as (
+SELECT
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_descending_worst_performing\",
+    \"yummy\".\"_descending_rnk_d\" as \"_descending_rnk_d\"
+FROM
+    \"yummy\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"yummy\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+GROUP BY
+    1,
+    2),
+juicy as (
+SELECT
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_ascending_best_performing\",
+    \"yummy\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\"
+FROM
+    \"yummy\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"yummy\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+GROUP BY
+    1,
+    2),
+young as (
+SELECT
+    \"concerned\".\"_descending_rnk_d\" as \"descending_rnk_d\",
+    \"concerned\".\"_descending_worst_performing\" as \"descending_worst_performing\"
+FROM
+    \"concerned\"),
+vacuous as (
+SELECT
+    \"juicy\".\"_ascending_best_performing\" as \"ascending_best_performing\",
+    \"juicy\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
+FROM
+    \"juicy\")
+SELECT
+    \"young\".\"descending_rnk_d\" as \"rnk\",
+    \"vacuous\".\"ascending_best_performing\" as \"ascending_best_performing\",
+    \"young\".\"descending_worst_performing\" as \"descending_worst_performing\"
+FROM
+    \"young\"
+    INNER JOIN \"vacuous\" on \"young\".\"descending_rnk_d\" = \"vacuous\".\"ascending_rnk_a\"
+WHERE
+    \"young\".\"descending_rnk_d\" < 11
+
 ORDER BY 
-    \"late\".\"rnk\" asc nulls first,
-    \"abhorrent\".\"ascending_best_performing\" desc nulls first,
-    \"late\".\"descending_worst_performing\" desc nulls first
+    \"rnk\" asc nulls first,
+    \"vacuous\".\"ascending_best_performing\" desc nulls first,
+    \"young\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""

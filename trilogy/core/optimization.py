@@ -576,6 +576,20 @@ def build_optimization_rule_plan(
                 reason="uses redundant predicates removed from grouped children",
             )
         )
+    if opts.merge_aggregate and opts.predicate_pushdown:
+        plan.append(
+            OptimizationRulePlan(
+                name="collapse_single_parent.after_pushdown",
+                rule_factory=CollapseSingleParent,
+                depends_on=("predicate_pushdown.remove",),
+                refires_after=("predicate_pushdown.remove",),
+                reason=(
+                    "a per-contributor projection becomes a bare passthrough once "
+                    "predicate pushdown relocates its WHERE onto the parent scan, "
+                    "so re-collapse it then (q81's dim-scan projection)"
+                ),
+            )
+        )
     if opts.upgrade_condition_joins:
         plan.append(
             OptimizationRulePlan(

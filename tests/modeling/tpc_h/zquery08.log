@@ -1,6 +1,6 @@
 query_id = "08"
-generator = "v4"
-gen_length = 1532
+generator = "v3"
+gen_length = 1703
 preql_size = 312
 comp_size = 949
 generated_sql = """
@@ -8,14 +8,15 @@ SELECT
     year(\"order_orders\".\"o_orderdate\") as \"o_year\",
     sum(CASE WHEN UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'BRAZIL' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) / sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"mkt_share\"
 FROM
-    \"memory\".\"part\" as \"part_part\"
-    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
+    \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
-    LEFT OUTER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"lineitem\".\"l_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
-    LEFT OUTER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"nation\" as \"order_customer_nation_nation\" on \"order_customer_customers\".\"c_nationkey\" = \"order_customer_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"region\" as \"order_customer_nation_region_region\" on \"order_customer_nation_nation\".\"n_regionkey\" = \"order_customer_nation_region_region\".\"r_regionkey\"
+    INNER JOIN \"memory\".\"partsupp\" as \"part_partsupp\" on \"lineitem\".\"l_partkey\" = \"part_partsupp\".\"ps_partkey\" AND \"lineitem\".\"l_suppkey\" = \"part_partsupp\".\"ps_suppkey\"
+    INNER JOIN \"memory\".\"part\" as \"part_part\" on \"part_partsupp\".\"ps_partkey\" = \"part_part\".\"p_partkey\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_partsupp\".\"ps_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
+    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
 WHERE
     \"order_customer_nation_region_region\".\"r_name\" = 'AMERICA' and year(\"order_orders\".\"o_orderdate\") BETWEEN 1995 AND 1996 and \"part_part\".\"p_type\" = 'ECONOMY ANODIZED STEEL'
 

@@ -1,6 +1,6 @@
 query_id = "98"
-generator = "v4"
-gen_length = 3244
+generator = "v3"
+gen_length = 3326
 preql_size = 750
 comp_size = 811
 generated_sql = """
@@ -8,7 +8,6 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CLASS\" as \"store_sales_item_class\",
     \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\"
@@ -19,58 +18,60 @@ FROM
 WHERE
     \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"store_sales_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 ),
-thoughtful as (
-SELECT
-    \"cheerful\".\"store_sales_ext_sales_price\" as \"store_sales_ext_sales_price\",
-    \"cheerful\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    \"cheerful\".\"store_sales_item_id\" as \"store_sales_item_id\"
-FROM
-    \"cheerful\"),
 questionable as (
 SELECT
-    \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    sum(\"thoughtful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
+    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
+    \"store_sales_item_items\".\"I_CLASS\" as \"store_sales_item_class\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_text_id\",
+    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
-    \"thoughtful\"
-GROUP BY
-    1),
+    \"memory\".\"item\" as \"store_sales_item_items\"
+WHERE
+    \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
+),
 cooperative as (
 SELECT
-    \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    \"thoughtful\".\"store_sales_item_id\" as \"store_sales_item_id\",
-    sum(\"thoughtful\".\"store_sales_ext_sales_price\") as \"item_revenue\"
+    \"cheerful\".\"store_sales_item_id\" as \"store_sales_item_id\",
+    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"item_revenue\"
 FROM
-    \"thoughtful\"
+    \"cheerful\"
 GROUP BY
-    1,
-    2,
-    3),
+    1),
+thoughtful as (
+SELECT
+    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1),
 abundant as (
 SELECT
     \"cooperative\".\"item_revenue\" as \"item_revenue\",
-    \"cooperative\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"cooperative\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    \"cooperative\".\"store_sales_item_id\" as \"store_sales_item_id\",
-    ( \"cooperative\".\"item_revenue\" * 100.0 ) / (\"questionable\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
+    \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"questionable\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    \"questionable\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"questionable\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"questionable\".\"store_sales_item_text_id\" as \"store_sales_item_text_id\"
 FROM
     \"questionable\"
-    RIGHT OUTER JOIN \"cooperative\" on \"questionable\".\"store_sales_item_class\" is not distinct from \"cooperative\".\"store_sales_item_class\")
+    INNER JOIN \"cooperative\" on \"questionable\".\"store_sales_item_id\" = \"cooperative\".\"store_sales_item_id\")
 SELECT
-    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_text_id\",
-    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"abundant\".\"store_sales_item_text_id\" as \"store_sales_item_text_id\",
+    \"abundant\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"abundant\".\"store_sales_item_category\" as \"store_sales_item_category\",
     \"abundant\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    \"abundant\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     \"abundant\".\"item_revenue\" as \"item_revenue\",
-    \"abundant\".\"revenueratio\" as \"revenueratio\"
+    ( \"abundant\".\"item_revenue\" * 100.0 ) / (\"thoughtful\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
 FROM
-    \"memory\".\"item\" as \"store_sales_item_items\"
-    INNER JOIN \"abundant\" on \"store_sales_item_items\".\"I_ITEM_SK\" = \"abundant\".\"store_sales_item_id\"
+    \"abundant\"
+    LEFT OUTER JOIN \"thoughtful\" on \"abundant\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\"
 ORDER BY 
     \"abundant\".\"store_sales_item_category\" asc nulls first,
     \"abundant\".\"store_sales_item_class\" asc nulls first,
-    \"store_sales_item_items\".\"I_ITEM_ID\" asc nulls first,
-    \"store_sales_item_items\".\"I_ITEM_DESC\" asc nulls first,
-    \"abundant\".\"revenueratio\" asc nulls first"""
+    \"abundant\".\"store_sales_item_text_id\" asc nulls first,
+    \"abundant\".\"store_sales_item_desc\" asc nulls first,
+    \"revenueratio\" asc nulls first"""

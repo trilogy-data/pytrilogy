@@ -1,6 +1,6 @@
 query_id = "15"
-generator = "v4"
-gen_length = 1387
+generator = "v3"
+gen_length = 1430
 preql_size = 396
 comp_size = 560
 generated_sql = """
@@ -21,25 +21,23 @@ FROM
     \"quizzical\"),
 cooperative as (
 SELECT
-    \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"quizzical\".\"supplier_rev\" as \"supplier_rev\",
-    \"quizzical\".\"supplier_rev\" as \"total_revenue\"
-FROM
-    \"cheerful\"
-    INNER JOIN \"quizzical\" on 1=1
-WHERE
-    \"quizzical\".\"supplier_rev\" = \"cheerful\".\"max_supplier_rev\"
-)
-SELECT
-    \"cooperative\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
     \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
+    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
     \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
-    \"cooperative\".\"total_revenue\" as \"total_revenue\"
+    \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"quizzical\".\"supplier_rev\" as \"supplier_rev\"
 FROM
     \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"cooperative\" on \"part_supplier_supplier\".\"s_suppkey\" = \"cooperative\".\"part_supplier_id\"
-    INNER JOIN \"cheerful\" on 1=1
+    INNER JOIN \"quizzical\" on \"part_supplier_supplier\".\"s_suppkey\" = \"quizzical\".\"part_supplier_id\")
+SELECT
+    \"cooperative\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"cooperative\".\"part_supplier_name\" as \"part_supplier_name\",
+    \"cooperative\".\"part_supplier_address\" as \"part_supplier_address\",
+    \"cooperative\".\"part_supplier_phone\" as \"part_supplier_phone\",
+    \"cooperative\".\"supplier_rev\" as \"total_revenue\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"cooperative\" on 1=1
 WHERE
     \"cooperative\".\"supplier_rev\" = \"cheerful\".\"max_supplier_rev\"
 

@@ -53,17 +53,30 @@ the POST-aggregate `address.state='GA'` (on its parent ROOT) the twin lacks → 
 (rows stay correct). Full combined sweep (tpc_ds + engine + tpc_h + optimization +
 complex) 0 net-new failures; ruff/mypy/black clean.
 
-## Remaining to fully clear q81/q30.alt/q10 (still open)
+## 2026-06-27 follow-up #2 — q81 LANDED (passes, promoted)
 
-q81 is 8275 (>8000) only because of `cheerful` — a no-op merge-projection CTE
-(`SELECT 16 dims FROM wakeful`) the FINAL MergeNode emits for the dim contributor.
-It is NOT a `_elide_single_parent_passthrough` SelectNode (the elide doesn't see
-it) — it's created at the MergeNode→CTE rendering layer, so collapsing it means the
-merge referencing `wakeful` directly (CTE/dialect territory, riskier). q30.alt's
-×2 web_returns is the genuinely-needed GA-spine scan: `address.state` is filter-only
-(not selected), so the split's output-gate leaves it on the fact; eliminating it
-needs the dim bucket to carry a non-output filter column through the FINAL re-source
-without a dangling ref (the hard case from the original (A) lever #4). Both deferred.
+The `cheerful` no-op CTE was a **bare passthrough** after predicate pushdown
+relocated its GA WHERE onto the join — but `CollapseSingleParent` runs ONCE, as the
+FIRST optimizer phase, BEFORE pushdown, so at collapse time the projection still
+carried the condition and `get_merge_mode` returned None (no BASIC/group/window
+column). Two changes (shared optimizer; v3 + v4 sweeps both clean):
+1. `collapse_single_parent.py`: new `MergeMode.PASSTHROUGH` + `is_passthrough_
+   projection` — a CTE that only re-projects a subset of its single parent's
+   columns (no compute, no WHERE, no join, no regroup) folds away entirely
+   (`optimize` verifies outputs ⊆ parent outputs).
+2. `optimization.py`: new `collapse_single_parent.after_pushdown` phase, `refires_
+   after=("predicate_pushdown.remove",)` — re-runs the collapse once predicates
+   settle, so the now-bare projection collapses.
+q81 **8275 → 6567, passes** (promoted out of the registry). q10 8329 → 7148 (ceiling
+7000, still ~150 over — closer). v3 sweep 0 failures; v4 net-new 0.
+
+## Remaining (still open)
+
+q30.alt's ×2 web_returns is the genuinely-needed GA-spine scan: `address.state` is
+filter-only (not selected), so the split's output-gate leaves it on the fact;
+eliminating it needs the dim bucket to carry a non-output filter column through the
+FINAL re-source without a dangling ref (the hard case from the original (A) lever
+#4). q10 needs ~150 more chars (a second passthrough/merge-projection). Deferred.
 
 ---
 

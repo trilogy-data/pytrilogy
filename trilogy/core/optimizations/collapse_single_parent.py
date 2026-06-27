@@ -32,6 +32,32 @@ class MergeMode(Enum):
     AGGREGATE = "aggregate"
     WINDOW = "window"
     BASIC = "basic"
+    # A CTE that only re-projects a subset of its single parent's columns — no
+    # local computation, no WHERE, no join, no regroup. It adds nothing the parent
+    # can't render, so it folds away entirely (the FINAL merge reads the parent
+    # directly). v4's per-contributor projection emits these (q81's dim scan ->
+    # a bare 16-col projection of the customer⋈customer_address CTE).
+    PASSTHROUGH = "passthrough"
+
+
+def is_passthrough_projection(cte: CTE) -> bool:
+    if cte.group_to_grain or cte.joins or cte.condition is not None:
+        return False
+    if cte.source.source_type in (
+        SourceType.GROUP,
+        SourceType.WINDOW,
+        SourceType.UNNEST,
+        SourceType.RECURSIVE,
+        SourceType.SUBSELECT,
+        SourceType.UNION,
+    ):
+        return False
+    return all(
+        concept.derivation not in UNSAFE_DERIVATIONS
+        and concept.derivation != Derivation.AGGREGATE
+        and not isinstance(concept.lineage, (BuildAggregateWrapper, BuildWindowItem))
+        for concept in cte.output_columns
+    )
 
 
 def has_unsafe_derivations(cte: CTE) -> bool:
@@ -55,6 +81,8 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
         return MergeMode.WINDOW
     if has_basic_derivation(cte):
         return MergeMode.BASIC
+    if is_passthrough_projection(cte):
+        return MergeMode.PASSTHROUGH
     return None
 
 
@@ -87,6 +115,12 @@ def has_nonstandard_aggregate_grouping(concept: BuildConcept) -> bool:
 
 
 def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
+    if merge_mode == MergeMode.PASSTHROUGH:
+        # A passthrough collapses into any single parent that renders its columns
+        # (verified in `optimize`); it adds no computation, WHERE, or regroup, so
+        # no parent shape is unsafe. UNION/RECURSIVE parents are excluded by the
+        # isinstance guard in `optimize`.
+        return False
     if merge_mode == MergeMode.AGGREGATE:
         return parent.group_to_grain or parent.source.source_type in (
             SourceType.GROUP,
@@ -202,8 +236,8 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         # by window expressions (e.g. inlined CASE branches or unmaterialized
         # aggregates). Don't prune — just extend.
         parent.source.source_type = SourceType.WINDOW
-    # BASIC merge: keep parent's source_type; child's basic projections render
-    # alongside parent's outputs. HideUnusedConcepts handles pruning later.
+    # BASIC / PASSTHROUGH merge: keep parent's source_type; the child's columns
+    # render alongside parent's outputs. HideUnusedConcepts handles pruning later.
 
 
 class CollapseSingleParent(OptimizationRule):
@@ -275,6 +309,17 @@ class CollapseSingleParent(OptimizationRule):
             self.debug(
                 f"BASIC fold of {cte.name} into GROUP parent {parent.name} is "
                 "not row-preserving (grain change or non-scalar output), skipping"
+            )
+            return False, None
+        if merge_mode == MergeMode.PASSTHROUGH and not (
+            {c.address for c in cte.output_columns}
+            <= {c.address for c in parent.output_columns}
+        ):
+            # Not a true passthrough — the child renders a column the parent does
+            # not already expose, so folding would drop it. Leave it.
+            self.debug(
+                f"Passthrough {cte.name} renders a column absent from parent "
+                f"{parent.name}, skipping"
             )
             return False, None
 

@@ -1,12 +1,12 @@
 query_id = "24"
-generator = "v4"
-gen_length = 3903
+generator = "v3"
+gen_length = 3749
 preql_size = 707
 comp_size = 1264
 generated_sql = """
 
 WITH 
-uneven as (
+yummy as (
 SELECT
     sum(\"store_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_1360566110228423\"
 FROM
@@ -19,12 +19,9 @@ WHERE
     \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_address_customer_address\".\"CA_COUNTRY\")  and SR_RETURN_TIME_SK IS NOT NULL is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_address_customer_address\".\"CA_ZIP\"
 
 GROUP BY
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\",
-    \"store_sales_customer_customers\".\"C_LAST_NAME\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\",
-    \"store_sales_store_sales\".\"SS_STORE_SK\",
-    \"store_sales_store_store\".\"S_STORE_NAME\"),
+    \"store_sales_store_sales\".\"SS_STORE_SK\"),
 questionable as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
@@ -47,9 +44,9 @@ GROUP BY
     3),
 vacuous as (
 SELECT
-    avg(\"uneven\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
+    avg(\"yummy\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
 FROM
-    \"uneven\")
+    \"yummy\")
 SELECT
     \"questionable\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
     \"questionable\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
