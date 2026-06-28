@@ -1,8 +1,21 @@
 # q05 — `union(...)` measure broadcasts channel-total onto every entity (SILENT wrong numbers)
 
-**Status:** OPEN. Reproduced on current working tree (editable install, `pytrilogy 0.3.285`,
-branch `more_join_improvements`). Same symptom appears in the eval trace
-`results/20260624-133456/agent_log.q05.conversation.txt` (messages 60–66), so it is not new.
+**Status:** FIXED as of 2026-06-28 (verified on branch `post_join_followup_four`). The arm-1
+measure (`return_amounts`) now groups per entity instead of broadcasting a channel-grain
+constant. Verified on `evals/tpcds_agent/results/20260628-042638_enriched/workspace/` (same
+`raw.all_sales` model): the repro below gives distinct per-entity `total_returns`
+(4645.17, 326.05, 564.80, 410.56, … — 10 distinct values in the catalog channel), matching the
+ground-truth per-entity values, NOT the broadcast constant 1093748.93. Resolved together with
+the union/rowset grain work in the sibling `bug_q05_nested_rowset_aggregate_fanout.md`
+(commit `4659d503` and surrounding fixes).
+
+Regression test: `tests/engine/test_duckdb_rowset.py::test_tvf_union_disjoint_arm_measures_no_broadcast`
+(line-grain union, disjoint per-arm measures with `0` placeholders, grouped consumer — arm-1
+measure must stay per-entity, not broadcast the total).
+
+Originally reproduced on the working tree (editable install, `pytrilogy 0.3.285`,
+branch `more_join_improvements`). Same symptom appeared in the eval trace
+`results/20260624-133456/agent_log.q05.conversation.txt` (messages 60–66), so it was not new.
 
 ## Summary
 

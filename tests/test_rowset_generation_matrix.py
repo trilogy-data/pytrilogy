@@ -159,10 +159,10 @@ _MATRIX: list[tuple[str, str, object]] = [
         UnresolvableQueryException,
     ),
     (
-        # Single rowset with no join islands its key; a base-keyed property
-        # (item_name) cannot auto-source off it. Must be a clean disconnect,
-        # not a sentinel. (Known limitation -- if this starts resolving, the
-        # contract here flips and should become a correct-rows cell.)
+        # Single rowset with no join: a base-keyed property (item_name) must NOT
+        # auto-source off the rowset's key -- that would invent a join path the
+        # author never declared. By design this is a clean disconnect (declare
+        # `join rs.k = item_id` to resolve it), never a sentinel or silent join.
         "single_rowset_islanded_property_clean_error",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq;"
@@ -183,9 +183,9 @@ def test_rowset_generation_matrix(query: str, expected: object):
     if isinstance(expected, type):
         with pytest.raises(CLEAN_ERRORS) as excinfo:
             executor.execute_text(query)
-        assert isinstance(excinfo.value, expected), (
-            f"expected {expected.__name__}, got {type(excinfo.value).__name__}"
-        )
+        assert isinstance(
+            excinfo.value, expected
+        ), f"expected {expected.__name__}, got {type(excinfo.value).__name__}"
         return
 
     # Success cell: SQL must render without a sentinel and execute to exact rows.

@@ -948,6 +948,54 @@ order by combined.k asc;
     assert [tuple(r) for r in results] == [(1, 45), (2, 15)]
 
 
+_TVF_UNION_DISJOINT_FIXTURE = """
+key line_id int;
+property line_id.kind string;
+property line_id.ent string;
+property line_id.gross int;
+property line_id.ret int;
+
+datasource lines (
+    line_id: line_id,
+    kind: kind,
+    ent: ent,
+    gross: gross,
+    ret: ret,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 'sale' as kind, 'A' as ent, 100 as gross, 0 as ret union all
+select 2 as line_id, 'sale' as kind, 'A' as ent, 200 as gross, 0 as ret union all
+select 3 as line_id, 'return' as kind, 'A' as ent, 0 as gross, 5 as ret union all
+select 4 as line_id, 'sale' as kind, 'B' as ent, 300 as gross, 0 as ret union all
+select 5 as line_id, 'return' as kind, 'B' as ent, 0 as gross, 7 as ret union all
+select 6 as line_id, 'return' as kind, 'B' as ent, 0 as gross, 8 as ret
+''';
+"""
+
+
+def test_tvf_union_disjoint_arm_measures_no_broadcast():
+    # A line-grain union whose arms feed a shared key (`e`) plus DISJOINT measures
+    # (each arm carries one real measure, `0` placeholder for the other), then a
+    # grouped consumer sums each. The arm-1 measure (`r`) used to lose correlation
+    # to `e`, get summed at the coarse arm grain, and broadcast that constant onto
+    # every entity (q05 returns broadcast). `r` must stay per-entity: A=5, B=7+8=15
+    # — NOT the channel total 20 on both rows.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_DISJOINT_FIXTURE)
+    query = """
+with combined as union(
+  (where line_id.kind = 'sale'   select line_id.ent as e, line_id.gross as g, 0 as r),
+  (where line_id.kind = 'return' select line_id.ent as e, 0 as g, line_id.ret as r)
+) -> (e, g, r);
+
+select combined.e, sum(combined.g) as tg, sum(combined.r) as tr
+order by combined.e asc;
+"""
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [("A", 300, 5), ("B", 300, 15)]
+
+
 _TVF_UNION_JOIN_FIXTURE = """
 key store_id int;
 key return_store_id int;
