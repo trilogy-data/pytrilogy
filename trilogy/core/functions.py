@@ -1180,6 +1180,8 @@ EXCLUDED_FUNCTIONS = {
     FunctionType.DATE_LITERAL,
     FunctionType.DATETIME_LITERAL,
     FunctionType.ARRAY,
+    # constructed directly by the parser for composite membership, never via create_function
+    FunctionType.ROW_TUPLE,
 }
 
 for k in FunctionType.__members__.values():

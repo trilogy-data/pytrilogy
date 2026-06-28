@@ -356,7 +356,7 @@ class MapWrapper(Generic[KT, VT], UserDict):
 class TupleWrapper(Generic[VT], tuple):
     """Used to distinguish parsed tuple objects from other tuples"""
 
-    def __init__(self, val, type: DataType, nullable: bool = False, **kwargs):
+    def __init__(self, val, type: CONCRETE_TYPES, nullable: bool = False, **kwargs):
         super().__init__()
         self.type = type
         self.val = val
@@ -365,7 +365,7 @@ class TupleWrapper(Generic[VT], tuple):
     def __getnewargs__(self):
         return (self.val, self.type)
 
-    def __new__(cls, val, type: DataType, **kwargs):
+    def __new__(cls, val, type: CONCRETE_TYPES, **kwargs):
         return super().__new__(cls, tuple(val))
         # self.type = type
 
@@ -394,11 +394,13 @@ def list_to_wrapper(args):
 
 
 def tuple_to_wrapper(args):
-    rtypes = [arg_to_datatype(arg) for arg in args]
-    types = [arg for arg in rtypes if arg != DataType.NULL]
-    if not len(set(types)) == 1:
-        raise SyntaxError(f"Cannot create a tuple with this set of types: {set(types)}")
-    return TupleWrapper(args, type=types[0], nullable=DataType.NULL in rtypes)
+    try:
+        dtype, nullable = reduce_tuple_element_datatypes(
+            [arg_to_datatype(arg) for arg in args]
+        )
+    except ValueError as e:
+        raise SyntaxError(str(e))
+    return TupleWrapper(args, type=dtype, nullable=nullable)
 
 
 def dict_to_map_wrapper(arg):
@@ -501,6 +503,27 @@ def is_compatible_datatype(left, right):
     if {left, right} == {DataType.FLOAT, DataType.INTEGER}:
         return True
     return False
+
+
+def reduce_tuple_element_datatypes(
+    datatypes: list[CONCRETE_TYPES],
+) -> tuple[CONCRETE_TYPES, bool]:
+    """Collapse a literal tuple's element datatypes to a single representative
+    type. Elements need only be pairwise-compatible (numeric family, enum-over-
+    base, trait-wrapped), not identical. Raises ValueError naming the offending
+    pair when two elements are genuinely incompatible. Returns (type, nullable)."""
+    nullable = any(d == DataType.NULL for d in datatypes)
+    non_null = [d for d in datatypes if d != DataType.NULL]
+    if not non_null:
+        return DataType.NULL, nullable
+    merged: CONCRETE_TYPES = non_null[0]
+    for nxt in non_null[1:]:
+        if not is_compatible_datatype(merged, nxt):
+            raise ValueError(
+                f"Tuple elements have incompatible types {merged} and {nxt}"
+            )
+        merged = merge_datatypes([merged, nxt])
+    return merged, nullable
 
 
 def arg_to_datatype(arg) -> CONCRETE_TYPES:

@@ -1,6 +1,13 @@
 # Bug: `order by <measure passed through a nested rowset join>` → DuckDB BinderException "column must appear in GROUP BY" (q83)
 
-**Status:** OPEN — deterministic repro + clean bisection. Surfaced in the full-99 rebaseline.
+**Status:** FIXED 2026-06-27. `_carry_order_by_concepts` (query_processor.py) now carries a
+ROWSET-derivation order-by measure that isn't a SELECT output into the grain as a hidden group key
+(when its grain ⊆ the select grain); a finer measure raises a clean InvalidSyntaxException.
+Test: `tests/engine/test_duckdb_rowset.py::test_order_by_measure_through_nested_rowset_join_groups`.
+
+---
+
+**(original report)** OPEN — deterministic repro + clean bisection. Surfaced in the full-99 rebaseline.
 **Surfaced by:** TPC-DS q83 (run `20260627-181845`) — both a crash (×3) AND a 1.54M-token sink.
 Uncaught `(_duckdb.BinderException)` → `Unexpected error`, no clean Trilogy message.
 **Severity:** HIGH — invalid SQL DuckDB rejects.

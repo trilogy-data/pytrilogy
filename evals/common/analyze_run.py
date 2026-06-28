@@ -312,7 +312,7 @@ def _error_snippet(result: str, limit: int = 1200) -> str:
     msg = _structured_error_message(text)
     if msg is not None:
         return msg
-    for marker in ("Unexpected error:", "Syntax error:", "Error:"):
+    for marker in ("Unexpected error:", "Syntax error:", "Type error:", "Error:"):
         if marker in text:
             text = text.split(marker, 1)[1].lstrip()
             break

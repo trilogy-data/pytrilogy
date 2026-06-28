@@ -312,7 +312,10 @@ def comparison(
     operator = values[1]
     right = values[2]
     if operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
+        from trilogy.parsing.common import rewrite_composite_membership
+
         _validate_enum_membership(left, right, operator, context)
+        left, right = rewrite_composite_membership(left, right, operator)
         return SubselectComparison(left=left, right=right, operator=operator)
     _validate_enum_comparison(left, operator, right, context)
     return Comparison(left=left, right=right, operator=operator)

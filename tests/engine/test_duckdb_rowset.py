@@ -974,3 +974,56 @@ with combined as union(
         if "combined" in addr
     }
     assert bound == {"combined.k", "combined.v"}
+
+
+_Q83_ORDER_BY_MEASURE_FIXTURE = """
+key sale_id int;
+property sale_id.channel string;
+property sale_id.item int;
+property sale_id.qty float;
+datasource sales (id: sale_id, ch: channel, it: item, q: qty) grain (sale_id)
+query '''
+select 1 id,'STORE' ch,1 it,10.0 q union all
+select 2 id,'STORE' ch,2 it,20.0 q union all
+select 3 id,'CATALOG' ch,1 it,5.0 q union all
+select 4 id,'CATALOG' ch,2 it,7.0 q union all
+select 5 id,'WEB' ch,1 it,3.0 q union all
+select 6 id,'WEB' ch,2 it,9.0 q''';
+
+with store_agg as where channel='STORE' select item as item_code, sum(qty) as store_qty, count(sale_id) as store_row_count, count(qty) as store_non_null_qty_count;
+with catalog_agg as where channel='CATALOG' select item as item_code, sum(qty) as catalog_qty, count(sale_id) as catalog_row_count, count(qty) as catalog_non_null_qty_count;
+with web_agg as where channel='WEB' select item as item_code, sum(qty) as web_qty, count(sale_id) as web_row_count;
+with combined as
+left join store_agg.item_code = catalog_agg.item_code
+left join store_agg.item_code = web_agg.item_code
+select
+    store_agg.item_code, store_agg.store_qty, store_agg.store_row_count, store_agg.store_non_null_qty_count,
+    catalog_agg.catalog_qty, catalog_agg.catalog_row_count, catalog_agg.catalog_non_null_qty_count,
+    web_agg.web_qty, web_agg.web_row_count
+where store_agg.store_row_count > 0 and catalog_agg.catalog_row_count > 0 and web_agg.web_row_count > 0;
+"""
+
+
+def test_order_by_measure_through_nested_rowset_join_groups():
+    # Regression (TPC-DS q83): ordering the final select by a measure that is
+    # passed through a nested rowset join (`combined.store_agg.store_qty`) and is
+    # only consumed inside a projected CASE (not a direct output). The measure is
+    # sourced into the parent CTE to feed the CASE but is not a key of the final
+    # group node, so DuckDB rejected the ORDER BY ("column ... must appear in the
+    # GROUP BY"). The order-by carry now pulls such a rowset measure (functionally
+    # determined by the select grain) into the grain as a hidden group key.
+    executor = Dialects.DUCK_DB.default_executor()
+    query = _Q83_ORDER_BY_MEASURE_FIXTURE + """
+select
+    combined.store_agg.item_code,
+    case when combined.store_agg.store_non_null_qty_count = combined.store_agg.store_row_count then combined.store_agg.store_qty else null end as store_return_quantity,
+    case when combined.catalog_agg.catalog_non_null_qty_count = combined.catalog_agg.catalog_row_count then combined.catalog_agg.catalog_qty else null end as catalog_return_quantity,
+    combined.web_agg.web_qty as web_return_quantity
+order by combined.store_agg.item_code nulls first,
+         combined.store_agg.store_qty nulls first
+limit 100;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "combined_store_agg_store_qty" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [(1, 10.0, 5.0, 3.0), (2, 20.0, 7.0, 9.0)]

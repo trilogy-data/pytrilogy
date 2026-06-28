@@ -614,6 +614,29 @@ def test_exception_unexpected():
         handle_execution_exception(ValueError("Test exception handling"))
 
 
+def test_function_argument_type_reported_as_type_error():
+    # `year()` on an integer is a fixable author mistake; the harness must label
+    # it a clean "Type error", not the "Unexpected error" catch-all (and not a
+    # syntax error).
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    "key id int; datasource nums (id) grain (id) "
+                    "query '''select 1 as id'''; where year(id) = 2000 select id;",
+                    "duckdb",
+                ],
+            )
+            assert result.exit_code == 1
+            output = strip_ansi(result.output)
+            assert "Type error" in output, output
+            assert "Unexpected error" not in output, output
+            assert "Syntax error" not in output, output
+
+
 def test_empty_unit():
     path = Path(__file__).parent / "validate_directory" / "empty.preql"
     runner = CliRunner()

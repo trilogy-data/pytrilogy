@@ -223,6 +223,12 @@ AGGREGATE_ITEMS = (BuildAggregateWrapper,)
 FUNCTION_ITEMS = (BuildFunction,)
 PARENTHETICAL_ITEMS = (BuildParenthetical,)
 
+
+def _is_build_row_tuple(x: Any) -> bool:
+    """True for a ROW_TUPLE operand of composite (row-wise) membership."""
+    return isinstance(x, BuildFunction) and x.operator == FunctionType.ROW_TUPLE
+
+
 # Datatypes whose CONSTANT values can be inlined into SQL without
 # parameterisation. INTEGER / BOOL round-trip cleanly through engine
 # parsing; FLOAT is excluded because DuckDB parses dotted literals as
@@ -457,6 +463,7 @@ FUNCTION_MAP = {
     FunctionType.ATTR_ACCESS: lambda x, types: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x, types: f"{{{', '.join(struct_arg(x))}}}",
     FunctionType.ARRAY: lambda x, types: f"[{', '.join(x)}]",
+    FunctionType.ROW_TUPLE: lambda x, types: f"({', '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
     # MAP
@@ -1301,6 +1308,96 @@ class BaseDialect:
         operator needs translation (e.g. SQLite ``ILIKE``)."""
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
 
+    def _resolve_existence_column(
+        self,
+        rc: BuildConcept,
+        cte: CTE | UnionCTE | None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        raise_invalid: bool,
+    ) -> tuple[str, str]:
+        """Resolve a right-hand membership concept to (from_clause, column_ref)
+        against its existence source, mirroring the single-column path (including
+        inlined-parent physical columns)."""
+        lookup_cte = cte
+        if cte_map and not lookup_cte:
+            lookup_cte = cte_map.get(rc.address)
+        assert lookup_cte, "Subselects must be rendered with a CTE in context"
+        if rc.address not in lookup_cte.existence_source_map:
+            lookup = lookup_cte.source_map.get(
+                rc.address,
+                [INVALID_REFERENCE_STRING(f"Missing source reference to {rc.address}")],
+            )
+        else:
+            lookup = lookup_cte.existence_source_map[rc.address]
+        target = (
+            lookup[0]
+            if lookup
+            else INVALID_REFERENCE_STRING(f"Missing source CTE for {rc.address}")
+        )
+        inlined_parent = (
+            cte.inlined_parent_for_source(target) if isinstance(cte, CTE) else None
+        )
+        if inlined_parent is not None:
+            assert isinstance(cte, CTE)
+            target = cte.source_key_for(target)
+            self.used_map[target].add(rc.address)
+            new_base = inlined_parent.datasource.safe_location
+            phys = inlined_parent.consumer_column(rc)
+            if isinstance(phys, str):
+                col_ref = f"{target}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
+            elif isinstance(phys, RawColumnExpr):
+                col_ref = phys.text
+            else:
+                col_ref = self.render_expr(
+                    phys, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+            return f"{new_base} as {target}", col_ref
+        self.used_map[target].add(rc.address)
+        col_ref = (
+            f"{target}.{self.QUOTE_CHARACTER}{rc.safe_address}{self.QUOTE_CHARACTER}"
+        )
+        return target, col_ref
+
+    def render_composite_membership(
+        self,
+        left: BuildFunction,
+        right: BuildFunction,
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None = None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        raise_invalid: bool = False,
+        materialized_addresses: set[str] | None = None,
+    ) -> str:
+        """Render row-wise membership `(a, b) in (set.a, set.b)` as a multi-column
+        existence subquery: `(a, b) IN (select x, y from cte where x is not null
+        and y is not null)`. All right components share one existence CTE."""
+        left_sql = ", ".join(
+            self.render_expr(
+                a,
+                cte=cte,
+                cte_map=cte_map,
+                raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
+            )
+            for a in left.arguments
+        )
+        from_clause = ""
+        cols: list[str] = []
+        for rc in right.arguments:
+            assert isinstance(
+                rc, BuildConcept
+            ), "composite membership operands must be concepts"
+            from_clause, col_ref = self._resolve_existence_column(
+                rc, cte, cte_map, raise_invalid
+            )
+            cols.append(col_ref)
+        select_list = ", ".join(cols)
+        not_null = " and ".join(f"{c} is not null" for c in cols)
+        return (
+            f"({left_sql}) {operator.value} "
+            f"(select {select_list} from {from_clause} where {not_null})"
+        )
+
     def render_expr(
         self,
         e: Union[
@@ -1356,7 +1453,26 @@ class BaseDialect:
             right: Any = e.right
             while isinstance(right, BuildParenthetical):
                 right = right.content
+            if (
+                isinstance(e.left, BuildFunction)
+                and _is_build_row_tuple(e.left)
+                and _is_build_row_tuple(right)
+            ):
+                return self.render_composite_membership(
+                    e.left,
+                    right,
+                    e.operator,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                )
             if isinstance(right, BuildConcept):
+                # An array-valued RHS (e.g. `x in split(s, ',')`) holds a list per
+                # row; `x IN (select arr_col ...)` compares a scalar to an array and
+                # the DB rejects it. Unnest the array column so the subselect yields
+                # one scalar per element.
+                rhs_is_array = isinstance(right.datatype, ArrayType)
                 # we won't always have an existnce map
                 # so fall back to the normal map
                 lookup_cte = cte
@@ -1406,9 +1522,12 @@ class BaseDialect:
                             cte_map=cte_map,
                             raise_invalid=raise_invalid,
                         )
-                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {col_ref} from {new_base} as {target} where {col_ref} is not null)"
+                    sel_ref = f"unnest({col_ref})" if rhs_is_array else col_ref
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {sel_ref} from {new_base} as {target} where {col_ref} is not null)"
                 self.used_map[target].add(right.address)
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+                col = f"{target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER}"
+                sel = f"unnest({col})" if rhs_is_array else col
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {sel} from {target} where {col} is not null)"
             elif isinstance(right, BuildParamaterizedConceptReference):
                 if isinstance(right.concept.lineage, BuildFunction) and isinstance(
                     right.concept.lineage.arguments[0], ListWrapper

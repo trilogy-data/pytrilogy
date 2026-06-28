@@ -8,6 +8,7 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
+    Derivation,
     FunctionType,
     JoinType,
     SourceType,
@@ -16,6 +17,7 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
+    InvalidSyntaxException,
     UnresolvableQueryException,
 )
 from trilogy.core.graph_models import ReferenceGraph
@@ -524,9 +526,29 @@ def _carry_order_by_concepts(
             if c.address in output_addresses:
                 continue
             target = _find_source_target(c)
-            if target is None or target.address in output_addresses:
+            if target is not None:
+                if target.address not in output_addresses:
+                    carry.setdefault(target.address, target)
                 continue
-            carry.setdefault(target.address, target)
+            # A rowset output (a measure materialized in its own upstream CTE)
+            # referenced in ORDER BY but only consumed inside a projected scalar
+            # (e.g. wrapped in a CASE) is sourced into the final node's parent
+            # but is NOT one of the final group node's keys — DuckDB then rejects
+            # it ("must appear in GROUP BY"). Carry it into the grain as a hidden
+            # output so it becomes a group key. Only safe when it is functionally
+            # determined by the select grain (same/coarser); a finer measure has
+            # no single value per output row, so ordering by it is ambiguous.
+            if c.derivation == Derivation.ROWSET:
+                if c.grain.issubset(build_statement.grain):
+                    carry.setdefault(c.address, c)
+                else:
+                    raise InvalidSyntaxException(
+                        f"ORDER BY references '{c.address}', a measure at a finer "
+                        f"grain ({c.grain}) than the select grain "
+                        f"({build_statement.grain}); it has no single value per "
+                        f"output row. Project it (prefix with `--` to keep it out "
+                        f"of the rows) and order by that alias instead."
+                    )
     if not carry:
         return
     build_statement.selection = build_statement.selection + list(carry.values())

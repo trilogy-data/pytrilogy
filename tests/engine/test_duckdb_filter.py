@@ -123,6 +123,32 @@ select
     assert results[0].ord_count == 3
 
 
+def test_membership_against_array_valued_split(default_duckdb_engine: Executor):
+    # `<scalar> in split(...)` has an array-valued RHS; it must unnest the array
+    # rather than emit `x IN (select arr_col ...)` (which the DB rejects as a
+    # VARCHAR vs VARCHAR[] comparison).
+    test = """
+const zips <- '24128,76232,65084';
+key cust_zip string;
+datasource customers (
+    cust_zip
+)
+grain (cust_zip)
+query '''
+select '24128' as cust_zip union all select '00000' union all select '76232'
+''';
+auto qual <- cust_zip ? cust_zip in split(zips, ',');
+where cust_zip in qual
+select cust_zip
+order by cust_zip asc
+;
+"""
+    sql = default_duckdb_engine.generate_sql(test)[-1]
+    assert "unnest(" in sql, sql
+    rows = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert [r.cust_zip for r in rows] == ["24128", "76232"]
+
+
 def test_demo_filter():
     test = """const x <- unnest([1,2,2,3]);
 

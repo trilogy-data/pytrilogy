@@ -115,6 +115,7 @@ from trilogy.core.models.core import (
     dict_to_map_wrapper,
     is_compatible_datatype,
     list_to_wrapper,
+    reduce_tuple_element_datatypes,
     tuple_to_wrapper,
 )
 from trilogy.core.models.datasource import (
@@ -646,13 +647,15 @@ class ParseToObjects(Transformer):
         values = [self._parse_simple_expr_text(part) for part in raw_values]
         if any(value is None for value in values):
             return None
-        datatypes = {arg_to_datatype(value) for value in values}
-        if len(datatypes) != 1:
+        try:
+            datatype, nullable = reduce_tuple_element_datatypes(
+                [arg_to_datatype(value) for value in values]
+            )
+        except ValueError:
             return None
-        datatype = datatypes.pop()
-        if not isinstance(datatype, DataType):
-            return None
-        return TupleWrapper(val=tuple(cast(list[object], values)), type=datatype)
+        return TupleWrapper(
+            val=tuple(cast(list[object], values)), type=datatype, nullable=nullable
+        )
 
     def _parse_simple_list_expr_text(self, text: str) -> ListWrapper | None:
         if not (text.startswith("[") and text.endswith("]")):
@@ -4657,6 +4660,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def subselect_comparison(self, meta: Meta, args) -> SubselectComparison:
+        from trilogy.parsing.common import rewrite_composite_membership
+
+        left = args[0]
         right = args[2]
 
         while isinstance(right, Parenthetical) and isinstance(
@@ -4672,21 +4678,31 @@ class ParseToObjects(Transformer):
             ),
         ):
             right = right.content
-        if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
+        left, right = rewrite_composite_membership(left, right, args[1])
+        # a ROW_TUPLE operand is a composite-membership row constructor, not a
+        # function to be lifted into its own concept
+        if isinstance(
+            right, (Function, FilterItem, WindowItem, AggregateWrapper)
+        ) and not (
+            isinstance(right, Function) and right.operator == FunctionType.ROW_TUPLE
+        ):
             right_concept = arbitrary_to_concept(right, environment=self.environment)
             self.environment.add_concept(right_concept, meta=meta)
             right = right_concept.reference
         return SubselectComparison(
-            left=args[0],
+            left=left,
             right=right,
             operator=args[1],
         )
 
     def expr_tuple(self, args):
-        datatypes = set([arg_to_datatype(x) for x in args])
-        if len(datatypes) != 1:
-            raise ParseError("Tuple must have same type for all elements")
-        return TupleWrapper(val=tuple(args), type=datatypes.pop())
+        try:
+            dtype, nullable = reduce_tuple_element_datatypes(
+                [arg_to_datatype(x) for x in args]
+            )
+        except ValueError as e:
+            raise ParseError(str(e))
+        return TupleWrapper(val=tuple(args), type=dtype, nullable=nullable)
 
     def parenthetical(self, args):
         return Parenthetical(content=args[0])

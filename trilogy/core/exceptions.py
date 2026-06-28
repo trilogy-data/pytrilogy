@@ -24,6 +24,15 @@ class InvalidSyntaxException(Exception):
     pass
 
 
+class FunctionArgumentException(TypeError):
+    """A function was called with an argument of the wrong type (e.g. `year()` on
+    an integer). Subclasses `TypeError` so existing `except TypeError` handlers
+    keep catching it, while letting the harness report a clean type error rather
+    than an internal crash."""
+
+    pass
+
+
 class MissingParameterException(InvalidSyntaxException):
     pass
 

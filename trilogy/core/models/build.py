@@ -3201,8 +3201,15 @@ class Factory:
         self, base: SubselectComparison
     ) -> BuildSubselectComparison:
         right: Any = base.right
-        # this has specialized logic - include all Functions
-        if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
+        # this has specialized logic - include all Functions, EXCEPT a ROW_TUPLE
+        # (composite-membership row constructor): it must stay a function so its
+        # components are sourced individually, not collapsed into one array concept
+        if isinstance(
+            base.right, (AggregateWrapper, WindowItem, FilterItem, Function)
+        ) and not (
+            isinstance(base.right, Function)
+            and base.right.operator == FunctionType.ROW_TUPLE
+        ):
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
         left_built = self.handle_constant(self.build(base.left))
