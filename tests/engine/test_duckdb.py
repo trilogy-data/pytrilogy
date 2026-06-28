@@ -196,6 +196,38 @@ select case when grouping(brand) = 1 then 'tot' else brand end as ct,
             engine.generate_sql(select)
 
 
+def test_grouping_in_where_raises_clean_error():
+    """`grouping()` in a WHERE clause is semantically invalid: WHERE runs before
+    grouping, so there is no grouping set to anchor to. The planner used to
+    materialize it as a standalone groupless `GROUPING()` CTE -> generate_sql
+    succeeded but DuckDB rejected it ("GROUPING statement cannot be used without
+    groups"). Reject it at author time instead. q70."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+where grouping(brand) = 1 or brand = 'B'
+select brand, class, sum(amount) as total,
+by rollup (brand, class);
+"""
+    with raises(InvalidSyntaxException, match="WHERE"):
+        engine.generate_sql(text)
+
+
+def test_grouping_in_having_no_rollup_executes():
+    """The valid sibling of the WHERE case: `grouping(<group key>)` in HAVING runs
+    post-aggregation against the implicit group key, so it is a valid (no-op)
+    filter even without an explicit rollup spec — must NOT be rejected. q70."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select brand, sum(amount) as total,
+having grouping(brand) = 0
+order by brand asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [("A", 30.0), ("B", 130.0)]
+
+
 def test_grouping_in_named_concept_with_rollup_builds():
     """The valid form of the above: a named `auto` concept wrapping `grouping()`
     builds and runs as long as a `by rollup` aggregate in the select anchors it."""

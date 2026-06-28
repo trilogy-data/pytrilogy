@@ -924,6 +924,59 @@ class BaseDialect:
                 siblings.append(other)
         return siblings
 
+    def _grain_key_membership_redirect(
+        self, c: BuildConcept, cte: CTE | UnionCTE
+    ) -> str | None:
+        """Borrow the renderable column of a grain-key semijoin's left operand.
+
+        A post-aggregation grain-key membership (`key in (filter key where ...)`,
+        built by `_rewrite_having_finer_dims_to_membership`) filters exactly the
+        CTE's grain key, so its left operand IS that grain key's materialized
+        column. When a scoped INNER join collapsed the grain key onto a twin and
+        the projected grain-key output dead-ends on the dropped side (q64), the
+        membership-left is the same logical key and renders fine here — use it.
+
+        Tightly gated: only a single-component-grain CTE whose membership-left is
+        itself a single same-grain key, and only as a fallback when the normal
+        render already produced the INVALID_REFERENCE sentinel."""
+        if not isinstance(cte, CTE) or cte.condition is None:
+            return None
+        grain = cte.grain.components
+        if len(grain) != 1 or c.address not in grain:
+            return None
+
+        def _memberships(node: Any) -> list[BuildSubselectComparison]:
+            if isinstance(node, BuildSubselectComparison):
+                return [node]
+            acc: list[BuildSubselectComparison] = []
+            for attr in ("left", "right", "content"):
+                child = getattr(node, attr, None)
+                if child is not None:
+                    acc += _memberships(child)
+            return acc
+
+        for comp in _memberships(cte.condition):
+            if comp.operator not in (
+                ComparisonOperator.IN,
+                ComparisonOperator.NOT_IN,
+            ):
+                continue
+            left = comp.left
+            # Existence-set semijoin shape (both operands single same-grain
+            # concepts): a grain-key membership, not a literal value-list `in
+            # (1, 2)`. Only such a semijoin guarantees the left IS the grain key.
+            if not isinstance(left, BuildConcept) or len(left.grain.components) != 1:
+                continue
+            if not isinstance(comp.right, BuildConcept):
+                continue
+            try:
+                rendered = self._render_concept_sql(left, cte, raise_invalid=True)
+            except ValueError:
+                continue
+            if rendered and BASE_INVALID not in rendered:
+                return rendered
+        return None
+
     def render_concept_sql(
         self,
         c: BuildConcept,
@@ -969,6 +1022,10 @@ class BaseDialect:
                 cte,
                 raise_invalid=raise_invalid,
             )
+        if result is not None and BASE_INVALID in result:
+            redirect = self._grain_key_membership_redirect(c, cte)
+            if redirect is not None:
+                result = redirect
         if alias:
             return f"{result} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
         return result

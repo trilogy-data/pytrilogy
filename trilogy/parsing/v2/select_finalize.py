@@ -960,6 +960,21 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
 
     With no spec, a stray ``grouping()`` has no enclosing grouping set to anchor
     it (its grain would be unresolvable and recurse) — reject it here."""
+    # WHERE is evaluated before grouping, so `grouping()` there has no grouping
+    # set to anchor to; it would otherwise materialize as a standalone groupless
+    # GROUPING() CTE -> DuckDB "GROUPING statement cannot be used without groups".
+    # (HAVING grouping() is fine: it runs post-aggregation against a real group
+    # key, even without an explicit rollup spec.)
+    if select.where_clause is not None and _collect_standard_grouping_wrappers(
+        select.where_clause.conditional
+    ):
+        raise InvalidSyntaxException(
+            "grouping()/grouping_id() cannot be used in a WHERE clause: WHERE is "
+            "evaluated before grouping, so there is no grouping set to anchor to. "
+            "It is a post-aggregate level indicator - use it in SELECT / HAVING / "
+            "ORDER BY of a query carrying a `by rollup/cube/grouping sets` clause "
+            "(e.g. filter subtotal rows in HAVING: `having grouping(state) = 1`)."
+        )
     spec = select.grouping
     if spec is None:
         # No grouping to propagate: just reject a stray projected grouping().

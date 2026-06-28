@@ -239,6 +239,21 @@ def gen_rowset_node(
     # join canonical (`b.bid`). We can optimize this extra node away later.
     base_node = node
     _validate_cross_rowset_inner_joins(select, base_node, environment)
+    # A rowset output marked hidden (`--`) in the body select still backs a
+    # publicly-referenced rowset concept (its `BuildRowsetItem.content`). Leaving
+    # that body-local column hidden means the body QueryDatasource omits it from
+    # its source map, so the wrapper can't source the rowset output and re-derives
+    # it from lineage against the already-grouped parent (raw operands gone) →
+    # INVALID_REFERENCE_BUG. Un-hide any body local that backs a relevant rowset
+    # concept so it materializes in the body's grouping CTE.
+    referenced_body_locals = {
+        item.lineage.content.address
+        for item in rowset_relevant + additional_relevant
+        if isinstance(item.lineage, BuildRowsetItem)
+    }
+    if referenced_body_locals & base_node.hidden_concepts:
+        base_node.hidden_concepts = base_node.hidden_concepts - referenced_body_locals
+        base_node.rebuild_cache()
     node = RowsetNode(
         input_concepts=list(
             [

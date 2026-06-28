@@ -1,6 +1,9 @@
 # Bug: membership against a HAVING-aggregate rowset renders a CASE-over-aggregate that lands in GROUP BY → "GROUP BY clause cannot contain aggregates"
 
-**Status:** OPEN (found enriched eval q23, run `20260628-042638_enriched`). Do NOT fix yet.
+**Status:** CLOSED / FIXED 2026-06-28. `has_local_aggregate`'s FILTER branch in
+`trilogy/core/models/execute.py` now descends `c.lineage.where.rendered_concept_arguments`,
+gated on the CASE not being elided (`condition_implies` guard). Regression test
+`tests/test_membership_having_aggregate_case_groupby.py` (executes against DuckDB).
 **Severity:** high — `generate_sql` succeeds, execution raises a DuckDB BinderException. Trilogy
 emits syntactically invalid SQL (violates "never emit invalid SQL"). The agent had no query-side
 escape and burned iterations rewriting around it (3× the same error in the run).

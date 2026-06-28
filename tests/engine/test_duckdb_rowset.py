@@ -62,6 +62,62 @@ order by item_id asc;
     assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
 
 
+_HIDDEN_AGG_FIXTURE = """
+key sale_id int;
+property sale_id.cust_id int;
+property sale_id.quantity int;
+property sale_id.price float;
+
+datasource sales (
+    sale_id: sale_id,
+    cust_id: cust_id,
+    quantity: quantity,
+    price: price,
+)
+grain (sale_id)
+query '''
+select 1 as sale_id, 100 as cust_id, 2 as quantity, 5.0 as price union all
+select 2 as sale_id, 100 as cust_id, 3 as quantity, 4.0 as price union all
+select 3 as sale_id, 200 as cust_id, 1 as quantity, 9.0 as price
+''';
+"""
+
+
+def test_rowset_hidden_aggregate_output_materialized_when_referenced():
+    # The q23 shape: a rowset hides (`--`) an aggregate output, then a downstream
+    # select references it. The hidden marker dropped the aggregate from the
+    # rowset's grouping CTE entirely, so the downstream projection re-derived its
+    # inner expression (`quantity * price`) against the already-grouped parent
+    # whose raw operands are gone → `INVALID_REFERENCE_BUG * INVALID_REFERENCE_BUG`
+    # (a hard `generate_sql` failure). A hidden rowset output that backs a
+    # referenced rowset concept must still materialize at its grouping node.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_HIDDEN_AGG_FIXTURE)
+    sql = executor.generate_sql("""
+with customer_totals as
+where cust_id is not null
+select
+    cust_id as ct_cust_id,
+    --sum(quantity * price) as lifetime_total;
+
+select customer_totals.ct_cust_id, customer_totals.lifetime_total
+order by customer_totals.ct_cust_id asc;
+""")[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    results = executor.execute_text("""
+with customer_totals as
+where cust_id is not null
+select
+    cust_id as ct_cust_id,
+    --sum(quantity * price) as lifetime_total;
+
+select customer_totals.ct_cust_id, customer_totals.lifetime_total
+order by customer_totals.ct_cust_id asc;
+""")[0].fetchall()
+    # cust 100 = 2*5 + 3*4 = 22; cust 200 = 1*9 = 9
+    assert [tuple(r) for r in results] == [(100, 22.0), (200, 9.0)]
+
+
 _SELF_WELD_FIXTURE = """
 key sale_id int;
 property sale_id.wk int;
