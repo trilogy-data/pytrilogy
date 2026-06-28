@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 
 # Marker the agent's ``truncate_middle`` emits. We detect it in tool_result
@@ -226,13 +227,27 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
 
 
 def _round_cell(v: object) -> object:
-    """Round floating-point cells to absorb last-ULP noise from differing
-    arithmetic order (e.g. a computed percentage `a*100/b` vs `100*a/b`). The
-    reference SQL and the Trilogy-generated SQL can produce values that agree to
-    ~15 significant digits but differ in the final ULP, which an exact `repr`
-    comparison wrongly flags as a mismatch. Rounding to 9 decimals is far finer
-    than any genuine difference, so it cannot introduce false passes. Decimals
-    (money/quantity) are exact and left untouched."""
+    """Canonicalize numeric cells so values that are numerically equal compare
+    equal regardless of Python type. The reference SQL emits ``Decimal`` for
+    money/quantity columns while Trilogy-generated SQL often emits ``float``; an
+    exact ``repr`` comparison wrongly flagged equal values as mismatches (e.g.
+    ``19640463.31`` vs ``Decimal('19640463.31')``), silently failing correct
+    answers. We coerce ``int``/``float``/``Decimal`` to a float rounded to 9
+    decimals: that is finer than any genuine difference and below float's
+    exact-integer range (2**53) for any TPC-DS/H magnitude, so it cannot
+    introduce false passes, while also absorbing last-ULP noise from differing
+    arithmetic order (e.g. `a*100/b` vs `100*a/b`). Booleans, non-finite values,
+    out-of-range ints, and non-numeric cells are left untouched."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, Decimal):
+        if not v.is_finite():
+            return v
+        v = float(v)
+    if isinstance(v, int):
+        if abs(v) >= 2**53:
+            return v
+        v = float(v)
     if isinstance(v, float):
         if v != v or v in (float("inf"), float("-inf")):
             return v

@@ -9,7 +9,7 @@ AGENT_INFO_OUTPUT = r"""# Trilogy CLI - AI Agent Usage Guide
 
 ## Overview
 
-Trilogy is a semantic ETL and reporting tool with a streamlined
+Trilogy is a data access and transform language with streamlined
 SQL-like syntax. This CLI enables workspace management, script execution, testing,
 and data ingestion.
 
@@ -53,8 +53,8 @@ Execute a Trilogy script or all scripts in a directory.
 - `conn_args` (optional): Connection arguments passed to the database driver
 
 **Options:**
-- `--param KEY=VALUE`: Environment parameters (can be repeated)
-- `--parallelism N`, `-p N`: Max parallel workers for directory execution
+- `--param KEY=VALUE`: Script arameters (can be repeated)
+- `--parallelism N`, `-p N`: Max parallel workers when executing
 - `--config PATH`: Path to trilogy.toml configuration file
 - `--env KEY=VALUE`, `-e KEY=VALUE`: Set env vars (or pass an env file path)
 - `--import MODULE[:ALIAS]`: Prepend an `import` to an inline query. Repeatable.
@@ -81,14 +81,16 @@ echo "select item.id limit 5;" | trilogy run --import raw.item:item -
 
 ### trilogy explore <path>
 
-The canonical schema-discovery tool. Parses a `.preql` file and prints
+Canonical schema-discovery tool. Parses a `.preql` file and prints
 structured information.
 
-**Trilogy auto-resolves joins.** Trilogy automatically resolves
-joins from the model's imports automatically. An explore call
-will show all imported join models that are accessible as well.
+**Trilogy auto-resolves joins.** 
+An explore call
+will show all imported join models that are accessible as well;
+joins across those models are automatic and should not be included
+in queries.
 
-Prefer this over reading the raw model file (`trilogy file read`); richer and
+Prefer explore over reading the raw model file (`trilogy file read`); richer and
 more compact output.
 
 **Arguments:**
@@ -96,12 +98,12 @@ more compact output.
 
 **Options:**
 - `--show {groups|concepts|datasources|imports|all}`: Section to print
-  (default: `groups` — concepts grouped by namespace). `concepts`
+  (default: `groups` - concepts grouped by namespace). `concepts`
   gives the flat table; `all` adds datasources + imports.
 - `--purpose NAME`: Filter concepts by purpose (`key`, `property`, `metric`,
   `constant`, `rowset`). Repeatable: `--purpose key --purpose property`.
 - `--regex PATTERN`: Case-insensitive Python regex (re.search) over targets
-  addresses. Repeatable — a match is kept if ANY supplied pattern matches. 
+  addresses. Repeatable - a match is kept if ANY supplied pattern matches. 
   metacharacters work (`date\.(year|week_seq)`). Uses the Python `re` flavor
 - `--include-hidden`: Include concepts normally hidden from public view.
 - `--include-builtins`: Include internal/builtin concepts (hidden by default).
@@ -126,8 +128,9 @@ Run unit tests with mocked datasources (no connection needed):
 
 ### trilogy integration <input> [dialect] [conn_args...]
 
-Validate that every datasource is configured and connectable — does NOT execute
-code: `trilogy integration <file|dir> <dialect> <conn>`. Same
+Validate that every datasource is configured and connectable - executes
+against live DB, but does not run script: 
+`trilogy integration <file|dir> <dialect> <conn>`. Same
 `--param`/`-p`/`--config` options as `unit`.
 
 ---
@@ -157,12 +160,11 @@ as a file.
 
 ### trilogy file <subcommand>
 
-CRUD+ operations over pluggable storage backends. Currently supports the local
-filesystem only.
+CRUD+ operations over filesystems. Local filesystem only.
 
 **Subcommands:**
 - `list [path] [--recursive/-r] [--long/-l]`: List entries at PATH (default `.`).
-- `read <path>`: Write the file contents to stdout.
+- `read <path>`: Read the file contents to stdout.
 - `write <path> [--content/-c TEXT] [--escapes/-e] [--from-file SRC] [--from-url URL] [--no-create] [--quiet]`:
   Create or overwrite the file. If none of `--content`, `--from-file`, or
   `--from-url` is given, reads bytes from stdin. Use `--escapes` with

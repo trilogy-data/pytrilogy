@@ -135,6 +135,53 @@ select ss.item.text_id, count(ss.line_item) as cnt;
         engine.generate_sql(query)
 
 
+@pytest.mark.parametrize(
+    "filter_clause",
+    [
+        "having r.wk in (r.wk ? sales.date.year = 2001)",
+        "auto rel <- r.wk ? sales.date.year = 2001;\nselect r.wk, r.amt having r.wk in rel",
+    ],
+    ids=["inline", "named_auto"],
+)
+def test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error(
+    engine, filter_clause
+):
+    """Filtering a rowset output (`r.wk`) by a concept the rowset aggregated away
+    (`sales.date.year`) is genuinely unsatisfiable: the rowset is materialized at
+    grain `(wk, dow)`, so `date.year` is unreachable from its outputs. This used to
+    raise an opaque ``UnresolvableQueryException`` naming only the hashed internal
+    `_virt_filter_wk_<hash>` concept, which sent the agent on a 40-turn churn. The
+    resolver now names the offending condition concept, the rowset, and the fix."""
+    base = """
+import all_sales as sales;
+rowset r <- where sales.channel in ('WEB','CATALOG')
+select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
+"""
+    select = (
+        filter_clause
+        if filter_clause.startswith("auto")
+        else f"select r.wk, r.amt\n{filter_clause}"
+    )
+    with pytest.raises(UnresolvableQueryException) as exc:
+        engine.generate_sql(base + select + ";")
+    message = str(exc.value)
+    assert "sales.date.year" in message
+    assert "r.wk" in message
+    assert "_virt_filter" not in message
+
+
+def test_q02_filter_rowset_output_by_in_grain_concept_still_resolves(engine):
+    """Guard the diagnostic doesn't over-fire: filtering a rowset output by an
+    IN-grain rowset column (`r.dow`) is satisfiable and must still plan."""
+    query = """
+import all_sales as sales;
+rowset r <- where sales.channel in ('WEB','CATALOG')
+select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
+select r.wk, r.amt having r.wk in (r.wk ? r.dow = 0);
+"""
+    assert engine.generate_sql(query)
+
+
 def test_q64_nested_membership_single_source_agg_compiles(engine):
     """Guard the fix above doesn't over-bail: the same nested-membership shape with
     a SOURCEABLE inner filter (single-source aggregate vs a literal) still plans."""

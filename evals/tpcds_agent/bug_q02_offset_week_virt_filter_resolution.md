@@ -1,6 +1,14 @@
-# q02 — `_virt_filter` UnresolvableQueryException when filtering a rowset/aggregate output by an out-of-grain concept
+# q02 — `_virt_filter` resolution failures when filtering a rowset/aggregate output (UnresolvableQueryException AND, new, DisconnectedConceptsException)
 
 Run: `evals/tpcds_agent/results/20260628-174846` (q02 enriched leg, ~1.23M tokens / 40 turns, FAILED).
+
+> **UPDATE 2026-06-28 (run `evals/tpcds_agent/results/20260628-194910`, q02 ~779k tokens):** the same
+> `_virt_filter`-over-rowset weakness resurfaced in a **second manifestation** — a
+> `DisconnectedConceptsException` (not the `UnresolvableQueryException` documented below) when filtered
+> aggregates `sum(x ? cond)` are projected over **both sides of a scoped self-join of two rowsets**. See
+> the new section "Manifestation 2" at the bottom. (The same run also hit a *separate, unrelated*
+> false-ambiguity bug in rowset self-join leaf-shorthand — written up independently in
+> `bug_q02_self_join_ambiguous_week_side.md`, not part of this `_virt_filter` family.)
 
 ## Symptom
 
@@ -86,3 +94,65 @@ and expresses the 53-week offset with a window (`lead(amt, 53) over (order by sa
 ## Suggested direction (do NOT fix here)
 
 Detect, at resolution time, a FILTER concept whose condition row-arguments are unreachable from the filtered concept's grain (rowset/aggregate output) and raise an author-facing error naming the offending condition concept (e.g. "`s.date.year` is not available at the grain of rowset output `all_weekly_sales.wk`; add it to the rowset's select, or filter the base concept `s.date.week_seq` instead") rather than the opaque `_virt_filter_wk_<hash>` "could not resolve connections". An agent-info note that out-of-grain filters on rowset outputs are unsupported would also have short-circuited the churn.
+
+### FIXED 2026-06-28 (Manifestation 1 — clearer error only; the query stays unsatisfiable by design)
+
+`diagnose_unreachable_rowset_filter(output_concepts)` (`trilogy/core/processing/discovery_utility.py`) runs when discovery returns no node, just before the two generic emission points (`source_query_concepts` in `concept_strategies_v3.py` and the v4 dead-end in `query_processor.py`). It looks for a `Derivation.FILTER` output whose `BuildFilterItem.content` is a rowset output (`Derivation.ROWSET` / `BuildRowsetItem`) and whose `where.row_arguments` contains an address NOT in the rowset's `derived_concepts`. When found it raises:
+
+> Cannot filter rowset output `r.wk` by `sales.date.year`: the filter condition references concept(s) not available at the grain of rowset `r` (its outputs are {`r.amt`, `r.dow`, `r.wk`}). A rowset is materialized at its own grain, so a column it aggregated away cannot filter its outputs. Either add the condition concept(s) to the rowset `r`'s select, or filter the underlying base concept before/inside the rowset instead.
+
+Fires for both the inline (`having r.wk in (r.wk ? sales.date.year=2001)`) and named-`auto` forms. Because it only runs on an already-failing path (root is None), it's purely a message refiner — no behavior change. The in-grain case (`? r.dow=0`) and base-concept filters still resolve. **Manifestation 2 is unchanged**: its condition (`cur.dw`) IS in-grain, so the diagnosis correctly does not fire and it keeps its existing `DisconnectedConceptsException` named-subgraph message. Tests: `test_non_benchmark_queries.py::test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error` (+ `_by_in_grain_concept_still_resolves` guard).
+
+---
+
+## Manifestation 2 — DisconnectedConceptsException: filtered aggregate `sum(x ? cond)` over both sides of a scoped self-join of two rowsets (added 2026-06-28)
+
+Run `evals/tpcds_agent/results/20260628-194910`, `agent_log.q02.jsonl` writes at log lines 41 and 47
+→ errors at lines 45 and 51. The agent built two per-`(week_seq, day_of_week)` rowsets (`cur`, `nxt`),
+scoped-self-joined them on the 53-week offset (`cur.wk + 53 = nxt.wk`, `cur.dw = nxt.dw`), then pivoted
+each day-of-week by projecting **filtered aggregates over both joined sides**:
+
+```trilogy
+select
+    cur.wk as week_seq,
+    round(sum(cur.amt ? cur.dw = 0) / sum(nxt.amt ? nxt.dw = 0), 2) as sunday,
+    ...                               -- monday..saturday, same shape
+inner join cur.wk + 53 = nxt.wk
+inner join cur.dw = nxt.dw
+where cur.wk in weeks_in_2001;
+```
+
+```
+Resolution error: Discovery error: cannot merge all concepts into one connected query.
+The requested concepts split into 7 disconnected subgraphs:
+{cur.wk, nxt.amt}; {local._virt_filter_amt_<hash>}; ...   (one isolated _virt_filter_amt per day)
+```
+
+Each `sum(<rowset output> ? <cond>)` mints a `_virt_filter_amt_<hash>` FILTER concept that the resolver
+cannot co-source with the join graph `{cur.wk, nxt.amt}`, so every pivot column splits into its own
+isolated subgraph → `DisconnectedConceptsException` (NOT the `UnresolvableQueryException` of
+Manifestation 1).
+
+### Trigger matrix (`generate_sql`, eval workspace `raw.all_sales`)
+
+| variant | result |
+|---|---|
+| **single** rowset, projected `sum(cur.amt ? cur.dw = 0)` (no self-join) | **OK** (len ~1664) |
+| self-join, filtered aggregate over **cur only** (`nxt` leg pruned, unused) | **OK** (len ~1664) |
+| self-join, filtered aggregate over **both** sides `sum(cur.amt ? ...) / sum(nxt.amt ? ...)` | **DisconnectedConcepts** (`_virt_filter_amt`) |
+| self-join, **`case when`** pivot `sum(case when cur.dw=0 then cur.amt else null end)` (both sides) | **OK** (len ~1262) |
+
+Key: the failure needs the **scoped self-join + filtered aggregate over the SECOND (joined) side**.
+A single rowset filtered aggregate resolves fine (so the condition `cur.dw` being in-grain is not the
+issue here — unlike Manifestation 1, which is about an *out-of-grain* condition). The `case when`
+pivot is the working idiom and the agent eventually reached it.
+
+### Why same family
+
+Same `_virt_filter_*` minting machinery and the same underlying weakness — a FILTER concept over a
+rowset/aggregate output that the resolver cannot attach to the surrounding (here, join) graph. The
+surface differs: Manifestation 1 = filtered membership/aggregate in HAVING over a single rowset output
+by an out-of-grain base concept → `UnresolvableQueryException`; Manifestation 2 = filtered aggregate in
+the SELECT projection over the far side of a scoped self-join → `DisconnectedConceptsException`. Both
+would benefit from (a) the FILTER concept carrying the join/rowset lineage of its filtered operand, or
+(b) a clear author-facing error pointing at `case when` as the supported pivot idiom.

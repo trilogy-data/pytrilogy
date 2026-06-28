@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildFunction,
     BuildGrain,
     BuildRowsetItem,
@@ -924,6 +925,50 @@ def format_unresolved_concepts_error(
         "Discovery error: couldn't source all these concepts into one query; you "
         "may need a join or merge to relate them across models. " + detail
     )
+
+
+def diagnose_unreachable_rowset_filter(
+    output_concepts: List[BuildConcept],
+) -> str | None:
+    """When discovery has already failed, look for the specific unsatisfiable shape
+    behind an opaque ``_virt_filter`` error: a FILTER concept (``<col> ? <cond>``)
+    whose filtered operand is a rowset output and whose condition references a
+    concept the rowset aggregated away. A rowset is materialized at its own grain,
+    so a column not among its outputs is unreachable from those outputs — there is
+    no join path, and the generic resolver only reports the hashed virtual concept.
+    Return an author-facing message naming the offending condition concept, or
+    None when the shape isn't present."""
+    for c in output_concepts:
+        if c.derivation != Derivation.FILTER or not isinstance(
+            c.lineage, BuildFilterItem
+        ):
+            continue
+        content = c.lineage.content
+        if (
+            not isinstance(content, BuildConcept)
+            or content.derivation != Derivation.ROWSET
+            or not isinstance(content.lineage, BuildRowsetItem)
+        ):
+            continue
+        available = set(content.lineage.rowset.derived_concepts)
+        unreachable = [
+            a for a in c.lineage.where.row_arguments if a.address not in available
+        ]
+        if not unreachable:
+            continue
+        rowset_name = content.lineage.rowset.name
+        offending = ", ".join(f"`{a.address}`" for a in unique(unreachable, "address"))
+        outputs = ", ".join(f"`{a}`" for a in sorted(available))
+        return (
+            f"Cannot filter rowset output `{content.address}` by {offending}: the "
+            f"filter condition references concept(s) not available at the grain of "
+            f"rowset `{rowset_name}` (its outputs are {{{outputs}}}). A rowset is "
+            "materialized at its own grain, so a column it aggregated away cannot "
+            "filter its outputs. Either add the condition concept(s) to the "
+            f"rowset `{rowset_name}`'s select, or filter the underlying base concept "
+            "before/inside the rowset instead."
+        )
+    return None
 
 
 def is_pushdown_aliased_concept(c: BuildConcept) -> bool:

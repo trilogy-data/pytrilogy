@@ -410,6 +410,9 @@ def _enrich_rowset_node(
     # That arg must be sourced and the predicate applied even when every SELECT
     # optional is already in the rowset -- otherwise `remaining` is empty, we
     # return the bare node, and the filter is silently dropped (wrong results).
+    # Exclude ROWSET-derived operands: a predicate comparing against another
+    # rowset is `_apply_cross_rowset_where`'s job (already tried above); enriching
+    # toward it here would mis-route into rowset re-sourcing.
     cond_remaining: list[BuildConcept] = []
     if conditions:
         have = _producible_addresses(node, deep=False, include_pseudonyms=True)
@@ -417,7 +420,9 @@ def _enrich_rowset_node(
             [
                 environment.concepts[r.address]
                 for r in conditions.row_arguments
-                if r.address not in have and r.address in environment.concepts
+                if r.address not in have
+                and r.address in environment.concepts
+                and environment.concepts[r.address].derivation != Derivation.ROWSET
             ],
             "address",
         )

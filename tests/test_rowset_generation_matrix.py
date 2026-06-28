@@ -101,12 +101,73 @@ _MATRIX: list[tuple[str, str, object]] = [
         + "select item_name, rs.sq,\ninner join rs.k = item_id\norder by item_name;",
         [("apple", 15), ("banana", 10), ("cherry", 9)],
     ),
+    # --- HAVING (post-aggregate filtering inside the rowset body) ---
     (
         "single_having_post_aggregate",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
         + "select rs.k, rs.sq order by rs.k;",
         [(1, 15), (2, 10)],
+    ),
+    (
+        # HAVING references count(sale_id), which is NOT projected by the rowset
+        # -- it must be promoted to a hidden output and the filter applied.
+        # counts: item1=2, item2=2, item3=1 -> count>1 keeps items 1,2.
+        "having_on_nonprojected_aggregate",
+        SALES_MODEL
+        + "rowset rs <- select item_id as k, sum(s_qty) as sq having count(sale_id) > 1;"
+        + "select rs.k, rs.sq order by rs.k;",
+        [(1, 15), (2, 10)],
+    ),
+    (
+        # HAVING comparing two aggregates: sum > count*5.
+        # item1 15>10 yes; item2 10>10 no; item3 9>5 yes -> items 1,3.
+        "having_compare_two_aggregates",
+        SALES_MODEL
+        + "rowset rs <- select item_id as k, sum(s_qty) as sq"
+        + " having sum(s_qty) > count(sale_id) * 5;"
+        + "select rs.k, rs.sq order by rs.k;",
+        [(1, 15), (3, 9)],
+    ),
+    (
+        # HAVING inside the rowset, then enrich a base-keyed property via join.
+        # HAVING sum>9 keeps items 1,2 -> apple, banana.
+        "having_then_enrich_property",
+        SALES_MODEL
+        + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
+        + "select item_name, rs.sq,\ninner join rs.k = item_id\norder by item_name;",
+        [("apple", 15), ("banana", 10)],
+    ),
+    (
+        # HAVING (inside rowset) AND outer WHERE (on enriched dim) must BOTH apply.
+        # HAVING sum>9 keeps {1,2}; WHERE name!='banana' keeps {1,3}; AND -> {1}.
+        # item3 passes the WHERE but fails HAVING, proving HAVING isn't dropped;
+        # item2 passes HAVING but fails WHERE, proving WHERE isn't dropped.
+        "having_and_outer_where_compose",
+        SALES_MODEL
+        + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
+        + "where item_name != 'banana' select rs.k, rs.sq,\ninner join rs.k = item_id\norder by rs.k;",
+        [(1, 15)],
+    ),
+    (
+        # Membership into a HAVING-filtered rowset: outer keys kept only if in the
+        # rowset's post-HAVING key set. big.k (sum>9) = {1,2}; count sales there.
+        "membership_in_having_filtered_rowset",
+        SALES_MODEL
+        + "rowset big <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
+        + "where item_id in big.k\nselect item_id, count(sale_id) as cnt order by item_id;",
+        [(1, 2), (2, 2)],
+    ),
+    (
+        # Outer WHERE on a dimension reachable only via the declared join must
+        # filter the result -- regression: the enrich path returned the bare
+        # rowset (no join, no filter) when every SELECT optional was already in
+        # the rowset, silently dropping the WHERE. Only item 1 is 'apple'.
+        "outer_where_on_enriched_dim_filters",
+        SALES_MODEL
+        + "rowset rs <- select item_id as k, sum(s_qty) as sq;"
+        + "where item_name = 'apple' select rs.k, rs.sq,\ninner join rs.k = item_id\norder by rs.k;",
+        [(1, 15)],
     ),
     # --- membership: outer keys filtered against a rowset's key set ---
     (

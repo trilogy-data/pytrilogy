@@ -1,5 +1,36 @@
 # q78 — 3-way scoped LEFT join silently rendered as FULL JOIN (wrong anchor)
 
+> **FIXED 2026-06-28.** Carried the scoped-LEFT direction explicitly via a new
+> `scoped_left_anchor_keys` registry (query `left join` clauses only; environment
+> `merge ~` joins excluded so the deliberate multi-fact FULL is untouched). Join
+> resolution now anchors the join tree on the complete source providing an anchor
+> key: `_score_join_candidate` gives it +10 so it seeds the base AND is processed
+> first in the per-right dedup loop, making each optional source a directional
+> `LEFT_OUTER` instead of two co-anchored partials collapsing to FULL. q78 now
+> renders `FROM store LEFT OUTER JOIN web LEFT OUTER JOIN catalog`. Files:
+> `join_resolution.py`, `models/build.py`, `models/build_environment.py`. Test:
+> `tests/test_scoped_left_join_multi_partial_anchor.py`. Full suite green (4216 +
+> 343 modeling). Secondary union-output-shorthand friction (below) NOT addressed.
+>
+> **CONFIRMED REAL 2026-06-28** (independent re-verification). Re-ran the minimal
+> repro (store custs {1,2}, web {2,3}, catalog {2,4}; `left join store.k = web.k =
+> catalog.k`) with the anchor logic neutralized to reproduce pre-fix ordering:
+> rendered `web FULL JOIN catalog FULL JOIN coalesce(web,catalog)=store` and
+> returned `[(1,100,0),(2,200,25),(3,None,30),(4,None,40)]` — web-only cust 3 and
+> catalog-only cust 4 survived with NULL store columns. Post-fix HEAD renders
+> `store LEFT OUTER JOIN web LEFT OUTER JOIN catalog` and returns `[(1,100,0),
+> (2,200,25)]`. Genuine wrong-rows bug, not a guidance gap.
+>
+> **Null-safe red herring ruled out.** A considered hypothesis was that the NULL
+> store columns came from a left NULL key matching a right NULL via null-safe
+> (`IS NOT DISTINCT FROM`) equality — i.e. correct LEFT behavior, not a bug. Not
+> the cause: the join renders plain `=` (no `NULLABLE`/`distinct`; `get_modifiers`
+> only emits null-safe when BOTH keys are nullable, which these store keys are
+> not), store keys are non-null here, and the extra rows are web/catalog-only
+> populations a true LEFT anchor excludes outright. (A genuine left-NULL +
+> null-safe match is a separate, legitimate behavior — worth agent guidance — but
+> is unrelated to this defect.)
+
 Run: `evals/tpcds_agent/results/20260628-175514` (model deepseek-chat). q78 churned
 ~1.30M tokens (+145% vs 528k pre-fix) and FAILED (result differs from reference).
 
