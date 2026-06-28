@@ -68,3 +68,50 @@ def test_run_inline_query_with_division_not_treated_as_path(tmp_path: Path):
         )
     assert "does not exist" not in (result.output or ""), result.output
     assert result.exit_code == 0, (result.output, result.exception)
+
+
+def test_format_flag_position_independent():
+    """`--format json` is a group option; it must behave identically before
+    the subcommand and after it. The post-subcommand form previously fell
+    through to the DIALECT positional → 'json is not a valid dialect'."""
+    runner = CliRunner()
+    before = runner.invoke(
+        cli, ["--format", "json", "run", "select 1 -> x;", "duck_db"]
+    )
+    after = runner.invoke(cli, ["run", "select 1 -> x;", "duck_db", "--format", "json"])
+    for result in (before, after):
+        assert result.exit_code == 0, (result.output, result.exception)
+        assert "not a valid dialect" not in (result.output or "")
+        assert "{" in (result.output or "")  # json events, not rich tables
+
+
+def test_format_flag_after_subcommand_does_not_eat_dialect():
+    """With `--format json` placed after the dialect, the real dialect token
+    `duck_db` must still bind as the dialect (the value isn't mis-hoisted)."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["run", "select 1 -> x;", "duck_db", "--format", "json"]
+    )
+    assert result.exit_code == 0, (result.output, result.exception)
+    assert "not a valid dialect" not in (result.output or "")
+
+
+def test_debug_flag_position_independent(tmp_path: Path):
+    f = tmp_path / "q.preql"
+    f.write_text("select 1 -> x;", encoding="utf-8")
+    runner = CliRunner()
+    before = runner.invoke(cli, ["--debug", "run", str(f), "duck_db"])
+    after = runner.invoke(cli, ["run", str(f), "duck_db", "--debug"])
+    assert before.exit_code == 0, (before.output, before.exception)
+    assert after.exit_code == 0, (after.output, after.exception)
+
+
+def test_misplaced_format_value_as_dialect_gives_hint():
+    """A bare `json` in the dialect slot (no surviving --format token, e.g.
+    after `--`) yields the friendly hint, not a bare 'not a valid dialect'."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["run", "select 1 -> x;", "json"])
+    assert result.exit_code != 0
+    combined = result.output or ""
+    assert "not a valid dialect" in combined
+    assert "--format" in combined

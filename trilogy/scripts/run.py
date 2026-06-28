@@ -9,7 +9,7 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.dialect.enums import Dialects
-from trilogy.scripts.click_utils import validate_dialect
+from trilogy.scripts.click_utils import misplaced_group_value_hint, validate_dialect
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -185,9 +185,11 @@ def run(
             dialect_enum = Dialects(dialect)
         except ValueError as exc:
             valid = ", ".join(d.value for d in Dialects)
-            raise click.UsageError(
-                f"'{dialect}' is not a valid dialect. Choose one of: {valid}."
-            ) from exc
+            msg = f"'{dialect}' is not a valid dialect. Choose one of: {valid}."
+            hint = misplaced_group_value_hint(dialect, ctx, "run")
+            if hint:
+                msg = f"{msg}\n  {hint}"
+            raise click.UsageError(msg) from exc
     else:
         dialect_enum = None
     cli_params = CLIRuntimeParams(

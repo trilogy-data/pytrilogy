@@ -27,7 +27,7 @@ from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
-    diagnose_unreachable_rowset_filter,
+    describe_unresolvable_filter,
     disconnected_components,
     format_disconnected_subgraphs_error,
     get_loop_iteration_targets,
@@ -642,12 +642,6 @@ def source_query_concepts(
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>" for c in output_concepts
         ]
-        # A FILTER over a rowset output by an out-of-grain concept is genuinely
-        # unsatisfiable; surface the offending concept instead of the hashed
-        # _virt_filter address before falling through to the generic errors.
-        filter_diagnosis = diagnose_unreachable_rowset_filter(output_concepts)
-        if filter_diagnosis:
-            raise UnresolvableQueryException(filter_diagnosis)
         # Partition the full required set (outputs + filter row args, i.e. the
         # resolver's `completion_mandatory`) by true join reachability in the
         # reference graph. When it splits, name the groups and point at the
@@ -663,6 +657,12 @@ def source_query_concepts(
                 format_disconnected_subgraphs_error(groups, environment, g),
                 subgraphs=[[c.address for c in group] for group in groups],
             )
+        # Connected but unresolvable: if a FILTER concept is among the unbuildable
+        # outputs, describe it (the hashed _virt_filter address is otherwise opaque)
+        # rather than dumping internal addresses.
+        filter_message = describe_unresolvable_filter(output_concepts)
+        if filter_message:
+            raise UnresolvableQueryException(filter_message)
         raise UnresolvableQueryException(
             "Could not resolve connections for query with output"
             f" {error_strings} from current model."

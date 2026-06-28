@@ -146,12 +146,13 @@ select ss.item.text_id, count(ss.line_item) as cnt;
 def test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error(
     engine, filter_clause
 ):
-    """Filtering a rowset output (`r.wk`) by a concept the rowset aggregated away
-    (`sales.date.year`) is genuinely unsatisfiable: the rowset is materialized at
-    grain `(wk, dow)`, so `date.year` is unreachable from its outputs. This used to
-    raise an opaque ``UnresolvableQueryException`` naming only the hashed internal
+    """Filtering a rowset output (`r.wk`) by a concept not among the rowset's
+    outputs (`sales.date.year`, aggregated away) is unsatisfiable: the rowset is
+    materialized at grain `(wk, dow)`. This used to raise an opaque
+    ``UnresolvableQueryException`` naming only the hashed internal
     `_virt_filter_wk_<hash>` concept, which sent the agent on a 40-turn churn. The
-    resolver now names the offending condition concept, the rowset, and the fix."""
+    resolver now renders the real filter expression, names the offending condition
+    concept, lists the rowset's outputs, and suggests the remedies."""
     base = """
 import all_sales as sales;
 rowset r <- where sales.channel in ('WEB','CATALOG')
@@ -167,6 +168,25 @@ select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_s
     message = str(exc.value)
     assert "sales.date.year" in message
     assert "r.wk" in message
+    assert "_virt_filter" not in message
+
+
+def test_q02_filter_rowset_output_by_alias_base_name_clean_error(engine):
+    """The diagnostic must not over-claim: filtering by the BASE name of a concept
+    the rowset DID expose under an alias (`sales.date.day_of_week`, exposed as
+    `r.dow`) also fails to resolve, but the right fix is to reference `r.dow`, not
+    "add it to the grain". The message lists the rowset's outputs and offers
+    "reference one of its outputs" as an option rather than asserting out-of-grain."""
+    query = """
+import all_sales as sales;
+rowset r <- where sales.channel in ('WEB','CATALOG')
+select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
+select r.wk, r.amt having r.wk in (r.wk ? sales.date.day_of_week = 0);
+"""
+    with pytest.raises(UnresolvableQueryException) as exc:
+        engine.generate_sql(query)
+    message = str(exc.value)
+    assert "reference one of its outputs" in message
     assert "_virt_filter" not in message
 
 

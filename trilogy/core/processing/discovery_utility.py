@@ -927,47 +927,60 @@ def format_unresolved_concepts_error(
     )
 
 
-def diagnose_unreachable_rowset_filter(
+def describe_unresolvable_filter(
     output_concepts: List[BuildConcept],
 ) -> str | None:
-    """When discovery has already failed, look for the specific unsatisfiable shape
-    behind an opaque ``_virt_filter`` error: a FILTER concept (``<col> ? <cond>``)
-    whose filtered operand is a rowset output and whose condition references a
-    concept the rowset aggregated away. A rowset is materialized at its own grain,
-    so a column not among its outputs is unreachable from those outputs — there is
-    no join path, and the generic resolver only reports the hashed virtual concept.
-    Return an author-facing message naming the offending condition concept, or
-    None when the shape isn't present."""
+    """Translate an unresolved internal ``_virt_filter`` concept into an
+    author-facing message. The generic resolver error only prints the hashed
+    virtual address (e.g. ``_virt_filter_wk_8797...``), which is opaque. A FILTER
+    concept ``<value> ? <cond>`` that discovery couldn't build almost always means
+    its condition concepts can't be sourced alongside the value it filters — most
+    commonly because ``<value>`` is a rowset output and the condition references
+    something not among that rowset's columns (a rowset is materialized, so unlike a
+    re-grainable aggregate you can't navigate back into its derivation). Render the
+    real filter expression and the offending concepts; suggest remedies as options
+    (it could be out-of-grain, or merely referenced by the wrong name) rather than
+    asserting a single cause. Return None when no FILTER concept is in the failing
+    set, so the caller falls through to the generic connectivity error.
+
+    Runs only after the disconnected-subgraph check, so a genuine missing
+    join/merge still surfaces its named-subgraph message instead of this.
+    """
+
+    def names(args: List[BuildConcept]) -> str:
+        clean = [a for a in args if VIRTUAL_CONCEPT_PREFIX not in a.address]
+        return ", ".join(f"`{a.address}`" for a in unique(clean or args, "address"))
+
     for c in output_concepts:
         if c.derivation != Derivation.FILTER or not isinstance(
             c.lineage, BuildFilterItem
         ):
             continue
         content = c.lineage.content
-        if (
-            not isinstance(content, BuildConcept)
-            or content.derivation != Derivation.ROWSET
-            or not isinstance(content.lineage, BuildRowsetItem)
-        ):
+        cond_args = list(c.lineage.where.row_arguments)
+        if not isinstance(content, BuildConcept) or not cond_args:
             continue
-        available = set(content.lineage.rowset.derived_concepts)
-        unreachable = [
-            a for a in c.lineage.where.row_arguments if a.address not in available
-        ]
-        if not unreachable:
-            continue
-        rowset_name = content.lineage.rowset.name
-        offending = ", ".join(f"`{a.address}`" for a in unique(unreachable, "address"))
-        outputs = ", ".join(f"`{a}`" for a in sorted(available))
-        return (
-            f"Cannot filter rowset output `{content.address}` by {offending}: the "
-            f"filter condition references concept(s) not available at the grain of "
-            f"rowset `{rowset_name}` (its outputs are {{{outputs}}}). A rowset is "
-            "materialized at its own grain, so a column it aggregated away cannot "
-            "filter its outputs. Either add the condition concept(s) to the "
-            f"rowset `{rowset_name}`'s select, or filter the underlying base concept "
-            "before/inside the rowset instead."
+        head = (
+            f"Could not build filter `{content.address} ? <condition>`: its condition "
+            f"references {names(cond_args)}, which could not be sourced together with "
+            f"the value being filtered (`{content.address}`)."
         )
+        # Extra context when the filtered value is a rowset output: list what the
+        # rowset actually exposes and which condition concept(s) aren't among them.
+        if isinstance(content.lineage, BuildRowsetItem):
+            rs = content.lineage.rowset
+            outputs = set(rs.derived_concepts)
+            missing = [a for a in cond_args if a.address not in outputs]
+            if missing:
+                exposed = ", ".join(f"`{a}`" for a in sorted(outputs))
+                return (
+                    f"{head} Rowset `{rs.name}` exposes only {{{exposed}}}, and "
+                    f"{names(missing)} is not among them. A rowset is materialized at "
+                    "its own grain, so reference one of its outputs, add the condition "
+                    f"concept(s) to rowset `{rs.name}`'s select, or filter the "
+                    "underlying base concept before/inside the rowset instead."
+                )
+        return head
     return None
 
 

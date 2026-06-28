@@ -912,6 +912,41 @@ def _plot_per_query_overlay(
     )
 
 
+def _fmt_tokens(n: float) -> str:
+    if n >= 1e6:
+        return f"{n / 1e6:.2f}M"
+    if n >= 1e3:
+        return f"{n / 1e3:.0f}k"
+    return str(int(n))
+
+
+def _plot_top_token_queries(
+    ax, queries: list[dict], tokens_by_id: dict[int, float], n: int = 10
+) -> None:
+    """Horizontal bar chart of the N highest-token queries (cumulative
+    prompt+completion summed across turns), colored by final status. Token
+    sinks empirically flag framework issues driving agent churn, so surfacing
+    them is the fastest route from a run to the queries worth investigating."""
+    status_by_id = {q["id"]: q.get("status", "") for q in queries}
+    ranked = sorted(tokens_by_id.items(), key=lambda kv: kv[1], reverse=True)[:n]
+    ranked = ranked[::-1]  # largest at top once barh flips the axis
+    ys = list(range(len(ranked)))
+    vals = [t for _, t in ranked]
+    colors = [
+        STATUS_COLORS.get(status_by_id.get(qid, ""), "#888888") for qid, _ in ranked
+    ]
+    ax.barh(ys, vals, color=colors, edgecolor="black", zorder=2)
+    ax.set_yticks(ys)
+    ax.set_yticklabels([f"q{qid:02d}" for qid, _ in ranked])
+    top = max(vals) if vals else 1.0
+    for y, v in zip(ys, vals):
+        ax.text(v + top * 0.01, y, _fmt_tokens(v), va="center", fontsize=8)
+    ax.set_xlim(0, top * 1.12)
+    ax.set_xlabel("tokens (cumulative prompt + completion across turns)")
+    ax.set_title(f"Top {len(ranked)} queries by token count")
+    ax.grid(axis="x", alpha=0.3)
+
+
 def render(report: dict, events: list[dict], out_path: Path) -> Path:
     import matplotlib
 
@@ -920,9 +955,14 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
     from matplotlib.gridspec import GridSpec
 
     meta, summary = report["meta"], report["summary"]
-    fig = plt.figure(figsize=(14, 12))
+    fig = plt.figure(figsize=(14, 15))
     gs = GridSpec(
-        3, 2, figure=fig, height_ratios=[1.15, 1.15, 0.95], hspace=0.5, wspace=0.22
+        4,
+        2,
+        figure=fig,
+        height_ratios=[1.15, 1.15, 1.1, 0.95],
+        hspace=0.5,
+        wspace=0.22,
     )
     fig.suptitle(
         f"tpcds_agent eval — {meta['timestamp']}  |  "
@@ -944,7 +984,8 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
     )
     _plot_outcomes(fig.add_subplot(gs[1, 0]), summary["status_breakdown"])
     _plot_metrics(fig.add_subplot(gs[1, 1]), report, events)
-    _plot_tool_token_table(fig.add_subplot(gs[2, :]), outcomes, credits)
+    _plot_top_token_queries(fig.add_subplot(gs[2, :]), report["queries"], tokens_by_id)
+    _plot_tool_token_table(fig.add_subplot(gs[3, :]), outcomes, credits)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)

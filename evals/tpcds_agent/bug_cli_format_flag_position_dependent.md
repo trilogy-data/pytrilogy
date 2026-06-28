@@ -1,5 +1,8 @@
 # Handoff: `--format` (and other group options) are position-dependent → confusing "not a valid dialect" error
 
+> **RESOLVED 2026-06-28** via option (B) + (C). `LazyGroup.parse_args` now derives the hoistable set from the group's *declared* options (`derive_hoist_map`), so every `--` group option (incl. `--format`, and anything added later) is hoisted from either side of the subcommand — no more hand-maintained `_HOIST_FLAGS` drift. `_hoist_group_flags` also now respects a `--` separator (never hoists query-body payload). Backstop (C): `misplaced_group_value_hint` makes `run`'s "not a valid dialect" error name `--format` when the bad value is a group-option Choice (e.g. a bare `json` after `--`). Files: `trilogy/scripts/click_utils.py`, `trilogy/scripts/run.py`. Tests: `tests/scripts/test_click_utils.py`, `tests/scripts/test_run_cli.py`.
+
+
 ## Symptom
 An agent ran:
 ```

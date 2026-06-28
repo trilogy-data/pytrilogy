@@ -70,7 +70,7 @@ from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
 from trilogy.core.processing.discovery_utility import (
-    diagnose_unreachable_rowset_filter,
+    describe_unresolvable_filter,
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.nodes import (
@@ -672,11 +672,9 @@ def _get_query_node_v4(
         # than an opaque "could not resolve" dump. Caught by the up-front
         # pre-check for top-level selects; this also covers nested dead-ends.
         _raise_if_disconnected(build_statement, build_environment, graph, conditions)
-        filter_diagnosis = diagnose_unreachable_rowset_filter(
-            build_statement.output_components
-        )
-        if filter_diagnosis:
-            raise UnresolvableQueryException(filter_diagnosis)
+        filter_message = describe_unresolvable_filter(build_statement.output_components)
+        if filter_message:
+            raise UnresolvableQueryException(filter_message)
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>"
             for c in build_statement.output_components
