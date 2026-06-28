@@ -1,7 +1,7 @@
 query_id = "14"
 generator = "v3"
-gen_length = 6430
-preql_size = 1701
+gen_length = 6520
+preql_size = 1681
 comp_size = 4229
 generated_sql = """
 
@@ -14,7 +14,7 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
-     1  as \"sales_row_one\"
+     1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
 UNION ALL
@@ -25,7 +25,7 @@ SELECT
     \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
-     1  as \"sales_row_one\"
+     1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 UNION ALL
@@ -36,7 +36,7 @@ SELECT
     \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
-     1  as \"sales_row_one\"
+     1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 concerned as (
@@ -91,7 +91,7 @@ juicy as (
 SELECT
     \"cheerful\".\"sales_list_price\" as \"sales_list_price\",
     \"cheerful\".\"sales_quantity\" as \"sales_quantity\",
-    \"cheerful\".\"sales_row_one\" as \"sales_row_one\",
+    \"cheerful\".\"sales_sale_line_item_counter\" as \"sales_sale_line_item_counter\",
     \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
     \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
@@ -126,7 +126,7 @@ SELECT
     \"juicy\".\"sales_item_category_id\" as \"_l0_filtered_category_l0\",
     \"juicy\".\"sales_item_class_id\" as \"_l0_filtered_class_l0\",
     sum(\"juicy\".\"sales_quantity\" * \"juicy\".\"sales_list_price\") as \"_l0_filtered_bucket_sum_l0\",
-    sum(\"juicy\".\"sales_row_one\") as \"_l0_filtered_bucket_count_l0\"
+    sum(\"juicy\".\"sales_sale_line_item_counter\") as \"_l0_filtered_bucket_count_l0\"
 FROM
     \"juicy\"
 GROUP BY

@@ -11,7 +11,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildWindowItem,
 )
-from trilogy.core.models.execute import CTE, Join, UnionCTE
+from trilogy.core.models.execute import CTE, DatasourceCTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
     append_condition,
@@ -22,6 +22,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_value_implies,
     conditions_mutually_exclusive,
+    gather_windows,
     is_scalar_condition,
 )
 from trilogy.utility import unique
@@ -188,13 +189,14 @@ def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
     input (e.g. q59's ``year_flag``, which is the lead's order key and feeds the
     partition expression but is not itself a partition key) changes
     lead/lag/rank results, so it must stay above the window. Window virt-concepts
-    aren't in ``source_map``, so detection keys off output-column lineage.
+    aren't in ``source_map``, so detection keys off output-column lineage —
+    including windows nested inside arithmetic (``sum(x) / lead(sum(x), N)``),
+    whose column lineage is a function with the window one level down.
     """
+    materialized = _parent_materialized_addrs(cte)
     window_lineages: list[BuildWindowItem] = []
     for col in cte.output_columns:
-        lineage = col.lineage
-        if isinstance(lineage, BuildWindowItem):
-            window_lineages.append(lineage)
+        window_lineages.extend(gather_windows(col.lineage, materialized))
     if not window_lineages:
         return True
     if not isinstance(candidate, BuildConceptArgs):
@@ -499,21 +501,47 @@ class PredicatePushdown(OptimizationRule):
             if all([is_child_of(candidate, child.condition) for child in children]):
                 # Existence sources to promote onto the parent (computed before
                 # any mutation so the cycle guard can veto the whole push).
-                promotions: list[tuple[str, list[CTE | UnionCTE]]] = []
+                # The consumer may source an existence concept either from a
+                # regular dependency CTE or from an already-inlined datasource
+                # (datasource inlining runs before this pass) — propagate both
+                # so the pushed subselect has a real source to render against
+                # instead of a dangling CTE reference.
+                promotions: list[
+                    tuple[str, list[CTE | UnionCTE], list[DatasourceCTE]]
+                ] = []
                 for x in all_inputs.difference(row_conditions):
-                    if x not in parent_cte.source_map and x in cte.source_map:
-                        promotions.append(
-                            (
-                                x,
-                                [
-                                    parent
-                                    for parent in cte.dependency_nodes()
-                                    if parent.name in cte.source_map[x]
-                                ],
-                            )
+                    if x in parent_cte.source_map or x not in cte.source_map:
+                        continue
+                    source_names = cte.source_map[x]
+                    dep_sources = [
+                        parent
+                        for parent in cte.dependency_nodes()
+                        if parent.name in source_names
+                    ]
+                    inlined_sources = (
+                        [
+                            ip
+                            for s in source_names
+                            if (ip := cte.inlined_parent_for_source(s)) is not None
+                        ]
+                        if isinstance(cte, CTE)
+                        else []
+                    )
+                    resolved = {p.name for p in dep_sources} | {
+                        ip.datasource.safe_identifier for ip in inlined_sources
+                    }
+                    # A source name backed by neither a dependency CTE nor an
+                    # inlined datasource would render as a phantom table.
+                    if any(s not in resolved for s in source_names):
+                        self.log(
+                            f"Not pushing {candidate} into {parent_cte.name}: "
+                            f"existence source {x} ({source_names}) is not resolvable"
                         )
+                        return False
+                    promotions.append((x, dep_sources, inlined_sources))
                 if any(
-                    _promotion_would_cycle(parent_cte, srcs) for _, srcs in promotions
+                    _promotion_would_cycle(parent_cte, srcs)
+                    for _, srcs, _ in promotions
                 ):
                     self.log(
                         f"Not pushing {candidate} into {parent_cte.name}: existence "
@@ -535,10 +563,12 @@ class PredicatePushdown(OptimizationRule):
                 else:
                     parent_cte.condition = candidate
                 # promote up existence sources
-                for x, sources in promotions:
+                for x, sources, inlined_sources in promotions:
                     parent_cte.source_map[x] = cte.source_map[x]
                     for source in sources:
                         parent_cte.add_dependency(source)
+                    for inlined in inlined_sources:
+                        parent_cte.add_inlined_datasource(inlined)
                 return True
         self.debug(
             f"conditions {row_conditions} not subset of parent {parent_cte.name} parent has {materialized} "

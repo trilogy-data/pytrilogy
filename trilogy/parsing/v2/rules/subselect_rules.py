@@ -18,16 +18,23 @@ def expr_tuple(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Any:
-    from trilogy.core.models.core import DataType, TupleWrapper, arg_to_datatype
+    from trilogy.core.models.core import (
+        TupleWrapper,
+        arg_to_datatype,
+        reduce_tuple_element_datatypes,
+    )
 
+    # Elements need only be pairwise-compatible (numeric family, enum-over-base,
+    # trait-wrapped), not identically typed — for both literal value tuples and
+    # column-expression (composite-membership) tuples.
     args = hydrated_children(node, hydrate)
-    datatypes = set(arg_to_datatype(x) for x in args)
-    if len(datatypes) != 1:
-        raise fail(node, "Tuple must have same type for all elements")
-    dtype = datatypes.pop()
-    if not isinstance(dtype, DataType):
-        raise fail(node, f"Tuple element type {dtype} is not a base DataType")
-    return TupleWrapper(val=tuple(args), type=dtype)
+    try:
+        dtype, nullable = reduce_tuple_element_datatypes(
+            [arg_to_datatype(x) for x in args]
+        )
+    except ValueError as e:
+        raise fail(node, str(e))
+    return TupleWrapper(val=tuple(args), type=dtype, nullable=nullable)
 
 
 def subselect_comparison(
@@ -35,6 +42,7 @@ def subselect_comparison(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Any:
+    from trilogy.core.enums import FunctionType
     from trilogy.core.models.author import (
         AggregateWrapper,
         Concept,
@@ -45,6 +53,7 @@ def subselect_comparison(
         WindowItem,
     )
     from trilogy.core.models.core import ListWrapper, TupleWrapper
+    from trilogy.parsing.common import rewrite_composite_membership
     from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
 
     args = hydrated_children(node, hydrate)
@@ -64,7 +73,12 @@ def subselect_comparison(
         ),
     ):
         right = right.content
-    if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
+    left, right = rewrite_composite_membership(left, right, operator)
+    # a ROW_TUPLE operand is a composite-membership row constructor, not a
+    # function to be lifted into its own concept
+    if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)) and not (
+        isinstance(right, Function) and right.operator == FunctionType.ROW_TUPLE
+    ):
         right_concept = arbitrary_to_concept_v2(right, context=context)
         context.add_virtual_concept(right_concept, meta=core_meta(node.meta))
         right = right_concept.reference

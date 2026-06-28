@@ -1,7 +1,7 @@
 query_id = "80"
 generator = "v3"
 gen_length = 6982
-preql_size = 1211
+preql_size = 1145
 comp_size = 3674
 generated_sql = """
 
@@ -131,8 +131,8 @@ SELECT
 FROM
     \"vacuous\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"vacuous\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
     INNER JOIN \"cheerful\" on \"vacuous\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"vacuous\".\"sales_channel_dim_id\" = \"cheerful\".\"sales_channel_dim_id\"
+    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
 WHERE
     cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"cheerful\".\"sales_channel_dim_text_id\" is not null
 )

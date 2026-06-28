@@ -211,7 +211,9 @@ def is_scalar_condition(
     if isinstance(element, PARENTHETICAL_TYPES):
         return is_scalar_condition(element.content, materialized)
     elif isinstance(element, SUBSELECT_TYPES):
-        return True
+        # A membership is placed by its left operand (the set is sourced
+        # separately); an aggregate left (`grouping(a) in (0,1)`) must reach HAVING.
+        return is_scalar_condition(element.left, materialized)
     elif isinstance(element, COMPARISON_TYPES):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
@@ -251,47 +253,55 @@ def is_scalar_condition(
     return True
 
 
-def contains_window(element: Any, materialized: set[str] | None = None) -> bool:
-    """True when a window function (``rank/lag/... over (…)``) must be *emitted*
-    by this condition — i.e. a window appears in the tree and isn't already a
-    materialized column. A materialized window concept is just a plain column
-    reference here (computed by a parent CTE), so it stays in WHERE; an inline
-    one must lower to QUALIFY since SQL forbids windows in WHERE/HAVING."""
+def gather_windows(
+    element: Any, materialized: set[str] | None = None
+) -> list[BuildWindowItem]:
+    """Every window function (``rank/lag/... over (…)``) that must be *emitted*
+    by ``element`` — i.e. appears in the tree and isn't already a materialized
+    column. A materialized window concept is just a plain column reference
+    (computed by a parent CTE); an inline one must lower to QUALIFY since SQL
+    forbids windows in WHERE/HAVING. Windows nested inside arithmetic/case wrappers
+    (e.g. ``sum(x) / lead(sum(x), N) over (...)``) are reached too."""
     if isinstance(element, WINDOW_TYPES):
-        return True
+        return [element]
     elif isinstance(element, PARENTHETICAL_TYPES):
-        return contains_window(element.content, materialized)
+        return gather_windows(element.content, materialized)
     elif isinstance(element, COMPARISON_TYPES):
-        return contains_window(element.left, materialized) or contains_window(
+        return gather_windows(element.left, materialized) + gather_windows(
             element.right, materialized
         )
     elif isinstance(element, BETWEEN_TYPES):
         return (
-            contains_window(element.left, materialized)
-            or contains_window(element.low, materialized)
-            or contains_window(element.high, materialized)
+            gather_windows(element.left, materialized)
+            + gather_windows(element.low, materialized)
+            + gather_windows(element.high, materialized)
         )
     elif isinstance(element, CONDITIONAL_TYPES):
-        return contains_window(element.left, materialized) or contains_window(
+        return gather_windows(element.left, materialized) + gather_windows(
             element.right, materialized
         )
     elif isinstance(element, FUNCTION_TYPES):
-        return any(contains_window(x, materialized) for x in element.arguments)
+        return [w for x in element.arguments for w in gather_windows(x, materialized)]
     elif isinstance(element, AGGREGATE_TYPES):
-        return contains_window(element.function, materialized)
+        return gather_windows(element.function, materialized)
     elif isinstance(element, (BuildCaseWhen,)):
-        return contains_window(element.comparison, materialized) or contains_window(
+        return gather_windows(element.comparison, materialized) + gather_windows(
             element.expr, materialized
         )
     elif isinstance(element, (BuildCaseElse,)):
-        return contains_window(element.expr, materialized)
+        return gather_windows(element.expr, materialized)
     elif isinstance(element, CONCEPT_TYPES):
         if materialized and element.address in materialized:
-            return False
+            return []
         if element.lineage is not None:
-            return contains_window(element.lineage, materialized)
-        return False
-    return False
+            return gather_windows(element.lineage, materialized)
+        return []
+    return []
+
+
+def contains_window(element: Any, materialized: set[str] | None = None) -> bool:
+    """True when ``element`` must emit a window function. See ``gather_windows``."""
+    return bool(gather_windows(element, materialized))
 
 
 def reduce_expression(

@@ -235,14 +235,6 @@ def aggregate_functions(
 ) -> AggregateWrapper:
     args = hydrated_children(node, hydrate)
     if len(args) == 2:
-        if isinstance(args[1], AggregateGrouping):
-            grouping = args[1]
-            return AggregateWrapper(
-                function=args[0],
-                by=grouping.by,
-                grouping=grouping.mode,
-                grouping_sets=grouping.grouping_sets,
-            )
         return AggregateWrapper(function=args[0], by=args[1])
     return AggregateWrapper(function=args[0])
 
@@ -256,26 +248,50 @@ def aggregate_over(
     return args[0]
 
 
-def aggregate_rollup(
+def _materialize_grouping_keys(
+    items: list[Any], context: RuleContext, node: SyntaxNode
+) -> list[Any]:
+    """Resolve a parsed expression list of grouping keys to concept refs,
+    promoting non-concept entries (casts, arithmetic, function calls) to virtual
+    concepts — mirrors ``aggregate_paren_by`` so `by rollup (substring(x,1,2))`
+    works the same as a paren `by`."""
+    refs: list[Any] = []
+    for item in items:
+        if isinstance(item, ConceptRef):
+            refs.append(context.concepts.require(item.address).reference)
+        elif isinstance(item, Concept):
+            refs.append(item.reference)
+        elif isinstance(item, str):
+            refs.append(context.concepts.require(item).reference)
+        else:
+            virt = arbitrary_to_concept_v2(item, context=context)
+            context.add_virtual_concept(virt, meta=core_meta(node.meta))
+            refs.append(virt.reference)
+    return refs
+
+
+def select_rollup(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
     args = hydrated_children(node, hydrate)
+    keys = args[0] if args else []
     return AggregateGrouping(
         mode=AggregateGroupingMode.ROLLUP,
-        by=args[0] if args else [],
+        by=_materialize_grouping_keys(keys, context, node),
     )
 
 
-def aggregate_cube(
+def select_cube(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
+    keys = hydrated_children(node, hydrate)[0]
     return AggregateGrouping(
         mode=AggregateGroupingMode.CUBE,
-        by=hydrated_children(node, hydrate)[0],
+        by=_materialize_grouping_keys(keys, context, node),
     )
 
 
@@ -290,16 +306,19 @@ def grouping_set(
     return args[0]
 
 
-def aggregate_grouping_sets(
+def select_grouping_sets(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
-    grouping_sets = hydrated_children(node, hydrate)
+    raw_sets = hydrated_children(node, hydrate)
+    grouping_sets = [
+        _materialize_grouping_keys(group, context, node) for group in raw_sets
+    ]
     by: list[Any] = []
     seen: set[str] = set()
-    for grouping_set_items in grouping_sets:
-        for item in grouping_set_items:
+    for group in grouping_sets:
+        for item in group:
             if item.address in seen:
                 continue
             seen.add(item.address)
@@ -309,6 +328,14 @@ def aggregate_grouping_sets(
         by=by,
         grouping_sets=grouping_sets,
     )
+
+
+def select_grouping(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> AggregateGrouping:
+    return hydrated_children(node, hydrate)[0]
 
 
 def aggregate_all(
@@ -1020,12 +1047,13 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.AGGREGATE_FUNCTIONS: aggregate_functions,
     SyntaxNodeKind.AGGREGATE_OVER: aggregate_over,
     SyntaxNodeKind.AGGREGATE_ALL: aggregate_all,
-    SyntaxNodeKind.AGGREGATE_ROLLUP: aggregate_rollup,
-    SyntaxNodeKind.AGGREGATE_CUBE: aggregate_cube,
-    SyntaxNodeKind.AGGREGATE_GROUPING_SETS: aggregate_grouping_sets,
     SyntaxNodeKind.GROUPING_SET: grouping_set,
     SyntaxNodeKind.AGGREGATE_BY: aggregate_by,
     SyntaxNodeKind.AGGREGATE_PAREN_BY: aggregate_paren_by,
+    SyntaxNodeKind.SELECT_GROUPING: select_grouping,
+    SyntaxNodeKind.SELECT_ROLLUP: select_rollup,
+    SyntaxNodeKind.SELECT_CUBE: select_cube,
+    SyntaxNodeKind.SELECT_GROUPING_SETS: select_grouping_sets,
     SyntaxNodeKind.FGROUP: fgroup,
     SyntaxNodeKind.OVER_LIST: over_list,
     SyntaxNodeKind.OVER_COMPONENT: over_component,

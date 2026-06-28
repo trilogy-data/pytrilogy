@@ -77,8 +77,9 @@ def test_inline_aggregate_in_order_by_raises():
     engine.execute_text(_ROLLUP_GROUPING_MODEL)
     text = """
 rowset overall <- select avg(amount) as overall_avg;
-select brand, class, sum(amount) by rollup brand, class as total, --overall.overall_avg
+select brand, class, sum(amount) as total, --overall.overall_avg
 having total > overall.overall_avg
+by rollup (brand, class)
 order by grouping(brand) desc, grouping(class) desc, brand nulls first;
 """
     with raises(Exception, match="ORDER BY contains aggregate"):
@@ -98,11 +99,12 @@ rowset overall <- select avg(amount) as overall_avg;
 select
     brand,
     class,
-    sum(amount) by rollup brand, class as total,
+    sum(amount) as total,
     --overall.overall_avg,
     --grouping(brand) as gb,
     --grouping(class) as gc
 having total > overall.overall_avg
+by rollup (brand, class)
 order by gb desc, gc desc, brand nulls first, class nulls first;
 """
     sql = engine.generate_sql(text)[-1]
@@ -132,11 +134,12 @@ rowset overall <- select avg(amount) as overall_avg;
 select
     brand as brand_type,
     class,
-    sum(amount) by rollup brand, class as total,
+    sum(amount) as total,
     --overall.overall_avg,
     --grouping(brand) as gb,
     --grouping(class) as gc
 having total > overall.overall_avg
+by rollup (brand, class)
 order by
     grouping(brand) asc, brand asc nulls last,
     grouping(class) asc, class asc nulls last;
@@ -169,6 +172,188 @@ order by sum(amount) desc;
     assert [tuple(r) for r in results] == [("B", 130.0), ("A", 30.0)]
 
 
+def test_grouping_without_rollup_raises_clean_error():
+    """`grouping()` is meaningless without an enclosing grouping set. Reached from
+    the SELECT with no `by rollup`/cube/grouping-sets aggregate to anchor it — as
+    a named `auto` concept (V1) or inline in a case (V3) — the grouping wrapper's
+    concept gets an unanchorable abstract grain that recurses in build. Reject it
+    with a clean author-time error instead of stack-overflowing. q05."""
+    for select in (
+        # V1: grouping() captured in a named derived concept, no rollup.
+        """
+auto ct <- case when grouping(brand) = 1 then 'tot' else brand end;
+select ct, sum(amount) as g;
+""",
+        # V3: grouping() inline in a select case, no rollup.
+        """
+select case when grouping(brand) = 1 then 'tot' else brand end as ct,
+    sum(amount) as g;
+""",
+    ):
+        engine = Dialects.DUCK_DB.default_executor()
+        engine.execute_text(_ROLLUP_GROUPING_MODEL)
+        with raises(InvalidSyntaxException, match="grouping"):
+            engine.generate_sql(select)
+
+
+def test_grouping_in_named_concept_with_rollup_builds():
+    """The valid form of the above: a named `auto` concept wrapping `grouping()`
+    builds and runs as long as a `by rollup` aggregate in the select anchors it."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+auto ct <- case when grouping(brand) = 1 then 'tot' else brand end;
+select ct, sum(amount) as g
+by rollup (brand)
+order by ct desc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("tot", 160.0),
+        ("B", 130.0),
+        ("A", 30.0),
+    ]
+
+
+def test_grouping_over_rollup_wrapped_in_expression_colocates():
+    """A `by rollup` aggregate wrapped in an expression (`coalesce(... , 0)`, the
+    canonical zero-filled-rollup idiom) still anchors `grouping()`. The rollup
+    spec must be found by walking into the item lineage, not only when the item
+    is itself the bare AggregateWrapper — otherwise grouping() is falsely
+    rejected as 'requires a by rollup'. q05."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select
+    brand,
+    coalesce(sum(amount), 0) as m,
+    grouping(brand) as g
+having m > 0
+by rollup (brand)
+order by g, brand;
+"""
+    sql = engine.generate_sql(text)[-1]
+    # grouping() colocates with the rollup CTE, never re-emitted groupless.
+    assert "grouping(" not in sql.split("ORDER BY")[-1], sql
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("A", 30.0, 0),
+        ("B", 130.0, 0),
+        (None, 160.0, 1),
+    ]
+
+
+def test_grouping_over_rollup_macro_wrapped_in_expression_colocates():
+    """The rollup may reach the projection through BOTH a `def` macro expansion
+    and an expression wrapper — `coalesce(@rollup_agg(x), 0)`. The rollup
+    AggregateWrapper then sits inside a FunctionCallWrapper (the macro call)
+    inside the coalesce Function, so the spec walk must descend through the macro
+    wrapper too; otherwise grouping() is falsely rejected as 'requires a by
+    rollup'. q05 (def rollup_agg + coalesce-wrapped call)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+def rollup_agg(m) -> sum(m);
+select
+    brand,
+    coalesce(@rollup_agg(amount), 0) as m,
+    grouping(brand) as g
+having m > 0
+by rollup (brand)
+order by g, brand;
+"""
+    sql = engine.generate_sql(text)[-1]
+    assert "grouping(" not in sql.split("ORDER BY")[-1], sql
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("A", 30.0, 0),
+        ("B", 130.0, 0),
+        (None, 160.0, 1),
+    ]
+
+
+def test_grouping_over_inline_expression_key_raises_clean_error():
+    """`grouping(<inline expression>)` over a `by rollup (<same expression>)` key
+    produced invalid SQL: the rollup key is materialized as a column and grouped
+    by position, but `grouping(coalesce(...))` re-inlines the expression and never
+    matches that column, so DuckDB rejected it with a raw BinderException
+    ("GROUPING child must be a grouping column"). Reject it at author time with
+    guidance to name the expression instead. The valid named form is covered by
+    `test_grouping_in_named_concept_with_rollup_builds`. q05."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select
+    case when grouping(coalesce(brand, class)) = 1 then 'tot'
+         else coalesce(brand, class) end as ch,
+    sum(amount) as total
+by rollup (coalesce(brand, class));
+"""
+    with raises(InvalidSyntaxException, match="concept .column. reference"):
+        engine.generate_sql(text)
+
+
+def test_grouping_over_aliased_rollup_key_builds():
+    """`grouping(<source>)` over a `by rollup (<alias>)` whose key is that source
+    under an alias (`brand as b` + `by rollup (b)`) produced invalid SQL: the
+    rollup groups by the materialized alias column `b`, but `grouping(brand)`
+    rendered against the source column `brand`, which is not a GROUP BY key →
+    BinderException ("GROUPING child must be a grouping column"). Normalize the
+    grouping() argument to the rollup-key alias so it lines up with the GROUP BY.
+    q14 (channel/brand/class/category aliased rollup keys)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select
+    brand as b,
+    sum(amount) as total,
+    grouping(brand) as g
+by rollup (b)
+order by g, b;
+"""
+    sql = engine.generate_sql(text)[-1]
+    # grouping() must reference the aliased rollup-key column, not the source.
+    assert 'grouping("brand")' not in sql.replace('"quizzical".', "")
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("A", 30.0, 0),
+        ("B", 130.0, 0),
+        (None, 160.0, 1),
+    ]
+
+
+def test_grouping_over_named_expression_key_builds():
+    """The fix for the above: name the expression as a concept and use it in both
+    the rollup key and `grouping()`. The same intent now compiles and runs."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+auto ch <- coalesce(brand, class);
+select
+    case when grouping(ch) = 1 then 'tot' else ch end as label,
+    sum(amount) as total
+by rollup (ch)
+order by total asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [
+        ("A", 30.0),
+        ("B", 130.0),
+        ("tot", 160.0),
+    ]
+
+
+def test_null_constant_renders_inline_not_bound():
+    """A `null` literal in a projection must render inline as SQL `null`, not as a
+    bind parameter — the constant's value is `MagicConstants.NULL`, which the DB
+    driver can't transform into a bound value. q05 subtotal/grand-total rows."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    sql = engine.generate_sql("select 1 as x, null as y;")[-1]
+    assert ":y" not in sql
+    results = engine.execute_text("select 1 as x, null as y;")[-1].fetchall()
+    assert [tuple(r) for r in results] == [(1, None)]
+
+
 _COMPOSITE_ROLLUP_MODEL = """
 key chan int;
 key oid int;
@@ -185,10 +370,10 @@ query '''select 1 as chan, 1 as oid, 'p' as txt, 10.0 as amt, 5.0 as prof, 1.0 a
 
 
 def test_composite_rollup_aggregate_keeps_group_by():
-    """A composite rollup aggregate (`sum(a) - sum(b) by rollup k`) beside a
-    second rollup aggregate and CASE/concat-derived projections of the rollup
-    keys used to emit invalid SQL — a group node with the (unbound) `sum(prof)`
-    but no GROUP BY (DuckDB: 'column ... must appear in the GROUP BY').
+    """A composite rollup aggregate (`sum(a) - sum(b)`) beside a second rollup
+    aggregate and CASE/concat-derived projections of the rollup keys used to
+    emit invalid SQL — a group node with no GROUP BY (DuckDB: 'column ... must
+    appear in the GROUP BY').
 
     The fix has three parts: a ROLLUP marks its grouping-key dims (and dims
     derived from them, e.g. `concat('x', txt)`) nullable so the assembly join is
@@ -196,31 +381,32 @@ def test_composite_rollup_aggregate_keeps_group_by():
     downgraded to `=` past the rollup; and the rollup group node renders its
     GROUP BY even when a sibling rollup is a passthrough.
 
-    `sum(prof)` is unbound (no `by`), so it groups at leaf grain — at the rollup
-    subtotal/grand-total rows it has no leaf rows to sum, so `profit` is NULL
-    there (correct for the query as written; bind it `by rollup` for rolled-up
-    values). q80."""
+    Under the SELECT-level `by rollup (...)` clause BOTH operands of the
+    composite measure share the one grouping pass, so `profit` now rolls up
+    correctly at the subtotal/grand-total rows (this used to be NULL there when
+    rollup was attached per-aggregate and `sum(prof)` stayed at leaf grain). q80."""
     engine = Dialects.DUCK_DB.default_executor(environment=Environment())
     engine.parse_text(_COMPOSITE_ROLLUP_MODEL)
     text = """
 select
   case when chan = 1 then 'aa' else 'bb' end as channel,
   concat('x', txt) as outlet,
-  sum(amt) by rollup chan, txt as sales,
-  sum(prof) - sum(coalesce(loss, 0)) by rollup chan, txt as profit
+  sum(amt) as sales,
+  sum(prof) - sum(coalesce(loss, 0)) as profit
+by rollup (chan, txt)
 order by channel asc, sales asc, profit asc, outlet asc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
     # ROLLUP(chan, txt) preserves leaves + per-channel subtotals + grand total.
-    # sales rolls up (10/20 leaves -> 30/30 subtotals -> 60 grand). profit is
-    # correct at leaves (4/6/6) and NULL at subtotals (unbound sum, leaf grain).
+    # sales rolls up (10/20 leaves -> 30/30 subtotals -> 60 grand). profit now
+    # rolls up too: leaves 4/6/6, subtotals 10/6, grand 16.
     assert [tuple(r) for r in results] == [
         ("aa", "xp", 10.0, 4.0),
         ("aa", "xq", 20.0, 6.0),
-        ("aa", None, 30.0, None),
+        ("aa", None, 30.0, 10.0),
+        ("bb", None, 30.0, 6.0),
         ("bb", "xp", 30.0, 6.0),
-        ("bb", None, 30.0, None),
-        ("bb", None, 60.0, None),
+        ("bb", None, 60.0, 16.0),
     ]
 
 
@@ -396,10 +582,11 @@ datasource t (id, g1, g2, v)
            union all select 2,'a','y',20
            union all select 3,'b','x',5''';
 
-auto total <- sum(v) by rollup g1, g2;
+auto total <- sum(v);
 auto rnk   <- rank(g1) over (partition by g1 order by total desc);
 
 select g1 as r_g1, g2 as r_g2, total, rnk
+by rollup (g1, g2)
 order by total desc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
@@ -437,13 +624,14 @@ datasource t (id, g1, g2, v)
            union all select 2,'a','y',20
            union all select 3,'b','x',5''';
 
-auto total <- sum(v) by rollup g1, g2;
-auto gg1 <- grouping(g1) by rollup g1, g2;
-auto gg2 <- grouping(g2) by rollup g1, g2;
+auto total <- sum(v);
+auto gg1 <- grouping(g1);
+auto gg2 <- grouping(g2);
 auto level <- gg1 + gg2;
 auto rnk <- rank(g1) over (partition by level order by total desc);
 
 select g1 as r_g1, g2 as r_g2, total, level, rnk
+by rollup (g1, g2)
 order by level desc nulls first, total desc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
@@ -2240,10 +2428,12 @@ query '''
 ''';
 """)
 
-    rollup_sql = executor.generate_sql("select a, b, sum(x) by rollup a, b as sx;")[-1]
-    cube_sql = executor.generate_sql("select a, b, sum(x) by cube a, b as sx;")[-1]
+    rollup_sql = executor.generate_sql("select a, b, sum(x) as sx by rollup (a, b);")[
+        -1
+    ]
+    cube_sql = executor.generate_sql("select a, b, sum(x) as sx by cube (a, b);")[-1]
     grouping_sets_sql = executor.generate_sql(
-        "select a, b, sum(x) by grouping sets (a, b), (a), () as sx;"
+        "select a, b, sum(x) as sx by grouping sets ((a, b), (a), ());"
     )[-1]
 
     assert "GROUP BY" in rollup_sql
@@ -2277,9 +2467,10 @@ query '''
 SELECT
     a,
     b,
-    sum(x) by rollup a, b as sx,
-    grouping(a) by rollup a, b as ga,
-    grouping_id(a, b) by rollup a, b as gid
+    sum(x) as sx,
+    grouping(a) as ga,
+    grouping_id(a, b) as gid
+by rollup (a, b)
 ORDER BY
     gid asc,
     a asc nulls first,
@@ -2319,12 +2510,13 @@ query '''
 # aggregate referenced by name (the TPC-DS-native idiom). No explicit `by rollup`
 # on the grouping_id itself.
 _GROUPING_ID_CASE_QUERY = """
-auto total <- sum(x) by rollup a, b;
+auto total <- sum(x);
 auto lvl <- case
     when grouping_id(a, b) = 3 then 2
     when grouping_id(a, b) = 1 then 1
     else 0 end;
 select a, b, total, lvl
+by rollup (a, b)
 order by lvl asc, a asc nulls first, b asc nulls first;
 """
 
@@ -2361,6 +2553,122 @@ def test_grouping_id_in_case_over_named_rollup_executes():
         (1, None, 30, 1),
         (None, None, 30, 2),
     ]
+
+
+_GROUPING_HAVING_MODEL = """
+key a int;
+key b int?;
+key c int?;
+property <a, b, c>.x int;
+datasource test_data (
+    a: a,
+    b: b,
+    c: c,
+    x: x
+)
+grain (a, b, c)
+query '''
+    select 1 as a, 1 as b, 1 as c, 10 as x
+    union all
+    select 1 as a, 2 as b, 1 as c, 20 as x
+    union all
+    select 2 as a, 1 as b, 2 as c, 30 as x
+''';
+"""
+
+# `grouping()` summed in HAVING (to keep only certain rollup levels) together with
+# a rowset-membership filter (`a in qualifying.a`) that forces an extra filter/join
+# CTE. The membership filter strands the rollup behind a downstream CTE and the
+# grouping() in HAVING renders against that groupless CTE.
+_GROUPING_HAVING_QUERY = """
+with qualifying as
+select a where x > 5;
+auto total <- sum(x);
+auto overall_avg <- avg(x) by *;
+select
+    a, b, c,
+    total,
+    --overall_avg
+where a in qualifying.a
+having total > overall_avg
+  and (grouping(a) + grouping(b) + grouping(c)) in (0, 1, 4)
+by rollup (a, b, c)
+order by a asc, b asc nulls last, c asc nulls last;
+"""
+
+
+def test_grouping_sum_in_having_with_membership_filter_colocates():
+    """Bug: a `grouping()` sum in HAVING that restricts rollup levels, when a
+    rowset-membership filter pushes the aggregate behind an extra CTE, stranded
+    the `grouping(col)` in that groupless join/filter CTE — DuckDB rejects it
+    ('GROUPING function is not supported here'). The grouping wrappers must align
+    with the rollup spec so they co-locate in the ROLLUP CTE."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_HAVING_MODEL)
+    sql = executor.generate_sql(_GROUPING_HAVING_QUERY)[-1]
+    assert "ROLLUP" in sql
+    # grouping() must not render against the outer groupless filter/join CTE.
+    results = list(executor.execute_raw_sql(sql).fetchall())
+    assert [tuple(r) for r in results] == [
+        (2, 1, 2, 30),
+        (2, 1, None, 30),
+    ]
+
+
+def test_grouping_membership_in_having_routes_to_having_not_where():
+    """Bug: a `grouping()` membership (`grouping(a) in (0,1)`) in HAVING was
+    classified scalar and rendered in the pre-aggregation WHERE (DuckDB rejects
+    `grouping()` there), while `grouping(a) = 0` correctly went to HAVING. A
+    membership must be placed by its left operand, so an aggregate/grouping left
+    reaches HAVING."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    query = """
+auto total <- sum(x);
+select a, b, total
+having (grouping(a) + grouping(b)) in (0, 1)
+by rollup (a, b)
+order by a asc, b asc nulls last;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "ROLLUP" in sql
+    assert "HAVING" in sql
+    assert "WHERE" not in sql
+    results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
+    assert results == [(1, 1, 10), (1, 2, 20), (1, None, 30)]
+
+
+def test_rollup_macro_in_having_vs_scalar_colocates():
+    """A rollup aggregate filtered in HAVING against a `by *` scalar
+    (`having total > overall_avg`). Under the SELECT-level `by rollup (...)`
+    clause there is no per-aggregate rollup, so HAVING references the projected
+    rollup alias `total` (which carries the rollup grain); that comparison must
+    colocate in the ROLLUP CTE and not emit the `INVALID_REFERENCE_BUG` sentinel.
+    NOTE: the old q14 form filtered on a SEPARATE `def` macro carrying its own
+    `by rollup` — that per-aggregate rollup no longer exists; a fresh HAVING
+    aggregate can't independently inherit the clause, so we filter on the alias."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_GROUPING_ID_CASE_MODEL)
+    query = """
+auto overall_avg <- avg(x) by *;
+select a, b,
+    sum(x) as total,
+    --overall_avg
+having total > overall_avg
+by rollup (a, b)
+order by a asc nulls first, b asc nulls first;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    assert "ROLLUP" in sql
+    results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
+    assert results == [(None, None, 30), (1, None, 30), (1, 2, 20)]
 
 
 def test_duckdb_rollup_passthrough_outer_no_regroup():
@@ -2424,13 +2732,14 @@ rowset top_states <- where month_seq between 1200 and 1300
 
 where month_seq between 1200 and 1300 and state in top_states.ts_state
 SELECT
-    sum(profit) by rollup state, county as total_sum,
+    sum(profit) as total_sum,
     state as s_state,
     county as s_county,
-    grouping(state) + grouping(county) by rollup state, county as lochierarchy,
+    grouping(state) + grouping(county) as lochierarchy,
     rank(state, county) over (partition by lochierarchy,
-        case when grouping(county) by rollup state, county = 0 then state else null end
+        case when grouping(county) = 0 then state else null end
         order by total_sum desc) as rank_within_parent,
+by rollup (state, county)
 ORDER BY lochierarchy desc nulls first;
 """)[-1]
 

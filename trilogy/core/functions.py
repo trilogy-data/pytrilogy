@@ -87,11 +87,19 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
     # Bucket by base family so that traits + parameterized variants of the
     # same family (e.g. numeric(15,2)::usd, numeric::usd) collapse together.
     reps = _representative_types(processed)
-    if len(reps) != 1:
-        raise InvalidSyntaxException(
-            f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)} for {str(args)}"
-        )
-    return reps[0]
+    if len(reps) == 1:
+        return reps[0]
+    # Distinct families are fine when pairwise compatible (e.g. mixing FLOAT /
+    # NUMERIC / INTEGER) — coalesce to their merged type, matching CASE and SQL
+    # (`coalesce(sum(x)::float, 0::numeric)`). Only genuinely-incompatible
+    # families (e.g. FLOAT vs STRING) are an error.
+    for i, a in enumerate(reps):
+        if any(not is_compatible_datatype(a, b) for b in reps[i + 1 :]):
+            raise InvalidSyntaxException(
+                f"All arguments to coalesce must be of compatible types, have "
+                f"{set(arg_to_datatype(x) for x in args)} for {str(args)}"
+            )
+    return merge_datatypes(reps)
 
 
 def get_transform_output_type(args: list[Any]) -> CONCRETE_TYPES:
@@ -1172,6 +1180,8 @@ EXCLUDED_FUNCTIONS = {
     FunctionType.DATE_LITERAL,
     FunctionType.DATETIME_LITERAL,
     FunctionType.ARRAY,
+    # constructed directly by the parser for composite membership, never via create_function
+    FunctionType.ROW_TUPLE,
 }
 
 for k in FunctionType.__members__.values():
@@ -1211,16 +1221,38 @@ class FunctionFactory:
         else:
             full_args = []
         final_output_type: CONCRETE_TYPES
-        if config.output_type_function:
-
-            final_output_type = config.output_type_function(full_args)
-        elif not base_output_type:
-
-            final_output_type = merge_datatypes([arg_to_datatype(x) for x in full_args])
-        elif base_output_type:
-            final_output_type = base_output_type
-        else:
-            raise SyntaxError(f"Could not determine output type for {operator}")
+        has_undefined = any(isinstance(x, UndefinedConcept) for x in full_args)
+        try:
+            if config.output_type_function:
+                final_output_type = config.output_type_function(full_args)
+            elif not base_output_type:
+                final_output_type = merge_datatypes(
+                    [arg_to_datatype(x) for x in full_args]
+                )
+            elif base_output_type:
+                final_output_type = base_output_type
+            else:
+                raise SyntaxError(f"Could not determine output type for {operator}")
+        except Exception:
+            # An unresolved reference is deferred to an UndefinedConcept (UNKNOWN
+            # type) during select parsing. Computing an output type over it can
+            # raise a confusing error (e.g. coalesce's same-type check on
+            # {STRING, UNKNOWN}) that masks the real problem. Defer: emit an
+            # UNKNOWN-typed Function so select finalization reports the clean
+            # UndefinedConceptException (with suggestions) instead. Only do this
+            # when an undefined arg is actually present and was the cause —
+            # functions whose output type is independent of that arg (e.g. CAST to
+            # an explicit target) compute fine and keep their real type.
+            if not has_undefined:
+                raise
+            return Function(
+                operator=operator,
+                arguments=full_args,  # type: ignore
+                output_datatype=DataType.UNKNOWN,
+                output_purpose=output_purpose or Purpose.PROPERTY,
+                valid_inputs=valid_inputs,
+                arg_count=arg_count,
+            )
         if isinstance(final_output_type, TraitDataType) and self.environment:
             final_output_type = TraitDataType(
                 type=final_output_type.type,

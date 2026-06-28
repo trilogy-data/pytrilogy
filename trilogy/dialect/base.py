@@ -1,5 +1,5 @@
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
@@ -15,6 +15,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from trilogy.dialect.config import DialectConfig
+    from trilogy.engine import ResultProtocol
 
 from jinja2 import Template
 
@@ -222,11 +223,25 @@ AGGREGATE_ITEMS = (BuildAggregateWrapper,)
 FUNCTION_ITEMS = (BuildFunction,)
 PARENTHETICAL_ITEMS = (BuildParenthetical,)
 
+
+def _is_build_row_tuple(x: Any) -> bool:
+    """True for a ROW_TUPLE operand of composite (row-wise) membership."""
+    return isinstance(x, BuildFunction) and x.operator == FunctionType.ROW_TUPLE
+
+
 # Datatypes whose CONSTANT values can be inlined into SQL without
 # parameterisation. INTEGER / BOOL round-trip cleanly through engine
 # parsing; FLOAT is excluded because DuckDB parses dotted literals as
 # DECIMAL, which would change result types from float to Decimal.
 INLINE_SAFE_PARAM_DATATYPES = frozenset({DataType.INTEGER, DataType.BOOL})
+
+
+def _constant_bindable(lineage: BuildFunction) -> bool:
+    """A CONSTANT whose value is a MagicConstants (e.g. NULL) can't be bound — no
+    driver can transform the enum into a value. Render it inline instead."""
+    return not (lineage.arguments and isinstance(lineage.arguments[0], MagicConstants))
+
+
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
@@ -448,6 +463,7 @@ FUNCTION_MAP = {
     FunctionType.ATTR_ACCESS: lambda x, types: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x, types: f"{{{', '.join(struct_arg(x))}}}",
     FunctionType.ARRAY: lambda x, types: f"[{', '.join(x)}]",
+    FunctionType.ROW_TUPLE: lambda x, types: f"({', '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
     # MAP
@@ -689,6 +705,11 @@ class BaseDialect:
     # Whether the dialect supports a QUALIFY clause, used to lower a window
     # function appearing in a `having` condition. False dialects reject instead.
     SUPPORTS_QUALIFY = False
+    # Whether this dialect can produce a full-result summary — per-column stats
+    # over the query with its output LIMIT removed. Off by default; gates whether
+    # `run` returns it. Dialects that set it True must override
+    # ``summarize_result``.
+    SUPPORTS_RESULT_SUMMARY = False
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
@@ -1092,6 +1113,7 @@ class BaseDialect:
                 and self.rendering.parameters is True
                 and c.datatype.data_type != DataType.MAP
                 and c.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+                and _constant_bindable(c.lineage)
             ):
                 rval = f":{c.safe_address}"
             else:
@@ -1286,6 +1308,96 @@ class BaseDialect:
         operator needs translation (e.g. SQLite ``ILIKE``)."""
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
 
+    def _resolve_existence_column(
+        self,
+        rc: BuildConcept,
+        cte: CTE | UnionCTE | None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        raise_invalid: bool,
+    ) -> tuple[str, str]:
+        """Resolve a right-hand membership concept to (from_clause, column_ref)
+        against its existence source, mirroring the single-column path (including
+        inlined-parent physical columns)."""
+        lookup_cte = cte
+        if cte_map and not lookup_cte:
+            lookup_cte = cte_map.get(rc.address)
+        assert lookup_cte, "Subselects must be rendered with a CTE in context"
+        if rc.address not in lookup_cte.existence_source_map:
+            lookup = lookup_cte.source_map.get(
+                rc.address,
+                [INVALID_REFERENCE_STRING(f"Missing source reference to {rc.address}")],
+            )
+        else:
+            lookup = lookup_cte.existence_source_map[rc.address]
+        target = (
+            lookup[0]
+            if lookup
+            else INVALID_REFERENCE_STRING(f"Missing source CTE for {rc.address}")
+        )
+        inlined_parent = (
+            cte.inlined_parent_for_source(target) if isinstance(cte, CTE) else None
+        )
+        if inlined_parent is not None:
+            assert isinstance(cte, CTE)
+            target = cte.source_key_for(target)
+            self.used_map[target].add(rc.address)
+            new_base = inlined_parent.datasource.safe_location
+            phys = inlined_parent.consumer_column(rc)
+            if isinstance(phys, str):
+                col_ref = f"{target}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
+            elif isinstance(phys, RawColumnExpr):
+                col_ref = phys.text
+            else:
+                col_ref = self.render_expr(
+                    phys, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+            return f"{new_base} as {target}", col_ref
+        self.used_map[target].add(rc.address)
+        col_ref = (
+            f"{target}.{self.QUOTE_CHARACTER}{rc.safe_address}{self.QUOTE_CHARACTER}"
+        )
+        return target, col_ref
+
+    def render_composite_membership(
+        self,
+        left: BuildFunction,
+        right: BuildFunction,
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None = None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        raise_invalid: bool = False,
+        materialized_addresses: set[str] | None = None,
+    ) -> str:
+        """Render row-wise membership `(a, b) in (set.a, set.b)` as a multi-column
+        existence subquery: `(a, b) IN (select x, y from cte where x is not null
+        and y is not null)`. All right components share one existence CTE."""
+        left_sql = ", ".join(
+            self.render_expr(
+                a,
+                cte=cte,
+                cte_map=cte_map,
+                raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
+            )
+            for a in left.arguments
+        )
+        from_clause = ""
+        cols: list[str] = []
+        for rc in right.arguments:
+            assert isinstance(
+                rc, BuildConcept
+            ), "composite membership operands must be concepts"
+            from_clause, col_ref = self._resolve_existence_column(
+                rc, cte, cte_map, raise_invalid
+            )
+            cols.append(col_ref)
+        select_list = ", ".join(cols)
+        not_null = " and ".join(f"{c} is not null" for c in cols)
+        return (
+            f"({left_sql}) {operator.value} "
+            f"(select {select_list} from {from_clause} where {not_null})"
+        )
+
     def render_expr(
         self,
         e: Union[
@@ -1341,7 +1453,26 @@ class BaseDialect:
             right: Any = e.right
             while isinstance(right, BuildParenthetical):
                 right = right.content
+            if (
+                isinstance(e.left, BuildFunction)
+                and _is_build_row_tuple(e.left)
+                and _is_build_row_tuple(right)
+            ):
+                return self.render_composite_membership(
+                    e.left,
+                    right,
+                    e.operator,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                )
             if isinstance(right, BuildConcept):
+                # An array-valued RHS (e.g. `x in split(s, ',')`) holds a list per
+                # row; `x IN (select arr_col ...)` compares a scalar to an array and
+                # the DB rejects it. Unnest the array column so the subselect yields
+                # one scalar per element.
+                rhs_is_array = isinstance(right.datatype, ArrayType)
                 # we won't always have an existnce map
                 # so fall back to the normal map
                 lookup_cte = cte
@@ -1391,9 +1522,12 @@ class BaseDialect:
                             cte_map=cte_map,
                             raise_invalid=raise_invalid,
                         )
-                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {col_ref} from {new_base} as {target} where {col_ref} is not null)"
+                    sel_ref = f"unnest({col_ref})" if rhs_is_array else col_ref
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {sel_ref} from {new_base} as {target} where {col_ref} is not null)"
                 self.used_map[target].add(right.address)
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+                col = f"{target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER}"
+                sel = f"unnest({col})" if rhs_is_array else col
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {sel} from {target} where {col} is not null)"
             elif isinstance(right, BuildParamaterizedConceptReference):
                 if isinstance(right.concept.lineage, BuildFunction) and isinstance(
                     right.concept.lineage.arguments[0], ListWrapper
@@ -1527,6 +1661,7 @@ class BaseDialect:
                 and self.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
                 and e.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+                and _constant_bindable(e.lineage)
                 # only bind the literal where it's first materialized; if it's
                 # already a column in a source CTE (e.g. an ORDER BY term sourced
                 # from a join), reference that column instead of re-emitting the
@@ -2374,6 +2509,37 @@ class BaseDialect:
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final
+
+    def compile_without_limit(self, query: ProcessedQuery) -> str:
+        """Re-render the query SQL with its output LIMIT removed — structurally
+        (clear the output CTE's limit and recompile), never by editing the SQL
+        text. The output LIMIT lives on the final CTE (``query.ctes[-1]``, also
+        ``query.base``); inner-CTE limits (e.g. a rowset's own limit) are
+        deliberately preserved."""
+        if not query.ctes or query.ctes[-1].limit is None:
+            return self.compile_statement(replace(query, limit=None))
+        new_last = replace(query.ctes[-1], limit=None)
+        unlimited = replace(
+            query,
+            ctes=[*query.ctes[:-1], new_last],
+            limit=None,
+            base=new_last if query.base is query.ctes[-1] else query.base,
+        )
+        return self.compile_statement(unlimited)
+
+    def summarize_result(
+        self, query: ProcessedQuery, run_sql: Callable[[str], "ResultProtocol"]
+    ) -> "tuple[list[dict], int] | None":
+        """Per-column stats (non_null / nulls / distinct / min / max) plus the
+        row count over the FULL result — the query with its LIMIT removed — so a
+        consumer reads true cardinality, not the LIMIT-bounded prefix.
+
+        Gated by ``SUPPORTS_RESULT_SUMMARY``; the base implementation is not
+        provided. ``run_sql`` runs a raw SQL string and returns a result with
+        ``keys()`` / ``fetchall()``."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement summarize_result"
+        )
 
     def compile_statement_with_params(
         self,

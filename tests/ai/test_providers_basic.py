@@ -42,6 +42,23 @@ def _iter_comparisons(node):
         yield from _iter_comparisons(node.content)
 
 
+def _matches_address_expr(node, env: Environment, address: str) -> bool:
+    """True if node resolves to `address`, allowing casts/coercions/wrappers
+    (e.g. `dep_time::datetime`) and concept-reference lineage around it."""
+    if node == address:
+        return True
+    if isinstance(node, ConceptRef):
+        if node.address == address:
+            return True
+        concept = env.concepts.get(node.address)
+        if concept is not None and concept.lineage is not None:
+            return _matches_address_expr(concept.lineage, env, address)
+        return False
+    if isinstance(node, Function):
+        return any(_matches_address_expr(arg, env, address) for arg in node.arguments)
+    return False
+
+
 def _extracts_year_of(node, env: Environment, address: str) -> bool:
     """True if node computes year(address), inline or via an auto-derived concept."""
     if isinstance(node, ConceptRef):
@@ -51,10 +68,12 @@ def _extracts_year_of(node, env: Environment, address: str) -> bool:
         return False
     if isinstance(node, Function):
         if node.operator == FunctionType.YEAR:
-            return node.arguments[0] == address
+            return _matches_address_expr(node.arguments[0], env, address)
         if node.operator == FunctionType.DATE_PART and len(node.arguments) >= 2:
             part = getattr(node.arguments[1], "value", str(node.arguments[1])).lower()
-            return part == "year" and node.arguments[0] == address
+            return part == "year" and _matches_address_expr(
+                node.arguments[0], env, address
+            )
     return False
 
 

@@ -43,8 +43,13 @@ def _order_identifier_expr(context: RuleContext, token: SyntaxToken):
         resolved, (UndefinedConcept, UndefinedConceptFull)
     ):
         return resolved.reference
+    # A leaf-shorthand on a rowset output resolves to a full-path placeholder
+    # before the rowset commits (concept-phase `auto … over (order by rs.col)`).
+    # Carry the resolved FULL address so the later grain lookup hits the staged
+    # concept via the pending overlay instead of the unresolvable shorthand.
+    resolved_address = resolved.address if resolved is not None else address
     return UndefinedConcept(
-        address=address,
+        address=resolved_address,
         metadata=Metadata(line_number=token.line, column=token.column),
     )
 

@@ -20,6 +20,7 @@ from trilogy.core.enums import (
     ValidationScope,
 )
 from trilogy.core.models.author import (
+    AggregateGrouping,
     AggregateWrapper,
     AlignClause,
     AlignItem,
@@ -99,6 +100,8 @@ QUERY_TEMPLATE = Template("""{% if where %}where
 {{ select }},{% endfor %}{% if having %}
 having
 {{ having }}
+{% endif %}{%- if grouping %}
+{{ grouping }}
 {% endif %}{%- if order_by %}
 order by{% for order in order_by %}
 {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
@@ -945,10 +948,12 @@ class Renderer:
             for j in arg.join_clauses
         ]
 
+        grouping = self._render_select_grouping(arg.grouping) if arg.grouping else None
         return QUERY_TEMPLATE.render(
             select_columns=select_columns,
             where=where_clause,
             having=having_clause,
+            grouping=grouping,
             order_by=order_by,
             joins=joins,
             limit=arg.limit,
@@ -1297,27 +1302,31 @@ class Renderer:
     @to_string.register
     def _(self, arg: AggregateWrapper):
         func_str = self.to_string(arg.function)
-        grouping = arg.grouping.value
-        if not arg.by and grouping == "standard":
+        # Multi-level grouping (rollup/cube/grouping-sets) is a SELECT-level
+        # clause now — the planner stamps it onto un-grouped aggregates, so a
+        # non-standard wrapper renders as the bare aggregate (the select renders
+        # `by rollup (…)`). Only an explicit `by <grain>` override renders here.
+        if arg.grouping.value != "standard" or not arg.by:
             return func_str
-        if grouping == "grouping_sets":
-            sets = []
-            for grouping_set in arg.grouping_sets:
-                sets.append(f"({', '.join([self.to_string(x) for x in grouping_set])})")
-            tail = "by grouping sets " + ", ".join(sets)
-        elif not arg.by:
-            # Empty form: ``BY ROLLUP()`` rolls up over the select's own grain.
-            # Grammar only allows the empty parens for ROLLUP, but we mirror
-            # whichever grouping keyword the AST carries.
-            kw = {"rollup": "rollup", "cube": "cube"}.get(grouping, "")
-            tail = f"by {kw}()" if kw else "by ()"
-        else:
-            kw = {"rollup": "by rollup ", "cube": "by cube "}.get(grouping, "by ")
-            by = ", ".join([self.to_string(x) for x in arg.by])
-            tail = f"{kw}{by}"
+        by = ", ".join([self.to_string(x) for x in arg.by])
         # The ``by`` boundary is the most natural break; give it higher
         # priority than function-internal arg breaks (which use 5).
-        return self._pretty([func_str, Break(priority=10, indent=1, flat=" "), tail])
+        return self._pretty(
+            [func_str, Break(priority=10, indent=1, flat=" "), f"by {by}"]
+        )
+
+    def _render_select_grouping(self, grouping: AggregateGrouping) -> str:
+        """Render a SELECT-level ``by rollup (…)`` / ``by cube (…)`` /
+        ``by grouping sets (…)`` clause."""
+        if grouping.mode.value == "grouping_sets":
+            sets = ", ".join(
+                f"({', '.join(self.to_string(x) for x in gs)})"
+                for gs in grouping.grouping_sets
+            )
+            return f"by grouping sets ({sets})"
+        kw = {"rollup": "rollup", "cube": "cube"}.get(grouping.mode.value, "rollup")
+        keys = ", ".join(self.to_string(x) for x in grouping.by)
+        return f"by {kw} ({keys})"
 
     @to_string.register
     def _(self, arg: MergeStatementV2):

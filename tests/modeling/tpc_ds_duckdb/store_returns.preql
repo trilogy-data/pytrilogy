@@ -1,6 +1,6 @@
 # For cross-channel returns analysis, prefer `all_sales` (carries returns alongside sales for all channels).
 # Store channel returns info at (item, ticket_number) grain: per-line
-# refund amount (USD) for items returned in-store.
+# refund amount, returned quantity, net loss, and refunded cash for items returned in-store.
 
 import std.money;
 
@@ -11,10 +11,16 @@ import date as return_date;
 import time as time;
 import customer as billing_customer; # the billing customer associated with the original sale and current information about them
 import customer_demographic as customer_demographic; # customer demographic profile at return time (optional, may be null)
+import reason as return_reason;
 
 key ticket_number int; # Surrogate key uniquely identifying a store sales ticket.
 
-property <item.id, ticket_number>.return_amount numeric::usd; # Dollar amount refunded to the customer for the returned item (USD).
+properties <item.id, ticket_number> (
+    return_amount numeric::usd?, # Dollar amount refunded to the customer for the returned item (USD).
+    return_quantity int?, # Number of units returned on this line.
+    net_loss numeric::usd?, # Net financial loss on the return for this line (USD).
+    refunded_cash numeric::usd?, # Cash portion of the refund (USD).
+);
 
 datasource store_returns (
     SR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
@@ -22,7 +28,11 @@ datasource store_returns (
     SR_ITEM_SK: item.id, # FK to the returned item.
     SR_CUSTOMER_SK: billing_customer.id, # FK to the customer initiating the return.
     SR_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at return time (optional).
+    SR_REASON_SK: return_reason.id, # FK to the return-reason code.
     SR_RETURN_AMT: return_amount,
+    SR_RETURN_QUANTITY: return_quantity,
+    SR_NET_LOSS: net_loss,
+    SR_REFUNDED_CASH: refunded_cash,
     SR_TICKET_NUMBER: ticket_number, # FK to the original store-sale ticket the return is associated with.
     SR_STORE_SK: store.id, # FK to the store the return was processed at.
 )

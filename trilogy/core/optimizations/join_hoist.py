@@ -492,32 +492,40 @@ class JoinHoist(OptimizationRule):
             cte.source_map.pop(addr, None)
         # for join keys in cte.source_map that pointed to the dim, redirect
         # to the FK source — the original pair.cte. Otherwise cte renders
-        # `dim_cte.col` for a dim that's no longer in its FROM.
+        # `dim_cte.col` for a dim that's no longer in its FROM. The FK (left)
+        # key always redirects. The dim (right) key only renders identically to
+        # the FK after an INNER join (left == right for every surviving row); a
+        # scoped join onto a rowset carries that rowset key forward as cte's own
+        # output, so it must redirect too — get_alias then resolves it via the
+        # FK source's pseudonym (e.g. `late.ss_item_text_id`).
         for pair in join.joinkey_pairs or []:
-            addr = pair.left.address
-            rendering_sources = cte.source_map.get(addr)
-            if not rendering_sources or dim_cte.name not in rendering_sources:
-                continue
-            new_sources = [s for s in rendering_sources if s != dim_cte.name]
-            if pair.cte is not None and pair.cte.name not in new_sources:
-                new_sources.append(pair.cte.name)
-            cte.source_map[addr] = new_sources
-            # mirror the redirect at the QDS level
-            qds_set = cte.source.source_map.get(addr)
-            if qds_set is not None:
-                qds_set = {
-                    s
-                    for s in qds_set
-                    if not hasattr(s, "identifier")
-                    or not _datasource_matches(s, dim_qds)
-                }
-                if not qds_set:
-                    if pair.existing_datasource is not None:
-                        cte.source.source_map[addr] = {pair.existing_datasource}
+            redirect_addrs = [pair.left.address]
+            if join_type == JoinType.INNER and pair.right.address != pair.left.address:
+                redirect_addrs.append(pair.right.address)
+            for addr in redirect_addrs:
+                rendering_sources = cte.source_map.get(addr)
+                if not rendering_sources or dim_cte.name not in rendering_sources:
+                    continue
+                new_sources = [s for s in rendering_sources if s != dim_cte.name]
+                if pair.cte is not None and pair.cte.name not in new_sources:
+                    new_sources.append(pair.cte.name)
+                cte.source_map[addr] = new_sources
+                # mirror the redirect at the QDS level
+                qds_set = cte.source.source_map.get(addr)
+                if qds_set is not None:
+                    qds_set = {
+                        s
+                        for s in qds_set
+                        if not hasattr(s, "identifier")
+                        or not _datasource_matches(s, dim_qds)
+                    }
+                    if not qds_set:
+                        if pair.existing_datasource is not None:
+                            cte.source.source_map[addr] = {pair.existing_datasource}
+                        else:
+                            del cte.source.source_map[addr]
                     else:
-                        del cte.source.source_map[addr]
-                else:
-                    cte.source.source_map[addr] = qds_set
+                        cte.source.source_map[addr] = qds_set
         still_used = any(
             isinstance(jj, Join)
             and isinstance(jj.right_cte, CTE)

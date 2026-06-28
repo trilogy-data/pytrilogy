@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Callable, Iterable, Protocol
 from urllib.parse import urlparse
 
+# Hard cap on entries a single `list` returns. A recursive listing of a large
+# tree (worst case `list / --recursive`) would otherwise materialize the entire
+# walk in memory and produce a payload big enough to crash a consuming agent.
+LIST_MAX_ENTRIES = 100
+
 
 class FileOperationError(Exception):
     """Base error for file backend operations."""
@@ -39,7 +44,12 @@ class FileBackend(Protocol):
 
     scheme: str
 
-    def list(self, path: str, recursive: bool = False) -> list[FileEntry]: ...
+    def list(
+        self,
+        path: str,
+        recursive: bool = False,
+        max_entries: int = LIST_MAX_ENTRIES,
+    ) -> list[FileEntry]: ...
 
     def read(self, path: str) -> bytes: ...
 
@@ -62,7 +72,12 @@ class LocalFileBackend:
         raw = parsed.path if parsed.scheme == self.scheme else path
         return Path(raw).expanduser()
 
-    def list(self, path: str, recursive: bool = False) -> list[FileEntry]:
+    def list(
+        self,
+        path: str,
+        recursive: bool = False,
+        max_entries: int = LIST_MAX_ENTRIES,
+    ) -> list[FileEntry]:
         target = self._resolve(path)
         if not target.exists():
             raise FileNotFoundError(f"No such path: {path}")
@@ -73,12 +88,17 @@ class LocalFileBackend:
             )
             return entries
         iterator: Iterable[Path] = target.rglob("*") if recursive else target.iterdir()
-        for item in sorted(iterator):
+        # Cap during iteration (before sorting) so a huge tree never fully
+        # materializes — sorting `rglob("*")` of the whole disk is what crashes.
+        for item in iterator:
             try:
                 size = item.stat().st_size if item.is_file() else 0
             except OSError:
                 continue
             entries.append(FileEntry(path=str(item), size=size, is_dir=item.is_dir()))
+            if len(entries) >= max_entries:
+                break
+        entries.sort(key=lambda entry: entry.path)
         return entries
 
     def read(self, path: str) -> bytes:

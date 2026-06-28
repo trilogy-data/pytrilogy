@@ -25,9 +25,9 @@ from trilogy.parsing.v2.pest_backend import parse_pest
 _IMPORTS = "import x as x;\n"
 
 # Each is the offending statement body; all wrap an aggregate then trail `by`.
+# (Multi-level `by rollup`/`cube` is a SELECT-level clause now, so it is not part
+# of this aggregate-grain error; only a plain `by <grain>` can misattach.)
 _BAD = [
-    "auto r <- coalesce(sum(x.val), 0) by rollup x.id;",
-    "def rollup_agg(metric) -> coalesce(sum(metric), 0) by rollup x.a, x.b;",
     "select coalesce(sum(x.val), 0) by x.id as r;",
     "auto r <- round(avg(x.val), 2) by x.id;",
     "auto r <- coalesce(count(x.val), 0) by x.a, x.b;",
@@ -72,7 +72,7 @@ def test_bare_aggregate_by_parses(backend):
 
 
 def test_detector_finds_wrapped_by():
-    text = "auto r <- coalesce(sum(x.val), 0) by rollup x.id;"
+    text = "auto r <- coalesce(sum(x.val), 0) by x.id;"
     pos = text.index(" by ") + 1
     found = detect_by_on_wrapped_aggregate(text, pos)
     assert found is not None

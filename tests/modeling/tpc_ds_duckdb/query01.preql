@@ -1,4 +1,4 @@
-import physical_returns as returns;
+import store_returns as returns;
 
 where
     returns.store.state = 'TN' and returns.return_date.year = 2000

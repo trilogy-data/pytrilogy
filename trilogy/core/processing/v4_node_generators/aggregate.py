@@ -37,7 +37,9 @@ def _add_render_inputs(
     if concept.lineage is None:
         return
     for arg in concept.lineage.concept_arguments:
-        _add_render_inputs(arg, input_concepts, input_addresses, available_by_address, seen)
+        _add_render_inputs(
+            arg, input_concepts, input_addresses, available_by_address, seen
+        )
 
 
 def gen_aggregate(

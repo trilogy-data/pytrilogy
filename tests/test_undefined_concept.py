@@ -59,6 +59,37 @@ def test_undefined_concept_in_nested_aggregate_raises():
         env.parse("select sum(totally_made_up_concept) + sum(x) as foo;")
 
 
+def test_undefined_concept_in_coalesce_raises_undefined_not_type_error():
+    """An undefined concept used inside a type-checking function (coalesce) must
+    raise the clean UndefinedConceptException (with suggestions) — not a confusing
+    `coalesce must be of the same type {STRING, UNKNOWN}` error from the undefined
+    arg resolving to a phantom UNKNOWN-typed concept before the undefined check."""
+    env = Environment()
+    env.parse(
+        "key id int;\n"
+        "property id.login string;\n"
+        "datasource ids (id:id, login:login) grain (id) address ids;"
+    )
+    with pytest.raises(UndefinedConceptException) as exc:
+        env.parse("select coalesce(login, made_up_concept) as x;")
+    assert "made_up_concept" in str(exc.value)
+    assert "same type" not in str(exc.value)
+
+
+def test_genuine_coalesce_type_mismatch_still_raises():
+    from trilogy.core.functions import InvalidSyntaxException
+
+    env = Environment()
+    env.parse(
+        "key id int;\n"
+        "property id.login string;\n"
+        "property id.amt int;\n"
+        "datasource ids (id:id, login:login, amt:amt) grain (id) address ids;"
+    )
+    with pytest.raises(InvalidSyntaxException):
+        env.parse("select coalesce(login, amt) as x;")
+
+
 def _dict_with(*keys: str) -> EnvironmentConceptDict:
     d = EnvironmentConceptDict()
     for k in keys:
@@ -139,12 +170,12 @@ def test_is_subsequence_is_ordered():
     assert not _is_subsequence(["x"], ["y1999", "agg", "item_id"])
 
 
-def test_undefined_rowset_field_suggests_rowset_path(tmp_path):
+def test_rowset_field_shorthand_resolves_to_rowset_path(tmp_path):
     """A rowset column from an import namespace, selected WITHOUT `as`, keeps its
-    full source path (`qual.ws.order_number`, not `qual.order_number`).
-    Referencing the bare leaf in the same parse must suggest the real rowset
-    path — even though the rowset concept is only STAGED (not yet committed) when
-    the referencing statement fails."""
+    full source path (`qual.ws.order_number`). The bare-leaf shorthand
+    `qual.order_number` resolves to that single full path at parse time — even
+    though the rowset concept is only STAGED (not yet committed) when the
+    referencing statement is finalized."""
     (tmp_path / "ws.preql").write_text(
         "key order_number int;\n"
         "property order_number.cost float;\n"
@@ -152,28 +183,20 @@ def test_undefined_rowset_field_suggests_rowset_path(tmp_path):
         "grain (order_number) address ws;\n"
     )
     env = Environment(working_path=str(tmp_path))
-    with pytest.raises(UndefinedConceptException) as exc:
-        # rowset column `ws.order_number` (no `as`) is exposed as
-        # `qual.ws.order_number`; the bare leaf `qual.order_number` must point
-        # at the real path even though `qual` is only staged at this point.
-        env.parse(
-            "import ws as ws;\n"
-            "rowset qual <- select ws.order_number where ws.cost > 0;\n"
-            "select qual.order_number;\n"
-        )
-    assert any(
-        "qual.ws.order_number" in s for s in exc.value.suggestions
-    ), exc.value.suggestions
-    # never echo the looked-up address itself
-    assert "qual.order_number" not in exc.value.suggestions
+    env.parse(
+        "import ws as ws;\n"
+        "rowset qual <- select ws.order_number where ws.cost > 0;\n"
+        "select qual.order_number;\n"
+    )
+    assert env.concepts["qual.order_number"].address == "qual.ws.order_number"
 
 
-def test_undefined_cte_output_join_key_suggests_staged_path():
-    """A join-key reference that drops a CTE column's source namespace
-    (`y1999.item_id` for the staged `y1999.agg.item_id`) raises through the
-    dict-level lookup in `ConceptLookup.require`. The named-statement outputs are
-    staged (not yet committed) when the third statement fails, so the suggestion
-    must surface them via the staged candidate set — not just committed concepts."""
+def test_cte_output_shorthand_resolves_staged_path():
+    """A reference that drops a CTE column's source namespace (`y1999.item_id`
+    for the staged `y1999.agg.item_id`) resolves to the single full path at parse
+    time. The named-statement outputs are staged (not yet committed) when the
+    third statement is finalized, so resolution must consult the staged
+    (pending) candidate set — not just committed concepts."""
     env = Environment()
     env.parse(
         "key id int;\n"
@@ -182,14 +205,11 @@ def test_undefined_cte_output_join_key_suggests_staged_path():
         "datasource items (id:id, color:color, name:name) "
         "grain (id) address items;"
     )
-    with pytest.raises(UndefinedConceptException) as exc:
-        env.parse(
-            "with agg as select id as item_id, name as product_name "
-            "where color = 'red';\n"
-            "with y1999 as select agg.item_id, agg.product_name "
-            "where agg.item_id > 0;\n"
-            "select y1999.product_name "
-            "inner join y1999.item_id = y1999.item_id;\n"
-        )
-    assert exc.value.suggestions[0] == "y1999.agg.item_id", exc.value.suggestions
-    assert "y1999.item_id" not in exc.value.suggestions
+    env.parse(
+        "with agg as select id as item_id, name as product_name "
+        "where color = 'red';\n"
+        "with y1999 as select agg.item_id, agg.product_name "
+        "where agg.item_id > 0;\n"
+        "select y1999.product_name, y1999.item_id;\n"
+    )
+    assert env.concepts["y1999.item_id"].address == "y1999.agg.item_id"

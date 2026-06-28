@@ -143,9 +143,22 @@ def _lower_union(
                 "column per output item, in order."
             )
 
+    # Named form (`with combined as union(...) -> (k, v)`) is lowered inside the
+    # rowset's alias scope: register the union's aligned outputs under the hidden
+    # per-rowset name (`local._combined_k`) instead of the bare `local.k`, so they
+    # don't collide with a later `select ... as k` that reads them back through the
+    # rowset wrapper (`combined.k`), which would close a build cycle. The rowset
+    # wrapping unmangles the name back to `combined.k`. The inline form has no
+    # rowset scope, so its outputs keep their bare names (resolved in the trailing
+    # select).
+    rowset_name = context.semantic_state.current_rowset_name
     align_items = [
         AlignItem(
-            alias=out.name,
+            alias=(
+                context.semantic_state.mangle_rowset_alias(rowset_name, out.name)
+                if rowset_name is not None
+                else out.name
+            ),
             namespace=namespace,
             concepts=[arm.output_components[pos] for arm in arms],
             hidden=False,

@@ -47,7 +47,8 @@ auto chan_label <- case
 end;
 select
     chan_label as channel,
-    sum(profit - coalesce(loss, 0)) by rollup chan_label as total,
+    sum(profit - coalesce(loss, 0)) as total,
+by rollup (chan_label)
 order by channel asc nulls first;
 """
 

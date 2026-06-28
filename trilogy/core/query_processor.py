@@ -8,6 +8,7 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
+    Derivation,
     FunctionType,
     JoinType,
     SourceType,
@@ -15,6 +16,8 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    InvalidSyntaxException,
     UnresolvableQueryException,
 )
 from trilogy.core.graph_models import ReferenceGraph
@@ -523,9 +526,29 @@ def _carry_order_by_concepts(
             if c.address in output_addresses:
                 continue
             target = _find_source_target(c)
-            if target is None or target.address in output_addresses:
+            if target is not None:
+                if target.address not in output_addresses:
+                    carry.setdefault(target.address, target)
                 continue
-            carry.setdefault(target.address, target)
+            # A rowset output (a measure materialized in its own upstream CTE)
+            # referenced in ORDER BY but only consumed inside a projected scalar
+            # (e.g. wrapped in a CASE) is sourced into the final node's parent
+            # but is NOT one of the final group node's keys — DuckDB then rejects
+            # it ("must appear in GROUP BY"). Carry it into the grain as a hidden
+            # output so it becomes a group key. Only safe when it is functionally
+            # determined by the select grain (same/coarser); a finer measure has
+            # no single value per output row, so ordering by it is ambiguous.
+            if c.derivation == Derivation.ROWSET:
+                if c.grain.issubset(build_statement.grain):
+                    carry.setdefault(c.address, c)
+                else:
+                    raise InvalidSyntaxException(
+                        f"ORDER BY references '{c.address}', a measure at a finer "
+                        f"grain ({c.grain}) than the select grain "
+                        f"({build_statement.grain}); it has no single value per "
+                        f"output row. Project it (prefix with `--` to keep it out "
+                        f"of the rows) and order by that alias instead."
+                    )
     if not carry:
         return
     build_statement.selection = build_statement.selection + list(carry.values())
@@ -547,8 +570,34 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     if isinstance(lineage, BuildMultiSelectLineage):
         return concept
     if isinstance(lineage, BuildRowsetItem):
-        return _find_source_target(lineage.content)
+        # A handle whose own rowset IS the union/multiselect renders via
+        # find_source at the union node — carry the inner union column it wraps.
+        if isinstance(lineage.rowset.select, MultiSelectLineage):
+            return _find_source_target(lineage.content)
+        # A plain SELECT/aggregate rowset (e.g. a rollup over a union-rowset)
+        # materializes this grain column as a real output its own node exposes.
+        # Recursing on to the inner union column would split the carried key off
+        # the outer rowset's node and disconnect the query — carry THIS handle
+        # instead, but only when it ultimately wraps a union that needs the
+        # find_source carry at all (a plain inner column needs no carry).
+        if _find_source_target(lineage.content) is not None:
+            return concept
+        return None
     return None
+
+
+def _with_line_location(
+    exc: DisconnectedConceptsException, line_number: int | None
+) -> DisconnectedConceptsException:
+    """Inject the failing statement's line into a disconnected-subgraph message
+    (the v3 raise sites don't have it). No-op if already located or line unknown."""
+    marker = "one connected query"
+    if line_number is None or f"{marker} (statement at line" in exc.message:
+        return exc
+    msg = exc.message.replace(
+        f"{marker}.", f"{marker} (statement at line {line_number}).", 1
+    )
+    return DisconnectedConceptsException(msg, subgraphs=exc.subgraphs)
 
 
 def _raise_if_disconnected(
@@ -561,6 +610,11 @@ def _raise_if_disconnected(
     + WHERE row args) span unconnected reference-graph components. Delegates to the
     shared ``raise_if_disconnected_for`` so the top-level and nested-rowset checks
     stay one code path."""
+    line_number = (
+        build_statement.meta.line_number
+        if isinstance(build_statement, BuildSelectLineage)
+        else None
+    )
     raise_if_disconnected_for(
         list(build_statement.output_components),
         conditions,
@@ -571,6 +625,7 @@ def _raise_if_disconnected(
         # derived from one), so disable it and let v4 discovery decide. v3 keeps
         # islanding because it only consults this AFTER discovery already failed.
         island_rowsets=False,
+        line_number=line_number,
     )
 
 
@@ -728,13 +783,24 @@ def get_query_node(
         f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
     )
 
-    ods: StrategyNode = source_query_concepts(
-        output_concepts=search_concepts,
-        environment=build_environment,
-        g=graph,
-        conditions=build_statement.where_clause,
-        history=history,
+    # v3 raises the disconnected-subgraph error from deep in discovery, where the
+    # statement's line isn't threaded; inject it here (the v4 pre-gate already
+    # carries it). Harmless no-op when the message already names a line.
+    line_number = (
+        build_statement.meta.line_number
+        if isinstance(build_statement, BuildSelectLineage)
+        else None
     )
+    try:
+        ods: StrategyNode = source_query_concepts(
+            output_concepts=search_concepts,
+            environment=build_environment,
+            g=graph,
+            conditions=build_statement.where_clause,
+            history=history,
+        )
+    except DisconnectedConceptsException as e:
+        raise _with_line_location(e, line_number) from e
     if not ods:
         raise ValueError(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"

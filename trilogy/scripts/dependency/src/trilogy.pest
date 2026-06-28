@@ -167,7 +167,7 @@ from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 // join_clause may appear before "select" (legacy) OR right after the select
 // list (preferred, SQL-like); both positions collect into the same join set.
 select_statement = {
-    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ having? ~ order_by? ~ limit?
+    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ having? ~ select_grouping? ~ order_by? ~ limit?
 }
 
 // query-scoped join: blends two otherwise-disjoint concepts on a shared key for
@@ -177,14 +177,19 @@ select_statement = {
 // `a = b and c = d` is sugar for two separate join clauses of this type (two
 // DISTINCT equivalence groups), saving a repeated `JOIN_TYPE join` prefix.
 join_clause = { JOIN_TYPE ~ ^"join" ~ join_group ~ (^"and" ~ join_group)* }
-join_group  = { IDENTIFIER ~ "=" ~ IDENTIFIER ~ ("=" ~ IDENTIFIER)* }
+// Each key is a `sum_operator` (the expr level just below comparison) so join
+// keys admit arbitrary expressions (arithmetic, aggregates, windows, ...), not
+// just bare concept references; a comparison key can be parenthesized. The
+// separator reuses COMPARISON_OPERATOR to mirror lark (where a bare `"="` would
+// mint a terminal that breaks comparisons); the hydrator enforces `=`.
+join_group  = { sum_operator ~ (COMPARISON_OPERATOR ~ sum_operator)+ }
 
 multi_select_statement = {
     select_statement
     ~ (^"merge" ~ select_statement)+
     ~ ^"align" ~ align_clause
     ~ (^"derive" ~ derive_clause)?
-    ~ having? ~ order_by? ~ limit?
+    ~ having? ~ select_grouping? ~ order_by? ~ limit?
 }
 
 align_item   = { select_hide_modifier? ~ IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
@@ -246,7 +251,7 @@ function_binding_item    = { IDENTIFIER ~ function_binding_type? ~ function_bind
 function_binding_list    = { function_binding_item ~ ("," ~ function_binding_item)* ~ ","? }
 
 _DEF_TABLE     = @{ ^"def" ~ (" " | "\t" | "\r" | "\n")+ ~ ^"table" ~ (" " | "\t" | "\r" | "\n")+ }
-raw_function   = { ^"def" ~ IDENTIFIER ~ "(" ~ function_binding_list ~ ")" ~ "->" ~ conditional }
+raw_function   = { ^"def" ~ IDENTIFIER ~ ("(" ~ function_binding_list? ~ ")")? ~ "->" ~ conditional }
 table_function = { _DEF_TABLE ~ IDENTIFIER ~ "(" ~ function_binding_list? ~ ")" ~ "->" ~ ^"select" ~ expr ~ subselect_where? ~ subselect_order? ~ subselect_limit? }
 
 // =============================================================================
@@ -360,8 +365,14 @@ comparison = { sum_operator ~ (COMPARISON_OPERATOR ~ sum_operator)? }
 // ?between_root: sum_chain "between" sum_chain "and" sum_chain
 between_comparison = { sum_operator ~ ^"between" ~ sum_operator ~ ^"and" ~ sum_operator }
 
-// ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)*
-sum_operator = { product_operator ~ (PLUS_OR_MINUS ~ product_operator)* }
+// ?sum_chain: UNARY_MINUS? product_chain (PLUS_OR_MINUS product_chain)*
+// A leading UNARY_MINUS is prefix negation on the first product_chain
+// (`-sum(x)`, `-col`, `-(a+b)`); it binds only the first operand so
+// `-a + b` is `(-a) + b`. UNARY_MINUS's negative lookahead excludes a `-`
+// glued to a number, so a negative literal (`-1`) stays a single literal.
+sum_operator = { UNARY_MINUS? ~ product_operator ~ (PLUS_OR_MINUS ~ product_operator)* }
+// `-` not glued to a number (`-sum`, `- 1`, `-(x)`) and not the `->` arrow.
+UNARY_MINUS = @{ "-" ~ !(ASCII_DIGIT | "." | ">") }
 
 // ?product_chain: atom (MULTIPLY_DIVIDE_PERCENT atom)*
 product_operator = { access_chain ~ (MULTIPLY_DIVIDE_PERCENT ~ access_chain)* }
@@ -477,15 +488,24 @@ tvf_select_statement = { ^"from" ~ tvf_union_invocation ~ select_statement }
 // AGGREGATES
 // =============================================================================
 aggregate_all  = { "*" }
-aggregate_rollup = { ^"rollup" ~ (("(" ~ ")") | over_list) }
-aggregate_cube = { ^"cube" ~ over_list }
 grouping_set = { "(" ~ expr_over_list? ~ ")" }
-aggregate_grouping_sets = { ^"grouping" ~ ^"sets" ~ grouping_set ~ ("," ~ grouping_set)* }
 // Paren-wrapped expression list: `by (substring(x,1,2), other)`. Parens supply
 // the unambiguous boundary needed for arbitrary expressions; the build phase
 // materializes non-concept entries via instantiate_concept.
 aggregate_paren_by = { "(" ~ expr_over_list ~ ")" }
-aggregate_over = { ^"by" ~ (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | aggregate_paren_by | over_list) }
+// An aggregate's `by <grain>` never starts with a grouping keyword — those are
+// reserved for the SELECT-level `by rollup (…)` clause. The lookahead refuses
+// `by rollup`/`by cube`/`by grouping sets` here so they fall through to it.
+GROUPING_LEAD = @{ (^"rollup" | ^"cube" | ^"grouping") ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
+aggregate_over = { ^"by" ~ !GROUPING_LEAD ~ (aggregate_all | aggregate_paren_by | over_list) }
+
+// SELECT-level multi-level grouping (ROLLUP / CUBE / GROUPING SETS): a property
+// of the whole select, propagated by the planner to every aggregate with no
+// explicit `by` grain so all measures share ONE grouping pass.
+select_rollup = { ^"by" ~ ^"rollup" ~ "(" ~ expr_over_list? ~ ")" }
+select_cube = { ^"by" ~ ^"cube" ~ "(" ~ expr_over_list ~ ")" }
+select_grouping_sets = { ^"by" ~ ^"grouping" ~ ^"sets" ~ "(" ~ grouping_set ~ ("," ~ grouping_set)* ~ ")" }
+select_grouping = { select_rollup | select_cube | select_grouping_sets }
 
 // Mirrors lark's single-token regex: /(group)\s+([a-zA-Z_][a-zA-Z0-9_.]*)/i
 // Emits "group <identname>" as a single string so the hydrator's
@@ -820,6 +840,9 @@ SELECT_LIST_STOP = @{
       // a trailing comma before a post-select `<type> join` must not swallow the
       // join keyword as another select item.
       | JOIN_TYPE ~ (" " | "\t" | "\r" | "\n")+ ~ ^"join" ~ !(ASCII_ALPHANUMERIC | "_" | ".")
+      // a trailing comma before the SELECT-level `by rollup (…)` grouping clause
+      // must not swallow `by` as another select item (`by` is not reserved).
+      | ^"by" ~ (" " | "\t" | "\r" | "\n")+ ~ (^"rollup" | ^"cube" | ^"grouping") ~ !(ASCII_ALPHANUMERIC | "_" | ".")
     )
 }
 

@@ -16,7 +16,7 @@ from trilogy.core.models.author import (
     UndefinedConceptFull,
 )
 from trilogy.core.models.core import DataType
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import Environment, _is_subsequence
 
 if TYPE_CHECKING:
     from trilogy.parsing.v2.semantic_scope import SymbolTable
@@ -523,6 +523,90 @@ class ConceptLookup:
                 return sibling
         return None
 
+    def _rowset_output_addresses(self, prefix: str) -> set[str]:
+        """Every known rowset-output address under ``prefix`` — committed,
+        pending, AND symbol-table forward refs. The forward refs matter because
+        `auto`/`def` bodies hydrate in the concept phase (right after BIND),
+        before the rowset statement stages any concept; COLLECT_SYMBOLS has
+        already declared the full output paths by then."""
+        addrs = {a for a in self._env.concepts.data if a.startswith(prefix)}
+        addrs.update(
+            a for a, _ in self._state.pending_concepts() if a.startswith(prefix)
+        )
+        if self._symbol_table is not None:
+            addrs.update(
+                a
+                for a in self._symbol_table.visible_addresses()
+                if a.startswith(prefix)
+            )
+        return addrs
+
+    def _collapse_alias_matches(self, matches: list[str]) -> list[str]:
+        """Drop matches that are stale name-form aliases of another match, not
+        distinct outputs. A nested rowset records BOTH the written shorthand path
+        by which it referenced a column (`y.base.week_seq`, a symbol-table
+        forward-ref) AND the canonical full path of the real concept that
+        shorthand resolved to (`y.base.s.week_seq`). Both subsequence-match a
+        downstream `y.week_seq`, but they denote ONE output -> false ambiguity.
+        A forward-only match (no real concept) that is an ordered subsequence of
+        a real-concept match is that concept's alias; keep only the canonical.
+        Genuine ambiguity (`s.date.week_seq` vs `s.return_date.week_seq`, both
+        real, neither a subsequence of the other) is untouched."""
+        if len(matches) < 2:
+            return matches
+        real: list[str] = []
+        forward: list[str] = []
+        for addr in matches:
+            existing = self._existing_concept(addr)
+            if existing is not None and not isinstance(existing, UndefinedConceptFull):
+                real.append(addr)
+            else:
+                forward.append(addr)
+        if not real:
+            return matches
+        kept_forward = [
+            f
+            for f in forward
+            if not any(_is_subsequence(f.split("."), r.split(".")) for r in real)
+        ]
+        return real + kept_forward
+
+    def _resolve_rowset_suffix(self, address: str) -> Concept | None:
+        """Resolve a rowset leaf-shorthand (`rs.col`) to the full output path
+        (`rs.a.b.col`) when exactly one rowset output under namespace `rs`
+        matches as an ordered dotted subsequence. Two matches -> ambiguity
+        error; zero -> None. Gated to rowset namespaces (registered at
+        COLLECT_SYMBOLS) so it never collapses import paths. When the single
+        match is not yet a real concept (still a symbol-table forward ref),
+        return a scoped placeholder the rowset's later commit displaces."""
+        rowset_namespaces = self._env.concepts.rowset_namespaces
+        for candidate in self._candidate_addresses(address):
+            q_segs = candidate.split(".")
+            if len(q_segs) < 2 or q_segs[0] not in rowset_namespaces:
+                continue
+            prefix = q_segs[0] + "."
+            matches = [
+                addr
+                for addr in self._rowset_output_addresses(prefix)
+                if addr != candidate and _is_subsequence(q_segs, addr.split("."))
+            ]
+            matches = self._collapse_alias_matches(matches)
+            if len(matches) == 1:
+                target = matches[0]
+                existing = self._existing_concept(target)
+                if existing is not None and not isinstance(
+                    existing, UndefinedConceptFull
+                ):
+                    return existing
+                return self._make_scoped_placeholder(target)
+            if len(matches) > 1:
+                raise UndefinedConceptException(
+                    f"Ambiguous reference {address!r}: matches {sorted(matches)}. "
+                    "Qualify the full path to disambiguate.",
+                    sorted(matches),
+                )
+        return None
+
     def require(self, address: str) -> Concept:
         existing = self._existing_concept(address)
         if existing is not None:
@@ -534,6 +618,9 @@ class ConceptLookup:
         sibling = self._resolve_property_sibling(address)
         if sibling is not None:
             return sibling
+        rowset_suffix = self._resolve_rowset_suffix(address)
+        if rowset_suffix is not None:
+            return rowset_suffix
         scoped = self._scoped_placeholder(address)
         if scoped is not None:
             return scoped
@@ -569,6 +656,9 @@ class ConceptLookup:
         sibling = self._resolve_property_sibling(address)
         if sibling is not None:
             return sibling
+        rowset_suffix = self._resolve_rowset_suffix(address)
+        if rowset_suffix is not None:
+            return rowset_suffix
         scoped = self._scoped_placeholder(address)
         if scoped is not None:
             return scoped

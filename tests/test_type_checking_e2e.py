@@ -610,7 +610,7 @@ class TestCoalesceTypeChecking:
 
     def test_coalesce_mixed_types_fails(self):
         """COALESCE requires all arguments to be the same type."""
-        with pytest.raises(InvalidSyntaxException, match="same type"):
+        with pytest.raises(InvalidSyntaxException, match="compatible type"):
             parse_text("""
                 const x <- 1;
                 const y <- 'hello';
@@ -620,7 +620,7 @@ class TestCoalesceTypeChecking:
 
     def test_coalesce_integer_and_string_fails(self):
         """COALESCE with integer and string fails."""
-        with pytest.raises(InvalidSyntaxException, match="same type"):
+        with pytest.raises(InvalidSyntaxException, match="compatible type"):
             parse_text("""
                 auto z <- coalesce(1, 'fallback');
                 select z;
@@ -644,6 +644,17 @@ class TestCoalesceTypeChecking:
             select z;
             """)
         assert env.concepts["z"].datatype == DataType.INTEGER
+
+    def test_coalesce_compatible_numerics_succeeds(self):
+        """COALESCE across compatible numeric families (FLOAT/NUMERIC) merges
+        instead of erroring — `coalesce(<float>, 0::numeric)` is the common
+        zero-fill-a-measure idiom and must not force the agent to match types."""
+        env, _ = parse_text("""
+            const f <- 1.5;
+            auto z <- coalesce(f, 0::numeric);
+            select z;
+            """)
+        assert env.concepts["z"].datatype in (DataType.FLOAT, DataType.NUMERIC)
 
 
 # =============================================================================

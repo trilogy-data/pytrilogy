@@ -53,7 +53,7 @@ select
     sales.item.class_id as class_l0,
     sales.item.category_id as category_l0,
     sum(sales.quantity * sales.list_price) as bucket_sum_l0,
-    sum(sales.row_one) as bucket_count_l0,
+    sum(sales.sale_line_item_counter) as bucket_count_l0,
     --avg_sales.average_sales,
 having
     bucket_sum_l0 > avg_sales.average_sales
@@ -66,10 +66,9 @@ select
     l0_filtered.brand_l0 as i_brand_id,
     l0_filtered.class_l0 as i_class_id,
     l0_filtered.category_l0 as i_category_id,
-    sum(l0_filtered.bucket_sum_l0)
-            by rollup() as sum_sales,
-    sum(l0_filtered.bucket_count_l0)
-            by rollup() as sum_number_sales,
+    sum(l0_filtered.bucket_sum_l0) as sum_sales,
+    sum(l0_filtered.bucket_count_l0) as sum_number_sales,
+by rollup ()
 order by
     channel asc nulls first,
     i_brand_id asc nulls first,

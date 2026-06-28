@@ -23,12 +23,11 @@ end;
 # Gating each measure by its OWN dim mirrors the reference's separate inner joins:
 # a sale counts only with a sale entity, a return only with a return entity, so a
 # combined row whose return entity is null but sale entity is valid can't
-# mis-count its return. (`by rollup ()` would infer the grain but recurses inside
-# a def, so the rollup keys are named explicitly.)
+# mis-count its return. The SELECT-level `by rollup (…)` clause stamps the
+# grouping onto every aggregate the macro expands to.
 def windowed(metric, date_field, id_field, lo='2000-08-23', hi='2000-09-06') ->
     coalesce(
-        sum(metric ? date_field between lo::date and hi::date and id_field is not null)
-            by rollup channel_label, entity_id,
+        sum(metric ? date_field between lo::date and hi::date and id_field is not null),
         0.0
     );
 
@@ -43,6 +42,7 @@ select
     @windowed(s.return_amount, s.return_date.date, s.return_channel_dim_text_id) as returns,
     @windowed(s.net_profit, s.date.date, s.channel_dim_text_id)
         - @windowed(s.return_net_loss, s.return_date.date, s.return_channel_dim_text_id) as profit
+by rollup (channel_label, entity_id)
 order by
     channel_label NULLS FIRST,
     entity_id NULLS FIRST

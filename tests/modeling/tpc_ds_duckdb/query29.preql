@@ -1,17 +1,8 @@
 import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 
-# RC-A correlated-grain shape (2026-05-20). Reference q29 has ONE source
-# grain — the joined rowset of store_sales ⋈ physical_returns ⋈
-# catalog_sales on (customer, item) — at effective grain
-# (ss.ticket_number, item.id, catalog_sales.order_number). The
-# generator correctly refuses to co-group additive aggregates whose
-# declared per-fact grains differ; we give it a single source grain
-# explicitly by projecting all three correlation keys + dim cols + the
-# raw measures in one rowset, then SUM out at the requested output
-# grain. Selecting `catalog_sales.order_number` alongside
-# `store_sales.ticket_number` forces the cross-fact join and pins the
-# grain.
+# query has weird distinct
+# forcedupe through a rowset
 rowset correlated <- where
     store_sales.date.month_of_year = 9
     and store_sales.date.year = 1999

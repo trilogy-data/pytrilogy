@@ -77,6 +77,7 @@ def test_4_rowset_basic_injects_join():
     # q66 target: a BASIC derivation over a rowset output must carry the rowset's
     # scoped-join key the same way the raw reference does.
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     sql = _gen(
         ROWSET, "select ra.x * 2 as r, rb.y inner join ra.join_key = rb.join_key;"

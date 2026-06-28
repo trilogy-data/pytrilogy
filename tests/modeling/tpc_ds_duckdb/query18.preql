@@ -5,8 +5,7 @@ import catalog_sales as cs;
 auto row_birth_year <- group(cs.bill_customer.birth_year) by cs.order_number, cs.item.id;
 auto row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
 
-def rollup_avg(metric) -> avg(metric::numeric(12,2))
-    by rollup cs.item.text_id, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
+def rollup_avg(metric) -> avg(metric::numeric(12,2));
 
 where
     cs.bill_customer_demographic.gender = 'F'
@@ -27,6 +26,7 @@ select
     @rollup_avg(cs.net_profit) as agg5,
     @rollup_avg(row_birth_year) as agg6,
     @rollup_avg(row_dep_count) as agg7,
+by rollup (cs.item.text_id, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county)
 order by
     cs.bill_customer.address.country asc nulls first,
     cs.bill_customer.address.state asc nulls first,

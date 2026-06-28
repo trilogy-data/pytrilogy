@@ -1,7 +1,7 @@
 from trilogy.core.enums import FunctionClass, FunctionType
 from trilogy.core.functions import FUNCTION_REGISTRY
 
-RULE_PROMPT = """# Trilogy Syntax Guide
+RULE_PROMPT = r"""# Trilogy Syntax Guide
 
 Trilogy statements define either a semantic model or a query. If a user asks for data, they want a SELECT.
 
@@ -21,14 +21,14 @@ Models include facts + dimensions. Nullability and fanout are handled automatica
 
 | Goal | Use |
 |---|---|
-| Typical query | no select, no merge, access joins through dot-paths |
+| Typical query | no select, no merge, all fields accessed through dot-paths |
 | Blend two models on shared keys inside one query | scoped `inner\|left\|full join` (the default) |
 | Make a connection universal to all queries in a file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
 
 ### Query-scoped join (the default)
 
-inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. right is unsupported — swap operands. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join.
+inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. right is unsupported — swap operands. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.week_seq + 53 = b.week_seq`), an aggregate, or a window; only `=` equality is supported.
 
 Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH inner join a.order_number = b.order_number AND inner join a.item.id = b.item.id. Matching only one key of a multi-key grain fans out and double-counts — a top cause of wrong results.
 
@@ -40,7 +40,7 @@ merge <a> into <b> is the persistent equivalent of a join (whole query/file). Pr
 
 union (row stacking)
 
-union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result. Arms match by column position (same count/order/types as outputs) and may contain full SQL including subfilters and joins. Usable in a rowset — with combined as union(...) -> (...) with outputs using standard rowset namespaceing <rowset_name>.<path>.
+union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result. Arms match by column position (same count/order/types as outputs) and may contain full trilogy select statements (with their own filters + local joins). Usable in a rowset — with combined as union(...) -> (...) with outputs using standard rowset namespaceing <rowset_name>.<path>.
 
 Full example: trilogy agent-info syntax example union-stack-channels.
 
@@ -57,11 +57,18 @@ ORDER BY?
 LIMIT?
 ```
 
-A named query - a rowset is defined by a select with a preceding `WITH <name>`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
-A select without WITH is an anonymous query whose outputs are not reusable by name. 
+A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
 
-A rowset creates a "new" model; use joins to merge the rowset outputs back into the global namespace if needed.
+A rowset creates a "new" model with all concepts namespaced; `abc.def` output in a rowset called `foo` is
+referenced as `foo.abc.def`. Use joins to merge the rowset outputs back into the global namespace if needed.
 
+with funky as
+where customer = 'funky_monkey'
+SELECT
+    order.id,
+;
+
+Is accessed as `select funk.order.id`;
 
 Full annotated example: `trilogy agent-info syntax example query-structure`.
 
@@ -73,36 +80,48 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 - **No subselects.** "Filter the fact by an attribute of a related entity" → reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
+- **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
 - Since there are no underlying tables, `sum(1)`/`count(1)` is only meaningful grouped by a grain field (e.g. `sum(1) by x as count`).
 
 ### Fields and aliases
 
-- All fields exist in a global namespace; always use the full path (`enroll.student.id`).
+- Always use the full path (`enroll.student.id`) for a field; namespacing matters.
 - Every new expression in the select output must be aliased with `as` (e.g. `sum(births) as all_births`).
 - Aliases cannot appear inside calculations or in WHERE/HAVING/ORDER clauses: `sum(credits) as total_credits` is valid; `(sum(credits) as total_credits) + 1 as credits_plus_one` is not. Never alias a field to an existing name.
-- Always use a reasonable `LIMIT` on final queries if unspecified, unless the request is a time series or line chart.
-
+- Use a context dependent reasonable `LIMIT` on final queries if unspecified (data for charts typically must be complete)
 ## Filtering
 
 WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).
 
 WHERE pushdown scoping. WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
 ```
-where x = 3
-select --sum(x.y) as total_y
-having total_y > 10
+where thing.key = 3
+select 
+    thing.prop,
+    --sum(thing.val) as total_val
+having 
+    total_val > 10
 ```
 HAVING references the projection only. Select what you filter on; hide it with a leading -- to keep it out of the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering to one year AFTER a lead/lag over the full series:
 ```
-select student.state, --sum(enroll.credits) as total_credits, --enroll.year
-having total_credits > 1000 and enroll.year = 2020
+select 
+    student.state, 
+    --sum(enroll.credits) as total_credits, 
+    --enroll.year
+having 
+    total_credits > 1000 
+    and enroll.year = 2020
 ```
 
-HAVING aggregates inherit the output grain — a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total. Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
+HAVING aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total. Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
 ```
 auto grand_total <- sum(enroll.credits) by *;
-select student.id, --sum(enroll.credits) as student_total
-having student_total > 0.0001 * grand_total
+
+select 
+    student.id, 
+    --sum(enroll.credits) as student_total
+having 
+    student_total > 0.0001 * grand_total
 ```
 
 Aggregates in WHERE. To filter rows by an aggregate over pre-filter inputs, write the aggregate directly in WHERE with inline grouping agg(x) by grain (add an inline ? condition if needed):
@@ -119,27 +138,29 @@ auto big_zip <- student.zip ? (count(student.id ? student.honors = true) by stud
 where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 ```
 
-**Anti-join / semi-join.** A fact model contains the full set of dimensional members (all students appear in `fact.students`), so:
+ A fact model contains the full set of dimensional members (all students appear in `fact.students`), so:
 - No matching record (anti-join): `where students.id not in enroll.student_id` is typically a tautology — `enroll.student_id` references the student table and contains all students. Use e.g. `where enroll.id is null select enroll.student.id` instead.
 - Has a matching record (semi-join): `where students.id in ([some other student_list])` effectively filters across models that are not explicitly merged but share an ID (e.g. IDs from an external source).
 
 ## Aggregation and grouping
 
-- Aggregates group at the query's automatic grain by default; override with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
+- Aggregates group at the query's automatic grain by default; override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens — function calls, casts, arithmetic: `avg(price) by (substring(phone, 1, 2))`.
-- **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) attaches to an aggregate's `by` clause and computes it at multiple grain levels in one pass:
-  - `agg(<expr>) by rollup d1, d2` → grouping sets `(d1, d2)`, `(d1)`, `()` — standard SQL ROLLUP, useful for subtotals + grand total.
-  - `agg(<expr>) by cube d1, d2` → every subset of the grouping keys.
-  - `agg(<expr>) by grouping sets (d1, d2), (d1), ()` → arbitrary explicit combinations; parens around each set; `()` is the grand total.
-  - The clause attaches to ONE aggregate. When several aggregates need the same expansion, wrap them in a `def` macro (or repeat the spec for each):
+- **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) is a property of the WHOLE select — a clause after the select list (before `order by`/`limit`) that computes the query at multiple grain levels in one pass. It applies to EVERY aggregate in the select that has no explicit `by` grain, so there is exactly one consistent grouping:
+  - `select d1, d2, agg(<expr>) as a by rollup (d1, d2)` → grouping sets `(d1, d2)`, `(d1)`, `()` — standard SQL ROLLUP, useful for subtotals + grand total.
+  - `select d1, d2, agg(<expr>) as a by cube (d1, d2)` → every subset of the grouping keys.
+  - `select d1, d2, agg(<expr>) as a by grouping sets ((d1, d2), (d1), ())` → arbitrary explicit combinations; parens around each set; `()` is the grand total.
+  - `by rollup ()` (empty) rolls up over the select's own automatic grain.
+  - Because it is select-level, multiple measures just share it — no per-aggregate repetition or macro needed:
 
     ```
-    def rollup_avg(metric) -> avg(metric::numeric(12,2)) by rollup enroll.department, enroll.year;
     select enroll.department, enroll.year,
-        @rollup_avg(enroll.credits) as agg1,
-        @rollup_avg(enroll.grade_points) as agg2;
+        avg(enroll.credits::numeric(12,2)) as agg1,
+        avg(enroll.grade_points::numeric(12,2)) as agg2
+    by rollup (enroll.department, enroll.year);
     ```
-  - `grouping(<field>)` returns 1 when the field has been rolled up at that row, 0 otherwise — use it (or a sum like `grouping(a) + grouping(b)`) to compute the hierarchy level. Detecting rollup rows by output NULL only works when the source has no real NULLs in those columns; when in doubt, prefer `grouping()`.
+  - A composite measure works the same — both operands roll up together because the clause covers the whole select: `sum(a) - sum(b) as net by rollup (d1, d2)`.
+  - `grouping(<field>)` returns 1 when the field has been rolled up at that row, 0 otherwise — use it (or a sum like `grouping(a) + grouping(b)`) to compute the hierarchy level. It needs a `by rollup`/`cube`/`grouping sets` clause on the select. Detecting rollup rows by output NULL only works when the source has no real NULLs in those columns; when in doubt, prefer `grouping()`.
 
 ## Window functions
 
@@ -164,7 +185,7 @@ Default to windows for **self-referential queries** — relating a row to other 
 - Cast with `::type`, e.g. `"2020-01-01"::date`.
 - Date parts have no quotes: `date_part(enroll.date, year)`, never `date_part(enroll.date, 'year')`. Prefer idiomatic function forms when available: `year(enroll.date)`.
 - All functions take parentheses; zero-argument functions use empty ones (`current_date()`).
-- Comments use `#` only, per line.
+- Comments use `#` only, per line. -- is NOT a comment.
 - When several columns share the same calculation, factor it into a `def` macro (invoked with `@name(...)`); for complex logic, break the query into reusable concept declarations.
 
 ## Worked examples
@@ -224,20 +245,6 @@ order by
     total_enrollments desc;
 ```
 
-**Shared rollup spec via `def`.** When several columns share the same calculation, factor it out:
-
-```
-def by_geo(metric) -> avg(metric::numeric(12,2))
-    by rollup student.country, student.state, student.county;
-
-select
-    student.country,
-    student.state,
-    student.county,
-    @by_geo(enroll.credits)      as avg_credits,
-    @by_geo(enroll.grade_points) as avg_grade_points
-limit 100;
-```
 """
 
 

@@ -2,6 +2,7 @@
 
 from trilogy.scripts.file_helpers import preql_description
 from trilogy.scripts.file_helpers.backends import (
+    LIST_MAX_ENTRIES,
     FileBackend,
     FileEntry,
     FileNotFoundError,
@@ -12,6 +13,7 @@ from trilogy.scripts.file_helpers.backends import (
 )
 
 __all__ = [
+    "LIST_MAX_ENTRIES",
     "FileBackend",
     "FileEntry",
     "FileNotFoundError",

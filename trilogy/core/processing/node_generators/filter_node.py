@@ -454,7 +454,7 @@ def add_existence_sources(
     g,
     depth,
     history,
-):
+) -> bool:
     for existence_tuple in parent_existence_concepts:
         if not existence_tuple:
             continue
@@ -472,8 +472,9 @@ def add_existence_sources(
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} filter existence node parents could not be found"
             )
-            return None
+            return False
         core_parent_nodes.append(parent_existence)
+    return True
 
 
 def gen_filter_node(
@@ -517,7 +518,7 @@ def gen_filter_node(
     core_parent_nodes: list[StrategyNode] = []
     flattened_existence = [x for y in parent_existence_concepts for x in y]
     if parent_existence_concepts:
-        add_existence_sources(
+        if not add_existence_sources(
             core_parent_nodes,
             parent_existence_concepts,
             source_concepts,
@@ -525,7 +526,14 @@ def gen_filter_node(
             g,
             depth,
             history,
-        )
+        ):
+            # An existence subquery (e.g. a membership RHS) couldn't be sourced
+            # — bail so the search reports a clean UnresolvableQueryException
+            # instead of emitting a dangling INVALID_REFERENCE_BUG CTE.
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} filter node existence parents could not be sourced; abandoning filter node"
+            )
+            return None
 
     if not row_parent:
         logger.info(

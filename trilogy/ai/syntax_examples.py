@@ -266,54 +266,66 @@ order by enroll.year asc nulls first;
         name="union-stack-channels",
         title="Stack rows from several sources/channels with the union(...) TVF",
         summary=(
-            "`with combined as union((armA), (armB), ...) -> (o1, o2, ...)` row-STACKS "
-            "self-contained selects positionally (SQL UNION ALL) — the PREFERRED way to "
-            "combine channels/sources; reference outputs as `combined.o1`"
+            "`with combined as union((armA), (armB), (armC), ...) -> (o1, o2, ...)` "
+            "row-STACKS self-contained inline selects positionally (SQL UNION ALL) — "
+            "the PREFERRED way to combine channels/sources; pass TWO OR MORE arms, one "
+            "per source; reference outputs as `combined.o1`"
         ),
         body="""\
-# `union(...)` is a relational table-valued function: it STACKS the rows of two
-# or more self-contained `select` arms, positionally (like SQL `UNION ALL`), into
-# one named result. Use it to combine CHANNELS / SOURCES / labeled populations —
-# one arm per source. It is a row STACK, NOT a key-join: arms are matched by
-# COLUMN POSITION, so every arm must project the same number of columns, in the
-# same order and types, as the trailing `-> (...)` output list. (In a real model
-# each arm is typically a DIFFERENT source/fact; here two subsets of one model
-# stand in for that.)
+# `union(...)` is a relational table-valued function: it STACKS the rows of TWO OR
+# MORE self-contained `select` arms, positionally (like SQL `UNION ALL`), into one
+# named result. Use it to combine CHANNELS / SOURCES / labeled populations — ONE
+# ARM PER SOURCE, and there is NO fixed arm count (this example stacks THREE). It
+# is a row STACK, NOT a key-join: arms are matched by COLUMN POSITION, so every arm
+# must project the same number of columns, in the same order and types, as the
+# trailing `-> (...)` output list. (In a real model each arm is typically a
+# DIFFERENT source/fact — e.g. store, catalog, web sales; here three subsets of one
+# model stand in for those three channels.)
 import enrollments as enroll;
 
-# Each arm is fully independent (its own `where`, its own aggregation). The arms'
-# i-th column maps to the i-th name in the `-> (...)` output list; the surface
-# names inside each arm need not match — only POSITION does.
-with by_status as union(
-    (where enroll.completed = true
+# IMPORTANT: each arm is an INLINE, self-contained select written directly inside
+# the `union(...)` — you CANNOT pass the name of a previously-defined rowset as an
+# arm; put the full select logic (its own `where`, its own aggregation) in the arm.
+# The arms' i-th column maps to the i-th name in the `-> (...)` output list; the
+# surface names inside each arm need not match — only POSITION does. Each arm may
+# group by its own dims (here `course`), so an arm can emit MANY rows.
+with by_channel as union(
+    (where enroll.department = 'Biology'
      select
-        'completed' as status,
-        enroll.department as department,
+        'Biology' as channel,
+        enroll.course as course,
         count(enroll.id) as enrollments,
     ),
-    (where enroll.completed = false
+    (where enroll.department = 'Chemistry'
      select
-        'incomplete' as status,
-        enroll.department as department,
+        'Chemistry' as channel,
+        enroll.course as course,
+        count(enroll.id) as enrollments,
+    ),
+    (where enroll.department = 'Physics'
+     select
+        'Physics' as channel,
+        enroll.course as course,
         count(enroll.id) as enrollments,
     )
-) -> (status, department, enrollments);
+) -> (channel, course, enrollments);
 
 # Reference the stacked outputs as `<rowset>.<output>`.
 select
-    by_status.status,
-    by_status.department,
-    by_status.enrollments,
-order by by_status.enrollments desc nulls first
+    by_channel.channel,
+    by_channel.course,
+    by_channel.enrollments,
+order by by_channel.channel, by_channel.enrollments desc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
 # NOTES:
-#  - The trailing `-> (status, department, enrollments)` NAMES the positional
-#    outputs; column order / count / type must line up across every arm.
+#  - Pass TWO OR MORE arms — add a fourth/fifth the same way; one arm per source.
+#  - The trailing `-> (channel, course, enrollments)` NAMES the positional outputs;
+#    column order / count / type must line up across every arm.
 #  - Every union output is treated as a KEY (grain component). To RE-AGGREGATE the
-#    stack (e.g. a grand total across statuses), wrap it in an outer aggregate:
-#        select sum(by_status.enrollments) by rollup by_status.status as total;
+#    stack (e.g. a grand total across channels), wrap it in an outer aggregate:
+#        select sum(by_channel.enrollments) by rollup by_channel.channel as total;
 #  - An arm may carry its OWN query-scoped join (`select ... left join a = b`
 #    after its select list) — localize each source's join to the arm that needs it.
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
@@ -390,6 +402,23 @@ inner join y2020.dept = y2021.dept
 order by yoy_diff desc nulls first
 limit 100;
 
+# ---------------------------------------------------------------------------
+# (4) EXPRESSION join keys — a key may be ANY expression (arithmetic, an
+# aggregate, a window), not just a bare field. Here each year is matched to the
+# PRIOR year by joining on an OFFSET key (`prev_year.yr + 1`), so the prior
+# year's count lands on the current row without a self-merge. Only `=` equality
+# is supported (a key below comparison level — wrap a comparison in parens).
+rowset cur_year  <- select enroll.year as yr, count(enroll.id) as cnt;
+rowset prev_year <- select enroll.year as yr, count(enroll.id) as cnt;
+
+select
+    cur_year.yr,
+    cur_year.cnt as this_year,
+    prev_year.cnt as prior_year,
+inner join cur_year.yr = prev_year.yr + 1
+order by cur_year.yr asc
+limit 100;
+
 # NOTES:
 #  - JOIN ON THE FULL GRAIN: one `join` clause per key in the two facts' shared
 #    `@<...>` grain. Under-joining (one key of a multi-key grain) is a top cause of
@@ -399,6 +428,8 @@ limit 100;
 #    `inner join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `inner join` clauses.
 #    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
 #    ONE group — both compose: `inner join a.k = b.k = base.k and a.k2 = b.k2`.
+#  - A join key may be ANY expression (a computed/offset key, an aggregate, a
+#    window), not only a bare field — see (4). Only `=` equality is supported.
 #  - `inner`, `left`, and `full` are supported (NOT `right` — swap the operands
 #    for a right join). `inner` requires the key in BOTH sides (drops one-sided
 #    rows); `left` keeps unmatched anchor rows; `full` keeps unmatched rows from
@@ -442,15 +473,15 @@ select enroll.student_id;
         title="Set intersection / difference on a multi-column key (presence per group)",
         summary=(
             "count tuples present in / absent from other groups via per-group "
-            "presence flags — the multi-column INTERSECT/EXCEPT idiom (NOT concat + `in`)"
+            "presence flags — the multi-column INTERSECT/EXCEPT idiom"
         ),
         body="""\
 # To intersect or difference rows on a MULTI-COLUMN key (the SQL INTERSECT /
 # EXCEPT of several columns), group by the full key tuple and build a presence
 # flag per set with `sum(case when <set> then 1 else 0 end)`. Grouping keeps
 # NULL key parts as their own group (correct INTERSECT/EXCEPT semantics).
-# Do NOT concat the columns into one string and use `in`/`not in` — concat drops
-# NULLs and gives the wrong count.
+# (Be careful concatenating nullable fields into a single key — concat over a
+# NULL yields NULL, so coalesce nullable parts first.)
 import enrollments as enroll;
 
 # Presence of each (student_id, course) tuple among completed vs open enrollments.
@@ -500,6 +531,48 @@ order by unique_sc.course asc;
 """,
     ),
     SyntaxExample(
+        name="rollup",
+        title="Subtotals + grand total in one pass with `by rollup (…)`",
+        summary=(
+            "the select-level `by rollup (d1, d2)` clause computes EVERY aggregate "
+            "in the select at every level (leaf, per-d1 subtotal, grand total) in one "
+            "pass; `grouping(d)` = 1 on a rolled-up row — use it to LABEL "
+            "subtotal/total rows and to sort by level"
+        ),
+        body="""\
+# A `by rollup (d1, d2)` clause AFTER the select list (before order by) computes
+# the whole select at MULTIPLE grain levels in one pass — the grouping sets
+# (d1, d2), (d1), () — i.e. per-(d1,d2) leaf rows, a subtotal per d1, and a grand
+# total. (`by cube (d1, d2)` = every combination; `by rollup ()` over the select's
+# own grain.) It applies to EVERY aggregate in the select, so all measures share
+# one consistent grouping.
+import enrollments as enroll;
+
+# `grouping(d)` = 1 when d is ROLLED UP on a row (a subtotal/grand-total row), 0 on
+# a leaf — use it to LABEL those rows: the rolled-up dimension is otherwise NULL
+# and would collide with any genuine NULL in the data.
+select
+    case when grouping(enroll.department) = 1 then 'ALL DEPARTMENTS'
+         else enroll.department end as department,
+    case when grouping(enroll.course) = 1 then 'all courses'
+         else enroll.course end as course,
+    sum(enroll.credits) as total_credits,
+    --grouping(enroll.department) + grouping(enroll.course) as _level
+by rollup (enroll.department, enroll.course)
+order by _level asc, department asc nulls first, course asc nulls first
+limit 100;
+
+# ---------------------------------------------------------------------------
+# NOTES:
+#  - SORT BY LEVEL (leaves, then subtotals, then grand total): ORDER BY cannot
+#    compute a fresh aggregate, so PROJECT the level (`grouping(a) + grouping(b)`)
+#    as a HIDDEN (`--`) column and sort by its alias — `_level` above.
+#  - COMPOSITE measures just work: `sum(a) - sum(b) as net` rolls up BOTH operands
+#    to the same levels because the `by rollup (…)` clause covers the whole select.
+#    To zero-fill a measure, wrap it: `coalesce(sum(a), 0) as a`.
+""",
+    ),
+    SyntaxExample(
         name="rank-over-rollup",
         title="Rank within each rollup level (one window over the rollup)",
         summary=(
@@ -511,12 +584,14 @@ order by unique_sc.course asc;
 # multi-key window over the rollup output. `grouping()` gives the level; the
 # window partitions by (level, parent) so leaves rank within their parent and
 # subtotals rank among themselves — all in one pass. Do NOT write separate rank
-# concepts per level (they mis-rank across the wrong row set).
+# concepts per level (they mis-rank across the wrong row set). The aggregates and
+# grouping() level concepts are plain — the select's `by rollup (…)` clause stamps
+# the grouping onto all of them.
 import enrollments as enroll;
 
-auto total <- count(enroll.id) by rollup enroll.course, enroll.year;
-auto g_course <- grouping(enroll.course) by rollup enroll.course, enroll.year;
-auto g_year <- grouping(enroll.year) by rollup enroll.course, enroll.year;
+auto total <- count(enroll.id);
+auto g_course <- grouping(enroll.course);
+auto g_year <- grouping(enroll.year);
 auto level <- g_course + g_year;   # 0 = leaf, 1 = course subtotal, 2 = grand total
 auto parent <- case when g_year = 0 then enroll.course else null end;
 auto rnk <- rank(enroll.course, enroll.year)
@@ -529,21 +604,15 @@ select
     level,
     --parent,
     rnk,
+by rollup (enroll.course, enroll.year)
 order by level desc nulls first, parent asc nulls first, rnk asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
-# NOTE — composite aggregate over a rollup (a difference/ratio of sums):
-# put `by rollup` on EACH operand.
-#   GOOD: (sum(profit) by rollup enroll.course, enroll.year)
-#       - (sum(loss) by rollup enroll.course, enroll.year) as net
-# BAD: `sum(profit) - sum(loss) by rollup enroll.course, enroll.year` binds the
-# `by rollup` to the LAST operand only — `sum(profit)` then stays at leaf grain
-# and comes out NULL on the subtotal/grand-total rows. And the tidy-looking
-# `(sum(profit) - sum(loss)) by rollup ...` does NOT parse (a `by` clause
-# attaches to a single aggregate, not to a parenthesized expression). 
-#  Because it cannot generalize to complex parnetheses. Spell out
-# `by rollup` on every operand so they all roll up to the same levels.
+# NOTE — a composite aggregate over a rollup (a difference/ratio of sums) needs
+# NO special handling: `sum(profit) - sum(loss) as net` rolls up both operands
+# to the same levels, because `by rollup (…)` is a property of the whole select,
+# not of one aggregate.
 """,
     ),
     SyntaxExample(

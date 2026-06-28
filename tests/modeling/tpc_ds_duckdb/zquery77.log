@@ -1,7 +1,7 @@
 query_id = "77"
 generator = "v3"
-gen_length = 8844
-preql_size = 3148
+gen_length = 9144
+preql_size = 3062
 comp_size = 3129
 generated_sql = """
 
@@ -168,47 +168,47 @@ FROM
     FULL JOIN \"cooperative\" on 1=1),
 cool as (
 SELECT
-    \"concerned\".\"___tvf_arm_0_u_channel\" as \"u_channel\",
-    \"concerned\".\"___tvf_arm_0_u_id\" as \"u_id\",
-    \"concerned\".\"___tvf_arm_0_u_sales\" as \"u_sales\",
-    \"concerned\".\"___tvf_arm_0_u_returns\" as \"u_returns\",
-    \"concerned\".\"___tvf_arm_0_u_profit\" as \"u_profit\"
+    \"concerned\".\"___tvf_arm_0_u_channel\" as \"_l0_union_u_channel\",
+    \"concerned\".\"___tvf_arm_0_u_id\" as \"_l0_union_u_id\",
+    \"concerned\".\"___tvf_arm_0_u_sales\" as \"_l0_union_u_sales\",
+    \"concerned\".\"___tvf_arm_0_u_returns\" as \"_l0_union_u_returns\",
+    \"concerned\".\"___tvf_arm_0_u_profit\" as \"_l0_union_u_profit\"
 FROM
     \"concerned\"
 UNION ALL
 SELECT
-    \"charming\".\"___tvf_arm_1_u_channel\" as \"u_channel\",
-    \"charming\".\"___tvf_arm_1_u_id\" as \"u_id\",
-    \"charming\".\"___tvf_arm_1_u_sales\" as \"u_sales\",
-    \"charming\".\"___tvf_arm_1_u_returns\" as \"u_returns\",
-    \"charming\".\"___tvf_arm_1_u_profit\" as \"u_profit\"
+    \"charming\".\"___tvf_arm_1_u_channel\" as \"_l0_union_u_channel\",
+    \"charming\".\"___tvf_arm_1_u_id\" as \"_l0_union_u_id\",
+    \"charming\".\"___tvf_arm_1_u_sales\" as \"_l0_union_u_sales\",
+    \"charming\".\"___tvf_arm_1_u_returns\" as \"_l0_union_u_returns\",
+    \"charming\".\"___tvf_arm_1_u_profit\" as \"_l0_union_u_profit\"
 FROM
     \"charming\"
 UNION ALL
 SELECT
-    \"courageous\".\"___tvf_arm_2_u_channel\" as \"u_channel\",
-    \"courageous\".\"___tvf_arm_2_u_id\" as \"u_id\",
-    \"courageous\".\"___tvf_arm_2_u_sales\" as \"u_sales\",
-    \"courageous\".\"___tvf_arm_2_u_returns\" as \"u_returns\",
-    \"courageous\".\"___tvf_arm_2_u_profit\" as \"u_profit\"
+    \"courageous\".\"___tvf_arm_2_u_channel\" as \"_l0_union_u_channel\",
+    \"courageous\".\"___tvf_arm_2_u_id\" as \"_l0_union_u_id\",
+    \"courageous\".\"___tvf_arm_2_u_sales\" as \"_l0_union_u_sales\",
+    \"courageous\".\"___tvf_arm_2_u_returns\" as \"_l0_union_u_returns\",
+    \"courageous\".\"___tvf_arm_2_u_profit\" as \"_l0_union_u_profit\"
 FROM
     \"courageous\"),
 elated as (
 SELECT
-    \"cool\".\"u_channel\" as \"u_channel\",
-    \"cool\".\"u_id\" as \"u_id\",
-    \"cool\".\"u_profit\" as \"u_profit\",
-    \"cool\".\"u_returns\" as \"u_returns\",
-    \"cool\".\"u_sales\" as \"u_sales\"
+    \"cool\".\"_l0_union_u_channel\" as \"_l0_union_u_channel\",
+    \"cool\".\"_l0_union_u_id\" as \"_l0_union_u_id\",
+    \"cool\".\"_l0_union_u_profit\" as \"_l0_union_u_profit\",
+    \"cool\".\"_l0_union_u_returns\" as \"_l0_union_u_returns\",
+    \"cool\".\"_l0_union_u_sales\" as \"_l0_union_u_sales\"
 FROM
     \"cool\"),
 wary as (
 SELECT
-    \"elated\".\"u_channel\" as \"l0_union_u_channel\",
-    \"elated\".\"u_id\" as \"l0_union_u_id\",
-    \"elated\".\"u_profit\" as \"l0_union_u_profit\",
-    \"elated\".\"u_returns\" as \"l0_union_u_returns\",
-    \"elated\".\"u_sales\" as \"l0_union_u_sales\"
+    \"elated\".\"_l0_union_u_channel\" as \"l0_union_u_channel\",
+    \"elated\".\"_l0_union_u_id\" as \"l0_union_u_id\",
+    \"elated\".\"_l0_union_u_profit\" as \"l0_union_u_profit\",
+    \"elated\".\"_l0_union_u_returns\" as \"l0_union_u_returns\",
+    \"elated\".\"_l0_union_u_sales\" as \"l0_union_u_sales\"
 FROM
     \"elated\")
 SELECT

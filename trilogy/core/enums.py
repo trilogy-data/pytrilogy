@@ -241,6 +241,9 @@ class FunctionType(Enum):
     ATTR_ACCESS = "attr_access"
     STRUCT = "struct"
     ARRAY = "array"
+    # an ordered row tuple `(a, b, ...)` used as an operand of composite
+    # membership (`(a, b) in (set.a, set.b)`); never a SQL array literal
+    ROW_TUPLE = "row_tuple"
     DATE_LITERAL = "date_literal"
     DATETIME_LITERAL = "datetime_literal"
 

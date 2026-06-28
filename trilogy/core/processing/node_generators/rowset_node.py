@@ -19,8 +19,23 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
+
+
+def _condition_operands_resolved(
+    conditions: BuildWhereClause, node: StrategyNode
+) -> bool:
+    """True when `node` can produce every row-operand the predicate references
+    (directly or via a pseudonym). A cross-rowset merge that drops an operand
+    must not have the predicate applied -- the renderer would emit a dangling
+    INVALID_REFERENCE_BUG CTE for the missing column."""
+    available: set[str] = set()
+    for c in node.output_concepts:
+        available.add(c.address)
+        available.update(c.pseudonyms)
+    return all(r.address in available for r in conditions.row_arguments)
 
 
 def _scoped_joins_for_rowset(
@@ -196,6 +211,65 @@ def gen_rowset_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]} with grain {node.grain}"
     )
+    # A WHERE pushed up to this rowset can compare its outputs against *other*
+    # scoped-joined rowsets (q11/q23 period/channel comparisons). Those operands
+    # aren't in this rowset's outputs; source them alongside this rowset's output
+    # as one scoped-join merge and apply the predicate to that merge. Returning
+    # the bare node would silently drop the filter (or strand it as an
+    # unsatisfiable condition upstream). Sourcing without the condition avoids
+    # re-entering this branch for each operand rowset.
+    if conditions:
+        have = {x.address for x in node.output_concepts}
+        condition_targets = [
+            environment.concepts[r.address]
+            for r in conditions.row_arguments
+            if r.address not in have and r.address in environment.concepts
+        ]
+        # Only intercept when an operand lives in ANOTHER scoped rowset (the
+        # q11/q23 cross-rowset comparison): those operands can't be pushed down,
+        # so we merge the rowsets and apply the predicate post-join. A plain base
+        # concept (e.g. an outer `yr=1999` filter feeding an outer aggregate) must
+        # instead flow through the normal enrich path so the condition is pushed
+        # down into the scan — applying it here would compute the aggregate
+        # unfiltered and filter too late.
+        if any(t.derivation == Derivation.ROWSET for t in condition_targets):
+            # Source the merge against EVERY concept the predicate references, not
+            # just the operands missing from this rowset (`condition_targets`). An
+            # operand that lives in *this* rowset (e.g. a measure compared against
+            # another rowset's measure) is in `node` but NOT in the fresh merge --
+            # the merge is sourced anew, it doesn't inherit `node`'s outputs. Omit
+            # it and the applied predicate references a column the merge never
+            # produced -> dangling INVALID_REFERENCE_BUG CTE (q64).
+            merge_inputs = unique(
+                [concept] + local_optional + list(conditions.row_arguments),
+                "address",
+            )
+            merged = source_concepts(
+                mandatory_list=merge_inputs,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+                conditions=None,
+                history=history,
+            )
+            # Only apply the predicate if the merge actually produced every
+            # operand; otherwise fall through rather than emit a dangling CTE.
+            if merged and _condition_operands_resolved(conditions, merged):
+                merged.add_condition(conditions.conditional)
+                # A membership predicate (`x in <set>`) needs its existence set
+                # sourced as a parent here too -- otherwise the subselect renders
+                # against a dangling CTE (INVALID_REFERENCE_BUG). The normal
+                # completion-merge path appends this; this cross-rowset branch
+                # short-circuits it, so mirror it explicitly.
+                if conditions.existence_arguments:
+                    from trilogy.core.processing.concept_strategies_v3 import (
+                        append_existence_check,
+                    )
+
+                    append_existence_check(merged, environment, g, conditions, history)
+                merged.set_preexisting_conditions(conditions.conditional)
+                return merged
+
     remaining = unsatisfied_optionals(local_optional, node)
     if not remaining:
         logger.info(

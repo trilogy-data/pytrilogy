@@ -11,6 +11,7 @@ from trilogy.core.optimizations import (
     JoinHoist,
     MergeIrrelevantGroupBy,
     OptimizationRule,
+    OrderInnerJoinsFirst,
     PredicatePushdown,
     PredicatePushdownRemove,
     SimplifyNullSafeJoins,
@@ -657,6 +658,24 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="hide_unused_concepts",
                 rule_factory=HideUnusedConcepts,
+            )
+        )
+    if opts.order_inner_joins_first:
+        plan.append(
+            OptimizationRulePlan(
+                name="order_inner_joins_first",
+                rule_factory=OrderInnerJoinsFirst,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "runs last so join types are final (INNER<->OUTER upgrades have "
+                    "settled) before INNER joins are bubbled ahead of LEFT joins"
+                ),
             )
         )
     return plan

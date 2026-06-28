@@ -127,7 +127,7 @@
 
     // join_clause may appear before "select" (legacy) OR right after the select
     // list (preferred, SQL-like); both positions collect into the same join set.
-    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  having?  order_by?  limit?
+    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  having?  select_grouping? order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
     // for this select only (a query-local merge). The left key is the brought-in
@@ -137,10 +137,16 @@
     // DISTINCT equivalence groups), saving a repeated `JOIN_TYPE join` prefix.
     join_clause: JOIN_TYPE "join"i join_group ("and"i join_group)*
 
-    join_group: IDENTIFIER "=" IDENTIFIER ("=" IDENTIFIER)*
+    // Each key is a `sum_chain` (the expr level just below comparison) so join
+    // keys admit arbitrary expressions (arithmetic, aggregates, windows, ...),
+    // not just bare concept references; a comparison key can be parenthesized.
+    // The separator reuses COMPARISON_OPERATOR (rather than a bare `"="`, which
+    // would mint an EQUAL terminal that shadows `=` inside COMPARISON_OPERATOR
+    // after a sum_chain and break every comparison); the hydrator enforces `=`.
+    join_group: sum_chain (COMPARISON_OPERATOR sum_chain)+
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? order_by?  limit?
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? select_grouping? order_by?  limit?
 
     align_item: select_hide_modifier? IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 
@@ -208,7 +214,7 @@
     function_binding_default: /=/ expr
     function_binding_item: IDENTIFIER function_binding_type? function_binding_default?
     function_binding_list: (function_binding_item ",")* function_binding_item ","?
-    raw_function: "def"  IDENTIFIER  "("  function_binding_list ")" "->" conditional
+    raw_function: "def"  IDENTIFIER  ("("  function_binding_list? ")")? "->" conditional
     _DEF_TABLE.2: /def\s+table/i
     table_function: _DEF_TABLE IDENTIFIER "(" function_binding_list? ")" "->" "select"i expr subselect_where? subselect_order? subselect_limit?
 
@@ -379,7 +385,14 @@
 
     PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | /not\s+ilike/i | /not\s+like/i | "ilike"i | "like"i )
 
-    ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
+    // A leading UNARY_MINUS is prefix negation on the first product_chain
+    // (`-sum(x)`, `-col`, `-(a+b)`). It binds only the first operand, so
+    // `-a + b` is `(-a) + b`. UNARY_MINUS's negative lookahead excludes a `-`
+    // glued to a digit/dot, so a negative numeric literal (`-1`, `-1.5`) still
+    // lexes as a single number — there's no overlap to resolve by priority.
+    ?sum_chain: UNARY_MINUS? product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
+    // `-` not glued to a number (`-sum`, `- 1`, `-(x)`) and not the `->` arrow.
+    UNARY_MINUS: /-(?![0-9.>])/
     
     MULTIPLY_DIVIDE_PERCENT: ("**" | "*" | "/" | "%")
 
@@ -569,16 +582,27 @@
 
     //aggregates can force a grain
     aggregate_all: "*"
-    aggregate_rollup: "ROLLUP"i ("(" ")" | over_list)
-    aggregate_cube: "CUBE"i over_list
     grouping_set: "(" expr_over_list? ")"
-    aggregate_grouping_sets: "GROUPING"i "SETS"i grouping_set ("," grouping_set)*
     // Paren-wrapped expression list: `by (substring(x,1,2), other)`. The surrounding
     // parens give an unambiguous boundary, so we can accept arbitrary expressions
     // here without conflicting with the select_list's comma the way bare `over_list`
     // would. Build phase materializes non-concept entries via instantiate_concept.
     aggregate_paren_by: "(" expr_over_list ")"
-    aggregate_over: ("BY"i (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | aggregate_paren_by | over_list))
+    aggregate_over: ("BY"i (aggregate_all | aggregate_paren_by | over_list))
+
+    // SELECT-level multi-level grouping (ROLLUP / CUBE / GROUPING SETS). It is a
+    // property of the whole select — the planner propagates it to every aggregate
+    // that has no explicit `by` grain, so all measures share ONE grouping pass
+    // (no per-aggregate rollup, which made inconsistent grouping possible). The
+    // `by rollup`/`by cube`/`by grouping sets` leads are single multi-word tokens
+    // so the LALR lexer never confuses them with an aggregate's own `by <grain>`.
+    _BY_ROLLUP: /by\s+rollup(?![A-Za-z0-9_.])/i
+    _BY_CUBE: /by\s+cube(?![A-Za-z0-9_.])/i
+    _BY_GROUPING_SETS: /by\s+grouping\s+sets(?![A-Za-z0-9_.])/i
+    select_grouping: select_rollup | select_cube | select_grouping_sets
+    select_rollup: _BY_ROLLUP "(" expr_over_list? ")"
+    select_cube: _BY_CUBE "(" expr_over_list ")"
+    select_grouping_sets: _BY_GROUPING_SETS "(" grouping_set ("," grouping_set)* ")"
     aggregate_functions: (count | count_distinct | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) aggregate_over?
 
     // date functions
@@ -675,7 +699,7 @@
 
     INT_LITERAL_PART: /\-?[0-9]+/
     int_lit: INT_LITERAL_PART
-    
+
     float_lit: /\-?[0-9]*\.[0-9]+/
 
     array_lit: "[" (expr ("," expr)* ","?)? "]"()

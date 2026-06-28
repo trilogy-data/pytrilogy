@@ -1,5 +1,5 @@
 import customer as customer;
-import physical_returns as returns;
+import store_returns as returns;
 
 # sr_cdemo_sk = cd_demo_sk in the reference; cross-table value join.
 where

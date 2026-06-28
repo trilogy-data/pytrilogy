@@ -36,7 +36,7 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, NamedTuple, cast
+from typing import Any, Callable, Iterable, Iterator, Mapping, NamedTuple, cast
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import (
@@ -44,6 +44,7 @@ from trilogy.core.enums import (
     ConceptSource,
     FunctionClass,
     FunctionType,
+    Modifier,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
@@ -55,24 +56,30 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    FilterItem,
     Function,
+    FunctionCallWrapper,
     Grain,
     NavigationWindowItem,
     NumberingWindowItem,
     OrderBy,
     OrderItem,
     Parenthetical,
+    SubselectItem,
     UndefinedConcept,
     UndefinedConceptFull,
 )
+from trilogy.core.models.core import ListWrapper, MapWrapper, TupleWrapper
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
     ConceptTransform,
     MultiSelectStatement,
     PersistStatement,
     RowsetDerivationStatement,
+    SelectItem,
     SelectStatement,
 )
+from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
 
@@ -238,33 +245,57 @@ def _calculate_grain(
     return result
 
 
-def _concept_address(c: Any) -> str:
+def _concept_address(c: Any, rename: Mapping[str, str] | None = None) -> str:
     if isinstance(c, (AggregateWrapper, Function)):
         nested = _render_aggregate(c)
         if nested:
             return nested
-    return c.address if hasattr(c, "address") else str(c)
+    addr = c.address if hasattr(c, "address") else str(c)
+    return rename.get(addr, addr) if rename is not None else addr
+
+
+def _macro_inner_aggregate(node: Any) -> Any | None:
+    """If ``node`` is a ``def``-macro invocation whose body is a single aggregate
+    (``@rollup_sales()`` -> ``sum(...) by rollup ...``), return that inner
+    aggregate node, else ``None``. Lets HAVING/SELECT aggregate matching see
+    through the ``FunctionCallWrapper`` produced by macro expansion."""
+    if isinstance(node, FunctionCallWrapper):
+        inner = node.content
+        if isinstance(inner, AggregateWrapper) or (
+            isinstance(inner, Function)
+            and inner.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return inner
+    return None
 
 
 def _aggregate_full_signature(
     node: Any,
+    rename: Mapping[str, str] | None = None,
 ) -> tuple[Any, tuple[str, ...], tuple[str, ...]] | None:
     """Signature (operator, args, by) for matching aggregates across SELECT/WHERE.
 
+    ``rename`` maps pure-rename SELECT sources to their alias addresses so a
+    SELECT ``by rollup sales.channel`` and a HAVING ``by ... local.channel``
+    (which finalize rewrites to the output grain) compare equal.
+
     Returns ``None`` for non-aggregate nodes.
     """
+    inner = _macro_inner_aggregate(node)
+    if inner is not None:
+        return _aggregate_full_signature(inner, rename)
     if isinstance(node, AggregateWrapper):
         return (
             node.function.operator,
-            tuple(_concept_address(a) for a in node.function.arguments),
-            tuple(sorted(_concept_address(c) for c in node.by)),
+            tuple(_concept_address(a, rename) for a in node.function.arguments),
+            tuple(sorted(_concept_address(c, rename) for c in node.by)),
         )
     if isinstance(node, Function) and (
         node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
     ):
         return (
             node.operator,
-            tuple(_concept_address(a) for a in node.arguments),
+            tuple(_concept_address(a, rename) for a in node.arguments),
             (),
         )
     return None
@@ -288,12 +319,13 @@ def _strip_local_namespace(address: str) -> str:
 
 def _select_aggregate_outputs(
     select: SelectStatement,
+    rename: Mapping[str, str] | None = None,
 ) -> list[tuple[tuple[Any, tuple[str, ...], tuple[str, ...]], str]]:
     """Return ``(signature, output_address)`` for aggregate-producing select items."""
     results: list[tuple[tuple[Any, tuple[str, ...], tuple[str, ...]], str]] = []
     for item in select.selection:
         if isinstance(item.content, ConceptTransform):
-            sig = _aggregate_full_signature(item.content.function)
+            sig = _aggregate_full_signature(item.content.function, rename)
             if sig is not None:
                 results.append((sig, item.content.output.address))
     return results
@@ -455,6 +487,15 @@ def _collect_condition_aggregates(node: Any) -> list[Any]:
     if isinstance(node, AggregateWrapper):
         found.append(node)
         return found
+    if _macro_inner_aggregate(node) is not None:
+        # `@rollup_agg()` macro wrapping a single aggregate — match as a whole.
+        found.append(node)
+        return found
+    if isinstance(node, FunctionCallWrapper):
+        found.extend(_collect_condition_aggregates(node.content))
+        for macro_arg in node.args:
+            found.extend(_collect_condition_aggregates(macro_arg))
+        return found
     if isinstance(node, Function) and (
         node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
     ):
@@ -582,12 +623,13 @@ def _substitute_condition_tree(node: Any, match_leaf: Any) -> Any:
 def _substitute_having_aggregates(
     node: Any,
     sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef],
+    rename: Mapping[str, str] | None = None,
 ) -> Any:
     """Rewrite a HAVING conditional tree, replacing matched aggregates with
     ``ConceptRef`` to the SELECT alias."""
 
     def match(n: Any) -> ConceptRef | None:
-        sig = _aggregate_full_signature(n)
+        sig = _aggregate_full_signature(n, rename)
         return sig_to_ref.get(sig) if sig is not None else None
 
     return _substitute_condition_tree(node, match)
@@ -611,10 +653,14 @@ def _validate_having_aggregates_match_select(
     """
     if not select.having_clause:
         return
-    select_aggs = _select_aggregate_outputs(select)
+    # A SELECT ``by rollup sales.channel`` keeps source names while finalize
+    # rewrites the matching HAVING ``by`` to its output aliases (``local.channel``)
+    # — normalize both sides through the pure-rename map so they match.
+    rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
+    select_aggs = _select_aggregate_outputs(select, rename)
     sig_to_alias_addr = {sig: addr for sig, addr in select_aggs}
     for node in _collect_condition_aggregates(select.having_clause.conditional):
-        sig = _aggregate_full_signature(node)
+        sig = _aggregate_full_signature(node, rename)
         if sig is None or sig in sig_to_alias_addr:
             continue
         _, _, by = sig
@@ -644,7 +690,7 @@ def _validate_having_aggregates_match_select(
         sig_to_ref[sig] = alias_concept.reference
     if sig_to_ref:
         new_conditional = _substitute_having_aggregates(
-            select.having_clause.conditional, sig_to_ref
+            select.having_clause.conditional, sig_to_ref, rename
         )
         if new_conditional is not select.having_clause.conditional:
             select.having_clause.conditional = new_conditional
@@ -724,25 +770,95 @@ def _item_lineage(item: Any, context: RuleContext) -> Any:
     return concept.lineage
 
 
+def _child_exprs(node: Any) -> Iterator[Any]:
+    """Direct child expressions of a composite ``Expr`` node — the value-bearing
+    sub-expressions an aggregate could be nested in. Covers every non-leaf member
+    of the ``Expr`` union (author.py); leaves (``ConceptRef``, scalars) yield
+    nothing. Filter/window/subselect carry their value in ``content``/``arguments``
+    only — their ``where``/``order_by`` are conditions, not part of the projected
+    value, so they are intentionally not descended here.
+
+    Keep in sync with the ``Expr`` union; ``test_aggregate_wrapper_collection``'s
+    exhaustiveness guard fails if a new composite type is added without coverage.
+    """
+    if isinstance(node, (Comparison, Conditional)):
+        yield node.left
+        yield node.right
+    elif isinstance(node, Between):
+        yield node.left
+        yield node.low
+        yield node.high
+    elif isinstance(node, Parenthetical):
+        yield node.content
+    elif isinstance(node, CaseWhen):
+        yield node.comparison
+        yield node.expr
+    elif isinstance(node, CaseElse):
+        yield node.expr
+    elif isinstance(node, AggregateWrapper):
+        yield from node.function.arguments
+    elif isinstance(node, Function):
+        yield from node.arguments
+    elif isinstance(node, FunctionCallWrapper):
+        # `def` macro expansion (`@rollup_agg(x)`): body in `content`, call args.
+        yield node.content
+        yield from node.args
+    elif isinstance(node, FilterItem):
+        yield node.content
+    elif isinstance(node, NavigationWindowItem):
+        yield node.content
+    elif isinstance(node, NumberingWindowItem):
+        yield from node.arguments
+    elif isinstance(node, SubselectItem):
+        yield node.content
+    elif isinstance(node, (TupleWrapper, ListWrapper)):
+        yield from node
+    elif isinstance(node, MapWrapper):
+        yield from node.keys()
+        yield from node.values()
+
+
+def _collect_aggregate_wrappers(
+    node: Any, predicate: Callable[[Any], bool]
+) -> list[AggregateWrapper]:
+    """Every ``AggregateWrapper`` matching ``predicate`` anywhere in an expression
+    tree — so a target agg nested inside ``coalesce(...)``, a ``case``, a ``def``
+    macro, a window, a filter, etc. is still found. A matching node is returned
+    without descending into it (an aggregate won't nest a same-class aggregate)."""
+    if predicate(node):
+        return [cast(AggregateWrapper, node)]
+    found: list[AggregateWrapper] = []
+    for child in _child_exprs(node):
+        found += _collect_aggregate_wrappers(child, predicate)
+    return found
+
+
+def _is_rollup_wrapper(node: Any) -> bool:
+    return (
+        isinstance(node, AggregateWrapper)
+        and node.grouping != AggregateGroupingMode.STANDARD
+    )
+
+
+def _collect_rollup_wrappers(node: Any) -> list[AggregateWrapper]:
+    """All non-STANDARD (ROLLUP/CUBE/GROUPING SETS) aggregate wrappers in a tree."""
+    return _collect_aggregate_wrappers(node, _is_rollup_wrapper)
+
+
 def _select_rollup_spec(
     select: SelectStatement,
     context: RuleContext,
 ) -> tuple[AggregateGroupingMode, list[Any], list[list[Any]]] | None:
-    """The query's non-STANDARD grouping spec (mode, by, grouping_sets) taken
-    from a ROLLUP/CUBE/GROUPING SETS aggregate referenced in the SELECT
-    projection (inline or by name)."""
-    for item in select.selection:
-        lineage = _item_lineage(item, context)
-        if (
-            isinstance(lineage, AggregateWrapper)
-            and lineage.grouping != AggregateGroupingMode.STANDARD
-        ):
-            return (
-                lineage.grouping,
-                list(lineage.by),
-                [list(g) for g in lineage.grouping_sets],
-            )
-    return None
+    """The query's SELECT-level grouping spec (mode, by, grouping_sets) from a
+    ``by rollup (…)`` / ``by cube (…)`` / ``by grouping sets (…)`` clause."""
+    grouping = select.grouping
+    if grouping is None:
+        return None
+    return (
+        grouping.mode,
+        list(grouping.by),
+        [list(g) for g in grouping.grouping_sets],
+    )
 
 
 def _is_standard_grouping_aggregate(node: Any) -> bool:
@@ -756,63 +872,231 @@ def _is_standard_grouping_aggregate(node: Any) -> bool:
 def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
     """All STANDARD-mode ``grouping()``/``grouping_id()`` wrappers anywhere in an
     expression tree (e.g. nested inside a ``case`` that derives a rollup level)."""
-    if _is_standard_grouping_aggregate(node):
-        return [cast(AggregateWrapper, node)]
+    return _collect_aggregate_wrappers(node, _is_standard_grouping_aggregate)
+
+
+def _is_ungrouped_aggregate(node: Any) -> bool:
+    """A projection aggregate with no explicit ``by`` grain — the operand the
+    SELECT-level grouping spec applies to. Covers plain aggregates (sum/count/…)
+    and the ``grouping()``/``grouping_id()`` level indicators alike."""
+    return (
+        isinstance(node, AggregateWrapper)
+        and node.grouping == AggregateGroupingMode.STANDARD
+        and not node.by
+    )
+
+
+def _collect_ungrouped_aggregates_deep(
+    lineage: Any, context: RuleContext, seen: set[str]
+) -> list[AggregateWrapper]:
+    """Un-grouped aggregate wrappers reachable from a lineage, descending through
+    by-name ``ConceptRef``s into their concept lineages — so a named
+    ``auto t <- sum(x)`` (or a ``grouping()`` buried inside a derived level
+    concept) referenced in the SELECT still inherits the grouping spec. The
+    ``seen`` set guards against cyclic lineage."""
     found: list[AggregateWrapper] = []
-    if isinstance(node, Comparison):
-        found += _collect_standard_grouping_wrappers(node.left)
-        found += _collect_standard_grouping_wrappers(node.right)
-    elif isinstance(node, Conditional):
-        found += _collect_standard_grouping_wrappers(node.left)
-        found += _collect_standard_grouping_wrappers(node.right)
-    elif isinstance(node, Parenthetical):
-        found += _collect_standard_grouping_wrappers(node.content)
-    elif isinstance(node, Between):
-        found += _collect_standard_grouping_wrappers(node.left)
-        found += _collect_standard_grouping_wrappers(node.low)
-        found += _collect_standard_grouping_wrappers(node.high)
-    elif isinstance(node, CaseWhen):
-        found += _collect_standard_grouping_wrappers(node.comparison)
-        found += _collect_standard_grouping_wrappers(node.expr)
-    elif isinstance(node, CaseElse):
-        found += _collect_standard_grouping_wrappers(node.expr)
-    elif isinstance(node, AggregateWrapper):
-        for arg in node.function.arguments:
-            found += _collect_standard_grouping_wrappers(arg)
-    elif isinstance(node, Function):
-        for arg in node.arguments:
-            found += _collect_standard_grouping_wrappers(arg)
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in seen:
+            return found
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if concept is None or isinstance(
+            concept, (UndefinedConcept, UndefinedConceptFull)
+        ):
+            return found
+        return _collect_ungrouped_aggregates_deep(concept.lineage, context, seen)
+    if _is_ungrouped_aggregate(lineage):
+        found.append(cast(AggregateWrapper, lineage))
+    for child in _child_exprs(lineage):
+        found.extend(_collect_ungrouped_aggregates_deep(child, context, seen))
     return found
 
 
-def _fix_projection_grouping_mode(
+def _validate_grouping_args_are_concepts(
     select: SelectStatement, context: RuleContext
 ) -> None:
-    """``grouping()``/``grouping_id()`` are only meaningful inside the scope that
-    performs the ROLLUP/CUBE/GROUPING SETS. They parse with the default STANDARD
-    grouping mode, which keys them into a separate planner bucket from the rollup
-    aggregate; they then strand in a downstream groupless join/filter CTE and
-    render as ``grouping(col)`` with no GROUP BY (DuckDB: "GROUPING statement
-    cannot be used without groups").
-
-    A ``grouping()`` reached from the SELECT — directly, or nested inside a
-    ``case`` deriving the subtotal level, the TPC-DS-native idiom — just needs
-    its mode aligned with the query's rollup spec so it co-locates with the
-    rollup aggregate. Mutates each wrapper in place (they are dataclasses) so
-    by-name ``auto`` concepts are fixed at their canonical address.
-    """
-    spec = _select_rollup_spec(select, context)
-    if spec is None:
-        return
-    mode, by, grouping_sets = spec
-    for sitem in select.selection:
-        lineage = _item_lineage(sitem, context)
+    """``grouping(arg)``/``grouping_id(arg)`` must reference a concept, not an
+    inline expression. DuckDB (and standard SQL) require the argument to *be* one
+    of the GROUP BY keys; the planner materializes a `by rollup (coalesce(a,b))`
+    key as a column and groups by position, but the inline ``grouping(coalesce(a,b))``
+    re-emits the expression and never matches that column → BinderException
+    ("GROUPING child must be a grouping column"). The fix is to name the
+    expression as a concept and use it in both places, so reject the inline form
+    here with that guidance rather than emitting invalid SQL."""
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
         if lineage is None:
             continue
         for wrapper in _collect_standard_grouping_wrappers(lineage):
-            wrapper.by = list(by)
-            wrapper.grouping = mode
-            wrapper.grouping_sets = [list(g) for g in grouping_sets]
+            for arg in wrapper.function.arguments:
+                if isinstance(arg, ConceptRef):
+                    continue
+                raise InvalidSyntaxException(
+                    f"{wrapper.function.operator.value}() requires a concept "
+                    f"(column) reference as its argument, not an inline expression "
+                    f"like '{arg}'. Assign the expression to a named concept and "
+                    f"use that concept in both the grouping key and grouping() - "
+                    f"e.g. `auto channel <- coalesce(a, b); select ..., "
+                    f"grouping(channel) ... by rollup (channel)`."
+                )
+
+
+def _propagate_select_grouping(select: SelectStatement, context: RuleContext) -> None:
+    """Apply the SELECT-level ``by rollup (…)`` spec to every aggregate feeding the
+    projection that has no explicit ``by`` grain, so all measures — and the
+    ``grouping()`` level indicators — compute in ONE grouping pass.
+
+    This is what makes multi-level grouping a select property: there is no
+    per-aggregate rollup to distribute inconsistently, so the planner can never
+    split one measure's operands across grouping modes (the failure that emitted
+    invalid ``GROUP BY ROLLUP`` SQL). Mutates each wrapper in place (dataclasses)
+    so by-name ``auto`` concepts are fixed at their canonical address.
+
+    With no spec, a stray ``grouping()`` has no enclosing grouping set to anchor
+    it (its grain would be unresolvable and recurse) — reject it here."""
+    spec = select.grouping
+    if spec is None:
+        # No grouping to propagate: just reject a stray projected grouping().
+        for item in select.selection:
+            lineage = _item_lineage(item, context)
+            if lineage is not None and _collect_standard_grouping_wrappers(lineage):
+                raise InvalidSyntaxException(
+                    "grouping()/grouping_id() requires a `by rollup (…)`/"
+                    "`by cube (…)`/`by grouping sets (…)` clause on the enclosing "
+                    "select; it has no meaning without a grouping set."
+                )
+        return
+    _validate_grouping_args_are_concepts(select, context)
+    _normalize_grouping_args_to_rollup_keys(select, context)
+    seen: set[str] = set()
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
+        if lineage is None:
+            continue
+        for wrapper in _collect_ungrouped_aggregates_deep(lineage, context, seen):
+            wrapper.by = list(spec.by)
+            wrapper.grouping = spec.mode
+            wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
+
+
+def _normalize_grouping_args_to_rollup_keys(
+    select: SelectStatement, context: RuleContext
+) -> None:
+    """Rewrite a ``grouping(<source>)`` argument to the rollup-key *alias* when the
+    key is projected under one (``sales.channel as channel`` + ``by rollup
+    (channel, …)``). DuckDB requires GROUPING's child to BE one of the GROUP BY
+    ROLLUP columns; the rollup groups by the materialized alias column, not the
+    source, so ``grouping(sales.channel)`` renders ``grouping(source_col)`` against
+    a column absent from the GROUP BY → BinderException ("GROUPING child must be a
+    grouping column"). Pointing the argument at the alias lines it up with the
+    GROUP BY. Only renames whose alias is an actual rollup key are rewritten."""
+    spec = select.grouping
+    if spec is None:
+        return
+    rollup_key_addrs = {k.address for k in spec.by if hasattr(k, "address")}
+    rename = {
+        src: ref
+        for src, ref in _alias_rename_map(select).items()
+        if ref.address in rollup_key_addrs
+    }
+    if not rename:
+        return
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
+        if lineage is None:
+            continue
+        for wrapper in _collect_standard_grouping_wrappers(lineage):
+            wrapper.function.arguments = [
+                rename.get(arg.address, arg) if isinstance(arg, ConceptRef) else arg
+                for arg in wrapper.function.arguments
+            ]
+
+
+def _grouping_arg_key(wrapper: AggregateWrapper) -> tuple[Any, tuple[str, ...]]:
+    """Mode/`by`-insensitive identity of a grouping wrapper (operator + args).
+    Two ``grouping(a)`` wrappers share a key regardless of their grouping mode,
+    so a HAVING wrapper can reuse an equivalent already projected in the SELECT."""
+    return (
+        wrapper.function.operator,
+        tuple(_concept_address(a) for a in wrapper.function.arguments),
+    )
+
+
+def _existing_grouping_outputs(
+    select: SelectStatement,
+) -> dict[tuple[Any, tuple[str, ...]], ConceptRef]:
+    """SELECT outputs that are themselves a ``grouping()``/``grouping_id()``
+    wrapper, keyed mode-insensitively so a HAVING grouping can point at one
+    instead of injecting a duplicate output."""
+    results: dict[tuple[Any, tuple[str, ...]], ConceptRef] = {}
+    for item in select.selection:
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        fn = item.content.function
+        if isinstance(fn, AggregateWrapper) and _is_standard_grouping_aggregate(fn):
+            results.setdefault(_grouping_arg_key(fn), item.content.output.reference)
+    return results
+
+
+def _promote_having_grouping_to_outputs(
+    select: SelectStatement, context: RuleContext
+) -> None:
+    """A ``grouping()``/``grouping_id()`` in HAVING (restricting a rollup to
+    specific levels) has no independent grain — its grain *is* the rollup's. But
+    when a downstream CTE is introduced (e.g. a rowset-membership filter pushes
+    the aggregate behind an extra layer), the bare ``grouping(col)`` strands in a
+    groupless scope and DuckDB rejects it ("GROUPING function is not supported
+    here"). Promote each such wrapper to a hidden SELECT output, which co-locates
+    it in the ROLLUP CTE, and point the HAVING reference at that output — exactly
+    the manual ``select ..., --grouping(...) as g having ... g ...`` workaround.
+
+    Runs before the SELECT loop so the injected outputs are materialized through
+    the normal machinery. Aggregates other than grouping are left to the existing
+    HAVING validation: only grouping is unconditionally safe to co-locate.
+    """
+    if not select.having_clause:
+        return
+    spec = _select_rollup_spec(select, context)
+    if spec is None:
+        return
+    wrappers = _collect_standard_grouping_wrappers(select.having_clause.conditional)
+    if not wrappers:
+        return
+    mode, by, grouping_sets = spec
+    reuse = _existing_grouping_outputs(select)
+    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
+    for wrapper in wrappers:
+        wrapper.by = list(by)
+        wrapper.grouping = mode
+        wrapper.grouping_sets = [list(g) for g in grouping_sets]
+        sig = _aggregate_full_signature(wrapper)
+        if sig is None or sig in sig_to_ref:
+            continue
+        existing = reuse.get(_grouping_arg_key(wrapper))
+        if existing is not None:
+            sig_to_ref[sig] = existing
+            continue
+        concept = arbitrary_to_concept(wrapper, context.environment)
+        select.selection.append(
+            SelectItem(
+                content=ConceptTransform(function=wrapper, output=concept),
+                modifiers=[Modifier.HIDDEN],
+            )
+        )
+        # Seed local_concepts so grain calc (which runs next, before the SELECT
+        # loop materializes the item) can resolve the freshly minted output.
+        select.local_concepts[concept.address] = concept
+        sig_to_ref[sig] = concept.reference
+
+    def match(node: Any) -> ConceptRef | None:
+        sig = _aggregate_full_signature(node)
+        return sig_to_ref.get(sig) if sig is not None else None
+
+    new_conditional = _substitute_condition_tree(
+        select.having_clause.conditional, match
+    )
+    if new_conditional is not select.having_clause.conditional:
+        select.having_clause.conditional = new_conditional
 
 
 def _order_match_signature(
@@ -986,8 +1270,8 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             snippet = ", ".join(f"--{a}" for a in missing)
             raise SyntaxError(
                 f"HAVING references {refs}, which {verb} not in the SELECT "
-                f"projection (line {line_no}). To filter output rows, add {obj} to "
-                f"SELECT — prefix each with `--` so {subj} {stay} out of the output "
+                f"projection (line {line_no}). To make them available, you may add {obj} to "
+                f" the SELECT. Prefix each with `--` so {subj} {stay} out of the output "
                 f"rows, keeping your HAVING as-is:\n"
                 f"    select <your existing columns>, {snippet}\n"
                 f"Or move {obj} to WHERE to filter before aggregation; for an "
@@ -1023,6 +1307,13 @@ def finalize_select_statement(
     ``select_as_definition`` writes through SemanticState so no parse-time
     mutation of ``environment.concepts`` is required.
     """
+    # Push the SELECT-level `by rollup (…)` spec onto every un-grouped projection
+    # aggregate before grain calc, so the select grain reflects the grouping keys
+    # and all measures share one grouping pass.
+    _propagate_select_grouping(select, context)
+    # Promote any HAVING grouping() to a hidden output before the SELECT loop so
+    # it materializes in the ROLLUP CTE instead of stranding downstream.
+    _promote_having_grouping_to_outputs(select, context)
     merged = _merged_local_concepts(select, context)
     select.grain = _calculate_grain(select, context, merged)
     output_addresses: set[str] = set()
@@ -1122,7 +1413,6 @@ def finalize_select_statement(
     if undefined:
         raise_collected_undefined(context, undefined)
     select.grain = _calculate_grain(select, context, merged)
-    _fix_projection_grouping_mode(select, context)
     _validate_syntax(select, context)
 
 

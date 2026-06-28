@@ -792,16 +792,15 @@ def test_parse_render_roundtrip_relative_import(tmp_path):
 
 
 def test_parse_render_roundtrip_aggregate_rollup_empty():
-    """``sum(x) by rollup() as sx`` must round-trip — the empty rollup form
-    is not the same as a plain ``sum(x)`` and the formatter must not drop it.
-    Regression for q67 where formatter dropped/added rollup inconsistently."""
+    """The empty select-level ``by rollup ()`` (roll up over the select's own
+    grain) must round-trip — it is not the same as no grouping at all."""
     from trilogy.parsing.parse_engine_v2 import parse_text
 
     env = Environment()
-    text = "key x int;\nselect sum(x) by rollup() as sx;"
+    text = "key x int;\nselect sum(x) as sx by rollup ();"
     _, parsed = parse_text(text, env)
     rendered = str(parsed[-1])
-    assert "sum(x) by rollup() as sx" in rendered, rendered
+    assert "by rollup ()" in rendered, rendered
 
 
 def test_parse_render_roundtrip_aggregate_no_grouping():

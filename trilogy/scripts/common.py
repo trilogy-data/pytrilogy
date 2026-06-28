@@ -620,6 +620,7 @@ def handle_execution_exception(
         raise e
     from trilogy.core.exceptions import (
         DisconnectedConceptsException,
+        FunctionArgumentException,
         InvalidSyntaxException,
         UndefinedConceptException,
         UnresolvableQueryException,
@@ -639,6 +640,10 @@ def handle_execution_exception(
         # A disconnected/unresolvable query is a fixable modeling mistake (a
         # missing join/merge), not an internal crash.
         print_error(f"Resolution error{location}: {e}")
+    elif isinstance(e, FunctionArgumentException):
+        # A function called on the wrong argument type is a fixable author
+        # mistake (e.g. `year()` on an integer key), not an internal crash.
+        print_error(f"Type error{location}: {e}")
     else:
         print_error(f"Unexpected error{location}: {e}")
     if debug:

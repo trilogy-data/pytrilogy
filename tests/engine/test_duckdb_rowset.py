@@ -427,6 +427,57 @@ select 4 as line_id, 2 as item_id, 2002 as yr, 5 as val
 """
 
 
+_HISTOGRAM_FIXTURE = """
+key sale_id int;
+property sale_id.sale_cust int;
+property sale_id.amount int;
+
+datasource sales (
+    sale_id,
+    sale_cust,
+    amount,
+)
+grain (sale_id)
+query '''
+select 1 as sale_id, 1 as sale_cust, 5 as amount union all
+select 2 as sale_id, 1 as sale_cust, 5 as amount union all
+select 3 as sale_id, 2 as sale_cust, 4 as amount union all
+select 4 as sale_id, 2 as sale_cust, 6 as amount union all
+select 5 as sale_id, 3 as sale_cust, 10 as amount union all
+select 6 as sale_id, 3 as sale_cust, 10 as amount union all
+select 7 as sale_id, 4 as sale_cust, 25 as amount union all
+select 8 as sale_id, 4 as sale_cust, 25 as amount union all
+select 9 as sale_id, 5 as sale_cust, 20 as amount union all
+select 10 as sale_id, 5 as sale_cust, 30 as amount
+''';
+"""
+
+
+def test_rowset_aggregate_output_bucketed_and_counted_groups_per_bucket():
+    # Two-level aggregation (TPC-DS q54 histogram shape): a rowset holds a
+    # per-customer total (`sum(amount) by cust`); the outer query buckets that
+    # total and counts customers per bucket. The grain-less aggregate output
+    # inherited the inner aggregate's SINGLE_ROW granularity, so the derived
+    # bucket key read as a scalar — it was dropped from the select grain, the
+    # count was computed UNGROUPED (grand total), and CROSS-JOINed (FULL JOIN
+    # ON 1=1) to every bucket. Every bucket reported the total count (5).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_HISTOGRAM_FIXTURE)
+    query = """
+with cust_totals as
+select sale_cust as cust, sum(amount) as total;
+
+select round(cust_totals.total / 10) as seg, count(cust_totals.cust) as cnt
+where cust_totals.total is not null
+order by seg asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "on 1=1" not in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # c1=10,c2=10 -> seg 1; c3=20 -> seg 2; c4=50,c5=50 -> seg 5
+    assert results == [(1, 2), (2, 1), (5, 2)]
+
+
 def test_tvf_union_named():
     # A named relational `union(...)` TVF: a column-positional row stack of two
     # arms. Output is exactly the bound columns; the result is a SQL UNION ALL
@@ -466,6 +517,71 @@ select combined.k, sum(combined.v) -> total
 order by combined.k asc;
 """)[0].fetchall()
     assert [tuple(r) for r in results] == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_derived_concept_over_output_aggregated_no_recursion():
+    # A derived `auto` concept (case/concat) reading a `union(...)` output column,
+    # projected alongside an aggregate over union columns, used to overflow the
+    # planner stack (RecursionError, q05). Root cause: the union output kept an
+    # abstract grain and inherited the consuming select's grain at build time;
+    # that grain was the aggregate itself, so the aggregate's parent-concept walk
+    # re-added the aggregate forever. The union output must keep its own grain.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+
+auto klabel <- case combined.k when 1 then 'one' when 2 then 'two' end;
+
+select klabel, sum(combined.v) by combined.k as total
+order by klabel asc;
+"""
+    # the UNION ALL stack must not be deduped on (k, v): item 2 has val 5 in both
+    # arms, so its total is 10, not 5.
+    results = executor.execute_text(query)[0].fetchall()
+    assert [tuple(r) for r in results] == [("one", 40), ("two", 10)]
+
+
+def test_rowset_over_union_rowset_multiref_downstream_no_recursion():
+    # A rowset (`rolled`) that aggregates a union-rowset (`combined`), consumed by
+    # a downstream select that references rolled's grain columns in CASE labels
+    # AND order-by alongside the measures, used to overflow the planner stack
+    # (uncaught RecursionError, q05). Root cause: `_carry_order_by_concepts` walked
+    # the order-by handle `rolled.k` past the materializing `rolled` rowset all the
+    # way to the inner union column (`local._combined_k`) and pulled THAT into the
+    # query grain — splitting it off the rolled node (disconnect) and forcing the
+    # union to be enriched with aggregates of itself (recursion). The carry must
+    # stop at the outer rowset's own output handle.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id as k, val as v, 0 as w),
+    (where yr = 2002 select item_id as k, 0 as v, val as w)
+) -> (k, v, w);
+
+with rolled as
+select combined.k,
+       sum(combined.v) as sv, sum(combined.w) as sw
+by rollup (combined.k);
+
+select
+  case when rolled.k is null then 'all' else cast(rolled.k as string) end as klabel,
+  coalesce(rolled.sv, 0) as sv,
+  coalesce(rolled.sv, 0) - coalesce(rolled.sw, 0) as net
+order by rolled.k asc nulls first;
+"""
+    results = executor.execute_text(query)[0].fetchall()
+    # rollup grand-total row (k null) first, then per-item; item 1: v=10 (2001),
+    # w=30 (2002); item 2: v=5, w=5.
+    assert [tuple(r) for r in results] == [
+        ("all", 15, -20),
+        ("1", 10, -20),
+        ("2", 5, 0),
+    ]
 
 
 def test_tvf_union_inline_from():
@@ -519,25 +635,106 @@ select combined.k;
 """)
 
 
-def test_tvf_union_output_alias_self_reference_errors():
-    # Aliasing a union output column back to its own aligned name
-    # (`combined.k as k`) closes a reference cycle: the rowset column `combined.k`
-    # wraps the union's `k` output (`local.k`), and `as k` redefines `local.k` as
-    # `alias(combined.k)`. This used to blow the stack with a RecursionError; it
-    # must now raise a clean, actionable error.
+def test_tvf_union_named_output_self_alias_resolves():
+    # A named `union(...)` re-projecting or aggregating its own output columns to
+    # the same name (`combined.k as k`, `sum(combined.v) as v`) must work: the
+    # named form registers its aligned outputs under the hidden per-rowset name
+    # (`local._combined_k`), so the user-facing `local.k` is free and the outer
+    # `as k`/`as v` no longer closes a build cycle with the rowset wrapper. This
+    # used to blow the stack with a RecursionError (q05).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+
+    # Re-aliasing an output to its own name must behave identically to aliasing
+    # it to a fresh name — the self-name no longer special-cases (or cycles).
+    self_named = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as k, combined.v as v order by k asc, v asc;
+""")[0].fetchall()
+    distinct_named = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as kk, combined.v as vv order by kk asc, vv asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in self_named] == [tuple(r) for r in distinct_named]
+
+    aggregated = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k, sum(combined.v) as v order by combined.k asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in aggregated] == [(1, 40), (2, 10)]
+
+
+def test_tvf_union_renamed_output_preserves_arm_duplicates():
+    # Regression: renaming a `union(...)` output (`combined.k as kk`) is a pure
+    # 1:1 relabel and must NOT change row multiplicity. The rename used to mint a
+    # BASIC alias that re-grained to the select grain, forcing a GROUP BY that
+    # collapsed the UNION ALL cross-arm duplicate (item 2 has val=5 in both arms),
+    # silently dropping a row vs the bare projection.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    bare = [tuple(r) for r in executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k, combined.v order by 1, 2;
+""")[0].fetchall()]
+    renamed_sql = executor.generate_sql("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as kk, combined.v as vv order by 1, 2;
+""")[-1]
+    renamed = [tuple(r) for r in executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k as kk, combined.v as vv order by 1, 2;
+""")[0].fetchall()]
+    assert bare == [(1, 10), (1, 30), (2, 5), (2, 5)]
+    assert renamed == bare
+    # the rename must not introduce a collapsing GROUP BY over the stack: only the
+    # two per-arm group bys remain, none on the outer projection.
+    assert renamed_sql.count("GROUP BY") == 2
+
+
+def test_tvf_union_inline_output_self_alias_errors():
+    # The inline form (`from union(...) -> (k, v) select ...`) keeps its outputs
+    # under the bare names so the trailing select resolves them, so re-aliasing an
+    # output to its own name there genuinely closes a cycle and must raise a clean
+    # error rather than overflowing the stack.
     import pytest
 
     from trilogy.core.exceptions import InvalidSyntaxException
 
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_TVF_UNION_FIXTURE)
-    with pytest.raises(InvalidSyntaxException, match="refers back to itself"):
+    with pytest.raises(InvalidSyntaxException, match="cannot reference itself"):
         executor.generate_sql("""
-with combined as union(
+from union(
     (where yr = 2001 select item_id -> k, val -> v),
     (where yr = 2002 select item_id -> k, val -> v)
-) -> (k, v);
-select combined.k as k, combined.v as v order by k asc;
+) -> (k, v)
+select k, sum(v) as v order by k asc;
+""")
+    with pytest.raises(InvalidSyntaxException, match="refers back to itself"):
+        executor.generate_sql("""
+from union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v)
+select k, v as v order by k asc;
 """)
 
 
@@ -777,3 +974,56 @@ with combined as union(
         if "combined" in addr
     }
     assert bound == {"combined.k", "combined.v"}
+
+
+_Q83_ORDER_BY_MEASURE_FIXTURE = """
+key sale_id int;
+property sale_id.channel string;
+property sale_id.item int;
+property sale_id.qty float;
+datasource sales (id: sale_id, ch: channel, it: item, q: qty) grain (sale_id)
+query '''
+select 1 id,'STORE' ch,1 it,10.0 q union all
+select 2 id,'STORE' ch,2 it,20.0 q union all
+select 3 id,'CATALOG' ch,1 it,5.0 q union all
+select 4 id,'CATALOG' ch,2 it,7.0 q union all
+select 5 id,'WEB' ch,1 it,3.0 q union all
+select 6 id,'WEB' ch,2 it,9.0 q''';
+
+with store_agg as where channel='STORE' select item as item_code, sum(qty) as store_qty, count(sale_id) as store_row_count, count(qty) as store_non_null_qty_count;
+with catalog_agg as where channel='CATALOG' select item as item_code, sum(qty) as catalog_qty, count(sale_id) as catalog_row_count, count(qty) as catalog_non_null_qty_count;
+with web_agg as where channel='WEB' select item as item_code, sum(qty) as web_qty, count(sale_id) as web_row_count;
+with combined as
+left join store_agg.item_code = catalog_agg.item_code
+left join store_agg.item_code = web_agg.item_code
+select
+    store_agg.item_code, store_agg.store_qty, store_agg.store_row_count, store_agg.store_non_null_qty_count,
+    catalog_agg.catalog_qty, catalog_agg.catalog_row_count, catalog_agg.catalog_non_null_qty_count,
+    web_agg.web_qty, web_agg.web_row_count
+where store_agg.store_row_count > 0 and catalog_agg.catalog_row_count > 0 and web_agg.web_row_count > 0;
+"""
+
+
+def test_order_by_measure_through_nested_rowset_join_groups():
+    # Regression (TPC-DS q83): ordering the final select by a measure that is
+    # passed through a nested rowset join (`combined.store_agg.store_qty`) and is
+    # only consumed inside a projected CASE (not a direct output). The measure is
+    # sourced into the parent CTE to feed the CASE but is not a key of the final
+    # group node, so DuckDB rejected the ORDER BY ("column ... must appear in the
+    # GROUP BY"). The order-by carry now pulls such a rowset measure (functionally
+    # determined by the select grain) into the grain as a hidden group key.
+    executor = Dialects.DUCK_DB.default_executor()
+    query = _Q83_ORDER_BY_MEASURE_FIXTURE + """
+select
+    combined.store_agg.item_code,
+    case when combined.store_agg.store_non_null_qty_count = combined.store_agg.store_row_count then combined.store_agg.store_qty else null end as store_return_quantity,
+    case when combined.catalog_agg.catalog_non_null_qty_count = combined.catalog_agg.catalog_row_count then combined.catalog_agg.catalog_qty else null end as catalog_return_quantity,
+    combined.web_agg.web_qty as web_return_quantity
+order by combined.store_agg.item_code nulls first,
+         combined.store_agg.store_qty nulls first
+limit 100;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "combined_store_agg_store_qty" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [(1, 10.0, 5.0, 3.0), (2, 20.0, 7.0, 9.0)]

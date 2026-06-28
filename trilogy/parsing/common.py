@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     Granularity,
+    InfiniteFunctionArgs,
     Modifier,
     Purpose,
     WindowType,
@@ -51,6 +52,7 @@ from trilogy.core.models.author import (
     get_concept_arguments,
 )
 from trilogy.core.models.core import (
+    ArrayType,
     DataType,
     TraitDataType,
     arg_to_datatype,
@@ -487,6 +489,45 @@ def concept_list_to_keys(
     return set(final_keys)
 
 
+def row_tuple_function(elements: list[Any]) -> Function:
+    """Wrap an ordered tuple of column expressions as a ROW_TUPLE function so its
+    components surface as concept arguments (for sourcing) and the operand renders
+    as a composite row constructor."""
+    merged = merge_datatypes([arg_to_datatype(e) for e in elements])
+    return Function(
+        operator=FunctionType.ROW_TUPLE,
+        output_datatype=ArrayType(type=merged),
+        output_purpose=Purpose.PROPERTY,
+        arguments=list(elements),
+        arg_count=InfiniteFunctionArgs,
+    )
+
+
+def rewrite_composite_membership(left: Any, right: Any, operator: ComparisonOperator):
+    """When both sides of an `in`/`not in` are tuples, rewrite them into ROW_TUPLE
+    functions for row-wise (composite) membership. Leaves scalar-vs-tuple value-list
+    membership and all non-membership comparisons untouched."""
+    if operator not in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
+        return left, right
+    left_tuple = isinstance(left, TupleWrapper)
+    right_tuple = isinstance(right, TupleWrapper)
+    # `x in (a, b, c)` (scalar left) stays an ordinary value-list membership
+    if not left_tuple:
+        return left, right
+    if not right_tuple:
+        raise InvalidSyntaxException(
+            f"A column tuple {tuple(str(v) for v in left.val)} can only be tested for "
+            f"membership against a tuple of the same arity, e.g. `(a, b) in (set.a, "
+            f"set.b)`."
+        )
+    if len(left.val) != len(right.val):
+        raise InvalidSyntaxException(
+            "Composite membership requires both tuples to have the same number of "
+            f"elements; got {len(left.val)} and {len(right.val)}."
+        )
+    return row_tuple_function(list(left.val)), row_tuple_function(list(right.val))
+
+
 def constant_to_concept(
     parent: (
         ListWrapper | TupleWrapper | MapWrapper | int | float | str | date | datetime
@@ -887,11 +928,19 @@ def function_to_concept(
         if isinstance(source, ConceptRef) and _alias_target_cycles(
             f"{namespace}.{name}", source, environment
         ):
+            existing = environment.concepts.get(f"{namespace}.{name}")
+            where = ""
+            if (
+                existing is not None
+                and existing.metadata is not None
+                and existing.metadata.line_number is not None
+            ):
+                where = f" (defined at line {existing.metadata.line_number})"
             raise InvalidSyntaxException(
-                f"Output column '{name}' aliases '{source.address}', which is "
-                f"itself the '{name}' output of a union(...)/rowset, so the "
-                "rename refers back to itself. Use a distinct output name "
-                f"(e.g. '{name}_out')."
+                f"Output column '{name}' renames '{source.address}' back to the "
+                f"name of an existing concept '{name}'{where} that "
+                f"'{source.address}' is derived from, so the rename refers back to "
+                f"itself. Use a distinct output name (e.g. '{name}_out')."
             )
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)

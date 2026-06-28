@@ -12,6 +12,9 @@ from trilogy.parsing.v2.errors import (
     detect_clause_after_join,
     detect_definition_after_clause,
     detect_group_by,
+    detect_missing_signature_semicolon,
+    detect_select_distinct,
+    detect_star_argument,
     detect_subselect,
 )
 from trilogy.parsing.v2.syntax import (
@@ -273,6 +276,16 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     if wrapped_by_pos is not None:
         return create_syntax_error(212, wrapped_by_pos, text)
 
+    # 223: `*` passed as a function argument (the SQL `count(*)` idiom).
+    star_pos = detect_star_argument(text, pos)
+    if star_pos is not None:
+        return create_syntax_error(223, star_pos, text)
+
+    # 224: SQL-style `SELECT DISTINCT` (Trilogy is implicitly distinct by grain).
+    distinct_pos = detect_select_distinct(text, pos)
+    if distinct_pos is not None:
+        return create_syntax_error(224, distinct_pos, text)
+
     # 102: SQL-style subquery `(select ...)` / `(with ...)` open at pos.
     sub_pos = detect_subselect(text, pos)
     if sub_pos is not None:
@@ -299,6 +312,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     align_pos = detect_align_missing_and(text, pos)
     if align_pos is not None:
         return create_syntax_error(221, align_pos, text)
+
+    # 222: a named `union(...) -> (...)` definition not terminated with `;`
+    # before the consuming statement. Confirm by inserting `;` and reparsing.
+    sig_pos = detect_missing_signature_semicolon(text, pos)
+    if sig_pos is not None and _pest_parses(text[:sig_pos] + ";" + text[sig_pos:]):
+        return create_syntax_error(222, sig_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position
     # is at or past the last non-whitespace character — otherwise we'd mask

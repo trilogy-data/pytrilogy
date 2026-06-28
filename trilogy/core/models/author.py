@@ -609,6 +609,12 @@ class Grain(Namespaced):
             return self.__add__(other)
 
 
+def _is_row_tuple(x: Any) -> bool:
+    """True for a ROW_TUPLE function — an ordered tuple operand of composite
+    (row-wise) membership."""
+    return isinstance(x, Function) and x.operator == FunctionType.ROW_TUPLE
+
+
 @dataclass
 class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
     left: Union[
@@ -675,7 +681,22 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                     f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
-            if isinstance(right_type, ArrayType) and not is_compatible_datatype(
+            if _is_row_tuple(self.left) and _is_row_tuple(self.right):
+                left_elems = self.left.arguments
+                right_elems = self.right.arguments
+                if len(left_elems) != len(right_elems):
+                    raise SyntaxError(
+                        f"Composite membership requires matching arity, got "
+                        f"{len(left_elems)} and {len(right_elems)} in {str(self)}"
+                    )
+                for le, re in zip(left_elems, right_elems):
+                    lt, rt = arg_to_datatype(le), arg_to_datatype(re)
+                    if not is_compatible_datatype(lt, rt):
+                        raise SyntaxError(
+                            f"Cannot compare composite-membership elements {le} ({lt}) "
+                            f"and {re} ({rt}) of different types in {str(self)}"
+                        )
+            elif isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 left_type, right_type.value_data_type
             ):
                 raise SyntaxError(
@@ -1225,6 +1246,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         if not new_lineage:
             return new_lineage, final_grain, keys
 
+        if isinstance(new_lineage, RowsetItem):
+            # A rowset/union output defines its own row identity and must not
+            # inherit the consuming select's grain. When that select aggregates
+            # over this very output (e.g. `sum(u.v) by u.k`), the inherited grain
+            # would be the aggregate itself — a cyclic grain whose parent-concept
+            # walk re-adds the aggregate forever (planner RecursionError, q05).
+            # Keep the rowset's own grain (abstract for a union, since its stack
+            # has no narrower key than the full row).
+            return new_lineage, self.grain, keys
         if grain.components and isinstance(new_lineage, Function) and self.is_aggregate:
             aggregate_grain_components = cast(
                 List[ConceptRef | Concept], _grain_concept_refs(grain, environment)
@@ -2019,6 +2049,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
 
     def validate_arguments(self) -> None:
         """Run full argument type validation - called from parser."""
+        from trilogy.core.exceptions import FunctionArgumentException
         from trilogy.parsing.exceptions import ParseError
 
         arg_count = len(self.arguments)
@@ -2044,7 +2075,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
                 if arg.datatype == DataType.UNKNOWN:
                     continue
                 if not _matches_valid_type(arg.datatype, valid_inputs[idx]):
-                    raise TypeError(
+                    raise FunctionArgumentException(
                         f"Invalid argument type '{arg.datatype}' passed into {operator_name} function in position {idx+1}"
                         f" from concept: {arg.address}. Valid: {args_to_pretty(valid_inputs[idx])}."
                     )
@@ -2052,7 +2083,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
                 if arg.output_datatype != DataType.UNKNOWN and not _matches_valid_type(
                     arg.output_datatype, valid_inputs[idx]
                 ):
-                    raise TypeError(
+                    raise FunctionArgumentException(
                         f"Invalid argument type {arg.output_datatype}' passed into"
                         f" {operator_name} function from function {arg.operator.name} in position {idx+1}. Valid: {args_to_pretty(valid_inputs[idx])}"
                     )
@@ -2075,7 +2106,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
                             pass
                         else:
                             break
-                    raise TypeError(
+                    raise FunctionArgumentException(
                         f'Invalid {dtype} constant passed into {operator_name} "{arg}", expecting one of {valid_inputs[idx]}'
                     )
 
@@ -2908,6 +2939,8 @@ class CustomFunctionFactory:
     def __call__(self, *creation_args: ArgBinding | Expr):
         from dataclasses import is_dataclass
 
+        from trilogy.core.exceptions import FunctionArgumentException
+
         nout = (
             copy.deepcopy(self.function)
             if is_dataclass(self.function)
@@ -2927,7 +2960,7 @@ class CustomFunctionFactory:
                 continue
             comparison = arg_to_datatype(creation_arg_list[arg_idx])
             if comparison != arg.datatype:
-                raise TypeError(
+                raise FunctionArgumentException(
                     f"Invalid type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected {arg.datatype}, got {comparison}"
                 )
             if isinstance(arg.datatype, TraitDataType):
@@ -2935,7 +2968,7 @@ class CustomFunctionFactory:
                     isinstance(comparison, TraitDataType)
                     and all(x in comparison.traits for x in arg.datatype.traits)
                 ):
-                    raise TypeError(
+                    raise FunctionArgumentException(
                         f"Invalid argument type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected traits {arg.datatype.traits}, got {comparison}"
                     )
 

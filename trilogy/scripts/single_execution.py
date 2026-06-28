@@ -5,6 +5,7 @@ from typing import Any, Union
 from trilogy import Executor
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedQuery,
     ProcessedValidateStatement,
 )
 from trilogy.dialect.results import ChartResult
@@ -91,6 +92,24 @@ def execute_single_statement(
             if raw_results
             else None
         )
+        # When the result hit its own LIMIT (a biased prefix) and the dialect
+        # supports it, ask the dialect to summarize the FULL un-limited result so
+        # the stats block is trustworthy. Best-effort: failures fall back silently.
+        if (
+            results is not None
+            and is_json_mode()
+            and exec.generator.SUPPORTS_RESULT_SUMMARY
+            and isinstance(query, ProcessedQuery)
+            and query.limit is not None
+            and len(results.rows) >= query.limit
+        ):
+            try:
+                full = exec.generator.summarize_result(query, exec.execute_raw_sql)
+            except Exception:
+                full = None
+            if full is not None:
+                results.full_column_stats, results.full_row_count = full
+
         duration = datetime.now() - start_time
 
         if not use_progress:
@@ -105,6 +124,12 @@ def execute_single_statement(
             show_statement_result(idx, total_queries, duration, False, str(e), type(e))
 
         return False, None, duration, e
+
+
+def _statement_limit(query: PROCESSED_STATEMENT_TYPES) -> int | None:
+    """The statement's own ``LIMIT`` (only ``ProcessedQuery`` carries one), so
+    the JSON result event can flag a LIMIT-bounded prefix."""
+    return query.limit if isinstance(query, ProcessedQuery) else None
 
 
 def execute_queries_with_progress(
@@ -142,14 +167,30 @@ def execute_queries_with_progress(
 
             # Store results for printing after progress is done
             results_to_print.append(
-                (idx, len(queries), duration, success, results, error)
+                (
+                    idx,
+                    len(queries),
+                    duration,
+                    success,
+                    results,
+                    error,
+                    _statement_limit(query),
+                )
             )
             progress.advance(task)
             if exception:
                 break
 
     # Print all results after progress bar is finished
-    for idx, total_queries, duration, success, results, error in results_to_print:
+    for (
+        idx,
+        total_queries,
+        duration,
+        success,
+        results,
+        error,
+        q_limit,
+    ) in results_to_print:
         if error:
             show_statement_result(
                 idx, total_queries, duration, False, str(error), type(error)
@@ -161,7 +202,9 @@ def execute_queries_with_progress(
                 if isinstance(results, ChartResult):
                     print_chart_terminal(results.data, results.statement)
                 else:
-                    print_results_table(results, row_limit=row_limit)
+                    print_results_table(
+                        results, row_limit=row_limit, query_limit=q_limit
+                    )
                     total_rows += len(results.rows)
 
     return exception, total_rows
@@ -197,7 +240,9 @@ def execute_queries_simple(
             if isinstance(results, ChartResult):
                 print_chart_terminal(results.data, results.statement)
             else:
-                print_results_table(results, row_limit=row_limit)
+                print_results_table(
+                    results, row_limit=row_limit, query_limit=_statement_limit(query)
+                )
                 total_rows += len(results.rows)
 
     return exception, total_rows

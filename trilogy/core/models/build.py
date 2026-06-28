@@ -2362,11 +2362,36 @@ class Factory:
             for s, t, jt in self.scoped_joins
             if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
         }
+        # INNER join onto a rowset: the collapsed-away source must NOT be
+        # substituted onto the rowset canonical. Substitution would attach the
+        # source's datasource binding to the rowset concept, letting discovery
+        # source the rowset key from that raw column and silently SKIP the
+        # rowset's own lineage (its WHERE filter) entirely — wrong results for
+        # one key, invalid SQL for several (the keys source inconsistently). The
+        # rowset must materialize from its lineage and INNER-join as a
+        # restriction, exactly like the OUTER-rowset identity path. So these
+        # sources keep their own identity + a pseudonym to the canonical instead
+        # of being swapped. Regular fact/dim INNER joins stay on substitution
+        # (multi-way parity + dependent-grain collapse rely on it).
+        # INNER equality is symmetric, so union-find may pick EITHER endpoint as
+        # the group canonical and may collapse the other one transitively (a
+        # repeated-left-anchor star join `a=b, a=c` roots a,c onto b even though
+        # c was never an authored source). Every collapsed endpoint — not just
+        # the authored source — must keep its identity, or a rowset spoke gets
+        # substituted onto the canonical and loses its own WHERE filter.
+        self.scoped_rowset_inner_sources: set[str] = {
+            addr
+            for s, t, jt in self.scoped_joins
+            if jt is JoinType.INNER and (_is_rowset_keyed(s) or _is_rowset_keyed(t))
+            for addr in (s, t)
+            if addr in self.scoped_merge_map
+        }
         self.scoped_key_merge_map = {
             source: target
             for source, target in self.scoped_merge_map.items()
             if source not in full_join_sources
             and source not in self.scoped_rowset_outer_targets
+            and source not in self.scoped_rowset_inner_sources
         }
         self.scoped_merge_sources: set[str] = set()
         # OUTER-join keys with a datasource/rowset binding (ROOT/ROWSET) keep
@@ -2380,8 +2405,14 @@ class Factory:
         scoped_pseudonym_sources: set[str] = set()
         for s, t, jt in self.scoped_joins:
             if jt is JoinType.INNER:
-                self.scoped_merge_sources.add(s)
-                scoped_pseudonym_sources.add(s)
+                # Symmetric equality: wire every collapsed endpoint (see the
+                # scoped_rowset_inner_sources note above), not just the authored
+                # source, so a transitively-collapsed spoke stays sourceable via
+                # its pseudonym back to the group canonical.
+                for addr in (s, t):
+                    if addr in self.scoped_merge_map:
+                        self.scoped_merge_sources.add(addr)
+                        scoped_pseudonym_sources.add(addr)
             elif jt is JoinType.LEFT_OUTER and not _is_binding_keyed(t):
                 # LEFT collapses target->source; the target is the partial side.
                 # A derived target lacks a binding to carry partiality, so it
@@ -2766,6 +2797,7 @@ class Factory:
             and base.address not in self._source_identity_addresses
             and base.address not in self.scoped_rowset_outer_sources
             and base.address not in self.scoped_rowset_outer_targets
+            and base.address not in self.scoped_rowset_inner_sources
         ):
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
@@ -3169,8 +3201,15 @@ class Factory:
         self, base: SubselectComparison
     ) -> BuildSubselectComparison:
         right: Any = base.right
-        # this has specialized logic - include all Functions
-        if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
+        # this has specialized logic - include all Functions, EXCEPT a ROW_TUPLE
+        # (composite-membership row constructor): it must stay a function so its
+        # components are sourced individually, not collapsed into one array concept
+        if isinstance(
+            base.right, (AggregateWrapper, WindowItem, FilterItem, Function)
+        ) and not (
+            isinstance(base.right, Function)
+            and base.right.operator == FunctionType.ROW_TUPLE
+        ):
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
         left_built = self.handle_constant(self.build(base.left))

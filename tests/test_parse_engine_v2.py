@@ -661,26 +661,34 @@ def test_parse_error_does_not_mention_pest() -> None:
 
 
 def test_aggregate_grouping_modes_parse_and_render() -> None:
-    query = """
+    # Multi-level grouping is a SELECT-level clause; each mode lives on its own
+    # select (one select cannot mix rollup with grouping sets).
+    rollup_query = """
 key a int;
 key b int;
 key x int;
-select
-    a,
-    b,
-    sum(x) by rollup a, b as sx,
-    sum(x) by grouping sets (a, b), (a), () as sx_sets;
+select a, b, sum(x) as sx by rollup (a, b);
+"""
+    sets_query = """
+key a int;
+key b int;
+key x int;
+select a, b, sum(x) as sx_sets by grouping sets ((a, b), (a), ());
 """
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):
-            env, output = parse_text(query, Environment())
-        rollup = env.concepts["local.sx"].lineage
-        grouping_sets = env.concepts["local.sx_sets"].lineage
-        assert rollup.grouping == AggregateGroupingMode.ROLLUP
-        assert grouping_sets.grouping == AggregateGroupingMode.GROUPING_SETS
-        rendered = str(output[-1])
-        assert "sum(x) by rollup a, b as sx" in rendered
-        assert "sum(x) by grouping sets (a, b), (a), () as sx_sets" in rendered
+            env, output = parse_text(rollup_query, Environment())
+        assert env.concepts["local.sx"].lineage.grouping == (
+            AggregateGroupingMode.ROLLUP
+        )
+        assert "by rollup (a, b)" in str(output[-1])
+
+        with _using_backend(backend):
+            env, output = parse_text(sets_query, Environment())
+        assert env.concepts["local.sx_sets"].lineage.grouping == (
+            AggregateGroupingMode.GROUPING_SETS
+        )
+        assert "by grouping sets ((a, b), (a), ())" in str(output[-1])
 
 
 def test_empty_rollup_and_rank_inherit_select_grain() -> None:
@@ -691,8 +699,9 @@ key x int;
 select
     a,
     b,
-    sum(x) by rollup() as sx,
-    rank() over (partition by a order by sx desc) as rk;
+    sum(x) as sx,
+    rank() over (partition by a order by sx desc) as rk
+by rollup ();
 """
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):
@@ -709,12 +718,13 @@ def test_empty_top_level_rollup_inherits_build_grain() -> None:
     query = """
 const a <- unnest([1, 2, 3]);
 const b <- unnest([1, 1, 2]);
-auto sx <- sum(1) by rollup();
+auto sx <- sum(1);
 select
     a,
     b,
     sx,
-    rank() over (partition by a order by sx desc) as rk;
+    rank() over (partition by a order by sx desc) as rk
+by rollup ();
 """
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):
@@ -896,13 +906,18 @@ select k, v;
 
 
 def _tvf_union_output(env, name: str):
-    """Return the inner TVF_UNION output concept named ``name``."""
+    """Return the inner TVF_UNION output concept for user output ``name``.
+
+    A named `union(...)` registers its aligned outputs under the hidden
+    per-rowset name (`_combined_k`), so match the unmangled suffix too.
+    """
     from trilogy.core.enums import Derivation
 
     return next(
         c
         for c in env.concepts.values()
-        if c.derivation == Derivation.TVF_UNION and c.name == name
+        if c.derivation == Derivation.TVF_UNION
+        and (c.name == name or c.name.endswith(f"_{name}"))
     )
 
 

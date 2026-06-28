@@ -18,6 +18,7 @@ from trilogy.scripts.display import (
     print_success,
 )
 from trilogy.scripts.file_helpers import (
+    LIST_MAX_ENTRIES,
     FileNotFoundError,
     FileOperationError,
     get_backend,
@@ -108,11 +109,15 @@ def list_cmd(path: str, recursive: bool, long_format: bool, show_all: bool) -> N
     """
     backend = _resolve(path)
     try:
-        entries = backend.list(path, recursive=recursive)
+        entries = backend.list(path, recursive=recursive, max_entries=LIST_MAX_ENTRIES)
     except FileNotFoundError as exc:
         _fail(exc, code=1)
     except FileOperationError as exc:
         _fail(exc, code=2)
+
+    # The backend caps its return at LIST_MAX_ENTRIES to stay memory-safe; a
+    # full cap means there may be more entries we never enumerated.
+    truncated = len(entries) >= LIST_MAX_ENTRIES
 
     if not show_all:
         entries = [e for e in entries if e.is_dir or e.path.endswith(".preql")]
@@ -122,6 +127,7 @@ def list_cmd(path: str, recursive: bool, long_format: bool, show_all: bool) -> N
             "entries",
             path=path,
             count=len(entries),
+            truncated=truncated,
             entries=[
                 {
                     "path": entry.path,
@@ -152,6 +158,12 @@ def list_cmd(path: str, recursive: bool, long_format: bool, show_all: bool) -> N
             desc_line = preql_description.format_preql_description(Path(entry.path))
             if desc_line:
                 click.echo(desc_line)
+
+    if truncated:
+        print_info(
+            f"... listing capped at {LIST_MAX_ENTRIES} entries; "
+            "narrow the path or drop --recursive to see more."
+        )
 
 
 @file.command("read")

@@ -17,10 +17,10 @@ SELECT
 	END) as \"sales_after\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
-    LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"catalog_returns_catalog_returns\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"catalog_returns_catalog_returns\".\"CR_ITEM_SK\" AND \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" = \"catalog_returns_catalog_returns\".\"CR_ORDER_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sold_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_sold_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"catalog_sales_warehouse_warehouse\" on \"catalog_sales_catalog_sales\".\"CS_WAREHOUSE_SK\" = \"catalog_sales_warehouse_warehouse\".\"w_warehouse_sk\"
     INNER JOIN \"memory\".\"item\" as \"catalog_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"catalog_sales_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"catalog_returns_catalog_returns\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"catalog_returns_catalog_returns\".\"CR_ITEM_SK\" AND \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" = \"catalog_returns_catalog_returns\".\"CR_ORDER_NUMBER\"
+    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"catalog_sales_warehouse_warehouse\" on \"catalog_sales_catalog_sales\".\"CS_WAREHOUSE_SK\" = \"catalog_sales_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
     \"catalog_sales_item_items\".\"I_CURRENT_PRICE\" BETWEEN 0.99 AND 1.49 and cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
 

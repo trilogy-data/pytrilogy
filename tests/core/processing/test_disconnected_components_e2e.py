@@ -180,6 +180,61 @@ def test_message_names_subgraphs_and_suggests_fix():
     assert "join or merge" in message
 
 
+def test_message_includes_failing_statement_line():
+    # the failing SELECT is the last line; the message must name it so multi-
+    # statement files (rowsets + a final select) point at the right statement.
+    sql = _A + _B + "\nselect av, bv;"
+    line = sql.count("\n", 0, sql.index("select av, bv;")) + 1
+    eng = Dialects.DUCK_DB.default_executor()
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        eng.generate_sql(sql)
+    assert f"statement at line {line}" in str(exc.value)
+
+
+def test_message_suggests_connected_nested_equivalent(tmp_path):
+    """The separate-import mistake (the dominant q75 thrash): a model already
+    reachable by chaining through one import (`all_sales`) is imported a SECOND
+    time as a disconnected copy, so `date.year` / `item.category` split off from
+    the measure. The message must point at the connected `all_sales.*` path rather
+    than (wrongly) suggesting a join/merge."""
+    (tmp_path / "dates.preql").write_text(
+        "key date_id int;\n"
+        "property date_id.year int;\n"
+        "datasource dates (id: date_id, yr: year) grain (date_id)\n"
+        "query '''select 1 id, 2001 yr''';\n"
+    )
+    (tmp_path / "items.preql").write_text(
+        "key item_id int;\n"
+        "property item_id.category string;\n"
+        "datasource items (id: item_id, cat: category) grain (item_id)\n"
+        "query '''select 1 id, 'A' cat''';\n"
+    )
+    (tmp_path / "sales.preql").write_text(
+        "import dates as date;\n"
+        "import items as item;\n"
+        "key sale_id int;\n"
+        "property sale_id.amt float;\n"
+        "datasource sales (id: sale_id, amt: amt, d: date.date_id, i: item.item_id)\n"
+        "grain (sale_id)\n"
+        "query '''select 1 id, 9.0 amt, 1 d, 1 i''';\n"
+    )
+    eng = Dialects.DUCK_DB.default_executor(working_path=tmp_path)
+    sql = (
+        "import sales as all_sales;\n"
+        "import dates as date;\n"
+        "import items as item;\n"
+        "select date.year, item.category, all_sales.amt;\n"
+    )
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        eng.generate_sql(sql)
+    message = str(exc.value)
+    assert "did you mean `all_sales.date.year`" in message
+    assert "did you mean `all_sales.item.category`" in message
+    # the misleading join/merge hint is replaced by the chain-the-import guidance
+    assert "join or merge" not in message
+    assert "separately-imported copies" in message
+
+
 def test_subgraphs_attribute_is_address_partition():
     eng = Dialects.DUCK_DB.default_executor()
     with pytest.raises(DisconnectedConceptsException) as exc:
