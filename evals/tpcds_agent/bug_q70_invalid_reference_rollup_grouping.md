@@ -1,7 +1,16 @@
 # Bug: INVALID_REFERENCE_BUG in a top-N rank-filter rowset (q70 net-profit/rollup report)
 
-**Status:** OPEN (diagnosed 2026-06-28, read-only investigation). Do NOT confuse with the OLD q70
-GROUPING bug, which is **already FIXED** (see "Relationship to the old GROUPING bug" below).
+**Status:** FIXED 2026-06-28. Do NOT confuse with the OLD q70
+GROUPING bug, which is **also FIXED** (see "Relationship to the old GROUPING bug" below).
+
+**Fix:** `_substitute_condition_tree` (`trilogy/parsing/v2/select_finalize.py`) now descends into
+window items (`NumberingWindowItem` / `NavigationWindowItem`) — their `order_by`, `over`, and
+`arguments`/`content` — instead of treating a window as an opaque leaf. This lets the existing
+HAVING-aggregate→SELECT-alias substitution (`_substitute_having_aggregates`, fed by all SELECT
+aggregate signatures via `_validate_having_aggregates_match_select`) rewrite the rank's *inline*
+order-by aggregate to the projected `state_total` alias. The QUALIFY CTE then orders by the
+materialized column. Regression: `tests/engine/test_duckdb_rowset.py::
+test_top_n_rank_filter_over_inline_aggregate_in_rowset` (generate has no sentinel + executes top-5).
 **Severity:** high — valid-looking query crashes at SQL render with the internal
 `INVALID_REFERENCE_BUG` sentinel ("this should never occur. Please create an issue"); the q70 agent
 run burned ~715k tokens thrashing on it.

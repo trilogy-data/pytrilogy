@@ -623,6 +623,49 @@ def _substitute_condition_tree(node: Any, match_leaf: Any) -> Any:
         replacement_fn.__dict__.update(node.__dict__)
         replacement_fn.arguments = new_args
         return replacement_fn
+    # A window's inner order-by/operand may itself be an aggregate that matches a
+    # SELECT alias (`rank(k) over (order by sum(x) desc)` alongside `sum(x) as t`).
+    # Descend so it's rewritten to the materialized column — otherwise the renderer
+    # re-derives the anonymous inline aggregate against a CTE that only has the
+    # projected one, emitting an INVALID_REFERENCE_BUG sentinel.
+    if isinstance(node, (NumberingWindowItem, NavigationWindowItem)):
+        new_order = [
+            OrderItem(
+                expr=_substitute_condition_tree(o.expr, match_leaf), order=o.order
+            )
+            for o in node.order_by
+        ]
+        new_over = [_substitute_condition_tree(o, match_leaf) for o in node.over]
+        order_changed = any(
+            a.expr is not b.expr for a, b in zip(new_order, node.order_by)
+        )
+        over_changed = any(a is not b for a, b in zip(new_over, node.over))
+        if isinstance(node, NumberingWindowItem):
+            new_args = [
+                _substitute_condition_tree(a, match_leaf) for a in node.arguments
+            ]
+            if not (
+                order_changed
+                or over_changed
+                or any(a is not b for a, b in zip(new_args, node.arguments))
+            ):
+                return node
+            return NumberingWindowItem(
+                type=node.type,
+                arguments=new_args,
+                order_by=new_order,
+                over=new_over,
+            )
+        new_content = _substitute_condition_tree(node.content, match_leaf)
+        if not (order_changed or over_changed or new_content is not node.content):
+            return node
+        return NavigationWindowItem(
+            type=node.type,
+            content=new_content,
+            order_by=new_order,
+            over=new_over,
+            offset=node.offset,
+        )
     return node
 
 

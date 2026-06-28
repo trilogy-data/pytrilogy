@@ -2334,6 +2334,21 @@ class Factory:
             for addr in (s, t)
         }
 
+        # Canonical keys of *query-scoped* LEFT joins (the preserved-anchor side).
+        # A LEFT join's source `s` is the anchor and becomes the canonical root, so
+        # its key address marks the anchor. Join resolution uses this to base the
+        # join tree on the complete anchor so EACH optional source becomes a
+        # directional LEFT_OUTER rather than two co-anchored partials collapsing to
+        # FULL (TPC-DS q78). Environment `merge ~` LEFT joins are EXCLUDED: their
+        # consolidation is a symmetric multi-fact FULL by design, not a directional
+        # anchor preservation.
+        merge_tuples = set(environment.merges)
+        self.scoped_left_anchor_keys: set[str] = {
+            self.scoped_merge_map.get(s, s)
+            for s, t, jt in self.scoped_joins
+            if jt is JoinType.LEFT_OUTER and (s, t, jt) not in merge_tuples
+        }
+
         # Collapsed-away sources that get the merge-style source-identity +
         # pseudonym handling below (so a *derived* join key stays sourceable from
         # the collapsed side). INNER asserts source == target — a symmetric
@@ -3694,6 +3709,7 @@ class Factory:
                 - self.scoped_outer_identity_sources
             ),
             scoped_full_join_keys=set(self.scoped_full_join_keys),
+            scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
         )
 
         for k, v in base.concepts.all_items():

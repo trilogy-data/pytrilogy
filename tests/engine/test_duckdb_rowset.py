@@ -1221,3 +1221,59 @@ limit 100;
     assert "combined_store_agg_store_qty" in sql
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     assert results == [(1, 10.0, 5.0, 3.0), (2, 20.0, 7.0, 9.0)]
+
+
+_TOP_N_RANK_FIXTURE = """
+key sale_id int;
+property sale_id.state string;
+property sale_id.profit float;
+
+datasource sales (
+    sale_id: sale_id,
+    state: state,
+    profit: profit,
+)
+grain (sale_id)
+query '''
+select 1 sale_id, 'A' state, 40.0 profit union all
+select 2 sale_id, 'A' state, 20.0 profit union all
+select 3 sale_id, 'B' state, 50.0 profit union all
+select 4 sale_id, 'C' state, 40.0 profit union all
+select 5 sale_id, 'D' state, 30.0 profit union all
+select 6 sale_id, 'E' state, 20.0 profit union all
+select 7 sale_id, 'F' state, 10.0 profit
+''';
+"""
+
+
+def test_top_n_rank_filter_over_inline_aggregate_in_rowset():
+    # Regression (TPC-DS q70): a rowset that BOTH projects an aggregate output
+    # (`sum(profit) as state_total`) AND filters with `having rank(state) over
+    # (order by sum(profit) desc) <= N`, where the rank's ORDER BY is an *inline*
+    # aggregate rather than the projected concept. The inline order-by aggregate
+    # was a different concept address from the projected one, so the QUALIFY CTE's
+    # source_map lacked it and the renderer emitted an INVALID_REFERENCE_BUG
+    # sentinel (`order by INVALID_REFERENCE_BUG desc`). Finalize now collapses the
+    # inline order-by aggregate onto the matching SELECT alias.
+    executor = Dialects.DUCK_DB.default_executor()
+    query = _TOP_N_RANK_FIXTURE + """
+rowset top_states <-
+select
+    state,
+    sum(profit) as state_total
+having
+    rank(state) over (order by sum(profit) desc) <= 5;
+select top_states.state, top_states.state_total
+order by top_states.state_total desc, top_states.state asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # F (sum=10) is ranked 6th and excluded; A=60, B=50, C=40, D=30, E=20.
+    assert results == [
+        ("A", 60.0),
+        ("B", 50.0),
+        ("C", 40.0),
+        ("D", 30.0),
+        ("E", 20.0),
+    ]

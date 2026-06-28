@@ -254,9 +254,22 @@ BASE_INVALID = "INVALID_REFERENCE_BUG"
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
+    # Always embed the reason `x` (the unsourceable concept/why) so it survives
+    # into the rendered SQL; the final strict-mode guard extracts it to raise an
+    # actionable error instead of a generic "this should never occur".
     if not callsite:
-        return BASE_INVALID
+        return f"{BASE_INVALID}<{x}>"
     return f"{BASE_INVALID}_{callsite}<{x}>"
+
+
+def extract_invalid_reference_reasons(sql: str) -> list[str]:
+    """Pull the embedded reasons out of any INVALID_REFERENCE_BUG sentinels in
+    rendered SQL (order-preserving, de-duplicated). Each sentinel is
+    ``INVALID_REFERENCE_BUG[_callsite]<reason>``; an unadorned bare sentinel
+    contributes no reason."""
+    import re
+
+    return list(dict.fromkeys(re.findall(rf"{BASE_INVALID}\w*<([^>]*)>", sql)))
 
 
 def _window_over_clause(window: str, sort: str) -> str:
@@ -2560,9 +2573,17 @@ class BaseDialect:
         )
 
         if CONFIG.strict_mode and BASE_INVALID in final:
+            # Surface the embedded reason(s) (e.g. "Missing source CTE for x.y")
+            # so the failure names the unsourceable reference instead of dumping
+            # the whole query with a generic message.
+            reasons = extract_invalid_reference_reasons(final)
+            detail = "; ".join(reasons) if reasons else "an unresolved reference"
             raise ValueError(
-                f"Invalid reference string found in query: {final}, this should never"
-                " occur. Please create an issue to report this."
+                f"Could not render the query: {detail}. A planned reference has no "
+                "backing source CTE -- typically an unsupported cross-rowset or "
+                "membership shape the planner could not wire. Review the rowset/join "
+                "structure (or file an issue if the query looks valid).\n\n"
+                f"Full SQL with sentinel(s):\n{final}"
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final

@@ -210,10 +210,17 @@ def _score_join_candidate(
     nullables: dict[str, list[str]],
     grain_size: dict[str, int],
     multi_partial: bool,
+    anchor_sources: frozenset[str],
 ) -> tuple[int, int, str]:
     base = 1
     if x in eligible_left:
         base += 3
+    # A query-scoped LEFT anchor must seed the join base AND be processed first in
+    # the per-right dedup loop so each co-anchored optional source dedups against
+    # the anchor (LEFT_OUTER) instead of against the other optional source (FULL).
+    # The boost dominates the multi_partial bump so the anchor always outranks.
+    if x in anchor_sources:
+        base += 10
     is_partial = root in partials.get(x, [])
     if multi_partial and is_partial:
         base += 2
@@ -230,6 +237,7 @@ def resolve_join_order_v2(
     nullables: dict[str, list[str]],
     grain_size: dict[str, int] | None = None,
     full_join_keys: set[str] | None = None,
+    anchor_key_nodes: set[str] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -244,6 +252,18 @@ def resolve_join_order_v2(
     grain_size = grain_size or {}
     datasources = sorted(x for x in g.nodes if x.startswith("ds~"))
     concepts = sorted(x for x in g.nodes if x.startswith("c~"))
+
+    # A source is an anchor when it provides a query-scoped LEFT anchor key as a
+    # COMPLETE (non-partial) concept. Optional sources reference the same key but
+    # are partial against it, so they are excluded.
+    anchor_sources: frozenset[str] = frozenset()
+    if anchor_key_nodes:
+        anchor_sources = frozenset(
+            ds
+            for ds in datasources
+            if (set(g.neighbors(ds)) & anchor_key_nodes)
+            and not (anchor_key_nodes & set(partials.get(ds, [])))
+        )
 
     all_connections: dict[tuple[str, str], set[str]] = {}
     for i, ds1 in enumerate(datasources):
@@ -288,6 +308,7 @@ def resolve_join_order_v2(
             nullables=nullables,
             grain_size=grain_size,
             multi_partial=multi_partial,
+            anchor_sources=anchor_sources,
         )
 
         to_join = sorted(
@@ -594,12 +615,16 @@ def get_node_joins(
 
     # Canonical keys of query-scoped FULL joins, mapped into graph concept nodes.
     full_join_keys = {canon_node(a) for a in environment.scoped_full_join_keys}
+    # Anchor-key nodes of query-scoped LEFT joins: the join tree bases on the
+    # complete source providing one so co-anchored optional sources stay LEFT.
+    anchor_key_nodes = {canon_node(a) for a in environment.scoped_left_anchor_keys}
     joins = resolve_join_order_v2(
         graph,
         partials=partials,
         nullables=nullables,
         grain_size=grain_size,
         full_join_keys=full_join_keys,
+        anchor_key_nodes=anchor_key_nodes,
     )
     return [
         BaseJoin(

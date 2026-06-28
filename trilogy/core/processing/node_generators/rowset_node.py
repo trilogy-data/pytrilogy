@@ -24,6 +24,38 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
 
+def _producible_addresses(
+    node: StrategyNode, *, deep: bool, include_pseudonyms: bool
+) -> set[str]:
+    """Addresses `node` can produce -- the single reachability primitive behind
+    the rowset guards.
+
+    Every dangling-reference bug in this file is one shape: a node advertises (or
+    a predicate references) an address no subtree can actually source, so the
+    renderer emits an ``INVALID_REFERENCE_BUG`` CTE. The renderer's strict-mode
+    guard is the backstop; these gen-time checks bail *early* (fall through to an
+    alternative plan) instead of hard-failing at render.
+
+    ``deep`` walks the whole parent subtree (vs the node's own outputs only).
+    ``include_pseudonyms`` also counts addresses a concept was collapsed onto -- a
+    pseudonym is renderable even though it is not the concept's own address."""
+    acc: set[str] = set()
+    seen: set[int] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        for c in current.output_concepts:
+            acc.add(c.address)
+            if include_pseudonyms:
+                acc.update(c.pseudonyms)
+        if deep:
+            stack.extend(current.parents)
+    return acc
+
+
 def _condition_operands_resolved(
     conditions: BuildWhereClause, node: StrategyNode
 ) -> bool:
@@ -31,10 +63,7 @@ def _condition_operands_resolved(
     (directly or via a pseudonym). A cross-rowset merge that drops an operand
     must not have the predicate applied -- the renderer would emit a dangling
     INVALID_REFERENCE_BUG CTE for the missing column."""
-    available: set[str] = set()
-    for c in node.output_concepts:
-        available.add(c.address)
-        available.update(c.pseudonyms)
+    available = _producible_addresses(node, deep=False, include_pseudonyms=True)
     return all(r.address in available for r in conditions.row_arguments)
 
 
@@ -75,22 +104,6 @@ def _pseudonym_bridge_keys(
     return pairs
 
 
-def _materialized_addresses(node: StrategyNode) -> set[str]:
-    """Addresses the node subtree can canonically produce (a concept's *own*
-    address, never a pseudonym it was collapsed onto)."""
-    acc: set[str] = set()
-    seen: set[int] = set()
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        acc.update(x.address for x in current.output_concepts)
-        stack.extend(current.parents)
-    return acc
-
-
 def _validate_cross_rowset_inner_joins(
     select: SelectLineage | MultiSelectLineage,
     base_node: StrategyNode,
@@ -110,7 +123,7 @@ def _validate_cross_rowset_inner_joins(
     optional so pruning it is correct."""
     if not isinstance(select, SelectLineage):
         return
-    materialized = _materialized_addresses(base_node)
+    materialized = _producible_addresses(base_node, deep=True, include_pseudonyms=False)
     for source_addr, target_addr, jointype in select.scoped_joins:
         if jointype != JoinType.INNER:
             continue
@@ -392,7 +405,23 @@ def _enrich_rowset_node(
     optionals and merges them back onto the rowset. Returns the bare rowset node
     when no enrichment is possible/required."""
     remaining = unsatisfied_optionals(local_optional, node)
-    if not remaining:
+    # An outer WHERE can reference a concept the rowset doesn't produce (e.g. a
+    # dimension property reachable only via the declared `join rs.k = dim.key`).
+    # That arg must be sourced and the predicate applied even when every SELECT
+    # optional is already in the rowset -- otherwise `remaining` is empty, we
+    # return the bare node, and the filter is silently dropped (wrong results).
+    cond_remaining: list[BuildConcept] = []
+    if conditions:
+        have = _producible_addresses(node, deep=False, include_pseudonyms=True)
+        cond_remaining = unique(
+            [
+                environment.concepts[r.address]
+                for r in conditions.row_arguments
+                if r.address not in have and r.address in environment.concepts
+            ],
+            "address",
+        )
+    if not remaining and not cond_remaining:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
@@ -413,9 +442,10 @@ def _enrich_rowset_node(
         )
         return node
     logger.info([x.address for x in possible_joins + local_optional])
+    enrich_remaining = unique(remaining + cond_remaining, "address")
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        mandatory_list=possible_joins + remaining,
+        mandatory_list=possible_joins + enrich_remaining,
         environment=environment,
         g=g,
         depth=depth + 1,
