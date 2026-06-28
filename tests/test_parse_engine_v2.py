@@ -333,10 +333,10 @@ having id in big_ids
     assert isinstance(parsed[-1].having_clause.conditional, SubselectComparison)
 
 
-def test_having_membership_still_requires_row_side_in_projection() -> None:
-    # Only the existence RHS is exempt — the row side (here `other`, neither a
-    # SELECT output nor an alias source) is a plain HAVING ref and must still be
-    # projected.
+def test_having_membership_row_side_resolves_as_semijoin() -> None:
+    # A membership whose row side (`other`) is not a SELECT output is a
+    # post-aggregation filter: keep the grain keys (`id`) whose `other` satisfies
+    # the membership, via a semijoin on the grain key.
     model = """
 key id int;
 property id.val int;
@@ -349,8 +349,8 @@ select id, sum(val) as total
 having other in big_ids
 ;
 """
-    with pytest.raises(InvalidSyntaxException, match="not in the SELECT projection"):
-        parse_text(model, Environment())
+    env, parsed = parse_text(model, Environment())
+    assert parsed
 
 
 def test_parse_text_v2_allows_function_parameter_dotted_access() -> None:

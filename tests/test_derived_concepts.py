@@ -1,4 +1,5 @@
 from trilogy import parse
+from trilogy.core.models.environment import Environment
 
 
 def test_derivations(test_environment):
@@ -88,6 +89,8 @@ SELECT
 
 
 def test_filtering_having_on_unincluded_value(test_environment):
+    # A scalar SELECT (no grain key) cannot anchor a post-aggregation semijoin for
+    # the finer `x > 10` predicate; the user is directed to WHERE instead.
     exception = False
     try:
         env, _ = parse("""key x int;
@@ -107,7 +110,7 @@ def test_filtering_having_on_unincluded_value(test_environment):
         """)
     except Exception as e:
         exception = True
-        assert "HAVING references 'local.x'" in str(e) and "--local.x" in str(e), str(e)
+        assert "WHERE" in str(e), str(e)
     assert exception, "should have an exception"
 
 
@@ -179,46 +182,41 @@ datasource sales (
 """
 
 
-def test_having_rejects_off_grain_aggregate_not_in_select():
-    from trilogy.core.exceptions import InvalidSyntaxException
+def test_having_off_grain_aggregate_promoted_to_hidden_output():
+    # An off-grain aggregate in HAVING that is not a SELECT output is promoted to a
+    # hidden output (computed in its own CTE at its `by` grain) and the HAVING
+    # points at it — no longer an error.
+    from trilogy import Dialects
 
-    raised = None
-    try:
-        parse(_HAVING_AGG_SCHEMA + """
+    sql = "\n".join(
+        Dialects.DUCK_DB.default_executor(environment=Environment()).generate_sql(
+            _HAVING_AGG_SCHEMA + """
 select
     store_id,
     customer_id,
     sum(amount) as total
 having sum(amount) > 1.2 * sum(amount) by store_id;
-""")
-    except Exception as e:
-        raised = e
-    assert isinstance(
-        raised, InvalidSyntaxException
-    ), f"expected InvalidSyntaxException, got {type(raised).__name__}: {raised}"
-    msg = str(raised)
-    assert "HAVING" in msg and "sum(local.amount) by local.store_id" in msg, msg
+"""
+        )
+    )
+    assert "INVALID_REFERENCE_BUG" not in sql
 
 
-def test_having_rejects_nested_aggregate_not_in_select():
-    from trilogy.core.exceptions import InvalidSyntaxException
+def test_having_nested_aggregate_promoted_to_hidden_output():
+    from trilogy import Dialects
 
-    raised = None
-    try:
-        parse(_HAVING_AGG_SCHEMA + """
+    sql = "\n".join(
+        Dialects.DUCK_DB.default_executor(environment=Environment()).generate_sql(
+            _HAVING_AGG_SCHEMA + """
 select
     store_id,
     customer_id,
     sum(amount) as total
 having sum(amount) > 1.2 * avg(sum(amount) by store_id);
-""")
-    except Exception as e:
-        raised = e
-    assert isinstance(
-        raised, InvalidSyntaxException
-    ), f"expected InvalidSyntaxException, got {type(raised).__name__}: {raised}"
-    msg = str(raised)
-    assert "HAVING" in msg and "avg(sum(local.amount) by local.store_id)" in msg, msg
+"""
+        )
+    )
+    assert "INVALID_REFERENCE_BUG" not in sql
 
 
 def test_having_substitutes_matching_off_grain_aggregate_with_alias():

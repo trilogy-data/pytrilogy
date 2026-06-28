@@ -75,6 +75,64 @@ def _pseudonym_bridge_keys(
     return pairs
 
 
+def _materialized_addresses(node: StrategyNode) -> set[str]:
+    """Addresses the node subtree can canonically produce (a concept's *own*
+    address, never a pseudonym it was collapsed onto)."""
+    acc: set[str] = set()
+    seen: set[int] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        acc.update(x.address for x in current.output_concepts)
+        stack.extend(current.parents)
+    return acc
+
+
+def _validate_cross_rowset_inner_joins(
+    select: SelectLineage | MultiSelectLineage,
+    base_node: StrategyNode,
+    environment: BuildEnvironment,
+) -> None:
+    """A scoped INNER join between two *rowset* outputs is a genuine intersection
+    of two independent populations. The scoped-join machinery collapses both
+    operands onto one canonical column; when an operand contributes nothing else
+    its scan is pruned, leaving it only as a pseudonym of the survivor -- so the
+    intersection is silently lost. A projected/filtered reference to the pruned
+    side then has no source and renders a bare ``INVALID_REFERENCE_BUG`` sentinel
+    (or, with no WHERE, silently wrong results). The collapse model cannot express
+    this; raise a clean, actionable error pointing at the ``union(...)`` rewrite.
+
+    Only INNER joins between two ROWSET operands are flagged: a fact/dimension key
+    collapse (same entity) is legitimate, and a LEFT/FULL operand is genuinely
+    optional so pruning it is correct."""
+    if not isinstance(select, SelectLineage):
+        return
+    materialized = _materialized_addresses(base_node)
+    for source_addr, target_addr, jointype in select.scoped_joins:
+        if jointype != JoinType.INNER:
+            continue
+        operands = [source_addr, target_addr]
+        if not all(
+            getattr(environment.concepts.get(a), "derivation", None)
+            == Derivation.ROWSET
+            for a in operands
+        ):
+            continue
+        pruned = [a for a in operands if a not in materialized]
+        if pruned:
+            raise UnresolvableQueryException(
+                f"Cannot resolve cross-rowset INNER join {source_addr} = "
+                f"{target_addr}: it intersects two independent rowsets but the "
+                f"collapse dropped {pruned[0]}, silently losing the intersection. "
+                "Rewrite the intersection as a `union(...)` of the arms with a "
+                "channel marker, then keep tuples whose `count_distinct(channel)` "
+                "equals the number of arms."
+            )
+
+
 def gen_rowset_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -180,6 +238,7 @@ def gen_rowset_node(
     # key whose authored source (e.g. `a.aid`) only exists inside the body as the
     # join canonical (`b.bid`). We can optimize this extra node away later.
     base_node = node
+    _validate_cross_rowset_inner_joins(select, base_node, environment)
     node = RowsetNode(
         input_concepts=list(
             [

@@ -177,7 +177,9 @@ def test_having_without_select():
     try:
         env, parsed = parse(q1)
     except Exception as e:
-        assert "which is not in the SELECT projection" in str(e)
+        # A constant SELECT has no grain key to anchor a semijoin for the finer
+        # `b = 2` predicate, so the user is directed to WHERE.
+        assert "WHERE" in str(e)
         failed = True
     assert failed
 

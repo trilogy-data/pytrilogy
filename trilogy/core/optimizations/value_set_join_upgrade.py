@@ -157,6 +157,18 @@ def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:
     return condition_implies(a, b) and condition_implies(b, a)
 
 
+def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
+    """True when ``side_cte`` can emit NULL for ``concept`` — e.g. a ROLLUP/CUBE/
+    GROUPING SETS grouping key carries NULL at its subtotal/grand-total rows."""
+    if not isinstance(side_cte, CTE):
+        return False
+    keys = _key_addresses(concept)
+    nullable_addrs: set[str] = set()
+    for nc in side_cte.nullable_concepts:
+        nullable_addrs |= _key_addresses(nc)
+    return bool(nullable_addrs & keys)
+
+
 def _pair_key_sets_equivalent(
     left_concept: BuildConcept,
     left_cte: CTE | UnionCTE,
@@ -232,6 +244,20 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             right_cte = join.right_cte
             if not all(
                 _pair_key_sets_equivalent(pair.left, pair.cte, pair.right, right_cte)
+                for pair in join.joinkey_pairs
+            ):
+                continue
+            # A key that is nullable on a side but joined with plain ``=`` (the
+            # pair carries no NULLABLE modifier) carries NULL rows the equality
+            # never matches — e.g. a ROLLUP subtotal/grand-total key. Upgrading
+            # to INNER would silently drop them, so leave the OUTER join. (A
+            # null-safe pair, the twin-rollup case, matches NULLs and is safe.)
+            if any(
+                not pair.is_nullable
+                and (
+                    _key_nullable(pair.left, pair.cte)
+                    or _key_nullable(pair.right, right_cte)
+                )
                 for pair in join.joinkey_pairs
             ):
                 continue

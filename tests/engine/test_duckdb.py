@@ -410,6 +410,50 @@ order by channel asc, sales asc, profit asc, outlet asc nulls first;
     ]
 
 
+_ROLLUP_SIBLING_MODEL = """
+key oid int;
+property oid.chan int;
+property oid.ent int;
+property oid.etxt string;
+property oid.amt float;
+datasource sales (oid: oid, chan: chan, ent: ent, etxt: etxt, amt: amt)
+grain (oid)
+query '''select 1 as oid, 1 as chan, 10 as ent, 'AAA' as etxt, 10.0 as amt union all
+         select 2 as oid, 1 as chan, 11 as ent, 'BBB' as etxt, 30.0 as amt union all
+         select 3 as oid, 2 as chan, 20 as ent, 'CCC' as etxt, 5.0 as amt''';
+"""
+
+
+def test_rollup_sibling_column_join_preserves_subtotals():
+    """A projection over a column that is NOT a rollup key but is fetched at the
+    rollup grain via a join-back (`etxt`, a sibling of the rollup key `ent`) must
+    not lose the rollup rows. The rollup key `ent` is NULL at subtotal/grand-total
+    rows; the join carrying `etxt` is plain `=`, so an INNER upgrade would drop
+    every NULL-keyed rollup row. `UpgradeOuterFromKeySetEquivalence` wrongly read
+    the rollup side's GROUP BY grain as a complete value set and upgraded
+    LEFT_OUTER → INNER. q05 (store/catalog/web channel rollup report)."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_SIBLING_MODEL)
+    text = """
+select
+    case when chan = 1 then 'store' when chan = 2 then 'web' end as label,
+    case when chan = 1 then concat('store', etxt)
+         when chan = 2 then concat('web', etxt) end as entity_fmt,
+    sum(amt) as total
+by rollup (chan, ent)
+order by label asc nulls last, entity_fmt asc nulls last;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r[0], r[1], float(r[2])) for r in results] == [
+        ("store", "storeAAA", 10.0),
+        ("store", "storeBBB", 30.0),
+        ("store", None, 40.0),
+        ("web", "webCCC", 5.0),
+        ("web", None, 5.0),
+        (None, None, 45.0),
+    ]
+
+
 def test_predicate_not_pushed_past_window_order_key():
     """A filter on a window's ORDER BY key (an aggregate also materialized in
     the upstream group) must not be pushed below/into the window — SQL WHERE
