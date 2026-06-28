@@ -1,12 +1,12 @@
 query_id = "81"
-generator = "v4"
-gen_length = 6406
+generator = "v3"
+gen_length = 7460
 preql_size = 1976
 comp_size = 1459
 generated_sql = """
 
 WITH 
-abundant as (
+questionable as (
 SELECT
     \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_billing_customer_id\",
     \"cr_return_address_customer_address\".\"CA_STATE\" as \"cr_return_address_state\",
@@ -47,81 +47,72 @@ WHERE
 ),
 juicy as (
 SELECT
-    \"abundant\".\"cr_return_address_state\" as \"cr_return_address_state\",
-    1.2 * avg(\"abundant\".\"customer_state\") as \"scaled_state\"
+    \"questionable\".\"cr_return_address_state\" as \"cr_return_address_state\",
+    avg(\"questionable\".\"customer_state\") as \"_virt_agg_avg_7052944147524274\"
 FROM
-    \"abundant\"
+    \"questionable\"
 GROUP BY
     1),
-concerned as (
+yummy as (
 SELECT
-    \"abundant\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
-    \"abundant\".\"customer_state\" as \"customer_state\"
-FROM
-    \"abundant\"
-    INNER JOIN \"juicy\" on \"abundant\".\"cr_return_address_state\" is not distinct from \"juicy\".\"cr_return_address_state\"
-WHERE
-    \"abundant\".\"customer_state\" > \"juicy\".\"scaled_state\"
-),
-sparkling as (
-SELECT
-    \"concerned\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
-    \"concerned\".\"customer_state\" as \"customer_state\"
-FROM
-    \"concerned\")
-SELECT
-    \"wakeful\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\",
-    \"wakeful\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",
-    \"wakeful\".\"cr_billing_customer_first_name\" as \"cr_billing_customer_first_name\",
-    \"wakeful\".\"cr_billing_customer_last_name\" as \"cr_billing_customer_last_name\",
-    \"wakeful\".\"cr_billing_customer_address_street_number\" as \"cr_billing_customer_address_street_number\",
-    \"wakeful\".\"cr_billing_customer_address_street_name\" as \"cr_billing_customer_address_street_name\",
-    \"wakeful\".\"cr_billing_customer_address_street_type\" as \"cr_billing_customer_address_street_type\",
-    \"wakeful\".\"cr_billing_customer_address_suite_number\" as \"cr_billing_customer_address_suite_number\",
+    \"questionable\".\"cr_return_address_state\" as \"cr_return_address_state\",
+    \"questionable\".\"customer_state\" as \"customer_state\",
     \"wakeful\".\"cr_billing_customer_address_city\" as \"cr_billing_customer_address_city\",
-    \"wakeful\".\"cr_billing_customer_address_county\" as \"cr_billing_customer_address_county\",
-    \"wakeful\".\"cr_billing_customer_address_state\" as \"cr_billing_customer_address_state\",
-    \"wakeful\".\"cr_billing_customer_address_zip\" as \"cr_billing_customer_address_zip\",
     \"wakeful\".\"cr_billing_customer_address_country\" as \"cr_billing_customer_address_country\",
+    \"wakeful\".\"cr_billing_customer_address_county\" as \"cr_billing_customer_address_county\",
     \"wakeful\".\"cr_billing_customer_address_gmt_offset\" as \"cr_billing_customer_address_gmt_offset\",
     \"wakeful\".\"cr_billing_customer_address_location_type\" as \"cr_billing_customer_address_location_type\",
-    \"sparkling\".\"customer_state\" as \"customer_state\"
+    \"wakeful\".\"cr_billing_customer_address_state\" as \"cr_billing_customer_address_state\",
+    \"wakeful\".\"cr_billing_customer_address_street_name\" as \"cr_billing_customer_address_street_name\",
+    \"wakeful\".\"cr_billing_customer_address_street_number\" as \"cr_billing_customer_address_street_number\",
+    \"wakeful\".\"cr_billing_customer_address_street_type\" as \"cr_billing_customer_address_street_type\",
+    \"wakeful\".\"cr_billing_customer_address_suite_number\" as \"cr_billing_customer_address_suite_number\",
+    \"wakeful\".\"cr_billing_customer_address_zip\" as \"cr_billing_customer_address_zip\",
+    \"wakeful\".\"cr_billing_customer_first_name\" as \"cr_billing_customer_first_name\",
+    \"wakeful\".\"cr_billing_customer_last_name\" as \"cr_billing_customer_last_name\",
+    \"wakeful\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",
+    \"wakeful\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\"
 FROM
-    \"sparkling\"
-    INNER JOIN \"wakeful\" on \"sparkling\".\"cr_billing_customer_id\" = \"wakeful\".\"cr_billing_customer_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    \"wakeful\".\"cr_billing_customer_id\"
+    \"questionable\"
+    INNER JOIN \"wakeful\" on \"questionable\".\"cr_billing_customer_id\" = \"wakeful\".\"cr_billing_customer_id\")
+SELECT
+    \"yummy\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\",
+    \"yummy\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",
+    \"yummy\".\"cr_billing_customer_first_name\" as \"cr_billing_customer_first_name\",
+    \"yummy\".\"cr_billing_customer_last_name\" as \"cr_billing_customer_last_name\",
+    \"yummy\".\"cr_billing_customer_address_street_number\" as \"cr_billing_customer_address_street_number\",
+    \"yummy\".\"cr_billing_customer_address_street_name\" as \"cr_billing_customer_address_street_name\",
+    \"yummy\".\"cr_billing_customer_address_street_type\" as \"cr_billing_customer_address_street_type\",
+    \"yummy\".\"cr_billing_customer_address_suite_number\" as \"cr_billing_customer_address_suite_number\",
+    \"yummy\".\"cr_billing_customer_address_city\" as \"cr_billing_customer_address_city\",
+    \"yummy\".\"cr_billing_customer_address_county\" as \"cr_billing_customer_address_county\",
+    \"yummy\".\"cr_billing_customer_address_state\" as \"cr_billing_customer_address_state\",
+    \"yummy\".\"cr_billing_customer_address_zip\" as \"cr_billing_customer_address_zip\",
+    \"yummy\".\"cr_billing_customer_address_country\" as \"cr_billing_customer_address_country\",
+    \"yummy\".\"cr_billing_customer_address_gmt_offset\" as \"cr_billing_customer_address_gmt_offset\",
+    \"yummy\".\"cr_billing_customer_address_location_type\" as \"cr_billing_customer_address_location_type\",
+    \"yummy\".\"customer_state\" as \"customer_state\"
+FROM
+    \"yummy\"
+    LEFT OUTER JOIN \"juicy\" on \"yummy\".\"cr_return_address_state\" is not distinct from \"juicy\".\"cr_return_address_state\"
+WHERE
+    \"yummy\".\"customer_state\" > 1.2 * \"juicy\".\"_virt_agg_avg_7052944147524274\"
+
 ORDER BY 
-    \"wakeful\".\"cr_billing_customer_text_id\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_salutation\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_first_name\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_last_name\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_street_number\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_street_name\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_street_type\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_suite_number\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_city\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_county\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_state\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_zip\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_country\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_gmt_offset\" asc nulls first,
-    \"wakeful\".\"cr_billing_customer_address_location_type\" asc nulls first,
-    \"sparkling\".\"customer_state\" asc nulls first
+    \"yummy\".\"cr_billing_customer_text_id\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_salutation\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_first_name\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_last_name\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_street_number\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_street_name\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_street_type\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_suite_number\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_city\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_county\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_state\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_zip\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_country\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_gmt_offset\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_address_location_type\" asc nulls first,
+    \"yummy\".\"customer_state\" asc nulls first
 LIMIT (100)"""
