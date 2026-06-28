@@ -74,7 +74,13 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # the fact; 8308->6412, under the 7000 ceiling. XPASS in isolation + 2 full
     # sweeps.
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two": _TPCDS_SIZE,
+    # q2.2 pruned 2026-06-28 (8856->7276, under the 7500 ceiling): _merge_basic_into_
+    # window_parent (group_graph) folds the same-grain round() BASIC into its WINDOW
+    # producer so the leads render inline (v3's window+round shape) instead of the
+    # window materializing 14 agg + 7 lead passthrough columns for a separate round
+    # node. XPASS in isolation + full sweep. q2.1 stays listed: its round BASIC is at
+    # date.id grain (named *_sales intermediate), so the same-grain merge gate
+    # correctly skips it -- a separate grain-inference gap.
     # q30.alt's failure is STRUCTURAL, not length (6193 < 12000 ceiling): the test
     # asserts web_returns is scanned once and exactly 2 GROUP BYs. v4 still emits a
     # second web_returns GA-spine scan (state filter-only, not selected). Tracked

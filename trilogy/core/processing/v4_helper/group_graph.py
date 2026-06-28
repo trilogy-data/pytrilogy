@@ -1683,10 +1683,13 @@ def build_group_graph(
             buckets,
             mandatory_list,
         )
+        merged = _merge_basic_into_window_parent(
+            group_graph, group_edges, attrs, buckets, concept_attrs
+        )
         changed = _regraft_group_sources(
             group_graph, group_edges, attrs, buckets, concept_attrs
         )
-        if changed:
+        if changed or merged:
             _compute_concept_sets(
                 group_graph,
                 group_edges,
@@ -1887,6 +1890,107 @@ def _synthetic_dimension_regraft_parent(
         if group_graph.has_edge(pred, gid):
             remove_edge(group_graph, group_edges, pred, gid)
     return root_gid
+
+
+def _absorb_group(
+    gid: str,
+    parent_gid: str,
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+) -> None:
+    """Fold group `gid`'s members into `parent_gid` and delete `gid`, so the
+    parent node renders `gid`'s outputs in its own SELECT. Repoints `gid`'s
+    consumers onto the parent; IO/contract refresh is left to the caller's
+    `_compute_concept_sets` rerun."""
+    a = attrs[gid]
+    pa = attrs[parent_gid]
+
+    def _extend(dst: tuple[str, ...], src: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(dict.fromkeys([*dst, *src]))
+
+    pa.primary_members = _extend(pa.primary_members, a.primary_members)
+    pa.members = _extend(pa.members, a.members)
+    pa.secondary_members = _extend(pa.secondary_members, a.secondary_members)
+    pa.member_depths = {**a.member_depths, **pa.member_depths}
+
+    pb = buckets.get(parent_gid)
+    b = buckets.get(gid)
+    if pb is not None and b is not None:
+        for addr, node_id in zip(b.primary_members, b.primary_node_ids):
+            if addr not in pb.primary_members:
+                pb.primary_members.append(addr)
+                pb.primary_node_ids.append(node_id)
+        for addr in b.secondary_members:
+            if addr not in pb.secondary_members:
+                pb.secondary_members.append(addr)
+        pb.member_depths = {**b.member_depths, **pb.member_depths}
+
+    for succ in list(group_graph.successors(gid)):
+        if succ == parent_gid or group_graph.has_edge(parent_gid, succ):
+            continue
+        kind = edge_kind(group_edges, gid, succ) or EdgeKind.LINEAGE
+        add_edge(group_graph, group_edges, parent_gid, succ, kind)
+
+    for edge in [e for e in group_edges if gid in e]:
+        group_edges.pop(edge, None)
+    group_graph.remove_node(gid)
+    del attrs[gid]
+    buckets.pop(gid, None)
+
+
+def _merge_basic_into_window_parent(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
+) -> bool:
+    """Collapse a same-grain scalar BASIC group into a WINDOW parent that already
+    supplies all of its inputs, so the projection renders inline in the window's
+    own SELECT (v3's single-CTE window+round shape, q2.1/q2.2) instead of a
+    separate node that forces the window to materialize every passthrough column.
+
+    This is the node-MERGE generalization of `_regraft_group_sources` (which only
+    routes a source edge). It is gated to the one case the optimizer cannot
+    express -- `CollapseSingleParent` blocks BASIC-into-WINDOW because a row
+    projection can't ride a window node's SELECT through a generic fold. An
+    AGGREGATE parent is deliberately excluded: that fold is already handled
+    safely by `CollapseSingleParent`'s `basic_fold_into_group_is_safe`.
+
+    The post-window filter (`x is not null`) needs no handling here: it has not
+    been injected yet (this runs before `_inject_conditions`), and placement
+    refuses to host a filter on a window group's own output
+    (`_CANNOT_HOST_OWN_OUTPUT`), so it defers to FINAL exactly as v3 emits it."""
+    changed = False
+    for gid in list(group_graph.nodes):
+        if gid == FINAL_NODE_ID:
+            continue
+        a = attrs[gid]
+        if a.derivation != Derivation.BASIC or a.condition_atoms:
+            continue
+        # pure scalar projection only: a member that is itself a row-shape
+        # barrier (aggregate/window output) can't render in the parent's SELECT.
+        if any(
+            m in concept_attrs
+            and concept_attrs[m].derivation in ROW_SHAPE_BARRIER_DERIVATIONS
+            for m in a.primary_members
+        ):
+            continue
+        parent_gid = _regraft_candidate(
+            group_graph, group_edges, attrs, gid, allow_partial=False
+        )
+        if parent_gid is None or parent_gid == gid:
+            continue
+        pa = attrs[parent_gid]
+        if pa.derivation != Derivation.WINDOW:
+            continue
+        if pa.grain_components != a.grain_components:
+            continue
+        _absorb_group(gid, parent_gid, group_graph, group_edges, attrs, buckets)
+        changed = True
+    return changed
 
 
 def _regraft_group_sources(
