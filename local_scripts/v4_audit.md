@@ -194,11 +194,20 @@ The proxy table above is HISTORICAL (2026-06-25 baseline). Trust real-fixture nu
 | 23 | 8500 | 8037 | 8107 | PASS (pruned) |
 | 94 | 5000 | 3452 | 3153 | PASS (pruned) |
 
-**Genuinely failing now (3):** q2.1 (8747) and q2.2 (8856) on length — shared
-passthrough-projection bloat, the most verbose multi-fact / many-sibling shape left
-(`v4_verbosity_handoff.md`). q30.alt fails on STRUCTURE not length (6193 < 12000): a
-second `web_returns` GA-spine scan for the filter-only `address.state`
-(`v4_dimension_projection_rejoin_handoff.md`).
+**Genuinely failing now (2):** q2.1 (8266) on length; q30.alt fails on STRUCTURE not
+length (6193 < 12000): a second `web_returns` GA-spine scan for the filter-only
+`address.state` (`v4_dimension_projection_rejoin_handoff.md`).
+
+**q2.2 FIXED + pruned 2026-06-28 (8856 → 7276).** `_merge_basic_into_window_parent`
+(`group_graph.py`) folds the same-grain `round()` BASIC into its WINDOW producer (leads
+render inline, v3's window+round shape) instead of materializing 14 agg + 7 lead
+passthrough columns. The window merge is the node-MERGE generalization of
+`_regraft_group_sources`, gated to full-coverage same-grain scalar-BASIC-over-WINDOW
+(the case `CollapseSingleParent` can't express). q2.1 stays over because its round BASIC
+is at `date.id` grain (named `*_sales` intermediate), so the same-grain gate skips it —
+a separate grain-inference gap. (A pseudonym-aware `inline_datasource` change was tried
+for the fact-scan passthroughs but REVERTED — it regressed `test_canonical_collision_
+merge` on both planners; q2.2 passes without it.) See `v4_verbosity_handoff.md`.
 
 ### Size fixes already landed (current behavior, 2026-06-25)
 

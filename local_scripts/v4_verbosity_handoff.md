@@ -1,5 +1,38 @@
 # v4 verbosity / plan-size handoff (the migration-gating work)
 
+## 2026-06-28 — q2.2 FIXED + pruned (8856 → 7276, under 7500)
+
+**`_merge_basic_into_window_parent`** (`group_graph.py`). The same-grain `round()`
+BASIC group folds INTO its WINDOW producer so the `lead()`s render inline (v3's single
+window+round CTE) instead of the window materializing 14 agg + 7 lead passthrough
+columns for a separate round node. It's the node-MERGE generalization of
+`_regraft_group_sources` (which only routes a source edge), gated to the one case the
+optimizer can't express (`CollapseSingleParent` blocks BASIC-into-WINDOW):
+full-coverage, same-grain, scalar-BASIC-over-WINDOW. The post-window `is not null`
+defers to FINAL for free (`condition_placement._CANNOT_HOST_OWN_OUTPUT`). Runs before
+`_inject_conditions`, so the BASIC carries no condition at merge time. Lock:
+`tests/core/processing/test_v4_window_basic_merge.py`. TODO: DRY with
+`_regraft_group_sources` once validated (currently a separate method by design).
+
+**REVERTED — pseudonym-aware datasource inlining** (`inline_datasource.py`). An earlier
+attempt expanded `root_outputs` with pseudonyms so the bare `web_sales`/`catalog_sales`
+fact-scan passthroughs fold into the aggregate join (−480 chars each). It REGRESSED
+`tests/discovery/test_canonical_collision_merge.py` on BOTH planners: when two columns
+of one datasource carry pseudonyms that canonically collide (`d1→s1`, `d2→s2`, s1/s2
+same canonical), the blanket expansion lets the inliner over-match and the s1 arm
+renders `coalesce("facts"."d1", spine.s1) as "s1"` (a FULL JOIN) instead of the direct
+`"facts"."d1" as "s1"`. Reverted; q2.2 passes on the window merge alone (no longer needs
+it). Re-land only with a narrowed gate (don't expand a pseudonym whose canonical
+collides with another root output's pseudonym). It remains a latent win for q2.1.
+
+**q2.1 still over (8266).** Its round BASIC is at `date.id` grain (the named `*_sales`
+intermediate concepts make it finer than the `date.week_seq` window), so the same-grain
+merge gate correctly skips it. Needs a separate grain-inference fix (why the named
+weekday-sales BASIC lands at `date.id` not `date.week_seq`), then the window merge fires
+and q2.1 collapses the same way.
+
+---
+
 Status: OPEN, `_TPCDS_SIZE` (rows correct, SQL longer than v3 → trips
 `assert len(query) < ceiling`). **Not correctness** — full v4 sweep is 0 failed. This
 is the main engineering left before v4 can be flipped on by default. For the genuine
