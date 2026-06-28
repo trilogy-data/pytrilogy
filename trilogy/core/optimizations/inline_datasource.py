@@ -64,7 +64,12 @@ class InlineDatasource(OptimizationRule):
                     f"Cannot inline: Parent {parent_cte.name} datasource is not inlineable"
                 )
                 continue
+            # A join key the consumer inherited under its canonical address
+            # (e.g. `date.id`) is rendered off the datasource via its local
+            # pseudonym column (`web_sales.date.id`). Count pseudonyms as
+            # satisfiable so a bare fact-scan passthrough still inlines.
             root_outputs = {x.address for x in root.output_concepts}
+            root_outputs |= {p for x in root.output_concepts for p in x.pseudonyms}
             inherited = {
                 x for x, v in cte.source_map.items() if v and parent_cte.name in v
             }
