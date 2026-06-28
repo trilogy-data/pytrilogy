@@ -1,6 +1,6 @@
 query_id = "81"
 generator = "v4"
-gen_length = 6563
+gen_length = 6406
 preql_size = 1976
 comp_size = 1459
 generated_sql = """
@@ -53,7 +53,7 @@ FROM
     \"abundant\"
 GROUP BY
     1),
-young as (
+concerned as (
 SELECT
     \"abundant\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
     \"abundant\".\"customer_state\" as \"customer_state\"
@@ -63,18 +63,12 @@ FROM
 WHERE
     \"abundant\".\"customer_state\" > \"juicy\".\"scaled_state\"
 ),
-abhorrent as (
+sparkling as (
 SELECT
-    \"young\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
-    \"young\".\"customer_state\" as \"customer_state\"
+    \"concerned\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
+    \"concerned\".\"customer_state\" as \"customer_state\"
 FROM
-    \"young\"),
-sweltering as (
-SELECT
-    \"abhorrent\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
-    \"abhorrent\".\"customer_state\" as \"customer_state\"
-FROM
-    \"abhorrent\")
+    \"concerned\")
 SELECT
     \"wakeful\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\",
     \"wakeful\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",
@@ -91,10 +85,10 @@ SELECT
     \"wakeful\".\"cr_billing_customer_address_country\" as \"cr_billing_customer_address_country\",
     \"wakeful\".\"cr_billing_customer_address_gmt_offset\" as \"cr_billing_customer_address_gmt_offset\",
     \"wakeful\".\"cr_billing_customer_address_location_type\" as \"cr_billing_customer_address_location_type\",
-    \"sweltering\".\"customer_state\" as \"customer_state\"
+    \"sparkling\".\"customer_state\" as \"customer_state\"
 FROM
-    \"sweltering\"
-    INNER JOIN \"wakeful\" on \"sweltering\".\"cr_billing_customer_id\" = \"wakeful\".\"cr_billing_customer_id\"
+    \"sparkling\"
+    INNER JOIN \"wakeful\" on \"sparkling\".\"cr_billing_customer_id\" = \"wakeful\".\"cr_billing_customer_id\"
 GROUP BY
     1,
     2,
@@ -129,5 +123,5 @@ ORDER BY
     \"wakeful\".\"cr_billing_customer_address_country\" asc nulls first,
     \"wakeful\".\"cr_billing_customer_address_gmt_offset\" asc nulls first,
     \"wakeful\".\"cr_billing_customer_address_location_type\" asc nulls first,
-    \"sweltering\".\"customer_state\" asc nulls first
+    \"sparkling\".\"customer_state\" asc nulls first
 LIMIT (100)"""

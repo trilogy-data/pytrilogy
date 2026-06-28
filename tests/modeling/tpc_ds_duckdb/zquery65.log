@@ -1,6 +1,6 @@
 query_id = "65"
-generator = "v4"
-gen_length = 1973
+generator = "v3"
+gen_length = 2442
 preql_size = 670
 comp_size = 1062
 generated_sql = """
@@ -10,8 +10,7 @@ wakeful as (
 SELECT
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
-    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\",
-    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"revenue\"
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
@@ -21,7 +20,20 @@ WHERE
 GROUP BY
     1,
     2),
-questionable as (
+abundant as (
+SELECT
+    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"store_sales_item_items\".\"I_WHOLESALE_COST\" as \"store_sales_item_wholesale_cost\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    \"wakeful\".\"item_revenue\" as \"item_revenue\",
+    \"wakeful\".\"store_sales_store_id\" as \"store_sales_store_id\"
+FROM
+    \"wakeful\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"wakeful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"wakeful\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"),
+thoughtful as (
 SELECT
     \"wakeful\".\"store_sales_store_id\" as \"store_sales_store_id\",
     avg(\"wakeful\".\"item_revenue\") as \"store_avg_revenue\"
@@ -30,19 +42,17 @@ FROM
 GROUP BY
     1)
 SELECT
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
-    \"wakeful\".\"revenue\" as \"revenue\",
-    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
-    \"store_sales_item_items\".\"I_WHOLESALE_COST\" as \"store_sales_item_wholesale_cost\",
-    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\"
+    \"abundant\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"abundant\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"abundant\".\"item_revenue\" as \"revenue\",
+    \"abundant\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"abundant\".\"store_sales_item_wholesale_cost\" as \"store_sales_item_wholesale_cost\",
+    \"abundant\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"wakeful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"wakeful\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"questionable\" on \"wakeful\".\"store_sales_store_id\" = \"questionable\".\"store_sales_store_id\"
+    \"abundant\"
+    INNER JOIN \"thoughtful\" on \"abundant\".\"store_sales_store_id\" = \"thoughtful\".\"store_sales_store_id\"
 WHERE
-    \"wakeful\".\"revenue\" <= 0.1 * \"questionable\".\"store_avg_revenue\"
+    \"abundant\".\"item_revenue\" <= 0.1 * \"thoughtful\".\"store_avg_revenue\"
 
 GROUP BY
     1,
@@ -51,8 +61,8 @@ GROUP BY
     4,
     5,
     6,
-    \"questionable\".\"store_avg_revenue\"
+    \"thoughtful\".\"store_avg_revenue\"
 ORDER BY 
-    \"store_sales_store_store\".\"S_STORE_NAME\" asc nulls first,
-    \"store_sales_item_items\".\"I_ITEM_DESC\" asc nulls first
+    \"abundant\".\"store_sales_store_name\" asc nulls first,
+    \"abundant\".\"store_sales_item_desc\" asc nulls first
 LIMIT (100)"""

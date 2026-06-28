@@ -634,8 +634,26 @@ def partition_filters_by_signature(
             if edge_kind(concept_edges, pred, node) == EdgeKind.EXISTENCE
         )
 
-    return _partition_by_signature_and_grain(
-        items,
+    # A FILTER concept that is itself a semijoin RHS -- an existence SOURCE, with
+    # an outgoing EXISTENCE edge (`pcid in store_buyers`) -- is functionally an
+    # independent sub-query. Co-bucketing two of them (q10's `store_buyers` +
+    # `webcat_buyers`) forces one shared scan carrying two mutually-exclusive
+    # predicates, which can only render as row-preserving CASE columns -- blocking
+    # predicate pushdown and dim pruning. Give each its own bucket so it sources as
+    # a single-predicate WHERE sub-query (mirrors the ROOT `existence:` solos).
+    solo_items: list[NodeItem] = []
+    shared_items: list[NodeItem] = []
+    for node, data in items:
+        if any(
+            edge_kind(concept_edges, node, succ) == EdgeKind.EXISTENCE
+            for succ in concept_graph.successors(node)
+        ):
+            solo_items.append((node, data))
+        else:
+            shared_items.append((node, data))
+
+    buckets = _partition_by_signature_and_grain(
+        shared_items,
         Derivation.FILTER,
         concept_graph,
         concept_edges,
@@ -644,6 +662,17 @@ def partition_filters_by_signature(
         ensure_assigned,
         extra_signature=existence_signature,
     )
+    for node, data in solo_items:
+        solo = _bucket_for(
+            depth_label=data.depth_label,
+            derivation=Derivation.FILTER,
+            grain=data.grain_components,
+            label=data.label,
+        )
+        solo.discriminator = f"existence:{concept_attrs[node].address}"
+        _add_member(solo, node, data)
+        buckets.append(solo)
+    return buckets
 
 
 def partition_rowsets(

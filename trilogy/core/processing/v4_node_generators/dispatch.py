@@ -60,6 +60,7 @@ def build_node(
     conditions: BuildWhereClause | None,
     preexisting_conditions: BuildWhereClause | None = None,
     intrinsic_filter_pushdown: bool = True,
+    existence_source: bool = False,
     history: History,
     g: ReferenceGraph,
     source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
@@ -99,6 +100,7 @@ def build_node(
             conditions,
             preexisting_conditions=preexisting_conditions,
             intrinsic_filter_pushdown=intrinsic_filter_pushdown,
+            existence_source=existence_source,
         )
     return fn(
         outputs,

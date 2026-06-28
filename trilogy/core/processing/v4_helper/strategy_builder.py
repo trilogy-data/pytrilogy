@@ -995,6 +995,49 @@ def _aggregate_inputs_are_row_preserving(
     return all(concept_satisfiable(arg, available) for arg in row_preserving_inputs)
 
 
+def _parents_already_at_input_grain(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+    input_grain: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """True when the parents already emit one row per aggregate-input-grain key,
+    so the input-grain normalization GROUP is a no-op.
+
+    This is the "true parent-row-grain signal" the all-ROOT normalization floor in
+    `_aggregate_inputs_are_row_preserving` defers to: when the SELECT sources its
+    rows from the dimension keyed by the input grain (q10's customer-rooted
+    `count(purchasing_customer.id)` after the buyer-set filters are isolated as
+    their own discovery), the rows are already unique at that grain, so deduping
+    them is pure SQL bloat. Proven by resolving each parent's physical row grain
+    and checking every component is functionally determined by the input-grain
+    keys -- fixing the input grain fixes the row. A finer parent key that the input
+    grain does NOT determine (q16's `item.id` under a per-order count) keeps the
+    normalization, so a fact-line scan is still regrouped before aggregation.
+
+    Never fires for non-standard grouping (ROLLUP/CUBE/GROUPING_SETS): those need
+    the explicit normalization GROUP so a renamed grouping key stays in sync with
+    its GROUP BY clause (q80 invalid-SQL hazard)."""
+    if not input_grain:
+        return False
+    if any(
+        isinstance(c.lineage, BuildAggregateWrapper)
+        and c.lineage.grouping != AggregateGroupingMode.STANDARD
+        for c in outputs
+    ):
+        return False
+    keys = set(input_grain)
+    for parent in parents:
+        for component in parent.resolve().grain.components:
+            if component in keys:
+                continue
+            if not build_fd_determines(
+                environment, keys, component, include_empty_grain=False
+            ):
+                return False
+    return True
+
+
 def _widen_merge_join_keys(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -2351,6 +2394,9 @@ def build_strategy_node(
             and not _aggregate_inputs_are_row_preserving(
                 outputs, primary_addrs, parents
             )
+            and not _parents_already_at_input_grain(
+                outputs, parents, a.aggregate_input_grain, environment
+            )
         ):
             normalize_addrs = set(a.aggregate_input_grain)
             for c in outputs:
@@ -2385,6 +2431,10 @@ def build_strategy_node(
             conditions=condition_for_generator,
             preexisting_conditions=preexisting,
             intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(group_graph, gid),
+            existence_source=any(
+                edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
+                for succ in group_graph.successors(gid)
+            ),
             history=history,
             g=g,
             source_policy=source_policy,

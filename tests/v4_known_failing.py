@@ -36,20 +36,6 @@ _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
     "exceeds the v3-tuned length ceiling (more CTEs / less compact)"
 )
-# q23: correct rows but over the v3 length ceiling because v4 now force-
-# normalizes all-ROOT aggregate inputs to the input grain (the all-ROOT guard in
-# `_aggregate_inputs_are_row_preserving`). That guard is a CORRECTNESS floor --
-# without it `count(order_number)` over un-deduped line rows over-counts (q16:
-# 818 vs 233). q23 was compact only by skipping that dedup, which was
-# correct-by-data-luck. A grain-aware skip (normalize only when the parent rows
-# are genuinely finer than the input grain) would restore its compactness, but
-# there is no reliable parent-row-grain signal at that point yet -- deferred to a
-# v4-focused pass. Do NOT relax the q23 ceiling (v3 must keep holding it).
-_TPCDS_SIZE_NORMALIZE = (
-    "v4 TPC-DS verbosity: correct rows, but over the v3 ceiling because the "
-    "all-ROOT input-grain normalization (a q16 correctness floor) adds CTEs; "
-    "needs a grain-aware skip -- see project_v4_verbosity_regressions_0626"
-)
 # Genuine v4 crashes (NOT size/shape). The existence-recursion crash (q10/q2.1/rowset)
 # was FIXED 2026-06-25: `_existence_parents_for` deep-copies a cyclic existence-parent
 # subtree, and `gen_root` resolves multi-arg existence sources at build time. Those
@@ -82,9 +68,18 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---
     # Pruned 2026-06-26 (pass in isolation + tracked-group + full sweep): test_two (q02),
     # test_forty_seven (q47), test_fifty_seven (q57), test_seventy_six (q76).
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten": _TPCDS_SIZE,
+    # q10 pruned 2026-06-27: existence-source isolation (semijoin-RHS buyer-set
+    # filters sourced as their own discovery; see group_graph/group_rules/filter)
+    # lets the customer-dimension projection source standalone instead of through
+    # the fact; 8308->6412, under the 7000 ceiling. XPASS in isolation + 2 full
+    # sweeps.
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_two": _TPCDS_SIZE,
+    # q30.alt's failure is STRUCTURAL, not length (6193 < 12000 ceiling): the test
+    # asserts web_returns is scanned once and exactly 2 GROUP BYs. v4 still emits a
+    # second web_returns GA-spine scan (state filter-only, not selected). Tracked
+    # as _TPCDS_SIZE for grouping; the real gap is dimension-projection re-join --
+    # see v4_dimension_projection_rejoin_handoff.md.
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt": _TPCDS_SIZE,
     # q73 pruned 2026-06-27: the single-entity FD dimension-cluster split
     # (`_split_root_dimension_clusters`) sources the customer dims standalone
@@ -94,12 +89,15 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # (`_feeder_conditions_implied`) + a post-pushdown CollapseSingleParent rerun
     # with a PASSTHROUGH merge mode folding the bare dim-projection CTE; 9163->6567,
     # under ceiling. v3 + v4 full sweeps clean.
-    # q23: over ceiling only because of the q16 all-ROOT normalization
-    # correctness floor (2026-06-26); rows correct. Re-optimize in a v4 pass.
     # q94 pruned 2026-06-27: the per-consumer ROOT re-slice fix (share a built
     # conditioned ROOT instead of re-deriving the join) took it 5271->3508, well
     # under ceiling. Passes in isolation + full sweep.
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_three": _TPCDS_SIZE_NORMALIZE,
+    # q23 pruned 2026-06-27: the all-ROOT input-grain normalization is now skipped
+    # when the parents already emit one row per input-grain key
+    # (`_parents_already_at_input_grain`), so the q16 correctness floor no longer
+    # adds CTEs here; 8515->8107, under the 8500 ceiling. XPASS in isolation + 2
+    # full sweeps. The q16 floor itself is unchanged (still normalizes finer
+    # fact-line scans).
     # --- tpc-ds non-benchmark: result / feature regressions ---
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _INLINE,
     "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,
