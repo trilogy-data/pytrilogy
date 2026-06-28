@@ -12,7 +12,6 @@ select
     store_sales.item.current_price,
     store_sales.item.wholesale_cost,
     store_sales.item.brand_name,
-    --store_avg_revenue,
 having
     revenue <= 0.1 * store_avg_revenue
 

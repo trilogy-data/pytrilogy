@@ -25,12 +25,6 @@ select
     store_q1_q2_increase,
     web_q2_q3_increase,
     store_q2_q3_increase,
-    --ss_q1,
-    --ss_q2,
-    --ss_q3,
-    --ws_q1,
-    --ws_q2,
-    --ws_q3,
 having
     ss_q1 > 0
     and ss_q2 > 0

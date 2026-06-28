@@ -37,8 +37,6 @@ select
     other_chan_qty,
     other_chan_wc as other_chan_wholesale_cost,
     other_chan_sp as other_chan_sales_price,
-    --ws_qty,
-    --cs_qty,
 having
     store_qty > 0 and (coalesce(ws_qty, 0) > 0 or coalesce(cs_qty, 0) > 0)
 

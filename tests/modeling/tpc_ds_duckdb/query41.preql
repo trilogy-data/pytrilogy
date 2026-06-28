@@ -15,7 +15,6 @@ auto manufact_matches <- count(
 
 select
     item.product_name ? item.manufacturer_id between 1 and 500 as filtered_product_name,
-    --manufact_matches,
 having
     filtered_product_name is not null and manufact_matches > 0
 

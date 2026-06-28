@@ -478,6 +478,43 @@ order by seg asc;
     assert results == [(1, 2), (2, 1), (5, 2)]
 
 
+def test_global_aggregate_over_two_level_rowset_chain_collapses():
+    # A union rowset (`combined`) feeds a SECOND passthrough rowset (`formatted`)
+    # that only relabels a grain column and re-projects the measure. A global
+    # `sum(formatted.v)` (abstract grain) must collapse to ONE row — same as the
+    # single-level `sum(combined.v)`. It used to fan out (one row per formatted
+    # row, sum silently dropped) because the passthrough measure `formatted.v` —
+    # grain-less since `combined.v` is an abstract union output — wrongly took the
+    # q54 grain-less-aggregate branch and adopted the rowset's row grain
+    # (self-referential), so the planner read it as a grouped property and never
+    # re-aggregated (q05).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id as k, val as v),
+    (where yr = 2002 select item_id as k, 0 as v)
+) -> (k, v);
+
+with formatted as select concat('x', cast(combined.k as string)) as kf, combined.v;
+
+select sum(formatted.v) as total;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "sum(" in sql.lower()
+    # single-level reference: yr2001 vals 10 + 5 = 15, yr2002 zeroed.
+    single = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id as k, val as v),
+    (where yr = 2002 select item_id as k, 0 as v)
+) -> (k, v);
+select sum(combined.v) as total;
+""")[0].fetchall()
+    assert [tuple(r) for r in single] == [(15,)]
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [(15,)]
+
+
 def test_tvf_union_named():
     # A named relational `union(...)` TVF: a column-positional row stack of two
     # arms. Output is exactly the bound columns; the result is a SQL UNION ALL

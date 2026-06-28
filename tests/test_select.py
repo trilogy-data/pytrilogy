@@ -164,24 +164,24 @@ def test_modifiers():
 
 
 def test_having_without_select():
+    # `b` is a single-row constant, so HAVING can filter on it without it being a
+    # SELECT output: it is promoted to a hidden broadcast column. `b = 2` holds, so
+    # the single `a = 1` row survives.
+    from trilogy import Dialects
+    from trilogy.core.models.environment import Environment
+
     q1 = """
     const a <- 1;
     const b <- 2;
-    
+
     select
         a,
 
-    having b =2
+    having b = 2
     ;"""
-    failed = False
-    try:
-        env, parsed = parse(q1)
-    except Exception as e:
-        # A constant SELECT has no grain key to anchor a semijoin for the finer
-        # `b = 2` predicate, so the user is directed to WHERE.
-        assert "WHERE" in str(e)
-        failed = True
-    assert failed
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    results = [tuple(r) for r in executor.execute_query(q1).fetchall()]
+    assert results == [(1,)]
 
 
 def test_local_select_concepts():

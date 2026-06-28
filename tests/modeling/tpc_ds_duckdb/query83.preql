@@ -31,9 +31,6 @@ select
     wr_item_qty,
     wr_dev,
     avg_qty as average,
-    --sr_item_present,
-    --cr_item_present,
-    --wr_item_present,
 having
     sr_item_present > 0 and cr_item_present > 0 and wr_item_present > 0
 

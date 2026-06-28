@@ -44,8 +44,10 @@ from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
     ConceptSource,
+    Derivation,
     FunctionClass,
     FunctionType,
+    Granularity,
     Modifier,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
@@ -1151,17 +1153,33 @@ def _promote_having_aggregates_to_outputs(
         select.having_clause.conditional = _substitute_having_aggregates(
             select.having_clause.conditional, sig_to_ref, rename
         )
-    # A HAVING reference to a *named* aggregate concept (e.g. an `auto m <- sum(x)
-    # by k` used directly in HAVING) is the same case as an inline aggregate: it
-    # must be materialized at the select grain. It arrives as a plain ConceptRef
-    # (not an aggregate node) so the loop above misses it — add it as a hidden
-    # plain output here. Still grain-safe (a metric never contributes to grain).
+    # A HAVING reference to a *named* aggregate concept (`auto m <- sum(x) by k`,
+    # or a `@macro()` aggregate, used directly in HAVING) or to a scalar (a
+    # single-row rowset output like a whole-table `avg(...)`) is the same case as
+    # an inline aggregate: it must be materialized and broadcast at the select
+    # grain. It arrives as a plain ConceptRef (not an aggregate node) so the loop
+    # above misses it — add it as a hidden plain output here. Grain-safe: a metric
+    # never contributes to grain and a single-row value is constant across every
+    # row. A reference *finer* than the grain is left for the semijoin rewrite.
+    # ``is_aggregate`` is False for a macro-wrapped aggregate, so key off
+    # ``derivation`` too (and SINGLE_ROW granularity for scalars).
     output_addrs = {c.address for c in select.output_components}
     for ref in select.having_clause.row_arguments:
         if ref.address in output_addrs:
             continue
         named = context.concepts.get(ref.address)
-        if named is None or not getattr(named, "is_aggregate", False):
+        if named is None or isinstance(named, (UndefinedConcept, UndefinedConceptFull)):
+            continue
+        # Promote computed values (aggregates, macro-aggregates, windows) and
+        # scalars; leave a *finer plain dimension* to the semijoin rewrite. A
+        # window result, like an aggregate, must be materialized — semijoining it
+        # would re-derive the window inside a filter (and can recurse).
+        grain_determined = (
+            named.is_aggregate
+            or named.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
+            or named.granularity == Granularity.SINGLE_ROW
+        )
+        if not grain_determined:
             continue
         select.selection.append(
             SelectItem(content=named.reference, modifiers=[Modifier.HIDDEN])
