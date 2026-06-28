@@ -258,8 +258,9 @@ def test_rowset_key_readback_matrix(models: Path, jt: str, read: str, expected: 
     assert rows == expected
 
 
-# --- Expanded, full-text versions of the matrix cells we are actively debugging,
-# so the input trilogy is right here in the test. Data: a {1,2,3}, b {1,2,4}.
+# --- Expanded, full-text versions of selected matrix cells, so the input trilogy
+# is readable inline. These all pass; they mirror parametrized cells above.
+# Data: a {1,2,3}, b {1,2,4}.
 # ----------------------------------------------------------------------------
 
 
@@ -280,11 +281,11 @@ select rs.k order by rs.k;
     assert rows == [(1,), (2,)]
 
 
-# --- The four still-failing read-back cells, expanded. All read the rowset's
-# collapsed join key (`rs.k`) beside an EXTERNAL property, joining the key back to
-# a dimension with the SAME outer-join type as the rowset body. Currently fail
-# with "rs.k resolvable only from partial sources" (LEFT/FULL partial-key
-# coalescing across the query boundary). Data: a {1,2,3}, b {1,2,4}.
+# --- LEFT/FULL read-back cells, expanded. All read the rowset's collapsed join
+# key (`rs.k`) beside an EXTERNAL property, joining the key back to a dimension
+# with the SAME outer-join type as the rowset body. These exercise LEFT/FULL
+# partial-key coalescing across the query boundary and now resolve correctly.
+# Data: a {1,2,3}, b {1,2,4}.
 # ----------------------------------------------------------------------------
 
 

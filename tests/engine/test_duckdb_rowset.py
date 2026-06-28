@@ -509,6 +509,34 @@ select 10 as sale_id, 5 as sale_cust, 30 as amount
 """
 
 
+# SCD-style: business id 'W' (web) has THREE surrogate keys (sk 10/11/12), 'S'
+# (store) has one (sk 1). A measure that loses its grain and is read as a grouped
+# property fans out across the surrogate versions of the same business id (the
+# real q05 WEB over-count).
+_SCD_FANOUT_FIXTURE = """
+key line_id int;
+property line_id.chan string;
+property line_id.sk int;
+property line_id.ent string;
+property line_id.amt int;
+
+datasource lines (
+    line_id: line_id,
+    chan: chan,
+    sk: sk,
+    ent: ent,
+    amt: amt,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 'WEB' as chan, 10 as sk, 'W' as ent, 100 as amt union all
+select 2 as line_id, 'WEB' as chan, 11 as sk, 'W' as ent, 200 as amt union all
+select 3 as line_id, 'WEB' as chan, 12 as sk, 'W' as ent, 300 as amt union all
+select 4 as line_id, 'STORE' as chan, 1 as sk, 'S' as ent, 50 as amt
+''';
+"""
+
+
 def test_rowset_aggregate_output_bucketed_and_counted_groups_per_bucket():
     # Two-level aggregation (TPC-DS q54 histogram shape): a rowset holds a
     # per-customer total (`sum(amount) by cust`); the outer query buckets that
@@ -569,6 +597,31 @@ select sum(combined.v) as total;
     assert [tuple(r) for r in single] == [(15,)]
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     assert results == [(15,)]
+
+
+def test_grouped_aggregate_over_two_level_rowset_chain_no_scd_fanout():
+    # Same chain as the global-sum test, but the outer aggregate GROUPS BY a
+    # carried dimension (the real q05 WEB shape). The passthrough measure
+    # `formatted.amt` is grain-less (it relabels an abstract union output); if it
+    # adopts the formatted row grain it reads as a grouped property and fans out
+    # across the SCD surrogate keys of each business id, inflating the per-group
+    # sum. `WEB` ('W' = 100+200+300) must total 600, not a fanned multiple.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_SCD_FANOUT_FIXTURE)
+    query = """
+with combined as union(
+    (where line_id.amt > 0 select line_id.chan as channel, line_id.ent as entity, line_id.amt as gross),
+    (where line_id.amt < 0 select line_id.chan as channel, line_id.ent as entity, 0 as gross)
+) -> (channel, entity, gross);
+
+with formatted as
+select concat('x', combined.entity) as ent_fmt, combined.channel as channel2, combined.gross as gross2;
+
+select formatted.channel2, sum(formatted.gross2) as g
+order by formatted.channel2 asc;
+"""
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [("STORE", 50), ("WEB", 600)]
 
 
 def test_tvf_union_named():

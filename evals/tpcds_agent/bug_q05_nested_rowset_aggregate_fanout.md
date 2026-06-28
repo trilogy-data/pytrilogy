@@ -1,8 +1,24 @@
 # q05 — global aggregate over a 2-level rowset chain does not collapse (SILENT wrong numbers + row fan-out)
 
-**Status:** OPEN. Reproduced on the eval workspace
+**Status:** FIXED 2026-06-28 (commit `4659d503`). The grain-less re-grain branch in
+`trilogy/parsing/v2/rowset_semantics.py` (`rowset_to_concepts_v2`) now guards
+`x.address not in rowset_grain`: a 1:1 passthrough of an already-abstract union/rowset
+output is itself listed as a grain component, so re-graining it to the full rowset grain
+made it a self-referential pseudo-key and a downstream global aggregate never collapsed.
+Leaving it abstract (mirroring its source) fixes the fan-out without re-breaking the q54
+grain-less-aggregate case (an unspecified `sum(x)` is NOT in the grain, so it still adopts
+the rowset grain). Verified on the workspace below: the minimal repro statement (B) collapses
+to 1 row (was 62,237), and the full `query05.preql` now reports the correct WEB subtotal
+19,640,463.31 (was 26.57M) and grand total 112,458,734 (was 119,387,633).
+
+Regression tests (`tests/engine/test_duckdb_rowset.py`):
+`test_global_aggregate_over_two_level_rowset_chain_collapses` (global sum, committed with the
+fix) and `test_grouped_aggregate_over_two_level_rowset_chain_no_scd_fanout` (grouped sum with
+SCD-style multiple surrogate keys per business id — the real q05 WEB shape).
+
+Originally reproduced on the eval workspace
 `evals/tpcds_agent/results/20260628-042638_enriched/workspace/` (has `trilogy.toml` +
-`tpcds.duckdb`). Surfaced in that run's q05 (FAILED). Sibling of the OPEN
+`tpcds.duckdb`). Surfaced in that run's q05 (FAILED). Sibling of the
 `q05_union_measure_broadcast_bug.md` (same union/rowset grain family, different symptom).
 
 ## Symptom

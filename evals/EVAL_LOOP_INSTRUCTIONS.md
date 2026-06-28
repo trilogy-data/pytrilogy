@@ -103,9 +103,24 @@ idioms** (grain inheritance, `date_diff` arg order, anti-joins, `is null` semant
 are Trilogy-specific and do not apply to `sql_bare`/`sql_schema`.
 
 ### Method
-- **Single-shot `run_eval` is NOISY. Never conclude from one run.** Per-query pass/fail
-  flips across identical re-runs (deepseek variance). Validate every before/after with
-  `repeat_query.py --query-id N --repeats 10 --scale-factor 1` and compare `pass_rate`.
+- **High token churn IS a framework-bug detector — trust it, don't explain it away.**
+  Empirically, EVERY question that runs past ~500k tokens has been an actual framework issue
+  driving the agent's confusion (bad codegen, `INVALID_REFERENCE_BUG` sentinels, lost/fanned-out
+  grain, a construct the engine can't resolve), NOT a "hard question," "agent difficulty," or
+  "deepseek variance." When a query is a token sink, the prior is: there is a framework bug —
+  go find it (read its generated SQL for sentinels/Binder errors, minimize a repro, file it).
+  Do not re-litigate this or attribute the churn to model noise.
+- **A single normal-harness pass over ~10 queries is useful signal — in aggregate.** One pass
+  gives weak signal for any ONE query, but the SET of high-churn / failing queries is reliable.
+  Use a single pass to rank the token sinks and pick framework-bug targets; you do NOT need
+  repeated runs before acting on them.
+- **The "noisy, never conclude from one run" caveat is about per-query PASS/FAIL deltas — not
+  about churn-as-detector.** When you need a real before/after PASS-RATE for a specific fix,
+  validate with `repeat_query.py --query-id N --repeats 10 --scale-factor 1` and compare
+  `pass_rate`. Per-query single-run token deltas are too noisy for before/after churn *claims*
+  (control queries you never touched can swing ±500% run to run) — but that noise does NOT
+  weaken the ">500k ⇒ framework bug" prior above; ranking sinks and hunting bugs is exactly
+  what a single pass is for.
 - **Diagnose from artifacts, not theory.** Read the agent's generated query
   (`results/<run>/workspace/queryNN.preql`, or `.sql` for the `sql_bare`/`sql_schema`
   legs), its run output, and the reference
