@@ -238,3 +238,51 @@
 [q23] Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\repeat_q23_20260628-155741_enriched
 ==================== q23 END ====================
 ==================== q64 START ====================
+[q64] [1/3] Building TPC-DS DuckDB (sf=1) ...
+[q64] [2/3] Category 'enriched': setting up workspace ...
+[q64] [3/3] Running q64 x5 (concurrency=3) ...
+[q64]   [r02] fail      iters=18  prompt_tok=441052   explore=8   wrote=True (105s)
+[q64]   [r00] fail      iters=16  prompt_tok=449098   explore=9   wrote=True (143s)
+[q64]   [r01] fail      iters=39  prompt_tok=1700181  explore=10  wrote=True (263s)
+[q64]   [r03] fail      iters=25  prompt_tok=1055319  explore=8   wrote=True (263s)
+[q64]   [r04] exhausted iters=50  prompt_tok=2172151  explore=10  wrote=True (282s)
+[q64] 
+[q64] === SUMMARY ===
+[q64] {
+[q64]   "repeats": 5,
+[q64]   "status_breakdown": {
+[q64]     "fail": 4,
+[q64]     "exhausted": 1
+[q64]   },
+[q64]   "pass_rate": 0.0,
+[q64]   "exhausted_rate": 0.2,
+[q64]   "wrote_query_rate": 1.0,
+[q64]   "iterations": {
+[q64]     "mean": 29.6,
+[q64]     "median": 25,
+[q64]     "min": 16,
+[q64]     "max": 50
+[q64]   },
+[q64]   "prompt_tokens": {
+[q64]     "mean": 1163560.2,
+[q64]     "median": 1055319,
+[q64]     "min": 441052,
+[q64]     "max": 2172151
+[q64]   },
+[q64]   "explore_calls": {
+[q64]     "mean": 9,
+[q64]     "median": 9,
+[q64]     "min": 8,
+[q64]     "max": 10
+[q64]   },
+[q64]   "duration_seconds": {
+[q64]     "mean": 211.1,
+[q64]     "median": 262.8,
+[q64]     "min": 104.5,
+[q64]     "max": 281.7
+[q64]   }
+[q64] }
+[q64] 
+[q64] Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\repeat_q64_20260628-160225_enriched
+==================== q64 END ====================
+==================== q14 START ====================
