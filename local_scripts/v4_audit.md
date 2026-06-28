@@ -1,4 +1,4 @@
-# v4 compatibility audit (last refreshed 2026-06-26, post full-sweep)
+# v4 compatibility audit (last refreshed 2026-06-27, post full-sweep)
 
 This file is the current handoff for v4 discovery work. The authoritative skip list is
 `tests/v4_known_failing.py`; reclassify with `python local_scripts/v4_classify.py`
@@ -20,18 +20,39 @@ TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
 **Short answer: no wrong-rows, no crashes. What's left is plan verbosity on ~8 TPC-DS
 queries plus a batch of cosmetic shape-assert tests. Correctness is there.**
 
-v4 discovery is still off by default (`CONFIG.use_v4_discovery = False`). As of 2026-06-26
-the full sweep is **0 failed** and the classifier reports **0 CRASH / 0 escalations**. All
-the crashes that were open on 2026-06-25 are fixed (existence-source `RecursionError`
-family, q2.1 union `BinderException`, `test_filter_constant` invalid-ref). What remains
-before flipping the default:
+v4 discovery is still off by default (`CONFIG.use_v4_discovery = False`). As of 2026-06-27
+the full sweep is **0 failed** (re-run twice to rule out parallel-harness flake) and the
+classifier reports **0 CRASH / 0 escalations**. All the crashes that were open on
+2026-06-25 are fixed (existence-source `RecursionError` family, q2.1 union
+`BinderException`, `test_filter_constant` invalid-ref). What remains before flipping the
+default:
 
-1. **Plan verbosity — 7 `_TPCDS_SIZE` tests** (q10, q2.1, q2.2, q30.alt, q73, q81 +
-   q23). Rows match; the SQL trips `assert len(query) < ceiling`. The only
-   substantive engineering left. q23 is a *deliberate* trade — the q16 all-ROOT
-   input-grain normalization (a correctness floor) adds CTEs; it needs a grain-aware
-   skip. Handoffs: `v4_verbosity_handoff.md`, `v4_dimension_projection_rejoin_handoff.md`
-   (q81), and `project_v4_verbosity_regressions_0626` (q23).
+1. **Plan verbosity — 3 `_TPCDS_SIZE` tests** (q2.1, q2.2, q30.alt). Rows match; the
+   SQL trips an assertion. q2.1/q2.2 are genuine length verbosity; **q30.alt is now
+   STRUCTURAL, not length** (6193 < 12000 ceiling) — the test asserts `web_returns` is
+   scanned once / exactly 2 GROUP BYs, and v4 still emits a second GA-spine scan for the
+   filter-only `address.state`. Handoffs: `v4_verbosity_handoff.md` (q2.1/q2.2),
+   `v4_dimension_projection_rejoin_handoff.md` (q30.alt GA-spine).
+   - **q10 FIXED + pruned 2026-06-27 (8308 → 6412, under the 7000 ceiling).** Root cause
+     was co-bucketed semijoin-RHS buyer-set filters (`pcid in store_buyers` /
+     `webcat_buyers`): their defining fact columns (`channel`, `date.year`) sat in the
+     shared ROOT and dragged the customer-dimension projection (demographics) onto the
+     fact. Fix (this round): isolate each existence-source filter as its own discovery —
+     `_prune_existence_exclusive_roots` (group_graph) drops the existence-only roots from
+     the shared ROOT, `partition_filters_by_signature` (group_rules) gives each
+     semijoin-RHS filter a solo bucket, and `gen_filter` (filter.py) drops the
+     pass-through for an `existence_source` filter so its single predicate pushes into a
+     real WHERE. The dimension now sources standalone (`customer ⋈ demographics ⋈
+     address`), matching v3.
+   - **q23 FIXED + pruned 2026-06-27 (8515 → 8107, under the 8500 ceiling).** The q16
+     all-ROOT input-grain normalization (a correctness floor) is now skipped when the
+     parents already emit one row per input-grain key
+     (`_parents_already_at_input_grain` in strategy_builder — the "true parent-row-grain
+     signal" the floor deferred to). The q16 floor itself is unchanged: a finer fact-line
+     scan still gets regrouped before aggregation.
+   - **q73/q81 FIXED + pruned 2026-06-27** (q73 5220→2741, q81 9163→6410): single-entity
+     FD dimension-cluster split + condition-aware feeder drop + a PASSTHROUGH-mode
+     collapse rerun. See `project_v4_dimension_rejoin_root_cause`.
    - **q94 FIXED + pruned 2026-06-27 (5271 → 3508, under the 5000 ceiling).** Root cause
      was the per-consumer ROOT re-slice in `strategy_builder.parent_for_consumer`:
      a `count(distinct order_number)` aggregate re-derived the entire conditioned
@@ -47,42 +68,43 @@ before flipping the default:
      `strategy_builder.py` re-sources a self-referential `IN`-set feeder STANDALONE instead
      of deep-copying the conditioned subtree (which had fired 15015× → 60696 chars). Rows
      unchanged; tpc_ds failure set net-zero; membership family green. Detail in
-     `v4_verbosity_handoff.md` "*** q2.1 ***". Still over the 7500 ceiling — the residual is
-     shared passthrough-projection bloat (q2.2/q73). q73's real gap is filter-hoist-to-WHERE
-     + dim re-join, NOT just passthrough folding (also in the handoff). Use
+     `v4_verbosity_handoff.md` "*** q2.1 ***". Still over the 7500 ceiling (8747 real-
+     fixture) — the residual is shared passthrough-projection bloat (q2.2 at 8856). Use
      `local_scripts/v4_real_size.py` (real fixture) over `v4_size_compare` (proxy over-reports).
 2. **Cosmetic shape-assert tests — 10 `_INLINE` + 5 `_MODELING`.** Rows match, the SQL
    string differs. To flip the default each must be conditioned on
    `CONFIG.use_v4_discovery` or accepted. Mechanical, not risky.
 
-## Correctness: at parity (full sweep 2026-06-26)
+## Correctness: at parity (full sweep 2026-06-27)
 
 Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
 
-**4281 passed, 20 skipped, 7 xfailed, 25 xpassed, 82 errors — 0 failed (exit 0, 8m35s).**
+**4289 passed, 20 skipped, 6 xfailed, 18 xpassed, 82 errors — 0 failed (8m).**
 
-- **0 failed** — no wrong-rows / crash / invalid-render regressions.
+- **0 failed** — no wrong-rows / crash / invalid-render regressions. The first run this
+  round reported 3 failed; two re-runs (with and without clickhouse) came back 0 failed,
+  so those were transient parallel-harness flakes, not regressions (size assertions are
+  deterministic and cannot flake). The default-planner (v3) sweep is also green (exit 0).
 - The **82 errors** are all `tests/engine/test_clickhouse_server.py` — clickhouse.cloud
   connection errors, environmental (no local server). Ignore.
-- **25 xpassed / 7 xfailed** are tracked `v4_known_failing.py` entries. NB the full suite
-  is *more* favorable than isolation — only ~5 of these xpass in isolation too. Prune
-  only entries that pass in BOTH (see below); the rest pass only with full-suite ordering
-  and would flip red if run alone.
+- **18 xpassed / 6 xfailed** are tracked `v4_known_failing.py` entries. NB the full suite
+  is *more* favorable than isolation. Prune only entries that pass in BOTH (see below);
+  the rest pass only with full-suite ordering and would flip red if run alone.
 
 ## Current tracked state — SHAPE/SIZE only (no correctness)
 
-`tests/v4_known_failing.py` tracks **22 entries** (after pruning 5 on 2026-06-26: q02,
-q47, q57, q76, `test_non_nullable_null_guard`; and q94 on 2026-06-27). No crash labels
-remain.
+`tests/v4_known_failing.py` tracks **18 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
+`test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, **q10, q23**. No crash
+labels remain.
 
 | bucket | count | meaning |
 | --- | --- | --- |
 | `_INLINE` | 10 | SQL/CTE shape differs from v3; rows match. Cosmetic. |
 | `_MODELING` | 5 | modeling-sweep shape/CTE diffs; rows match. Cosmetic. |
-| `_TPCDS_SIZE` | 6 | rows match the reference, SQL over the v3 length ceiling. Verbosity. |
-| `_TPCDS_SIZE_NORMALIZE` | 1 | q23 — over ceiling because the q16 correctness floor (all-ROOT input-grain normalization) adds CTEs. Needs a grain-aware skip. |
+| `_TPCDS_SIZE` | 3 | q2.1/q2.2 over the length ceiling; q30.alt is over on STRUCTURE (double GA-spine scan), not length. |
 
-The one open theme is **plan verbosity** (the size work below — `v4_verbosity_handoff.md`).
+The one open theme is **plan verbosity / shape** on the last 3 TPC-DS entries (q2.1, q2.2
+length; q30.alt structure — `v4_verbosity_handoff.md`, `v4_dimension_projection_rejoin_handoff.md`).
 
 ## Size / verbosity analysis (2026-06-25)
 
@@ -157,19 +179,26 @@ pruned from `v4_known_failing.py`.
 | 94 | 5000 | 3544 | 5265 | 4810 | **PASS** |
 | 97.1 | 4250 | 2989 | 2357 | 2357 | **PASS** |
 
-Note (proxy table is stale; re-measured 2026-06-26 against the real `engine` fixture via
-`local_scripts/v4_real_size.py` — trust that over both this proxy table and
-`v4_size_compare`): **q02 and q76 now PASS** their tests. **q10 and q2.1 no longer crash**
-(the existence-recursion fix landed); both are now SIZE. q10 = 10208 (1.6×). **q2.1 =
-60696 (9.6×)** — the self-ref membership-filter blowup, the single biggest prize; see
-`v4_verbosity_handoff.md`. Real-fixture v3/v4: q10 6420/10208, q2.1 6290/60696, q2.2
-6290/10273, q30.alt 7152/10084 (length ok, fails structure), q73 2701/5223, q81
-7465/9096, q23 8159/8515, q94 3549/5271.
+The proxy table above is HISTORICAL (2026-06-25 baseline). Trust real-fixture numbers from
+`local_scripts/v4_real_size.py` instead. **Current real-fixture v3/v4 (2026-06-27),
+`OVER` = fails its test:**
 
-**Genuinely failing on size now (6):** 2.2, 30.alt, 47, 57, 73, 81. The join-stream
-spike cut these substantially (q47 11568→7868, q57 10267→6900) but they remain over
-ceiling. q47/q57 are close; q2.2 is the most verbose multi-fact / many-sibling shape
-left. (q10/q2.1 leave this list when their crash is fixed, then re-measure for size.)
+| q | ceiling | v3 | v4 | status |
+| --- | ---: | ---: | ---: | :--- |
+| 10 | 7000 | 6420 | 6412 | PASS (pruned) |
+| 2.1 | 7500 | 6290 | 8747 | OVER (length) |
+| 2.2 | 7500 | 6290 | 8856 | OVER (length) |
+| 30.alt | 12000 | 7152 | 6193 | OVER (STRUCTURE — length fine) |
+| 73 | 3000 | 2701 | 2741 | PASS (pruned) |
+| 81 | 8000 | 7465 | 6410 | PASS (pruned) |
+| 23 | 8500 | 8037 | 8107 | PASS (pruned) |
+| 94 | 5000 | 3452 | 3153 | PASS (pruned) |
+
+**Genuinely failing now (3):** q2.1 (8747) and q2.2 (8856) on length — shared
+passthrough-projection bloat, the most verbose multi-fact / many-sibling shape left
+(`v4_verbosity_handoff.md`). q30.alt fails on STRUCTURE not length (6193 < 12000): a
+second `web_returns` GA-spine scan for the filter-only `address.state`
+(`v4_dimension_projection_rejoin_handoff.md`).
 
 ### Size fixes already landed (current behavior, 2026-06-25)
 
@@ -187,20 +216,18 @@ Two fixes drove the `v4 base`→`v4` column above and cleared q12/q20/q50/q62/q2
   set lets parent-dedup reuse the already-joined-and-aggregated CTE. q47: 8 CTEs/9
   JOINs/2 fact-scans → 4/5/1.
 
-### Remaining size shapes — next targets (2026-06-25)
+### Remaining size shapes — next targets (updated 2026-06-27)
 
-Full write-up moved to **`local_scripts/v4_verbosity_handoff.md`** (6 queries: 2.2,
-30.alt, 47, 57, 73, 81). Three patterns, in fix order:
+Most of the original 6 are now fixed and pruned (q47, q57, q73, q81). The last 3 open,
+in `local_scripts/v4_verbosity_handoff.md`:
 
-1. **Passthrough-projection bloat — biggest, lowest-risk lever.** Pure single-source
-   projection CTEs that should fold into their consumer; `_fold_passthrough_parents`
-   isn't firing. Inflates q73, q47, q57, q2.2. q47/q57 are just over ceiling — folding
-   alone may tip them under.
-2. **Dimension-projection re-join — q81 & q30.alt** (identical fingerprint). Wide
-   customer/address dims re-sourced through the fact instead of from
-   `customer ⋈ customer_address`. Refined root cause + a regression trap (q65) in
+1. **Passthrough-projection bloat — q2.1 (8747) / q2.2 (8856).** Pure single-source
+   projection CTEs that should fold into their consumer. The biggest remaining lever; the
+   most verbose multi-fact / many-sibling shape left.
+2. **Dimension-projection re-join (STRUCTURE) — q30.alt.** A second `web_returns`
+   GA-spine scan for the filter-only `address.state` (length is already fine at 6193).
+   Refined root cause + a regression trap (q65) in
    `local_scripts/v4_dimension_projection_rejoin_handoff.md`. Higher risk.
-3. **Aggregate over-split — q73.** Overlaps heavily with (1); try the fold first.
 
 ## Phase boundary contract
 
@@ -266,13 +293,12 @@ Still-watch areas:
 
 ## Next cleanup loop
 
-1. Size verbosity (the gating work): land the passthrough-folding and q81/q30.alt
-   dimension-re-join fixes above; q47/q57 may tip under ceiling from folding alone.
-2. Fix the q02 invalid-identifier render bug (`v4_q02_invalid_alias_handoff.md`).
-3. Condition the `_INLINE`/`_MODELING` shape-assert tests on `CONFIG.use_v4_discovery`
+1. Size/shape (the gating work, 3 left): land the passthrough-folding fix for q2.1/q2.2
+   and the q30.alt GA-spine dimension-re-join fix above.
+2. Condition the `_INLINE`/`_MODELING` shape-assert tests on `CONFIG.use_v4_discovery`
    so they pass under both planners (prerequisite for flipping the default).
-4. Re-run `local_scripts/v4_classify.py` after any planner change, and a full v4
+3. Re-run `local_scripts/v4_classify.py` after any planner change, and a full v4
    sweep before claiming parity (the classifier only re-checks listed tests, so it is
    blind to regressions in newly added tests).
-5. Keep new Stage 3 heuristics behind contract-driven tests: if materialization needs
+4. Keep new Stage 3 heuristics behind contract-driven tests: if materialization needs
    a key or projection grain, Stage 2 should declare it first.

@@ -76,7 +76,20 @@ q30.alt's ×2 web_returns is the genuinely-needed GA-spine scan: `address.state`
 filter-only (not selected), so the split's output-gate leaves it on the fact;
 eliminating it needs the dim bucket to carry a non-output filter column through the
 FINAL re-source without a dangling ref (the hard case from the original (A) lever
-#4). q10 needs ~150 more chars (a second passthrough/merge-projection). Deferred.
+#4).
+
+**q10 (7151, ceiling 7000, ~150 over) — diagnosed 2026-06-27.** The buyer-flag
+pipeline CTE `yummy` = `cheerful(sales union) ⋈ date ⋈ customer`, but the `customer`
+LEFT JOIN is DEAD — it contributes only `purchasing_customer.id`, which the union
+already carries; no `customer` column is selected or filtered. v3 has no such join
+(v4-specific). The redundant `customer` ROOT is added by `plan_source` (the buyer
+ROOT group's source request), NOT by `_parent_nodes_for` — so the strategy-level
+feeder-drop can't reach it (confirmed: a tightly-gated key-only-ROOT drop in
+`_parent_nodes_for` didn't fire for q10 and was reverted). The fix belongs in
+`source_planning` (don't join a dim table for a KEY a sibling/union source already
+provides) or a dead-OUTER-join elimination optimizer pass. Both are core/shared and
+higher-risk than the q81 passthrough collapse — deferred, not worth rushing for ~2%
+on one query.
 
 ---
 

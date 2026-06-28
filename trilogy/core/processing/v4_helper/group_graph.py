@@ -156,7 +156,16 @@ def _d1_calc_subgraph(
         if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
             return True
         for succ in concept_graph.successors(n):
-            if edge_kind(concept_edges, n, succ) != EdgeKind.CONSTRAINT:
+            kind = edge_kind(concept_edges, n, succ)
+            # An existence source (a semijoin RHS, `x in <set>`) is a separate
+            # discovery: its defining lineage must source from a private root, not
+            # the SELECT's common root. Otherwise the fact columns that exist only
+            # to define the set (q10's `channel`/`date.year` feeding the buyer-set
+            # filters) sit in the shared root and drag the SELECT's dimension
+            # projection onto the fact instead of its own dim tables.
+            if kind == EdgeKind.EXISTENCE:
+                return True
+            if kind != EdgeKind.CONSTRAINT:
                 continue
             if concept_attrs[succ].derivation not in GROUPING_DERIVATIONS:
                 return True
@@ -206,6 +215,67 @@ def _add_d1_root_bucket(
     gid = _group_id_for(bucket)
     buckets[gid] = bucket
     return gid
+
+
+def _prune_existence_exclusive_roots(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    buckets: dict[str, GroupBucket],
+    d1_calc_roots: set[str],
+    d1_subgraph: set[str],
+) -> None:
+    """Drop from the shared ROOT bucket the roots that exist ONLY to define a
+    semijoin-RHS set, once they have been duplicated into the private root_d1
+    bucket.
+
+    q10's buyer-set filters (``store_buyers <- pcid ? channel='STORE' and
+    date.year=2002 ...``) are sourced as a separate discovery; their defining
+    fact columns (``channel``, ``date.year``, ``date.month_of_year``) feed nothing
+    but those filters. Left in the common ``grp:root:root:∅`` they force it to
+    source from the fact, dragging the customer-dimension projection (demographics)
+    onto the fact too. Removing them lets the shared root source the dimension
+    standalone (``customer ⋈ demographics ⋈ address``), matching v3 -- while the
+    semijoin's join key (``pcid``, which also feeds the count) stays, sourced both
+    from the fact (in root_d1) and the dimension (in the shared root) and joined by
+    the ``IN``.
+
+    A root is existence-exclusive when every concept it feeds is a condition node
+    and at least one of those is itself an existence source."""
+    if not d1_calc_roots:
+        return
+    exclusive_addrs: set[str] = set()
+    for root in d1_calc_roots:
+        successors = list(concept_graph.successors(root))
+        if not successors or not all(s in d1_subgraph for s in successors):
+            continue
+        feeds_existence_source = any(
+            edge_kind(concept_edges, root, s) == EdgeKind.LINEAGE
+            and any(
+                edge_kind(concept_edges, s, nxt) == EdgeKind.EXISTENCE
+                for nxt in concept_graph.successors(s)
+            )
+            for s in successors
+        )
+        if feeds_existence_source:
+            exclusive_addrs.add(concept_attrs[root].address)
+    if not exclusive_addrs:
+        return
+    for bucket in buckets.values():
+        if (
+            bucket.derivation != Derivation.ROOT
+            or bucket.depth_label != DepthLabel.ROOT
+        ):
+            continue
+        keep = [
+            i
+            for i, address in enumerate(bucket.primary_members)
+            if address not in exclusive_addrs
+        ]
+        if len(keep) == len(bucket.primary_members):
+            continue
+        bucket.primary_members = [bucket.primary_members[i] for i in keep]
+        bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in keep]
 
 
 def _assign_groups(
@@ -1569,6 +1639,14 @@ def build_group_graph(
         concept_graph, concept_edges, concept_attrs
     )
     d1_root_gid = _add_d1_root_bucket(concept_attrs, buckets, d1_calc_roots)
+    _prune_existence_exclusive_roots(
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        buckets,
+        d1_calc_roots,
+        d1_subgraph,
+    )
     _attach_secondary_members(concept_graph, concept_attrs, buckets)
     group_graph, attrs, group_edges = _materialize_group_graph(
         concept_graph,
