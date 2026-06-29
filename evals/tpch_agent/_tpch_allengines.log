@@ -1,0 +1,461 @@
+[categories] spawning parallel runs:
+   sql_bare   → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_sql_bare
+   sql_schema → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_sql_schema
+   ingest     → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_ingest
+   enriched   → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_enriched
+[sql_bare] [1/5] Building TPC-H DuckDB (sf=0.1) ...
+[sql_bare] [2/5] Category 'sql_bare': setting up workspace ...
+[sql_bare] [3/5] Running agent per query (22 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[sql_bare]   [q01] starting (worker _worker_1)
+[sql_bare]   [q02] starting (worker _worker_0)
+[enriched] [1/5] Building TPC-H DuckDB (sf=0.1) ...
+[enriched] [2/5] Category 'enriched': setting up workspace ...
+[enriched] [3/5] Running agent per query (22 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[enriched]   [q01] starting (worker _worker_1)
+[enriched]   [q02] starting (worker _worker_0)
+[sql_schema] [1/5] Building TPC-H DuckDB (sf=0.1) ...
+[sql_schema] [2/5] Category 'sql_schema': setting up workspace ...
+[sql_schema] [3/5] Running agent per query (22 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[sql_schema]   [q01] starting (worker _worker_1)
+[sql_schema]   [q02] starting (worker _worker_0)
+[ingest] [1/5] Building TPC-H DuckDB (sf=0.1) ...
+[ingest] [2/5] Category 'ingest': setting up workspace ...
+[ingest] [3/5] Running agent per query (22 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[ingest]   [q01] starting (worker _worker_1)
+[ingest]   [q02] starting (worker _worker_0)
+[sql_schema]   [q01] done in 13s (exit 0, score=pass)
+[sql_schema]   [q03] starting (worker _worker_1)
+[sql_bare]   [q01] done in 19s (exit 0, score=pass)
+[sql_bare]   [q03] starting (worker _worker_1)
+[sql_schema]   [q02] done in 21s (exit 0, score=pass)
+[sql_schema]   [q04] starting (worker _worker_0)
+[enriched]   [q01] done in 25s (exit 0, score=pass)
+[enriched]   [q03] starting (worker _worker_1)
+[ingest]   [q01] done in 26s (exit 0, score=pass)
+[sql_schema]   [q03] done in 14s (exit 0, score=pass)
+[sql_schema]   [q05] starting (worker _worker_1)
+[ingest]   [q03] starting (worker _worker_1)
+[sql_bare]   [q02] done in 30s (exit 0, score=pass)
+[sql_bare]   [q04] starting (worker _worker_0)
+[sql_schema]   [q04] done in 12s (exit 0, score=pass)
+[sql_schema]   [q06] starting (worker _worker_0)
+[sql_bare]   [q03] done in 15s (exit 0, score=pass)
+[sql_bare]   [q05] starting (worker _worker_1)
+[ingest]   [q02] done in 35s (exit 0, score=fail)
+[ingest]   [q04] starting (worker _worker_0)
+[enriched]   [q02] done in 41s (exit 0, score=pass)
+[enriched]   [q04] starting (worker _worker_0)
+[sql_schema]   [q06] done in 10s (exit 0, score=pass)
+[sql_bare]   [q04] done in 14s (exit 0, score=pass)
+[sql_schema]   [q07] starting (worker _worker_0)
+[sql_bare]   [q06] starting (worker _worker_0)
+[sql_schema]   [q05] done in 19s (exit 0, score=pass)
+[sql_schema]   [q08] starting (worker _worker_1)
+[ingest]   [q03] done in 22s (exit 0, score=pass)
+[ingest]   [q05] starting (worker _worker_1)
+[enriched]   [q03] done in 26s (exit 0, score=pass)
+[enriched]   [q05] starting (worker _worker_1)
+[sql_bare]   [q05] done in 23s (exit 0, score=pass)
+[ingest]   [q04] done in 21s (exit 0, score=pass)
+[ingest]   [q06] starting (worker _worker_0)
+[sql_bare]   [q07] starting (worker _worker_1)
+[sql_bare]   [q06] done in 13s (exit 0, score=pass)
+[sql_bare]   [q08] starting (worker _worker_0)
+[sql_schema]   [q07] done in 15s (exit 0, score=pass)
+[sql_schema]   [q09] starting (worker _worker_0)
+[enriched]   [q04] done in 29s (exit 0, score=pass)
+[enriched]   [q06] starting (worker _worker_0)
+[sql_schema]   [q09] done in 15s (exit 0, score=pass)
+[sql_schema]   [q10] starting (worker _worker_0)
+[ingest]   [q05] done in 25s (exit 0, score=pass)
+[ingest]   [q07] starting (worker _worker_1)
+[sql_bare]   [q07] done in 19s (exit 0, score=pass)
+[sql_bare]   [q09] starting (worker _worker_1)
+[sql_schema]   [q08] done in 31s (exit 0, score=pass)
+[sql_schema]   [q11] starting (worker _worker_1)
+[ingest]   [q06] done in 22s (exit 0, score=pass)
+[ingest]   [q08] starting (worker _worker_0)
+[sql_bare]   [q08] done in 24s (exit 0, score=pass)
+[sql_bare]   [q10] starting (worker _worker_0)
+[enriched]   [q05] done in 28s (exit 0, score=pass)
+[enriched]   [q07] starting (worker _worker_1)
+[sql_schema]   [q10] done in 10s (exit 0, score=pass)
+[sql_schema]   [q12] starting (worker _worker_0)
+[enriched]   [q06] done in 23s (exit 0, score=pass)
+[sql_schema]   [q11] done in 17s (exit 0, score=pass)
+[sql_schema]   [q13] starting (worker _worker_1)
+[enriched]   [q08] starting (worker _worker_0)
+[sql_bare]   [q10] done in 16s (exit 0, score=pass)
+[sql_bare]   [q11] starting (worker _worker_0)
+[ingest]   [q07] done in 24s (exit 0, score=pass)
+[ingest]   [q09] starting (worker _worker_1)
+[sql_schema]   [q12] done in 14s (exit 0, score=pass)
+[sql_schema]   [q14] starting (worker _worker_0)
+[sql_bare]   [q09] done in 28s (exit 0, score=pass)
+[sql_bare]   [q12] starting (worker _worker_1)
+[enriched]   [q07] done in 32s (exit 0, score=pass)
+[enriched]   [q09] starting (worker _worker_1)
+[sql_schema]   [q14] done in 14s (exit 0, score=pass)
+[sql_schema]   [q15] starting (worker _worker_0)
+[ingest]   [q08] done in 43s (exit 0, score=pass)
+[ingest]   [q10] starting (worker _worker_0)
+[sql_bare]   [q12] done in 18s (exit 0, score=pass)
+[sql_bare]   [q13] starting (worker _worker_1)
+[sql_schema]   [q13] done in 31s (exit 0, score=pass)
+[sql_schema]   [q16] starting (worker _worker_1)
+[sql_bare]   [q11] done in 27s (exit 0, score=pass)
+[sql_bare]   [q14] starting (worker _worker_0)
+[sql_schema]   [q15] done in 15s (exit 0, score=pass)
+[enriched]   [q08] done in 38s (exit 0, score=pass)
+[sql_schema]   [q17] starting (worker _worker_0)
+[enriched]   [q10] starting (worker _worker_0)
+[ingest]   [q09] done in 37s (exit 0, score=pass)
+[ingest]   [q11] starting (worker _worker_1)
+[sql_schema]   [q16] done in 12s (exit 0, score=pass)
+[sql_schema]   [q18] starting (worker _worker_1)
+[sql_bare]   [q14] done in 14s (exit 0, score=pass)
+[sql_bare]   [q15] starting (worker _worker_0)
+[sql_bare]   [q13] done in 25s (exit 0, score=pass)
+[sql_bare]   [q16] starting (worker _worker_1)
+[enriched]   [q09] done in 31s (exit 0, score=pass)
+[ingest]   [q10] done in 28s (exit 0, score=pass)
+[enriched]   [q11] starting (worker _worker_1)
+[sql_schema]   [q17] done in 16s (exit 0, score=pass)
+[ingest]   [q12] starting (worker _worker_0)
+[sql_schema]   [q19] starting (worker _worker_0)
+[sql_schema]   [q18] done in 13s (exit 0, score=pass)
+[sql_schema]   [q20] starting (worker _worker_1)
+[sql_bare]   [q15] done in 14s (exit 0, score=pass)
+[sql_bare]   [q17] starting (worker _worker_0)
+[ingest]   [q11] done in 24s (exit 0, score=pass)
+[ingest]   [q13] starting (worker _worker_1)
+[sql_schema]   [q19] done in 12s (exit 0, score=pass)
+[sql_schema]   [q21] starting (worker _worker_0)
+[enriched]   [q10] done in 28s (exit 0, score=pass)
+[enriched]   [q12] starting (worker _worker_0)
+[sql_schema]   [q20] done in 19s (exit 0, score=fail)
+[sql_schema]   [q22] starting (worker _worker_1)
+[sql_bare]   [q17] done in 16s (exit 0, score=pass)
+[sql_bare]   [q18] starting (worker _worker_0)
+[sql_bare]   [q16] done in 31s (exit 0, score=pass)
+[sql_bare]   [q19] starting (worker _worker_1)
+[enriched]   [q11] done in 35s (exit 0, score=pass)
+[enriched]   [q13] starting (worker _worker_1)
+[ingest]   [q12] done in 36s (exit 0, score=fail)
+[ingest]   [q14] starting (worker _worker_0)
+[sql_schema]   [q22] done in 17s (exit 0, score=pass)
+[sql_bare]   [q18] done in 15s (exit 0, score=pass)
+[sql_bare]   [q20] starting (worker _worker_0)
+[enriched]   [q12] done in 27s (exit 0, score=fail)
+[enriched]   [q14] starting (worker _worker_0)
+[sql_bare]   [q19] done in 17s (exit 0, score=pass)
+[sql_bare]   [q21] starting (worker _worker_1)
+[sql_schema]   [q21] done in 32s (exit 0, score=fail)
+[sql_schema] [4/5] Finalising scores for 22 queries ...
+[sql_schema]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\dashboard_sql_schema_v2.png  (0 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\trilogy_failures_sql_schema.md)
+[sql_schema] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_sql_schema
+[sql_schema] 
+[sql_schema] # TPC-H Agent Eval — 20260629-165055
+[sql_schema] 
+[sql_schema] - Model: `deepseek/deepseek-chat`
+[sql_schema] - Scale factor: 0.1  |  Queries: 22  |  Trilogy: 0.3.288
+[sql_schema] 
+[sql_schema] ## Result
+[sql_schema] 
+[sql_schema] - **Pass rate: 20/22** (91%)
+[sql_schema] - Status breakdown: {'pass': 20, 'fail': 2}
+[sql_schema] - Wall time: 204.6s  |  Agent time: 371.0s  |  Avg/query: 16.9s
+[sql_schema] - Agent exit code: 0
+[sql_schema] 
+[sql_schema] ## Agent harness metrics
+[sql_schema] 
+[sql_schema] - LLM iterations: 132
+[sql_schema] - Tool calls: 136  →  {'read_file': 22, 'write_file': 23, 'run_file': 23, 'return_control_to_user': 22, 'run_query': 46}
+[sql_schema] - `trilogy` subcommands: {}
+[sql_schema] - Tool success rate: 99% (135/136 ok)
+[sql_schema] - Tokens: 412042 total (389266 prompt + 22776 completion)
+[sql_schema] 
+[sql_schema] ## Tool-output sizes
+[sql_schema] 
+[sql_schema] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[sql_schema] |---|---:|---:|---:|---:|---:|
+[sql_schema] | `run_query` | 46 | 359 | 1575 | 0 | 0% |
+[sql_schema] | `write_file` | 23 | 44 | 45 | 0 | 0% |
+[sql_schema] | `run_file` | 23 | 986 | 7667 | 0 | 0% |
+[sql_schema] | `read_file` | 22 | 2058 | 2058 | 0 | 0% |
+[sql_schema] | `return_control_to_user` | 22 | 26 | 26 | 0 | 0% |
+[sql_schema] 
+[sql_schema] - Repeated calls (same args seen earlier in same query): {'run_file': 1} — total 1
+[sql_schema] 
+[sql_schema] ## Per-query
+[sql_schema] 
+[sql_schema] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[sql_schema] |------:|:-------|---------:|----------:|--------:|:-------|
+[sql_schema] | 01 | pass | 4 | 4 | 510 |  |
+[sql_schema] | 02 | pass | 44 | 44 | 808 |  |
+[sql_schema] | 03 | pass | 10 | 10 | 463 |  |
+[sql_schema] | 04 | pass | 5 | 5 | 351 |  |
+[sql_schema] | 05 | pass | 5 | 5 | 559 |  |
+[sql_schema] | 06 | pass | 1 | 1 | 219 |  |
+[sql_schema] | 07 | pass | 4 | 4 | 730 |  |
+[sql_schema] | 08 | pass | 2 | 2 | 717 |  |
+[sql_schema] | 09 | pass | 175 | 175 | 582 |  |
+[sql_schema] | 10 | pass | 20 | 20 | 550 |  |
+[sql_schema] | 11 | pass | 2541 | 2541 | 602 |  |
+[sql_schema] | 12 | pass | 2 | 2 | 535 |  |
+[sql_schema] | 13 | pass | 37 | 37 | 430 |  |
+[sql_schema] | 14 | pass | 1 | 1 | 286 |  |
+[sql_schema] | 15 | pass | 1 | 1 | 593 |  |
+[sql_schema] | 16 | pass | 2762 | 2762 | 505 |  |
+[sql_schema] | 17 | pass | 1 | 1 | 320 |  |
+[sql_schema] | 18 | pass | 5 | 5 | 390 |  |
+[sql_schema] | 19 | pass | 1 | 1 | 1033 |  |
+[sql_schema] | 20 | fail | 9 | 13 | 581 | result set differs from reference |
+[sql_schema] | 21 | fail | 47 | 47 | 1373 | result set differs from reference |
+[sql_schema] | 22 | pass | 7 | 7 | 618 |  |
+[sql_schema] 
+[sql_schema] ## Agent final message
+[sql_schema] 
+[sql_schema] > Completed query22.sql — finds customers with positive balance in area codes 13,31,23,29,30,18,17, whose balance exceeds the average positive balance for those codes, and who have no orders. Groups by area code, sorted by area code.
+[sql_schema] 
+[ingest]   [q13] done in 36s (exit 0, score=pass)
+[ingest]   [q15] starting (worker _worker_1)
+[ingest]   [q14] done in 30s (exit 0, score=pass)
+[ingest]   [q16] starting (worker _worker_0)
+[enriched]   [q14] done in 26s (exit 0, score=pass)
+[enriched]   [q15] starting (worker _worker_0)
+[sql_bare]   [q21] done in 28s (exit 0, score=pass)
+[sql_bare]   [q22] starting (worker _worker_1)
+[sql_bare]   [q20] done in 44s (exit 0, score=pass)
+[ingest]   [q15] done in 35s (exit 0, score=pass)
+[ingest]   [q17] starting (worker _worker_1)
+[sql_bare]   [q22] done in 20s (exit 0, score=pass)
+[sql_bare] [4/5] Finalising scores for 22 queries ...
+[sql_bare]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\dashboard_sql_bare_v2.png  (0 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\trilogy_failures_sql_bare.md)
+[sql_bare] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_sql_bare
+[sql_bare] 
+[sql_bare] # TPC-H Agent Eval — 20260629-165055
+[sql_bare] 
+[sql_bare] - Model: `deepseek/deepseek-chat`
+[sql_bare] - Scale factor: 0.1  |  Queries: 22  |  Trilogy: 0.3.288
+[sql_bare] 
+[sql_bare] ## Result
+[sql_bare] 
+[sql_bare] - **Pass rate: 22/22** (100%)
+[sql_bare] - Status breakdown: {'pass': 22}
+[sql_bare] - Wall time: 255.6s  |  Agent time: 467.9s  |  Avg/query: 21.3s
+[sql_bare] - Agent exit code: 0
+[sql_bare] 
+[sql_bare] ## Agent harness metrics
+[sql_bare] 
+[sql_bare] - LLM iterations: 173
+[sql_bare] - Tool calls: 241  →  {'run_query': 163, 'read_file': 2, 'write_file': 24, 'run_file': 24, 'return_control_to_user': 22, 'list_files': 6}
+[sql_bare] - `trilogy` subcommands: {}
+[sql_bare] - Tool success rate: 98% (236/241 ok)
+[sql_bare] - Tokens: 559944 total (530925 prompt + 29019 completion)
+[sql_bare] 
+[sql_bare] ## Tool-output sizes
+[sql_bare] 
+[sql_bare] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[sql_bare] |---|---:|---:|---:|---:|---:|
+[sql_bare] | `run_query` | 163 | 494 | 7667 | 0 | 0% |
+[sql_bare] | `write_file` | 24 | 44 | 45 | 0 | 0% |
+[sql_bare] | `run_file` | 24 | 1023 | 7667 | 0 | 0% |
+[sql_bare] | `return_control_to_user` | 22 | 26 | 26 | 0 | 0% |
+[sql_bare] | `list_files` | 6 | 112 | 112 | 0 | 0% |
+[sql_bare] | `read_file` | 2 | 40 | 40 | 0 | 0% |
+[sql_bare] 
+[sql_bare] - Repeated calls (same args seen earlier in same query): {'run_file': 2} — total 2
+[sql_bare] 
+[sql_bare] ## Per-query
+[sql_bare] 
+[sql_bare] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[sql_bare] |------:|:-------|---------:|----------:|--------:|:-------|
+[sql_bare] | 01 | pass | 4 | 4 | 485 |  |
+[sql_bare] | 02 | pass | 44 | 44 | 1065 |  |
+[sql_bare] | 03 | pass | 10 | 10 | 409 |  |
+[sql_bare] | 04 | pass | 5 | 5 | 315 |  |
+[sql_bare] | 05 | pass | 5 | 5 | 502 |  |
+[sql_bare] | 06 | pass | 1 | 1 | 201 |  |
+[sql_bare] | 07 | pass | 4 | 4 | 729 |  |
+[sql_bare] | 08 | pass | 2 | 2 | 788 |  |
+[sql_bare] | 09 | pass | 175 | 175 | 552 |  |
+[sql_bare] | 10 | pass | 20 | 20 | 535 |  |
+[sql_bare] | 11 | pass | 2541 | 2541 | 505 |  |
+[sql_bare] | 12 | pass | 2 | 2 | 524 |  |
+[sql_bare] | 13 | pass | 37 | 37 | 415 |  |
+[sql_bare] | 14 | pass | 1 | 1 | 275 |  |
+[sql_bare] | 15 | pass | 1 | 1 | 573 |  |
+[sql_bare] | 16 | pass | 2762 | 2762 | 515 |  |
+[sql_bare] | 17 | pass | 1 | 1 | 291 |  |
+[sql_bare] | 18 | pass | 5 | 5 | 465 |  |
+[sql_bare] | 19 | pass | 1 | 1 | 956 |  |
+[sql_bare] | 20 | pass | 9 | 9 | 619 |  |
+[sql_bare] | 21 | pass | 47 | 47 | 1324 |  |
+[sql_bare] | 22 | pass | 7 | 7 | 546 |  |
+[sql_bare] 
+[sql_bare] ## Agent final message
+[sql_bare] 
+[sql_bare] > Saved and validated query22.sql. The query finds customers with positive balance in the specified area codes, whose balance exceeds the average positive balance for those codes, and who have no orders. Results show customer count and total balance per area code, sorted by area code.
+[sql_bare] 
+[ingest]   [q16] done in 30s (exit 0, score=pass)
+[ingest]   [q18] starting (worker _worker_0)
+[ingest]   [q17] done in 28s (exit 0, score=pass)
+[ingest]   [q19] starting (worker _worker_1)
+[enriched]   [q15] done in 41s (exit 0, score=pass)
+[enriched]   [q16] starting (worker _worker_0)
+[enriched]   [q13] done in 83s (exit 0, score=pass)
+[enriched]   [q17] starting (worker _worker_1)
+[ingest]   [q18] done in 27s (exit 0, score=pass)
+[ingest]   [q20] starting (worker _worker_0)
+[ingest]   [q19] done in 38s (exit 0, score=pass)
+[ingest]   [q21] starting (worker _worker_1)
+[enriched]   [q16] done in 63s (exit 0, score=pass)
+[enriched]   [q18] starting (worker _worker_0)
+[enriched]   [q17] done in 70s (exit 0, score=pass)
+[enriched]   [q19] starting (worker _worker_1)
+[enriched]   [q18] done in 58s (exit 0, score=pass)
+[enriched]   [q20] starting (worker _worker_0)
+[enriched]   [q19] done in 66s (exit 0, score=pass)
+[enriched]   [q21] starting (worker _worker_1)
+[ingest]   [q21] done in 150s (exit 0, score=pass)
+[ingest]   [q22] starting (worker _worker_1)
+[ingest]   [q20] done in 213s (exit 0, score=pass)
+[ingest]   [q22] done in 136s (exit 0, score=fail)
+[ingest] [4/5] Finalising scores for 22 queries ...
+[ingest]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\dashboard_ingest_v2.png  (21 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\trilogy_failures_ingest.md)
+[ingest] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_ingest
+[ingest] 
+[ingest] # TPC-H Agent Eval — 20260629-165055
+[ingest] 
+[ingest] - Model: `deepseek/deepseek-chat`
+[ingest] - Scale factor: 0.1  |  Queries: 22  |  Trilogy: 0.3.288
+[ingest] 
+[ingest] ## Result
+[ingest] 
+[ingest] - **Pass rate: 19/22** (86%)
+[ingest] - Status breakdown: {'pass': 19, 'fail': 3}
+[ingest] - Wall time: 620.5s  |  Agent time: 1064.7s  |  Avg/query: 48.4s
+[ingest] - Agent exit code: 0
+[ingest] 
+[ingest] ## Agent harness metrics
+[ingest] 
+[ingest] - LLM iterations: 188
+[ingest] - Tool calls: 237  →  {'trilogy': 215, 'return_control_to_user': 22}
+[ingest] - `trilogy` subcommands: {'agent-info': 27, 'file': 67, 'explore': 76, 'run': 45}
+[ingest] - Tool success rate: 91% (216/237 ok)
+[ingest] - Tokens: 2663284 total (2619801 prompt + 43483 completion)
+[ingest] 
+[ingest] ## Tool-output sizes
+[ingest] 
+[ingest] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[ingest] |---|---:|---:|---:|---:|---:|
+[ingest] | `trilogy` | 215 | 4319 | 34583 | 0 | 0% |
+[ingest] | `return_control_to_user` | 22 | 26 | 26 | 0 | 0% |
+[ingest] 
+[ingest] - Repeated calls (same args seen earlier in same query): {'trilogy': 11} — total 11
+[ingest] 
+[ingest] ## Per-query
+[ingest] 
+[ingest] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[ingest] |------:|:-------|---------:|----------:|--------:|:-------|
+[ingest] | 01 | pass | 4 | 4 | 980 |  |
+[ingest] | 02 | fail | 44 | 17 | 2457 | result set differs from reference |
+[ingest] | 03 | pass | 10 | 10 | 1618 |  |
+[ingest] | 04 | pass | 5 | 5 | 1070 |  |
+[ingest] | 05 | pass | 5 | 5 | 1520 |  |
+[ingest] | 06 | pass | 1 | 1 | 367 |  |
+[ingest] | 07 | pass | 4 | 4 | 1418 |  |
+[ingest] | 08 | pass | 2 | 2 | 1740 |  |
+[ingest] | 09 | pass | 175 | 175 | 1076 |  |
+[ingest] | 10 | pass | 20 | 20 | 1886 |  |
+[ingest] | 11 | pass | 2541 | 2541 | 1251 |  |
+[ingest] | 12 | fail | 2 | 2 | 1052 | result set differs from reference |
+[ingest] | 13 | pass | 37 | 37 | 645 |  |
+[ingest] | 14 | pass | 1 | 1 | 565 |  |
+[ingest] | 15 | pass | 1 | 1 | 2445 |  |
+[ingest] | 16 | pass | 2762 | 2762 | 884 |  |
+[ingest] | 17 | pass | 1 | 1 | 1012 |  |
+[ingest] | 18 | pass | 5 | 5 | 1469 |  |
+[ingest] | 19 | pass | 1 | 1 | 1211 |  |
+[ingest] | 20 | pass | 9 | 9 | 3711 |  |
+[ingest] | 21 | pass | 47 | 47 | 2473 |  |
+[ingest] | 22 | fail | 7 | 0 | 1227 | result set differs from reference |
+[ingest] 
+[ingest] ## Agent final message
+[ingest] 
+[ingest] > Created query22.preql with the Trilogy query answering Question 22. The query runs cleanly and returns an empty result (0 rows). This is correct: all 15,000 customers in the database have at least one order, so the "no orders at all" filter eliminates every customer, regardless of area code or balance thresholds.
+[ingest] 
+[enriched]   [q20] done in 206s (exit 0, score=fail)
+[enriched]   [q22] starting (worker _worker_0)
+[enriched]   [q22] done in 73s (exit 0, score=fail)
+[enriched]   [q21] done in 285s (exit 0, score=pass)
+[enriched] [4/5] Finalising scores for 22 queries ...
+[enriched]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\dashboard_enriched_v2.png  (21 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\trilogy_failures_enriched.md)
+[enriched] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260629-165054_enriched
+[enriched] 
+[enriched] # TPC-H Agent Eval — 20260629-165055
+[enriched] 
+[enriched] - Model: `deepseek/deepseek-chat`
+[enriched] - Scale factor: 0.1  |  Queries: 22  |  Trilogy: 0.3.288
+[enriched] 
+[enriched] ## Result
+[enriched] 
+[enriched] - **Pass rate: 19/22** (86%)
+[enriched] - Status breakdown: {'pass': 19, 'fail': 3}
+[enriched] - Wall time: 727.4s  |  Agent time: 1335.3s  |  Avg/query: 60.7s
+[enriched] - Agent exit code: 0
+[enriched] 
+[enriched] ## Agent harness metrics
+[enriched] 
+[enriched] - LLM iterations: 193
+[enriched] - Tool calls: 236  →  {'trilogy': 214, 'return_control_to_user': 22}
+[enriched] - `trilogy` subcommands: {'agent-info': 22, 'file': 60, 'explore': 75, 'run': 55, 'database': 2}
+[enriched] - Tool success rate: 91% (215/236 ok)
+[enriched] - Tokens: 2900208 total (2855346 prompt + 44862 completion)
+[enriched] 
+[enriched] ## Tool-output sizes
+[enriched] 
+[enriched] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[enriched] |---|---:|---:|---:|---:|---:|
+[enriched] | `trilogy` | 214 | 4451 | 34583 | 0 | 0% |
+[enriched] | `return_control_to_user` | 22 | 26 | 26 | 0 | 0% |
+[enriched] 
+[enriched] - Repeated calls (same args seen earlier in same query): {'trilogy': 9} — total 9
+[enriched] 
+[enriched] ## Per-query
+[enriched] 
+[enriched] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[enriched] |------:|:-------|---------:|----------:|--------:|:-------|
+[enriched] | 01 | pass | 4 | 4 | 995 |  |
+[enriched] | 02 | pass | 44 | 44 | 4219 |  |
+[enriched] | 03 | pass | 10 | 10 | 1326 |  |
+[enriched] | 04 | pass | 5 | 5 | 977 |  |
+[enriched] | 05 | pass | 5 | 5 | 1690 |  |
+[enriched] | 06 | pass | 1 | 1 | 398 |  |
+[enriched] | 07 | pass | 4 | 4 | 1642 |  |
+[enriched] | 08 | pass | 2 | 2 | 1770 |  |
+[enriched] | 09 | pass | 175 | 175 | 1266 |  |
+[enriched] | 10 | pass | 20 | 20 | 1739 |  |
+[enriched] | 11 | pass | 2541 | 2541 | 1317 |  |
+[enriched] | 12 | fail | 2 | 2 | 1029 | result set differs from reference |
+[enriched] | 13 | pass | 37 | 37 | 927 |  |
+[enriched] | 14 | pass | 1 | 1 | 776 |  |
+[enriched] | 15 | pass | 1 | 1 | 1843 |  |
+[enriched] | 16 | pass | 2762 | 2762 | 861 |  |
+[enriched] | 17 | pass | 1 | 1 | 1423 |  |
+[enriched] | 18 | pass | 5 | 5 | 1415 |  |
+[enriched] | 19 | pass | 1 | 1 | 1593 |  |
+[enriched] | 20 | fail | 9 | 2 | 5773 | result set differs from reference |
+[enriched] | 21 | pass | 47 | 47 | 2945 |  |
+[enriched] | 22 | fail | 7 | 7 | 1583 | result set differs from reference |
+[enriched] 
+[enriched] ## Agent final message
+[enriched] 
+[enriched] > Query written to query22.preql and executed successfully. Results show 7 area codes (13, 17, 18, 23, 29, 30, 31) each with customers who have positive balances above the average, have qualifying area codes, and have no orders at all. Total customers range from 84 to 99 per area code, sorted ascending.
+[enriched] 
+[categories] sql_bare leg exit=0
+[categories] sql_schema leg exit=0
+[categories] ingest leg exit=0
+[categories] enriched leg exit=0
+[categories] wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\funnel_v2.png and C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\charts\funnel.md

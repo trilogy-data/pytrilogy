@@ -1163,6 +1163,29 @@ def _promote_having_grouping_to_outputs(
         select.having_clause.conditional = new_conditional
 
 
+def _promotion_grows_grain(
+    concept: Concept,
+    base_targets: list[Any],
+    base_components: set[str],
+    context: RuleContext,
+) -> bool:
+    """True if adding ``concept`` as a SELECT output would enlarge the select
+    grain. A bare/coarser aggregate broadcasts one value per grain row (grain
+    unchanged); a *finer* off-grain aggregate (``agg(x) by k`` where ``k`` is
+    finer than the grain) enters the grain as itself, which would fan the output
+    out — so it must be semijoined, not promoted."""
+    combined = Grain.from_concepts(
+        base_targets + [concept],
+        where_clause=None,
+        environment=context.environment,
+        local_concepts={concept.address: concept},
+    )
+    # Resolve the candidate's own address through the seeded map; every other
+    # target is a concrete Concept or resolves via the environment, so the only
+    # possible new component beyond ``base_components`` is the candidate itself.
+    return bool(combined.components - base_components)
+
+
 def _promote_having_aggregates_to_outputs(
     select: SelectStatement, context: RuleContext
 ) -> None:
@@ -1171,11 +1194,13 @@ def _promote_having_aggregates_to_outputs(
 
     A HAVING aggregate filters the post-aggregation rows, so it must be a
     materialized column. Rather than force the user to add a ``--agg(x)`` hidden
-    column by hand, we add it for them. Promoting an *aggregate* is grain-safe:
-    metrics never contribute to ``Grain.from_concepts``, so the select grain (and
+    column by hand, we add it for them. Promoting a *bare or coarser* aggregate is
+    grain-safe: it broadcasts one value per grain row, so the select grain (and
     therefore the grain at which every projection aggregate computes) is
-    unchanged. Off-grain (``agg(x) by k``) and nested aggregates carry their own
-    grain and are materialized in a separate CTE by the normal machinery.
+    unchanged. A *finer* off-grain aggregate (``agg(x) by k`` where ``k`` is finer
+    than the select grain) would instead enter the grain as itself and fan the
+    output out, so it is skipped here (``_promotion_grows_grain``) and left for the
+    semijoin rewrite in ``_rewrite_having_finer_dims_to_membership``.
 
     Runs before the SELECT loop so the injected outputs go through
     ``set_select_grain`` like any other projection aggregate. ``grouping()`` is
@@ -1186,6 +1211,19 @@ def _promote_having_aggregates_to_outputs(
         return
     rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
     existing = {sig for sig, _ in _select_aggregate_outputs(select, rename)}
+    # Grain of the explicit (pre-promotion) outputs. Promoting an aggregate is
+    # grain-safe only if its value is one-per-grain-row (a bare aggregate, or an
+    # off-grain `agg(x) by k` whose `by` is coarser than / equal to this grain).
+    # A *finer* off-grain aggregate (e.g. `count(x) by item` under a {brand}
+    # grain) would otherwise enter the grain as itself and fan the output out, so
+    # it is left for the semijoin rewrite instead of promoted.
+    base_targets = [item.concept for item in select.selection]
+    base_components = Grain.from_concepts(
+        base_targets,
+        where_clause=None,
+        environment=context.environment,
+        local_concepts=select.local_concepts,
+    ).components
     sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
     for node in _collect_condition_aggregates(select.having_clause.conditional):
         # Macros (`@rollup()`) and grouping indicators are materialized elsewhere;
@@ -1198,6 +1236,8 @@ def _promote_having_aggregates_to_outputs(
         if sig is None or sig in existing or sig in sig_to_ref:
             continue
         concept = arbitrary_to_concept(node, context.environment)
+        if _promotion_grows_grain(concept, base_targets, base_components, context):
+            continue
         select.selection.append(
             SelectItem(
                 content=ConceptTransform(function=node, output=concept),

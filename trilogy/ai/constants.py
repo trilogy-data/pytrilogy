@@ -115,7 +115,8 @@ having
     and enroll.year = 2020
 ```
 
-HAVING aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total. Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
+HAVING/WHERE aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total.
+ Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
 ```
 auto grand_total <- sum(enroll.credits) by *;
 
@@ -126,7 +127,9 @@ having
     student_total > 0.0001 * grand_total
 ```
 
-Aggregates in WHERE. To filter rows by an aggregate over pre-filter inputs, write the aggregate directly in WHERE with inline grouping agg(x) by grain (add an inline ? condition if needed); group by `*` to aggregate without select grain:
+Aggregates in WHERE are not filtered by other items in the where clause, and inherit the select grain.
+To filter a aggregate in the where pre-aggregation, use inline condition (? ) inside the aggregate. 
+Use an explicit grain (such as `*` for a global total) to avoid the default select grain. 
 ```
 where enroll.year = 2020
   and course.credits > 1.2 * avg(course.credits ? explicit_other_condition) by course.department
@@ -134,7 +137,12 @@ where enroll.year = 2020
 select course.name, course.credits
 ```
 
-Membership in a computed set (SQL IN (subquery)): define the set as a derived concept (filter with ?), then test in against that concept. The right side is a concept, not a literal list — no (select ...). Both sides may be expressions; membership compares the left expression against every value of the right concept (a semi-join over a value set):
+## SemiJoins
+
+Semijoins are unique in that they do not require an explicit relationship to cross models, as the semijoin *is* a scoped intersection.
+
+Membership in a computed set (SQL IN (subquery)): define the set as a derived concept (filter with ?), then test in against that concept. 
+The right side is a concept or expression, not subselect. (in fact either side can be an expression) membership compares the left expression against every value of the right concept (a semi-join over a value set):
 ```
 auto big_zip <- student.zip ? (count(student.id ? student.honors = true) by student.zip) > 10;
 # schools whose 2-digit zip-prefix matches a high-honors-student zip:
@@ -167,12 +175,12 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 
 ## Window functions
 
-Default to windows for **self-referential queries** — relating a row to other rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank). Syntax is SQL-style:
+Default to windows for **self-referential queries**; relating a row to other rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank). Syntax is SQL-style:
 
 - Ranking: `rank(<key>) over (partition by <group> order by <expr> desc)` — e.g. `rank(name) over (partition by state order by sum(births) desc) as top_name`. `partition by` is optional (omit for one global window). `dense_rank`/`row_number` take the same shape.
 - Multi-key ranking: `rank(a, b) over (...)` — all comma-separated args are equal-status grain keys (used when ranking rollup output whose grain spans multiple columns).
 - `partition by` accepts arbitrary expressions, not just identifiers: `partition by upper(student.state), case when student.gpa >= 3.5 then 1 else 0 end`.
-- Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate — write `sum(x) by g` directly instead.
+- Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate; write `sum(x) by g` directly instead.
 - `lag(<field>, <offset>) over (partition by <g> order by <expr>)` fetches the value `<offset>` rows back; `lead(...)` fetches it ahead. Offset defaults to 1. Examples: `lag(amount, 2) over (order by date asc) as prev_amount`; next-year same week = `lead(weekly, 53) over (order by week_seq asc) as next_year`.
 
 ## Expressions and miscellany
