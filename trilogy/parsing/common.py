@@ -742,6 +742,26 @@ def concepts_to_grain_concepts_ordered(
                 key_concept = _lookup(kaddr)
                 if key_concept is not None:
                     preconcepts.append(key_concept)
+        elif (
+            x.derivation == Derivation.BASIC
+            and environment
+            and _gather_nested_windows(x.lineage)
+            and _references_grouping(x, environment)
+        ):
+            # A BASIC concept *wrapping* a window (e.g. a CASE whose branch is
+            # `rank(...) over (... order by sum(...))`) AND referencing a
+            # `grouping()` is a post-aggregation row label, not a grain key. Its
+            # own keys are the base-row grain, and entering the grain as itself
+            # lets the window's `order by sum(...)` be grouped by this concept
+            # while its `grouping()` resolves its `by` *to* the select grain —
+            # a build-time grain self-reference (q70 RecursionError). Contribute
+            # the nested window's partition/anchor keys instead. (A window-wrapping
+            # CASE without grouping — e.g. `top_x_by_metric` — is a legitimate
+            # bucketing grain key and is left untouched.)
+            for ref in _nested_window_grain_refs(x.lineage):
+                key_concept = _lookup(ref.address)
+                if key_concept is not None:
+                    preconcepts.append(key_concept)
         else:
             preconcepts.append(x)
     seen: set[str] = set()
@@ -1109,6 +1129,89 @@ def _window_over_refs(over: list) -> list[ConceptRef | Concept]:
         else:
             refs.extend(get_concept_arguments(item))
     return refs
+
+
+_WINDOW_ITEM_TYPES = (NumberingWindowItem, NavigationWindowItem, WindowItem)
+# Expression attributes a window may hide under in a wrapping lineage.
+_SUBEXPR_ATTRS = (
+    "content",
+    "arguments",
+    "left",
+    "right",
+    "low",
+    "high",
+    "comparison",
+    "expr",
+    "function",
+    "by",
+)
+
+
+def _gather_nested_windows(lineage: Any) -> list:
+    """Every window item nested anywhere inside `lineage` (e.g. under a CASE,
+    arithmetic, or comparison wrapper). Descent stops at each window — a window's
+    own `over`/`order_by` are deliberately not searched, since those carry the
+    aggregate we must *not* surface as a grain key."""
+    found: list = []
+    seen: set[int] = set()
+
+    def walk(node: Any) -> None:
+        if node is None or isinstance(node, (str, int, float, bool, ConceptRef)):
+            return
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, _WINDOW_ITEM_TYPES):
+            found.append(node)
+            return
+        for attr in _SUBEXPR_ATTRS:
+            child = getattr(node, attr, None)
+            if isinstance(child, (list, tuple)):
+                for item in child:
+                    walk(item)
+            elif child is not None:
+                walk(child)
+
+    walk(lineage)
+    return found
+
+
+def _nested_window_grain_refs(lineage: Any) -> list[ConceptRef | Concept]:
+    """Partition/anchor keys of windows nested in a non-window lineage."""
+    refs: list[ConceptRef | Concept] = []
+    for window in _gather_nested_windows(lineage):
+        refs.extend(_window_over_refs(list(getattr(window, "over", []) or [])))
+        refs.extend(getattr(window, "arguments", []) or [])
+    return refs
+
+
+def _references_grouping(concept: Concept, environment: Environment) -> bool:
+    """True when `concept` transitively references a `grouping()` aggregate. Such
+    a concept is a post-GROUP-BY row label whose `grouping()` resolves its `by` to
+    the enclosing select grain — so it cannot itself be a grain key without a
+    self-reference (q70)."""
+    seen: set[str] = set()
+
+    def walk(node: Concept) -> bool:
+        lineage: Any = node.lineage
+        if isinstance(lineage, FunctionCallWrapper):
+            lineage = lineage.content
+        if isinstance(lineage, AggregateWrapper):
+            lineage = lineage.function
+        if isinstance(lineage, Function) and lineage.operator == FunctionType.GROUPING:
+            return True
+        if node.lineage is None:
+            return False
+        for ref in node.concept_arguments:
+            if ref.address in seen:
+                continue
+            seen.add(ref.address)
+            child = environment.concepts.get(ref.address)
+            if child is not None and walk(child):
+                return True
+        return False
+
+    return walk(concept)
 
 
 def _numbering_window_to_concept(

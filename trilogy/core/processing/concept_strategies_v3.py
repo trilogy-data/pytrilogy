@@ -27,11 +27,11 @@ from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
-    describe_unresolvable_filter,
     disconnected_components,
     format_disconnected_subgraphs_error,
     get_loop_iteration_targets,
     group_if_required_v2,
+    raise_if_filter_disconnected,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
@@ -657,12 +657,18 @@ def source_query_concepts(
                 format_disconnected_subgraphs_error(groups, environment, g),
                 subgraphs=[[c.address for c in group] for group in groups],
             )
-        # Connected but unresolvable: if a FILTER concept is among the unbuildable
-        # outputs, describe it (the hashed _virt_filter address is otherwise opaque)
-        # rather than dumping internal addresses.
-        filter_message = describe_unresolvable_filter(output_concepts)
-        if filter_message:
-            raise UnresolvableQueryException(filter_message)
+        # A FILTER output hides its `? <cond>` concepts inside its lineage, so the
+        # check above can't see them. Re-check with them surfaced: a filter whose
+        # condition can't be related to the value it filters is just a disconnected
+        # grouping, and should report the standard 'add a join or merge' error
+        # (with rowset-specific context) instead of dead-ending on the virtual
+        # concept's hashed address.
+        raise_if_filter_disconnected(
+            output_concepts,
+            environment,
+            g,
+            extra_required=list(conditions.row_arguments) if conditions else None,
+        )
         raise UnresolvableQueryException(
             "Could not resolve connections for query with output"
             f" {error_strings} from current model."
