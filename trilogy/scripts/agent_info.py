@@ -237,16 +237,6 @@ trilogy database describe my_fact
 
 ---
 
-### trilogy ingest
-
-Bootstrap Trilogy datasource files from warehouse tables or data files (CSV /
-Parquet, local or cloud URL). Creates datasource files, sniffs values
-for enums/FKs. Always use this when creating a new model from scratch
-off existing data to get a baseline. Run `trilogy agent-info ingest` for the full
-reference when needed.
-
----
-
 ## Authoring Datasources
 
 When you need to author or edit a model, isntead of just

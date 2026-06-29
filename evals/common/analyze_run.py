@@ -105,6 +105,16 @@ def _tool_label(name: str, arguments: dict | None) -> str:
         # single `trilogy file` bucket would hide the distinction.
         if sub == "file" and isinstance(args, list) and len(args) > 1:
             return f"trilogy file {str(args[1]).strip()}"
+        # `agent-info` splits the always-on DEFAULT (no subcommand, the full
+        # guide re-sent every turn) from on-demand DRILLDOWNS (`agent-info
+        # report`, `agent-info syntax example X`, ...). Opposite cost profiles —
+        # the default is the fixed per-turn tax, drilldowns are the
+        # progressive-disclosure fetches — so one bucket would hide whether
+        # moving sections behind disclosure actually shrinks the default.
+        if sub == "agent-info":
+            if isinstance(args, list) and len(args) > 1:
+                return f"trilogy agent-info {str(args[1]).strip()}"
+            return "trilogy agent-info (default)"
         return f"trilogy {sub}" if sub else "trilogy"
     return str(name)
 
