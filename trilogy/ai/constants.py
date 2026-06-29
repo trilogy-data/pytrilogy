@@ -28,7 +28,9 @@ Models include facts + dimensions. Nullability and fanout are handled automatica
 
 ### Query-scoped join (the default)
 
-inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. right is unsupported — swap operands. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.week_seq + 53 = b.week_seq`), an aggregate, or a window; only `=` equality is supported.
+inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. Right unsupported; just flip to a left. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+
+joins indicate that concepts are *the same*; it is a conceptual operation not a field operation. inner join a=b means that a is null and b is not null is tautologically always false.
 
 Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH inner join a.order_number = b.order_number AND inner join a.item.id = b.item.id. Matching only one key of a multi-key grain fans out and double-counts — a top cause of wrong results.
 
@@ -77,7 +79,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 - **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
 - **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
-- **No subselects.** "Filter the fact by an attribute of a related entity" → reach across the import chain with a dot-path in WHERE:
+- **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
 - **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
@@ -93,7 +95,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 
 WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).
 
-WHERE pushdown scoping. WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
+WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
 ```
 where thing.key = 3
 select 
@@ -102,12 +104,11 @@ select
 having 
     total_val > 10
 ```
-HAVING references the projection only. Select what you filter on; hide it with a leading -- to keep it out of the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering to one year AFTER a lead/lag over the full series:
+HAVING filters after any where conditions are output, making it useful for window functions and other cases. You can hide concepts in the output projection to make them reusable in HAVING.
 ```
 select 
     student.state, 
     --sum(enroll.credits) as total_credits, 
-    --enroll.year
 having 
     total_credits > 1000 
     and enroll.year = 2020

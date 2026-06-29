@@ -107,6 +107,8 @@ more compact output.
   metacharacters work (`date\.(year|week_seq)`). Uses the Python `re` flavor
 - `--include-hidden`: Include concepts normally hidden from public view.
 - `--include-builtins`: Include internal/builtin concepts (hidden by default).
+- `--expand-roles`: Render each role of a shared dimension separately instead of
+  collapsing them into one comma-separated key (see the JSON note below).
 
 **Examples:**
 ```bash
@@ -115,6 +117,26 @@ trilogy explore raw/my_fact.preql --regex customer --regex date
 trilogy explore raw/my_fact.preql --regex 'date\.(year|week_seq)'
 trilogy explore raw/my_fact.preql --show concepts --purpose key --purpose property
 ```
+
+**Reading the JSON output — shared (conformed) dimensions.** A fact often plays the same
+dimension in several roles (a date used as `date`, `return_date`, `ship_customer.first_sales_date`,
+...). These role namespaces share one identical schema, so the JSON lists them **together in a
+single key, comma-separated, with the schema shown once**:
+
+```json
+"namespaces": {
+  "date, return_date, ship_customer.first_sales_date": [
+    { "keys": ["date.id int; # ..."] },
+    { "grain": "date.id", "properties": ["year int::year; # ...", "week_seq int::week; # ..."] }
+  ]
+}
+```
+
+This means **every namespace in that comma-separated key exposes every listed concept**. The
+declarations are written using the first namespace as the example prefix; to reference another
+role, substitute its name — e.g. `return_date.year`, `ship_customer.first_sales_date.week_seq`.
+A key with no comma is a single namespace as usual. (Pass `--expand-roles` for the older
+one-namespace-per-entry dump.)
 
 ---
 

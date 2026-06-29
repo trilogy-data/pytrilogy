@@ -1185,6 +1185,53 @@ def _nested_window_grain_refs(lineage: Any) -> list[ConceptRef | Concept]:
     return refs
 
 
+def _contains_inline_grouping(node: Any) -> bool:
+    """Structural scan for an inline `grouping()` Function anywhere under `node`.
+    Stays within the expression tree (ConceptRef is a leaf) so a *named* grouping
+    concept is not flagged — only an inline `grouping(...)` literal, which resolves
+    its `by` to the enclosing select grain and so cannot sit in a grain key."""
+    seen: set[int] = set()
+
+    def walk(n: Any) -> bool:
+        if n is None or isinstance(n, (str, int, float, bool, ConceptRef)):
+            return False
+        if id(n) in seen:
+            return False
+        seen.add(id(n))
+        fn = n
+        if isinstance(fn, FunctionCallWrapper):
+            fn = fn.content
+        if isinstance(fn, AggregateWrapper):
+            fn = fn.function
+        if isinstance(fn, Function) and fn.operator == FunctionType.GROUPING:
+            return True
+        for attr in _SUBEXPR_ATTRS:
+            child = getattr(n, attr, None)
+            if isinstance(child, (list, tuple)):
+                if any(walk(item) for item in child):
+                    return True
+            elif child is not None and walk(child):
+                return True
+        return False
+
+    return walk(node)
+
+
+def _window_internals_reference_grouping(lineage: Any) -> bool:
+    """True when an inline `grouping()` is nested in a window's `over` (partition)
+    or `order_by`. `_gather_nested_windows` deliberately stops at each window and a
+    concept's `concept_arguments` flatten a partition expression down to its leaf
+    refs, so `partition by grouping(...)` is otherwise invisible to the
+    self-reference guard (q70 RecursionError on a CASE-wrapped window whose
+    partition — not whose branch/condition — carries the grouping)."""
+    for window in _gather_nested_windows(lineage):
+        targets = list(getattr(window, "over", []) or [])
+        targets.extend(getattr(window, "order_by", []) or [])
+        if any(_contains_inline_grouping(t) for t in targets):
+            return True
+    return False
+
+
 def _references_grouping(concept: Concept, environment: Environment) -> bool:
     """True when `concept` transitively references a `grouping()` aggregate. Such
     a concept is a post-GROUP-BY row label whose `grouping()` resolves its `by` to
@@ -1211,7 +1258,7 @@ def _references_grouping(concept: Concept, environment: Environment) -> bool:
                 return True
         return False
 
-    return walk(concept)
+    return walk(concept) or _window_internals_reference_grouping(concept.lineage)
 
 
 def _numbering_window_to_concept(

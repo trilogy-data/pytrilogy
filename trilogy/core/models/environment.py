@@ -138,6 +138,11 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # Leading namespaces of rowset outputs; bounds leaf-shorthand resolution
         # (`rs.col` -> `rs.a.b.col`) to rowset namespaces. Populated by add_rowset.
         self.rowset_namespaces: set[str] = set()
+        # Addresses of explicit rowset alias/transform outputs (`... as yr` ->
+        # `rs.yr`), as opposed to passed-through source refs (`rs.src.yr`). A
+        # leaf-shorthand that IS such a direct output must resolve to itself, not
+        # expand into its deeper source path. Populated at COLLECT_SYMBOLS.
+        self.rowset_alias_outputs: set[str] = set()
         self._resolving: set[str] = set()
         self._overlay_stack: list[Mapping[str, Concept]] = []
         self.populate_default_concepts()
@@ -150,6 +155,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         new.fail_on_missing = self.fail_on_missing
         new.hidden = set(self.hidden)
         new.rowset_namespaces = set(self.rowset_namespaces)
+        new.rowset_alias_outputs = set(self.rowset_alias_outputs)
         return new
 
     def populate_default_concepts(self):
@@ -481,6 +487,15 @@ class Environment:
     imports: defaultdict[str, list[Import]] = field(
         default_factory=lambda: defaultdict(list)
     )
+    # namespace (import alias, including nested dotted forms like
+    # `billing_customer.first_sales_date`) -> the source file it was parsed
+    # from. `imports` only retains TOP-LEVEL imports because `add_import`
+    # flattens a sub-environment's concepts up without its import records;
+    # this map preserves the full lineage so consumers (e.g. `explore`'s
+    # conformed-dimension dedup) can tell that two role-played namespaces came
+    # from the same file. Kept separate from `imports` so renderer logic that
+    # keys on `concept.namespace in imports` is unaffected.
+    namespace_source: Dict[str, Path] = field(default_factory=dict)
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = field(default_factory=os.getcwd)
     config: EnvironmentConfig = field(default_factory=EnvironmentConfig)
@@ -573,6 +588,7 @@ class Environment:
             functions=dict(self.functions),
             data_types=dict(self.data_types),
             imports=defaultdict(list, self.imports),
+            namespace_source=dict(self.namespace_source),
             namespace=self.namespace,
             working_path=self.working_path,
             config=copy.deepcopy(self.config),
@@ -787,6 +803,20 @@ class Environment:
 
         if not exists:
             self.imports[alias].append(imp_stm)
+        # Record namespace -> source file lineage. The direct alias maps to
+        # this import's source file; nested aliases (the sub-environment's own
+        # imports) are re-prefixed under it so a deep role like
+        # `billing_customer.first_sales_date` resolves to `raw/date.preql`.
+        # Skip the default-namespace case (the file's own/std `import` lines):
+        # those concepts are the importer's own, not a role-played dimension.
+        if not same_namespace:
+            origin = imp_stm.input_path or imp_stm.path
+            if origin is not None:
+                self.namespace_source[alias] = Path(origin)
+            # list() to tolerate self-import (source is self → we just mutated
+            # the dict we'd be iterating).
+            for sub_ns, sub_path in list(source.namespace_source.items()):
+                self.namespace_source[address_with_namespace(sub_ns, alias)] = sub_path
         # we can't exit early
         # as there may be new concepts
         iteration: list[tuple[str, Concept]] = list(source.concepts.all_items())
@@ -1080,6 +1110,7 @@ class LazyEnvironment(Environment):
         self.datasources = env.datasources
         self.concepts = env.concepts
         self.imports = env.imports
+        self.namespace_source = env.namespace_source
         self.alias_origin_lookup = env.alias_origin_lookup
         self.functions = env.functions
         self.data_types = env.data_types

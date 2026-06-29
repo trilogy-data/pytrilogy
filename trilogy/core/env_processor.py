@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, Sequence
 
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import (
@@ -10,6 +10,7 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildRowsetItem,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -128,8 +129,18 @@ def add_concept(
     g.concepts[node_name] = concept
     g.add_node(node_name)
     root_name = node_name.split("@", 1)[0]
-    if concept.concept_arguments:
-        for source in concept.concept_arguments:
+    # A FILTER concept's `? <cond>` args are not join inputs — the filtered value
+    # is sourced from its content alone, and the condition may legitimately
+    # reference an outer/correlated concept in a different model. Adding condition
+    # edges would falsely bridge otherwise-disconnected components through the
+    # filter node (masking a genuine missing-join from disconnect detection), so
+    # restrict edges to the content side.
+    if isinstance(concept.lineage, BuildFilterItem):
+        sources: Sequence[BuildConcept] = concept.lineage.content_concept_arguments
+    else:
+        sources = concept.concept_arguments
+    if sources:
+        for source in sources:
             if not isinstance(source, BuildConcept):
                 raise ValueError(
                     f"Invalid non-build concept {source} passed into graph generation from {concept}"

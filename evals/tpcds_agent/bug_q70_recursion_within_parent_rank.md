@@ -1,6 +1,17 @@
 # Bug: RecursionError building a CASE/window concept whose condition references `grouping()` (q70 rank-within-parent)
 
-**Status:** OPEN (diagnosis only, no fix). NEW bug, distinct from the two earlier q70 reports
+**Status:** FIXED 2026-06-28. The real trigger (via bisection) is an **inline `grouping()` inside
+the CASE-wrapped window's `partition by`** (the report's CASE-condition framing is one instance; the
+condition need not reference `grouping()` at all). The prior q70 grain guard
+(`concepts_to_grain_concepts_ordered`, see `bug_q70`/`project_q70_grouping_case_over_window_recursion`)
+only fired when `_references_grouping` was True, but that walk keys off `concept_arguments`, which
+flatten a `partition by grouping(...)` expression to its leaf refs — hiding the grouping. Fix =
+new `_window_internals_reference_grouping` (parsing/common.py) scans each nested window's `over`/
+`order_by` for an *inline* `grouping()` Function and OR's it into `_references_grouping`; the guard
+then contributes the window's partition keys instead of the self-referential CASE. Named-grouping
+partitions (`partition by lochierarchy`) never recursed and are untouched. Test:
+`test_non_benchmark_queries.py::test_q70_grouping_inline_in_window_partition_no_recursion`.
+NEW bug, distinct from the two earlier q70 reports
 (both of which are now FIXED — see "Relationship to prior q70 reports").
 **Severity:** high — q70 is now the worst token sink in the eval (2.08M tokens, +283%). The agent
 hits an *uncaught* `RecursionError` (surfaced as `Unexpected error: ... maximum recursion depth

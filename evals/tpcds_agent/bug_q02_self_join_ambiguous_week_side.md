@@ -1,7 +1,12 @@
 # Bug: rowset self-join leaks a join-key forward-ref as a phantom output → FALSE "Ambiguous reference" on leaf-shorthand
 
-**Status:** OPEN (found TPC-DS agent eval q02, run `evals/tpcds_agent/results/20260628-194910`,
-`agent_log.q02.jsonl` write at log line 62 → error at line 66). Do NOT fix yet.
+**Status:** ✅ FIXED 2026-06-28 (claude). `_collapse_alias_matches` now drops a forward-only
+match (no real concept) that is NOT a pending output — once a real match exists, every genuine
+output is already a real concept, so a pure symbol-table leak (the self-join's other-side join
+key `joined.nxt.wk`) is no longer counted toward ambiguity. Test:
+`tests/test_rowset_output_shorthand.py::test_self_join_rowset_phantom_join_key_not_ambiguous`.
+(Originally found TPC-DS agent eval q02, run `evals/tpcds_agent/results/20260628-194910`,
+`agent_log.q02.jsonl` write at log line 62 → error at line 66.)
 **Severity:** medium — `generate_sql` never runs; parse aborts with a misleading ambiguity error that
 names a candidate (`joined_data.nxt_dow.wk`) which is **not actually a selectable output of the
 rowset**. Fully qualifying to the real side (`joined_data.cur_dow.wk`) makes the whole query succeed,

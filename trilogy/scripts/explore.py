@@ -11,8 +11,9 @@ from __future__ import annotations
 import re
 import textwrap
 from collections import defaultdict
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Iterator, Sequence
 
 import click
 
@@ -23,6 +24,43 @@ from trilogy.parser import parse_text
 from trilogy.scripts.display import emit_event, is_json_mode, print_error, print_info
 
 _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
+
+# --- explore output schema versioning -------------------------------------
+# The explore payload shape is versioned per render type so it can evolve
+# without breaking consumers that pin or migrate. INTERNAL only — there is no
+# CLI flag; flip the default here, or override in tests / pinned callers via
+# ``render_version_override``. The emitted payload carries its ``version`` so a
+# reader can branch on the shape it got.
+#
+#   json v1: every namespace rendered in full (role-played conformed
+#            dimensions repeat their schema once per role).
+#   json v2: conformed dimensions collapse into one combined-key entry
+#            (``"date, return_date, …": [schema]``) — the default.
+#   rich v1: the only rich shape so far (no conformed dedup yet).
+RENDER_TYPE_JSON = "json"
+RENDER_TYPE_RICH = "rich"
+_LATEST_RENDER_VERSION: dict[str, int] = {RENDER_TYPE_JSON: 2, RENDER_TYPE_RICH: 1}
+_RENDER_VERSION: dict[str, int] = dict(_LATEST_RENDER_VERSION)
+
+
+def render_version(render_type: str) -> int:
+    """Active payload version for a render type (defaults to 1 for unknowns)."""
+    return _RENDER_VERSION.get(render_type, 1)
+
+
+@contextmanager
+def render_version_override(render_type: str, version: int) -> Iterator[None]:
+    """Temporarily pin a render type to a specific version (tests / callers
+    that must emit or assert a fixed shape)."""
+    prev = _RENDER_VERSION.get(render_type)
+    _RENDER_VERSION[render_type] = version
+    try:
+        yield
+    finally:
+        if prev is None:
+            _RENDER_VERSION.pop(render_type, None)
+        else:
+            _RENDER_VERSION[render_type] = prev
 
 
 def _load_environment(path: Path) -> Environment:
@@ -508,11 +546,110 @@ def _import_entry(alias: str, stmt: Import) -> dict[str, str] | None:
     return entry
 
 
+def _conformed_signature(concepts: list[Concept]) -> tuple:
+    """Leaf-only structural signature of one namespace: the sorted tuple of
+    ``(relative leaf, purpose, datatype, description)`` over its concepts.
+
+    Built from concept objects, never from rendered strings, so it is immune
+    to a namespace word appearing inside comment prose (``date`` inside "a
+    calendar date."). It deliberately omits grain/keys: a role-played
+    dimension attaches at a different parent grain
+    (``billing_customer.first_sales_date.id`` keyed to ``billing_customer.id``)
+    while being the same dimension — and the source-file gate (see
+    ``_dedup_conformed``) already guarantees the internal structure is
+    identical, so the keys add nothing but spurious splits."""
+    sig = []
+    for c in concepts:
+        prefix = f"{c.namespace}."
+        leaf = c.address[len(prefix) :] if c.address.startswith(prefix) else c.address
+        sig.append(
+            (
+                leaf,
+                c.purpose.value,
+                _compact_datatype(str(c.datatype)),
+                _concept_description(c),
+            )
+        )
+    return tuple(sorted(sig))
+
+
+def _pick_canonical(names: list[str], source: Path) -> str:
+    """Choose the namespace to render in full for a conformed group. Prefer a
+    role whose leaf segment matches the source file stem (``date`` for
+    ``date.preql``); otherwise the shallowest / shortest / lexically-first
+    address. Deterministic so an agent can cache "X is date" across the
+    re-reads of one explore output."""
+    stem = source.stem
+    preferred = [n for n in names if n.rsplit(".", 1)[-1] == stem]
+    return sorted(preferred or names, key=lambda n: (n.count("."), len(n), n))[0]
+
+
+_ROLE_DELIM = ", "
+
+
+def _dedup_conformed(
+    env: Environment,
+    namespaces: dict[str, list[dict]],
+    concept_items: list[tuple[str, Concept]],
+) -> dict[str, list[dict]]:
+    """Collapse role-played conformed dimensions into a single entry whose
+    **key lists every namespace that shares the schema** (canonical first),
+    rendered once. ``"date, return_date, billing_customer.first_sales_date, …"``
+    maps to one date schema instead of 8 identical copies — the grouping is the
+    key itself, so there is no ``same_as`` pointer to chase and no separate map.
+
+    Two namespaces are the same dimension when they were parsed from the **same
+    source file** (``env.namespace_source``) and carry an identical leaf-only
+    signature. Source file — not physical table — is the identity on purpose:
+    the same table can be modelled in two files with different labels (must NOT
+    merge), and a multi-datasource namespace has no single physical address.
+    Lossless: a role that adds/retypes/re-comments a property gets a different
+    signature and stays its own entry.
+
+    The body keeps the canonical namespace's prefix (a derived concept embeds
+    its namespace in its lineage expression, so the body can't be made fully
+    prefix-free); listing the canonical first makes that prefix match the
+    leading key, and every ``<role>.<leaf>`` is reachable by substituting any
+    listed namespace for the canonical."""
+    by_ns: dict[str, list[Concept]] = defaultdict(list)
+    for _, c in concept_items:
+        by_ns[c.namespace].append(c)
+
+    groups: dict[tuple, list[str]] = defaultdict(list)
+    for key in namespaces:
+        ns = key or DEFAULT_NAMESPACE
+        source = env.namespace_source.get(ns)
+        if source is None:  # the file's own concepts — never a role-play
+            groups[("\0", key)].append(key)
+        else:
+            groups[(str(source), _conformed_signature(by_ns.get(ns, [])))].append(key)
+
+    # canonical display-key -> combined "canon, role, role, …" key
+    combined_of: dict[str, str] = {}
+    absorbed: set[str] = set()
+    for gkey, members in groups.items():
+        if len(members) < 2 or gkey[0] == "\0":
+            continue
+        canon = _pick_canonical(members, Path(gkey[0]))
+        others = sorted(m for m in members if m != canon)
+        combined_of[canon] = _ROLE_DELIM.join([canon, *others])
+        absorbed.update(others)
+
+    deduped: dict[str, list[dict]] = {}
+    for key, body in namespaces.items():
+        if key in absorbed:
+            continue
+        deduped[combined_of.get(key, key)] = body
+    return deduped
+
+
 def build_concepts_payload(
     env: Environment,
     concept_items: list[tuple[str, Concept]],
     expand_imports: bool = False,
     import_descriptions: dict[str, str] | None = None,
+    expand_roles: bool = False,
+    version: int | None = None,
 ) -> dict:
     """Build the JSON-serializable concept dump: local namespaces rendered in
     full Trilogy declaration syntax, imported namespaces collapsed to a
@@ -521,7 +658,14 @@ def build_concepts_payload(
     namespace is one object pairing its ``concepts`` list with its optional
     import ``description``. ``None``-valued keys are dropped so the payload
     stays compact whether emitted as a JSON event or embedded in an agent
-    prompt."""
+    prompt.
+
+    ``version`` selects the payload shape (defaults to the active JSON render
+    version): v2 collapses role-played conformed dimensions into one
+    combined-key entry; v1 renders every role in full. ``expand_roles`` forces
+    the full per-role dump regardless of version."""
+    if version is None:
+        version = render_version(RENDER_TYPE_JSON)
     if expand_imports:
         local_items, imported_items = concept_items, []
     else:
@@ -559,9 +703,13 @@ def build_concepts_payload(
             entry["description"] = desc
         entry["concepts"] = ", ".join(imported[ns])
         imported_merged[ns] = entry
+    namespaces = _grouped_decls(env, local_items)
+    if namespaces and version >= 2 and not expand_roles:
+        namespaces = _dedup_conformed(env, namespaces, local_items)
     payload = {
+        "version": version,
         "count": len(concept_items),
-        "namespaces": _grouped_decls(env, local_items) or None,
+        "namespaces": namespaces or None,
         "imported": imported_merged or None,
     }
     return {k: v for k, v in payload.items() if v is not None}
@@ -573,6 +721,7 @@ def _emit_explore_json(
     show: str,
     import_descriptions: dict[str, str],
     expand_imports: bool,
+    expand_roles: bool,
 ) -> None:
     """Emit the explore results as a stream of pretty-printed JSON events,
     honoring ``--show``. Concepts are grouped by namespace; the local ones are
@@ -584,7 +733,7 @@ def _emit_explore_json(
             "concepts",
             discriminator="type",
             **build_concepts_payload(
-                env, concept_items, expand_imports, import_descriptions
+                env, concept_items, expand_imports, import_descriptions, expand_roles
             ),
         )
     if show in ("all", "datasources"):
@@ -678,6 +827,19 @@ def _emit_explore_json(
         "matching imports in full."
     ),
 )
+@click.option(
+    "--expand-roles",
+    is_flag=True,
+    default=False,
+    help=(
+        "Render every role-played conformed dimension in full. By default, "
+        "namespaces parsed from the same source file with an identical shape "
+        "(e.g. the 8 date roles a fact plays — sold/returned/first-sales/...) "
+        "collapse to one canonical schema plus `same_as` references and a "
+        "`conformed` map, which is the bulk of the token savings on fact "
+        "files. Pass this for the literal per-role dump."
+    ),
+)
 def explore(
     path: Path,
     show: str,
@@ -686,6 +848,7 @@ def explore(
     include_hidden: bool,
     include_builtins: bool,
     expand_imports: bool,
+    expand_roles: bool,
 ) -> None:
     """Parse PATH and list concepts, datasources, and imports from its environment.
 
@@ -738,7 +901,9 @@ def explore(
     expand = expand_imports or bool(regex_patterns)
 
     if is_json_mode():
-        _emit_explore_json(env, concept_items, show, import_descriptions, expand)
+        _emit_explore_json(
+            env, concept_items, show, import_descriptions, expand, expand_roles
+        )
         return
 
     if show in ("all", "groups"):

@@ -191,6 +191,48 @@ select r.wk, r.amt having r.wk in (r.wk ? r.dow = 0);
     assert engine.generate_sql(query)
 
 
+def test_q64_correlated_filter_membership_clean_error(engine):
+    """Membership whose RHS filters one fact by a correlated equality to the OUTER
+    fact (`ss.ticket in (sr.ticket ? sr.ticket = ss.ticket)`) is unresolvable —
+    store_sales and store_returns have no fact-to-fact join, and Trilogy `?`
+    filters are not correlated subqueries. The correlated `=` used to mint a
+    virtual filter concept whose lineage referenced both facts, adding a graph
+    edge that falsely bridged the two disconnected components; the disconnect
+    guard then saw one component and dead-ended on the opaque `_virt_filter`
+    address. Filter condition edges are no longer added to the discovery graph, so
+    the two facts stay disconnected and the standard error fires."""
+    query = """
+import store_sales as store_sales;
+import store_returns as store_returns;
+where store_sales.ticket_number in (
+    store_returns.ticket_number ? store_returns.ticket_number = store_sales.ticket_number
+  )
+select store_sales.item.id, count(store_sales.line_item) as sale_lines;
+"""
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        engine.generate_sql(query)
+    message = str(exc.value)
+    assert "store_sales.ticket_number" in message
+    assert "store_returns.ticket_number" in message
+    assert "join or merge" in message
+    assert "_virt_filter" not in message
+
+
+def test_q64_noncorrelated_filter_membership_still_resolves(engine):
+    """Guard the prune doesn't over-fire: a NON-correlated filter on the RHS
+    (`sr.ticket ? sr.return_amount > 0`) is a self-contained set, so the value
+    membership semijoin resolves normally."""
+    query = """
+import store_sales as store_sales;
+import store_returns as store_returns;
+where store_sales.ticket_number in (
+    store_returns.ticket_number ? store_returns.return_amount > 0
+  )
+select store_sales.item.id, count(store_sales.line_item) as sale_lines;
+"""
+    assert engine.generate_sql(query)
+
+
 def test_q64_nested_membership_single_source_agg_compiles(engine):
     """Guard the fix above doesn't over-bail: the same nested-membership shape with
     a SOURCEABLE inner filter (single-source aggregate vs a literal) still plans."""
@@ -237,6 +279,30 @@ order by total_sum desc limit 5;
     assert [r[2] for r in rows if r[0] is not None] == [
         1 for r in rows if r[0] is not None
     ]
+
+
+def test_q70_grouping_inline_in_window_partition_no_recursion(engine):
+    """Sibling of the above: the grouping() lives ONLY inside the window's
+    `partition by grouping(...)`, not in the CASE condition/branch. The earlier
+    guard keyed off `concept_arguments`, which flatten a partition expression to
+    its leaf refs, so the inline grouping was invisible and the CASE re-entered the
+    select grain -> grouping's `by` pulled the CASE back -> build RecursionError.
+    The partition's inline grouping must also keep the CASE out of the grain."""
+    query = """
+import store_sales as ss;
+auto wpr <- CASE
+    WHEN ss.store.state = 'TX' THEN 1
+    ELSE rank(ss.store.state)
+        over (partition by grouping(ss.store.state) order by sum(ss.net_profit) by ss.store.state desc)
+END;
+where ss.date.year = 2000
+select ss.store.state as s_state, sum(ss.net_profit) as total_sum, wpr
+order by total_sum desc limit 5;
+"""
+    # No RecursionError at build, no sentinel, and the SQL executes.
+    assert "INVALID_REFERENCE_BUG" not in engine.generate_sql(query)[-1]
+    rows = engine.execute_text(query)[-1].fetchall()
+    assert rows
 
 
 def test_copy_perf():

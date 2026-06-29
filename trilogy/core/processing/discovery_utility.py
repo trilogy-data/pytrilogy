@@ -939,9 +939,7 @@ def _filter_hidden_concepts(
     for c in output_concepts:
         if not isinstance(c.lineage, BuildFilterItem):
             continue
-        content = c.lineage.content
-        if isinstance(content, BuildConcept):
-            extra.append(content)
+        extra.extend(c.lineage.content_concept_arguments)
         extra.extend(c.lineage.where.row_arguments)
     return extra
 
@@ -994,8 +992,15 @@ def raise_if_filter_disconnected(
     standard named-subgraph error — same 'add a join or merge' diagnostic as any
     disconnected grouping — plus a rowset-filter-specific hint. No-op otherwise, so
     the caller falls through to the generic connectivity error."""
+    # Drop the FILTER outputs themselves: their connectivity is fully captured by
+    # the surfaced content + condition concepts, and the virtual filter concept
+    # has no condition edges in the graph (see add_concept), so keeping it would
+    # surface a bare `_virt_*` orphan subgraph when its content is islanded.
+    real_outputs = [
+        c for c in output_concepts if not isinstance(c.lineage, BuildFilterItem)
+    ]
     required = unique(
-        list(output_concepts)
+        real_outputs
         + list(extra_required or [])
         + _filter_hidden_concepts(output_concepts),
         "address",

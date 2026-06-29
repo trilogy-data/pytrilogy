@@ -143,8 +143,37 @@ are Trilogy-specific and do not apply to `sql_bare`/`sql_schema`.
   ```
   Then `scoring.score_query(eng, ws, NN, 'tpcds', custom_refs_dir=Path('tests/modeling/tpc_ds_duckdb'))`.
 
+### Probing a token sink (reusable investigation-prompt — this works, use it)
+Fan out ONE read-only subagent per >500k query. The framing matters: tell it the bug exists
+and its job is to FIND it, not to decide whether it exists. Template:
 
+> Find the FRAMEWORK bug behind a TPC-DS token sink. READ-ONLY (no edits under `trilogy/` or
+> `tests/`; a `.md` under `evals/tpcds_agent/` is fine). `generate_sql`/CLI on small snippets
+> only; no full eval.
+> OPERATING ASSUMPTION (proven repeatedly): a query that burns >500k tokens has a FRAMEWORK
+> bug driving the agent's confusion — a construct the engine wrongly rejects, mis-resolves, or
+> mis-codegens (often SILENT: wrong rows or a hang, no error). FIND and REPRODUCE it; do NOT
+> conclude "agent error." Only fall back to "no framework obstacle" with concrete proof every
+> failing attempt was the agent's own clearly-erroneous syntax with a correct, clear error.
+> TARGET: q<NN> burned <X> tokens (run `<run dir>`). Real errors seen: `<paste signatures>`.
+> <one-line business description of the query>.
+> TASK: (1) read `<run>/agent_log.q<NN>.{jsonl,conversation.txt}` for the EXACT failing
+> constructs + `<run>/workspace/query<NN>.preql`; (2) read canonical
+> `tests/modeling/tpc_ds_duckdb/query<NN>.{sql,preql}`, confirm it builds on the current
+> engine; (3) reproduce each framework-looking error AND each silent wrong-result via
+> `generate_sql`/execute against `<run>/workspace`, then MINIMIZE to the smallest snippet +
+> build a trigger matrix (what makes it pass vs fail); (4) classify real-bug vs
+> guidance-defect vs (rarely, with proof) agent; (5) root-cause with file:line.
+> DELIVERABLE: `evals/tpcds_agent/bug_q<NN>_<slug>.md` with symptom, minimal repro, trigger
+> matrix, root cause + file:line. Do NOT fix. Return an 8-line summary.
 
+Two non-obvious tools the probes lean on: the `generate_sql`/`score_query` engine harness
+above (reproduce + diff without running the agent), and a **trigger matrix** — toggle one
+ingredient at a time to find the minimal failing combination (e.g. q75 needed
+filter+window+select on the *same* nested-rowset column; any one removed → clean). Silent
+bugs (wrong rows / timeout, no sentinel) are the dangerous class — the token bar is their only
+detector, which is why the >500k prior is load-bearing. Collect findings into a single
+`INDEX_pre_merge_framework_fixes.md` (open vs fixed, silent vs loud, fix locus per bug).
 
 ### Question-fix philosophy
 - Phrase as business intent; never leak implementation (no "is not null", no "inner join",

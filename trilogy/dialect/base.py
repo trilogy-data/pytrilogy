@@ -1468,6 +1468,55 @@ class BaseDialect:
             f"(select {select_list} from {from_clause} where {not_null})"
         )
 
+    def _render_expression_membership_subselect(
+        self,
+        right: BuildFunction,
+        cte: CTE | UnionCTE | None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        raise_invalid: bool,
+    ) -> str | None:
+        """Render an expression-typed membership RHS (`... in (rs.col::string)`,
+        a concat of rowset columns, etc.) as a `(select <expr> from <cte> where
+        ...)` existence subquery. The single-BuildConcept path does this for a
+        bare RHS; an expression RHS otherwise emits its inner column refs against
+        a CTE that's never in a FROM (Binder: table not found). Returns None when
+        this isn't an existence membership, so the caller falls back to the
+        default inline rendering."""
+        concepts = list(right.concept_arguments)
+        if not concepts:
+            return None
+        lookup_cte = cte
+        if cte_map and not lookup_cte:
+            lookup_cte = cte_map.get(concepts[0].address)
+        if lookup_cte is None:
+            return None
+        # Only a genuine existence membership (every referenced concept sourced
+        # via the existence map) needs subselect-wrapping; a local scalar
+        # expression must keep the default inline rendering.
+        if any(c.address not in lookup_cte.existence_source_map for c in concepts):
+            return None
+        from_clauses: set[str] = set()
+        null_cols: list[str] = []
+        for rc in concepts:
+            from_clause, col_ref = self._resolve_existence_column(
+                rc, cte, cte_map, raise_invalid
+            )
+            # inlined-parent physical-column form ("<base> as <target>"); the
+            # full-expression render below can't redirect to physical columns,
+            # so let it fall back rather than emit inconsistent SQL.
+            if " as " in from_clause:
+                return None
+            from_clauses.add(from_clause)
+            null_cols.append(col_ref)
+        if len(from_clauses) != 1:
+            return None
+        from_clause = next(iter(from_clauses))
+        inner = self.render_expr(
+            right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+        )
+        not_null = " and ".join(f"{c} is not null" for c in null_cols)
+        return f"(select {inner} from {from_clause} where {not_null})"
+
     def render_expr(
         self,
         e: Union[
@@ -1616,6 +1665,18 @@ class BaseDialect:
                 (ListWrapper, TupleWrapper, BuildParenthetical),
             ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+
+            # An expression RHS over existence-sourced rowset columns
+            # (`x::string in (rs.col::string)`, or a concat of several rs cols).
+            # The bare-BuildConcept path above wraps the referenced CTE in a
+            # `select ... from <cte>` subselect; an expression RHS must do the
+            # same, else its inner column refs dangle (Binder: table not found).
+            if isinstance(right, BuildFunction):
+                subselect = self._render_expression_membership_subselect(
+                    right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+                if subselect is not None:
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {subselect}"
 
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):

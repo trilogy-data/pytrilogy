@@ -1,69 +1,69 @@
 [1/5] Building TPC-DS DuckDB (sf=1) ...
 [2/5] Category 'enriched': setting up workspace ...
 [3/5] Running agent per query (10 queries, fresh context each, concurrency=3) — deepseek/deepseek-chat ...
-  [q14] starting (worker _worker_0)
   [q02] starting (worker _worker_2)
   [q05] starting (worker _worker_1)
-  [q02] done in 80s (exit 0, score=pass)
+  [q14] starting (worker _worker_0)
+  [q02] done in 96s (exit 0, score=pass)
   [q23] starting (worker _worker_2)
-  [q05] done in 136s (exit 0, score=fail)
-  [q38] starting (worker _worker_1)
-  [q23] done in 62s (exit 0, score=fail)
-  [q64] starting (worker _worker_2)
-  [q38] done in 33s (exit 0, score=fail)
-  [q70] starting (worker _worker_1)
-  [q70] done in 127s (exit 0, score=fail)
-  [q75] starting (worker _worker_1)
-  [q64] done in 165s (exit 0, score=fail)
+  [q14] done in 104s (exit 0, score=fail)
+  [q38] starting (worker _worker_0)
+  [q05] done in 215s (exit 0, score=fail)
+  [q64] starting (worker _worker_1)
+  [q23] done in 169s (exit 0, score=fail)
+  [q70] starting (worker _worker_2)
+  [q38] done in 237s (exit 0, score=fail)
+  [q75] starting (worker _worker_0)
+  [q70] done in 114s (exit 0, score=fail)
   [q78] starting (worker _worker_2)
-  [q14] done in 649s (exit 0, score=fail)
-  [q97] starting (worker _worker_0)
-  [q75] done in 464s (exit 0, score=fail)
-  [q97] done in 206s (exit 0, score=pass)
-  [q78] done in 700s (exit 0, score=fail)
+  [q64] done in 212s (exit 0, score=fail)
+  [q97] starting (worker _worker_1)
+  [q75] done in 96s (exit 0, score=fail)
+  [q78] done in 69s (exit 0, score=fail)
+  [q97] done in 63s (exit 0, score=fail)
 [4/5] Finalising scores for 10 queries ...
-  spliced 89 prior results from 20260628-194910
-  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (56 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
-[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260629-001912
+  spliced 89 prior results from 20260629-001912
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (24 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260629-013151
 
-# TPC-DS Agent Eval — 20260629-001912
+# TPC-DS Agent Eval — 20260629-013151
 
 - Model: `deepseek/deepseek-chat`
 - Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.287
 
 ## Result
 
-- **Pass rate: 63/99** (64%)
-- Status breakdown: {'pass': 63, 'fail': 33, 'timeout': 3}
-- Wall time: 1022.8s  |  Agent time: 2621.9s  |  Avg/query: 262.2s
+- **Pass rate: 62/99** (63%)
+- Status breakdown: {'pass': 62, 'fail': 34, 'timeout': 3}
+- Wall time: 497.2s  |  Agent time: 1373.7s  |  Avg/query: 137.4s
 - Agent exit code: 0
 
 ## Agent harness metrics
 
-- LLM iterations: 263
-- Tool calls: 312  →  {'trilogy': 302, 'return_control_to_user': 10}
-- `trilogy` subcommands: {'agent-info': 33, 'file': 116, 'explore': 65, 'run': 85, 'database': 1}
-- Tool success rate: 82% (256/312 ok)
-- Tokens: 10787760 total (10653566 prompt + 134194 completion)
+- LLM iterations: 232
+- Tool calls: 271  →  {'trilogy': 261, 'return_control_to_user': 10}
+- `trilogy` subcommands: {'agent-info': 26, 'file': 79, 'explore': 55, 'run': 101}
+- Tool success rate: 91% (247/271 ok)
+- Tokens: 7287358 total (7205732 prompt + 81626 completion)
 
 ## Tool-output sizes
 
 | Tool | calls | avg chars | max chars | truncated | trunc-rate |
 |---|---:|---:|---:|---:|---:|
-| `trilogy` | 302 | 3615 | 38273 | 0 | 0% |
+| `trilogy` | 261 | 3507 | 34263 | 0 | 0% |
 | `return_control_to_user` | 10 | 26 | 26 | 0 | 0% |
 
-- Repeated calls (same args seen earlier in same query): {'trilogy': 69} — total 69
+- Repeated calls (same args seen earlier in same query): {'trilogy': 44} — total 44
 
 ## Per-query
 
 | Query | Status | Ref rows | Cand rows | SQL len | Detail |
 |------:|:-------|---------:|----------:|--------:|:-------|
 | 01 | pass | 100 | 100 | 816 |  |
-| 02 | pass | 53 | 53 | 11286 |  |
+| 02 | pass | 53 | 53 | 8684 |  |
 | 03 | pass | 89 | 89 | 416 |  |
 | 04 | pass | 6 | 6 | 2076 |  |
-| 05 | fail | 100 | 100 | 11744 | result set differs from reference |
+| 05 | fail | 100 | 100 | 11640 | result set differs from reference |
 | 06 | pass | 46 | 46 | 941 |  |
 | 07 | pass | 100 | 100 | 652 |  |
 | 08 | pass | 5 | 5 | 3216 |  |
@@ -72,7 +72,7 @@
 | 11 | fail | 90 | 100 | 2366 | result set differs from reference |
 | 12 | pass | 100 | 100 | 1150 |  |
 | 13 | pass | 1 | 1 | 1266 |  |
-| 14 | fail | 100 | 100 | 12672 | result set differs from reference |
+| 14 | fail | 100 | 100 | 5525 | result set differs from reference |
 | 15 | fail | 100 | 100 | 572 | result set differs from reference |
 | 16 | pass | 1 | 1 | 804 |  |
 | 17 | fail | 23 | 100 | 1589 | result set differs from reference |
@@ -81,7 +81,7 @@
 | 20 | fail | 100 | 100 | 1191 | result set differs from reference |
 | 21 | pass | 100 | 100 | 931 |  |
 | 22 | pass | 100 | 100 | 498 |  |
-| 23 | fail | 4 | 19 | 7202 | result set differs from reference |
+| 23 | fail | 4 | 19 | 5321 | result set differs from reference |
 | 24 | pass | 1 | 1 | 1344 |  |
 | 25 | pass | 1 | 1 | 1377 |  |
 | 26 | pass | 100 | 100 | 653 |  |
@@ -96,7 +96,7 @@
 | 35 | pass | 100 | 100 | 2127 |  |
 | 36 | fail | 100 | 100 | 2028 | result set differs from reference |
 | 37 | pass | 1 | 1 | 539 |  |
-| 38 | fail | 1 | 1 | 2732 | result set differs from reference |
+| 38 | fail | 1 | 1 | 1959 | result set differs from reference |
 | 39 | pass | 243 | 243 | 1128 |  |
 | 40 | pass | 100 | 100 | 845 |  |
 | 41 | pass | 100 | 100 | 1245 |  |
@@ -122,21 +122,21 @@
 | 61 | pass | 1 | 1 | 1140 |  |
 | 62 | pass | 100 | 100 | 1322 |  |
 | 63 | pass | 100 | 100 | 1290 |  |
-| 64 | fail | 2 | 12 | 11978 | result set differs from reference |
+| 64 | fail | 2 | 2 | 16767 | result set differs from reference |
 | 65 | pass | 100 | 100 | 995 |  |
 | 66 | fail | 5 | 60 | 2052 | result set differs from reference |
 | 67 | fail | 100 | 100 | 1236 | result set differs from reference |
 | 68 | pass | 100 | 100 | 1099 |  |
 | 69 | fail | 100 | 100 | 1272 | result set differs from reference |
-| 70 | fail | 3 | 3 | 5873 | result set differs from reference |
+| 70 | fail | 3 | 5 | 1776 | result set differs from reference |
 | 71 | pass | 1031 | 1031 | 910 |  |
 | 72 | pass | 100 | 100 | 1305 |  |
 | 73 | pass | 1 | 1 | 944 |  |
 | 74 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
-| 75 | fail | 100 | 100 | 10411 | result set differs from reference |
+| 75 | fail | 100 | 100 | 11871 | result set differs from reference |
 | 76 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
 | 77 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
-| 78 | fail | 100 | 74 | 7645 | result set differs from reference |
+| 78 | fail | 100 | 100 | 6055 | result set differs from reference |
 | 79 | fail | 100 | 100 | 986 | result set differs from reference |
 | 80 | fail | 100 | 100 | 2795 | result set differs from reference |
 | 81 | pass | 100 | 100 | 1990 |  |
@@ -155,11 +155,11 @@
 | 94 | pass | 1 | 1 | 1614 |  |
 | 95 | pass | 1 | 1 | 765 |  |
 | 96 | pass | 1 | 1 | 330 |  |
-| 97 | pass | 1 | 1 | 4189 |  |
+| 97 | fail | 1 | 1 | 860 | result set differs from reference |
 | 98 | fail | 2521 | 2521 | 778 | result set differs from reference |
 | 99 | pass | 90 | 90 | 1371 |  |
 
 ## Agent final message
 
-> Completed query97.preql. It runs cleanly and reports a single row: store_only = 540,709, catalog_only = 286,686, both = 171. The math checks out (540,709 + 171 = total store pairs; 286,686 + 171 = total catalog pairs).
+> Query 97 is complete. Written to `query97.preql`. Results: store_only=0, catalog_only=0, in_both=27,449 (single row). Ran cleanly with `trilogy run query97.preql`.
 
