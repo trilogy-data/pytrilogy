@@ -1,8 +1,8 @@
-# Root cause: a WHERE comparing a per-key aggregate to a GLOBAL aggregate of a
-# different grain. v3 computes the two in separate CTEs, cross-joins them, and
-# filters with a post-aggregate WHERE. v4 instead cross-joined the global
-# aggregate INTO the per-key GROUP BY and emitted a HAVING referencing it — an
-# ungrouped column → "must appear in the GROUP BY clause" binder error.
+# A WHERE comparing a per-key aggregate to a GLOBAL aggregate of a different
+# grain. The global side uses an explicit `by *`: a bare aggregate in WHERE now
+# auto-grains to the SELECT grain (like HAVING), so `by *` is required to keep
+# the comparison against the whole-table total. Both planners compute the two in
+# separate CTEs, cross-join them, and filter with a post-aggregate WHERE.
 # Source: tests/modeling/tpc_h/query11.preql (germany_total_value).
 key id int;
 key line int;
@@ -26,7 +26,7 @@ union all
 select 3, 1, 5, true
 ''';
 
-auto total_flagged <- sum(qty ? flag = true);
+auto total_flagged <- sum(qty ? flag = true) by *;
 auto per_id_flagged <- sum(qty ? flag = true) by id;
 
 WHERE per_id_flagged > total_flagged * 0.3

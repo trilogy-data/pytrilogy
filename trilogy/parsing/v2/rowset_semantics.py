@@ -202,7 +202,7 @@ def rowset_to_concepts_v2(
                 x.keys = set([orig[k].address if k in orig else k for k in x.keys])
             else:
                 x.keys = set()
-        if not x.grain.components and rowset_grain:
+        if not x.grain.components and rowset_grain and x.address not in rowset_grain:
             x.grain = Grain(components=set(rowset_grain))
             x.keys = set(rowset_grain)
             # A grain-less aggregate (e.g. `sum(x) as total`) inherited the
@@ -210,6 +210,16 @@ def rowset_to_concepts_v2(
             # that it carries the rowset's concrete grain it is one row per
             # grain key — multi-row. Leaving it SINGLE_ROW makes downstream
             # grouping treat it as a grand-total scalar (q54 cross-join bug).
+            #
+            # Guard `x.address not in rowset_grain`: a column is grain-less for
+            # two reasons. An unspecified aggregate (q54) is NOT itself part of
+            # the row grain, so it must adopt the rowset grain. But a 1:1
+            # passthrough of an already-abstract source (a union/rowset output,
+            # which carries no key narrower than the full row) IS listed as a
+            # grain component — re-graining it to the full rowset grain makes it
+            # self-referential (a pseudo-key of the sibling columns), so a
+            # downstream global aggregate over it never collapses and fans out
+            # on the row grain (q05). Leave it abstract, mirroring its source.
             x.granularity = Granularity.MULTI_ROW
         elif all(c in orig for c in x.grain.components):
             x.grain = Grain(components={orig[c].address for c in x.grain.components})

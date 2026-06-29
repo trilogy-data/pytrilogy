@@ -448,6 +448,8 @@ class CTE:
 
     @property
     def group_concepts(self) -> List[BuildConcept]:
+        from trilogy.core.processing.condition_utility import condition_implies
+
         rollup_addresses = {c.address for c in self.rollup_concepts}
 
         def has_local_aggregate(c: BuildConcept) -> bool:
@@ -464,13 +466,30 @@ class CTE:
                 and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
             ):
                 return True
-            # only the filtered content renders as the value; the where condition
-            # (which may aggregate) becomes a predicate, not the column expression
+            # the filtered content renders as the value, but when the per-row
+            # CASE WHEN is emitted (not elided) the where condition becomes part
+            # of the column expression too -- so a local aggregate in the
+            # predicate (e.g. a HAVING `sum(x) > threshold` lowered to a
+            # `_virt_filter` existence column) makes the column aggregate-bearing
+            # and unfit for GROUP BY. When the CTE's own condition implies the
+            # filter predicate the renderer elides the CASE to bare content
+            # (base.py) -- the where aggregate is then NOT in the column and the
+            # filter follows its content, so only widen for the un-elided case.
             if c.derivation == Derivation.FILTER and isinstance(
                 c.lineage, BuildFilterItem
             ):
-                return any(
+                if any(
                     has_local_aggregate(x) for x in c.lineage.content_concept_arguments
+                ):
+                    return True
+                where_cond = c.lineage.where.conditional
+                elided = self.condition is not None and (
+                    self.condition == where_cond
+                    or condition_implies(self.condition, where_cond)
+                )
+                return not elided and any(
+                    has_local_aggregate(x)
+                    for x in c.lineage.where.rendered_concept_arguments
                 )
             if c.derivation == Derivation.BASIC and c.lineage:
                 return any(

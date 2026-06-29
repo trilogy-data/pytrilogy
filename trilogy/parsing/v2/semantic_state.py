@@ -550,6 +550,11 @@ class ConceptLookup:
         downstream `y.week_seq`, but they denote ONE output -> false ambiguity.
         A forward-only match (no real concept) that is an ordered subsequence of
         a real-concept match is that concept's alias; keep only the canonical.
+        A forward-only match that is NOT pending (never staged to become a real
+        output) is a pure symbol-table leak — e.g. a scoped self-join references
+        the OTHER source's same-named column as a join key (`joined.nxt.wk`),
+        which is never a projected output (q02). Once a real match exists, every
+        genuine output is already a real concept, so such a leak is dropped.
         Genuine ambiguity (`s.date.week_seq` vs `s.return_date.week_seq`, both
         real, neither a subsequence of the other) is untouched."""
         if len(matches) < 2:
@@ -564,10 +569,12 @@ class ConceptLookup:
                 forward.append(addr)
         if not real:
             return matches
+        pending = {a for a, _ in self._state.pending_concepts()}
         kept_forward = [
             f
             for f in forward
-            if not any(_is_subsequence(f.split("."), r.split(".")) for r in real)
+            if f in pending
+            and not any(_is_subsequence(f.split("."), r.split(".")) for r in real)
         ]
         return real + kept_forward
 
@@ -585,6 +592,23 @@ class ConceptLookup:
             if len(q_segs) < 2 or q_segs[0] not in rowset_namespaces:
                 continue
             prefix = q_segs[0] + "."
+            # An explicit alias/transform output (`deduped.yr as yr` -> `yearly.yr`)
+            # is itself the column, not a leaf-shorthand that must expand to its
+            # source path (`yearly.deduped.yr`). When the rowset has not yet
+            # committed (autos hydrate before the rowset stages concepts), the
+            # subsequence pass below would otherwise drop this exact match
+            # (`addr != candidate`) and bind to the deeper source ref, baking a
+            # `<outer>.<inner>` address that later fails lookup. Resolve declared
+            # alias outputs to themselves. Pass-through outputs (`select base.col`
+            # with no alias) are NOT recorded here, so their leaf-shorthand still
+            # expands to the canonical deep path.
+            if candidate in self._env.concepts.rowset_alias_outputs:
+                existing = self._existing_concept(candidate)
+                if existing is not None and not isinstance(
+                    existing, UndefinedConceptFull
+                ):
+                    return existing
+                return self._make_scoped_placeholder(candidate)
             matches = [
                 addr
                 for addr in self._rowset_output_addresses(prefix)

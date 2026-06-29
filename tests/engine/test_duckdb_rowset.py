@@ -62,6 +62,62 @@ order by item_id asc;
     assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
 
 
+_HIDDEN_AGG_FIXTURE = """
+key sale_id int;
+property sale_id.cust_id int;
+property sale_id.quantity int;
+property sale_id.price float;
+
+datasource sales (
+    sale_id: sale_id,
+    cust_id: cust_id,
+    quantity: quantity,
+    price: price,
+)
+grain (sale_id)
+query '''
+select 1 as sale_id, 100 as cust_id, 2 as quantity, 5.0 as price union all
+select 2 as sale_id, 100 as cust_id, 3 as quantity, 4.0 as price union all
+select 3 as sale_id, 200 as cust_id, 1 as quantity, 9.0 as price
+''';
+"""
+
+
+def test_rowset_hidden_aggregate_output_materialized_when_referenced():
+    # The q23 shape: a rowset hides (`--`) an aggregate output, then a downstream
+    # select references it. The hidden marker dropped the aggregate from the
+    # rowset's grouping CTE entirely, so the downstream projection re-derived its
+    # inner expression (`quantity * price`) against the already-grouped parent
+    # whose raw operands are gone → `INVALID_REFERENCE_BUG * INVALID_REFERENCE_BUG`
+    # (a hard `generate_sql` failure). A hidden rowset output that backs a
+    # referenced rowset concept must still materialize at its grouping node.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_HIDDEN_AGG_FIXTURE)
+    sql = executor.generate_sql("""
+with customer_totals as
+where cust_id is not null
+select
+    cust_id as ct_cust_id,
+    --sum(quantity * price) as lifetime_total;
+
+select customer_totals.ct_cust_id, customer_totals.lifetime_total
+order by customer_totals.ct_cust_id asc;
+""")[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    results = executor.execute_text("""
+with customer_totals as
+where cust_id is not null
+select
+    cust_id as ct_cust_id,
+    --sum(quantity * price) as lifetime_total;
+
+select customer_totals.ct_cust_id, customer_totals.lifetime_total
+order by customer_totals.ct_cust_id asc;
+""")[0].fetchall()
+    # cust 100 = 2*5 + 3*4 = 22; cust 200 = 1*9 = 9
+    assert [tuple(r) for r in results] == [(100, 22.0), (200, 9.0)]
+
+
 _SELF_WELD_FIXTURE = """
 key sale_id int;
 property sale_id.wk int;
@@ -453,6 +509,34 @@ select 10 as sale_id, 5 as sale_cust, 30 as amount
 """
 
 
+# SCD-style: business id 'W' (web) has THREE surrogate keys (sk 10/11/12), 'S'
+# (store) has one (sk 1). A measure that loses its grain and is read as a grouped
+# property fans out across the surrogate versions of the same business id (the
+# real q05 WEB over-count).
+_SCD_FANOUT_FIXTURE = """
+key line_id int;
+property line_id.chan string;
+property line_id.sk int;
+property line_id.ent string;
+property line_id.amt int;
+
+datasource lines (
+    line_id: line_id,
+    chan: chan,
+    sk: sk,
+    ent: ent,
+    amt: amt,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 'WEB' as chan, 10 as sk, 'W' as ent, 100 as amt union all
+select 2 as line_id, 'WEB' as chan, 11 as sk, 'W' as ent, 200 as amt union all
+select 3 as line_id, 'WEB' as chan, 12 as sk, 'W' as ent, 300 as amt union all
+select 4 as line_id, 'STORE' as chan, 1 as sk, 'S' as ent, 50 as amt
+''';
+"""
+
+
 def test_rowset_aggregate_output_bucketed_and_counted_groups_per_bucket():
     # Two-level aggregation (TPC-DS q54 histogram shape): a rowset holds a
     # per-customer total (`sum(amount) by cust`); the outer query buckets that
@@ -476,6 +560,68 @@ order by seg asc;
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     # c1=10,c2=10 -> seg 1; c3=20 -> seg 2; c4=50,c5=50 -> seg 5
     assert results == [(1, 2), (2, 1), (5, 2)]
+
+
+def test_global_aggregate_over_two_level_rowset_chain_collapses():
+    # A union rowset (`combined`) feeds a SECOND passthrough rowset (`formatted`)
+    # that only relabels a grain column and re-projects the measure. A global
+    # `sum(formatted.v)` (abstract grain) must collapse to ONE row — same as the
+    # single-level `sum(combined.v)`. It used to fan out (one row per formatted
+    # row, sum silently dropped) because the passthrough measure `formatted.v` —
+    # grain-less since `combined.v` is an abstract union output — wrongly took the
+    # q54 grain-less-aggregate branch and adopted the rowset's row grain
+    # (self-referential), so the planner read it as a grouped property and never
+    # re-aggregated (q05).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_FIXTURE)
+    query = """
+with combined as union(
+    (where yr = 2001 select item_id as k, val as v),
+    (where yr = 2002 select item_id as k, 0 as v)
+) -> (k, v);
+
+with formatted as select concat('x', cast(combined.k as string)) as kf, combined.v;
+
+select sum(formatted.v) as total;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "sum(" in sql.lower()
+    # single-level reference: yr2001 vals 10 + 5 = 15, yr2002 zeroed.
+    single = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id as k, val as v),
+    (where yr = 2002 select item_id as k, 0 as v)
+) -> (k, v);
+select sum(combined.v) as total;
+""")[0].fetchall()
+    assert [tuple(r) for r in single] == [(15,)]
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [(15,)]
+
+
+def test_grouped_aggregate_over_two_level_rowset_chain_no_scd_fanout():
+    # Same chain as the global-sum test, but the outer aggregate GROUPS BY a
+    # carried dimension (the real q05 WEB shape). The passthrough measure
+    # `formatted.amt` is grain-less (it relabels an abstract union output); if it
+    # adopts the formatted row grain it reads as a grouped property and fans out
+    # across the SCD surrogate keys of each business id, inflating the per-group
+    # sum. `WEB` ('W' = 100+200+300) must total 600, not a fanned multiple.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_SCD_FANOUT_FIXTURE)
+    query = """
+with combined as union(
+    (where line_id.amt > 0 select line_id.chan as channel, line_id.ent as entity, line_id.amt as gross),
+    (where line_id.amt < 0 select line_id.chan as channel, line_id.ent as entity, 0 as gross)
+) -> (channel, entity, gross);
+
+with formatted as
+select concat('x', combined.entity) as ent_fmt, combined.channel as channel2, combined.gross as gross2;
+
+select formatted.channel2, sum(formatted.gross2) as g
+order by formatted.channel2 asc;
+"""
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [("STORE", 50), ("WEB", 600)]
 
 
 def test_tvf_union_named():
@@ -802,6 +948,54 @@ order by combined.k asc;
     assert [tuple(r) for r in results] == [(1, 45), (2, 15)]
 
 
+_TVF_UNION_DISJOINT_FIXTURE = """
+key line_id int;
+property line_id.kind string;
+property line_id.ent string;
+property line_id.gross int;
+property line_id.ret int;
+
+datasource lines (
+    line_id: line_id,
+    kind: kind,
+    ent: ent,
+    gross: gross,
+    ret: ret,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 'sale' as kind, 'A' as ent, 100 as gross, 0 as ret union all
+select 2 as line_id, 'sale' as kind, 'A' as ent, 200 as gross, 0 as ret union all
+select 3 as line_id, 'return' as kind, 'A' as ent, 0 as gross, 5 as ret union all
+select 4 as line_id, 'sale' as kind, 'B' as ent, 300 as gross, 0 as ret union all
+select 5 as line_id, 'return' as kind, 'B' as ent, 0 as gross, 7 as ret union all
+select 6 as line_id, 'return' as kind, 'B' as ent, 0 as gross, 8 as ret
+''';
+"""
+
+
+def test_tvf_union_disjoint_arm_measures_no_broadcast():
+    # A line-grain union whose arms feed a shared key (`e`) plus DISJOINT measures
+    # (each arm carries one real measure, `0` placeholder for the other), then a
+    # grouped consumer sums each. The arm-1 measure (`r`) used to lose correlation
+    # to `e`, get summed at the coarse arm grain, and broadcast that constant onto
+    # every entity (q05 returns broadcast). `r` must stay per-entity: A=5, B=7+8=15
+    # — NOT the channel total 20 on both rows.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_DISJOINT_FIXTURE)
+    query = """
+with combined as union(
+  (where line_id.kind = 'sale'   select line_id.ent as e, line_id.gross as g, 0 as r),
+  (where line_id.kind = 'return' select line_id.ent as e, 0 as g, line_id.ret as r)
+) -> (e, g, r);
+
+select combined.e, sum(combined.g) as tg, sum(combined.r) as tr
+order by combined.e asc;
+"""
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [("A", 300, 5), ("B", 300, 15)]
+
+
 _TVF_UNION_JOIN_FIXTURE = """
 key store_id int;
 key return_store_id int;
@@ -1027,3 +1221,59 @@ limit 100;
     assert "combined_store_agg_store_qty" in sql
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     assert results == [(1, 10.0, 5.0, 3.0), (2, 20.0, 7.0, 9.0)]
+
+
+_TOP_N_RANK_FIXTURE = """
+key sale_id int;
+property sale_id.state string;
+property sale_id.profit float;
+
+datasource sales (
+    sale_id: sale_id,
+    state: state,
+    profit: profit,
+)
+grain (sale_id)
+query '''
+select 1 sale_id, 'A' state, 40.0 profit union all
+select 2 sale_id, 'A' state, 20.0 profit union all
+select 3 sale_id, 'B' state, 50.0 profit union all
+select 4 sale_id, 'C' state, 40.0 profit union all
+select 5 sale_id, 'D' state, 30.0 profit union all
+select 6 sale_id, 'E' state, 20.0 profit union all
+select 7 sale_id, 'F' state, 10.0 profit
+''';
+"""
+
+
+def test_top_n_rank_filter_over_inline_aggregate_in_rowset():
+    # Regression (TPC-DS q70): a rowset that BOTH projects an aggregate output
+    # (`sum(profit) as state_total`) AND filters with `having rank(state) over
+    # (order by sum(profit) desc) <= N`, where the rank's ORDER BY is an *inline*
+    # aggregate rather than the projected concept. The inline order-by aggregate
+    # was a different concept address from the projected one, so the QUALIFY CTE's
+    # source_map lacked it and the renderer emitted an INVALID_REFERENCE_BUG
+    # sentinel (`order by INVALID_REFERENCE_BUG desc`). Finalize now collapses the
+    # inline order-by aggregate onto the matching SELECT alias.
+    executor = Dialects.DUCK_DB.default_executor()
+    query = _TOP_N_RANK_FIXTURE + """
+rowset top_states <-
+select
+    state,
+    sum(profit) as state_total
+having
+    rank(state) over (order by sum(profit) desc) <= 5;
+select top_states.state, top_states.state_total
+order by top_states.state_total desc, top_states.state asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # F (sum=10) is ranked 6th and excluded; A=60, B=50, C=40, D=30, E=20.
+    assert results == [
+        ("A", 60.0),
+        ("B", 50.0),
+        ("C", 40.0),
+        ("D", 30.0),
+        ("E", 20.0),
+    ]

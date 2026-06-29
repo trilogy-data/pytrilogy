@@ -1,6 +1,6 @@
 import part;
 
-auto germany_total_value <- sum(supply_cost * available_quantity ? supplier.nation.name = 'GERMANY');
+auto germany_total_value <- sum(supply_cost * available_quantity ? supplier.nation.name = 'GERMANY') by *;
 auto part_total_value <- sum(supply_cost * available_quantity ? supplier.nation.name = 'GERMANY') by id;
 
 where part_total_value > germany_total_value * 0.0001

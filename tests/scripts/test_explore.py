@@ -1,5 +1,6 @@
 """Tests for `trilogy explore` and `trilogy run --import`."""
 
+import json as json_module
 from pathlib import Path
 from textwrap import dedent
 
@@ -354,6 +355,89 @@ def test_explore_metrics_appear_in_group_view(runner, tmp_path: Path):
     assert result.exit_code == 0, result.output
     assert "total : " in result.output
     assert "    METRIC" in result.output
+
+
+@pytest.fixture
+def conformed_preql(tmp_path: Path) -> Path:
+    """A fact that imports one date dimension under two roles — the minimal
+    conformed-dimension shape the v2 dedup targets."""
+    (tmp_path / "d.preql").write_text(
+        dedent("""
+            key id int; # a calendar date
+            property id.year int; # four-digit year
+            datasource d (id, year) grain(id)
+            query '''select 1 as id, 2001 as year''';
+            """).strip() + "\n",
+        encoding="utf-8",
+    )
+    fact = tmp_path / "f.preql"
+    fact.write_text(
+        "import d as sold_date;\nimport d as ship_date;\nkey fid int;\n",
+        encoding="utf-8",
+    )
+    return fact
+
+
+def _concepts_payload(env, expand_roles=False, version=None):
+    from trilogy.scripts.explore import build_concepts_payload
+
+    items = [
+        (k, v)
+        for k, v in env.concepts.items()
+        if not k.startswith("__") and not k.startswith("local._env_")
+    ]
+    return build_concepts_payload(
+        env, items, expand_imports=True, expand_roles=expand_roles, version=version
+    )
+
+
+def test_explore_v2_collapses_conformed_roles(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment
+
+    payload = _concepts_payload(_load_environment(conformed_preql), version=2)
+    assert payload["version"] == 2
+    # The two date roles share one combined-key entry, not two full schemas.
+    combined = [k for k in payload["namespaces"] if "," in k]
+    assert combined == ["sold_date, ship_date"] or combined == ["ship_date, sold_date"]
+    assert "same_as" not in json_module.dumps(payload)
+
+
+def test_explore_v1_renders_every_role_in_full(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment
+
+    payload = _concepts_payload(_load_environment(conformed_preql), version=1)
+    assert payload["version"] == 1
+    assert "sold_date" in payload["namespaces"]
+    assert "ship_date" in payload["namespaces"]
+    assert not any("," in k for k in payload["namespaces"])
+
+
+def test_explore_expand_roles_forces_full_at_v2(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment
+
+    payload = _concepts_payload(
+        _load_environment(conformed_preql), expand_roles=True, version=2
+    )
+    assert payload["version"] == 2  # version unchanged…
+    assert "sold_date" in payload["namespaces"]  # …but roles not collapsed
+    assert "ship_date" in payload["namespaces"]
+
+
+def test_explore_default_json_version_is_2(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment, render_version
+
+    assert render_version("json") == 2
+    payload = _concepts_payload(_load_environment(conformed_preql))
+    assert payload["version"] == 2
+
+
+def test_render_version_override_restores(conformed_preql: Path):
+    from trilogy.scripts.explore import render_version, render_version_override
+
+    assert render_version("json") == 2
+    with render_version_override("json", 1):
+        assert render_version("json") == 1
+    assert render_version("json") == 2
 
 
 def test_explore_show_imports_lists_alias_and_path(runner, tmp_path: Path):

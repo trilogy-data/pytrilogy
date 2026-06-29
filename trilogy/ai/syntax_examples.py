@@ -161,6 +161,10 @@ order by iris.species asc;
 #   an aggregate's result       -> HAVING    `having total_amount > 10000`
 #                                             (select it, hide with `--`)
 #   aggregate just SOME rows    -> inline `?` `sum(x.amount ? x.amount > 10000)`
+#
+# An aggregate condition CAN go in WHERE as a pre-filter (`where count(x) > 0`);
+# it auto-grains to the SELECT grain (same groups as HAVING). Use `by <grain>` to
+# pin a different grain, or `by *` to compare against a whole-table total.
 """,
     ),
     SyntaxExample(
@@ -652,7 +656,7 @@ limit 100;
         summary=(
             "translate `EXISTS other` / `NOT EXISTS other matching` over the same "
             "model into two `count(...) by <grain>` compared in `where` "
-            "(`> 1` = another exists, `= 1` = no other matches) — don't filter on a boolean-of-aggregate"
+            "(`> 1` = another exists, `= 1` = no other matches) — pin the correlation grain with `by`"
         ),
         body="""\
 # A self-referential EXISTS / NOT-EXISTS (e.g. "the ONLY enrollee who completed
@@ -661,9 +665,10 @@ limit 100;
 #   count(k) by <grain> > 1            -- EXISTS another row in the group
 #   count(k ? cond) by <grain> = 1     -- NOT EXISTS another row matching cond
 #                                         (exactly one matches: the row itself)
-# Do NOT build `auto flag <- count(...) > 0` and filter on `flag` — a boolean
-# derived from an aggregate can't be used in `where`/another aggregate (the
-# planner emits "WHERE clause cannot contain aggregates"). Inline the comparison.
+# An aggregate condition in `where` auto-grains to the SELECT grain (like
+# `having`). When the correlation grain DIFFERS from the select grain — as here
+# (correlate by course, select per student) — you MUST pin it with `by <grain>`;
+# a bare `count(...) > 0` would group by the select grain and give wrong rows.
 import enrollments as enroll;
 
 auto enrollees_per_course <- count(enroll.student_id) by enroll.course;

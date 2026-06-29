@@ -1,7 +1,7 @@
 query_id = "24"
 generator = "v3"
-gen_length = 3749
-preql_size = 707
+gen_length = 3763
+preql_size = 649
 comp_size = 1264
 generated_sql = """
 
@@ -44,7 +44,7 @@ GROUP BY
     3),
 vacuous as (
 SELECT
-    avg(\"yummy\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
+    avg(\"yummy\".\"_virt_agg_sum_1360566110228423\") as \"_virt_agg_avg_3671348824407731\"
 FROM
     \"yummy\")
 SELECT
@@ -56,5 +56,5 @@ FROM
     \"vacuous\"
     INNER JOIN \"questionable\" on 1=1
 WHERE
-    \"questionable\".\"peach_sales\" > 0.05 * \"vacuous\".\"avg_store_customer_sales\"
+    \"questionable\".\"peach_sales\" > 0.05 * (\"vacuous\".\"_virt_agg_avg_3671348824407731\")
 """

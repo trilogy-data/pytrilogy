@@ -1791,3 +1791,100 @@ def test_render_hash_round_trip():
     rendered = Renderer(environment=env).render_statement_string(queries)
     assert "hash(s, sha256)" in rendered, rendered
     Environment(working_path=".").parse(rendered)
+
+
+def test_render_column_alias_with_spaces_is_backtick_quoted():
+    """A datasource column alias that isn't a bare identifier (spaces, etc.)
+    must render backtick-quoted so the rendered source re-parses."""
+    from trilogy.core.models.environment import DictImportResolver
+    from trilogy.parsing.render import quote_column_alias
+
+    assert quote_column_alias("Name") == "Name"
+    assert quote_column_alias("Net Worth 1918 Dollars") == "`Net Worth 1918 Dollars`"
+    assert quote_column_alias("a.b") == "a.b"
+    assert quote_column_alias("1abc") == "`1abc`"
+
+    env = Environment()
+    name = Concept(
+        name="full_name",
+        namespace="local",
+        datatype=DataType.STRING,
+        purpose=Purpose.KEY,
+    )
+    money = Concept(
+        name="net_worth",
+        namespace="local",
+        datatype=DataType.STRING,
+        purpose=Purpose.PROPERTY,
+        keys={name.address},
+    )
+    env.add_concept(name)
+    env.add_concept(money)
+    env.add_datasource(
+        Datasource(
+            name="rich",
+            address="rich",
+            columns=[
+                ColumnAssignment(alias="Name", concept=name.reference),
+                ColumnAssignment(
+                    alias="Net Worth 1918 Dollars", concept=money.reference
+                ),
+            ],
+            grain=Grain(components={name.address}),
+        )
+    )
+    src = render_environment(env)
+    assert "`Net Worth 1918 Dollars`: net_worth" in src, src
+
+    target = Environment()
+    target.config.import_resolver = DictImportResolver(content={"rich": src})
+    target.parse("import rich as rich;")
+    assert "rich.net_worth" in target.concepts
+
+
+def test_render_environment_skips_working_path_scaffolding():
+    """Internal ``_env_working_path`` (and ``_env_*``) scaffolding must not be
+    rendered into user-facing source, nor leak a host path."""
+    env = Environment()
+    env.add_concept(
+        Concept(
+            name="p", namespace="local", datatype=DataType.STRING, purpose=Purpose.KEY
+        )
+    )
+    src = render_environment(env)
+    assert "_env_working_path" not in src, src
+
+
+def test_render_python_assembled_import_uses_alias_not_host_path():
+    """``add_import(alias, child_env)`` records the child's absolute working
+    path; the renderer must emit ``import <alias> as <alias>;`` rather than a
+    dotted host path, and the result must round-trip via an alias-keyed
+    resolver."""
+    from trilogy.core.models.environment import DictImportResolver
+
+    child = Environment()
+    child.add_concept(
+        Concept(
+            name="k", namespace="local", datatype=DataType.STRING, purpose=Purpose.KEY
+        )
+    )
+    child_src = render_environment(child)
+
+    parent = Environment()
+    parent.add_concept(
+        Concept(
+            name="p", namespace="local", datatype=DataType.STRING, purpose=Purpose.KEY
+        )
+    )
+    parent.add_import("child", child)
+    parent_src = render_environment(parent)
+
+    import_lines = [
+        line for line in parent_src.splitlines() if line.strip().startswith("import")
+    ]
+    assert import_lines == ["import child as child;"], import_lines
+
+    target = Environment()
+    target.config.import_resolver = DictImportResolver(content={"child": child_src})
+    target.parse(parent_src)
+    assert "child.k" in target.concepts

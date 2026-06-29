@@ -4,74 +4,116 @@
 
 | category | passing | newly unlocked | regressions |
 |---|---|---|---|
-| ingest | 12/57 | q01, q27, q44, q45, q47, q58, q59, q65, q70, q83, q90, q95 | — |
-| enriched | 22/57 | q06, q16, q34, q49, q53, q60, q62, q88, q89, q93, q94, q96, q97 | q44, q83, q95 |
+| db-only | 72/99 | q01, q03, q04, q05, q06, q07, q08, q09, q10, q11, q12, q13, q14, q15, q16, q17, q19, q21, q22, q25, q26, q27, q28, q30, q32, q33, q34, q35, q36, q37, q38, q39, q40, q41, q42, q43, q44, q46, q47, q48, q49, q52, q53, q55, q57, q58, q59, q60, q62, q63, q64, q65, q68, q69, q71, q72, q73, q74, q75, q76, q82, q83, q84, q85, q87, q88, q89, q91, q92, q94, q96, q99 | — |
+| db+schema | 75/99 | q02, q29, q45, q61, q67, q70, q79, q81, q86, q90, q98 | q06, q30, q36, q49, q58, q69, q83, q84 |
 
 ## Metrics
 
 | category | pass rate | total tokens |
 |---|---|---|
-| ingest | 0.21 | 56,971,110 |
-| enriched | 0.39 | 35,522,841 |
+| db-only | 0.73 | 13,556,169 |
+| db+schema | 0.76 | 16,724,420 |
 
 ## Per-query matrix
 
-| query | ingest | enriched |
+| query | db-only | db+schema |
 |---|---|---|
 | q01 | ✅ | ✅ |
-| q02 | ❌ exhausted | ❌ fail |
-| q05 | ❌ fail | ❌ exhausted |
-| q06 | ❌ fail | ✅ |
-| q14 | ❌ fail | ❌ fail |
-| q15 | ❌ fail | ❌ fail |
-| q16 | ❌ fail | ✅ |
+| q02 | ❌ fail | ✅ |
+| q03 | ✅ | ✅ |
+| q04 | ✅ | ✅ |
+| q05 | ✅ | ✅ |
+| q06 | ✅ | ❌ fail |
+| q07 | ✅ | ✅ |
+| q08 | ✅ | ✅ |
+| q09 | ✅ | ✅ |
+| q10 | ✅ | ✅ |
+| q11 | ✅ | ✅ |
+| q12 | ✅ | ✅ |
+| q13 | ✅ | ✅ |
+| q14 | ✅ | ✅ |
+| q15 | ✅ | ✅ |
+| q16 | ✅ | ✅ |
+| q17 | ✅ | ✅ |
 | q18 | ❌ fail | ❌ fail |
+| q19 | ✅ | ✅ |
+| q20 | ❌ fail | ❌ fail |
+| q21 | ✅ | ✅ |
+| q22 | ✅ | ✅ |
 | q23 | ❌ fail | ❌ fail |
 | q24 | ❌ fail | ❌ fail |
+| q25 | ✅ | ✅ |
+| q26 | ✅ | ✅ |
 | q27 | ✅ | ✅ |
-| q30 | ❌ fail | ❌ fail |
+| q28 | ✅ | ✅ |
+| q29 | ❌ fail | ✅ |
+| q30 | ✅ | ❌ fail |
 | q31 | ❌ fail | ❌ fail |
-| q34 | ❌ fail | ✅ |
-| q35 | ❌ fail | ❌ fail |
-| q38 | ❌ fail | ❌ fail |
-| q41 | ❌ fail | ❌ fail |
-| q44 | ✅ | ❌ exhausted |
-| q45 | ✅ | ✅ |
-| q46 | ❌ fail | ❌ fail |
+| q32 | ✅ | ✅ |
+| q33 | ✅ | ✅ |
+| q34 | ✅ | ✅ |
+| q35 | ✅ | ✅ |
+| q36 | ✅ | ❌ fail |
+| q37 | ✅ | ✅ |
+| q38 | ✅ | ✅ |
+| q39 | ✅ | ✅ |
+| q40 | ✅ | ✅ |
+| q41 | ✅ | ✅ |
+| q42 | ✅ | ✅ |
+| q43 | ✅ | ✅ |
+| q44 | ✅ | ✅ |
+| q45 | ❌ fail | ✅ |
+| q46 | ✅ | ✅ |
 | q47 | ✅ | ✅ |
-| q49 | ❌ fail | ✅ |
+| q48 | ✅ | ✅ |
+| q49 | ✅ | ❌ fail |
 | q50 | ❌ fail | ❌ fail |
 | q51 | ❌ fail | ❌ fail |
-| q53 | ❌ fail | ✅ |
+| q52 | ✅ | ✅ |
+| q53 | ✅ | ✅ |
 | q54 | ❌ fail | ❌ fail |
+| q55 | ✅ | ✅ |
 | q56 | ❌ fail | ❌ fail |
-| q58 | ✅ | ✅ |
+| q57 | ✅ | ✅ |
+| q58 | ✅ | ❌ fail |
 | q59 | ✅ | ✅ |
-| q60 | ❌ fail | ✅ |
-| q62 | ❌ fail | ✅ |
-| q64 | ❌ exhausted | ❌ fail |
+| q60 | ✅ | ✅ |
+| q61 | ❌ fail | ✅ |
+| q62 | ✅ | ✅ |
+| q63 | ✅ | ✅ |
+| q64 | ✅ | ✅ |
 | q65 | ✅ | ✅ |
-| q66 | ❌ exhausted | ❌ fail |
-| q67 | ❌ fail | ❌ fail |
-| q69 | ❌ fail | ❌ fail |
-| q70 | ✅ | ✅ |
-| q73 | ❌ fail | ❌ fail |
-| q75 | ❌ fail | ❌ fail |
-| q76 | ❌ fail | ❌ fail |
-| q77 | ❌ exhausted | ❌ fail |
+| q66 | ❌ fail | ❌ fail |
+| q67 | ❌ fail | ✅ |
+| q68 | ✅ | ✅ |
+| q69 | ✅ | ❌ fail |
+| q70 | ❌ fail | ✅ |
+| q71 | ✅ | ✅ |
+| q72 | ✅ | ✅ |
+| q73 | ✅ | ✅ |
+| q74 | ✅ | ✅ |
+| q75 | ✅ | ✅ |
+| q76 | ✅ | ✅ |
+| q77 | ❌ fail | ❌ fail |
 | q78 | ❌ fail | ❌ fail |
-| q79 | ❌ fail | ❌ fail |
-| q80 | ❌ exhausted | ❌ fail |
-| q81 | ❌ fail | ❌ fail |
+| q79 | ❌ fail | ✅ |
+| q80 | ❌ fail | ❌ fail |
+| q81 | ❌ fail | ✅ |
+| q82 | ✅ | ✅ |
 | q83 | ✅ | ❌ fail |
-| q84 | ❌ fail | ❌ fail |
-| q87 | ❌ exhausted | ❌ fail |
-| q88 | ❌ fail | ✅ |
-| q89 | ❌ fail | ✅ |
-| q90 | ✅ | ✅ |
-| q93 | ❌ fail | ✅ |
-| q94 | ❌ fail | ✅ |
-| q95 | ✅ | ❌ fail |
-| q96 | ❌ fail | ✅ |
-| q97 | ❌ fail | ✅ |
-| q99 | ❌ fail | ❌ fail |
+| q84 | ✅ | ❌ fail |
+| q85 | ✅ | ✅ |
+| q86 | ❌ fail | ✅ |
+| q87 | ✅ | ✅ |
+| q88 | ✅ | ✅ |
+| q89 | ✅ | ✅ |
+| q90 | ❌ fail | ✅ |
+| q91 | ✅ | ✅ |
+| q92 | ✅ | ✅ |
+| q93 | ❌ fail | ❌ fail |
+| q94 | ✅ | ✅ |
+| q95 | ❌ fail | ❌ fail |
+| q96 | ✅ | ✅ |
+| q97 | ❌ fail | ❌ fail |
+| q98 | ❌ fail | ✅ |
+| q99 | ✅ | ✅ |

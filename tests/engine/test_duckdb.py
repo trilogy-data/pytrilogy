@@ -196,6 +196,38 @@ select case when grouping(brand) = 1 then 'tot' else brand end as ct,
             engine.generate_sql(select)
 
 
+def test_grouping_in_where_raises_clean_error():
+    """`grouping()` in a WHERE clause is semantically invalid: WHERE runs before
+    grouping, so there is no grouping set to anchor to. The planner used to
+    materialize it as a standalone groupless `GROUPING()` CTE -> generate_sql
+    succeeded but DuckDB rejected it ("GROUPING statement cannot be used without
+    groups"). Reject it at author time instead. q70."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+where grouping(brand) = 1 or brand = 'B'
+select brand, class, sum(amount) as total,
+by rollup (brand, class);
+"""
+    with raises(InvalidSyntaxException, match="WHERE"):
+        engine.generate_sql(text)
+
+
+def test_grouping_in_having_no_rollup_executes():
+    """The valid sibling of the WHERE case: `grouping(<group key>)` in HAVING runs
+    post-aggregation against the implicit group key, so it is a valid (no-op)
+    filter even without an explicit rollup spec — must NOT be rejected. q70."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select brand, sum(amount) as total,
+having grouping(brand) = 0
+order by brand asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [tuple(r) for r in results] == [("A", 30.0), ("B", 130.0)]
+
+
 def test_grouping_in_named_concept_with_rollup_builds():
     """The valid form of the above: a named `auto` concept wrapping `grouping()`
     builds and runs as long as a `by rollup` aggregate in the select anchors it."""
@@ -407,6 +439,50 @@ order by channel asc, sales asc, profit asc, outlet asc nulls first;
         ("bb", None, 30.0, 6.0),
         ("bb", "xp", 30.0, 6.0),
         ("bb", None, 60.0, 16.0),
+    ]
+
+
+_ROLLUP_SIBLING_MODEL = """
+key oid int;
+property oid.chan int;
+property oid.ent int;
+property oid.etxt string;
+property oid.amt float;
+datasource sales (oid: oid, chan: chan, ent: ent, etxt: etxt, amt: amt)
+grain (oid)
+query '''select 1 as oid, 1 as chan, 10 as ent, 'AAA' as etxt, 10.0 as amt union all
+         select 2 as oid, 1 as chan, 11 as ent, 'BBB' as etxt, 30.0 as amt union all
+         select 3 as oid, 2 as chan, 20 as ent, 'CCC' as etxt, 5.0 as amt''';
+"""
+
+
+def test_rollup_sibling_column_join_preserves_subtotals():
+    """A projection over a column that is NOT a rollup key but is fetched at the
+    rollup grain via a join-back (`etxt`, a sibling of the rollup key `ent`) must
+    not lose the rollup rows. The rollup key `ent` is NULL at subtotal/grand-total
+    rows; the join carrying `etxt` is plain `=`, so an INNER upgrade would drop
+    every NULL-keyed rollup row. `UpgradeOuterFromKeySetEquivalence` wrongly read
+    the rollup side's GROUP BY grain as a complete value set and upgraded
+    LEFT_OUTER → INNER. q05 (store/catalog/web channel rollup report)."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_SIBLING_MODEL)
+    text = """
+select
+    case when chan = 1 then 'store' when chan = 2 then 'web' end as label,
+    case when chan = 1 then concat('store', etxt)
+         when chan = 2 then concat('web', etxt) end as entity_fmt,
+    sum(amt) as total
+by rollup (chan, ent)
+order by label asc nulls last, entity_fmt asc nulls last;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r[0], r[1], float(r[2])) for r in results] == [
+        ("store", "storeAAA", 10.0),
+        ("store", "storeBBB", 30.0),
+        ("store", None, 40.0),
+        ("web", "webCCC", 5.0),
+        ("web", None, 5.0),
+        (None, None, 45.0),
     ]
 
 
@@ -2640,6 +2716,36 @@ order by a asc, b asc nulls last;
     assert "WHERE" not in sql
     results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
     assert results == [(1, 1, 10), (1, 2, 20), (1, None, 30)]
+
+
+_NAMED_AGG_WHERE_MODEL = """
+key rid int;
+property rid.item int;
+property rid.ch string;
+datasource rows (rid: rid, item: item, ch: ch)
+grain (rid)
+query '''select 1 rid,100 item,'S' ch union all select 2,100,'W'
+         union all select 3,200,'W' union all select 4,300,'S' ''';
+auto f_byitem <- count(rid ? ch = 'S') by item > 0;
+"""
+
+
+def test_named_aggregate_concept_in_where_routes_to_having():
+    """Bug: a named/derived concept whose lineage is a Comparison wrapping an
+    aggregate (`count(...) by item > 0`), referenced in a top-level WHERE, was
+    classified scalar and rendered as an inline aggregate inside SQL `WHERE`
+    (DuckDB rejects aggregates there). The concept-reference indirection must
+    route to HAVING just like the equivalent inline form does."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_NAMED_AGG_WHERE_MODEL)
+    query = "where f_byitem select item order by item;"
+    sql = executor.generate_sql(query)[-1]
+    assert "HAVING" in sql
+    assert "WHERE" not in sql.split("HAVING")[1]
+    results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
+    assert results == [(100,), (300,)]
 
 
 def test_rollup_macro_in_having_vs_scalar_colocates():

@@ -8,7 +8,6 @@ rowset top_states <- where
     ss.date.month_seq between 1200 and 1211
 select
     ss.store.state as ts_state,
-    --state_rnk,
 having
     state_rnk <= 5
 ;

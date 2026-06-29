@@ -205,6 +205,34 @@ def _resolve_join_group(
     resolved: list[tuple[str, str]] = [
         _resolve_join_key(node, context, key) for key in keys
     ]
+    # A `=` chain binds ONE logical key equal across DISTINCT sources
+    # (`a.k = b.k = base.k`); an import/rowset source may appear at most once. Two
+    # bare-concept keys from the same source are a composite key mistakenly folded
+    # into one chain (`web.item = cat.item = web.cust = cat.cust`): the adjacency
+    # pairing below would then emit a cross-concept garbage pair
+    # (`cat.item = web.cust`) that downstream silently drops, collapsing the join
+    # toward a cross product. Reject it and point at the composite-key syntax. Only
+    # meaningful for 3+ keys — a 2-key chain is a single explicit pair (incl. a
+    # self-join). The address root identifies the source only for namespaced
+    # imports/rowsets; bare top-level concepts all share `local`, so skip that root
+    # (`ka = kb = kc` are distinct keys from distinct datasources).
+    if len(keys) >= 3:
+        seen_roots: dict[str, str] = {}
+        for (addr, label), key in zip(resolved, keys):
+            if not isinstance(key, ConceptRef):
+                continue
+            root = addr.split(".", 1)[0]
+            if root == DEFAULT_NAMESPACE:
+                continue
+            if root in seen_roots:
+                raise fail(
+                    node,
+                    f"Join chain repeats source `{root}` (keys "
+                    f"`{seen_roots[root]}` and `{label}`). A `=` chain joins ONE "
+                    "key across distinct sources; join a composite key with `and` "
+                    "or separate clauses (e.g. `a.k1 = b.k1 and a.k2 = b.k2`).",
+                )
+            seen_roots[root] = label
     joins: list[SelectJoin] = []
     for (la, ll), (ra, rl) in zip(resolved, resolved[1:]):
         if la == ra:

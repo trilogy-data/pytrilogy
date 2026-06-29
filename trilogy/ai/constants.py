@@ -16,6 +16,7 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 datasource — maps fields to a SQL table; left side is the SQL column, right side the field name.
 
 Models include facts + dimensions. Nullability and fanout are handled automatically, defaulting to preserving data: order.customers returns all customers, even those without orders. Add not null conditions to filter.
+
 ## Combining models
 
 
@@ -28,7 +29,9 @@ Models include facts + dimensions. Nullability and fanout are handled automatica
 
 ### Query-scoped join (the default)
 
-inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. right is unsupported — swap operands. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.week_seq + 53 = b.week_seq`), an aggregate, or a window; only `=` equality is supported.
+inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. Right unsupported; just flip to a left. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+
+joins indicate that concepts are *the same*; it is a conceptual operation not a field operation. inner join a=b means that a is null and b is not null is tautologically always false.
 
 Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH inner join a.order_number = b.order_number AND inner join a.item.id = b.item.id. Matching only one key of a multi-key grain fans out and double-counts — a top cause of wrong results.
 
@@ -75,9 +78,9 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 ### Not SQL — what to never write
 
 - **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
-- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY.
+- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate to a global scalar.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
-- **No subselects.** "Filter the fact by an attribute of a related entity" → reach across the import chain with a dot-path in WHERE:
+- **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
 - **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
@@ -93,7 +96,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 
 WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).
 
-WHERE pushdown scoping. WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
+WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
 ```
 where thing.key = 3
 select 
@@ -102,18 +105,18 @@ select
 having 
     total_val > 10
 ```
-HAVING references the projection only. Select what you filter on; hide it with a leading -- to keep it out of the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering to one year AFTER a lead/lag over the full series:
+HAVING filters after any where conditions are output, making it useful for window functions and other cases. You can hide concepts in the output projection to make them reusable in HAVING.
 ```
 select 
     student.state, 
     --sum(enroll.credits) as total_credits, 
-    --enroll.year
 having 
     total_credits > 1000 
     and enroll.year = 2020
 ```
 
-HAVING aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total. Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
+HAVING/WHERE aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total.
+ Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
 ```
 auto grand_total <- sum(enroll.credits) by *;
 
@@ -124,14 +127,22 @@ having
     student_total > 0.0001 * grand_total
 ```
 
-Aggregates in WHERE. To filter rows by an aggregate over pre-filter inputs, write the aggregate directly in WHERE with inline grouping agg(x) by grain (add an inline ? condition if needed):
+Aggregates in WHERE are not filtered by other items in the where clause, and inherit the select grain.
+To filter a aggregate in the where pre-aggregation, use inline condition (? ) inside the aggregate. 
+Use an explicit grain (such as `*` for a global total) to avoid the default select grain. 
 ```
 where enroll.year = 2020
   and course.credits > 1.2 * avg(course.credits ? explicit_other_condition) by course.department
+  and course.creds > 1.5 * avg(course.credits) by *
 select course.name, course.credits
 ```
 
-Membership in a computed set (SQL IN (subquery)): define the set as a derived concept (filter with ?), then test in against that concept. The right side is a concept, not a literal list — no (select ...). Both sides may be expressions; membership compares the left expression against every value of the right concept (a semi-join over a value set):
+## SemiJoins
+
+Semijoins are unique in that they do not require an explicit relationship to cross models, as the semijoin *is* a scoped intersection.
+
+Membership in a computed set (SQL IN (subquery)): define the set as a derived concept (filter with ?), then test in against that concept. 
+The right side is a concept or expression, not subselect. (in fact either side can be an expression) membership compares the left expression against every value of the right concept (a semi-join over a value set):
 ```
 auto big_zip <- student.zip ? (count(student.id ? student.honors = true) by student.zip) > 10;
 # schools whose 2-digit zip-prefix matches a high-honors-student zip:
@@ -164,12 +175,12 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 
 ## Window functions
 
-Default to windows for **self-referential queries** — relating a row to other rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank). Syntax is SQL-style:
+Default to windows for **self-referential queries**; relating a row to other rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank). Syntax is SQL-style:
 
 - Ranking: `rank(<key>) over (partition by <group> order by <expr> desc)` — e.g. `rank(name) over (partition by state order by sum(births) desc) as top_name`. `partition by` is optional (omit for one global window). `dense_rank`/`row_number` take the same shape.
 - Multi-key ranking: `rank(a, b) over (...)` — all comma-separated args are equal-status grain keys (used when ranking rollup output whose grain spans multiple columns).
 - `partition by` accepts arbitrary expressions, not just identifiers: `partition by upper(student.state), case when student.gpa >= 3.5 then 1 else 0 end`.
-- Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate — write `sum(x) by g` directly instead.
+- Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate; write `sum(x) by g` directly instead.
 - `lag(<field>, <offset>) over (partition by <g> order by <expr>)` fetches the value `<offset>` rows back; `lead(...)` fetches it ahead. Offset defaults to 1. Examples: `lag(amount, 2) over (order by date asc) as prev_amount`; next-year same week = `lead(weekly, 53) over (order by week_seq asc) as next_year`.
 
 ## Expressions and miscellany

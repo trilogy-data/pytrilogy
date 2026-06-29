@@ -8,6 +8,7 @@ from trilogy.parsing.v2.errors import (
     create_generic_syntax_error,
     create_syntax_error,
     detect_align_missing_and,
+    detect_by_on_non_aggregate,
     detect_by_on_wrapped_aggregate,
     detect_clause_after_join,
     detect_definition_after_clause,
@@ -275,6 +276,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     wrapped_by_pos = detect_by_on_wrapped_aggregate(text, pos)
     if wrapped_by_pos is not None:
         return create_syntax_error(212, wrapped_by_pos, text)
+
+    # 213: `by <grain>` attached to an expression with NO aggregate at all
+    # (e.g. `item.current_price by item.id`) — wrap it in `group(...)`.
+    non_agg_by_pos = detect_by_on_non_aggregate(text, pos)
+    if non_agg_by_pos is not None:
+        return create_syntax_error(213, non_agg_by_pos, text)
 
     # 223: `*` passed as a function argument (the SQL `count(*)` idiom).
     star_pos = detect_star_argument(text, pos)

@@ -231,9 +231,14 @@ def is_scalar_condition(
     elif isinstance(element, CONCEPT_TYPES):
         if materialized and element.address in materialized:
             return True
-        if element.lineage and isinstance(element.lineage, AGGREGATE_TYPES):
-            return is_scalar_condition(element.lineage, materialized)
-        if element.lineage and isinstance(element.lineage, FUNCTION_TYPES):
+        # Recurse into any lineage type is_scalar_condition understands, so an
+        # aggregate wrapped behind a concept name — directly (AggregateWrapper),
+        # in an expression (Function), or in a boolean (Comparison/Conditional/
+        # Between) — is seen and routed to HAVING rather than inlined in WHERE.
+        if element.lineage and isinstance(
+            element.lineage,
+            AGGREGATE_TYPES + FUNCTION_TYPES + CONDITION_TYPES,
+        ):
             return is_scalar_condition(element.lineage, materialized)
         return True
     elif isinstance(element, AGGREGATE_TYPES):

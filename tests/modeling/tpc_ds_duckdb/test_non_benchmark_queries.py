@@ -6,7 +6,10 @@ import pytest
 
 from trilogy import Dialects, Executor
 from trilogy.constants import CONFIG
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    UnresolvableQueryException,
+)
 from trilogy.core.models.build import BuildAggregateWrapper, BuildGrain
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
@@ -135,6 +138,101 @@ select ss.item.text_id, count(ss.line_item) as cnt;
         engine.generate_sql(query)
 
 
+@pytest.mark.parametrize(
+    "filter_clause",
+    [
+        "having r.wk in (r.wk ? sales.date.year = 2001)",
+        "auto rel <- r.wk ? sales.date.year = 2001;\nselect r.wk, r.amt having r.wk in rel",
+    ],
+    ids=["inline", "named_auto"],
+)
+def test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error(
+    engine, filter_clause
+):
+    """Filtering a rowset output (`r.wk`) by a concept not among the rowset's
+    outputs (`sales.date.year`, aggregated away) is just a disconnected grouping:
+    the rowset is materialized at grain `(wk, dow)`, so the filtered value and the
+    condition concept live in different reference-graph components. This used to
+    dead-end on the opaque hashed `_virt_filter_wk_<hash>` concept (a 40-turn
+    churn); the filter's hidden condition concept is now surfaced so the standard
+    disconnected-subgraphs error fires — naming `r.wk` and `sales.date.year`,
+    pointing at a join/merge, plus a rowset-specific remedy hint."""
+    base = """
+import all_sales as sales;
+rowset r <- where sales.channel in ('WEB','CATALOG')
+select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
+"""
+    select = (
+        filter_clause
+        if filter_clause.startswith("auto")
+        else f"select r.wk, r.amt\n{filter_clause}"
+    )
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        engine.generate_sql(base + select + ";")
+    message = str(exc.value)
+    assert "sales.date.year" in message
+    assert "r.wk" in message
+    assert "join or merge" in message
+    assert "rowset `r`" in message
+    # CTA names the real remedies (add to rowset / existence comparison / join)
+    assert "existence comparison" in message
+    assert "_virt_filter" not in message
+
+
+def test_q02_filter_rowset_output_by_in_grain_concept_still_resolves(engine):
+    """Guard the diagnostic doesn't over-fire: filtering a rowset output by an
+    IN-grain rowset column (`r.dow`) is satisfiable and must still plan."""
+    query = """
+import all_sales as sales;
+rowset r <- where sales.channel in ('WEB','CATALOG')
+select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
+select r.wk, r.amt having r.wk in (r.wk ? r.dow = 0);
+"""
+    assert engine.generate_sql(query)
+
+
+def test_q64_correlated_filter_membership_clean_error(engine):
+    """Membership whose RHS filters one fact by a correlated equality to the OUTER
+    fact (`ss.ticket in (sr.ticket ? sr.ticket = ss.ticket)`) is unresolvable —
+    store_sales and store_returns have no fact-to-fact join, and Trilogy `?`
+    filters are not correlated subqueries. The correlated `=` used to mint a
+    virtual filter concept whose lineage referenced both facts, adding a graph
+    edge that falsely bridged the two disconnected components; the disconnect
+    guard then saw one component and dead-ended on the opaque `_virt_filter`
+    address. Filter condition edges are no longer added to the discovery graph, so
+    the two facts stay disconnected and the standard error fires."""
+    query = """
+import store_sales as store_sales;
+import store_returns as store_returns;
+where store_sales.ticket_number in (
+    store_returns.ticket_number ? store_returns.ticket_number = store_sales.ticket_number
+  )
+select store_sales.item.id, count(store_sales.line_item) as sale_lines;
+"""
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        engine.generate_sql(query)
+    message = str(exc.value)
+    assert "store_sales.ticket_number" in message
+    assert "store_returns.ticket_number" in message
+    assert "join or merge" in message
+    assert "_virt_filter" not in message
+
+
+def test_q64_noncorrelated_filter_membership_still_resolves(engine):
+    """Guard the prune doesn't over-fire: a NON-correlated filter on the RHS
+    (`sr.ticket ? sr.return_amount > 0`) is a self-contained set, so the value
+    membership semijoin resolves normally."""
+    query = """
+import store_sales as store_sales;
+import store_returns as store_returns;
+where store_sales.ticket_number in (
+    store_returns.ticket_number ? store_returns.return_amount > 0
+  )
+select store_sales.item.id, count(store_sales.line_item) as sale_lines;
+"""
+    assert engine.generate_sql(query)
+
+
 def test_q64_nested_membership_single_source_agg_compiles(engine):
     """Guard the fix above doesn't over-bail: the same nested-membership shape with
     a SOURCEABLE inner filter (single-source aggregate vs a literal) still plans."""
@@ -152,6 +250,59 @@ select ss.item.text_id, count(ss.line_item) as cnt;
 """
     sql = engine.generate_sql(query)[-1]
     assert "INVALID_REFERENCE_BUG" not in sql
+
+
+def test_q70_grouping_case_over_window_aggregate_no_recursion(engine):
+    """q70 'rank within parent': a BASIC concept (a CASE) that references a
+    grouping() column AND whose branch is `rank(...) over (... order by sum(...))`
+    used to blow the build recursion limit. The grouping resolves its `by` to the
+    select grain, which included the window-wrapping CASE, whose lineage references
+    the grouping back — a cyclic grain. The CASE must stay out of the select grain
+    (it contributes the nested window's partition keys instead)."""
+    query = """
+import store_sales as ss;
+auto g_state <- grouping(ss.store.state);
+auto wpr <- CASE
+    WHEN g_state >= 1 THEN 1
+    ELSE rank(ss.store.state) over (partition by ss.store.state order by sum(ss.net_profit) desc)
+END;
+where ss.date.year = 2000
+select ss.store.state as s_state, sum(ss.net_profit) as total_sum, wpr
+order by total_sum desc limit 5;
+"""
+    # No RecursionError at build, and the SQL executes.
+    assert "INVALID_REFERENCE_BUG" not in engine.generate_sql(query)[-1]
+    rows = engine.execute_text(query)[-1].fetchall()
+    assert rows
+    # Each state is its own single-row partition, so every resolved-state rank
+    # is 1 (the bug previously crashed before any row was produced).
+    assert [r[2] for r in rows if r[0] is not None] == [
+        1 for r in rows if r[0] is not None
+    ]
+
+
+def test_q70_grouping_inline_in_window_partition_no_recursion(engine):
+    """Sibling of the above: the grouping() lives ONLY inside the window's
+    `partition by grouping(...)`, not in the CASE condition/branch. The earlier
+    guard keyed off `concept_arguments`, which flatten a partition expression to
+    its leaf refs, so the inline grouping was invisible and the CASE re-entered the
+    select grain -> grouping's `by` pulled the CASE back -> build RecursionError.
+    The partition's inline grouping must also keep the CASE out of the grain."""
+    query = """
+import store_sales as ss;
+auto wpr <- CASE
+    WHEN ss.store.state = 'TX' THEN 1
+    ELSE rank(ss.store.state)
+        over (partition by grouping(ss.store.state) order by sum(ss.net_profit) by ss.store.state desc)
+END;
+where ss.date.year = 2000
+select ss.store.state as s_state, sum(ss.net_profit) as total_sum, wpr
+order by total_sum desc limit 5;
+"""
+    # No RecursionError at build, no sentinel, and the SQL executes.
+    assert "INVALID_REFERENCE_BUG" not in engine.generate_sql(query)[-1]
+    rows = engine.execute_text(query)[-1].fetchall()
+    assert rows
 
 
 def test_copy_perf():

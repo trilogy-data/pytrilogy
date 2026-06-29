@@ -225,6 +225,77 @@ SELECT sum(orders.order_amount) -> total;
         parse_text(text, root=models)
 
 
+TWO_KEY = """key item_id int;
+key cust_id int;
+property item_id.amt float;
+
+datasource sales (iid: item_id, cid: cust_id, a: amt)
+grain (item_id, cust_id)
+address sales_tbl;
+"""
+
+
+@pytest.fixture
+def two_key_models(tmp_path: Path) -> Path:
+    (tmp_path / "base.preql").write_text(TWO_KEY)
+    return tmp_path
+
+
+_TWO_ROWSETS = (
+    "import base as base;\n"
+    "with web_agg as select base.item_id, base.cust_id, sum(base.amt) as total;\n"
+    "with cat_agg as select base.item_id, base.cust_id, sum(base.amt) as total;\n"
+)
+
+
+def test_chained_composite_key_rejected(two_key_models: Path):
+    # Folding a COMPOSITE key into one `=` chain (`a.i = b.i = a.c = b.c`) repeats
+    # each source twice. Adjacency pairing would emit a cross-concept garbage pair
+    # (`cat_agg.item = web_agg.cust`) that downstream silently drops, collapsing the
+    # FULL join toward a cross product (q78). Reject it at parse time instead.
+    text = _TWO_ROWSETS + (
+        "FULL JOIN web_agg.base.item_id = cat_agg.base.item_id"
+        " = web_agg.base.cust_id = cat_agg.base.cust_id\n"
+        "SELECT web_agg.base.item_id, web_agg.total, cat_agg.total;"
+    )
+    with pytest.raises(ParseError, match="repeats source"):
+        parse_text(text, root=two_key_models)
+
+
+def test_composite_key_via_and_pairs_correctly(two_key_models: Path):
+    # The supported composite-key form: `and` splits into two same-concept groups,
+    # each pairing cleanly with no cross-concept garbage.
+    text = _TWO_ROWSETS + (
+        "FULL JOIN web_agg.base.item_id = cat_agg.base.item_id"
+        " and web_agg.base.cust_id = cat_agg.base.cust_id\n"
+        "SELECT web_agg.base.item_id, web_agg.total, cat_agg.total;"
+    )
+    _, parsed = parse_text(text, root=two_key_models)
+    pairs = {(j.source_address, j.target_address) for j in parsed[-1].join_clauses}
+    assert pairs == {
+        ("web_agg.base.item_id", "cat_agg.base.item_id"),
+        ("web_agg.base.cust_id", "cat_agg.base.cust_id"),
+    }
+
+
+def test_three_source_single_key_chain_allowed(multi_models: Path):
+    # A valid `=` chain binds ONE key across DISTINCT sources — must not be flagged.
+    text = """
+import orders as orders;
+import customers as customers;
+import shipments as shipments;
+
+INNER JOIN orders.customer_id = customers.customer_id = shipments.customer_id
+SELECT customers.region, sum(orders.order_amount) -> amt;
+"""
+    _, parsed = parse_text(text, root=multi_models)
+    pairs = {(j.source_address, j.target_address) for j in parsed[-1].join_clauses}
+    assert pairs == {
+        ("orders.customer_id", "customers.customer_id"),
+        ("customers.customer_id", "shipments.customer_id"),
+    }
+
+
 def test_build_scoped_merge_index():
     from trilogy.core.models.build import _build_scoped_merge_index
 

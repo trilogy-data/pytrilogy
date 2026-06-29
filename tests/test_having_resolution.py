@@ -62,7 +62,11 @@ def _generate(body: str) -> str:
 # --- window-internal dimension references -----------------------------------
 
 
-def test_window_partition_order_dim_in_having_not_in_select_errors_cleanly():
+def test_window_partition_order_dim_in_having_resolves_as_semijoin():
+    """A HAVING on a dimension (yr) finer than the select grain is a
+    post-aggregation semijoin: keep the (brand, class) groups that have a yr=2002
+    row, leaving the windowed measure unchanged. Resolves to a composite key
+    membership rather than erroring."""
     body = """
 select
     aggregated.brand_id,
@@ -73,11 +77,9 @@ select
               order by aggregated.yr asc) as qty_diff
 having aggregated.yr = 2002;
 """
-    with pytest.raises(InvalidSyntaxException) as exc:
-        _generate(body)
-    msg = str(exc.value)
-    assert "aggregated.yr" in msg and "not in the SELECT projection" in msg
-    assert "INVALID_REFERENCE_BUG" not in msg
+    sql = _generate(body)
+    assert "INVALID_REFERENCE_BUG" not in sql
+    assert " in (select" in sql.lower()
 
 
 def test_window_partition_order_dim_in_order_by_not_in_select_errors_cleanly():
@@ -97,7 +99,7 @@ order by aggregated.yr asc;
     assert "INVALID_REFERENCE_BUG" not in str(exc.value)
 
 
-def test_numbering_window_partition_dim_in_having_not_in_select_errors_cleanly():
+def test_numbering_window_partition_dim_in_having_resolves_as_semijoin():
     body = """
 select
     aggregated.brand_id,
@@ -106,9 +108,9 @@ select
         order by aggregated.yr asc) as yr_rank
 having aggregated.yr = 2002;
 """
-    with pytest.raises(InvalidSyntaxException) as exc:
-        _generate(body)
-    assert "aggregated.yr" in str(exc.value)
+    sql = _generate(body)
+    assert "INVALID_REFERENCE_BUG" not in sql
+    assert " in (select" in sql.lower()
 
 
 def test_window_dim_in_having_succeeds_when_hidden_in_select():
@@ -145,16 +147,16 @@ having aggregated.yr = 2002;
 # --- bare-dimension references (no window) ----------------------------------
 
 
-def test_bare_dim_in_having_not_in_select_errors_cleanly():
+def test_bare_dim_in_having_resolves_as_semijoin():
     body = """
 select
     aggregated.brand_id,
     aggregated.total_qty
 having aggregated.yr = 2002;
 """
-    with pytest.raises(InvalidSyntaxException) as exc:
-        _generate(body)
-    assert "aggregated.yr" in str(exc.value)
+    sql = _generate(body)
+    assert "INVALID_REFERENCE_BUG" not in sql
+    assert " in (select" in sql.lower()
 
 
 def test_bare_dim_in_having_succeeds_when_in_select():
@@ -183,7 +185,9 @@ having sum(aggregated.total_qty) > 15;
 """)
 
 
-def test_having_off_grain_aggregate_not_in_select_errors_cleanly():
+def test_having_off_grain_aggregate_promoted_to_hidden_output():
+    """An off-grain aggregate in HAVING that is not a SELECT output is promoted to
+    a hidden output (computed in its own CTE) rather than erroring."""
     body = """
 select
     aggregated.brand_id,
@@ -191,9 +195,8 @@ select
     sum(aggregated.total_qty) as total
 having sum(aggregated.total_qty) > 1.2 * sum(aggregated.total_qty) by aggregated.brand_id;
 """
-    with pytest.raises(InvalidSyntaxException) as exc:
-        _generate(body)
-    assert "INVALID_REFERENCE_BUG" not in str(exc.value)
+    sql = _generate(body)
+    assert "INVALID_REFERENCE_BUG" not in sql
 
 
 # --- scalar-derived column sources ------------------------------------------

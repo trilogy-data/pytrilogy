@@ -116,6 +116,11 @@ class BuildEnvironment:
     # this to emit a FULL JOIN for the key, instead of inferring it from a
     # (falsely-)partial binding — so the gate and rowset enrichment are unaffected.
     scoped_full_join_keys: set[str] = field(default_factory=set)
+    # Canonical keys of query-scoped LEFT joins (the preserved-anchor side). Join
+    # resolution anchors the join tree on the complete source providing these so
+    # multiple optional sources stay directional LEFT_OUTER instead of collapsing
+    # to a symmetric FULL (TPC-DS q78). Excludes environment `merge ~` joins.
+    scoped_left_anchor_keys: set[str] = field(default_factory=set)
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []

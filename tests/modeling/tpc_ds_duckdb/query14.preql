@@ -20,7 +20,6 @@ rowset cross_tuples <- where
     sales.date.year between 1999 and 2001
 select
     tuple_key as ci_tuple_key,
-    --cross_channel_count,
 having
     cross_channel_count = 3
 ;
@@ -54,7 +53,6 @@ select
     sales.item.category_id as category_l0,
     sum(sales.quantity * sales.list_price) as bucket_sum_l0,
     sum(sales.sale_line_item_counter) as bucket_count_l0,
-    --avg_sales.average_sales,
 having
     bucket_sum_l0 > avg_sales.average_sales
 

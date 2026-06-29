@@ -189,6 +189,28 @@ def test_nested_rowset_self_join_shorthand(tmp_path):
     )
 
 
+def test_self_join_rowset_phantom_join_key_not_ambiguous(tmp_path):
+    # q02: a third rowset self-joins two sibling rowsets on a key; the OTHER
+    # side's same-named join-key column (`nxt.wk`) is referenced ONLY in the
+    # join condition, never projected. It leaks as a symbol-table forward-ref
+    # `joined.nxt.wk`. A downstream leaf-shorthand `joined.wk` subsequence-matches
+    # both it and the genuinely projected `joined.cur.wk`; the phantom join key
+    # must not count toward ambiguity (it is never a materializable output).
+    env = _env(tmp_path)
+    exe = Dialects.DUCK_DB.default_executor(environment=env)
+    assert exe.generate_sql(
+        "with cur as select s.week_seq as wk, s.day_name as dw, "
+        "sum(s.ext_sales_price) as amt;\n"
+        "with nxt as select s.week_seq as wk, s.day_name as dw, "
+        "sum(s.ext_sales_price) as amt;\n"
+        "with joined as "
+        "select cur.wk, cur.dw, cur.amt as cur_amt, nxt.amt as nxt_amt "
+        "inner join cur.wk = nxt.wk "
+        "inner join cur.dw = nxt.dw;\n"
+        "select joined.wk;"
+    )
+
+
 def test_nested_rowset_genuine_ambiguity_still_raises(tmp_path):
     # Collapsing alias forms must NOT mask a real two-output ambiguity: a nested
     # rowset passing through two distinct week_seq outputs leaves `y.week_seq`

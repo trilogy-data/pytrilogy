@@ -8,7 +8,6 @@ rowset frequent_items <- where
     sales.channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003)
 select
     sales.item.id as frequent_item_id,
-    --ss_combo_count,
 having
     ss_combo_count > 4
 
@@ -32,8 +31,6 @@ rowset best_customers <- where
     sales.billing_customer.id is not null and sales.channel = 'STORE'
 select
     sales.billing_customer.id as best_customer_id,
-    --customer_total_overall,
-    --max_total.cmax,
 having
     customer_total_overall > 0.5 * max_total.cmax
 

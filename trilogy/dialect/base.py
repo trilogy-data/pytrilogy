@@ -242,6 +242,24 @@ def _constant_bindable(lineage: BuildFunction) -> bool:
     return not (lineage.arguments and isinstance(lineage.arguments[0], MagicConstants))
 
 
+def _collect_subselect_comparisons(node: Any) -> list[BuildSubselectComparison]:
+    """Flatten every BuildSubselectComparison in a condition tree, descending
+    through the AND/OR (left/right) and parenthetical (content) operands that
+    wrap it. A membership may sit at any depth under those combinators."""
+    if isinstance(node, BuildSubselectComparison):
+        return [node]
+    if isinstance(node, (BuildConditional, BuildComparison)):
+        children: tuple[Any, ...] = (node.left, node.right)
+    elif isinstance(node, BuildParenthetical):
+        children = (node.content,)
+    else:
+        return []
+    acc: list[BuildSubselectComparison] = []
+    for child in children:
+        acc += _collect_subselect_comparisons(child)
+    return acc
+
+
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
@@ -254,9 +272,22 @@ BASE_INVALID = "INVALID_REFERENCE_BUG"
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
+    # Always embed the reason `x` (the unsourceable concept/why) so it survives
+    # into the rendered SQL; the final strict-mode guard extracts it to raise an
+    # actionable error instead of a generic "this should never occur".
     if not callsite:
-        return BASE_INVALID
+        return f"{BASE_INVALID}<{x}>"
     return f"{BASE_INVALID}_{callsite}<{x}>"
+
+
+def extract_invalid_reference_reasons(sql: str) -> list[str]:
+    """Pull the embedded reasons out of any INVALID_REFERENCE_BUG sentinels in
+    rendered SQL (order-preserving, de-duplicated). Each sentinel is
+    ``INVALID_REFERENCE_BUG[_callsite]<reason>``; an unadorned bare sentinel
+    contributes no reason."""
+    import re
+
+    return list(dict.fromkeys(re.findall(rf"{BASE_INVALID}\w*<([^>]*)>", sql)))
 
 
 def _window_over_clause(window: str, sort: str) -> str:
@@ -924,6 +955,49 @@ class BaseDialect:
                 siblings.append(other)
         return siblings
 
+    def _grain_key_membership_redirect(
+        self, c: BuildConcept, cte: CTE | UnionCTE
+    ) -> str | None:
+        """Borrow the renderable column of a grain-key semijoin's left operand.
+
+        A post-aggregation grain-key membership (`key in (filter key where ...)`,
+        built by `_rewrite_having_finer_dims_to_membership`) filters exactly the
+        CTE's grain key, so its left operand IS that grain key's materialized
+        column. When a scoped INNER join collapsed the grain key onto a twin and
+        the projected grain-key output dead-ends on the dropped side (q64), the
+        membership-left is the same logical key and renders fine here — use it.
+
+        Tightly gated: only a single-component-grain CTE whose membership-left is
+        itself a single same-grain key, and only as a fallback when the normal
+        render already produced the INVALID_REFERENCE sentinel."""
+        if not isinstance(cte, CTE) or cte.condition is None:
+            return None
+        grain = cte.grain.components
+        if len(grain) != 1 or c.address not in grain:
+            return None
+
+        for comp in _collect_subselect_comparisons(cte.condition):
+            if comp.operator not in (
+                ComparisonOperator.IN,
+                ComparisonOperator.NOT_IN,
+            ):
+                continue
+            left = comp.left
+            # Existence-set semijoin shape (both operands single same-grain
+            # concepts): a grain-key membership, not a literal value-list `in
+            # (1, 2)`. Only such a semijoin guarantees the left IS the grain key.
+            if not isinstance(left, BuildConcept) or len(left.grain.components) != 1:
+                continue
+            if not isinstance(comp.right, BuildConcept):
+                continue
+            try:
+                rendered = self._render_concept_sql(left, cte, raise_invalid=True)
+            except ValueError:
+                continue
+            if rendered and BASE_INVALID not in rendered:
+                return rendered
+        return None
+
     def render_concept_sql(
         self,
         c: BuildConcept,
@@ -969,6 +1043,10 @@ class BaseDialect:
                 cte,
                 raise_invalid=raise_invalid,
             )
+        if result is not None and BASE_INVALID in result:
+            redirect = self._grain_key_membership_redirect(c, cte)
+            if redirect is not None:
+                result = redirect
         if alias:
             return f"{result} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
         return result
@@ -1398,6 +1476,55 @@ class BaseDialect:
             f"(select {select_list} from {from_clause} where {not_null})"
         )
 
+    def _render_expression_membership_subselect(
+        self,
+        right: BuildFunction,
+        cte: CTE | UnionCTE | None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        raise_invalid: bool,
+    ) -> str | None:
+        """Render an expression-typed membership RHS (`... in (rs.col::string)`,
+        a concat of rowset columns, etc.) as a `(select <expr> from <cte> where
+        ...)` existence subquery. The single-BuildConcept path does this for a
+        bare RHS; an expression RHS otherwise emits its inner column refs against
+        a CTE that's never in a FROM (Binder: table not found). Returns None when
+        this isn't an existence membership, so the caller falls back to the
+        default inline rendering."""
+        concepts = list(right.concept_arguments)
+        if not concepts:
+            return None
+        lookup_cte = cte
+        if cte_map and not lookup_cte:
+            lookup_cte = cte_map.get(concepts[0].address)
+        if lookup_cte is None:
+            return None
+        # Only a genuine existence membership (every referenced concept sourced
+        # via the existence map) needs subselect-wrapping; a local scalar
+        # expression must keep the default inline rendering.
+        if any(c.address not in lookup_cte.existence_source_map for c in concepts):
+            return None
+        from_clauses: set[str] = set()
+        null_cols: list[str] = []
+        for rc in concepts:
+            from_clause, col_ref = self._resolve_existence_column(
+                rc, cte, cte_map, raise_invalid
+            )
+            # inlined-parent physical-column form ("<base> as <target>"); the
+            # full-expression render below can't redirect to physical columns,
+            # so let it fall back rather than emit inconsistent SQL.
+            if " as " in from_clause:
+                return None
+            from_clauses.add(from_clause)
+            null_cols.append(col_ref)
+        if len(from_clauses) != 1:
+            return None
+        from_clause = next(iter(from_clauses))
+        inner = self.render_expr(
+            right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+        )
+        not_null = " and ".join(f"{c} is not null" for c in null_cols)
+        return f"(select {inner} from {from_clause} where {not_null})"
+
     def render_expr(
         self,
         e: Union[
@@ -1546,6 +1673,18 @@ class BaseDialect:
                 (ListWrapper, TupleWrapper, BuildParenthetical),
             ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+
+            # An expression RHS over existence-sourced rowset columns
+            # (`x::string in (rs.col::string)`, or a concat of several rs cols).
+            # The bare-BuildConcept path above wraps the referenced CTE in a
+            # `select ... from <cte>` subselect; an expression RHS must do the
+            # same, else its inner column refs dangle (Binder: table not found).
+            if isinstance(right, BuildFunction):
+                subselect = self._render_expression_membership_subselect(
+                    right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+                if subselect is not None:
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {subselect}"
 
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
@@ -2503,9 +2642,17 @@ class BaseDialect:
         )
 
         if CONFIG.strict_mode and BASE_INVALID in final:
+            # Surface the embedded reason(s) (e.g. "Missing source CTE for x.y")
+            # so the failure names the unsourceable reference instead of dumping
+            # the whole query with a generic message.
+            reasons = extract_invalid_reference_reasons(final)
+            detail = "; ".join(reasons) if reasons else "an unresolved reference"
             raise ValueError(
-                f"Invalid reference string found in query: {final}, this should never"
-                " occur. Please create an issue to report this."
+                f"Could not render the query: {detail}. A planned reference has no "
+                "backing source CTE -- typically an unsupported cross-rowset or "
+                "membership shape the planner could not wire. Review the rowset/join "
+                "structure (or file an issue if the query looks valid).\n\n"
+                f"Full SQL with sentinel(s):\n{final}"
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final

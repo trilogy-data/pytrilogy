@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildFunction,
     BuildGrain,
     BuildRowsetItem,
@@ -924,6 +925,93 @@ def format_unresolved_concepts_error(
         "Discovery error: couldn't source all these concepts into one query; you "
         "may need a join or merge to relate them across models. " + detail
     )
+
+
+def _filter_hidden_concepts(
+    output_concepts: List[BuildConcept],
+) -> List[BuildConcept]:
+    """The concepts a FILTER output hides inside its lineage: the value it filters
+    and its ``? <cond>`` row-arguments. The top-level disconnect check only sees
+    outputs + WHERE row-args, so a filter whose condition can't be related to the
+    value it filters never splits — it dead-ends on the opaque virtual address.
+    Surfacing these lets the standard reachability check do its job."""
+    extra: List[BuildConcept] = []
+    for c in output_concepts:
+        if not isinstance(c.lineage, BuildFilterItem):
+            continue
+        extra.extend(c.lineage.content_concept_arguments)
+        extra.extend(c.lineage.where.row_arguments)
+    return extra
+
+
+def filter_disconnect_context(output_concepts: List[BuildConcept]) -> str:
+    """Specific context appended to the general disconnected-subgraphs message when
+    the split runs through a filter on a rowset output. The filtered value (a rowset
+    output) and the condition concept genuinely can't be related without relating the
+    two — so name the concrete ways to do that: pull the condition into the rowset,
+    compare via an existence/membership set, or join the rowset back to the source.
+    Empty string when no such filter is involved."""
+    for c in output_concepts:
+        if not isinstance(c.lineage, BuildFilterItem):
+            continue
+        content = c.lineage.content
+        if not isinstance(content, BuildConcept) or not isinstance(
+            content.lineage, BuildRowsetItem
+        ):
+            continue
+        rs = content.lineage.rowset
+        missing = unique(
+            [
+                a
+                for a in c.lineage.where.row_arguments
+                if a.address not in set(rs.derived_concepts)
+            ],
+            "address",
+        )
+        if missing:
+            names = ", ".join(f"`{a.address}`" for a in missing)
+            return (
+                f" Here {names} is referenced only inside a filter on rowset output "
+                f"`{content.address}` (rowset `{rs.name}`), and isn't related to it "
+                f"without a join. Relate them by adding {names} to rowset `{rs.name}`"
+                "'s select, by an existence comparison against a base-concept set "
+                f"(e.g. `{content.address} in (<base concept> ? <condition>)`), or by "
+                "joining the rowset back to the source."
+            )
+    return ""
+
+
+def raise_if_filter_disconnected(
+    output_concepts: List[BuildConcept],
+    environment: BuildEnvironment,
+    g: "ReferenceGraph | None" = None,
+    extra_required: List[BuildConcept] | None = None,
+) -> None:
+    """Re-run the reachability check with FILTER outputs' hidden condition concepts
+    surfaced (see ``_filter_hidden_concepts``). When that splits the set, raise the
+    standard named-subgraph error — same 'add a join or merge' diagnostic as any
+    disconnected grouping — plus a rowset-filter-specific hint. No-op otherwise, so
+    the caller falls through to the generic connectivity error."""
+    # Drop the FILTER outputs themselves: their connectivity is fully captured by
+    # the surfaced content + condition concepts, and the virtual filter concept
+    # has no condition edges in the graph (see add_concept), so keeping it would
+    # surface a bare `_virt_*` orphan subgraph when its content is islanded.
+    real_outputs = [
+        c for c in output_concepts if not isinstance(c.lineage, BuildFilterItem)
+    ]
+    required = unique(
+        real_outputs
+        + list(extra_required or [])
+        + _filter_hidden_concepts(output_concepts),
+        "address",
+    )
+    groups = disconnected_components(environment, required, g)
+    if len(groups) > 1:
+        raise DisconnectedConceptsException(
+            format_disconnected_subgraphs_error(groups, environment, g)
+            + filter_disconnect_context(output_concepts),
+            subgraphs=[[c.address for c in group] for group in groups],
+        )
 
 
 def is_pushdown_aliased_concept(c: BuildConcept) -> bool:
