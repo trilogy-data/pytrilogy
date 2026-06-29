@@ -1,7 +1,7 @@
 import lineitem;
 
 auto supplier_rev <- sum(revenue ? ship_date >= '1996-01-01'::date and ship_date < '1996-04-01'::date) by part.supplier.id;
-auto max_supplier_rev <- max(supplier_rev);
+auto max_supplier_rev <- max(supplier_rev) by *;
 
 where supplier_rev = max_supplier_rev
 select

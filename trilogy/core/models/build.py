@@ -2276,8 +2276,15 @@ class Factory:
         canonical_build_cache: dict[str, BuildConcept] | None = None,
         datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        aggregate_grain: Grain | None = None,
     ):
         self.grain = grain or Grain()
+        # Grain at which a bare (no explicit `by`) aggregate resolves, when it
+        # differs from `self.grain`. Used by the WHERE-clause factory: WHERE runs
+        # at row grain (`self.grain = Grain()`) for plain predicates, but an
+        # aggregate condition must co-grain to the SELECT grain (like HAVING)
+        # rather than collapsing to a global scalar. None => use `self.grain`.
+        self.aggregate_grain = aggregate_grain
         self.environment = environment
         # Build-scoped joins (query JOIN clauses plus environment MERGE
         # statements) relate two key concepts. TWO mechanisms do this, split by
@@ -2776,9 +2783,10 @@ class Factory:
         q13 ``count(x) by y`` distribution) is never an ancestor here, so its
         resolution is unchanged.
         """
+        grain = self.aggregate_grain if self.aggregate_grain is not None else self.grain
         building = set(self._building)
-        if not (building & self.grain.components):
-            return self.grain
+        if not (building & grain.components):
+            return grain
         out: list[str] = []
         seen: set[str] = set()
 
@@ -2798,7 +2806,7 @@ class Factory:
             elif addr not in out:
                 out.append(addr)
 
-        for component in self.grain.component_order:
+        for component in grain.component_order:
             expand(component)
         return Grain(components=set(out), component_order=out)
 
@@ -3005,9 +3013,12 @@ class Factory:
 
     def _build_aggregate_wrapper(self, base: AggregateWrapper) -> BuildAggregateWrapper:
         if not base.by:
+            agg_grain = (
+                self.aggregate_grain if self.aggregate_grain is not None else self.grain
+            )
             by = [
                 self._build_concept(self.environment.concepts[c])
-                for c in self.grain.component_order
+                for c in agg_grain.component_order
             ]
         else:
             by = self._build_over_items(list(base.by))
@@ -3524,6 +3535,10 @@ class Factory:
             materialized[k] = factory.build(v)
         where_factory = Factory(
             grain=Grain(),
+            # Bare aggregates in WHERE co-grain to the SELECT grain (like HAVING)
+            # instead of resolving to a global scalar; plain row predicates still
+            # build at row grain (`grain=Grain()`).
+            aggregate_grain=base.grain,
             environment=self.environment,
             local_concepts={},
             pseudonym_map=self.pseudonym_map,

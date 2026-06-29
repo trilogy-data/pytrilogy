@@ -44,13 +44,13 @@ ERROR_CODES: dict[int, str] = {
     213: (
         "A `by <grain>` clause must follow an aggregate, but the expression "
         "before it has none. To take each distinct value once per grain, wrap it "
-        "in `group(...)` — e.g. `group(item.current_price) by item.id, "
+        "in `group(...)` - e.g. `group(item.current_price) by item.id, "
         "item.category`. For a reduction, use an aggregate: `sum(x) by ...`, "
         "`avg(x) by ...`, `max(x) by ...`."
     ),
     220: (
         "Filter or stray clause after a `join`? A query-scoped join "
-        "`inner|left|full join <a> = <b>` takes only key equalities — to join on "
+        "`inner|left|full join <a> = <b>` takes only key equalities - to join on "
         "multiple keys, chain `= c` (one equivalence group) or separate distinct "
         "groups with `and` (`a = b and c = d`); STACK another `join` clause for a "
         "different join type. Note `and` joins KEY EQUALITIES only, not filters. "
@@ -64,27 +64,27 @@ ERROR_CODES: dict[int, str] = {
     221: (
         "Align groups are separated by `and`, not commas. Each `align` group is "
         "`<name>: <colA>, <colB>` (one column per merge arm); join multiple groups "
-        "with `and` — e.g. `align item: a_item, b_item and store: a_store, b_store`. "
+        "with `and` - e.g. `align item: a_item, b_item and store: a_store, b_store`. "
         "A comma here does not start a new group, so the previous group consumed this "
         "name as one of its columns."
     ),
     222: (
-        "Missing `;` — a named definition must be terminated with a semicolon "
+        "Missing `;` - a named definition must be terminated with a semicolon "
         "before the next statement. Terminate the `union(...) -> (...)` (or "
         "`with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after "
         "its `-> (...)` output signature, then start the consuming `select` on the "
         "next line. Example: `with u as union(...) -> (channel, np); select ...`."
     ),
     223: (
-        "`*` is not a valid argument — Trilogy has no `*` row-marker, so "
+        "`*` is not a valid argument - Trilogy has no `*` row-marker, so "
         "`count(*)` / `sum(*)` don't parse. To count rows at the query grain, "
-        "count a key field: `count(<key>)` (counts are already distinct) — e.g. "
+        "count a key field: `count(<key>)` (counts are already distinct) - e.g. "
         "`count(store_sales.id)`; to count a related dimension's rows, count its "
         "key (`count(customer.id)`). For any other aggregate, pass the column you "
         "mean, e.g. `sum(store_sales.ext_sales_price)`."
     ),
     224: (
-        "Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword — a select is "
+        "Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is "
         "already grouped by its non-aggregate columns, so listing the columns you "
         "want already returns distinct rows. Remove `distinct`: write "
         "`select s.channel, s.channel_dim_text_id` (not "

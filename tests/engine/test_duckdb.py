@@ -2718,6 +2718,36 @@ order by a asc, b asc nulls last;
     assert results == [(1, 1, 10), (1, 2, 20), (1, None, 30)]
 
 
+_NAMED_AGG_WHERE_MODEL = """
+key rid int;
+property rid.item int;
+property rid.ch string;
+datasource rows (rid: rid, item: item, ch: ch)
+grain (rid)
+query '''select 1 rid,100 item,'S' ch union all select 2,100,'W'
+         union all select 3,200,'W' union all select 4,300,'S' ''';
+auto f_byitem <- count(rid ? ch = 'S') by item > 0;
+"""
+
+
+def test_named_aggregate_concept_in_where_routes_to_having():
+    """Bug: a named/derived concept whose lineage is a Comparison wrapping an
+    aggregate (`count(...) by item > 0`), referenced in a top-level WHERE, was
+    classified scalar and rendered as an inline aggregate inside SQL `WHERE`
+    (DuckDB rejects aggregates there). The concept-reference indirection must
+    route to HAVING just like the equivalent inline form does."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text(_NAMED_AGG_WHERE_MODEL)
+    query = "where f_byitem select item order by item;"
+    sql = executor.generate_sql(query)[-1]
+    assert "HAVING" in sql
+    assert "WHERE" not in sql.split("HAVING")[1]
+    results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
+    assert results == [(100,), (300,)]
+
+
 def test_rollup_macro_in_having_vs_scalar_colocates():
     """A rollup aggregate filtered in HAVING against a `by *` scalar
     (`having total > overall_avg`). Under the SELECT-level `by rollup (...)`

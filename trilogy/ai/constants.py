@@ -16,6 +16,7 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 datasource — maps fields to a SQL table; left side is the SQL column, right side the field name.
 
 Models include facts + dimensions. Nullability and fanout are handled automatically, defaulting to preserving data: order.customers returns all customers, even those without orders. Add not null conditions to filter.
+
 ## Combining models
 
 
@@ -77,7 +78,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 ### Not SQL — what to never write
 
 - **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
-- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY.
+- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate to a global scalar.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
@@ -125,10 +126,11 @@ having
     student_total > 0.0001 * grand_total
 ```
 
-Aggregates in WHERE. To filter rows by an aggregate over pre-filter inputs, write the aggregate directly in WHERE with inline grouping agg(x) by grain (add an inline ? condition if needed):
+Aggregates in WHERE. To filter rows by an aggregate over pre-filter inputs, write the aggregate directly in WHERE with inline grouping agg(x) by grain (add an inline ? condition if needed); group by `*` to aggregate without select grain:
 ```
 where enroll.year = 2020
   and course.credits > 1.2 * avg(course.credits ? explicit_other_condition) by course.department
+  and course.creds > 1.5 * avg(course.credits) by *
 select course.name, course.credits
 ```
 
