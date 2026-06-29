@@ -794,11 +794,17 @@ class Environment:
             if concepts is None:
                 concepts = imp_stm.concepts
         else:
+            # A Python-assembled import has no source-level module path; the
+            # alias *is* its logical import path. The child's working dir is
+            # filesystem provenance, so it rides on ``input_path`` (which
+            # ``namespace_source`` already prefers) rather than masquerading as
+            # the import path — keeps the value re-parseable and host-portable.
+            working_path = Path(source.working_path)
             if any(
-                [x.path == source.working_path and x.alias == alias for x in existing]
+                [x.input_path == working_path and x.alias == alias for x in existing]
             ):
                 exists = True
-            imp_stm = Import(alias=alias, path=Path(source.working_path))
+            imp_stm = Import(alias=alias, path=Path(alias), input_path=working_path)
         same_namespace = alias == DEFAULT_NAMESPACE
 
         if not exists:

@@ -8,14 +8,14 @@ ERROR_CODES: dict[int, str] = {
     101: "Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).",
     102: (
         "Using a SQL-style subquery (SELECT/WITH inside parens)? Trilogy does "
-        "not support subqueries — joins are auto-resolved from dotted paths. "
+        "not support subqueries - joins are auto-resolved from dotted paths. "
         "To filter on a value that lives on a related dimension, reference its "
         "dot-path directly. Example: instead of "
         "`where ss.store_id in (select store_id where store.state = 'TN')`, "
         "write `where ss.store.state = 'TN'`."
     ),
     103: (
-        "Using a GROUP BY clause? Trilogy has no GROUP BY — remove it. Grouping "
+        "Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping "
         "is automatic by the non-aggregated fields in your SELECT. To aggregate "
         "at a different grain than the select, write `agg(x) by dim1, dim2` "
         "inline (e.g. `sum(sales.amount) by sales.store.id`)."
@@ -24,7 +24,7 @@ ERROR_CODES: dict[int, str] = {
         "Definition or statement after WHERE/SELECT? Concept definitions "
         "(`auto`/`property`/`key`/`metric`/`rowset`), `def`, `datasource`, and "
         "`import` are top-level statements and must appear BEFORE the "
-        "`where`/`select` block — they cannot sit inside a query. Move this "
+        "`where`/`select` block - they cannot sit inside a query. Move this "
         "statement above your `where`, and make sure each statement ends with "
         "`;`. Example: put `auto x <- sum(sales.amount) by store.id;` above "
         "`where ... select ...`."
@@ -33,13 +33,20 @@ ERROR_CODES: dict[int, str] = {
     202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
     210: "Missing order direction? Order by must be explicit about direction - specify `asc` or `desc`.",
-    211: "Expression in `by` clause must be wrapped in parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.",
+    211: "Expression in `by` clause must be wrapped in parens - write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.",
     212: (
         "A `by <grain>` clause must attach directly to an aggregate, not to an "
         "expression that wraps one (e.g. `coalesce(...)`, `round(...)`, "
-        "arithmetic). Move the grain inside, next to the aggregate — write "
-        "`coalesce(sum(x) by store.id, 0)` — or compute the grouped aggregate "
+        "arithmetic). Move the grain inside, next to the aggregate - write "
+        "`coalesce(sum(x) by store.id, 0)` - or compute the grouped aggregate "
         "first and wrap it: `auto m <- sum(x) by store.id;` then `coalesce(m, 0)`."
+    ),
+    213: (
+        "A `by <grain>` clause must follow an aggregate, but the expression "
+        "before it has none. To take each distinct value once per grain, wrap it "
+        "in `group(...)` — e.g. `group(item.current_price) by item.id, "
+        "item.category`. For a reduction, use an aggregate: `sum(x) by ...`, "
+        "`avg(x) by ...`, `max(x) by ...`."
     ),
     220: (
         "Filter or stray clause after a `join`? A query-scoped join "
@@ -312,6 +319,67 @@ def detect_by_on_wrapped_aggregate(text: str, pos: int) -> int | None:
     # bare parenthetical (`(sum(x) + 1)`, func == "") — either way the `by` is
     # misplaced, but only if an aggregate actually sits inside the wrapper.
     if _AGG_CALL_RE.search(text, open_paren + 1, i) is None:
+        return None
+    return by_pos
+
+
+_BY_GROUPING_TAIL_RE = re.compile(r"(rollup|cube|grouping)\b", re.IGNORECASE)
+_BY_EXPR_BOUNDARY_RE = re.compile(r"<-|\b(?:select|where|having)\b", re.IGNORECASE)
+
+
+def _by_expr_start(text: str, end: int) -> int:
+    """Start index of the expression term ending at ``end`` (inclusive), for
+    scanning it for aggregates. Walk back to the statement `;`, then raise the
+    floor to the nearest derivation arrow (`<-`) or `select`/`where`/`having`
+    keyword, and stop at the first depth-0 comma or unmatched `(`/`[`."""
+    floor = text.rfind(";", 0, end) + 1
+    kw = None
+    for kw in _BY_EXPR_BOUNDARY_RE.finditer(text, floor, end):
+        pass
+    if kw is not None:
+        floor = kw.end()
+    depth = 0
+    i = end
+    while i >= floor:
+        c = text[i]
+        if c in ")]":
+            depth += 1
+        elif c in "([":
+            if depth == 0:
+                return i + 1
+            depth -= 1
+        elif depth == 0 and c == ",":
+            return i + 1
+        i -= 1
+    return floor
+
+
+def detect_by_on_non_aggregate(text: str, pos: int) -> int | None:
+    """Locate a `by <grain>` clause attached to an expression that contains NO
+    aggregate at all — e.g. `item.current_price by item.id`. The grain may only
+    follow an aggregate; to take each distinct value once per grain the
+    expression must be wrapped in `group(...)`. Returns the offending `by`
+    position, or None. Complements `detect_by_on_wrapped_aggregate` (which
+    handles a non-aggregate wrapper that *contains* an aggregate). Shared by both
+    grammar backends; purely textual (no reparse)."""
+    m = _BY_NEAR_RE.search(text, max(0, pos - 2), pos + 6)
+    if m is None:
+        return None
+    by_pos = m.start()
+    # An expression must precede `by` (identifier char or closing paren/bracket).
+    i = by_pos - 1
+    while i >= 0 and text[i].isspace():
+        i -= 1
+    if i < 0 or not (text[i].isalnum() or text[i] in "_)]"):
+        return None
+    # `by rollup/cube/grouping (...)` is a valid SELECT-level grouping clause.
+    after = by_pos + 2
+    while after < len(text) and text[after].isspace():
+        after += 1
+    if _BY_GROUPING_TAIL_RE.match(text, after):
+        return None
+    # No aggregate anywhere in the preceding expression -> the misplaced-grain case.
+    if _AGG_CALL_RE.search(text, _by_expr_start(text, i), by_pos) is not None:
         return None
     return by_pos
 

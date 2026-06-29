@@ -1,13 +1,16 @@
+import re
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import singledispatchmethod
+from pathlib import Path
 from typing import Any
 
 from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
+from trilogy.core.constants import WORKING_PATH_CONCEPT
 from trilogy.core.enums import (
     ConceptSource,
     DatasourceState,
@@ -130,6 +133,18 @@ def safe_address(address: str) -> str:
     if "." not in address:
         address = f"{DEFAULT_NAMESPACE}.{address}"
     return address
+
+
+# The grammar's bare ``IDENTIFIER`` token; anything else (spaces, leading
+# digit, ``-``/``*``/``:``) must ride as a backtick-quoted ``QUOTED_IDENTIFIER``.
+_BARE_IDENTIFIER = re.compile(r"[a-zA-Z_][a-zA-Z0-9_.]*")
+
+
+def quote_column_alias(alias: str) -> str:
+    """Backtick-quote a datasource column alias unless it's a bare identifier."""
+    if _BARE_IDENTIFIER.fullmatch(alias):
+        return alias
+    return f"`{alias}`"
 
 
 DEFAULT_MAX_LINE_LENGTH = 100
@@ -403,6 +418,11 @@ class Renderer:
         # first, keys
         for concept in arg.concepts.values():
             if "__preql_internal" in concept.address:
+                continue
+            # Internal scaffolding (the working-path const and any other
+            # ``_env_*`` concept) is not user-facing source — skip it so it
+            # doesn't materialize as a spurious concept on reparse.
+            if concept.name == WORKING_PATH_CONCEPT or concept.name.startswith("_env_"):
                 continue
 
             # don't render anything that came from an import
@@ -697,7 +717,7 @@ class Renderer:
 
         concept_str = self.to_string(arg.concept)
         if isinstance(arg.alias, str):
-            alias_str = arg.alias
+            alias_str = quote_column_alias(arg.alias)
         else:
             alias_str = self.to_string(arg.alias)
 
@@ -1178,12 +1198,7 @@ class Renderer:
     def _(self, arg: "ImportStatement"):
         if arg.is_self:
             return f"self import as {arg.alias};"
-        path: str = str(arg.path).replace("\\", ".")
-        path = path.replace("/", ".")
-        if path.endswith(".preql"):
-            path = path.rsplit(".", 1)[0]
-        if path.startswith("."):
-            path = path[1:]
+        path = self._render_import_path(arg.path, arg.alias)
         prefix = "." * arg.leading_dots
         if arg.alias == DEFAULT_NAMESPACE or not arg.alias:
             return f"import {prefix}{path};"
@@ -1191,15 +1206,26 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "Import"):
-        path: str = str(arg.path).replace("\\", ".")
-        path = path.replace("/", ".")
+        path = self._render_import_path(arg.path, arg.alias)
+        if arg.alias == DEFAULT_NAMESPACE or not arg.alias:
+            return f"import {path};"
+        return f"import {path} as {arg.alias};"
+
+    def _render_import_path(self, raw_path: Any, alias: str) -> str:
+        # ``add_import`` records the alias as a Python-assembled import's path,
+        # so the normal dotting below round-trips. Defensive backstop: a
+        # hand-built ``Import`` carrying an absolute *directory* (no module
+        # suffix) is not a resolvable module path and would leak a host path —
+        # fall back to the alias, which resolves against an alias-keyed resolver.
+        as_path = Path(raw_path)
+        if as_path.is_absolute() and not as_path.suffix:
+            return alias or DEFAULT_NAMESPACE
+        path = str(raw_path).replace("\\", ".").replace("/", ".")
         if path.endswith(".preql"):
             path = path.rsplit(".", 1)[0]
         if path.startswith("."):
             path = path[1:]
-        if arg.alias == DEFAULT_NAMESPACE or not arg.alias:
-            return f"import {path};"
-        return f"import {path} as {arg.alias};"
+        return path
 
     @to_string.register
     def _(self, arg: "Concept"):

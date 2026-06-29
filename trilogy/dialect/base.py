@@ -242,6 +242,24 @@ def _constant_bindable(lineage: BuildFunction) -> bool:
     return not (lineage.arguments and isinstance(lineage.arguments[0], MagicConstants))
 
 
+def _collect_subselect_comparisons(node: Any) -> list[BuildSubselectComparison]:
+    """Flatten every BuildSubselectComparison in a condition tree, descending
+    through the AND/OR (left/right) and parenthetical (content) operands that
+    wrap it. A membership may sit at any depth under those combinators."""
+    if isinstance(node, BuildSubselectComparison):
+        return [node]
+    if isinstance(node, (BuildConditional, BuildComparison)):
+        children: tuple[Any, ...] = (node.left, node.right)
+    elif isinstance(node, BuildParenthetical):
+        children = (node.content,)
+    else:
+        return []
+    acc: list[BuildSubselectComparison] = []
+    for child in children:
+        acc += _collect_subselect_comparisons(child)
+    return acc
+
+
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
@@ -958,17 +976,7 @@ class BaseDialect:
         if len(grain) != 1 or c.address not in grain:
             return None
 
-        def _memberships(node: Any) -> list[BuildSubselectComparison]:
-            if isinstance(node, BuildSubselectComparison):
-                return [node]
-            acc: list[BuildSubselectComparison] = []
-            for attr in ("left", "right", "content"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    acc += _memberships(child)
-            return acc
-
-        for comp in _memberships(cte.condition):
+        for comp in _collect_subselect_comparisons(cte.condition):
             if comp.operator not in (
                 ComparisonOperator.IN,
                 ComparisonOperator.NOT_IN,
