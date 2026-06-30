@@ -734,6 +734,39 @@ def _drop_constant_only_parents(parents: list[StrategyNode]) -> list[StrategyNod
     return non_constant if non_constant else parents
 
 
+def _fold_constant_parents(
+    parents: list[StrategyNode], needed: set[str]
+) -> list[StrategyNode]:
+    """Fold a constant-only parent into a non-constant sibling instead of
+    cross-joining it ON 1=1. A constant is a literal rendered inline, valid in
+    any projection (aggregate/window/select), so append its needed constants to
+    a sibling's outputs and drop the constant scan -- mirroring v3, which renders
+    a `'abc' as label` straight in the consuming SELECT rather than as its own
+    CTE. Constants not in `needed` (the `by all_rows` grand-total marker) are
+    just dropped."""
+    if len(parents) <= 1:
+        return parents
+    targets = [p for p in parents if not _is_constant_only(p)]
+    if not targets:
+        return parents
+    target = targets[0]
+    dropped: set[int] = set()
+    for p in parents:
+        if not _is_constant_only(p):
+            continue
+        keep = [c for c in p.output_concepts if c.address in needed]
+        if keep:
+            widen_projection(target, keep)
+        dropped.add(id(p))
+    return [p for p in parents if id(p) not in dropped]
+
+
+def _is_constant_only(node: StrategyNode) -> bool:
+    return bool(node.output_concepts) and all(
+        c.derivation == Derivation.CONSTANT for c in node.output_concepts
+    )
+
+
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
@@ -1969,6 +2002,7 @@ def _assemble_final_node(
     graph: ReferenceGraph,
     history: History,
     source_policy: SourcePolicy,
+    feeder_cache: "_CleanFeederCache | None" = None,
 ) -> StrategyNode | None:
     """Build the FINAL output node: merge the minimum set of built groups
     that together cover `mandatory_list`. When a single group already covers
@@ -2014,9 +2048,24 @@ def _assemble_final_node(
             for concept in node.output_concepts
             if concept.address in row_arg_addrs
         ]
+        # A membership (`x in <set>`) deferred onto FINAL needs its subselect
+        # feeder wired here -- `_attach_existence_sources` ran before assembly
+        # and only saw the built groups, never this FINAL node, so without this
+        # the IN-RHS concept renders against a dangling CTE (Missing source map
+        # entry for `<set>`).
+        ex_concepts = _condition_existence_concepts(final_conditions.conditional)
+        ex_parents = (
+            _existence_parents_for(
+                ex_concepts, built, skip=node, feeder_cache=feeder_cache
+            )
+            if ex_concepts
+            else []
+        )
         sources = ConditionSources(
             row_concepts=row_concepts + arg_concepts,
             row_parents=arg_nodes,
+            existence_concepts=ex_concepts,
+            existence_parents=ex_parents,
         )
         return inject_condition_at_node(
             node,
@@ -2087,7 +2136,18 @@ def _assemble_final_node(
         # merged key under a sibling alias the user didn't write. Bridge last, so
         # the hidden bridge concepts can't perturb the grain decision above.
         _bridge_pseudonyms(final_node, per_group[gid])
-        return _apply_final_conditions(final_node)
+        conditioned = _apply_final_conditions(final_node)
+        if conditioned is final_node:
+            return conditioned
+        # Applying a FINAL-deferred condition can wrap the contributor in a node
+        # that reads it at a finer grain than the output — a membership
+        # (`cust_id in <set>`) filters a contributor that carries an extra grain
+        # key (`channel`) only so the IN-set subselect can read it, so the
+        # filtered rows still duplicate at the output grain. Re-dedup the
+        # conditioned result (no-op when it already sits at the output grain).
+        return _group_to_grain_if_required(
+            conditioned, mandatory_list, final_contract, environment
+        )
 
     # Only root scans get the grain projection: their grain is the row-level
     # source-table grain (often much wider than what a downstream merge
@@ -2175,6 +2235,7 @@ def _assemble_final_node(
     # columns into one projection instead of joining (same passthrough logic the
     # per-group `_pre_merge_parents` uses).
     final_needed = set(mandatory_addresses) | set(final_merge_grain)
+    parents = _fold_constant_parents(parents, final_needed)
     parents = _satisfy_parent_projection_contract(
         parents,
         final_needed,
@@ -2488,6 +2549,7 @@ def build_strategy_node(
         g,
         history,
         source_policy,
+        feeder_cache=feeder_cache,
     )
     if final is not None:
         final = _elide_passthrough_tree(final)

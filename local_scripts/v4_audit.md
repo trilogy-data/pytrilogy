@@ -146,16 +146,52 @@ Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
   is *more* favorable than isolation. Prune only entries that pass in BOTH (see below);
   the rest pass only with full-suite ordering and would flip red if run alone.
 
+## 2026-06-30 — self-referential membership CRASH fixed (was an UNTRACKED v4 gap)
+
+`tests/optimization/test_pushdown_optimization.py::test_dual_existence_filter_no_cycle`
+(and the single-membership variant) **crashed under v4 in isolation** (`Missing
+source map entry for local.a_buyers`) but was NOT in `v4_known_failing.py` — it
+only passed via full-suite ordering, so the "0 failed" sweep masked it. A membership
+`x in y` whose set `y` is derived from the same scan as the output was injected on
+`y`'s own producer group (self-referential → the IN-RHS rendered against a dangling
+CTE), because the shared scan is a d1-root excluded from condition candidates.
+Three-part fix:
+
+1. **`condition_placement.plan_condition_placements`** — when EVERY candidate for a
+   membership atom is itself a membership-set producer, route the atom to FINAL
+   (narrow: ordinary TPC-DS `x in <set>` over a separate output aggregate has a real
+   consumer candidate and is untouched — verified net-zero on a full sweep).
+2. **`_assemble_final_node` / `_apply_final_conditions`** (strategy_builder) — wire
+   existence feeders for a FINAL-deferred membership (`_attach_existence_sources`
+   runs BEFORE assembly and never saw the FINAL node), via `feeder_cache` threaded in.
+3. Re-dedup the conditioned single-contributor result to the output grain (the
+   contributor carries an extra grain key only so the IN-set subselect can read it,
+   so filtered rows still duplicate at the output grain).
+
+Lock: `test_self_referential_membership_filter` + `test_dual_existence_filter_no_cycle`
+(both execute rows, pass under v3 + v4). Full v4 sweep clean (4301 passed, 0 real
+failures; lone fail was a live-Gemini flake that passes on retry). **Caveat: the
+rowset-cross-datasource isolation failures (`test_rowset_cross_datasource_outer_read`,
+`test_scoped_join_rowset_outer_blend`) are ALSO untracked and fail in isolation but
+pass in-suite — same masking pattern; verify before flipping the default.**
+
+## 2026-06-30 — `select_literal` verbosity FIXED + pruned
+
+`_fold_constant_parents` (strategy_builder): a constant-only FINAL contributor got
+its own CTE + `FULL JOIN on 1=1` (294 vs v3's 117); now a constant folds into a
+non-constant sibling's projection (constants render inline anywhere), matching v3.
+Pruned `test_select_literal_is_rendered_with_aggregate_projection`.
+
 ## Current tracked state (re-bucketed 2026-06-28 — NOT all cosmetic)
 
-`tests/v4_known_failing.py` tracks **14 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
+`tests/v4_known_failing.py` tracks **13 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
 `test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, q10, q23. q2.2 pruned
 2026-06-28. `rowset_alias` (wrong-rows), q2.1, and `rowset_arithmetic` pruned 2026-06-29.
-The remaining 14:
+`select_literal` pruned 2026-06-30 (constant fold). The remaining 13:
 
 | bucket | count | meaning |
 | --- | --- | --- |
-| `_V4_VERBOSITY` | 5 | rows match, v4 materially longer (measured). Real regressions. |
+| `_V4_VERBOSITY` | 4 | rows match, v4 materially longer (measured). Real regressions. |
 | `_V4_STRUCTURE` | 5 | rows match on consistent data; join-type/source/shape differs. |
 | `_TPCDS_SIZE` | 1 | q30.alt over on STRUCTURE (double GA-spine scan), not length. |
 | `_INLINE` | 2 | `ncaa::adhoc07` genuinely cosmetic; `aggregate_of_aggregate` passes (prune candidate). |
