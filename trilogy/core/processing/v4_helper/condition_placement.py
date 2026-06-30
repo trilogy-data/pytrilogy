@@ -255,6 +255,23 @@ def plan_condition_placements(
         gid: set(b.primary_members) | set(b.secondary_members)
         for gid, b in buckets.items()
     }
+    # Every concept that is the RHS set of some membership (`x in <set>`) in this
+    # query, and the groups that PRODUCE one. A membership must never be injected
+    # on a group that produces a set: the set is a side-channel subselect that
+    # must stay unfiltered, and filtering its producer by `x in set` is
+    # self-referential (the set defines the rows it's filtered against -> the
+    # IN-RHS renders against a dangling CTE).
+    all_existence_addrs: set[str] = set()
+    for clause in conditions:
+        for atom in decompose_condition(clause.conditional):
+            all_existence_addrs |= {
+                c.address for group in atom.existence_arguments for c in group
+            }
+    existence_set_producers = {
+        gid
+        for gid, b in buckets.items()
+        if all_existence_addrs & set(b.primary_members)
+    }
     placements: list[ConditionPlacement] = []
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
@@ -271,6 +288,26 @@ def plan_condition_placements(
             restricted = [
                 gid for gid in candidates if all(gid in reach for reach in closures)
             ]
+            # A self-contained membership whose ONLY hosts are membership-set
+            # producers (output and set share one scan, so the set's producer is
+            # the sole candidate) has nowhere neutral to land -- placing it on a
+            # producer is self-referential. Route to FINAL, where each set is a
+            # subselect feeder. Memberships with a real consumer candidate (the
+            # common TPC-DS `x in <set>` over a separate output aggregate) are
+            # untouched.
+            if (
+                atom.existence_arguments
+                and restricted
+                and all(gid in existence_set_producers for gid in restricted)
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(FINAL_NODE_ID,),
+                        reason=PlacementReason.FINAL_RECONVERGENCE,
+                    )
+                )
+                continue
             agg_outputs = _aggregate_outputs(row_inputs, buckets)
             if _routes_to_final_for_cross_grain_aggregates(agg_outputs, buckets):
                 placements.append(

@@ -83,8 +83,11 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # local_scripts/v4_evals/cases/rowset_alias_collision.preql); the shape test is
     # dual-conditioned on CONFIG.use_v4_discovery. Passes under both planners.
     # --- VERBOSITY: rows match, v4 materially longer (measured 2026-06-28) ---
-    # select_literal: constant 'abc' not inlined -> own CTE + FULL JOIN on 1=1 (117->294).
-    "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection": _V4_VERBOSITY,
+    # select_literal pruned 2026-06-30 (294->117, == v3): a constant-only FINAL
+    # contributor got its own CTE + `FULL JOIN on 1=1`; `_fold_constant_parents`
+    # (strategy_builder) now folds a constant into a non-constant sibling's
+    # projection (constants render inline anywhere), mirroring v3. XPASS in
+    # isolation + full sweep.
     # bound_conversion presto: 1022->1249 (+22%).
     "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _V4_VERBOSITY,
     # aggregate_filter HAVING: keeps HAVING but adds a CASE WHEN wrapper, 272->522 (+92%).
