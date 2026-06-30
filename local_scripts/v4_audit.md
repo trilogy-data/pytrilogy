@@ -17,8 +17,58 @@ TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
 
 ## Distance to swapping v4 on by default
 
-**Short answer: no wrong-rows, no crashes. What's left is plan verbosity on ~8 TPC-DS
-queries plus a batch of cosmetic shape-assert tests. Correctness is there.**
+**Short answer (REVISED 2026-06-28): farther than previously stated. A measurement
+audit of the "cosmetic shape-assert" bucket found it was mostly mislabeled — it
+contains ONE verified wrong-rows bug, ~7 real verbosity regressions, and ~5
+structural/join-semantics diffs. Only ~2 of the 15 were genuinely cosmetic. The
+prior "no wrong-rows" claim was an artifact of shape-only tests that never execute.**
+
+### 2026-06-28 measurement audit of the _INLINE/_MODELING bucket
+
+Each entry was generated under both planners (`CONFIG.use_v4_discovery` False/True),
+compared on length + JOIN/CTE counts, and where join-type differed, EXECUTED on
+synthetic data to diff rows. Findings:
+
+- **WRONG ROWS (1): `test_rowset_alias_name_collision` — FIXED 2026-06-28.** v4 had
+  dropped the shared `id` join key and emitted `FULL JOIN ... on 1=1` -> cartesian
+  (verified 3 rows -> 27), masked because the test only asserts SQL shape. Fix:
+  `resolve_rowset` exposes a plain unfiltered NON-aggregate rowset's grain key, and
+  `_final_merge_grain`/`_group_final_grain_contribution` (group_graph) resolve the
+  rowset-namespaced key (`buyers_a.id`) through `BuildRowsetItem.content` to the
+  shared base (`local.id`) so the FINAL merge INNER-joins on it. Gated to unfiltered
+  (a filtered rowset's key is a subset -> would break `rowset_outer_addition`'s
+  LEFT-add) and non-aggregate (an aggregate's grain key is a renamed grouping
+  column, not a renderable passthrough -> would break the `query-structure` syntax
+  example). Rows now match; executing guard at `local_scripts/v4_evals/cases/
+  rowset_alias_collision.preql`; shape test dual-conditioned; pruned from
+  `v4_known_failing.py`. Full v4 sweep clean (lone residual is an environmental
+  snowflake/permission flake on q21, passes in isolation). **Lesson stands: a green
+  shape-only sweep is necessary but NOT sufficient — verify rows by executing.**
+- **VERBOSITY (7): rows match, v4 materially longer.** `test_select_literal...`
+  (117->294, constant not inlined -> cross join), `test_aggregate_filter_uses_having`
+  (272->522, +CASE WHEN), `test_bound_conversion_existence_presto` (1022->1249),
+  `test_in_subselect_with_inlined_datasource` (source not inlined), `usa_names::
+  test_aggregate_filter_anonymous` (+70%), `rowset_arithmetic` (6290->8747, +39%),
+  `two_merge` (merge=False 9->11 CTEs). Several are the SAME passthrough-not-inlined
+  family as q2.1/q2.2 — fixing that lever likely clears multiple at once.
+- **STRUCTURE (5): rows match on consistent data, plan differs.** `tpc_h::adhoc07`
+  (INNER->RIGHT/FULL outer, rows VERIFIED MATCH at sf=0.01), `stocks::provider_name`
+  (drops join, FULL vs LEFT OUTER+INNER; matches on consistent data, diverges on
+  orphan rows), `test_persist_with_where` (persisted source not reused, recomputes
+  CASE), `filter_scalar...staging` (sources staged table where v3 doesn't; ROWS
+  UNVERIFIED), `nested_greatest` (no group-by CTE for multi_wm; v3-shape guard).
+- **Genuinely cosmetic (2): `ncaa::adhoc07`** (+3%, same join) and
+  **`test_aggregate_of_aggregate`** (already passes under v4 in isolation).
+
+Reasons in `tests/v4_known_failing.py` were re-bucketed (`_V4_WRONG_ROWS`,
+`_V4_VERBOSITY`, `_V4_STRUCTURE`) to stop these reading as cosmetic. NEXT: fix the
+wrong-rows bug; verify rows for `filter_scalar...staging`; attack the
+passthrough-not-inlined family (overlaps q2.1).
+
+### (Prior, now-superseded framing)
+**What's left is plan verbosity on ~8 TPC-DS queries plus a batch of cosmetic
+shape-assert tests. Correctness is there.** — FALSE per the audit above; kept for
+context.
 
 v4 discovery is still off by default (`CONFIG.use_v4_discovery = False`). As of 2026-06-27
 the full sweep is **0 failed** (re-run twice to rule out parallel-harness flake) and the
@@ -27,12 +77,15 @@ classifier reports **0 CRASH / 0 escalations**. All the crashes that were open o
 `BinderException`, `test_filter_constant` invalid-ref). What remains before flipping the
 default:
 
-1. **Plan verbosity — 3 `_TPCDS_SIZE` tests** (q2.1, q2.2, q30.alt). Rows match; the
-   SQL trips an assertion. q2.1/q2.2 are genuine length verbosity; **q30.alt is now
-   STRUCTURAL, not length** (6193 < 12000 ceiling) — the test asserts `web_returns` is
-   scanned once / exactly 2 GROUP BYs, and v4 still emits a second GA-spine scan for the
-   filter-only `address.state`. Handoffs: `v4_verbosity_handoff.md` (q2.1/q2.2),
-   `v4_dimension_projection_rejoin_handoff.md` (q30.alt GA-spine).
+1. **Plan verbosity — 1 `_TPCDS_SIZE` test** (q30.alt). Rows match; the SQL trips an
+   assertion. **q30.alt is STRUCTURAL, not length** (6193 < 12000 ceiling) — the test
+   asserts `web_returns` is scanned once / exactly 2 GROUP BYs, and v4 still emits a
+   second GA-spine scan for the filter-only `address.state`. Handoff:
+   `v4_dimension_projection_rejoin_handoff.md` (q30.alt GA-spine). **q2.1/q2.2 both
+   FIXED + pruned** (the last genuine length regressions): see
+   `v4_verbosity_handoff.md` — q2.2 via the window/round merge, q2.1 via the
+   navigation-window grain-inference fix that made its named-intermediate round BASIC
+   land at `date.week_seq` so the same merge fires.
    - **q10 FIXED + pruned 2026-06-27 (8308 → 6412, under the 7000 ceiling).** Root cause
      was co-bucketed semijoin-RHS buyer-set filters (`pcid in store_buyers` /
      `webcat_buyers`): their defining fact columns (`channel`, `date.year`) sat in the
@@ -81,30 +134,39 @@ Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
 
 **4289 passed, 20 skipped, 6 xfailed, 18 xpassed, 82 errors — 0 failed (8m).**
 
-- **0 failed** — no wrong-rows / crash / invalid-render regressions. The first run this
-  round reported 3 failed; two re-runs (with and without clickhouse) came back 0 failed,
-  so those were transient parallel-harness flakes, not regressions (size assertions are
-  deterministic and cannot flake). The default-planner (v3) sweep is also green (exit 0).
+- **0 failed in the SWEEP, but that is not row-parity.** The sweep being green means
+  no *listed-as-passing* test regressed — it does NOT mean v4 rows are correct, because
+  several tracked entries assert SQL shape only and never execute. The 2026-06-28 audit
+  found `test_rowset_alias_name_collision` returns a cartesian product (wrong rows)
+  despite a green sweep. Treat "0 failed" as a regression gate, not a correctness proof.
+  The default-planner (v3) sweep is also green (exit 0).
 - The **82 errors** are all `tests/engine/test_clickhouse_server.py` — clickhouse.cloud
   connection errors, environmental (no local server). Ignore.
 - **18 xpassed / 6 xfailed** are tracked `v4_known_failing.py` entries. NB the full suite
   is *more* favorable than isolation. Prune only entries that pass in BOTH (see below);
   the rest pass only with full-suite ordering and would flip red if run alone.
 
-## Current tracked state — SHAPE/SIZE only (no correctness)
+## Current tracked state (re-bucketed 2026-06-28 — NOT all cosmetic)
 
-`tests/v4_known_failing.py` tracks **18 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
-`test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, **q10, q23**. No crash
-labels remain.
+`tests/v4_known_failing.py` tracks **14 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
+`test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, q10, q23. q2.2 pruned
+2026-06-28. `rowset_alias` (wrong-rows), q2.1, and `rowset_arithmetic` pruned 2026-06-29.
+The remaining 14:
 
 | bucket | count | meaning |
 | --- | --- | --- |
-| `_INLINE` | 10 | SQL/CTE shape differs from v3; rows match. Cosmetic. |
-| `_MODELING` | 5 | modeling-sweep shape/CTE diffs; rows match. Cosmetic. |
-| `_TPCDS_SIZE` | 3 | q2.1/q2.2 over the length ceiling; q30.alt is over on STRUCTURE (double GA-spine scan), not length. |
+| `_V4_VERBOSITY` | 5 | rows match, v4 materially longer (measured). Real regressions. |
+| `_V4_STRUCTURE` | 5 | rows match on consistent data; join-type/source/shape differs. |
+| `_TPCDS_SIZE` | 1 | q30.alt over on STRUCTURE (double GA-spine scan), not length. |
+| `_INLINE` | 2 | `ncaa::adhoc07` genuinely cosmetic; `aggregate_of_aggregate` passes (prune candidate). |
+| `_CRASH_INVALID_REF` | 1 | (unused — reserved string; no entries reference it). |
 
-The one open theme is **plan verbosity / shape** on the last 3 TPC-DS entries (q2.1, q2.2
-length; q30.alt structure — `v4_verbosity_handoff.md`, `v4_dimension_projection_rejoin_handoff.md`).
+The `rowset_alias` wrong-rows correctness bug is FIXED (cartesian product → INNER
+join on the shared grain key; rows verified 3=3). The last genuine **length**
+regression (q2.1) is FIXED. Open themes are now: (1) the remaining verbosity
+family (`v4_verbosity_handoff.md`), (2) structural join/source diffs to verify
+for row impact, and (3) q30.alt GA-spine (`v4_dimension_projection_rejoin_handoff.md`,
+the only remaining STRUCTURE size-ceiling miss).
 
 ## Size / verbosity analysis (2026-06-25)
 
@@ -154,86 +216,44 @@ sources inlined; `test_two` even asserts the raw `"memory"."store_sales"` is gon
 So a query can read "over ceiling" in the proxy yet PASS its actual test (q23, q94).
 Trust the `test` column for pass/fail; use the proxy lengths only for v3-vs-v4 deltas.
 
-### Measurements (proxy lengths from `v4_size_compare`; `test` = real verdict)
+### Measurements 
 
-`v4 base` = the 2026-06-24 baseline (before any size fix). `v4` = current, after the
-two fixes below (row-preserving inline + join-stream sharing). `test` PASS rows were
-pruned from `v4_known_failing.py`.
-
-| q | ceiling | v3 | v4 base | v4 | test |
-| --- | ---: | ---: | ---: | ---: | :---: |
-| 02 | 7500 | 4625 | 7725 | 7685 | **PASS** |
-| 2.2 | 7500 | 6770 | 10267 | 10267 | fail |
-| 12 | 3200 | 2026 | 4132 | **2026** | **PASS** |
-| 20 | 3200 | 1869 | 4214 | **2314** | **PASS** |
-| 23 | 8500 | 7792 | 10610 | 8423 | **PASS** |
-| 30.alt | 12000 | 7147 | 11670 | 9006 | fail |
-| 47 | 6800 | 5486 | 11568 | **7868** | fail |
-| 50 | 7000 | 4725 | 8776 | **6889** | **PASS** |
-| 57 | 6500 | 4894 | 10267 | **6900** | fail |
-| 62 | 2500 | 2160 | 3073 | 2160 | **PASS** |
-| 69 | 5000 | 4059 | 4485 | 4485 | **PASS** |
-| 73 | 3000 | 2823 | 5665 | 5496 | fail |
-| 76 | 10000 | 7477 | 10957 | 10957 | **PASS** |
-| 81 | 8000 | 7460 | 10192 | 9163 | fail |
-| 94 | 5000 | 3544 | 5265 | 4810 | **PASS** |
-| 97.1 | 4250 | 2989 | 2357 | 2357 | **PASS** |
-
-The proxy table above is HISTORICAL (2026-06-25 baseline). Trust real-fixture numbers from
+Trust real-fixture numbers from
 `local_scripts/v4_real_size.py` instead. **Current real-fixture v3/v4 (2026-06-27),
 `OVER` = fails its test:**
 
 | q | ceiling | v3 | v4 | status |
 | --- | ---: | ---: | ---: | :--- |
 | 10 | 7000 | 6420 | 6412 | PASS (pruned) |
-| 2.1 | 7500 | 6290 | 8747 | OVER (length) |
-| 2.2 | 7500 | 6290 | 8856 | OVER (length) |
+| 2.1 | 7500 | 6290 | 7276 | PASS (pruned 2026-06-29) |
+| 2.2 | 7500 | 6290 | 7276 | PASS (pruned) |
 | 30.alt | 12000 | 7152 | 6193 | OVER (STRUCTURE — length fine) |
 | 73 | 3000 | 2701 | 2741 | PASS (pruned) |
 | 81 | 8000 | 7465 | 6410 | PASS (pruned) |
 | 23 | 8500 | 8037 | 8107 | PASS (pruned) |
 | 94 | 5000 | 3452 | 3153 | PASS (pruned) |
 
-**Genuinely failing now (2):** q2.1 (8266) on length; q30.alt fails on STRUCTURE not
-length (6193 < 12000): a second `web_returns` GA-spine scan for the filter-only
-`address.state` (`v4_dimension_projection_rejoin_handoff.md`).
+**Genuinely failing now (1):** q30.alt fails on STRUCTURE not length (6193 <
+12000): a second `web_returns` GA-spine scan for the filter-only `address.state`
+(`v4_dimension_projection_rejoin_handoff.md`). q2.1 FIXED 2026-06-29 (8747 →
+7276): the named `*_sales` intermediate made the round() BASIC infer date.id
+grain (the window's `order by date.week_seq` flattened up as a grain parent and
+descended to its key), skipping the same-grain window merge that fixed q2.2.
+Three-part fix — (1) navigation-window order-by excluded from a wrapping
+expression's grain inference (`_get_relevant_parent_concepts` in parsing/common +
+`_row_grain_concept_refs` in author), (2) subset-nest cycle guard
+(`_feeds_extra_signature_group` in group_rules) so the `*_sales` window-feeder
+and `*_increase` window-consumer don't merge into one cycling bucket, (3)
+partial-spine window absorb in `_merge_basic_into_window_parent`. Pruned q2.1 +
+rowset_arithmetic (same family). Both full sweeps clean.
 
-**q2.2 FIXED + pruned 2026-06-28 (8856 → 7276).** `_merge_basic_into_window_parent`
-(`group_graph.py`) folds the same-grain `round()` BASIC into its WINDOW producer (leads
-render inline, v3's window+round shape) instead of materializing 14 agg + 7 lead
-passthrough columns. The window merge is the node-MERGE generalization of
-`_regraft_group_sources`, gated to full-coverage same-grain scalar-BASIC-over-WINDOW
-(the case `CollapseSingleParent` can't express). q2.1 stays over because its round BASIC
-is at `date.id` grain (named `*_sales` intermediate), so the same-grain gate skips it —
-a separate grain-inference gap. (A pseudonym-aware `inline_datasource` change was tried
-for the fact-scan passthroughs but REVERTED — it regressed `test_canonical_collision_
-merge` on both planners; q2.2 passes without it.) See `v4_verbosity_handoff.md`.
 
-### Size fixes already landed (current behavior, 2026-06-25)
+### Remaining size shapes — next targets (updated 2026-06-29)
 
-Two fixes drove the `v4 base`→`v4` column above and cleared q12/q20/q50/q62/q23/q94:
+Most are now fixed and pruned (q47, q57, q73, q81, q10, q23, q94, q2.1, q2.2).
+The passthrough/window family (q2.1/q2.2) is closed. ONE size-ceiling test left:
 
-- **Row-preserving aggregate-input inline** (`aggregate.py` + `strategy_builder.py`):
-  a row-preserving aggregate input (`Derivation.ROOT`/`BASIC`/`FILTER`, lineage not
-  crossing a row-shape barrier) renders **inline** in the consuming `GroupNode`
-  (`sum(CASE WHEN p THEN x ELSE NULL END)`) instead of as a separate CTE joined back on
-  the fact PK. Guarded so q08-style disjoint existence-arg filters stay separate. Locked
-  by `tests/core/processing/test_v4_virt_filter_extra_cte.py`.
-- **Join-stream sharing** (`strategy_builder._add_aggregate_needed_concepts`):
-  multi-consumer/multi-grain queries re-derived the fact×dimension join-stream once per
-  consumer. Adding an aggregate's `by` keys (and row-preserving inputs) to the `needed`
-  set lets parent-dedup reuse the already-joined-and-aggregated CTE. q47: 8 CTEs/9
-  JOINs/2 fact-scans → 4/5/1.
-
-### Remaining size shapes — next targets (updated 2026-06-27)
-
-Most of the original 6 are now fixed and pruned (q47, q57, q73, q81). The last 3 open,
-in `local_scripts/v4_verbosity_handoff.md`:
-
-1. **Passthrough-projection bloat — q2.1 (8747) / q2.2 (8856).** Pure single-source
-   projection CTEs that should fold into their consumer. The biggest remaining lever; the
-   most verbose multi-fact / many-sibling shape left.
-2. **Dimension-projection re-join (STRUCTURE) — q30.alt.** A second `web_returns`
+1. **Dimension-projection re-join (STRUCTURE) — q30.alt.** A second `web_returns`
    GA-spine scan for the filter-only `address.state` (length is already fine at 6193).
    Refined root cause + a regression trap (q65) in
    `local_scripts/v4_dimension_projection_rejoin_handoff.md`. Higher risk.

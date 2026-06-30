@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse
 
@@ -166,8 +167,17 @@ SELECT
     assert (
         '"orders"."ship" as "_buyers_b_cust_id"' in sql
     ), f"buyers_b.cust_id should project ship, sql was:\n{sql}"
-    assert '"buyers_a_cust_id" as "a_cust"' in sql, sql
-    assert '"buyers_b_cust_id" as "b_cust"' in sql, sql
+    # v3 renames the rowset-local column through an intermediate (`buyers_a_cust_id`)
+    # before the outer alias; v4 projects the rowset-local column straight to the
+    # outer alias (one fewer rename, and joins the rowsets on the shared `id` grain
+    # key instead of v3's cross-join risk). Both keep the non-swapped lineage; the
+    # executing row check lives in local_scripts/v4_evals/cases/rowset_alias_collision.
+    if CONFIG.use_v4_discovery:
+        assert '"_buyers_a_cust_id" as "a_cust"' in sql, sql
+        assert '"_buyers_b_cust_id" as "b_cust"' in sql, sql
+    else:
+        assert '"buyers_a_cust_id" as "a_cust"' in sql, sql
+        assert '"buyers_b_cust_id" as "b_cust"' in sql, sql
 
 
 def test_rowset_alias_name_collision_lineage() -> None:

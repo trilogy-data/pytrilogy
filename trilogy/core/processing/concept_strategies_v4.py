@@ -582,6 +582,44 @@ def resolve_rowset(
         handles.append(handle)
         inputs.append(produced[hlineage.content.address])
 
+    # A plain rowset's GRAIN keys (e.g. `id`) are the shared join keys back to the
+    # outer query and sibling rowsets, but they're plain roots — not
+    # `BuildRowsetItem` handles — so the loop above skips them. Expose any the inner
+    # producer supplies so they enter the boundary grain below and the FINAL merge
+    # joins on them; otherwise a shared-key rowset with no `merge into` pseudonym
+    # degrades to a `1=1` cross product -> cartesian (test_rowset_alias_name_
+    # collision: 3 rows -> 27). Mirrors v3 `gen_rowset_node` carrying the inner
+    # select's demanded output_components (`additional_relevant`). Multiselect
+    # grains are align concepts handled separately below, so scope to plain selects.
+    #
+    # Only for an UNFILTERED rowset: a WHERE/HAVING makes its key-set a proper
+    # subset of the base domain, so advertising the key would let the cover step
+    # satisfy the outer bare key FROM the filtered rowset and drop the unfiltered
+    # source (rowset_outer_addition: odd orders must survive NULL-extended via a
+    # LEFT add, not be inner-joined away). A filtered rowset stays a separate
+    # outer-added contributor.
+    #
+    # Plain ROW-projection rowsets only: an AGGREGATE rowset's grain is its
+    # grouping key, which the producer renames to the handle (`dept_totals` groups
+    # by `dept` and renders it as `_dept_totals_department`), so the raw grain key
+    # isn't a separately renderable column — exposing it makes assembly demand a
+    # `local.dept` no CTE projects (query-structure syntax example). A plain
+    # projection's grain key (`id`) IS a passthrough column, safe to expose.
+    if (
+        isinstance(built, BuildSelectLineage)
+        and built.where_clause is None
+        and built.having_clause is None
+        and not any(
+            o.derivation == Derivation.AGGREGATE for o in built.output_components
+        )
+    ):
+        handle_addrs = {h.address for h in handles}
+        for key_addr in built.grain.components:
+            if key_addr in produced and key_addr not in handle_addrs:
+                key_concept = produced[key_addr]
+                handles.append(key_concept)
+                inputs.append(key_concept)
+
     # A rowset wrapping a multiselect (q64): an aligned handle's content is the
     # multiselect concept (e.g. `s_name`), which the renderer resolves via
     # `find_source` — it needs the arm concepts (`s_name_99`/`s_name_00`) in the

@@ -1269,7 +1269,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 keys = final_grain.components
             else:
                 pkeys: set[str] = set()
-                for x_ref in new_lineage.concept_arguments:
+                for x_ref in _row_grain_concept_refs(new_lineage):
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
                         continue
@@ -2240,6 +2240,45 @@ def _by_item_with_reference_replacement(item, replacements):
 
 def _grain_concept_refs(grain: "Grain", environment: Environment) -> list[ConceptRef]:
     return [environment.concepts[c].reference for c in grain.component_order]
+
+
+def _row_grain_concept_refs(expr) -> list["ConceptRef"]:
+    """Concept arguments that determine a row-wise expression's grain.
+
+    Unlike the flat ``.concept_arguments`` property, a navigation window's
+    ``order by`` is excluded: lead/lag emit one value per operand row, so the
+    order-by is internal navigation, not a grain dimension. Flattening it up
+    would let a wrapping row-op descend the order key to ITS key (a window
+    ``order by date.week_seq`` drags the result to date.id), finer than the
+    window lives at and blocking the round-into-window merge (q2.1). The
+    window's own grain (``_navigation_window_to_concept``) still includes its
+    order-by; only outer inference excludes it. Unhandled node types fall back
+    to the flat property, preserving prior behavior."""
+    if isinstance(expr, ConceptRef):
+        return [expr]
+    if isinstance(expr, FunctionCallWrapper):
+        return _row_grain_concept_refs(expr.content)
+    if isinstance(expr, Parenthetical):
+        return _row_grain_concept_refs(expr.content)
+    if isinstance(expr, NavigationWindowItem):
+        out = _row_grain_concept_refs(expr.content)
+        for item in expr.over:
+            out += _row_grain_concept_refs(item)
+        return out
+    if isinstance(expr, Function):
+        out = []
+        for arg in expr.arguments:
+            out += _row_grain_concept_refs(arg)
+        return out
+    if isinstance(expr, (Comparison, Conditional)):
+        return _row_grain_concept_refs(expr.left) + _row_grain_concept_refs(expr.right)
+    if isinstance(expr, Between):
+        return (
+            _row_grain_concept_refs(expr.left)
+            + _row_grain_concept_refs(expr.low)
+            + _row_grain_concept_refs(expr.high)
+        )
+    return list(get_concept_arguments(expr))
 
 
 def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str], bool]:

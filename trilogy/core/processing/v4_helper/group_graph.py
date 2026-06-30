@@ -23,7 +23,12 @@ from typing import Literal, overload
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models.build import BuildConcept, BuildGrain, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildGrain,
+    BuildRowsetItem,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 
 from .condition_placement import plan_condition_placements
@@ -980,10 +985,26 @@ def _rowset_join_key_addresses(
     return output
 
 
+def _resolve_rowset_key(addr: str, environment: BuildEnvironment | None) -> str:
+    """A rowset namespaces its grain key (`buyers_a.id` is a ROWSET concept
+    wrapping `local.id`). Sibling rowsets / the outer query expose the unwrapped
+    base key, so resolve through the `BuildRowsetItem` content to the address they
+    actually share; return `addr` unchanged when it isn't a rowset key."""
+    if environment is None:
+        return addr
+    concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
+        addr
+    )
+    if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
+        return concept.lineage.content.address
+    return addr
+
+
 def _final_merge_grain(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment | None = None,
 ) -> frozenset[str]:
     mandatory_by_address = {concept.address: concept for concept in mandatory_list}
     grain: set[str] = set()
@@ -997,11 +1018,26 @@ def _final_merge_grain(
             grain |= set(concept.grain.components)
         elif concept.derivation == Derivation.ROWSET:
             grain |= _rowset_join_key_addresses(concept, mandatory_by_address)
+        else:
+            # A BASIC rename of a rowset handle (`buyers_a.cust_id as a_cust`)
+            # carries the rowset's namespaced grain key (`buyers_a.id`), which
+            # sibling rowsets don't share. Resolve it to the base join key
+            # (`local.id`) every rowset boundary exposes so the FINAL merge joins
+            # on it instead of cross-joining ON 1=1 (test_rowset_alias_name_
+            # collision: cartesian). Only fires when a key actually unwraps a
+            # rowset, so plain BASIC concepts don't widen the grain.
+            for key_address in concept.keys or set():
+                resolved = _resolve_rowset_key(key_address, environment)
+                if resolved != key_address:
+                    grain.add(resolved)
     return frozenset(grain)
 
 
 def _group_final_grain_contribution(
-    attrs: dict[str, GroupAttrs], gid: str, merge_grain: frozenset[str]
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    merge_grain: frozenset[str],
+    environment: BuildEnvironment | None = None,
 ) -> frozenset[str]:
     if gid not in attrs:
         return frozenset()
@@ -1009,18 +1045,26 @@ def _group_final_grain_contribution(
         return attrs[gid].grain_components
     if attrs[gid].derivation == Derivation.ROWSET:
         return merge_grain
-    return frozenset()
+    # A BASIC group projecting a rowset rename has a namespaced grain
+    # (`buyers_a.id`); resolve it to the shared base key so its projection_grain
+    # advertises the join key the merge needs (mirrors `_final_merge_grain`).
+    resolved = {
+        _resolve_rowset_key(addr, environment) for addr in attrs[gid].grain_components
+    }
+    rowset_keys = (resolved - set(attrs[gid].grain_components)) & merge_grain
+    return frozenset(rowset_keys)
 
 
 def _refresh_final_contract(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment | None = None,
 ) -> None:
     if FINAL_NODE_ID not in attrs:
         return
     output_addresses = frozenset(c.address for c in mandatory_list)
-    merge_grain = _final_merge_grain(group_graph, attrs, mandatory_list)
+    merge_grain = _final_merge_grain(group_graph, attrs, mandatory_list, environment)
     contributors: list[FinalContributorContract] = []
     for gid in sorted(group_graph.predecessors(FINAL_NODE_ID)):
         if gid not in attrs:
@@ -1034,7 +1078,7 @@ def _refresh_final_contract(
                 output_addresses=frozenset(attrs[gid].output_concepts),
                 preserve_keys=preserve_keys,
                 projection_grain=_group_final_grain_contribution(
-                    attrs, gid, merge_grain
+                    attrs, gid, merge_grain, environment
                 ),
             )
         )
@@ -1727,7 +1771,7 @@ def build_group_graph(
         _refresh_input_contracts(
             group_graph, group_edges, attrs, concept_attrs, concept_edges
         )
-        _refresh_final_contract(group_graph, attrs, mandatory_list)
+        _refresh_final_contract(group_graph, attrs, mandatory_list, environment)
     if return_merged_graph:
         return group_graph, group_edges, attrs, merged_group_graph, merged_group_edges
     return group_graph, group_edges, attrs
@@ -1981,12 +2025,31 @@ def _merge_basic_into_window_parent(
         parent_gid = _regraft_candidate(
             group_graph, group_edges, attrs, gid, allow_partial=False
         )
+        if parent_gid is None:
+            # The BASIC may also read a sibling the window already sources (q2.1:
+            # `round_lag(sunday_sales)` references `sunday_sales` directly AND via
+            # the lead, so the round group's parents are the window + the
+            # `*_sales` BASIC the window itself reads). Full coverage misses this;
+            # fall back to a partial spine and gate on the window carrying every
+            # remaining input below.
+            parent_gid = _regraft_candidate(
+                group_graph, group_edges, attrs, gid, allow_partial=True
+            )
         if parent_gid is None or parent_gid == gid:
             continue
         pa = attrs[parent_gid]
         if pa.derivation != Derivation.WINDOW:
             continue
         if pa.grain_components != a.grain_components:
+            continue
+        # Absorption renders gid inline in the window's own SELECT, so the window
+        # must already source every input gid needs -- from its outputs (the
+        # leads) or its inputs (the `*_sales` it consumes). A spine whose missing
+        # inputs the window doesn't carry would need a real join the absorb can't
+        # create, so leave it as a separate joined node.
+        if not set(a.input_concepts) <= set(pa.output_concepts) | set(
+            pa.input_concepts
+        ):
             continue
         _absorb_group(gid, parent_gid, group_graph, group_edges, attrs, buckets)
         changed = True
