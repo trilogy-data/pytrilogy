@@ -64,7 +64,24 @@ class InlineDatasource(OptimizationRule):
                     f"Cannot inline: Parent {parent_cte.name} datasource is not inlineable"
                 )
                 continue
+            # A merged key physically present as one datasource column also
+            # satisfies its pseudonym addresses: a fact FK `web_sales.date.id`
+            # also covers the canonical `date.id` a consumer inherited through a
+            # `left join web_sales.date.id = date.id` merge. Without expanding,
+            # a bare fact scan that advertises the canonical can't fold into its
+            # consumer (q2.1 juicy/quizzical) -- the base datasource only declares
+            # the native address. Same physical column, so the inline renders it
+            # correctly; the join resolver is pseudonym-aware.
+            #
+            # Gated to a SINGLE-consumer scan: inlining a scan shared by >1
+            # consumer duplicates it into each (a multiselect's arms sharing one
+            # `facts` scan -> two scans). A shared scan is cheaper kept as one CTE,
+            # so only expand pseudonyms when this scan feeds exactly one consumer
+            # (canonical_collision keeps its single unified `facts` scan).
             root_outputs = {x.address for x in root.output_concepts}
+            if len(inverse_map.get(parent_cte.name, [])) <= 1:
+                for x in root.output_concepts:
+                    root_outputs |= x.pseudonyms
             inherited = {
                 x for x, v in cte.source_map.items() if v and parent_cte.name in v
             }

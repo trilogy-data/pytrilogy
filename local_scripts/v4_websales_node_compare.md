@@ -188,3 +188,21 @@ fact `d1` → `[(1,0),(2,2),(3,0),(4,1),(5,0)]`. Full sweeps: v4 4300 passed/0
 failed, v3 4314 passed/0 failed. Lock: `tests/discovery/test_merge_unnest_partial_join.py`
 (deterministic, executed). The inliner pseudonym-unblock can now land "forward" —
 its only full-suite regression was this collision, now fixed.
+
+## LANDED 2026-06-30 — inliner pseudonym-unblock (forward step)
+
+With the spine bug fixed, the inliner unblock now lands. `InlineDatasource`
+(inline_datasource.py) expands `root_outputs` with each datasource output's
+pseudonyms, so a bare fact scan advertising the canonical merge key (`date.id`,
+via the `web_sales.date.id` FK pseudonym) folds into its consumer.
+
+**Gated to a SINGLE-consumer scan** (`len(inverse_map[parent_cte.name]) <= 1`): a
+scan shared across consumers (a multiselect's arms sharing one `facts` scan) would
+be DUPLICATED into each by inlining -- worse than one shared CTE. The gate keeps a
+shared scan as one CTE (canonical_collision `single_source` stays 1 facts scan).
+
+Result: q2.1/q2.2 inline `juicy`/`quizzical` -> **7276 -> 6795** (v3 is 6290).
+Single-arm collision now inlines its single-consumer fact scan on BOTH planners
+(`coalesce("facts"."d1","quizzical"."s1") as "s1"`, one fewer CTE; rows unchanged) --
+collision shape asserts updated to match. Full sweeps clean: v4 4302/0, v3 4316/0.
+mypy/ruff/black clean.
