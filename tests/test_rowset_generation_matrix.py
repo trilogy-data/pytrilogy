@@ -215,21 +215,21 @@ _MATRIX: list[tuple[str, str, object]] = [
     ),
     (
         # The same self-relation phrased the OTHER way — a filtered aggregate over
-        # one rowset's measure grouped by ANOTHER rowset's key, related only by an
-        # OFFSET outer join (`sum(nxt.sales2) by cur.w` with `cur.w + 1 = nxt.w2`).
-        # Grouping one rowset's measure by a different rowset's key through an outer
-        # join is not expressible — the declared join lives at the outer select, not
-        # inside the aggregate's grain, and the offset keeps the keys genuinely
-        # distinct (no equality collapse). Contract: a clean disconnect error (do
-        # the join inside a rowset first, as the case above), never a sentinel or a
-        # raw DuckDB error.
-        "cross_rowset_grouped_aggregate_offset_join_clean_error",
+        # one rowset's measure grouped by ANOTHER rowset's key, related by an OFFSET
+        # join (`sum(nxt.sales2 ? ...) by cur.w` with `cur.w + 1 = nxt.w2`). The
+        # join key (`cur.w + 1`) is a DERIVED expression over cur's own output, so
+        # `cur` materializes it locally and merges with `nxt` over its pseudonym —
+        # no equality collapse, a real INNER JOIN. w=1 -> nxt.w2=2 (filter passes,
+        # sales2=5); w=2 -> nxt.w2=3 (filter nxt.w2=2 fails -> NULL); w=3 -> nxt.w2=4
+        # has no row, dropped by the inner join.
+        "cross_rowset_grouped_aggregate_offset_join",
         WEEK_MODEL
         + "rowset cur <- select s_week as w, sum(s_qty) as sales;"
         + "rowset nxt <- select s_week as w2, sum(s_qty) as sales2;"
         + "def ahead(x) -> sum(nxt.sales2 ? nxt.w2 = x) by cur.w;"
-        + "select cur.w, @ahead(2) as a\ninner join cur.w + 1 = nxt.w2;",
-        DisconnectedConceptsException,
+        + "select cur.w, @ahead(2) as a\ninner join cur.w + 1 = nxt.w2"
+        + " order by cur.w;",
+        [(1, 5), (2, None)],
     ),
     # --- nested rowset (rowset aggregates another rowset's output) ---
     (

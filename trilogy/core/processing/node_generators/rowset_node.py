@@ -104,6 +104,47 @@ def _pseudonym_bridge_keys(
     return pairs
 
 
+def _producible_derived_join_keys(
+    node: StrategyNode, environment: BuildEnvironment
+) -> list[tuple[BuildConcept, str]]:
+    """Derived-expression scoped-join keys this rowset node can MATERIALIZE off
+    its own outputs, paired with the other side's key address.
+
+    A scoped `join a.grp + 1 = b.grp` lowers the left key to an anonymous BASIC
+    concept (`a.grp + 1`) whose pseudonym is the other side's key (`b.grp`). That
+    bridge is not a rowset output, so `_pseudonym_bridge_keys` can't see it; and
+    sourcing it through discovery would re-enter this same rowset (its parent is
+    the rowset's own output) and recurse. But the rowset already produces the
+    key's inputs, so it can compute the key locally — exposing a join column the
+    merge relates to the other rowset by pseudonym, with no re-sourcing. Returns
+    ``(derived key, other-side key address)`` for each such key."""
+    producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
+    scoped_keys = (
+        environment.scoped_inner_join_keys
+        | environment.scoped_full_join_keys
+        | environment.scoped_left_anchor_keys
+    )
+    seen: set[str] = set()
+    result: list[tuple[BuildConcept, str]] = []
+    for key_addr in scoped_keys:
+        key_concept = environment.concepts.get(key_addr)
+        if key_concept is None:
+            continue
+        for pseudo in key_concept.pseudonyms:
+            derived = environment.concepts.get(pseudo)
+            if (
+                derived is None
+                or derived.derivation != Derivation.BASIC
+                or derived.address in seen
+            ):
+                continue
+            inputs = {a.address for a in derived.concept_arguments}
+            if inputs and inputs <= producible:
+                seen.add(derived.address)
+                result.append((derived, key_addr))
+    return result
+
+
 def _validate_cross_rowset_inner_joins(
     select: SelectLineage | MultiSelectLineage,
     base_node: StrategyNode,
@@ -388,6 +429,79 @@ def _apply_cross_rowset_where(
     return merged
 
 
+def _enrich_via_derived_join_key(
+    derived_keys: List[tuple[BuildConcept, str]],
+    enrich_remaining: List[BuildConcept],
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
+    g,
+    depth: int,
+    source_concepts,
+    history: History,
+    conditions: BuildWhereClause | None,
+    node: RowsetNode,
+) -> StrategyNode | None:
+    """Enrich a rowset across a derived-expression scoped join.
+
+    Materializes each derived join key (`a.grp + 1`) onto this rowset node from
+    its own outputs, then sources the still-missing optionals — plus the other
+    side's key, so the merge has a real column to join — which pulls the OTHER
+    scoped-joined rowset, and merges. The merge relates the two over the key's
+    pseudonym (`a.grp + 1` ~ `b.grp`); the other rowset is never re-sourced
+    through this one (which would recurse).
+
+    Returns None (fall through to the standard path / clean disconnect) when the
+    other side cannot EXPOSE the pseudonym key — e.g. the optional is a filtered
+    aggregate grouped by THIS rowset's key, which collapses the other side's join
+    column away. Merging then would silently cross-join (`1=1`), so decline and
+    let the query fail cleanly rather than return wrong rows."""
+    other_keys = [
+        environment.concepts[other]
+        for _, other in derived_keys
+        if other in environment.concepts
+    ]
+    enrich_node = source_concepts(
+        mandatory_list=unique(enrich_remaining + other_keys, "address"),
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+        conditions=conditions,
+        history=history,
+    )
+    if not enrich_node:
+        return None
+    exposed: set[str] = set()
+    for x in enrich_node.output_concepts:
+        if x.address in enrich_node.hidden_concepts:
+            continue
+        exposed.add(x.address)
+        exposed |= set(x.pseudonyms)
+    bindable = {other for _, other in derived_keys} | {
+        p for key, _ in derived_keys for p in key.pseudonyms
+    }
+    if not (exposed & bindable):
+        return None
+    for key, _ in derived_keys:
+        node.add_output_concept(key)
+    node.rebuild_cache()
+    non_hidden = [
+        x for x in node.output_concepts if x.address not in node.hidden_concepts
+    ]
+    non_hidden_enrich = [
+        x
+        for x in enrich_node.output_concepts
+        if x.address not in enrich_node.hidden_concepts
+    ]
+    return MergeNode(
+        input_concepts=unique(non_hidden + non_hidden_enrich, "address"),
+        output_concepts=unique(non_hidden + local_optional, "address"),
+        environment=environment,
+        depth=depth,
+        parents=[node, enrich_node],
+        preexisting_conditions=conditions.conditional if conditions else None,
+    )
+
+
 def _enrich_rowset_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -431,6 +545,27 @@ def _enrich_rowset_node(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
         return node
+    # A scoped join on a DERIVED key (`a.grp + 1 = b.grp`) leaves no rowset-output
+    # pseudonym for `_pseudonym_bridge_keys` to find, and sourcing the key via
+    # discovery would re-enter this rowset and recurse. Materialize it locally and
+    # merge with the other side over its pseudonym. Gated on the shape so the
+    # cheaper standard enrichment below is unperturbed for every other rowset.
+    derived_keys = _producible_derived_join_keys(node, environment)
+    if derived_keys and remaining:
+        merged = _enrich_via_derived_join_key(
+            derived_keys,
+            unique(remaining + cond_remaining, "address"),
+            local_optional,
+            environment,
+            g,
+            depth,
+            source_concepts,
+            history,
+            conditions,
+            node,
+        )
+        if merged is not None:
+            return merged
     bridge_keys = _pseudonym_bridge_keys(node.output_concepts, environment)
     possible_joins = concept_to_relevant_joins(
         [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]

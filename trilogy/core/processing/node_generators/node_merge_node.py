@@ -90,9 +90,7 @@ def extract_ds_components(
         ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=EGO_RADIUS).copy()
         graphs.append(
             sorted(
-                extract_address(x)
-                for x in ds_graph.nodes
-                if not str(x).startswith("ds~")
+                extract_address(x) for x in ds_graph.nodes if str(x).startswith("c~")
             )
         )
     # if we had no ego graphs, return all concepts
@@ -106,22 +104,68 @@ def extract_ds_components(
     return graphs
 
 
-def prune_rowset_lineage_edges_for_weak_merge(
+ROWSET_HUB_PREFIX = "rowset_hub~"
+
+
+def island_rowsets_for_weak_merge(
     g: ReferenceGraph, requested_concepts: list[BuildConcept]
 ) -> None:
-    if all(c.derivation == Derivation.ROWSET for c in requested_concepts):
-        return
+    """Reshape the weak-merge graph so each rowset behaves like an opaque island.
+
+    A rowset is a materialized result: from outside you can reach only its
+    declared outputs through a scoped join — you cannot navigate INTO its body to
+    recover the base concepts it was computed from. The raw reference graph does
+    not honor that: a rowset output links to its internal ``content`` (the
+    concept behind its select), and through the shared base that content reaches
+    the OTHER rowset's internals — a phantom cross-rowset bridge that competes
+    with the real join key and trips the ambiguity guard. Two reshapes:
+
+    1. SEVER every edge between a rowset output and its ``content`` (the internal
+       it aliases), across ALL grain instances. Matching is by CANONICAL address
+       (graph nodes key on ``canonical_address``, not the friendly ``address``);
+       the default-grain-only lineage prune misses the other instances. This
+       islands the internal subtree from the output. Downstream consumers of the
+       output (the derived join key `a.grp + 1`) are NOT severed — something
+       downstream of a rowset legitimately links back to it.
+
+    2. LINK a rowset's co-produced outputs to each other via a per-rowset hub
+       node. A rowset measure reaches its own grain key only through an AGGREGATE
+       node, which the minimal-tree search always prunes — so the measure would
+       isolate and the tree couldn't span `{key, measure}` of one rowset. The hub
+       (named without a ``c~``/``ds~`` prefix so concept/datasource extraction
+       skips it — pure connectivity glue) models that they are co-produced. Each
+       rowset gets its OWN hub, so distinct rowsets are related ONLY by the cross
+       join key's pseudonym edge, never through the hub."""
+    nodes_by_canon: dict[str, list[str]] = {}
+    for node in g.nodes:
+        if str(node).startswith("c~"):
+            nodes_by_canon.setdefault(extract_address(node), []).append(node)
+
+    canon_by_rowset: dict[str, set[str]] = {}
     to_remove: list[tuple[str, str]] = []
-    for node, concept in g.concepts.items():
+    for concept in g.concepts.values():
         if not isinstance(concept.lineage, BuildRowsetItem):
             continue
-        content_node = concept_to_node(concept.lineage.content.with_default_grain())
-        if (content_node, node) in g.edges:
-            to_remove.append((content_node, node))
-        if (node, content_node) in g.edges:
-            to_remove.append((node, content_node))
-    if to_remove:
-        g.remove_edges_from(to_remove)
+        canon_by_rowset.setdefault(concept.lineage.rowset.name, set()).add(
+            concept.canonical_address
+        )
+        content_canon = concept.lineage.content.canonical_address
+        for out_node in nodes_by_canon.get(concept.canonical_address, []):
+            for content_node in nodes_by_canon.get(content_canon, []):
+                to_remove.append((content_node, out_node))
+                to_remove.append((out_node, content_node))
+    g.remove_edges_from([e for e in to_remove if e in g.edges])
+
+    for name, canon_addrs in canon_by_rowset.items():
+        members = [
+            node for addr in canon_addrs for node in nodes_by_canon.get(addr, [])
+        ]
+        if len(members) < 2:
+            continue
+        hub = f"{ROWSET_HUB_PREFIX}{name}"
+        for member in members:
+            g.add_edge(hub, member)
+            g.add_edge(member, hub)
 
 
 def determine_induced_minimal_nodes(
@@ -181,10 +225,12 @@ def determine_induced_minimal_nodes(
         # keep BASIC concepts that are also directly bound to a datasource
         # column. Their binding is a valid source path on par with ROOT
         # (decomposing into the lineage parents may strand them when the
-        # parents can't be co-sourced with other required dimensions).
+        # parents can't be co-sourced with other required dimensions). ROWSET
+        # outputs are also exempt: a rowset is sourced as one opaque unit (its
+        # internals are not navigable parents), so it anchors a join like ROOT.
         elif (
             filter_downstream
-            and lookup.derivation != Derivation.ROOT
+            and lookup.derivation not in (Derivation.ROOT, Derivation.ROWSET)
             and lookup.canonical_address
             not in environment.materialized_canonical_concepts
         ):
@@ -382,7 +428,7 @@ def resolve_weak_components(
         ),
         conditions=search_conditions,
     )
-    prune_rowset_lineage_edges_for_weak_merge(search_graph, all_concepts)
+    island_rowsets_for_weak_merge(search_graph, all_concepts)
     reduced_concept_sets: list[set[str]] = []
 
     count = 0
