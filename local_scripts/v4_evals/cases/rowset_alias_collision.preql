@@ -1,0 +1,41 @@
+key id int;
+key bill_id int;
+key ship_id int;
+
+datasource orders (
+    id: id,
+    bill: bill_id,
+    ship: ship_id,
+)
+grain (id)
+query '''
+select 1 id, 100 bill, 200 ship
+union all select 2, 101, 201
+union all select 3, 102, 202
+''';
+
+# Two rowsets aliasing DIFFERENT source columns to the SAME output name
+# (`cust_id`) share the `id` key. The unfiltered rowsets must INNER-join on `id`
+# so each surviving row pairs bill->a_cust with ship->b_cust at the same id.
+# v4 regression (FIXED): the boundary dropped the shared `id` key and the FINAL
+# merge cross-joined `FULL JOIN ... on 1=1`, producing a 3x3x3 cartesian (27 rows)
+# instead of 3. Expected rows: (1,100,200), (2,101,201), (3,102,202).
+with buyers_a as
+SELECT
+    id,
+    bill_id as cust_id
+;
+
+with buyers_b as
+SELECT
+    id,
+    ship_id as cust_id
+;
+
+SELECT
+    id,
+    buyers_a.cust_id as a_cust,
+    buyers_b.cust_id as b_cust,
+order by
+    id asc
+;

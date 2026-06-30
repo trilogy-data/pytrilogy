@@ -1369,13 +1369,6 @@
       "kind": "lineage",
       "phase": "post_condition",
       "source": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
-      "target": "grp:basic:d*:date.week_seq:sig:6e672f"
-    },
-    {
-      "alt_group": null,
-      "kind": "lineage",
-      "phase": "post_condition",
-      "source": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
       "target": "grp:window:d0:date.week_seq"
     },
     {
@@ -1390,21 +1383,7 @@
       "kind": "lineage",
       "phase": "post_condition",
       "source": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
-      "target": "grp:basic:d*:date.week_seq:sig:6e672f"
-    },
-    {
-      "alt_group": null,
-      "kind": "lineage",
-      "phase": "post_condition",
-      "source": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
       "target": "grp:window:d0:date.week_seq"
-    },
-    {
-      "alt_group": null,
-      "kind": "merge",
-      "phase": "post_condition",
-      "source": "grp:basic:d*:date.week_seq:sig:6e672f",
-      "target": "__final__"
     },
     {
       "alt_group": null,
@@ -1454,13 +1433,6 @@
       "phase": "post_condition",
       "source": "grp:window:d0:date.week_seq",
       "target": "__final__"
-    },
-    {
-      "alt_group": null,
-      "kind": "lineage",
-      "phase": "post_condition",
-      "source": "grp:window:d0:date.week_seq",
-      "target": "grp:basic:d*:date.week_seq:sig:6e672f"
     }
   ],
   "groups": [
@@ -1485,14 +1457,14 @@
           {
             "group_id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
             "output_addresses": [
-              "local._virt_agg_sum_5446384850356435",
-              "local._virt_agg_sum_4518379598128005",
+              "local._virt_agg_sum_2131371712943644",
+              "local._virt_agg_sum_733654448721027",
               "date.week_seq",
               "local._virt_agg_sum_3727603509126659",
+              "local._virt_agg_sum_5446384850356435",
+              "local._virt_agg_sum_4518379598128005",
               "local._virt_agg_sum_7662941318754865",
-              "local._virt_agg_sum_7224794219444244",
-              "local._virt_agg_sum_2131371712943644",
-              "local._virt_agg_sum_733654448721027"
+              "local._virt_agg_sum_7224794219444244"
             ],
             "preserve_keys": [],
             "projection_grain": [
@@ -1502,14 +1474,14 @@
           {
             "group_id": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
             "output_addresses": [
-              "local._virt_agg_sum_2293560889657522",
-              "local._virt_agg_sum_8302396398525202",
-              "local._virt_agg_sum_5332872165953971",
-              "date.week_seq",
-              "local._virt_agg_sum_8086371301050807",
-              "local._virt_agg_sum_8833754379564371",
               "local._virt_agg_sum_9238538473336606",
-              "local._virt_agg_sum_6823422966658347"
+              "local._virt_agg_sum_6823422966658347",
+              "local._virt_agg_sum_8302396398525202",
+              "local._virt_agg_sum_8086371301050807",
+              "date.week_seq",
+              "local._virt_agg_sum_5332872165953971",
+              "local._virt_agg_sum_2293560889657522",
+              "local._virt_agg_sum_8833754379564371"
             ],
             "preserve_keys": [],
             "projection_grain": [
@@ -1517,32 +1489,17 @@
             ]
           },
           {
-            "group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-            "output_addresses": [
-              "local.sunday_increase",
-              "local.wednesday_increase",
-              "local.monday_increase",
-              "date.week_seq",
-              "local.saturday_increase",
-              "local.friday_increase",
-              "local.thursday_increase",
-              "local.tuesday_increase"
-            ],
-            "preserve_keys": [],
-            "projection_grain": []
-          },
-          {
             "group_id": "grp:root:root:\u2205",
             "output_addresses": [
-              "catalog_sales.order_number",
-              "date.week_seq",
-              "web_sales.ext_sales_price",
+              "catalog_sales.item.id",
               "web_sales.order_number",
               "date.day_of_week",
-              "catalog_sales.item.id",
+              "catalog_sales.order_number",
+              "catalog_sales.ext_sales_price",
+              "date.week_seq",
               "date.id",
-              "web_sales.item.id",
-              "catalog_sales.ext_sales_price"
+              "web_sales.ext_sales_price",
+              "web_sales.item.id"
             ],
             "preserve_keys": [
               "date.week_seq"
@@ -1552,9 +1509,9 @@
           {
             "group_id": "grp:root:root_d1:\u2205",
             "output_addresses": [
+              "date.id",
               "date.week_seq",
-              "date.year",
-              "date.id"
+              "date.year"
             ],
             "preserve_keys": [
               "date.week_seq"
@@ -1564,28 +1521,14 @@
           {
             "group_id": "grp:window:d0:date.week_seq",
             "output_addresses": [
-              "local._virt_agg_sum_2293560889657522",
-              "local._virt_agg_sum_5332872165953971",
-              "local._virt_agg_sum_3727603509126659",
-              "local._virt_window_lead_1615489443759951",
-              "local._virt_agg_sum_6823422966658347",
-              "local._virt_window_lead_1732363590168359",
-              "local._virt_agg_sum_4518379598128005",
-              "local._virt_agg_sum_5446384850356435",
-              "local._virt_agg_sum_8086371301050807",
-              "local._virt_agg_sum_7224794219444244",
-              "local._virt_window_lead_9976629776715537",
-              "local._virt_agg_sum_9238538473336606",
-              "local._virt_window_lead_4790424210530227",
-              "local._virt_window_lead_9386088415621209",
-              "local._virt_window_lead_7125692363367989",
-              "local._virt_agg_sum_733654448721027",
-              "local._virt_agg_sum_8302396398525202",
+              "local.wednesday_increase",
+              "local.saturday_increase",
+              "local.friday_increase",
+              "local.monday_increase",
               "date.week_seq",
-              "local._virt_agg_sum_8833754379564371",
-              "local._virt_agg_sum_7662941318754865",
-              "local._virt_window_lead_9762136461725141",
-              "local._virt_agg_sum_2131371712943644"
+              "local.sunday_increase",
+              "local.thursday_increase",
+              "local.tuesday_increase"
             ],
             "preserve_keys": [],
             "projection_grain": [
@@ -1598,12 +1541,12 @@
           "date.week_seq"
         ],
         "output_addresses": [
-          "local.sunday_increase",
           "local.wednesday_increase",
-          "local.monday_increase",
-          "date.week_seq",
           "local.saturday_increase",
           "local.friday_increase",
+          "local.monday_increase",
+          "date.week_seq",
+          "local.sunday_increase",
           "local.thursday_increase",
           "local.tuesday_increase"
         ],
@@ -1670,11 +1613,6 @@
           "phase": "post_condition"
         },
         {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "kind": "merge",
-          "phase": "post_condition"
-        },
-        {
           "id": "grp:root:root:\u2205",
           "kind": "merge",
           "phase": "post_condition"
@@ -1718,9 +1656,9 @@
             "date.id"
           ],
           "required_outputs": [
+            "date.id",
             "date.week_seq",
-            "date.year",
-            "date.id"
+            "date.year"
           ]
         }
       ],
@@ -1788,12 +1726,12 @@
             "date.week_seq"
           ],
           "required_outputs": [
+            "catalog_sales.item.id",
+            "date.day_of_week",
+            "catalog_sales.ext_sales_price",
             "catalog_sales.order_number",
             "date.week_seq",
-            "date.day_of_week",
-            "catalog_sales.item.id",
-            "date.id",
-            "catalog_sales.ext_sales_price"
+            "date.id"
           ]
         }
       ],
@@ -1851,11 +1789,6 @@
           "phase": "post_condition"
         },
         {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "kind": "lineage",
-          "phase": "post_condition"
-        },
-        {
           "id": "grp:window:d0:date.week_seq",
           "kind": "lineage",
           "phase": "post_condition"
@@ -1890,11 +1823,11 @@
             "date.week_seq"
           ],
           "required_outputs": [
-            "date.week_seq",
-            "web_sales.ext_sales_price",
             "web_sales.order_number",
             "date.day_of_week",
+            "date.week_seq",
             "date.id",
+            "web_sales.ext_sales_price",
             "web_sales.item.id"
           ]
         }
@@ -1953,184 +1886,8 @@
           "phase": "post_condition"
         },
         {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "kind": "lineage",
-          "phase": "post_condition"
-        },
-        {
           "id": "grp:window:d0:date.week_seq",
           "kind": "lineage",
-          "phase": "post_condition"
-        }
-      ]
-    },
-    {
-      "aggregate_input_grain": [],
-      "conditions": [],
-      "depth": "d*",
-      "derivation": "basic",
-      "final_contract": null,
-      "grain": [
-        "date.week_seq"
-      ],
-      "hidden": [],
-      "id": "grp:basic:d*:date.week_seq:sig:6e672f",
-      "input_contracts": [
-        {
-          "channel": "row_stream",
-          "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "may_project_dimension": false,
-          "parent_group_id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
-          "preserve_keys": [
-            "date.week_seq"
-          ],
-          "required_grain": [
-            "date.week_seq"
-          ],
-          "required_outputs": [
-            "local._virt_agg_sum_4518379598128005",
-            "local._virt_agg_sum_5446384850356435",
-            "date.week_seq",
-            "local._virt_agg_sum_3727603509126659",
-            "local._virt_agg_sum_7662941318754865",
-            "local._virt_agg_sum_7224794219444244",
-            "local._virt_agg_sum_2131371712943644",
-            "local._virt_agg_sum_733654448721027"
-          ]
-        },
-        {
-          "channel": "row_stream",
-          "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "may_project_dimension": false,
-          "parent_group_id": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
-          "preserve_keys": [
-            "date.week_seq"
-          ],
-          "required_grain": [
-            "date.week_seq"
-          ],
-          "required_outputs": [
-            "local._virt_agg_sum_2293560889657522",
-            "local._virt_agg_sum_8302396398525202",
-            "local._virt_agg_sum_5332872165953971",
-            "date.week_seq",
-            "local._virt_agg_sum_8086371301050807",
-            "local._virt_agg_sum_8833754379564371",
-            "local._virt_agg_sum_9238538473336606",
-            "local._virt_agg_sum_6823422966658347"
-          ]
-        },
-        {
-          "channel": "row_stream",
-          "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "may_project_dimension": false,
-          "parent_group_id": "grp:window:d0:date.week_seq",
-          "preserve_keys": [
-            "date.week_seq"
-          ],
-          "required_grain": [
-            "date.week_seq"
-          ],
-          "required_outputs": [
-            "local._virt_agg_sum_2293560889657522",
-            "local._virt_agg_sum_5332872165953971",
-            "local._virt_agg_sum_3727603509126659",
-            "local._virt_window_lead_1615489443759951",
-            "local._virt_agg_sum_6823422966658347",
-            "local._virt_window_lead_1732363590168359",
-            "local._virt_agg_sum_4518379598128005",
-            "local._virt_agg_sum_5446384850356435",
-            "local._virt_agg_sum_8086371301050807",
-            "local._virt_agg_sum_7224794219444244",
-            "local._virt_window_lead_9976629776715537",
-            "local._virt_agg_sum_9238538473336606",
-            "local._virt_window_lead_4790424210530227",
-            "local._virt_window_lead_9386088415621209",
-            "local._virt_window_lead_7125692363367989",
-            "local._virt_agg_sum_733654448721027",
-            "local._virt_agg_sum_8302396398525202",
-            "date.week_seq",
-            "local._virt_agg_sum_8833754379564371",
-            "local._virt_agg_sum_7662941318754865",
-            "local._virt_window_lead_9762136461725141",
-            "local._virt_agg_sum_2131371712943644"
-          ]
-        }
-      ],
-      "inputs": [
-        "date.week_seq",
-        "local._virt_agg_sum_2131371712943644",
-        "local._virt_agg_sum_2293560889657522",
-        "local._virt_agg_sum_3727603509126659",
-        "local._virt_agg_sum_4518379598128005",
-        "local._virt_agg_sum_5332872165953971",
-        "local._virt_agg_sum_5446384850356435",
-        "local._virt_agg_sum_6823422966658347",
-        "local._virt_agg_sum_7224794219444244",
-        "local._virt_agg_sum_733654448721027",
-        "local._virt_agg_sum_7662941318754865",
-        "local._virt_agg_sum_8086371301050807",
-        "local._virt_agg_sum_8302396398525202",
-        "local._virt_agg_sum_8833754379564371",
-        "local._virt_agg_sum_9238538473336606",
-        "local._virt_window_lead_1615489443759951",
-        "local._virt_window_lead_1732363590168359",
-        "local._virt_window_lead_4790424210530227",
-        "local._virt_window_lead_7125692363367989",
-        "local._virt_window_lead_9386088415621209",
-        "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
-      ],
-      "members": [
-        "local.friday_increase",
-        "local.monday_increase",
-        "local.saturday_increase",
-        "local.sunday_increase",
-        "local.thursday_increase",
-        "local.tuesday_increase",
-        "local.wednesday_increase"
-      ],
-      "outputs": [
-        "date.week_seq",
-        "local.friday_increase",
-        "local.monday_increase",
-        "local.saturday_increase",
-        "local.sunday_increase",
-        "local.thursday_increase",
-        "local.tuesday_increase",
-        "local.wednesday_increase"
-      ],
-      "predecessors": [
-        {
-          "id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
-          "kind": "lineage",
-          "phase": "post_condition"
-        },
-        {
-          "id": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
-          "kind": "lineage",
-          "phase": "post_condition"
-        },
-        {
-          "id": "grp:window:d0:date.week_seq",
-          "kind": "lineage",
-          "phase": "post_condition"
-        }
-      ],
-      "primary_members": [
-        "local.friday_increase",
-        "local.monday_increase",
-        "local.saturday_increase",
-        "local.sunday_increase",
-        "local.thursday_increase",
-        "local.tuesday_increase",
-        "local.wednesday_increase"
-      ],
-      "secondary_members": [],
-      "successors": [
-        {
-          "id": "__final__",
-          "kind": "merge",
           "phase": "post_condition"
         }
       ]
@@ -2283,14 +2040,14 @@
             "date.week_seq"
           ],
           "required_outputs": [
-            "local._virt_agg_sum_4518379598128005",
-            "local._virt_agg_sum_5446384850356435",
+            "local._virt_agg_sum_2131371712943644",
+            "local._virt_agg_sum_733654448721027",
             "date.week_seq",
             "local._virt_agg_sum_3727603509126659",
+            "local._virt_agg_sum_5446384850356435",
+            "local._virt_agg_sum_4518379598128005",
             "local._virt_agg_sum_7662941318754865",
-            "local._virt_agg_sum_7224794219444244",
-            "local._virt_agg_sum_2131371712943644",
-            "local._virt_agg_sum_733654448721027"
+            "local._virt_agg_sum_7224794219444244"
           ]
         },
         {
@@ -2305,14 +2062,14 @@
             "date.week_seq"
           ],
           "required_outputs": [
-            "local._virt_agg_sum_2293560889657522",
-            "local._virt_agg_sum_8302396398525202",
-            "local._virt_agg_sum_5332872165953971",
-            "date.week_seq",
-            "local._virt_agg_sum_8086371301050807",
-            "local._virt_agg_sum_8833754379564371",
             "local._virt_agg_sum_9238538473336606",
-            "local._virt_agg_sum_6823422966658347"
+            "local._virt_agg_sum_6823422966658347",
+            "local._virt_agg_sum_8302396398525202",
+            "local._virt_agg_sum_8086371301050807",
+            "date.week_seq",
+            "local._virt_agg_sum_5332872165953971",
+            "local._virt_agg_sum_2293560889657522",
+            "local._virt_agg_sum_8833754379564371"
           ]
         },
         {
@@ -2356,31 +2113,24 @@
         "local._virt_window_lead_7125692363367989",
         "local._virt_window_lead_9386088415621209",
         "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
+        "local._virt_window_lead_9976629776715537",
+        "local.friday_increase",
+        "local.monday_increase",
+        "local.saturday_increase",
+        "local.sunday_increase",
+        "local.thursday_increase",
+        "local.tuesday_increase",
+        "local.wednesday_increase"
       ],
       "outputs": [
         "date.week_seq",
-        "local._virt_agg_sum_2131371712943644",
-        "local._virt_agg_sum_2293560889657522",
-        "local._virt_agg_sum_3727603509126659",
-        "local._virt_agg_sum_4518379598128005",
-        "local._virt_agg_sum_5332872165953971",
-        "local._virt_agg_sum_5446384850356435",
-        "local._virt_agg_sum_6823422966658347",
-        "local._virt_agg_sum_7224794219444244",
-        "local._virt_agg_sum_733654448721027",
-        "local._virt_agg_sum_7662941318754865",
-        "local._virt_agg_sum_8086371301050807",
-        "local._virt_agg_sum_8302396398525202",
-        "local._virt_agg_sum_8833754379564371",
-        "local._virt_agg_sum_9238538473336606",
-        "local._virt_window_lead_1615489443759951",
-        "local._virt_window_lead_1732363590168359",
-        "local._virt_window_lead_4790424210530227",
-        "local._virt_window_lead_7125692363367989",
-        "local._virt_window_lead_9386088415621209",
-        "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
+        "local.friday_increase",
+        "local.monday_increase",
+        "local.saturday_increase",
+        "local.sunday_increase",
+        "local.thursday_increase",
+        "local.tuesday_increase",
+        "local.wednesday_increase"
       ],
       "predecessors": [
         {
@@ -2406,7 +2156,14 @@
         "local._virt_window_lead_7125692363367989",
         "local._virt_window_lead_9386088415621209",
         "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
+        "local._virt_window_lead_9976629776715537",
+        "local.friday_increase",
+        "local.monday_increase",
+        "local.saturday_increase",
+        "local.sunday_increase",
+        "local.thursday_increase",
+        "local.tuesday_increase",
+        "local.wednesday_increase"
       ],
       "secondary_members": [
         "date.week_seq"
@@ -2415,11 +2172,6 @@
         {
           "id": "__final__",
           "kind": "merge",
-          "phase": "post_condition"
-        },
-        {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "kind": "lineage",
           "phase": "post_condition"
         }
       ]
@@ -2452,7 +2204,7 @@
       "kind": "lineage",
       "phase": null,
       "source": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
-      "target": "grp:basic:d*:date.week_seq:sig:6e672f"
+      "target": "grp:basic:d*:date.week_seq:sig:2fad04"
     },
     {
       "alt_group": null,
@@ -2473,7 +2225,7 @@
       "kind": "lineage",
       "phase": null,
       "source": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
-      "target": "grp:basic:d*:date.week_seq:sig:6e672f"
+      "target": "grp:basic:d*:date.week_seq:sig:2fad04"
     },
     {
       "alt_group": null,
@@ -2486,7 +2238,7 @@
       "alt_group": null,
       "kind": "merge",
       "phase": null,
-      "source": "grp:basic:d*:date.week_seq:sig:6e672f",
+      "source": "grp:basic:d*:date.week_seq:sig:2fad04",
       "target": "__final__"
     },
     {
@@ -2543,7 +2295,7 @@
       "kind": "lineage",
       "phase": null,
       "source": "grp:window:d0:date.week_seq",
-      "target": "grp:basic:d*:date.week_seq:sig:6e672f"
+      "target": "grp:basic:d*:date.week_seq:sig:2fad04"
     }
   ],
   "merged_groups": [
@@ -2568,14 +2320,14 @@
           {
             "group_id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
             "output_addresses": [
-              "local._virt_agg_sum_5446384850356435",
-              "local._virt_agg_sum_4518379598128005",
+              "local._virt_agg_sum_2131371712943644",
+              "local._virt_agg_sum_733654448721027",
               "date.week_seq",
               "local._virt_agg_sum_3727603509126659",
+              "local._virt_agg_sum_5446384850356435",
+              "local._virt_agg_sum_4518379598128005",
               "local._virt_agg_sum_7662941318754865",
-              "local._virt_agg_sum_7224794219444244",
-              "local._virt_agg_sum_2131371712943644",
-              "local._virt_agg_sum_733654448721027"
+              "local._virt_agg_sum_7224794219444244"
             ],
             "preserve_keys": [],
             "projection_grain": [
@@ -2585,14 +2337,14 @@
           {
             "group_id": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
             "output_addresses": [
-              "local._virt_agg_sum_2293560889657522",
-              "local._virt_agg_sum_8302396398525202",
-              "local._virt_agg_sum_5332872165953971",
-              "date.week_seq",
-              "local._virt_agg_sum_8086371301050807",
-              "local._virt_agg_sum_8833754379564371",
               "local._virt_agg_sum_9238538473336606",
-              "local._virt_agg_sum_6823422966658347"
+              "local._virt_agg_sum_6823422966658347",
+              "local._virt_agg_sum_8302396398525202",
+              "local._virt_agg_sum_8086371301050807",
+              "date.week_seq",
+              "local._virt_agg_sum_5332872165953971",
+              "local._virt_agg_sum_2293560889657522",
+              "local._virt_agg_sum_8833754379564371"
             ],
             "preserve_keys": [],
             "projection_grain": [
@@ -2600,32 +2352,17 @@
             ]
           },
           {
-            "group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-            "output_addresses": [
-              "local.sunday_increase",
-              "local.wednesday_increase",
-              "local.monday_increase",
-              "date.week_seq",
-              "local.saturday_increase",
-              "local.friday_increase",
-              "local.thursday_increase",
-              "local.tuesday_increase"
-            ],
-            "preserve_keys": [],
-            "projection_grain": []
-          },
-          {
             "group_id": "grp:root:root:\u2205",
             "output_addresses": [
-              "catalog_sales.order_number",
-              "date.week_seq",
-              "web_sales.ext_sales_price",
+              "catalog_sales.item.id",
               "web_sales.order_number",
               "date.day_of_week",
-              "catalog_sales.item.id",
+              "catalog_sales.order_number",
+              "catalog_sales.ext_sales_price",
+              "date.week_seq",
               "date.id",
-              "web_sales.item.id",
-              "catalog_sales.ext_sales_price"
+              "web_sales.ext_sales_price",
+              "web_sales.item.id"
             ],
             "preserve_keys": [
               "date.week_seq"
@@ -2635,9 +2372,9 @@
           {
             "group_id": "grp:root:root_d1:\u2205",
             "output_addresses": [
+              "date.id",
               "date.week_seq",
-              "date.year",
-              "date.id"
+              "date.year"
             ],
             "preserve_keys": [
               "date.week_seq"
@@ -2647,28 +2384,14 @@
           {
             "group_id": "grp:window:d0:date.week_seq",
             "output_addresses": [
-              "local._virt_agg_sum_2293560889657522",
-              "local._virt_agg_sum_5332872165953971",
-              "local._virt_agg_sum_3727603509126659",
-              "local._virt_window_lead_1615489443759951",
-              "local._virt_agg_sum_6823422966658347",
-              "local._virt_window_lead_1732363590168359",
-              "local._virt_agg_sum_4518379598128005",
-              "local._virt_agg_sum_5446384850356435",
-              "local._virt_agg_sum_8086371301050807",
-              "local._virt_agg_sum_7224794219444244",
-              "local._virt_window_lead_9976629776715537",
-              "local._virt_agg_sum_9238538473336606",
-              "local._virt_window_lead_4790424210530227",
-              "local._virt_window_lead_9386088415621209",
-              "local._virt_window_lead_7125692363367989",
-              "local._virt_agg_sum_733654448721027",
-              "local._virt_agg_sum_8302396398525202",
+              "local.wednesday_increase",
+              "local.saturday_increase",
+              "local.friday_increase",
+              "local.monday_increase",
               "date.week_seq",
-              "local._virt_agg_sum_8833754379564371",
-              "local._virt_agg_sum_7662941318754865",
-              "local._virt_window_lead_9762136461725141",
-              "local._virt_agg_sum_2131371712943644"
+              "local.sunday_increase",
+              "local.thursday_increase",
+              "local.tuesday_increase"
             ],
             "preserve_keys": [],
             "projection_grain": [
@@ -2681,12 +2404,12 @@
           "date.week_seq"
         ],
         "output_addresses": [
-          "local.sunday_increase",
           "local.wednesday_increase",
-          "local.monday_increase",
-          "date.week_seq",
           "local.saturday_increase",
           "local.friday_increase",
+          "local.monday_increase",
+          "date.week_seq",
+          "local.sunday_increase",
           "local.thursday_increase",
           "local.tuesday_increase"
         ],
@@ -2753,7 +2476,7 @@
           "phase": null
         },
         {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
+          "id": "grp:basic:d*:date.week_seq:sig:2fad04",
           "kind": "merge",
           "phase": null
         },
@@ -2801,9 +2524,9 @@
             "date.id"
           ],
           "required_outputs": [
+            "date.id",
             "date.week_seq",
-            "date.year",
-            "date.id"
+            "date.year"
           ]
         }
       ],
@@ -2871,12 +2594,12 @@
             "date.week_seq"
           ],
           "required_outputs": [
+            "catalog_sales.item.id",
+            "date.day_of_week",
+            "catalog_sales.ext_sales_price",
             "catalog_sales.order_number",
             "date.week_seq",
-            "date.day_of_week",
-            "catalog_sales.item.id",
-            "date.id",
-            "catalog_sales.ext_sales_price"
+            "date.id"
           ]
         }
       ],
@@ -2934,7 +2657,7 @@
           "phase": null
         },
         {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
+          "id": "grp:basic:d*:date.week_seq:sig:2fad04",
           "kind": "lineage",
           "phase": null
         },
@@ -2973,11 +2696,11 @@
             "date.week_seq"
           ],
           "required_outputs": [
-            "date.week_seq",
-            "web_sales.ext_sales_price",
             "web_sales.order_number",
             "date.day_of_week",
+            "date.week_seq",
             "date.id",
+            "web_sales.ext_sales_price",
             "web_sales.item.id"
           ]
         }
@@ -3036,7 +2759,7 @@
           "phase": null
         },
         {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
+          "id": "grp:basic:d*:date.week_seq:sig:2fad04",
           "kind": "lineage",
           "phase": null
         },
@@ -3051,138 +2774,15 @@
       "aggregate_input_grain": [],
       "conditions": [],
       "depth": "d*",
-      "derivation": "basic",
+      "derivation": "",
       "final_contract": null,
-      "grain": [
-        "date.week_seq"
-      ],
+      "grain": [],
       "hidden": [],
-      "id": "grp:basic:d*:date.week_seq:sig:6e672f",
-      "input_contracts": [
-        {
-          "channel": "row_stream",
-          "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "may_project_dimension": false,
-          "parent_group_id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
-          "preserve_keys": [
-            "date.week_seq"
-          ],
-          "required_grain": [
-            "date.week_seq"
-          ],
-          "required_outputs": [
-            "local._virt_agg_sum_4518379598128005",
-            "local._virt_agg_sum_5446384850356435",
-            "date.week_seq",
-            "local._virt_agg_sum_3727603509126659",
-            "local._virt_agg_sum_7662941318754865",
-            "local._virt_agg_sum_7224794219444244",
-            "local._virt_agg_sum_2131371712943644",
-            "local._virt_agg_sum_733654448721027"
-          ]
-        },
-        {
-          "channel": "row_stream",
-          "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "may_project_dimension": false,
-          "parent_group_id": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
-          "preserve_keys": [
-            "date.week_seq"
-          ],
-          "required_grain": [
-            "date.week_seq"
-          ],
-          "required_outputs": [
-            "local._virt_agg_sum_2293560889657522",
-            "local._virt_agg_sum_8302396398525202",
-            "local._virt_agg_sum_5332872165953971",
-            "date.week_seq",
-            "local._virt_agg_sum_8086371301050807",
-            "local._virt_agg_sum_8833754379564371",
-            "local._virt_agg_sum_9238538473336606",
-            "local._virt_agg_sum_6823422966658347"
-          ]
-        },
-        {
-          "channel": "row_stream",
-          "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-          "may_project_dimension": false,
-          "parent_group_id": "grp:window:d0:date.week_seq",
-          "preserve_keys": [
-            "date.week_seq"
-          ],
-          "required_grain": [
-            "date.week_seq"
-          ],
-          "required_outputs": [
-            "local._virt_agg_sum_2293560889657522",
-            "local._virt_agg_sum_5332872165953971",
-            "local._virt_agg_sum_3727603509126659",
-            "local._virt_window_lead_1615489443759951",
-            "local._virt_agg_sum_6823422966658347",
-            "local._virt_window_lead_1732363590168359",
-            "local._virt_agg_sum_4518379598128005",
-            "local._virt_agg_sum_5446384850356435",
-            "local._virt_agg_sum_8086371301050807",
-            "local._virt_agg_sum_7224794219444244",
-            "local._virt_window_lead_9976629776715537",
-            "local._virt_agg_sum_9238538473336606",
-            "local._virt_window_lead_4790424210530227",
-            "local._virt_window_lead_9386088415621209",
-            "local._virt_window_lead_7125692363367989",
-            "local._virt_agg_sum_733654448721027",
-            "local._virt_agg_sum_8302396398525202",
-            "date.week_seq",
-            "local._virt_agg_sum_8833754379564371",
-            "local._virt_agg_sum_7662941318754865",
-            "local._virt_window_lead_9762136461725141",
-            "local._virt_agg_sum_2131371712943644"
-          ]
-        }
-      ],
-      "inputs": [
-        "date.week_seq",
-        "local._virt_agg_sum_2131371712943644",
-        "local._virt_agg_sum_2293560889657522",
-        "local._virt_agg_sum_3727603509126659",
-        "local._virt_agg_sum_4518379598128005",
-        "local._virt_agg_sum_5332872165953971",
-        "local._virt_agg_sum_5446384850356435",
-        "local._virt_agg_sum_6823422966658347",
-        "local._virt_agg_sum_7224794219444244",
-        "local._virt_agg_sum_733654448721027",
-        "local._virt_agg_sum_7662941318754865",
-        "local._virt_agg_sum_8086371301050807",
-        "local._virt_agg_sum_8302396398525202",
-        "local._virt_agg_sum_8833754379564371",
-        "local._virt_agg_sum_9238538473336606",
-        "local._virt_window_lead_1615489443759951",
-        "local._virt_window_lead_1732363590168359",
-        "local._virt_window_lead_4790424210530227",
-        "local._virt_window_lead_7125692363367989",
-        "local._virt_window_lead_9386088415621209",
-        "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
-      ],
-      "members": [
-        "local.friday_increase",
-        "local.monday_increase",
-        "local.saturday_increase",
-        "local.sunday_increase",
-        "local.thursday_increase",
-        "local.tuesday_increase",
-        "local.wednesday_increase"
-      ],
-      "outputs": [
-        "date.week_seq",
-        "local.friday_increase",
-        "local.monday_increase",
-        "local.saturday_increase",
-        "local.sunday_increase",
-        "local.thursday_increase",
-        "local.tuesday_increase",
-        "local.wednesday_increase"
-      ],
+      "id": "grp:basic:d*:date.week_seq:sig:2fad04",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [],
+      "outputs": [],
       "predecessors": [
         {
           "id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
@@ -3200,15 +2800,7 @@
           "phase": null
         }
       ],
-      "primary_members": [
-        "local.friday_increase",
-        "local.monday_increase",
-        "local.saturday_increase",
-        "local.sunday_increase",
-        "local.thursday_increase",
-        "local.tuesday_increase",
-        "local.wednesday_increase"
-      ],
+      "primary_members": [],
       "secondary_members": [],
       "successors": [
         {
@@ -3366,14 +2958,14 @@
             "date.week_seq"
           ],
           "required_outputs": [
-            "local._virt_agg_sum_4518379598128005",
-            "local._virt_agg_sum_5446384850356435",
+            "local._virt_agg_sum_2131371712943644",
+            "local._virt_agg_sum_733654448721027",
             "date.week_seq",
             "local._virt_agg_sum_3727603509126659",
+            "local._virt_agg_sum_5446384850356435",
+            "local._virt_agg_sum_4518379598128005",
             "local._virt_agg_sum_7662941318754865",
-            "local._virt_agg_sum_7224794219444244",
-            "local._virt_agg_sum_2131371712943644",
-            "local._virt_agg_sum_733654448721027"
+            "local._virt_agg_sum_7224794219444244"
           ]
         },
         {
@@ -3388,14 +2980,14 @@
             "date.week_seq"
           ],
           "required_outputs": [
-            "local._virt_agg_sum_2293560889657522",
-            "local._virt_agg_sum_8302396398525202",
-            "local._virt_agg_sum_5332872165953971",
-            "date.week_seq",
-            "local._virt_agg_sum_8086371301050807",
-            "local._virt_agg_sum_8833754379564371",
             "local._virt_agg_sum_9238538473336606",
-            "local._virt_agg_sum_6823422966658347"
+            "local._virt_agg_sum_6823422966658347",
+            "local._virt_agg_sum_8302396398525202",
+            "local._virt_agg_sum_8086371301050807",
+            "date.week_seq",
+            "local._virt_agg_sum_5332872165953971",
+            "local._virt_agg_sum_2293560889657522",
+            "local._virt_agg_sum_8833754379564371"
           ]
         },
         {
@@ -3439,31 +3031,24 @@
         "local._virt_window_lead_7125692363367989",
         "local._virt_window_lead_9386088415621209",
         "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
+        "local._virt_window_lead_9976629776715537",
+        "local.friday_increase",
+        "local.monday_increase",
+        "local.saturday_increase",
+        "local.sunday_increase",
+        "local.thursday_increase",
+        "local.tuesday_increase",
+        "local.wednesday_increase"
       ],
       "outputs": [
         "date.week_seq",
-        "local._virt_agg_sum_2131371712943644",
-        "local._virt_agg_sum_2293560889657522",
-        "local._virt_agg_sum_3727603509126659",
-        "local._virt_agg_sum_4518379598128005",
-        "local._virt_agg_sum_5332872165953971",
-        "local._virt_agg_sum_5446384850356435",
-        "local._virt_agg_sum_6823422966658347",
-        "local._virt_agg_sum_7224794219444244",
-        "local._virt_agg_sum_733654448721027",
-        "local._virt_agg_sum_7662941318754865",
-        "local._virt_agg_sum_8086371301050807",
-        "local._virt_agg_sum_8302396398525202",
-        "local._virt_agg_sum_8833754379564371",
-        "local._virt_agg_sum_9238538473336606",
-        "local._virt_window_lead_1615489443759951",
-        "local._virt_window_lead_1732363590168359",
-        "local._virt_window_lead_4790424210530227",
-        "local._virt_window_lead_7125692363367989",
-        "local._virt_window_lead_9386088415621209",
-        "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
+        "local.friday_increase",
+        "local.monday_increase",
+        "local.saturday_increase",
+        "local.sunday_increase",
+        "local.thursday_increase",
+        "local.tuesday_increase",
+        "local.wednesday_increase"
       ],
       "predecessors": [
         {
@@ -3489,7 +3074,14 @@
         "local._virt_window_lead_7125692363367989",
         "local._virt_window_lead_9386088415621209",
         "local._virt_window_lead_9762136461725141",
-        "local._virt_window_lead_9976629776715537"
+        "local._virt_window_lead_9976629776715537",
+        "local.friday_increase",
+        "local.monday_increase",
+        "local.saturday_increase",
+        "local.sunday_increase",
+        "local.thursday_increase",
+        "local.tuesday_increase",
+        "local.wednesday_increase"
       ],
       "secondary_members": [
         "date.week_seq"
@@ -3501,7 +3093,7 @@
           "phase": null
         },
         {
-          "id": "grp:basic:d*:date.week_seq:sig:6e672f",
+          "id": "grp:basic:d*:date.week_seq:sig:2fad04",
           "kind": "lineage",
           "phase": null
         }

@@ -1,7 +1,7 @@
 # V4 Group Diagnostics
 
-- groups: 8
-- edges: 17
+- groups: 7
+- edges: 13
 
 ## __final__
 
@@ -14,7 +14,7 @@
 - outputs: `-`
 - inputs: `-`
 - hidden: `-`
-- predecessors: `grp:[@condition]filter:d1:date.id:existence:local.relevent_week_seq:merge, grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id:merge, grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number:merge, grp:basic:d*:date.week_seq:sig:6e672f:merge, grp:root:root:∅:merge, grp:root:root_d1:∅:merge, grp:window:d0:date.week_seq:merge`
+- predecessors: `grp:[@condition]filter:d1:date.id:existence:local.relevent_week_seq:merge, grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id:merge, grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number:merge, grp:root:root:∅:merge, grp:root:root_d1:∅:merge, grp:window:d0:date.week_seq:merge`
 - successors: `-`
 - conditions: `BuildSubselectComparison(left=date.week_seq@Grain<date.id>, right=local.relevent_week_seq@Grain<date.id>, operator=<ComparisonOperator.IN: 'in'>)`
 - final contract:
@@ -33,14 +33,14 @@
     {
       "group_id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
       "output_addresses": [
-        "local._virt_agg_sum_5446384850356435",
-        "local._virt_agg_sum_4518379598128005",
+        "local._virt_agg_sum_2131371712943644",
+        "local._virt_agg_sum_733654448721027",
         "date.week_seq",
         "local._virt_agg_sum_3727603509126659",
+        "local._virt_agg_sum_5446384850356435",
+        "local._virt_agg_sum_4518379598128005",
         "local._virt_agg_sum_7662941318754865",
-        "local._virt_agg_sum_7224794219444244",
-        "local._virt_agg_sum_2131371712943644",
-        "local._virt_agg_sum_733654448721027"
+        "local._virt_agg_sum_7224794219444244"
       ],
       "preserve_keys": [],
       "projection_grain": [
@@ -50,14 +50,14 @@
     {
       "group_id": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
       "output_addresses": [
-        "local._virt_agg_sum_2293560889657522",
-        "local._virt_agg_sum_8302396398525202",
-        "local._virt_agg_sum_5332872165953971",
-        "date.week_seq",
-        "local._virt_agg_sum_8086371301050807",
-        "local._virt_agg_sum_8833754379564371",
         "local._virt_agg_sum_9238538473336606",
-        "local._virt_agg_sum_6823422966658347"
+        "local._virt_agg_sum_6823422966658347",
+        "local._virt_agg_sum_8302396398525202",
+        "local._virt_agg_sum_8086371301050807",
+        "date.week_seq",
+        "local._virt_agg_sum_5332872165953971",
+        "local._virt_agg_sum_2293560889657522",
+        "local._virt_agg_sum_8833754379564371"
       ],
       "preserve_keys": [],
       "projection_grain": [
@@ -65,32 +65,17 @@
       ]
     },
     {
-      "group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-      "output_addresses": [
-        "local.sunday_increase",
-        "local.wednesday_increase",
-        "local.monday_increase",
-        "date.week_seq",
-        "local.saturday_increase",
-        "local.friday_increase",
-        "local.thursday_increase",
-        "local.tuesday_increase"
-      ],
-      "preserve_keys": [],
-      "projection_grain": []
-    },
-    {
       "group_id": "grp:root:root:\u2205",
       "output_addresses": [
-        "catalog_sales.order_number",
-        "date.week_seq",
-        "web_sales.ext_sales_price",
+        "catalog_sales.item.id",
         "web_sales.order_number",
         "date.day_of_week",
-        "catalog_sales.item.id",
+        "catalog_sales.order_number",
+        "catalog_sales.ext_sales_price",
+        "date.week_seq",
         "date.id",
-        "web_sales.item.id",
-        "catalog_sales.ext_sales_price"
+        "web_sales.ext_sales_price",
+        "web_sales.item.id"
       ],
       "preserve_keys": [
         "date.week_seq"
@@ -100,9 +85,9 @@
     {
       "group_id": "grp:root:root_d1:\u2205",
       "output_addresses": [
+        "date.id",
         "date.week_seq",
-        "date.year",
-        "date.id"
+        "date.year"
       ],
       "preserve_keys": [
         "date.week_seq"
@@ -112,28 +97,14 @@
     {
       "group_id": "grp:window:d0:date.week_seq",
       "output_addresses": [
-        "local._virt_agg_sum_2293560889657522",
-        "local._virt_agg_sum_5332872165953971",
-        "local._virt_agg_sum_3727603509126659",
-        "local._virt_window_lead_1615489443759951",
-        "local._virt_agg_sum_6823422966658347",
-        "local._virt_window_lead_1732363590168359",
-        "local._virt_agg_sum_4518379598128005",
-        "local._virt_agg_sum_5446384850356435",
-        "local._virt_agg_sum_8086371301050807",
-        "local._virt_agg_sum_7224794219444244",
-        "local._virt_window_lead_9976629776715537",
-        "local._virt_agg_sum_9238538473336606",
-        "local._virt_window_lead_4790424210530227",
-        "local._virt_window_lead_9386088415621209",
-        "local._virt_window_lead_7125692363367989",
-        "local._virt_agg_sum_733654448721027",
-        "local._virt_agg_sum_8302396398525202",
+        "local.wednesday_increase",
+        "local.saturday_increase",
+        "local.friday_increase",
+        "local.monday_increase",
         "date.week_seq",
-        "local._virt_agg_sum_8833754379564371",
-        "local._virt_agg_sum_7662941318754865",
-        "local._virt_window_lead_9762136461725141",
-        "local._virt_agg_sum_2131371712943644"
+        "local.sunday_increase",
+        "local.thursday_increase",
+        "local.tuesday_increase"
       ],
       "preserve_keys": [],
       "projection_grain": [
@@ -146,12 +117,12 @@
     "date.week_seq"
   ],
   "output_addresses": [
-    "local.sunday_increase",
     "local.wednesday_increase",
-    "local.monday_increase",
-    "date.week_seq",
     "local.saturday_increase",
     "local.friday_increase",
+    "local.monday_increase",
+    "date.week_seq",
+    "local.sunday_increase",
     "local.thursday_increase",
     "local.tuesday_increase"
   ],
@@ -189,9 +160,9 @@
       "date.id"
     ],
     "required_outputs": [
+      "date.id",
       "date.week_seq",
-      "date.year",
-      "date.id"
+      "date.year"
     ]
   }
 ]
@@ -209,7 +180,7 @@
 - inputs: `catalog_sales.ext_sales_price, catalog_sales.item.id, catalog_sales.order_number, date.day_of_week, date.id, date.week_seq`
 - hidden: `-`
 - predecessors: `grp:root:root:∅:lineage`
-- successors: `__final__:merge, grp:basic:d*:date.week_seq:sig:6e672f:lineage, grp:window:d0:date.week_seq:lineage`
+- successors: `__final__:merge, grp:window:d0:date.week_seq:lineage`
 - input contracts:
 ```json
 [
@@ -225,12 +196,12 @@
       "date.week_seq"
     ],
     "required_outputs": [
+      "catalog_sales.item.id",
+      "date.day_of_week",
+      "catalog_sales.ext_sales_price",
       "catalog_sales.order_number",
       "date.week_seq",
-      "date.day_of_week",
-      "catalog_sales.item.id",
-      "date.id",
-      "catalog_sales.ext_sales_price"
+      "date.id"
     ]
   }
 ]
@@ -248,7 +219,7 @@
 - inputs: `date.day_of_week, date.id, date.week_seq, web_sales.ext_sales_price, web_sales.item.id, web_sales.order_number`
 - hidden: `-`
 - predecessors: `grp:root:root:∅:lineage`
-- successors: `__final__:merge, grp:basic:d*:date.week_seq:sig:6e672f:lineage, grp:window:d0:date.week_seq:lineage`
+- successors: `__final__:merge, grp:window:d0:date.week_seq:lineage`
 - input contracts:
 ```json
 [
@@ -264,111 +235,12 @@
       "date.week_seq"
     ],
     "required_outputs": [
-      "date.week_seq",
-      "web_sales.ext_sales_price",
       "web_sales.order_number",
       "date.day_of_week",
+      "date.week_seq",
       "date.id",
+      "web_sales.ext_sales_price",
       "web_sales.item.id"
-    ]
-  }
-]
-```
-
-## grp:basic:d*:date.week_seq:sig:6e672f
-
-- derivation: `basic`
-- depth: `d*`
-- grain: `date.week_seq`
-- aggregate input grain: `-`
-- primary members: `local.friday_increase, local.monday_increase, local.saturday_increase, local.sunday_increase, local.thursday_increase, local.tuesday_increase, local.wednesday_increase`
-- secondary members: `-`
-- outputs: `date.week_seq, local.friday_increase, local.monday_increase, local.saturday_increase, local.sunday_increase, local.thursday_increase, local.tuesday_increase, local.wednesday_increase`
-- inputs: `date.week_seq, local._virt_agg_sum_2131371712943644, local._virt_agg_sum_2293560889657522, local._virt_agg_sum_3727603509126659, local._virt_agg_sum_4518379598128005, local._virt_agg_sum_5332872165953971, local._virt_agg_sum_5446384850356435, local._virt_agg_sum_6823422966658347, local._virt_agg_sum_7224794219444244, local._virt_agg_sum_733654448721027, local._virt_agg_sum_7662941318754865, local._virt_agg_sum_8086371301050807, local._virt_agg_sum_8302396398525202, local._virt_agg_sum_8833754379564371, local._virt_agg_sum_9238538473336606, local._virt_window_lead_1615489443759951, local._virt_window_lead_1732363590168359, local._virt_window_lead_4790424210530227, local._virt_window_lead_7125692363367989, local._virt_window_lead_9386088415621209, local._virt_window_lead_9762136461725141, local._virt_window_lead_9976629776715537`
-- hidden: `-`
-- predecessors: `grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id:lineage, grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number:lineage, grp:window:d0:date.week_seq:lineage`
-- successors: `__final__:merge`
-- input contracts:
-```json
-[
-  {
-    "channel": "row_stream",
-    "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-    "may_project_dimension": false,
-    "parent_group_id": "grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id",
-    "preserve_keys": [
-      "date.week_seq"
-    ],
-    "required_grain": [
-      "date.week_seq"
-    ],
-    "required_outputs": [
-      "local._virt_agg_sum_4518379598128005",
-      "local._virt_agg_sum_5446384850356435",
-      "date.week_seq",
-      "local._virt_agg_sum_3727603509126659",
-      "local._virt_agg_sum_7662941318754865",
-      "local._virt_agg_sum_7224794219444244",
-      "local._virt_agg_sum_2131371712943644",
-      "local._virt_agg_sum_733654448721027"
-    ]
-  },
-  {
-    "channel": "row_stream",
-    "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-    "may_project_dimension": false,
-    "parent_group_id": "grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number",
-    "preserve_keys": [
-      "date.week_seq"
-    ],
-    "required_grain": [
-      "date.week_seq"
-    ],
-    "required_outputs": [
-      "local._virt_agg_sum_2293560889657522",
-      "local._virt_agg_sum_8302396398525202",
-      "local._virt_agg_sum_5332872165953971",
-      "date.week_seq",
-      "local._virt_agg_sum_8086371301050807",
-      "local._virt_agg_sum_8833754379564371",
-      "local._virt_agg_sum_9238538473336606",
-      "local._virt_agg_sum_6823422966658347"
-    ]
-  },
-  {
-    "channel": "row_stream",
-    "consumer_group_id": "grp:basic:d*:date.week_seq:sig:6e672f",
-    "may_project_dimension": false,
-    "parent_group_id": "grp:window:d0:date.week_seq",
-    "preserve_keys": [
-      "date.week_seq"
-    ],
-    "required_grain": [
-      "date.week_seq"
-    ],
-    "required_outputs": [
-      "local._virt_agg_sum_2293560889657522",
-      "local._virt_agg_sum_5332872165953971",
-      "local._virt_agg_sum_3727603509126659",
-      "local._virt_window_lead_1615489443759951",
-      "local._virt_agg_sum_6823422966658347",
-      "local._virt_window_lead_1732363590168359",
-      "local._virt_agg_sum_4518379598128005",
-      "local._virt_agg_sum_5446384850356435",
-      "local._virt_agg_sum_8086371301050807",
-      "local._virt_agg_sum_7224794219444244",
-      "local._virt_window_lead_9976629776715537",
-      "local._virt_agg_sum_9238538473336606",
-      "local._virt_window_lead_4790424210530227",
-      "local._virt_window_lead_9386088415621209",
-      "local._virt_window_lead_7125692363367989",
-      "local._virt_agg_sum_733654448721027",
-      "local._virt_agg_sum_8302396398525202",
-      "date.week_seq",
-      "local._virt_agg_sum_8833754379564371",
-      "local._virt_agg_sum_7662941318754865",
-      "local._virt_window_lead_9762136461725141",
-      "local._virt_agg_sum_2131371712943644"
     ]
   }
 ]
@@ -423,13 +295,13 @@
 - depth: `d0`
 - grain: `date.week_seq`
 - aggregate input grain: `-`
-- primary members: `local._virt_window_lead_1615489443759951, local._virt_window_lead_1732363590168359, local._virt_window_lead_4790424210530227, local._virt_window_lead_7125692363367989, local._virt_window_lead_9386088415621209, local._virt_window_lead_9762136461725141, local._virt_window_lead_9976629776715537`
+- primary members: `local._virt_window_lead_1615489443759951, local._virt_window_lead_1732363590168359, local._virt_window_lead_4790424210530227, local._virt_window_lead_7125692363367989, local._virt_window_lead_9386088415621209, local._virt_window_lead_9762136461725141, local._virt_window_lead_9976629776715537, local.friday_increase, local.monday_increase, local.saturday_increase, local.sunday_increase, local.thursday_increase, local.tuesday_increase, local.wednesday_increase`
 - secondary members: `date.week_seq`
-- outputs: `date.week_seq, local._virt_agg_sum_2131371712943644, local._virt_agg_sum_2293560889657522, local._virt_agg_sum_3727603509126659, local._virt_agg_sum_4518379598128005, local._virt_agg_sum_5332872165953971, local._virt_agg_sum_5446384850356435, local._virt_agg_sum_6823422966658347, local._virt_agg_sum_7224794219444244, local._virt_agg_sum_733654448721027, local._virt_agg_sum_7662941318754865, local._virt_agg_sum_8086371301050807, local._virt_agg_sum_8302396398525202, local._virt_agg_sum_8833754379564371, local._virt_agg_sum_9238538473336606, local._virt_window_lead_1615489443759951, local._virt_window_lead_1732363590168359, local._virt_window_lead_4790424210530227, local._virt_window_lead_7125692363367989, local._virt_window_lead_9386088415621209, local._virt_window_lead_9762136461725141, local._virt_window_lead_9976629776715537`
+- outputs: `date.week_seq, local.friday_increase, local.monday_increase, local.saturday_increase, local.sunday_increase, local.thursday_increase, local.tuesday_increase, local.wednesday_increase`
 - inputs: `date.week_seq, local._virt_agg_sum_2131371712943644, local._virt_agg_sum_2293560889657522, local._virt_agg_sum_3727603509126659, local._virt_agg_sum_4518379598128005, local._virt_agg_sum_5332872165953971, local._virt_agg_sum_5446384850356435, local._virt_agg_sum_6823422966658347, local._virt_agg_sum_7224794219444244, local._virt_agg_sum_733654448721027, local._virt_agg_sum_7662941318754865, local._virt_agg_sum_8086371301050807, local._virt_agg_sum_8302396398525202, local._virt_agg_sum_8833754379564371, local._virt_agg_sum_9238538473336606`
 - hidden: `-`
 - predecessors: `grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id:lineage, grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number:lineage, grp:root:root:∅:lineage`
-- successors: `__final__:merge, grp:basic:d*:date.week_seq:sig:6e672f:lineage`
+- successors: `__final__:merge`
 - input contracts:
 ```json
 [
@@ -445,14 +317,14 @@
       "date.week_seq"
     ],
     "required_outputs": [
-      "local._virt_agg_sum_4518379598128005",
-      "local._virt_agg_sum_5446384850356435",
+      "local._virt_agg_sum_2131371712943644",
+      "local._virt_agg_sum_733654448721027",
       "date.week_seq",
       "local._virt_agg_sum_3727603509126659",
+      "local._virt_agg_sum_5446384850356435",
+      "local._virt_agg_sum_4518379598128005",
       "local._virt_agg_sum_7662941318754865",
-      "local._virt_agg_sum_7224794219444244",
-      "local._virt_agg_sum_2131371712943644",
-      "local._virt_agg_sum_733654448721027"
+      "local._virt_agg_sum_7224794219444244"
     ]
   },
   {
@@ -467,14 +339,14 @@
       "date.week_seq"
     ],
     "required_outputs": [
-      "local._virt_agg_sum_2293560889657522",
-      "local._virt_agg_sum_8302396398525202",
-      "local._virt_agg_sum_5332872165953971",
-      "date.week_seq",
-      "local._virt_agg_sum_8086371301050807",
-      "local._virt_agg_sum_8833754379564371",
       "local._virt_agg_sum_9238538473336606",
-      "local._virt_agg_sum_6823422966658347"
+      "local._virt_agg_sum_6823422966658347",
+      "local._virt_agg_sum_8302396398525202",
+      "local._virt_agg_sum_8086371301050807",
+      "date.week_seq",
+      "local._virt_agg_sum_5332872165953971",
+      "local._virt_agg_sum_2293560889657522",
+      "local._virt_agg_sum_8833754379564371"
     ]
   },
   {
@@ -500,12 +372,9 @@
 - `grp:[@condition]filter:d1:date.id:existence:local.relevent_week_seq` -> `__final__` kind=merge phase=pre_condition
 - `grp:[@condition]filter:d1:date.id:existence:local.relevent_week_seq` -> `grp:root:root:∅` kind=existence phase=pre_condition
 - `grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id` -> `__final__` kind=merge phase=post_condition
-- `grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id` -> `grp:basic:d*:date.week_seq:sig:6e672f` kind=lineage phase=post_condition
 - `grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id` -> `grp:window:d0:date.week_seq` kind=lineage phase=post_condition
 - `grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number` -> `__final__` kind=merge phase=post_condition
-- `grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number` -> `grp:basic:d*:date.week_seq:sig:6e672f` kind=lineage phase=post_condition
 - `grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number` -> `grp:window:d0:date.week_seq` kind=lineage phase=post_condition
-- `grp:basic:d*:date.week_seq:sig:6e672f` -> `__final__` kind=merge phase=post_condition
 - `grp:root:root:∅` -> `__final__` kind=merge phase=post_condition
 - `grp:root:root:∅` -> `grp:aggregate:d0:date.week_seq:input:catalog_sales.item.id|catalog_sales.order_number|date.id` kind=lineage phase=post_condition
 - `grp:root:root:∅` -> `grp:aggregate:d0:date.week_seq:input:date.id|web_sales.item.id|web_sales.order_number` kind=lineage phase=post_condition
@@ -513,4 +382,3 @@
 - `grp:root:root_d1:∅` -> `__final__` kind=merge phase=pre_condition
 - `grp:root:root_d1:∅` -> `grp:[@condition]filter:d1:date.id:existence:local.relevent_week_seq` kind=lineage phase=pre_condition
 - `grp:window:d0:date.week_seq` -> `__final__` kind=merge phase=post_condition
-- `grp:window:d0:date.week_seq` -> `grp:basic:d*:date.week_seq:sig:6e672f` kind=lineage phase=post_condition

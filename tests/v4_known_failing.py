@@ -27,10 +27,39 @@ from __future__ import annotations
 
 # Reason strings are deliberately coarse: they name the v4 capability gap, not a
 # per-test diff. Group edits when a whole class of tests shares one root cause.
-_INLINE = "v4 inlining/merge produces a different CTE shape than v3"
+#
+# 2026-06-28 MEASUREMENT AUDIT: the _INLINE/_MODELING buckets were assumed to be
+# "cosmetic, rows match, only SQL shape differs". Measuring v3-vs-v4 on each entry
+# (local_scripts: generate under CONFIG.use_v4_discovery False/True, compare len +
+# JOIN/CTE counts, EXECUTE rows on synthetic data) showed that is FALSE for most:
+#   - ONE returns WRONG ROWS (rowset_alias, see _V4_WRONG_ROWS) -- masked because
+#     the test only asserts SQL shape and never executes.
+#   - ~7 are real VERBOSITY regressions (v4 materially longer), see _V4_VERBOSITY.
+#   - ~5 are STRUCTURAL (join-type / source-selection / shape-guard) diffs that can
+#     diverge on edge rows, see _V4_STRUCTURE.
+#   - Only ncaa::adhoc07 (+3%, same join) is genuinely cosmetic.
+# Reasons below were re-bucketed accordingly. Do NOT condition these to green
+# without fixing the underlying v4 gap -- that would mask the regression.
+_INLINE = "v4 inlining/merge produces a different CTE shape than v3 (cosmetic; rows + length verified equal-or-better)"
 _MODELING = (
     "v4 modeling-sweep regression (row-count / CTE-shape / assertion diff vs v3) "
     "-- pending per-test classification into result vs structure"
+)
+_V4_VERBOSITY = (
+    "v4 rows match v3 but generated SQL is materially LONGER (un-inlined "
+    "passthrough/source -> extra CTE or forced cross join). Real regression, NOT "
+    "cosmetic -- measured longer 2026-06-28. Fix the v4 plan, don't relax the test."
+)
+_V4_STRUCTURE = (
+    "v4 rows match v3 on consistent data, but the plan differs structurally (join "
+    "type INNER->OUTER, datasource/source selection, or a v3-specific shape guard) "
+    "and can diverge on orphan/unmatched rows. Verify rows before relying on parity."
+)
+_V4_WRONG_ROWS = (
+    "v4 returns WRONG ROWS -- masked because the test only asserts SQL shape and "
+    "never executes. rowset alias-collision: v4 drops the shared join key and emits "
+    "`FULL JOIN ... on 1=1` -> cartesian product (verified 3 rows -> 27 on synthetic "
+    "data, 2026-06-28). This is a correctness bug, not verbosity."
 )
 _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
@@ -46,25 +75,40 @@ _CRASH_INVALID_REF = (
     "into the SELECT (dialect/base.py:2370)"
 )
 V4_KNOWN_FAILING: dict[str, str] = {
-    # --- optimization: CTE-shape snapshot diffs ---
-    "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection": _INLINE,
-    "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection": _INLINE,
-    # --- complex: shape diffs (assert on SQL, not crashes) ---
-    "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _INLINE,
+    # rowset_alias wrong-rows bug FIXED + pruned 2026-06-28: resolve_rowset now
+    # exposes an unfiltered rowset's grain key, and _final_merge_grain/
+    # _group_final_grain_contribution resolve the rowset-namespaced key to the shared
+    # base so the FINAL merge INNER-joins siblings on it instead of `FULL JOIN on 1=1`
+    # (cartesian). Rows now match (executing guard:
+    # local_scripts/v4_evals/cases/rowset_alias_collision.preql); the shape test is
+    # dual-conditioned on CONFIG.use_v4_discovery. Passes under both planners.
+    # --- VERBOSITY: rows match, v4 materially longer (measured 2026-06-28) ---
+    # select_literal: constant 'abc' not inlined -> own CTE + FULL JOIN on 1=1 (117->294).
+    "tests/optimization/test_inlining.py::test_select_literal_is_rendered_with_aggregate_projection": _V4_VERBOSITY,
+    # bound_conversion presto: 1022->1249 (+22%).
+    "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _V4_VERBOSITY,
+    # aggregate_filter HAVING: keeps HAVING but adds a CASE WHEN wrapper, 272->522 (+92%).
+    "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _V4_VERBOSITY,
+    # in_subselect: IN-subquery source not inlined; references concept alias cs_item_id.
+    "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _V4_VERBOSITY,
+    # usa_names anonymous aggregate-filter: same joins, +70% extra CTE/structure.
+    "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous": _V4_VERBOSITY,
+    # --- STRUCTURE: rows match on consistent data; plan/join/source differs (2026-06-28) ---
+    # nested_greatest: v4 emits no group-by CTE projecting multi_wm (v3-shape guard).
+    "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection": _V4_STRUCTURE,
+    # persist_with_where: persisted upper_name source not reused -> recomputes CASE.
+    "tests/persistence/test_basic_persistence.py::test_persist_with_where": _V4_STRUCTURE,
+    # filter_scalar staging: v4 sources staged_sales_tbl where v3 does not (ROWS UNVERIFIED).
+    "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _V4_STRUCTURE,
+    # provider_name: drops a join, FULL JOIN on real key vs v3 LEFT OUTER+INNER; rows match
+    # on consistent data, diverge on orphan/dividend-less rows (full vs inner).
+    "tests/modeling/stocks/test_stocks.py::test_provider_name": _V4_STRUCTURE,
+    # tpc_h adhoc07: INNER -> RIGHT/FULL outer join types; rows VERIFIED MATCH (sf=0.01).
+    "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07": _V4_STRUCTURE,
+    # --- genuinely cosmetic (+3%, same join) -- safe to dual-condition on use_v4_discovery ---
+    "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _INLINE,
+    # --- PRUNE CANDIDATE: passes under v4 in isolation (--runxfail), confirm in full sweep ---
     "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate": _INLINE,
-    "tests/complex/test_rowset.py::test_rowset_alias_name_collision": _INLINE,
-    # --- persistence / etl: persisted-source reuse + shape diffs ---
-    "tests/persistence/test_basic_persistence.py::test_persist_with_where": _INLINE,
-    # --- engine: rendering / source-selection / crashes ---
-    "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _INLINE,
-    "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _INLINE,
-    "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _INLINE,
-    # --- modeling (non-TPC) sweep ---
-    "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _MODELING,
-    "tests/modeling/stocks/test_stocks.py::test_provider_name": _MODELING,
-    "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous": _MODELING,
-    # --- tpc-h: adhoc07 shape ---
-    "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07": _MODELING,
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---
     # Pruned 2026-06-26 (pass in isolation + tracked-group + full sweep): test_two (q02),
     # test_forty_seven (q47), test_fifty_seven (q57), test_seventy_six (q76).
@@ -73,14 +117,24 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # lets the customer-dimension projection source standalone instead of through
     # the fact; 8308->6412, under the 7000 ceiling. XPASS in isolation + 2 full
     # sweeps.
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_two_one": _TPCDS_SIZE,
+    # q2.1 pruned 2026-06-29 (8747->7276, under the 7500 ceiling): the named
+    # `*_sales` intermediate made the round() BASIC infer date.id grain (the
+    # window's `order by date.week_seq` flattened up as a grain parent and
+    # descended to its key), so the same-grain window merge that fixed q2.2 was
+    # skipped. Fix is three-part: (1) `_get_relevant_parent_concepts`
+    # (parsing/common) + `_row_grain_concept_refs` (author) exclude a navigation
+    # window's order-by from a wrapping expression's grain inference, so the
+    # round BASIC lands at date.week_seq; (2) `_feeds_extra_signature_group`
+    # (group_rules) blocks the subset-nest merge that then put `*_sales` (window
+    # input) and `*_increase` (window consumer) in one bucket -> group cycle; (3)
+    # `_merge_basic_into_window_parent` (group_graph) accepts a partial-spine
+    # window when it already sources every input the round needs, folding the
+    # round inline (v3's window+round shape). XPASS in isolation + full sweep.
     # q2.2 pruned 2026-06-28 (8856->7276, under the 7500 ceiling): _merge_basic_into_
     # window_parent (group_graph) folds the same-grain round() BASIC into its WINDOW
     # producer so the leads render inline (v3's window+round shape) instead of the
     # window materializing 14 agg + 7 lead passthrough columns for a separate round
-    # node. XPASS in isolation + full sweep. q2.1 stays listed: its round BASIC is at
-    # date.id grain (named *_sales intermediate), so the same-grain merge gate
-    # correctly skips it -- a separate grain-inference gap.
+    # node. XPASS in isolation + full sweep.
     # q30.alt's failure is STRUCTURAL, not length (6193 < 12000 ceiling): the test
     # asserts web_returns is scanned once and exactly 2 GROUP BYs. v4 still emits a
     # second web_returns GA-spine scan (state filter-only, not selected). Tracked
@@ -104,7 +158,12 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # adds CTEs here; 8515->8107, under the 8500 ceiling. XPASS in isolation + 2
     # full sweeps. The q16 floor itself is unchanged (still normalizes finer
     # fact-line scans).
-    # --- tpc-ds non-benchmark: result / feature regressions ---
-    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_rowset_arithmetic_argument_keeps_precedence": _INLINE,
-    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _MODELING,
+    # --- tpc-ds non-benchmark: VERBOSITY (measured 2026-06-28) ---
+    # rowset_arithmetic pruned 2026-06-29: was 6290->8747 (+39%), the same
+    # window/round passthrough family as q2.1. The q2.1 grain + window-merge fix
+    # (navigation-window order-by excluded from a wrapping expression's grain,
+    # subset-nest cycle guard, partial-spine window absorb) clears it too. XPASS
+    # in isolation + full sweep.
+    # two_merge: merge_aggregate=True branch passes (5==5); merge_aggregate=False is 9->11 CTEs.
+    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _V4_VERBOSITY,
 }

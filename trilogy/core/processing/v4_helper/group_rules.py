@@ -471,6 +471,41 @@ def _stop_signature(
     return frozenset(sig)
 
 
+def _feeds_extra_signature_group(
+    node: str,
+    extra_gids: frozenset[str],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    primary_group: dict[str, str],
+) -> bool:
+    """True if `node` is a lineage ANCESTOR of any concept in `extra_gids` --
+    i.e. `node` feeds a (non-BASIC, barrier) group the larger-signature node
+    consumes. Subset-nest-merging would then place a producer and a consumer of
+    that barrier in one bucket, which 2-cycles through the barrier (q2.1: the
+    `*_sales` BASIC feeds the window the `*_increase` round-BASIC reads, so the
+    naive nest merged both into one week_seq group). Walks lineage out-edges
+    (parent -> child = input -> consumer)."""
+    if not extra_gids:
+        return False
+    targets = {n for n, g in primary_group.items() if g in extra_gids}
+    if not targets:
+        return False
+    visited: set[str] = {node}
+    stack: list[str] = [node]
+    while stack:
+        cur = stack.pop()
+        for _, succ in concept_graph.out_edges(cur):
+            if edge_kind(concept_edges, cur, succ) != EdgeKind.LINEAGE:
+                continue
+            if succ in targets:
+                return True
+            if succ not in visited:
+                visited.add(succ)
+                stack.append(succ)
+    return False
+
+
 def _can_merge_nested_signatures(left: frozenset[str], right: frozenset[str]) -> bool:
     if not left or not right:
         return False
@@ -550,6 +585,18 @@ def _partition_by_signature_and_grain(
                 )
                 if not signatures_match and not signatures_nest:
                     continue
+                if signatures_nest and not signatures_match:
+                    smaller_idx = i if sigs[i] <= sigs[j] else j
+                    extra = (sigs[i] | sigs[j]) - sigs[smaller_idx]
+                    if _feeds_extra_signature_group(
+                        sub_items[smaller_idx][0],
+                        extra,
+                        concept_graph,
+                        concept_edges,
+                        concept_attrs,
+                        primary_group,
+                    ):
+                        continue
                 if grains[i] <= grains[j] or grains[j] <= grains[i]:
                     union(i, j)
 

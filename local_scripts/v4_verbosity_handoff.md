@@ -25,11 +25,37 @@ renders `coalesce("facts"."d1", spine.s1) as "s1"` (a FULL JOIN) instead of the 
 it). Re-land only with a narrowed gate (don't expand a pseudonym whose canonical
 collides with another root output's pseudonym). It remains a latent win for q2.1.
 
-**q2.1 still over (8266).** Its round BASIC is at `date.id` grain (the named `*_sales`
-intermediate concepts make it finer than the `date.week_seq` window), so the same-grain
-merge gate correctly skips it. Needs a separate grain-inference fix (why the named
-weekday-sales BASIC lands at `date.id` not `date.week_seq`), then the window merge fires
-and q2.1 collapses the same way.
+## 2026-06-29 — q2.1 FIXED + pruned (8747 → 7276, under 7500)
+
+The grain-inference gap is fixed and the window merge now fires for q2.1 too.
+Root cause: the named `*_sales` intermediate made the round() BASIC infer
+`date.id` grain — the window's `order by date.week_seq` flattened up as a grain
+parent of the wrapping `round(...)` and descended `week_seq` to its key
+`date.id`, finer than the window lives at, so the same-grain merge skipped it.
+Three-part fix:
+
+1. **`_get_relevant_parent_concepts`** (`parsing/common.py`) + **`_row_grain_concept_refs`**
+   (`core/models/author.py`): a navigation window's `order by` is excluded from a
+   *wrapping* expression's grain inference (the window's own grain still includes
+   it via `_navigation_window_to_concept`; only outer inference changes). The
+   author-side mirror is needed because `get_select_grain_and_keys`'s BASIC branch
+   re-derives grain from `concept_arguments` at build time.
+2. **`_feeds_extra_signature_group`** (`group_rules.py`): once both BASICs are at
+   `date.week_seq`, the `allow_signature_subset` nest-merge tried to put `*_sales`
+   (sig ⊂) into `*_increase`'s bucket — but `*_sales` feeds the window `*_increase`
+   reads, so the merge 2-cycled through the window. The guard blocks a nest-merge
+   when the smaller-sig node is a lineage ancestor of a barrier in the larger's
+   extra signature.
+3. **`_merge_basic_into_window_parent`** (`group_graph.py`): accepts a partial-spine
+   window (the round also reads `*_sales` directly, not only via the lead) when
+   the window already sources every input the round needs, folding the round
+   inline (v3's window+round shape).
+
+Lock: `tests/core/processing/test_v4_window_basic_merge.py` (the `named_combo`
+cases use the `sum(a)+sum(b)` BASIC-combining-aggregates shape, the else-branch
+grain path the single-aggregate cases don't exercise). Bonus: `test_rowset_
+arithmetic_argument_keeps_precedence` (same family) also cleared and was pruned.
+Both full sweeps clean; v3 default sweep 0 failed.
 
 ---
 

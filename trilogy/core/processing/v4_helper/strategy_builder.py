@@ -25,6 +25,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildConceptArgs,
+    BuildDatasource,
     BuildFilterItem,
     BuildGrain,
     BuildWhereClause,
@@ -1060,6 +1061,16 @@ def _widen_merge_join_keys(
         if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
             continue
         available = parent_output_addresses(parent)
+        # A leaf datasource SelectNode has no parent nodes, so
+        # `parent_output_addresses` is empty -- but it can still emit any column
+        # its datasource binds. Include those so a partial merge key (a fact's
+        # `?d1` column that canonicalizes to the declared join key) is carried as
+        # the join key instead of the merge cross-joining the sibling that owns
+        # the key's complete domain (a date-spine LEFT_OUTER merge: facts.d1->s1
+        # vs the spine's complete s1 -> `FULL JOIN ... on 1=1` cartesian).
+        ds = getattr(parent, "datasource", None)
+        if isinstance(ds, BuildDatasource):
+            available |= {c.address for c in ds.output_concepts}
         if not available:
             continue
         parent_outputs = {concept.address for concept in parent.output_concepts}
