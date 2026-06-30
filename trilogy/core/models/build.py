@@ -2356,6 +2356,18 @@ class Factory:
             if jt is JoinType.LEFT_OUTER and (s, t, jt) not in merge_tuples
         }
 
+        # Canonical keys of *query-scoped* INNER joins. Keep the join INNER (don't
+        # let a nullable FK widen it to outer); NULL keys still align via the
+        # NULLABLE modifier, so anonymous rows are matched, not dropped. Both sides
+        # collapse onto the merge canonical, so that key marks the join. Excludes
+        # environment `merge ~` INNER joins (global identity, not a query directive).
+        self.scoped_inner_join_keys: set[str] = {
+            self.scoped_merge_map.get(addr, addr)
+            for s, t, jt in self.scoped_joins
+            if jt is JoinType.INNER and (s, t, jt) not in merge_tuples
+            for addr in (s, t)
+        }
+
         # Collapsed-away sources that get the merge-style source-identity +
         # pseudonym handling below (so a *derived* join key stays sourceable from
         # the collapsed side). INNER asserts source == target — a symmetric
@@ -3493,10 +3505,36 @@ class Factory:
             base.content, (Function, AggregateWrapper, WindowItem, FilterItem)
         ):
             _, built = self.instantiate_concept(base.content)
-            return BuildFilterItem(content=built, where=self.build(base.where))
+        else:
+            built = self.build(base.content)
         return BuildFilterItem(
-            content=self.build(base.content), where=self.build(base.where)
+            content=built, where=self._build_filter_where(base.where, built)
         )
+
+    def _build_filter_where(
+        self, where: WhereClause, content: "BuildExpr"
+    ) -> BuildWhereClause:
+        """Build a filter's `? <condition>` so a bare (no `by`) aggregate in it
+        co-grains to the FILTERED CONTENT's grain — the rows being filtered —
+        rather than inheriting the outer consuming grain. Mirrors how a SELECT's
+        WHERE co-grains its aggregates to the select grain (HAVING semantics).
+
+        Without this, `auto f <- p ? (count(x) > 4)` consumed in another model
+        groups the count by the consumer's key (e.g. a foreign `catalog.item.id`
+        for a `store`-derived count), producing a disconnected/unresolvable query;
+        consumed at its own grain it groups by `f` itself, recursing."""
+        # A non-concept content (e.g. a literal) has no grain to co-grain to.
+        if not isinstance(content, BuildConcept):
+            return self.build(where)
+        content_grain = Grain(components=set(content.grain.components))
+        if self.aggregate_grain == content_grain:
+            return self.build(where)
+        saved = self.aggregate_grain
+        self.aggregate_grain = content_grain
+        try:
+            return self.build(where)
+        finally:
+            self.aggregate_grain = saved
 
     @_build_dispatch.register
     def _(self, base: Parenthetical) -> BuildParenthetical:
@@ -3725,6 +3763,7 @@ class Factory:
             ),
             scoped_full_join_keys=set(self.scoped_full_join_keys),
             scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
+            scoped_inner_join_keys=set(self.scoped_inner_join_keys),
         )
 
         for k, v in base.concepts.all_items():

@@ -25,7 +25,9 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 
 inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. Right unsupported; just flip to a left. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
 
-joins indicate that concepts are *the same*; it is a conceptual operation not a field operation. inner join a=b means that a is null and b is not null is tautologically always false.
+Joins indicate that concepts are *the same*; it is a conceptual operation not a field operation. inner join a=b means that a is null and b is not null is tautologically always false.
+
+Joins do NOT drop nulls. Joins will merge null values across dimension keys. To filter out nulls, explicitly use not-null conditions.
 
 Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH inner join a.order_number = b.order_number AND inner join a.item.id = b.item.id. Matching only one key of a multi-key grain fans out and double-counts — a top cause of wrong results.
 
@@ -292,22 +294,193 @@ _AGENT_HIDDEN_FUNCTIONS = {
 }
 
 
+# Coarse semantic families so the reference reads as a handful of grouped lines
+# rather than one scrambled mega-line. A function falls into the first family it
+# matches; anything unlisted lands in "other".
+_FUNCTION_FAMILIES: list[tuple[str, frozenset[str]]] = [
+    (
+        "aggregate",
+        frozenset(
+            {
+                "count",
+                "count_distinct",
+                "sum",
+                "max",
+                "min",
+                "avg",
+                "stddev",
+                "variance",
+                "array_agg",
+                "bool_or",
+                "bool_and",
+                "any",
+                "grouping",
+                "grouping_id",
+            }
+        ),
+    ),
+    (
+        "string",
+        frozenset(
+            {
+                "lower",
+                "upper",
+                "ltrim",
+                "rtrim",
+                "trim",
+                "hex",
+                "concat",
+                "split",
+                "strpos",
+                "contains",
+                "len",
+                "substring",
+                "replace",
+                "regexp_contains",
+                "regexp_extract",
+                "regexp_replace",
+                "format_time",
+                "parse_time",
+            }
+        ),
+    ),
+    (
+        "date/time",
+        frozenset(
+            {
+                "date",
+                "datetime",
+                "timestamp",
+                "second",
+                "minute",
+                "hour",
+                "day",
+                "day_of_week",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "month_name",
+                "day_name",
+                "unix_to_timestamp",
+                "date_part",
+                "date_truncate",
+                "date_add",
+                "date_sub",
+                "date_diff",
+                "date_spine",
+                "current_date",
+                "current_datetime",
+                "current_timestamp",
+            }
+        ),
+    ),
+    (
+        "array/map/struct",
+        frozenset(
+            {
+                "unnest",
+                "array",
+                "array_distinct",
+                "array_sum",
+                "array_sort",
+                "array_to_string",
+                "array_transform",
+                "array_filter",
+                "generate_array",
+                "map_keys",
+                "map_values",
+                "struct",
+            }
+        ),
+    ),
+    (
+        "math",
+        frozenset(
+            {
+                "abs",
+                "sqrt",
+                "random",
+                "floor",
+                "ceil",
+                "round",
+                "mod",
+                "log",
+                "power",
+                "hash",
+            }
+        ),
+    ),
+    (
+        "conditional/cast",
+        frozenset(
+            {
+                "case",
+                "simple_case",
+                "coalesce",
+                "nullif",
+                "isnull",
+                "greatest",
+                "least",
+                "cast",
+            }
+        ),
+    ),
+    (
+        "geo",
+        frozenset(
+            {
+                "geo_from_text",
+                "geo_x",
+                "geo_y",
+                "geo_centroid",
+                "geo_point",
+                "geo_distance",
+                "geo_transform",
+            }
+        ),
+    ),
+]
+_FAMILY_ORDER = [label for label, _ in _FUNCTION_FAMILIES] + ["other"]
+
+
+def _function_family(name: str) -> str:
+    for label, members in _FUNCTION_FAMILIES:
+        if name in members:
+            return label
+    return "other"
+
+
 def _render_function_list(types) -> str:
-    """Consolidate functions that share an argument signature onto one line
-    (``sum|avg|min|max(<arg1>)``) to cut the reference length. Functions that
-    carry a worked example (e.g. the date functions) stay on their own line so
-    the example isn't lost; everything else groups by its ``(...)`` signature."""
-    by_sig: dict[str, list[str]] = {}
-    individual: list[str] = []
+    """Render the function reference as one labelled line per semantic family.
+    Within a family, functions sharing an argument signature are consolidated
+    (``sum|avg|min|max(<arg1>)``); families with mixed arities join their
+    signature groups with `` ; ``. Functions carrying a worked example (the date
+    functions) get their own line under their family so the example isn't lost.
+    Family-level grouping keeps it compact without scrambling unrelated
+    functions onto one line."""
+    fam_sigs: dict[str, dict[str, list[str]]] = {}
+    fam_examples: dict[str, list[str]] = {}
+    seen: list[str] = []
     for v in types:
+        fam = _function_family(v.value)
+        if fam not in fam_sigs:
+            fam_sigs[fam], fam_examples[fam] = {}, []
+            seen.append(fam)
         example = FUNCTION_EXAMPLES.get(v)
         if example:
-            individual.append(render_function(v, example=example))
+            fam_examples[fam].append(f"  {render_function(v, example=example)}")
             continue
         sig = render_function(v)[len(v.value) :]  # the "(<arg1>, ...)" / "()" tail
-        by_sig.setdefault(sig, []).append(v.value)
-    grouped = [f"{'|'.join(names)}{sig}" for sig, names in by_sig.items()]
-    return "\n".join(grouped + individual)
+        fam_sigs[fam].setdefault(sig, []).append(v.value)
+
+    lines: list[str] = []
+    for fam in sorted(seen, key=_FAMILY_ORDER.index):
+        segs = [f"{'|'.join(names)}{sig}" for sig, names in fam_sigs[fam].items()]
+        if segs:
+            lines.append(f"{fam}: {' ; '.join(segs)}")
+        lines.extend(fam_examples[fam])
+    return "\n".join(lines)
 
 
 FUNCTIONS = _render_function_list(

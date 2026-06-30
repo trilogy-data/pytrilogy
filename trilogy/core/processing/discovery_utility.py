@@ -585,7 +585,9 @@ def _aggregate_grain_only_parents(
     return out
 
 
-def _island_rowsets(g: "ReferenceGraph", cg) -> None:
+def _island_rowsets(
+    g: "ReferenceGraph", cg, grain_only: dict[str, set[str]] | None = None
+) -> None:
     """Mutate the undirected connectivity copy ``cg`` so each rowset becomes an
     island: a rowset is a materialized result, so from outside it you can reach
     only its declared outputs through an explicit scoped join/merge — you cannot
@@ -627,6 +629,31 @@ def _island_rowsets(g: "ReferenceGraph", cg) -> None:
         hub = f"rowset_island~{name}"
         cg.add_node(hub)
         cg.add_edges_from((hub, m) for m in members if m in cg)
+        # A concept DERIVED from a rowset's declared output (a filtered aggregate
+        # `sum(cur.sales ? ...)`, `cur.x * 2`, etc.) legitimately consumes that
+        # output, but islanding severed the edge as a boundary crossing — wrongly
+        # orphaning the consumer (q02 `_virt_filter` over a rowset measure). A
+        # downstream consumer is a `g`-successor of an output; reconnect each
+        # external one to the hub. Only UPSTREAM navigation (predecessors — the
+        # base concepts the rowset was computed from) stays severed, which is the
+        # whole point of islanding. Skip a consumer that merely groups `by` the
+        # output (a grain-only parent): re-welding that edge would bridge two
+        # unrelated models through an aggregate's grouping key — exactly the bridge
+        # `_aggregate_grain_only_parents` drops upstream.
+        for member in members:
+            member_concept = g.concepts.get(member)
+            member_addr = member_concept.address if member_concept else None
+            for consumer in g.successors(member):
+                if consumer in island or consumer not in cg:
+                    continue
+                consumer_concept = g.concepts.get(consumer)
+                if (
+                    grain_only
+                    and consumer_concept is not None
+                    and member_addr in grain_only.get(consumer_concept.address, set())
+                ):
+                    continue
+                cg.add_edge(hub, consumer)
 
     # reconnect outputs related across rowsets by a scoped-join pseudonym
     for node in rowset_nodes:
@@ -668,7 +695,7 @@ def _component_map(
                     cg.remove_edge(node, neighbor)
 
     if island_rowsets:
-        _island_rowsets(g, cg)
+        _island_rowsets(g, cg, grain_only)
 
     comp_of: dict[str, int] = {}
     for i, component in enumerate(gx.connected_components(cg)):

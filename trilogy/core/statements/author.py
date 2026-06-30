@@ -348,7 +348,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                 self.where_clause = self.where_clause.with_reference_replacement(
                     replacements
                 )
-        if self.where_clause:
+        # Only a SCALAR select (no grouping key) restricts a WHERE aggregate that is
+        # also derived in the select; a grouped select computes it at the select
+        # grain over the WHERE-unfiltered universe as a valid pre-aggregation gate.
+        if self.where_clause and not self.grain.components:
             for cref in self.where_clause.concept_arguments:
                 concept = environment.concepts[cref.address]
                 if isinstance(concept, UndefinedConcept):

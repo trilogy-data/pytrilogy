@@ -50,6 +50,29 @@ def find_concept_literals(element: SyntaxElement) -> list[SyntaxNode]:
     return result
 
 
+def find_join_clause_literals(element: SyntaxElement) -> list[SyntaxNode]:
+    """Return CONCEPT_LITERAL nodes that appear inside JOIN_CLAUSE subtrees.
+
+    A scoped self-join's join condition (`cur.dow = nxt.dow`) references the
+    other source's columns; those are not projected outputs but still surface as
+    rowset-namespace forward refs, so callers compare them against the non-join
+    literals to isolate pure join-key leaks."""
+    result: list[SyntaxNode] = []
+    stack: list[tuple[SyntaxElement, bool]] = [(element, False)]
+    while stack:
+        node, in_join = stack.pop()
+        if not isinstance(node, SyntaxNode):
+            continue
+        if node.kind == SyntaxNodeKind.CONCEPT_LITERAL:
+            if in_join:
+                result.append(node)
+            continue
+        child_in_join = in_join or node.kind == SyntaxNodeKind.JOIN_CLAUSE
+        for child in node.children:
+            stack.append((child, child_in_join))
+    return result
+
+
 def extract_concept_name_from_literal(node: SyntaxNode, namespace: str) -> str:
     """Extract the fully-qualified concept address from a CONCEPT_LITERAL node."""
     if not node.children or not isinstance(node.children[0], SyntaxToken):

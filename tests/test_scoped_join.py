@@ -1267,3 +1267,128 @@ ORDER BY customers.region asc;
     assert _exec_rows(eng, multi_models, sugar) == _exec_rows(
         eng, multi_models, stacked
     )
+
+
+NULLABLE_FK_SALES = """key sale_id int;
+key buyer_id int;
+property sale_id.amt float;
+
+datasource sales (sid: sale_id, bid: ?buyer_id, a: amt)
+grain (sale_id)
+address nfk_sales_tbl;
+"""
+
+NULLABLE_FK_CATALOG = """key cat_id int;
+key bill_id int;
+property cat_id.qty int;
+
+datasource catalog (cid: cat_id, bill: ?bill_id, q: qty)
+grain (cat_id)
+address nfk_catalog_tbl;
+"""
+
+
+@pytest.fixture
+def nullable_fk_models(tmp_path: Path) -> Path:
+    (tmp_path / "nsales.preql").write_text(NULLABLE_FK_SALES)
+    (tmp_path / "ncatalog.preql").write_text(NULLABLE_FK_CATALOG)
+    return tmp_path
+
+
+_NULLABLE_FK_SELECT = """
+import nsales as sales;
+import ncatalog as catalog;
+
+INNER JOIN sales.buyer_id = catalog.bill_id
+SELECT sales.buyer_id, sum(sales.amt) -> total_amt, sum(catalog.qty) -> total_qty
+ORDER BY sales.buyer_id asc;
+"""
+
+
+def test_explicit_inner_join_registers_inner_key(nullable_fk_models: Path):
+    env = _env_for(
+        nullable_fk_models,
+        "import nsales as sales;\nimport ncatalog as catalog;",
+    )
+    be = env.materialize_for_select(
+        scoped_joins=[("sales.buyer_id", "catalog.bill_id", JoinType.INNER)]
+    )
+    # both sides collapse onto the merge canonical, which marks the inner key.
+    assert be.scoped_inner_join_keys == {"catalog.bill_id"}
+
+
+def test_explicit_inner_join_on_nullable_fk_stays_inner_not_full(
+    nullable_fk_models: Path,
+):
+    # an explicit `inner join` over a nullable FK must NOT be widened to FULL/LEFT
+    # by nullability inference (the q29 silent null-extension). It stays INNER, but
+    # NULL keys still align via null-safe equality (`IS NOT DISTINCT FROM`) — NULLs
+    # are valid members, not dropped.
+    env, parsed = parse_text(_NULLABLE_FK_SELECT, root=nullable_fk_models)
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    assert "INNER JOIN" in sql.upper()
+    assert "FULL JOIN" not in sql.upper()
+    assert "LEFT OUTER JOIN" not in sql.upper()
+    assert "IS NOT DISTINCT FROM" in sql.upper()
+
+
+def test_explicit_inner_join_on_nullable_fk_keeps_nullable_modifier(
+    nullable_fk_models: Path,
+):
+    # null-safe alignment is preserved: NULL keys are valid members and must match.
+    env, parsed = parse_text(_NULLABLE_FK_SELECT, root=nullable_fk_models)
+    query = process_query(env, parsed[-1])
+    join_pairs = [
+        pair for cte in query.ctes for join in cte.joins for pair in join.joinkey_pairs
+    ]
+    assert join_pairs
+    assert any(Modifier.NULLABLE in pair.modifiers for pair in join_pairs)
+
+
+def test_explicit_inner_join_on_nullable_fk_preserves_null_rows(
+    nullable_fk_models: Path,
+):
+    eng = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=nullable_fk_models)
+    )
+    eng.execute_raw_sql("create table nfk_sales_tbl (sid int, bid int, a float)")
+    # buyer 10 matches; buyer 20 has no catalog row; NULL buyer is anonymous.
+    eng.execute_raw_sql(
+        "insert into nfk_sales_tbl values" " (1,10,100.0),(2,NULL,200.0),(3,20,300.0)"
+    )
+    eng.execute_raw_sql("create table nfk_catalog_tbl (cid int, bill int, q int)")
+    # bill 10 matches; bill 30 has no sales row; NULL bill is anonymous.
+    eng.execute_raw_sql(
+        "insert into nfk_catalog_tbl values (1,10,5),(2,NULL,7),(3,30,9)"
+    )
+    rows = _exec_rows(eng, nullable_fk_models, _NULLABLE_FK_SELECT)
+    # buyer 10 matches; the two anonymous (NULL) rows are VALID members and align
+    # via IS NOT DISTINCT FROM (preserved, not dropped); unmatched 20/30 drop
+    # (INNER). The pre-fix bug widened this to FULL and null-extended the output.
+    assert rows == [(10, 100.0, 5), (None, 200.0, 7)]
+
+
+def test_get_join_type_inner_key_keeps_inner_over_nullability():
+    from trilogy.core.processing.join_resolution import get_join_type
+
+    keys = {"c~k"}
+    nullables = {"ds~l": ["c~k"], "ds~r": ["c~k"]}
+    # both sides nullable would normally widen to FULL...
+    assert get_join_type("ds~l", "ds~r", {}, nullables, keys) is JoinType.FULL
+    # ...but a scoped INNER key keeps it INNER (NULLs still align via the modifier).
+    assert (
+        get_join_type("ds~l", "ds~r", {}, nullables, keys, inner_join_keys=keys)
+        is JoinType.INNER
+    )
+    # a PARTIAL side is a genuine scoped LEFT/FULL directive — not overridden.
+    assert (
+        get_join_type(
+            "ds~l",
+            "ds~r",
+            {"ds~r": ["c~k"]},
+            nullables,
+            keys,
+            inner_join_keys=keys,
+        )
+        is not JoinType.INNER
+    )

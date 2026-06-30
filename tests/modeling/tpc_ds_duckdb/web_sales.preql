@@ -42,6 +42,7 @@ properties <order_number, item.id> (
     ext_ship_cost numeric::usd, # Extended shipping cost charged on the line (USD).
     ext_discount_amount numeric::usd?, # Extended discount amount applied to the line (USD).
     return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
+    return_net_loss numeric::usd?, # Net financial loss on the return for this line (joined from web_returns).
     --return_quantity int?, # Units returned for this line (joined from web_returns).
     _returned_order_number int?, # Internal: the web_returns order number matched to this line; NULL when not returned. Use is_returned instead.
     row_counter int, # Constant 1, one per web line item (a unique order_number + item.id combination).
@@ -95,6 +96,7 @@ datasource web_returns (
     WR_REFUNDED_CUSTOMER_SK: return_refund_customer.id, # FK to the customer receiving the refund.
     WR_ORDER_NUMBER: ~order_number,
     WR_RETURN_AMT: return_amount,
+    WR_NET_LOSS: return_net_loss,
     WR_RETURN_QUANTITY: return_quantity,
     WR_ORDER_NUMBER: _returned_order_number, # Real column (NULL-padded by the LEFT join) backing is_returned.
 )

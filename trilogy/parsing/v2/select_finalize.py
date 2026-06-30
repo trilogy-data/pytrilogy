@@ -1547,7 +1547,13 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     locally_derived = select.locally_derived
     alias_sources = select.alias_source_addresses
     allowed_addresses = all_in_output | alias_sources
-    if select.where_clause:
+    # A WHERE-clause aggregate that equals a SELECT output is only restricted for a
+    # SCALAR select (no grouping key). With a concrete grain the WHERE aggregate
+    # computes at the select grain over the WHERE-unfiltered universe (its own CTE),
+    # a valid pre-aggregation gate distinct from the post-filter SELECT/HAVING
+    # aggregate. A scalar select has no grain to anchor that gate and the planner
+    # drops sibling row filters, so keep redirecting it to HAVING.
+    if select.where_clause and not select.grain.components:
         for cref in select.where_clause.concept_arguments:
             concept = context.concepts.get(cref.address)
             if concept is None or isinstance(concept, UndefinedConcept):

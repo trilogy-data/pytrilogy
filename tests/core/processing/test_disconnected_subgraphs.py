@@ -135,6 +135,54 @@ select cname, pname;
 """
 
 
+_FILTER_OVER_SCOPED_JOIN_ROWSET_MEASURE = """
+key sale_id int;
+property sale_id.s_qty int;
+property sale_id.s_dow int;
+property sale_id.s_week int;
+datasource sales (id: sale_id, q: s_qty, d: s_dow, w: s_week) grain (sale_id)
+query '''select 1 id, 10 q, 1 d, 1 w union all select 2 id, 5 q, 2 d, 1 w''';
+
+rowset cur <- select s_week as w, s_dow as dow, sum(s_qty) as total;
+rowset nxt <- select s_week as w2, s_dow as dow2, sum(s_qty) as total2;
+def ratio(x) -> sum(cur.total ? cur.dow = x) by cur.w
+  / sum(nxt.total2 ? nxt.dow2 = x) by cur.w;
+select cur.w, @ratio(0) as r
+  inner join cur.w + 1 = nxt.w2
+  inner join cur.dow = nxt.dow2;
+"""
+
+
+def test_filter_over_scoped_join_rowset_measure_not_islanded():
+    # Two sibling rowsets related by a scoped join; a filtered aggregate over each
+    # rowset's MEASURE mints a `_virt_filter` over a rowset output. Islanding
+    # severed each filter from its rowset (a boundary-crossing edge) and wrongly
+    # orphaned it into its own singleton subgraph (q02 Bug #2 -- the confusing
+    # `{_virt_filter_...}` subgraph in the discovery error). Reconnecting
+    # downstream consumers of declared outputs to the rowset hub keeps each filter
+    # in its rowset's component; the only legitimate split here is cur vs nxt
+    # (the cross-rowset relationship is the scoped join, not graph reachability).
+    from trilogy.core.models.build import BuildFilterItem
+    from trilogy.core.processing.discovery_utility import disconnected_components
+
+    env = Environment()
+    env.parse(_FILTER_OVER_SCOPED_JOIN_ROWSET_MEASURE)
+    be = env.materialize_for_select()
+
+    filters = [
+        c
+        for c in be.concepts.values()
+        if isinstance(getattr(c, "lineage", None), BuildFilterItem)
+        and "_virt_filter" in c.address
+    ]
+    assert filters, "expected _virt_filter concepts over the rowset measures"
+    # Each filter must be co-located with a rowset measure, never its own island.
+    measures = [be.concepts["cur.total"], be.concepts["nxt.total2"]]
+    groups = disconnected_components(be, filters + measures, island_rowsets=True)
+    singletons = [g for g in groups if len(g) == 1]
+    assert not singletons, [sorted(c.address for c in g) for g in groups]
+
+
 def test_disconnected_root_properties_raise_typed_exception():
     # Distinct surface from the aggregate case above: a plain ROOT-property select
     # dead-ends in `source_query_concepts` (no priority exhaustion in

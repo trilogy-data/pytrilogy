@@ -66,6 +66,15 @@ select 3 id, 4 it, 4 q, 2000 y
 ''';
 """
 
+# A single-fact week/qty model for self-relation (offset year-over-week) shapes.
+WEEK_MODEL = """
+key sale_id int;
+property sale_id.s_qty int;
+property sale_id.s_week int;
+datasource sales (id: sale_id, q: s_qty, w: s_week) grain (sale_id)
+query '''select 1 id, 10 q, 1 w union all select 2 id, 5 q, 2 w union all select 3 id, 7 q, 3 w''';
+"""
+
 # A second model with two facts that DON'T share a base key, so an inner join
 # between two rowsets over them is a genuine (collapse-unexpressible) intersect.
 INTERSECT_MODEL = """
@@ -185,6 +194,42 @@ _MATRIX: list[tuple[str, str, object]] = [
         + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
         + "inner join y99.k = y00.k2\nselect y99.k, y99.s99, y00.s00 order by y99.k;",
         [(1, 10, 5), (2, 7, 3)],
+    ),
+    (
+        # q02 shape: a third rowset scoped-joins two sibling rowsets, then a
+        # FILTERED aggregate over its measure is grouped by one of its dims. The
+        # filter mints a `_virt_filter` over a rowset measure; islanding must not
+        # orphan that consumer from the rowset's component (it is a legitimate
+        # downstream use of a declared output, not navigation into the rowset's
+        # base concepts). diff = y99 - y00: item1 10-5=5, item2 7-3=4 (item3 has no
+        # 1999 row, dropped by the inner join). The agg passes each diff through.
+        "filtered_aggregate_over_scoped_join_rowset",
+        SALES_MODEL
+        + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
+        + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
+        + "rowset diff <- select y99.k as k, y99.s99 - y00.s00 as d"
+        + " inner join y99.k = y00.k2;"
+        + "def only(x) -> sum(diff.d ? diff.k = x);"
+        + "select @only(1) as d1, @only(2) as d2;",
+        [(5, 4)],
+    ),
+    (
+        # The same self-relation phrased the OTHER way — a filtered aggregate over
+        # one rowset's measure grouped by ANOTHER rowset's key, related only by an
+        # OFFSET outer join (`sum(nxt.sales2) by cur.w` with `cur.w + 1 = nxt.w2`).
+        # Grouping one rowset's measure by a different rowset's key through an outer
+        # join is not expressible — the declared join lives at the outer select, not
+        # inside the aggregate's grain, and the offset keeps the keys genuinely
+        # distinct (no equality collapse). Contract: a clean disconnect error (do
+        # the join inside a rowset first, as the case above), never a sentinel or a
+        # raw DuckDB error.
+        "cross_rowset_grouped_aggregate_offset_join_clean_error",
+        WEEK_MODEL
+        + "rowset cur <- select s_week as w, sum(s_qty) as sales;"
+        + "rowset nxt <- select s_week as w2, sum(s_qty) as sales2;"
+        + "def ahead(x) -> sum(nxt.sales2 ? nxt.w2 = x) by cur.w;"
+        + "select cur.w, @ahead(2) as a\ninner join cur.w + 1 = nxt.w2;",
+        DisconnectedConceptsException,
     ),
     # --- nested rowset (rowset aggregates another rowset's output) ---
     (

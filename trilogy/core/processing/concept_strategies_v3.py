@@ -183,6 +183,21 @@ def initialize_loop_context(
             )
             and x.address in conditions.row_arguments
         ]
+        # A filter-only rowset output (referenced in the WHERE but not selected, so
+        # absent from mandatory_list) materializes as its own subquery: its
+        # predicate can't be pushed below that materialization, and the comparison's
+        # other operand (a scalar/named concept) is never co-sourced unless we force
+        # every condition input into this level. Without this the planner sources
+        # the RowsetNode alone and the WHERE is structurally unsatisfiable, crashing
+        # INCOMPLETE_CONDITION (`Have {RowsetNode<...>} and need ... > threshold`).
+        mandatory_addresses = {x.address for x in mandatory_list}
+        required_filters += [
+            x
+            for x in conditions.row_arguments
+            if x.address not in mandatory_addresses
+            and x.derivation == Derivation.ROWSET
+            and x.granularity != Granularity.SINGLE_ROW
+        ]
         if any(required_filters):
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row inputs {[x.address for x in required_filters]} present in mandatory list, forcing condition evaluation at this level. "
@@ -331,7 +346,7 @@ def _restrict_completion_conditions(
         a
         for a in atoms
         if not all(
-            _is_scalar_only(n)
+            _is_scalar_only(n, a)
             or _is_independent_scope(n, a)
             or _node_condition_implies(n, a)
             for n in stack
@@ -374,7 +389,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                     x.preexisting_conditions, context.conditions.conditional
                 )
             )
-            or _is_scalar_only(x)
+            or _is_scalar_only(x, context.conditions.conditional)
             or _is_independent_scope(x, context.conditions.conditional)
             for x in context.stack
         ]

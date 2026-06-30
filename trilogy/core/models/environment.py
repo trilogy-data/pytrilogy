@@ -143,6 +143,13 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # leaf-shorthand that IS such a direct output must resolve to itself, not
         # expand into its deeper source path. Populated at COLLECT_SYMBOLS.
         self.rowset_alias_outputs: set[str] = set()
+        # Rowset output addresses (`rs.src.col`) that leak ONLY from a scoped-join
+        # condition (e.g. the other side of `cur.dow = nxt.dow`) and are never a
+        # projected SELECT output. Tracked so leaf-shorthand resolution can drop
+        # them as phantom candidates even before the genuine output commits (q02
+        # self-relation referenced from inside a `def` body). Populated at
+        # COLLECT_SYMBOLS.
+        self.rowset_join_key_leaks: set[str] = set()
         self._resolving: set[str] = set()
         self._overlay_stack: list[Mapping[str, Concept]] = []
         self.populate_default_concepts()
@@ -156,6 +163,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         new.hidden = set(self.hidden)
         new.rowset_namespaces = set(self.rowset_namespaces)
         new.rowset_alias_outputs = set(self.rowset_alias_outputs)
+        new.rowset_join_key_leaks = set(self.rowset_join_key_leaks)
         return new
 
     def populate_default_concepts(self):

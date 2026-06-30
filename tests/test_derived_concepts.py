@@ -47,45 +47,124 @@ def test_filtering_where_on_derived_aggregate(test_environment):
     assert exception, "should have an exception"
 
 
-def test_where_aggregate_also_in_select_rejected_cleanly():
-    """The repro from the bug: ``where sum(x) > 1.2 * avg(x) by g`` with
-    ``select sum(x) as total`` must not leak the internal MergeNode/_virt_agg
-    state to the user.
+def test_where_aggregate_on_grouped_select_executes():
+    """A WHERE aggregate alongside a grouped SELECT (``select x, sum(cost) ...``)
+    is computed at the select grain over the WHERE-unfiltered universe, distinct
+    from the SELECT aggregate. Formerly a hard error; now it plans and executes.
     """
-    from trilogy import parse
-    from trilogy.core.exceptions import InvalidSyntaxException
+    from trilogy import Dialects
+    from trilogy.core.models.environment import Environment
 
     src = """key x int;
 property x.cost float;
 property x.state string;
-
-datasource x_source (
-    x:x,
-    cost:cost,
-    state:state)
-    grain(x)
-    address x_source;
+datasource x_source ( x:x, cost:cost, state:state) grain(x)
+query '''select 1 as x, 100.0 as cost, 'A' as state
+union all select 2, 50.0, 'A'
+union all select 3, 2000.0, 'B'
+union all select 4, 10.0, 'B' ''';
 
 where sum(cost) > 1.2 * avg(cost) by state
-SELECT
-    x,
-    sum(cost) as total_cost;
+SELECT x, sum(cost) as total_cost;
 """
-    raised = None
-    try:
-        parse(src)
-    except Exception as e:
-        raised = e
-    assert raised is not None, "expected a validation exception"
-    assert isinstance(
-        raised, InvalidSyntaxException
-    ), f"expected InvalidSyntaxException, got {type(raised).__name__}: {raised}"
-    msg = str(raised)
-    assert "HAVING" in msg
-    # Internal resolver state must never reach the user.
-    assert "MergeNode" not in msg
-    assert "_virt_agg" not in msg
-    assert "@Grain<" not in msg
+    sql = "\n".join(
+        Dialects.DUCK_DB.default_executor(environment=Environment()).generate_sql(src)
+    )
+    assert "INVALID_REFERENCE_BUG" not in sql
+    rows = sorted(
+        tuple(r)
+        for r in Dialects.DUCK_DB.default_executor().execute_text(src)[-1].fetchall()
+    )
+    # state A 1.2*avg=90: x1=100>90 keep, x2=50 drop. state B 1.2*avg=1206: x3=2000 keep, x4=10 drop.
+    assert rows == [(1, 100.0), (3, 2000.0)], rows
+
+
+_WHERE_AGG_SCHEMA = """key id int;
+property id.x int;
+property id.z int;
+property id.f int;
+datasource d ( id, x, z, f ) grain (id)
+query '''select 1 as id, 1 as x, 2 as z, 1 as f
+union all select 2, 1, 10, 0
+union all select 3, 2, 100, 1''';
+"""
+
+
+def _rows(query: str):
+    from trilogy import Dialects
+
+    return sorted(
+        tuple(r)
+        for r in Dialects.DUCK_DB.default_executor()
+        .execute_text(_WHERE_AGG_SCHEMA + query)[-1]
+        .fetchall()
+    )
+
+
+def test_where_aggregate_input_not_filtered_by_where():
+    # group x=1 has rows (z=2,f=1),(z=10,f=0). The WHERE aggregate sees BOTH rows
+    # (input unfiltered: sum=12 > 5 -> group survives); the SELECT aggregate sees
+    # only f=1 (sum=2). A having-equivalent would have dropped x=1 (filtered sum 2).
+    inline = _rows("where f = 1 and sum(z) by x > 5 select x, sum(z) as v;")
+    alias = _rows("select x, sum(z) by x as sx where f = 1 and sx > 5;")
+    assert inline == [(1, 2), (2, 100)], inline
+    assert alias == [(1, 12), (2, 100)], alias
+
+
+def test_where_aggregate_matching_select_output_executes():
+    # The eval pattern: an inline WHERE aggregate identical to a SELECT output.
+    matching = _rows("where f = 1 and sum(z) > 5 select x, sum(z) as v;")
+    assert matching == [(1, 2), (2, 100)], matching
+
+
+def test_scalar_select_where_aggregate_still_rejected():
+    # A SCALAR select (no grouping key) keeps the clean redirect to HAVING: there is
+    # no grain to anchor the WHERE aggregate and the planner drops sibling filters.
+    from trilogy import parse
+
+    for query in (
+        "select sum(z) as v where v > 5;",
+        "select sum(z) as v where sum(z) > 5;",
+    ):
+        raised = None
+        try:
+            parse(_WHERE_AGG_SCHEMA + query)
+        except Exception as e:  # noqa: BLE001
+            raised = e
+        assert raised is not None, f"expected rejection for: {query}"
+        assert "HAVING" in str(raised), str(raised)
+
+
+_SCALAR_FILTER_SCHEMA = """key x int;
+property x.cost float;
+datasource d ( x, cost ) grain (x)
+query '''select 1 as x, 100.0 as cost
+union all select 2, 50.0
+union all select 3, 2000.0
+union all select 4, 10.0''';
+auto grand_total <- sum(cost) by *;
+"""
+
+
+def test_where_filter_on_scalar_output_value_is_applied():
+    # Regression: a WHERE predicate on a single-row scalar that IS the query output
+    # (`where grand_total > N select grand_total`) was silently dropped — the scalar
+    # node was treated as a cross-joined constant whose conditions are independent.
+    # `_is_scalar_only` now declines the exemption when the predicate filters the
+    # node's own output, so the gate actually filters.
+    from trilogy import Dialects
+
+    def rows(query):
+        return [
+            tuple(r)
+            for r in Dialects.DUCK_DB.default_executor()
+            .execute_text(_SCALAR_FILTER_SCHEMA + query)[-1]
+            .fetchall()
+        ]
+
+    # grand_total is 2160; a passing gate yields it, a failing gate yields no rows.
+    assert rows("where grand_total > 1000 select grand_total;") == [(2160.0,)]
+    assert rows("where grand_total > 5000 select grand_total;") == []
 
 
 def test_filtering_having_on_unincluded_value(test_environment):

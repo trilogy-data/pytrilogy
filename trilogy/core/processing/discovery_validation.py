@@ -21,18 +21,30 @@ from trilogy.core.processing.utility import (
 )
 
 
-def _is_scalar_only(node: StrategyNode) -> bool:
+def _is_scalar_only(node: StrategyNode, condition: BoolExpr | None = None) -> bool:
     """A node whose visible outputs are all single-row scalars (e.g. a CTE
     aggregate referenced as a constant). Such nodes are cross-joined into the
     consumer; their preexisting_conditions reflect the CTE's own WHERE and are
-    independent of the outer query's row-level conditions."""
+    independent of the outer query's row-level conditions.
+
+    As with `_is_independent_scope`, the exemption holds only while `condition`
+    does not filter one of this node's own outputs. A scalar that *is* the thing
+    being filtered (e.g. `select sum(cost) as v where v > 1000`) is the query's
+    result, not a cross-joined constant — the predicate must be applied, so the
+    node is not exempt."""
     resolved = node.resolve()
     visible = [
         c for c in resolved.output_concepts if c.address not in resolved.hidden_concepts
     ]
     if not visible:
         return False
-    return all(c.granularity == Granularity.SINGLE_ROW for c in visible)
+    if not all(c.granularity == Granularity.SINGLE_ROW for c in visible):
+        return False
+    if condition is not None:
+        visible_addresses = {c.address for c in visible}
+        if any(arg.address in visible_addresses for arg in condition.row_arguments):
+            return False
+    return True
 
 
 def _is_independent_scope(node: StrategyNode, condition: BoolExpr) -> bool:
@@ -75,7 +87,7 @@ def _condition_atom_met(
     if all(c.address in found_addresses for c in condition.row_arguments):
         return True
     return all(
-        _is_scalar_only(node)
+        _is_scalar_only(node, condition)
         or _is_independent_scope(node, condition)
         or _node_condition_implies(node, condition)
         for node in stack
@@ -92,7 +104,7 @@ def _conditions_met(
         return True
     conditional = conditions.conditional
     if all(
-        _is_scalar_only(node)
+        _is_scalar_only(node, conditional)
         or _is_independent_scope(node, conditional)
         or _node_condition_implies(node, conditional)
         for node in stack

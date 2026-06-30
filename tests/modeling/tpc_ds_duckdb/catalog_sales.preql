@@ -42,6 +42,7 @@ properties <order_number, item.id> (
     --net_paid_inc_tax numeric::usd, # Net amount paid including sales tax.
     coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
     return_amount numeric::usd?, # Refund amount if the line was returned.
+    return_net_loss numeric::usd?, # Net financial loss on the return for this line.
     --return_quantity int?, # Units returned for this line.
     row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.id combination).
 );
@@ -90,6 +91,7 @@ datasource catalog_returns_inline (
     CR_ORDER_NUMBER: ~order_number,
     CR_ITEM_SK: ~item.id,
     CR_RETURN_AMOUNT: return_amount,
+    CR_NET_LOSS: return_net_loss,
     CR_RETURN_QUANTITY: return_quantity,
 )
 grain (item.id, order_number)

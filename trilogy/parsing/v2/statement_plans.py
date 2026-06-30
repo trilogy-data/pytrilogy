@@ -49,6 +49,7 @@ from trilogy.parsing.v2.symbols import (
     extract_concept_name_from_literal,
     extract_dependencies,
     find_concept_literals,
+    find_join_clause_literals,
     find_select_transform_targets,
     find_tvf_output_names,
 )
@@ -399,6 +400,14 @@ class RowsetStatementPlan(StatementPlanBase):
     rowset_name: str | None = None
     forward_addresses: list[str] = field(default_factory=list)
 
+    def _literal_rowset_address(self, literal: SyntaxNode, namespace: str) -> str:
+        source_address = extract_concept_name_from_literal(literal, namespace)
+        source_ns, _, source_name = source_address.rpartition(".")
+        target_ns = rowset_output_namespace(
+            self.rowset_name or "", namespace, source_ns
+        )
+        return f"{target_ns}.{source_name}"
+
     def collect_symbols(self, hydrator: "NativeHydrator") -> None:
         for child in self.syntax.children:
             if (
@@ -437,7 +446,24 @@ class RowsetStatementPlan(StatementPlanBase):
                 )
                 hydrator.environment.concepts.rowset_alias_outputs.add(rowset_address)
             return
-        for literal in find_concept_literals(self.syntax):
+        all_literals = find_concept_literals(self.syntax)
+        join_literals = find_join_clause_literals(self.syntax)
+        join_literal_ids = {id(lit) for lit in join_literals}
+        join_addrs = {
+            self._literal_rowset_address(lit, namespace) for lit in join_literals
+        }
+        nonjoin_addrs = {
+            self._literal_rowset_address(lit, namespace)
+            for lit in all_literals
+            if id(lit) not in join_literal_ids
+        }
+        # A column referenced ONLY in a join condition (the other side of a scoped
+        # self-join key) is never a projected output — record it so leaf-shorthand
+        # resolution can drop it as a phantom candidate (q02).
+        hydrator.environment.concepts.rowset_join_key_leaks.update(
+            join_addrs - nonjoin_addrs
+        )
+        for literal in all_literals:
             source_address = extract_concept_name_from_literal(literal, namespace)
             source_ns, _, source_name = source_address.rpartition(".")
             target_ns = rowset_output_namespace(self.rowset_name, namespace, source_ns)

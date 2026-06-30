@@ -568,6 +568,16 @@ class ConceptLookup:
             else:
                 forward.append(addr)
         if not real:
+            # No candidate has committed yet — a `def`/`auto` body resolving a
+            # rowset shorthand hydrates before the rowset stages its outputs, so
+            # even the genuine output is still a bare forward ref. Fall back to
+            # the static join-key-leak registry: drop forward matches that only
+            # appear in a scoped-join condition when a non-leak candidate remains
+            # (q02 `ratios.dow` -> `ratios.cur.dow`, dropping `ratios.nxt.dow`).
+            leaks = self._env.concepts.rowset_join_key_leaks
+            non_leak = [m for m in matches if m not in leaks]
+            if non_leak and len(non_leak) < len(matches):
+                return non_leak
             return matches
         pending = {a for a, _ in self._state.pending_concepts()}
         kept_forward = [
