@@ -49,6 +49,7 @@ from trilogy.scripts.display_execution import (  # noqa: F401
     show_formatting_result,
     show_statement_result,
     show_statement_type,
+    summarize_definitions,
 )
 from trilogy.scripts.display_models import (  # noqa: F401
     ManagedDataGroup,

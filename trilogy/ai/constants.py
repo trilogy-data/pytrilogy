@@ -23,9 +23,18 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 
 ### Query-scoped join (the default)
 
-inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. Right unsupported; just flip to a left. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+inner|left|full join <a> = <b> [= <c>] blends concepts or expressions (from any source - models, rowsets etc) inside one SELECT by marking them as 'fully' or 'partially' equivalent.
 
+Place it right after the select list (the SQL-like spot); 
+
+Semantics are similar to SQL: inner asserts strict equivalence - they are the same set; left says the right side is partial and may end up null; full keeps unmatched rows from both sides. 
 Joins indicate that concepts are *the same*; it is a conceptual operation not a field operation. inner join a=b means that a is null and b is not null is tautologically always false.
+
+Right unsupported; just flip to a left.
+
+ A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. 
+ 
+Chain = c to pull additional concepts into a join. Joins can be on expresseions. join on a computed/offset key (`inner join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
 
 Joins do NOT drop nulls. Joins will merge null values across dimension keys. To filter out nulls, explicitly use not-null conditions.
 
@@ -47,14 +56,17 @@ Full example: trilogy agent-info syntax example union-stack-channels.
 
 ```
 <WITH NAME>?      # name the select to use later
-WHERE?            # filter rows BEFORE aggregation
-SELECT
+WHERE?            # filters data BEFORE it reaches aggregates or windows
+SELECT            # Defines the output grain for aggregates
   <EXPR> [AS <ALIAS>], ...
   INNER|LEFT|FULL JOIN <a> = <b> [= <c>] ...   # one or more join concepts beyond model defaults
-HAVING?           # filter AFTER aggregation
+HAVING?           # filters final projection
 ORDER BY?
 LIMIT?
 ```
+
+If unspecified (no BY) aggregates always group to the grain of dimensions in the select, no matter where they appear in the query.
+
 
 A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
 
@@ -80,58 +92,35 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
 - **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
-- Since there are no underlying tables, `sum(1)`/`count(1)` is only meaningful grouped by a grain field (e.g. `sum(1) by x as count`).
+- **Since there are no underlying tables, `sum(1)`/`count(1)` is only meaningful grouped by a grain field (e.g. `sum(1) by x as count`).
 
 ### Fields and aliases
-
 - Always use the full path (`enroll.student.id`) for a field; namespacing matters.
 - Every new expression in the select output must be aliased with `as` (e.g. `sum(births) as all_births`).
 - Aliases cannot appear inside calculations or in WHERE/HAVING/ORDER clauses: `sum(credits) as total_credits` is valid; `(sum(credits) as total_credits) + 1 as credits_plus_one` is not. Never alias a field to an existing name.
 - Use a context dependent reasonable `LIMIT` on final queries if unspecified (data for charts typically must be complete)
-## Filtering
 
-WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).
+## Filtering Data
+```
+WHERE <filter> 
+SELECT
+...
+HAVING # filters data AFTER it has been aggregated or windowed
+```
+INLINE filter x ? cond <- filters one expression's input (e.g. sum(x ? x > 0)).
 
-WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
-```
-where thing.key = 3
-select 
-    thing.prop,
-    --sum(thing.val) as total_val
-having 
-    total_val > 10
-```
-HAVING filters after any where conditions are output, making it useful for window functions and other cases. You can hide concepts in the output projection to make them reusable in HAVING.
-```
-select 
-    student.state, 
-    --sum(enroll.credits) as total_credits, 
-having 
-    total_credits > 1000 
-    and enroll.year = 2020
-```
+Note that aggregates/windows in WHERE do not filter the inputs to each other. You must use inline filters if you want a where clause aggregate/window to be filtered.
 
-HAVING/WHERE aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total.
- Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
-```
-auto grand_total <- sum(enroll.credits) by *;
-
+where student.state = 'TN' #  filters ALL Data to the state
 select 
     student.id, 
-    --sum(enroll.credits) as student_total
+    --sum(enroll.credits ? student.enrolled = True) as student_total # filters JUST the input to the sum
 having 
-    student_total > 0.0001 * grand_total
+    student_total > 0.0001 * grand_total # filters the final output rows
 ```
 
-Aggregates in WHERE are not filtered by other items in the where clause, and inherit the select grain.
-To filter a aggregate in the where pre-aggregation, use inline condition (? ) inside the aggregate. 
-Use an explicit grain (such as `*` for a global total) to avoid the default select grain. 
-```
-where enroll.year = 2020
-  and course.credits > 1.2 * avg(course.credits ? explicit_other_condition) by course.department
-  and course.creds > 1.5 * avg(course.credits) by *
-select course.name, course.credits
-```
+IMPORTANT: BE CAREFUL with window functions and the where clause - you must have all the rows required for the window range reach the window. Filtering in the HAVING
+is often useful here. 
 
 ## SemiJoins
 

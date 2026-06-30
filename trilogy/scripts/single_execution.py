@@ -36,6 +36,7 @@ from trilogy.scripts.display import (
     show_statement_result,
     show_statement_type,
     show_watermarks,
+    summarize_definitions,
 )
 from trilogy.utility import safe_open
 
@@ -248,14 +249,42 @@ def execute_queries_simple(
     return exception, total_rows
 
 
+def _raise_no_executable_statements(definitions: list[Any], start: datetime) -> None:
+    """A file that parsed real definitions (rowset/with/concept/...) but yields
+    no output-producing statement is a silent false success (`{ok: true,
+    rows: 0}`). Report it as a failure with an actionable message instead — those
+    definitions register into the environment but do nothing on their own."""
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    # Emit the failing summary so consumers keyed on it (JSON agents) see
+    # ok:false rather than the misleading ok:true, rows:0.
+    show_execution_summary(0, datetime.now() - start, False, 0)
+    raise InvalidSyntaxException(
+        f"Nothing was executed: parsed {len(definitions)} definition "
+        f"statement(s) ({summarize_definitions(definitions)}) but none produce "
+        "output. A rowset/with/concept file does nothing on its own — add a "
+        "final `select` that consumes them."
+    )
+
+
 def execute_run_mode(
     exec: Executor,
     queries: list[PROCESSED_STATEMENT_TYPES],
     row_limit: int | None = None,
+    definitions: list[Any] | None = None,
 ) -> None:
     """Execute queries in run mode with progress tracking."""
     start = datetime.now()
     show_execution_start(len(queries))
+
+    # An import-only or empty body is a deliberately-supported no-op (validating
+    # that imports/setup parse). But real definitions with no consuming select is
+    # the false-success churn the agent hits — surface it as an error.
+    consumable = [
+        d for d in (definitions or []) if type(d).__name__ != "ImportStatement"
+    ]
+    if not queries and consumable:
+        _raise_no_executable_statements(definitions or [], start)
 
     # The rich progress bar is chrome that would corrupt the NDJSON stream, so
     # JSON mode always takes the simple (no-progress) execution path.

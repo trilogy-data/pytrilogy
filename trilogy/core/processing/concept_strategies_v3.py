@@ -272,6 +272,20 @@ def check_for_early_exit(
     priority_concept: BuildConcept,
 ) -> bool:
     if complete == ValidationResult.INCOMPLETE_CONDITION:
+        # The outputs are all sourced but the WHERE/HAVING can't be applied yet.
+        # If a condition input simply isn't in the stack (e.g. it lives in a
+        # disconnected subgraph and hasn't been sourced), this is NOT a terminal
+        # invalid state: keep searching like a plain INCOMPLETE. The loop either
+        # sources it (-> COMPLETE/DISCONNECTED) or exhausts and fails cleanly,
+        # yielding the same DisconnectedConceptsException a SELECT of those
+        # concepts would. Only when every condition input is already sourced and
+        # the condition is *still* unsatisfiable is the planner in a genuinely
+        # invalid state worth the loud sentinel below.
+        condition_inputs_sourced = not context.conditions or all(
+            c.address in found for c in context.conditions.row_arguments
+        )
+        if not condition_inputs_sourced:
+            return False
         cond_dict = {str(node): node.preexisting_conditions for node in context.stack}
         for node in context.stack:
             logger.info(

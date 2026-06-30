@@ -79,6 +79,23 @@ from trilogy.utility import safe_open
 
 ValidationDatasourceT = TypeVar("ValidationDatasourceT", Datasource, BuildDatasource)
 
+# Statement types that produce output (and so are "executable"). Everything else
+# parsed from a file (rowset/concept/import/datasource definitions) registers into
+# the environment but yields nothing on its own.
+GENERATABLE_STATEMENT_TYPES = (
+    SelectStatement,
+    PersistStatement,
+    MultiSelectStatement,
+    ShowStatement,
+    RawSQLStatement,
+    CopyStatement,
+    ValidateStatement,
+    CreateStatement,
+    PublishStatement,
+    MockStatement,
+    ChartStatement,
+)
+
 _CHART_COPY_SIZE_KEYS = {"width", "height"}
 _CHART_COPY_SAVE_KEYS = {"scale": "scale_factor", "ppi": "ppi"}
 _CHART_COPY_ALLOWED = _CHART_COPY_SIZE_KEYS | _CHART_COPY_SAVE_KEYS.keys()
@@ -699,6 +716,32 @@ class Executor(object):
     ) -> List[PROCESSED_STATEMENT_TYPES]:
         return list(self.parse_text_generator(command, persist=persist, root=root))
 
+    def parse_text_with_definitions(
+        self, command: str, persist: bool = False, root: Path | None = None
+    ) -> tuple[List[PROCESSED_STATEMENT_TYPES], List[Any]]:
+        """Parse, returning both the executable queries and the non-executable
+        definition statements (rowsets, concepts, imports, datasources, ...).
+        Lets callers warn when a file parses cleanly but has no statement that
+        produces output (a definitions-only file does nothing on its own)."""
+        _, parsed = parse_text(command, self.environment, root=root)
+        definitions = [
+            x
+            for x in parsed
+            if not isinstance(x, GENERATABLE_STATEMENT_TYPES)
+            and not isinstance(x, Comment)
+        ]
+        queries: List[PROCESSED_STATEMENT_TYPES] = []
+        for t in parsed:
+            if not isinstance(t, GENERATABLE_STATEMENT_TYPES):
+                continue
+            x = self.generator.generate_queries(
+                self.environment, [t], hooks=self.hooks
+            )[0]
+            if persist and isinstance(x, ProcessedQueryPersist):
+                self.environment.add_datasource(x.datasource)
+            queries.append(x)
+        return queries, definitions
+
     def parse_text_generator(
         self, command: str, persist: bool = False, root: Path | None = None
     ) -> Generator[
@@ -708,26 +751,7 @@ class Executor(object):
     ]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment, root=root)
-        generatable = [
-            x
-            for x in parsed
-            if isinstance(
-                x,
-                (
-                    SelectStatement,
-                    PersistStatement,
-                    MultiSelectStatement,
-                    ShowStatement,
-                    RawSQLStatement,
-                    CopyStatement,
-                    ValidateStatement,
-                    CreateStatement,
-                    PublishStatement,
-                    MockStatement,
-                    ChartStatement,
-                ),
-            )
-        ]
+        generatable = [x for x in parsed if isinstance(x, GENERATABLE_STATEMENT_TYPES)]
         while generatable:
             t = generatable.pop(0)
             x = self.generator.generate_queries(

@@ -7,7 +7,7 @@
   {
     "id": 2,
     "grade": "hard",
-    "prompt": "For web and catalog sales for each calendar week sequence we want the ratio of each day-of-week's sales to the same day-of-week's sales in the next year, as eight values per row: first the calendar week-sequence number itself, then the seven day-of-week ratios (Sunday through Saturday). Each week sequence totals ALL of its days' sales (a week may span multiple years; do not split by year). Each ratio row has  each day-of-week sales divided by the same day-of-week sales in the week sequence 53 weeks in the future, rounded to two decimal places. Order by week sequence with nulls first, only return week sequences that ever occur in 2001. (so ratios compare to ~2002 ranges)"
+    "prompt": "For web and catalog sales for each calendar week sequence we want the ratio of each day-of-week's sales to the same day-of-week's sales in the next year, as eight values per row: first the calendar week-sequence number itself, then the seven day-of-week ratios (Sunday through Saturday). Each week sequence totals ALL of its days' sales (a week may span multiple years; do not split by year). Each ratio row has  each day-of-week sales divided by the same day-of-week sales in the week sequence 53 weeks in the future, rounded to two decimal places. Order by week sequence asc, only show in output week sequences that ever occur in 2001. (though ratios compare to ~2002 ranges)"
   },
   {
     "id": 3,
