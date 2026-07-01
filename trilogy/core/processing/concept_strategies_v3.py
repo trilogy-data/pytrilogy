@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
@@ -13,6 +13,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
 )
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildConcept,
     BuildWhereClause,
 )
@@ -30,6 +31,7 @@ from trilogy.core.processing.discovery_utility import (
     disconnected_components,
     format_disconnected_subgraphs_error,
     get_loop_iteration_targets,
+    get_upstream_concepts,
     group_if_required_v2,
     raise_if_filter_disconnected,
 )
@@ -191,12 +193,30 @@ def initialize_loop_context(
         # the RowsetNode alone and the WHERE is structurally unsatisfiable, crashing
         # INCOMPLETE_CONDITION (`Have {RowsetNode<...>} and need ... > threshold`).
         mandatory_addresses = {x.address for x in mandatory_list}
+        # ...UNLESS the rowset input is UPSTREAM of a ROLLUP/CUBE/GROUPING SETS
+        # aggregate at this level (`sum(ch.total_sales) by rollup (...)`): it feeds
+        # that aggregation, so its filter must apply BELOW the group, at the input's
+        # own grain. Such grouping adds NULL-key subtotal rows; forcing the filter
+        # here drags the finer input into the rollup output, enriches it back over
+        # the NULL-keyed subtotal grain, and re-applies the filter — silently
+        # dropping every subtotal row. Push those inputs down instead. The upstream
+        # check keys off lineage (its rowset expansion also covers a *sibling* field
+        # of the aggregated one); a filter-only rowset output that is NOT upstream of
+        # the grouping (an independent membership operand, q23) still forces here.
+        nonstandard_grouping_upstream: set[str] = set()
+        for m in mandatory_list:
+            if (
+                isinstance(m.lineage, BuildAggregateWrapper)
+                and m.lineage.grouping != AggregateGroupingMode.STANDARD
+            ):
+                nonstandard_grouping_upstream |= get_upstream_concepts(m, nested=True)
         required_filters += [
             x
             for x in conditions.row_arguments
             if x.address not in mandatory_addresses
             and x.derivation == Derivation.ROWSET
             and x.granularity != Granularity.SINGLE_ROW
+            and x.address not in nonstandard_grouping_upstream
         ]
         if any(required_filters):
             logger.info(

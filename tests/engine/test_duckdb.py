@@ -647,37 +647,50 @@ query '''select 1 as sid, 'STORE' as schannel, 100.0 as samt, 1 as scnt union al
 
 
 def test_rollup_where_crossrowset_preserves_grand_total():
-    """`by rollup` + a WHERE that filters a rowset field against a cross-rowset
-    scalar must keep the rollup subtotal/grand-total rows. The scalar requires a
-    join, so the WHERE predicate is duplicated to the outermost query (above the
-    rollup) and re-applied there; the grand-total row's join key is NULL, so its
-    re-fetched rowset field comes back NULL and `NULL > scalar` drops it. A literal
-    RHS is resolved fully pre-rollup and keeps the grand total (control). This is
-    the WHERE-path sibling of test_rollup_having_crossrowset_preserves_subtotals,
-    and the form the q14 agent actually used (HAVING after `by rollup` won't
-    parse). The natural formulation, so the highest-impact q14 blocker."""
+    """`by rollup` + a WHERE filtering a rowset field against a cross-rowset scalar
+    must keep the subtotal/grand-total rows. The scalar-vs-rowset filter was
+    force-evaluated at the rollup output level (a filter-only ROWSET row-arg forces
+    condition eval), dragging the finer input into the rollup output → an
+    enrichment join back over the NULL-keyed subtotal grain + a re-applied filter
+    that dropped every subtotal. The filter must instead push *below* the rollup.
+    Covers both the aggregated field (`sum(ch.total_sales)` filtered on
+    `ch.total_sales`) and a sibling field (filter on `ch.total_sales`, project only
+    `sum(ch.sale_count)`). The form the q14 agent actually used (HAVING after `by
+    rollup` won't parse) — the highest-impact q14 blocker."""
     engine = Dialects.DUCK_DB.default_executor(environment=Environment())
     engine.parse_text(_ROLLUP_WHERE_CROSSROWSET_MODEL)
-    text = """
+    prefix = """
 auto overall_avg_sale <- sum(samt) by * / count(scnt) by *;
 with ch as
 select schannel as channel, sum(samt) as total_sales, count(scnt) as sale_count;
-select
-    ch.channel,
-    sum(ch.total_sales) as total_sales,
-    sum(ch.sale_count) as total_count
+"""
+    # avg = 342/5 = 68.4; channels kept: STORE(130), WEB(205); CATALOG(7) dropped.
+    # Rollup over the kept channels keeps the grand-total row.
+    aggregated = engine.execute_text(
+        prefix
+        + """
+select ch.channel, sum(ch.total_sales) as total_sales, sum(ch.sale_count) as total_count
 where ch.total_sales > overall_avg_sale
 by rollup (ch.channel)
 order by ch.channel asc nulls first;
 """
-    results = engine.execute_text(text)[-1].fetchall()
-    # avg = 342/5 = 68.4; channels kept: STORE(130), WEB(205); CATALOG(7) dropped.
-    # Rollup over the kept channels keeps the grand-total row.
-    assert [(r[0], float(r[1]), r[2]) for r in results] == [
+    )[-1].fetchall()
+    assert [(r[0], float(r[1]), r[2]) for r in aggregated] == [
         (None, 335.0, 4),
         ("STORE", 130.0, 2),
         ("WEB", 205.0, 2),
     ]
+    # Sibling field: filtered field is not the aggregated one; still must push below.
+    sibling = engine.execute_text(
+        prefix
+        + """
+select ch.channel, sum(ch.sale_count) as total_count
+where ch.total_sales > overall_avg_sale
+by rollup (ch.channel)
+order by ch.channel asc nulls first;
+"""
+    )[-1].fetchall()
+    assert [(r[0], r[1]) for r in sibling] == [(None, 4), ("STORE", 2), ("WEB", 2)]
 
 
 def test_predicate_not_pushed_past_window_order_key():
