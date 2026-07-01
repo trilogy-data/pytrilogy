@@ -287,10 +287,20 @@ class CollapseSingleParent(OptimizationRule):
     child, eliminating an unnecessary subquery.
     """
 
-    def __init__(self, domain_graph: "DomainGraph | None" = None) -> None:
+    def __init__(
+        self,
+        domain_graph: "DomainGraph | None" = None,
+        passthrough_only: bool = False,
+    ) -> None:
         super().__init__()
         self.completed: set[str] = set()
         self.domain_graph = domain_graph
+        # A bare passthrough (single parent, no local compute/WHERE/regroup) is
+        # pure noise regardless of aggregate merging, so it is collapsed even
+        # when the merge_aggregate config (which gates the full rule) is off --
+        # e.g. to clean up a projection that predicate pushdown just reduced to
+        # a passthrough by relocating its WHERE onto the parent scan.
+        self.passthrough_only = passthrough_only
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -306,6 +316,9 @@ class CollapseSingleParent(OptimizationRule):
 
         merge_mode = get_merge_mode(cte)
         if merge_mode is None:
+            return False, None
+
+        if self.passthrough_only and merge_mode != MergeMode.PASSTHROUGH:
             return False, None
 
         if child_has_merge_blockers(cte, merge_mode):

@@ -208,19 +208,20 @@ Pruned `test_select_literal_is_rendered_with_aggregate_projection`.
 
 ## Current tracked state (re-bucketed 2026-06-28 — NOT all cosmetic)
 
-`tests/v4_known_failing.py` tracks **8 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
+`tests/v4_known_failing.py` tracks **7 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
 `test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, q10, q23. q2.2 pruned
 2026-06-28. `rowset_alias` (wrong-rows), q2.1, and `rowset_arithmetic` pruned 2026-06-29.
 `select_literal` (constant fold), q30.alt (dimension-rejoin GA-spine), both `_INLINE`
 entries (ncaa::adhoc07 dual-conditioned; aggregate_of_aggregate stale), and
 `aggregate_filter_uses_having` (filter-item CASE-WHEN-after-HAVING-pushdown) pruned
 2026-06-30. `in_subselect_with_inlined_datasource` (existence-source pushdown/inline
-interaction — was a correctness bug, not verbosity) pruned 2026-07-01. The remaining
-8 — NO size-ceiling and NO cosmetic entries left, all VERBOSITY or STRUCTURE:
+interaction — was a correctness bug, not verbosity) and `two_merge_aggregate`
+(passthrough-after-pushdown residue, merge_aggregate=False branch) pruned 2026-07-01.
+The remaining 7 — NO size-ceiling and NO cosmetic entries left, all VERBOSITY or STRUCTURE:
 
 | bucket | count | meaning |
 | --- | --- | --- |
-| `_V4_VERBOSITY` | 3 | rows match, v4 materially longer (measured). Real regressions. |
+| `_V4_VERBOSITY` | 2 | rows match, v4 materially longer (measured). Real regressions. |
 | `_V4_STRUCTURE` | 5 | rows match on consistent data; join-type/source/shape differs. |
 | `_INLINE` | 0 | both pruned 2026-06-30 (ncaa dual-conditioned; aggregate_of_aggregate stale). |
 | `_CRASH_INVALID_REF` | 0 | (unused — reserved string; no entries reference it). |
@@ -229,11 +230,26 @@ interaction — was a correctness bug, not verbosity) pruned 2026-07-01. The rem
 The `rowset_alias` wrong-rows correctness bug is FIXED (cartesian product → INNER
 join on the shared grain key; rows verified 3=3). The last genuine **length**
 regression (q2.1) and the last size-ceiling miss (q30.alt) are FIXED. Open themes
-are now exactly two: (1) the remaining `_V4_VERBOSITY` family (3 left:
-`bound_conversion_existence_presto`,
-`aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape —, and
-`two_merge_aggregate`), and (2) `_V4_STRUCTURE` join/source diffs to verify for row
-impact.
+are now exactly two: (1) the remaining `_V4_VERBOSITY` family (2 left:
+`bound_conversion_existence_presto` — partially improved 2026-07-01 (grand-total
+all_rows join now `on 1=1`; residual is the derive-in-scan `wakeful` layer) — and
+`aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape), and
+(2) `_V4_STRUCTURE` join/source diffs to verify for row impact.
+
+### 2026-07-01 — two_merge (merge_aggregate=False) passthrough residue FIXED + pruned
+
+`test_two_merge_aggregate_compacts_inline_window_query` merge_aggregate=False was
+v4 11 vs v3 9 CTEs (the merge_aggregate=True branch always passed, 5==5). v4
+models the semijoin membership (`date.week_seq in relevent_week_seq`) as a JOIN
+node; predicate pushdown relocates it to the fact scan's WHERE subselect, leaving
+a bare single-parent passthrough SELECT (v3 applies the filter in-scan, never
+materializing the node). `CollapseSingleParent` PASSTHROUGH mode would fold it,
+but the whole rule is gated on `merge_aggregate` (off in this test), and the
+planner's `_elide_passthrough_tree` runs pre-pushdown when the node still has a
+real join. Fix: `passthrough_only` param on `CollapseSingleParent` + a new
+`collapse_single_parent.passthrough_after_pushdown` plan phase (the `elif not
+merge_aggregate` branch of `.after_pushdown`). Near-zero blast radius — only this
+one test sets merge_aggregate=False; the default path is unchanged. v4 now 9==v3.
 
 ### 2026-07-01 — grand-total (`by *`) aggregate now cross-joins ON 1=1 (partial: bound_conversion)
 

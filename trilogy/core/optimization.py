@@ -591,6 +591,31 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+    elif not opts.merge_aggregate and opts.predicate_pushdown:
+        # merge_aggregate gates the full CollapseSingleParent rule, but a bare
+        # passthrough (single parent, no compute/WHERE/join/regroup) is pure
+        # noise unrelated to aggregate merging -- e.g. v4's semijoin-projection
+        # residue once predicate pushdown relocates its WHERE onto the parent
+        # scan (v3 never materializes the node). Collapse it even with aggregate
+        # merging off. Deliberately UNCONDITIONAL (no refires_after): unlike the
+        # merge_aggregate branch above, this path has no initial collapse phase,
+        # so this sole phase must run regardless of whether pushdown made changes
+        # -- it is positioned after `remove`, so it sweeps any passthrough left by
+        # planning OR by an earlier optimization phase, not only pushdown-created
+        # ones. Gating on `remove` would leak a passthrough whenever remove is a
+        # no-op. It still loops to fixpoint internally like every phase.
+        plan.append(
+            OptimizationRulePlan(
+                name="collapse_single_parent.passthrough_after_pushdown",
+                rule_factory=lambda: CollapseSingleParent(passthrough_only=True),
+                depends_on=("predicate_pushdown.remove",),
+                reason=(
+                    "collapse bare passthroughs (pushdown residue or otherwise) "
+                    "when aggregate merging is disabled; sole collapse phase in "
+                    "this path, so it runs unconditionally"
+                ),
+            )
+        )
     if opts.upgrade_condition_joins:
         plan.append(
             OptimizationRulePlan(

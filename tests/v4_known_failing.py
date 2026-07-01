@@ -193,6 +193,15 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # (navigation-window order-by excluded from a wrapping expression's grain,
     # subset-nest cycle guard, partial-spine window absorb) clears it too. XPASS
     # in isolation + full sweep.
-    # two_merge: merge_aggregate=True branch passes (5==5); merge_aggregate=False is 9->11 CTEs.
-    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_two_merge_aggregate_compacts_inline_window_query": _V4_VERBOSITY,
+    # two_merge pruned 2026-07-01: merge_aggregate=True branch always passed
+    # (5==5); the merge_aggregate=False branch was 11 vs v3's 9. v4's semijoin
+    # membership (`date.week_seq in relevent_week_seq`) is modeled as a join
+    # node; predicate pushdown later relocates it to the fact scan's WHERE
+    # subselect, leaving a bare passthrough projection (v3 never materializes
+    # that node). CollapseSingleParent would fold it, but the whole rule is
+    # gated on merge_aggregate -- off in this test. Fix: a passthrough-only
+    # CollapseSingleParent cleanup phase (`collapse_single_parent.
+    # passthrough_after_pushdown`) that runs even when merge_aggregate is off
+    # (passthrough removal is orthogonal to aggregate merging). v4 now 9 == v3;
+    # default path (merge_aggregate=True) untouched. XPASS in isolation.
 }
