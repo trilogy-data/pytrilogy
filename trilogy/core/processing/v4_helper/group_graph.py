@@ -434,6 +434,28 @@ def _pre_aggregate_filter_args(
     return frozenset(args)
 
 
+def _post_aggregate_filter_args(
+    conditions: list[BuildWhereClause],
+) -> frozenset[str]:
+    """Row-arg addresses of WHERE clauses that DO contain an aggregate term —
+    HAVING-style post-aggregate filters (q30.alt's ``customer_state > scaled and
+    billing_customer.address.state = 'GA'``).
+
+    A HAVING dim arg filters the OUTPUT after aggregation, so peeling it to a
+    standalone dim scan and semijoining on the entity key is faithful (v3's
+    ``wakeful`` sources the billing-customer dims AND applies ``state = 'GA'`` in
+    one CTE). Unlike a selected dim column, a filter-only HAVING arg has no output
+    to anchor it — but the placed condition still sources the column at the dim
+    scan, so the WHERE is preserved (not dropped)."""
+    args: set[str] = set()
+    for clause in conditions:
+        if any(
+            arg.derivation == Derivation.AGGREGATE for arg in clause.concept_arguments
+        ):
+            args |= {arg.address for arg in clause.row_arguments}
+    return frozenset(args)
+
+
 def _finer_filter_grains(
     conditions: list[BuildWhereClause],
 ) -> frozenset[frozenset[str]]:
@@ -460,6 +482,7 @@ def _split_root_dimension_clusters(
     environment: BuildEnvironment,
     output_addresses: frozenset[str],
     pre_aggregate_filter_args: frozenset[str],
+    post_aggregate_filter_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
@@ -524,14 +547,16 @@ def _split_root_dimension_clusters(
         for addr in member_addrs:
             if addr in candidates:
                 continue
-            # Only peel a SELECTED dimension column. A filter-only member
-            # (a WHERE arg the query never projects, e.g. q30.alt's
-            # `billing_customer.address.state = 'GA'`) must stay on the fact
-            # bucket: moving it to a standalone dim scan that the FINAL re-source
-            # rebuilds from the projected columns alone silently drops its WHERE
-            # (the column isn't an output, so it's never sourced) — wrong rows.
-            # Left in place, the fact contributor still applies the filter.
-            if addr not in output_addresses:
+            # Peel a SELECTED dimension column, OR a filter-only HAVING arg (a
+            # post-aggregate WHERE arg the query never projects, e.g. q30.alt's
+            # `billing_customer.address.state = 'GA'`). A HAVING arg is safe to
+            # peel because the condition placed on the dim bucket sources the
+            # column at the dim scan and applies the WHERE there (v3's `wakeful`
+            # sources the dims AND filters `state = 'GA'` in one CTE) — the
+            # column isn't dropped. A filter-only PRE-aggregate arg is NOT peeled
+            # (`pre_aggregate_filter_args` gate below): its WHERE must narrow the
+            # fact rows feeding the aggregate, not a post-join dim.
+            if addr not in output_addresses and addr not in post_aggregate_filter_args:
                 continue
             # Never peel a member that is itself a grouping key of some aggregate:
             # it is a grouping DIMENSION the query re-aggregates over (q24 regroups
@@ -1677,6 +1702,7 @@ def build_group_graph(
             environment,
             output_addresses,
             _pre_aggregate_filter_args(conditions),
+            _post_aggregate_filter_args(conditions),
             _finer_filter_grains(conditions),
         )
     d1_calc_roots, d1_subgraph = _d1_calc_subgraph(

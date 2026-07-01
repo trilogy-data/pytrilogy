@@ -138,12 +138,18 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # producer so the leads render inline (v3's window+round shape) instead of the
     # window materializing 14 agg + 7 lead passthrough columns for a separate round
     # node. XPASS in isolation + full sweep.
-    # q30.alt's failure is STRUCTURAL, not length (6193 < 12000 ceiling): the test
-    # asserts web_returns is scanned once and exactly 2 GROUP BYs. v4 still emits a
-    # second web_returns GA-spine scan (state filter-only, not selected). Tracked
-    # as _TPCDS_SIZE for grouping; the real gap is dimension-projection re-join --
-    # see v4_dimension_projection_rejoin_handoff.md.
-    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_thirty_alt": _TPCDS_SIZE,
+    # q30.alt pruned 2026-06-30 (second web_returns GA-spine scan eliminated,
+    # 6193->6112, and web_returns==1 / GROUP BY==2): the post-aggregate GA filter
+    # (`billing_customer.address.state = 'GA'`, FD by billing_customer.id) was
+    # kept on the fact bucket because it isn't a SELECTED output, spawning a
+    # second fact scan just to apply it. Fix: `_split_root_dimension_clusters`
+    # (group_graph) also peels a filter-only POST-aggregate (HAVING) arg into the
+    # single-entity FD dim bucket (pre-aggregate args still stay on the fact), and
+    # `_assemble_final_node` (strategy_builder) sources such a peeled filter arg
+    # in the fresh root projection so the condition survives
+    # `_root_atoms_satisfiable_from` and plan_source joins the dim table (v3's
+    # `wakeful` = `customer join customer_address WHERE state = 'GA'`). XPASS in
+    # isolation + full sweep; no net-new failures.
     # q73 pruned 2026-06-27: the single-entity FD dimension-cluster split
     # (`_split_root_dimension_clusters`) sources the customer dims standalone
     # instead of re-rooting them on the fact; 5220->2737, under ceiling. Passes

@@ -77,11 +77,11 @@ classifier reports **0 CRASH / 0 escalations**. All the crashes that were open o
 `BinderException`, `test_filter_constant` invalid-ref). What remains before flipping the
 default:
 
-1. **Plan verbosity — 1 `_TPCDS_SIZE` test** (q30.alt). Rows match; the SQL trips an
-   assertion. **q30.alt is STRUCTURAL, not length** (6193 < 12000 ceiling) — the test
-   asserts `web_returns` is scanned once / exactly 2 GROUP BYs, and v4 still emits a
-   second GA-spine scan for the filter-only `address.state`. Handoff:
-   `v4_dimension_projection_rejoin_handoff.md` (q30.alt GA-spine). **q2.1/q2.2 both
+1. **Plan verbosity — NO `_TPCDS_SIZE` tests remain.** q30.alt FIXED + pruned
+   2026-06-30 (the last one): a filter-only post-aggregate GA arg is now peeled
+   into the single-entity FD dim bucket + sourced in the fresh root projection, so
+   `web_returns` scans once (was a second GA-spine scan) — see
+   `v4_dimension_projection_rejoin_handoff.md`. **q2.1/q2.2 both
    FIXED + pruned** (the last genuine length regressions): see
    `v4_verbosity_handoff.md` — q2.2 via the window/round merge, q2.1 via the
    navigation-window grain-inference fix that made its named-intermediate round BASIC
@@ -175,6 +175,30 @@ rowset-cross-datasource isolation failures (`test_rowset_cross_datasource_outer_
 `test_scoped_join_rowset_outer_blend`) are ALSO untracked and fail in isolation but
 pass in-suite — same masking pattern; verify before flipping the default.**
 
+## 2026-06-30 — q30.alt dimension-rejoin FIXED + pruned (LAST size-ceiling miss)
+
+The only remaining `_TPCDS_SIZE` entry is gone. q30.alt emitted a SECOND
+`web_returns` fact scan (`cooperative`) just to apply the post-aggregate GA filter
+`billing_customer.address.state = 'GA'` (FD by `billing_customer.id`). v3 folds
+that filter into `wakeful` (the `customer ⋈ customer_address` dim scan that also
+sources the output dims). Two coupled changes:
+
+1. `_split_root_dimension_clusters` + `_post_aggregate_filter_args` (group_graph):
+   also peel a filter-only POST-aggregate (HAVING) arg into the single-entity FD
+   dim bucket. Faithful because a HAVING dim arg filters the OUTPUT after
+   aggregation (does not perturb the full-population `avg`); the
+   `pre_aggregate_filter_args` gate keeps a pre-aggregate WHERE arg on the fact.
+2. `_assemble_final_node` is_root block (strategy_builder): source a peeled
+   filter-only bucket member in the fresh root projection so
+   `_root_atoms_satisfiable_from` keeps its atom and plan_source joins the dim
+   table. Restricted to `_members_of(gid)` (a broader version regressed
+   q46/q59/q64/global-agg-filter).
+
+Result 6193 → 6112, `web_returns`==1, GROUP BY==2 (matches v3 `wakeful` shape).
+Full v4 sweep 4304 passed / 0 failed; q30 + q30.alt pass under v3 + v4; mypy/ruff/
+black clean. See `v4_dimension_projection_rejoin_handoff.md`. **No `_TPCDS_SIZE`
+entries remain** — the size-ceiling gating work is done.
+
 ## 2026-06-30 — `select_literal` verbosity FIXED + pruned
 
 `_fold_constant_parents` (strategy_builder): a constant-only FINAL contributor got
@@ -184,18 +208,20 @@ Pruned `test_select_literal_is_rendered_with_aggregate_projection`.
 
 ## Current tracked state (re-bucketed 2026-06-28 — NOT all cosmetic)
 
-`tests/v4_known_failing.py` tracks **13 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
+`tests/v4_known_failing.py` tracks **12 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
 `test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, q10, q23. q2.2 pruned
 2026-06-28. `rowset_alias` (wrong-rows), q2.1, and `rowset_arithmetic` pruned 2026-06-29.
-`select_literal` pruned 2026-06-30 (constant fold). The remaining 13:
+`select_literal` (constant fold) and q30.alt (dimension-rejoin GA-spine) pruned
+2026-06-30. The remaining 12 (NO size-ceiling entries left — all VERBOSITY /
+STRUCTURE / cosmetic shape-asserts):
 
 | bucket | count | meaning |
 | --- | --- | --- |
 | `_V4_VERBOSITY` | 4 | rows match, v4 materially longer (measured). Real regressions. |
 | `_V4_STRUCTURE` | 5 | rows match on consistent data; join-type/source/shape differs. |
-| `_TPCDS_SIZE` | 1 | q30.alt over on STRUCTURE (double GA-spine scan), not length. |
 | `_INLINE` | 2 | `ncaa::adhoc07` genuinely cosmetic; `aggregate_of_aggregate` passes (prune candidate). |
 | `_CRASH_INVALID_REF` | 1 | (unused — reserved string; no entries reference it). |
+| `_TPCDS_SIZE` | 0 | q30.alt pruned 2026-06-30 — **no size-ceiling entries remain**. |
 
 The `rowset_alias` wrong-rows correctness bug is FIXED (cartesian product → INNER
 join on the shared grain key; rows verified 3=3). The last genuine **length**
@@ -263,15 +289,18 @@ Trust real-fixture numbers from
 | 10 | 7000 | 6420 | 6412 | PASS (pruned) |
 | 2.1 | 7500 | 6290 | 7276 | PASS (pruned 2026-06-29) |
 | 2.2 | 7500 | 6290 | 7276 | PASS (pruned) |
-| 30.alt | 12000 | 7152 | 6193 | OVER (STRUCTURE — length fine) |
+| 30.alt | 12000 | 7152 | 6112 | PASS (pruned 2026-06-30) |
 | 73 | 3000 | 2701 | 2741 | PASS (pruned) |
 | 81 | 8000 | 7465 | 6410 | PASS (pruned) |
 | 23 | 8500 | 8037 | 8107 | PASS (pruned) |
 | 94 | 5000 | 3452 | 3153 | PASS (pruned) |
 
-**Genuinely failing now (1):** q30.alt fails on STRUCTURE not length (6193 <
-12000): a second `web_returns` GA-spine scan for the filter-only `address.state`
-(`v4_dimension_projection_rejoin_handoff.md`). q2.1 FIXED 2026-06-29 (8747 →
+**Genuinely failing now (0):** q30.alt FIXED 2026-06-30 (6193 → 6112,
+`web_returns`==1, GROUP BY==2): the second `web_returns` GA-spine scan for the
+filter-only post-aggregate `address.state` filter is eliminated — the HAVING arg
+is peeled into the single-entity FD dim bucket and sourced in the fresh root
+projection, matching v3's `wakeful`. See
+`v4_dimension_projection_rejoin_handoff.md`. q2.1 FIXED 2026-06-29 (8747 →
 7276): the named `*_sales` intermediate made the round() BASIC infer date.id
 grain (the window's `order by date.week_seq` flattened up as a grain parent and
 descended to its key), skipping the same-grain window merge that fixed q2.2.
@@ -284,15 +313,14 @@ partial-spine window absorb in `_merge_basic_into_window_parent`. Pruned q2.1 +
 rowset_arithmetic (same family). Both full sweeps clean.
 
 
-### Remaining size shapes — next targets (updated 2026-06-29)
+### Remaining size shapes — next targets (updated 2026-06-30)
 
-Most are now fixed and pruned (q47, q57, q73, q81, q10, q23, q94, q2.1, q2.2).
-The passthrough/window family (q2.1/q2.2) is closed. ONE size-ceiling test left:
-
-1. **Dimension-projection re-join (STRUCTURE) — q30.alt.** A second `web_returns`
-   GA-spine scan for the filter-only `address.state` (length is already fine at 6193).
-   Refined root cause + a regression trap (q65) in
-   `local_scripts/v4_dimension_projection_rejoin_handoff.md`. Higher risk.
+**ALL size-ceiling tests are fixed and pruned** (q47, q57, q73, q81, q10, q23,
+q94, q2.1, q2.2, and now q30.alt). The passthrough/window family (q2.1/q2.2) and
+the dimension-rejoin family (q73/q81/q10/q94/q30.alt) are both closed. No
+`_TPCDS_SIZE` entries remain. Next gating work for the default flip is the
+`_V4_VERBOSITY` (4) + `_V4_STRUCTURE` (5) non-benchmark entries and conditioning
+the cosmetic shape-asserts on `CONFIG.use_v4_discovery`.
 
 ## Phase boundary contract
 
@@ -358,8 +386,10 @@ Still-watch areas:
 
 ## Next cleanup loop
 
-1. Size/shape (the gating work, 3 left): land the passthrough-folding fix for q2.1/q2.2
-   and the q30.alt GA-spine dimension-re-join fix above.
+1. Size/shape (the gating work): **DONE** — all `_TPCDS_SIZE` entries fixed and
+   pruned (q2.1/q2.2 passthrough-folding + inliner, q30.alt dimension-rejoin).
+   Remaining verbosity/structure work is the non-benchmark `_V4_VERBOSITY` (4) +
+   `_V4_STRUCTURE` (5) entries.
 2. Condition the `_INLINE`/`_MODELING` shape-assert tests on `CONFIG.use_v4_discovery`
    so they pass under both planners (prerequisite for flipping the default).
 3. Re-run `local_scripts/v4_classify.py` after any planner change, and a full v4
