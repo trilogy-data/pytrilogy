@@ -196,6 +196,7 @@ class SyntaxNodeKind(str, Enum):
     SUBSELECT_WHERE = "subselect_where"
     SUBSELECT_ORDER = "subselect_order"
     SUBSELECT_LIMIT = "subselect_limit"
+    SCALAR_SUBQUERY = "scalar_subquery"
     # Phase 5: window + function definitions
     WINDOW_ITEM = "window_item"
     WINDOW_ITEM_LEGACY = "window_item_legacy"
@@ -532,6 +533,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "subselect_where": SyntaxNodeKind.SUBSELECT_WHERE,
     "subselect_order": SyntaxNodeKind.SUBSELECT_ORDER,
     "subselect_limit": SyntaxNodeKind.SUBSELECT_LIMIT,
+    "scalar_subquery": SyntaxNodeKind.SCALAR_SUBQUERY,
     # Phase 5: window + function definitions
     "window_item": SyntaxNodeKind.WINDOW_ITEM,
     "window_item_legacy": SyntaxNodeKind.WINDOW_ITEM_LEGACY,

@@ -975,6 +975,23 @@ def test_params():
     """)
 
 
+def test_numeric_param():
+    from decimal import Decimal
+
+    from trilogy.core.models.core import DataType, NumericType
+
+    for decl in ("numeric", "numeric(15,2)"):
+        env, _ = parse_text(f"""
+        parameter p {decl} default 4305.50;
+        select p as x;
+        """)
+        concept = env.concepts["p"]
+        assert concept.datatype == DataType.NUMERIC or isinstance(
+            concept.datatype, NumericType
+        )
+        assert concept.lineage.arguments[0] == Decimal("4305.50")
+
+
 def test_param_address_interpolation():
     env, _ = parse_text("""
     parameter version string default "v2";

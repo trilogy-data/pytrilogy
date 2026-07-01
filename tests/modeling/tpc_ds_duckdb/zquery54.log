@@ -1,21 +1,11 @@
 query_id = "54"
 generator = "v3"
-gen_length = 5350
-preql_size = 1390
-comp_size = 1665
+gen_length = 3978
+preql_size = 1011
+comp_size = 1699
 generated_sql = """
 
 WITH 
-sweltering as (
-SELECT
-    \"store_store\".\"S_COUNTY\" as \"_stores_cs_scs_county\",
-    \"store_store\".\"S_STATE\" as \"_stores_cs_scs_state\",
-    count(\"store_store\".\"S_STORE_SK\") as \"_stores_cs_scs_count\"
-FROM
-    \"memory\".\"store\" as \"store_store\"
-GROUP BY
-    1,
-    2),
 cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\"
@@ -36,13 +26,6 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity'
 ),
-macho as (
-SELECT
-    \"sweltering\".\"_stores_cs_scs_count\" as \"stores_cs_scs_count\",
-    \"sweltering\".\"_stores_cs_scs_county\" as \"stores_cs_scs_county\",
-    \"sweltering\".\"_stores_cs_scs_state\" as \"stores_cs_scs_state\"
-FROM
-    \"sweltering\"),
 thoughtful as (
 SELECT
     \"cheerful\".\"sales_billing_customer_id\" as \"_my_customers_my_cust_id\"
@@ -55,93 +38,61 @@ SELECT
     \"thoughtful\".\"_my_customers_my_cust_id\" as \"my_customers_my_cust_id\"
 FROM
     \"thoughtful\"),
-young as (
+sparkling as (
 SELECT
-    \"ss_customer_address_customer_address\".\"CA_COUNTY\" as \"ss_customer_address_county\",
-    \"ss_customer_address_customer_address\".\"CA_STATE\" as \"ss_customer_address_state\",
     \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_id\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"ss_customer_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"ss_customer_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ss_store_sales\".\"SS_CUSTOMER_SK\" in (select uneven.\"my_customers_my_cust_id\" from uneven where uneven.\"my_customers_my_cust_id\" is not null) and \"ss_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
+    \"ss_store_sales\".\"SS_CUSTOMER_SK\" in (select uneven.\"my_customers_my_cust_id\" from uneven where uneven.\"my_customers_my_cust_id\" is not null) and \"ss_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_store\".\"S_COUNTY\" = \"ss_customer_address_customer_address\".\"CA_COUNTY\" and \"ss_store_store\".\"S_STATE\" = \"ss_customer_address_customer_address\".\"CA_STATE\" and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1,
     2,
-    3,
-    4,
     \"ss_store_sales\".\"SS_ITEM_SK\",
     \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
-sparkling as (
-SELECT
-    \"young\".\"ss_customer_address_county\" as \"_cust_ss_ss_cust_county\",
-    \"young\".\"ss_customer_address_state\" as \"_cust_ss_ss_cust_state\",
-    \"young\".\"ss_customer_id\" as \"_cust_ss_ss_cust_id\",
-    sum(\"young\".\"ss_ext_sales_price\") as \"_cust_ss_ss_revenue\"
-FROM
-    \"young\"
-GROUP BY
-    1,
-    2,
-    3),
 abhorrent as (
 SELECT
-    \"sparkling\".\"_cust_ss_ss_cust_county\" as \"cust_ss_ss_cust_county\",
-    \"sparkling\".\"_cust_ss_ss_cust_id\" as \"cust_ss_ss_cust_id\",
-    \"sparkling\".\"_cust_ss_ss_cust_state\" as \"cust_ss_ss_cust_state\",
-    \"sparkling\".\"_cust_ss_ss_revenue\" as \"cust_ss_ss_revenue\"
+    \"sparkling\".\"ss_customer_id\" as \"_my_revenue_rev_cust_id\",
+    sum(\"sparkling\".\"ss_ext_sales_price\") as \"_my_revenue_revenue\"
 FROM
-    \"sparkling\"),
-scrawny as (
-SELECT
-    \"abhorrent\".\"cust_ss_ss_cust_id\" as \"_my_revenue_rev_cust_id\",
-    \"abhorrent\".\"cust_ss_ss_revenue\" * \"macho\".\"stores_cs_scs_count\" as \"_my_revenue_revenue\"
-FROM
-    \"abhorrent\"
-    INNER JOIN \"macho\" on \"abhorrent\".\"cust_ss_ss_cust_county\" = \"macho\".\"stores_cs_scs_county\" AND \"abhorrent\".\"cust_ss_ss_cust_state\" = \"macho\".\"stores_cs_scs_state\"
-GROUP BY
-    1,
-    2),
-friendly as (
-SELECT
-    \"scrawny\".\"_my_revenue_rev_cust_id\" as \"my_revenue_rev_cust_id\",
-    \"scrawny\".\"_my_revenue_revenue\" as \"my_revenue_revenue\"
-FROM
-    \"scrawny\"),
-busy as (
-SELECT
-    \"friendly\".\"my_revenue_rev_cust_id\" as \"my_revenue_rev_cust_id\"
-FROM
-    \"friendly\"
+    \"sparkling\"
 GROUP BY
     1),
-kaput as (
+sweltering as (
 SELECT
-    cast(round(( \"friendly\".\"my_revenue_revenue\" ) / 50,0) as int) * 50 as \"segment_base\",
-    cast(round(( \"friendly\".\"my_revenue_revenue\" ) / 50,0) as int) as \"segment\"
+    \"abhorrent\".\"_my_revenue_rev_cust_id\" as \"my_revenue_rev_cust_id\",
+    \"abhorrent\".\"_my_revenue_revenue\" as \"my_revenue_revenue\"
 FROM
-    \"friendly\"
+    \"abhorrent\"),
+macho as (
+SELECT
+    cast(round(\"sweltering\".\"my_revenue_revenue\" / 50,0) as int) * 50 as \"segment_base\",
+    cast(round(\"sweltering\".\"my_revenue_revenue\" / 50,0) as int) as \"segment\"
+FROM
+    \"sweltering\"
 GROUP BY
     1,
     2),
-charming as (
+late as (
 SELECT
-    count(\"busy\".\"my_revenue_rev_cust_id\") as \"num_customers\"
+    count(\"sweltering\".\"my_revenue_rev_cust_id\") as \"num_customers\"
 FROM
-    \"busy\")
+    \"sweltering\")
 SELECT
-    \"kaput\".\"segment\" as \"segment\",
-    coalesce(\"charming\".\"num_customers\",0) as \"num_customers\",
-    \"kaput\".\"segment_base\" as \"segment_base\"
+    \"macho\".\"segment\" as \"segment\",
+    coalesce(\"late\".\"num_customers\",0) as \"num_customers\",
+    \"macho\".\"segment_base\" as \"segment_base\"
 FROM
-    \"charming\"
-    FULL JOIN \"kaput\" on 1=1
+    \"late\"
+    FULL JOIN \"macho\" on 1=1
 ORDER BY 
-    \"kaput\".\"segment\" asc nulls first,
-    coalesce(\"charming\".\"num_customers\",0) asc nulls first,
-    \"kaput\".\"segment_base\" asc nulls first
+    \"macho\".\"segment\" asc nulls first,
+    coalesce(\"late\".\"num_customers\",0) asc nulls first,
+    \"macho\".\"segment_base\" asc nulls first
 LIMIT (100)"""

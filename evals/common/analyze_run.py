@@ -261,6 +261,13 @@ FAILURE_RULES: list[tuple[str, list[str]]] = [
         "join-resolution",
         ["could not resolve connections", "no datasource", "unresolvable"],
     ),
+    # A planner RecursionError — a framework bug, distinct from a genuine
+    # join-resolution gap. Match both the clean CLI label ("could not be planned;
+    # this is a bug") and a bare RecursionError that escaped uncaught.
+    (
+        "planner-recursion",
+        ["could not be planned", "maximum recursion depth", "recursion depth exceeded"],
+    ),
     ("type-error", ["invalid argument type", "not compatible", "incompatible type"]),
     # Syntax — the query failed to parse.
     ("syntax-missing-alias", ["missing alias", "alias must be specified"]),

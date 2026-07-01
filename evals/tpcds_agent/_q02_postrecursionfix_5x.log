@@ -1,0 +1,46 @@
+[1/3] Building TPC-DS DuckDB (sf=1) ...
+[2/3] Category 'enriched': setting up workspace ...
+[3/3] Running q02 x5 (concurrency=3) ...
+  [r01] pass      iters=12  prompt_tok=280693   explore=4   wrote=True (89s)
+  [r02] fail      iters=17  prompt_tok=434467   explore=4   wrote=True (96s)
+  [r00] pass      iters=24  prompt_tok=658410   explore=5   wrote=True (151s)
+  [r04] pass      iters=12  prompt_tok=281947   explore=5   wrote=True (84s)
+  [r03] pass      iters=39  prompt_tok=1162826  explore=5   wrote=True (217s)
+
+=== SUMMARY ===
+{
+  "repeats": 5,
+  "status_breakdown": {
+    "pass": 4,
+    "fail": 1
+  },
+  "pass_rate": 0.8,
+  "exhausted_rate": 0.0,
+  "wrote_query_rate": 1.0,
+  "iterations": {
+    "mean": 20.8,
+    "median": 17,
+    "min": 12,
+    "max": 39
+  },
+  "prompt_tokens": {
+    "mean": 563668.6,
+    "median": 434467,
+    "min": 280693,
+    "max": 1162826
+  },
+  "explore_calls": {
+    "mean": 4.6,
+    "median": 5,
+    "min": 4,
+    "max": 5
+  },
+  "duration_seconds": {
+    "mean": 127.5,
+    "median": 96.1,
+    "min": 84.2,
+    "max": 217.2
+  }
+}
+
+Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\repeat_q02_20260630-152226_enriched

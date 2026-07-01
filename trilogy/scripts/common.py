@@ -644,6 +644,15 @@ def handle_execution_exception(
         # A function called on the wrong argument type is a fixable author
         # mistake (e.g. `year()` on an integer key), not an internal crash.
         print_error(f"Type error{location}: {e}")
+    elif isinstance(e, RecursionError):
+        # A planner RecursionError is ALWAYS a framework bug (an unguarded cycle
+        # in resolution), not a user mistake — and not reliably worked around by
+        # reformulating. Say so plainly rather than emitting the opaque
+        # "Unexpected error: maximum recursion depth exceeded", which reads as a
+        # crash to retry verbatim.
+        print_error(
+            f"Resolution error{location}: query could not be planned; this is a bug."
+        )
     else:
         print_error(f"Unexpected error{location}: {e}")
     if debug:

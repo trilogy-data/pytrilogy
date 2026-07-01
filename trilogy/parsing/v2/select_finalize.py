@@ -69,6 +69,7 @@ from trilogy.core.models.author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    RowsetItem,
     SubselectComparison,
     SubselectItem,
     UndefinedConcept,
@@ -83,6 +84,7 @@ from trilogy.core.statements.author import (
     PersistStatement,
     RowsetDerivationStatement,
     SelectItem,
+    SelectLineage,
     SelectStatement,
 )
 from trilogy.parsing.common import arbitrary_to_concept, row_tuple_function
@@ -1186,6 +1188,23 @@ def _promotion_grows_grain(
     return bool(combined.components - base_components)
 
 
+def _is_single_row_rowset_scalar(named: Concept) -> bool:
+    """True for a rowset output whose source select is grainless — it produces
+    exactly one row and so broadcasts like a scalar (``rowset r <- select
+    sum(x)/sum(y) as v``). Such an output is mis-tagged ``MULTI_ROW`` granularity
+    (and ``ROWSET`` derivation, not ``AGGREGATE``), so the plain scalar-promotion
+    gate misses it and the HAVING predicate gets misrouted into the finer-dim
+    grain-key semijoin — which silently drops rollup subtotal rows (NULL-key
+    collision) and doesn't even filter correctly on a plain grouped select.
+    Restricted to a single (non-union) ``SelectLineage``: a union of grainless
+    arms yields one row *per arm*, not a single broadcast row."""
+    lineage = named.lineage
+    if not isinstance(lineage, RowsetItem):
+        return False
+    select = lineage.rowset.select
+    return isinstance(select, SelectLineage) and not select.grain.components
+
+
 def _promote_having_aggregates_to_outputs(
     select: SelectStatement, context: RuleContext
 ) -> None:
@@ -1210,7 +1229,26 @@ def _promote_having_aggregates_to_outputs(
     if not select.having_clause:
         return
     rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
-    existing = {sig for sig, _ in _select_aggregate_outputs(select, rename)}
+    select_aggs = _select_aggregate_outputs(select, rename)
+    existing = {sig for sig, _ in select_aggs}
+    # Under a `by rollup/cube/grouping sets` spec, `_propagate_select_grouping`
+    # stamps the grouping keys onto every projection aggregate's `by`. A bare
+    # HAVING aggregate (`sum(x)`, no `by`) is the *same* measure at the select
+    # grain — i.e. the projected `sum(x) by <grouping keys>` — so point the HAVING
+    # at that projected alias instead of minting a fresh bare aggregate. A minted
+    # bare aggregate plans as a distinct plain-GROUP-BY node with no rollup NULL-key
+    # subtotal rows; the post-filter join back then drops every subtotal.
+    rollup_alias_by_bare_sig: dict[
+        tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef
+    ] = {}
+    spec = select.grouping
+    if spec is not None:
+        group_by = tuple(sorted(_concept_address(k, rename) for k in spec.by))
+        for (op, args, by), addr in select_aggs:
+            if by == group_by:
+                alias = context.concepts.get(addr)
+                if alias is not None:
+                    rollup_alias_by_bare_sig[(op, args, ())] = alias.reference
     # Grain of the explicit (pre-promotion) outputs. Promoting an aggregate is
     # grain-safe only if its value is one-per-grain-row (a bare aggregate, or an
     # off-grain `agg(x) by k` whose `by` is coarser than / equal to this grain).
@@ -1234,6 +1272,13 @@ def _promote_having_aggregates_to_outputs(
             continue
         sig = _aggregate_full_signature(node, rename)
         if sig is None or sig in existing or sig in sig_to_ref:
+            continue
+        # A bare HAVING aggregate that is the projected rollup measure at the
+        # select grain: redirect it to the projection's alias, keeping it in the
+        # single rollup grouping pass instead of splitting off a plain-grain node.
+        rollup_alias = rollup_alias_by_bare_sig.get(sig)
+        if rollup_alias is not None:
+            sig_to_ref[sig] = rollup_alias
             continue
         concept = arbitrary_to_concept(node, context.environment)
         if _promotion_grows_grain(concept, base_targets, base_components, context):
@@ -1276,6 +1321,7 @@ def _promote_having_aggregates_to_outputs(
             named.is_aggregate
             or named.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
             or named.granularity == Granularity.SINGLE_ROW
+            or _is_single_row_rowset_scalar(named)
         )
         if not grain_determined:
             continue

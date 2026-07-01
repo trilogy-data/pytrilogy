@@ -338,11 +338,14 @@
     
     between_comparison: "between"i expr "and"i expr
 
-    subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | _array_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | parenthetical )
-    
+    subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | _array_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | scalar_subquery | parenthetical )
+
     expr_tuple: ("("  expr ("," expr)+ ","?  ")") | ("("  expr "," ")")
 
     parenthetical: "(" expr ")"
+
+    // Inline `(select …)` subquery — desugared to an anonymous rowset at hydration.
+    scalar_subquery: "(" select_statement ")"
 
     //unnesting is a function
     _UNNEST.1: "UNNEST("i
@@ -398,7 +401,7 @@
 
     ?product_chain: atom ( MULTIPLY_DIVIDE_PERCENT atom)* -> product_operator
 
-    ?atom: literal | concept_lit | parenthetical
+    ?atom: literal | concept_lit | scalar_subquery | parenthetical
      | expr_tuple
      | custom_function
      | _constant_functions

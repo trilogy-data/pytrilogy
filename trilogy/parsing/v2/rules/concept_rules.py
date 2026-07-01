@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE
@@ -162,6 +163,8 @@ def parameter_declaration(
         parameter_value = (
             raw if isinstance(raw, datetime) else datetime.fromisoformat(raw)
         )
+    elif datatype == DataType.NUMERIC or isinstance(datatype, NumericType):
+        parameter_value = raw if isinstance(raw, Decimal) else Decimal(str(raw))
     else:
         raise fail(node, f"Unsupported datatype {datatype} for parameter {name}.")
     return build_constant_derivation(

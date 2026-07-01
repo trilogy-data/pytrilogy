@@ -77,6 +77,18 @@ def test_handle_execution_exception_labels_resolution_errors(capsys):
         assert "Unexpected error:" not in combined, combined
 
 
+def test_handle_execution_exception_labels_recursion_errors(capsys):
+    """A planner RecursionError is always a framework bug, not an opaque crash —
+    labelled `Resolution error:` and stated plainly as a bug, not `Unexpected
+    error: maximum recursion depth exceeded`."""
+    with raises(Exit):
+        handle_execution_exception(RecursionError("maximum recursion depth exceeded"))
+    combined = "".join(capsys.readouterr())
+    assert "Resolution error:" in combined, combined
+    assert "Unexpected error:" not in combined, combined
+    assert "this is a bug" in combined, combined
+
+
 def test_config_bootstrap():
     path = Path(__file__).parent / "config_directory"
     runner = CliRunner()

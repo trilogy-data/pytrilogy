@@ -117,7 +117,16 @@ def _producible_derived_join_keys(
     the rowset's own output) and recurse. But the rowset already produces the
     key's inputs, so it can compute the key locally — exposing a join column the
     merge relates to the other rowset by pseudonym, with no re-sourcing. Returns
-    ``(derived key, other-side key address)`` for each such key."""
+    ``(derived key, other-side key address)`` for each such key.
+
+    The enrichment sources the OTHER-side key to pull the other rowset, so that
+    key must resolve to a DIFFERENT rowset. An INNER/global merge collapses the
+    derived key onto the other side, leaving the other side's own identity intact.
+    A LEFT scoped join is the opposite: it collapses the optional side's key ONTO
+    this anchor's derived key (substitution), so the "other side" now derives from
+    THIS rowset's own output — sourcing it re-enters this rowset and recurses with
+    no real relation to the other one. Skip any pairing whose other side is
+    producible here; it falls through to the standard path / a clean disconnect."""
     producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
     scoped_keys = (
         environment.scoped_inner_join_keys
@@ -129,6 +138,11 @@ def _producible_derived_join_keys(
     for key_addr in scoped_keys:
         key_concept = environment.concepts.get(key_addr)
         if key_concept is None:
+            continue
+        other_inputs = {a.address for a in key_concept.concept_arguments}
+        if other_inputs and other_inputs <= producible:
+            # The other side derives from this rowset (LEFT-anchor substitution);
+            # sourcing it would re-enter this rowset. Decline.
             continue
         for pseudo in key_concept.pseudonyms:
             derived = environment.concepts.get(pseudo)
@@ -460,8 +474,33 @@ def _enrich_via_derived_join_key(
         for _, other in derived_keys
         if other in environment.concepts
     ]
+    # Plain-equality co-keys authored in the SAME cross-rowset join (`a.store =
+    # b.store and a.period + 10 = b.period`). The merge relates the two rowsets
+    # by the derived key's pseudonym only; without also materializing the
+    # equality co-keys on the other side, get_node_joins infers a join on the
+    # derived key alone and the equality key silently drops -> cross-key fan-out.
+    # Source them so both sides expose the co-key (shared canonical address) and
+    # the inferred join carries every authored key.
+    scoped_keys = (
+        environment.scoped_inner_join_keys
+        | environment.scoped_full_join_keys
+        | environment.scoped_left_anchor_keys
+    )
+    derived_related = (
+        {other for _, other in derived_keys}
+        | {key.address for key, _ in derived_keys}
+        | {p for key, _ in derived_keys for p in key.pseudonyms}
+    )
+    co_keys = [
+        environment.concepts[a]
+        for a in scoped_keys - derived_related
+        if a in environment.concepts
+    ]
+    co_key_addresses = {c.address for c in co_keys} | {
+        p for c in co_keys for p in c.pseudonyms
+    }
     enrich_node = source_concepts(
-        mandatory_list=unique(enrich_remaining + other_keys, "address"),
+        mandatory_list=unique(enrich_remaining + other_keys + co_keys, "address"),
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -470,6 +509,14 @@ def _enrich_via_derived_join_key(
     )
     if not enrich_node:
         return None
+    # Keep the anchor-side co-key column visible so the inferred join can pair it
+    # against the other side (its address shares a canonical with the other side's
+    # co-key via the scoped-join pseudonym).
+    for x in list(node.output_concepts):
+        if x.address in node.hidden_concepts and (
+            x.address in co_key_addresses or (set(x.pseudonyms) & co_key_addresses)
+        ):
+            node.unhide_output_concepts([x])
     exposed: set[str] = set()
     for x in enrich_node.output_concepts:
         if x.address in enrich_node.hidden_concepts:

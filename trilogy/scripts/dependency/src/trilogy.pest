@@ -403,6 +403,7 @@ attr_access_paren = { ^"getattr" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
 // alternatives like literal/parenthetical that would otherwise consume X alone.
 _atom = _{
       filter_item
+    | scalar_subquery
     | parenthetical
     | expr_tuple
     | literal
@@ -428,6 +429,12 @@ ATTR_NAME = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 parenthetical = { "(" ~ expr ~ ")" }
 expr_tuple    = { "(" ~ expr ~ ("," ~ expr)+ ~ ","? ~ ")" | "(" ~ expr ~ "," ~ ")" }
+
+// An inline `(select …)` scalar/membership subquery. Desugared at hydration
+// into an anonymous rowset whose single output is referenced here. Ordered
+// before `parenthetical` in _atom: `expr` can never start with select/where/
+// from, so a non-select paren cleanly backtracks to `parenthetical`.
+scalar_subquery = { "(" ~ select_statement ~ ")" }
 
 COMPARISON_OPERATOR = @{
       (^"is" ~ WHITESPACE+ ~ ^"not" ~ WHITESPACE+)
@@ -459,6 +466,7 @@ subselect_comparison = {
         | unnest
         | fgroup
         | expr_tuple
+        | scalar_subquery
         | parenthetical
     )
 }

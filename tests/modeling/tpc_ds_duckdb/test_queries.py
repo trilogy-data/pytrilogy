@@ -530,7 +530,13 @@ def test_fifty_three(engine):
 
 
 def test_fifty_four(engine):
-    _ = run_query(engine, 54)
+    # Official DuckDB `PRAGMA tpcds(54)` has the well-known store fan-out: its
+    # my_revenue cross-joins `store` on (county, state) WITHOUT `ss_store_sk =
+    # s_store_sk`, so each store sale is counted once per store in the customer's
+    # county/state (~12x here). We deliberately do NOT goal on that — the on-disk
+    # query54.sql is corrected (adds the sale->store link) and the .preql matches
+    # it, so validate against the corrected .sql, not the fan-out PRAGMA.
+    _ = run_query(engine, 54, sql_override=True)
 
 
 def test_fifty_five(engine):

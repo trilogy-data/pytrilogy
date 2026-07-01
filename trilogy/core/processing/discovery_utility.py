@@ -69,6 +69,9 @@ def calculate_effective_parent_grain(
             base = qds.base_datasource
             if base is not None:
                 return base.grain
+            if not qds.datasources:
+                # sourceless literal aggregate (count(1)/by *) = single global-scalar row
+                return BuildGrain()
             return qds.datasources[0].grain
         seen = set()
         for join in qds.joins:

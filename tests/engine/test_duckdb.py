@@ -29,6 +29,60 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
     assert results[0].total_count == expected_results["total_count"]
 
 
+@mark.parametrize(
+    "agg",
+    ["count(1)", "sum(1)", "count(1) by *"],
+)
+def test_global_literal_aggregate(agg):
+    """A global aggregate over a pure literal with no grain key (`count(1)`,
+    `sum(1)`, `count(1) by *` -- the documented global-scalar idiom) must build
+    and execute to a single constant row, not crash with an unguarded IndexError
+    (sourceless QueryDatasource has an empty `datasources` list) nor render an
+    empty-SELECT CTE (`by *` groups over a sourceless constant node)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = f"""
+key id int;
+datasource t (id) grain (id)
+  query '''select 1 as id union all select 2''';
+
+select {agg} as c;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert results == [(1,)]
+
+
+@mark.parametrize(
+    "src,expected",
+    [
+        ("const c <- 10; select c as x where c > 50;", []),
+        ("const c <- 10; select c as x where c < 50;", [(10,)]),
+        ("parameter p int default 10; select p as x where p > 50;", []),
+        ("parameter p int default 10; select p as x where p < 50;", [(10,)]),
+    ],
+)
+def test_where_on_constant_concept_filters(src, expected):
+    """A WHERE that references only constant/param concepts folds to a pure
+    literal predicate (`c > 50` -> `1 = 0`). That predicate has no row
+    arguments, so the scalar-only / independent-scope exemptions used to treat
+    it as belonging to another scope and drop it -- the filter silently did
+    nothing. It must be applied (empty result when the constant fails it)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    results = engine.execute_text(src)[-1].fetchall()
+    assert [tuple(r) for r in results] == expected
+
+
+@mark.parametrize("decl", ["numeric", "numeric(15,2)"])
+def test_numeric_parameter(decl):
+    """`parameter p numeric default 4305.50` must build and execute to a Decimal
+    (NUMERIC is first-class elsewhere); previously raised HydrationError with no
+    NUMERIC branch in hydrate_parameter."""
+    engine = Dialects.DUCK_DB.default_executor()
+    results = engine.execute_text(
+        f"parameter p {decl} default 4305.50; select p as x;"
+    )[-1].fetchall()
+    assert results == [(Decimal("4305.50"),)]
+
+
 def test_where_on_aggregate_with_ratio_of_aggregates():
     """Filtering on a derived aggregate AND selecting a ratio of aggregates at
     the same grain must not leak the ratio expression into GROUP BY (DuckDB:
@@ -483,6 +537,63 @@ order by label asc nulls last, entity_fmt asc nulls last;
         ("web", "webCCC", 5.0),
         ("web", None, 5.0),
         (None, None, 45.0),
+    ]
+
+
+_ROLLUP_HAVING_CROSSROWSET_MODEL = """
+key sid int;
+property sid.sbrand int;
+property sid.samt float;
+datasource store_sales (sid: sid, sbrand: sbrand, samt: samt)
+grain (sid)
+query '''select 1 as sid, 10 as sbrand, 100.0 as samt union all
+         select 2, 11, 30.0''';
+
+key wid int;
+property wid.wbrand int;
+property wid.wamt float;
+datasource web_sales (wid: wid, wbrand: wbrand, wamt: wamt)
+grain (wid)
+query '''select 1 as wid, 10 as wbrand, 5.0 as wamt union all
+         select 2, 11, 200.0''';
+"""
+
+
+def test_rollup_having_crossrowset_preserves_subtotals():
+    """`by rollup` + `having <agg> > <cross-rowset scalar>` where the rollup keys
+    are union/rowset outputs must keep subtotal/grand-total rows and apply the
+    HAVING to every group (leaf and super-aggregate). The predicate is routed
+    through the finer-dim → grain-key CASE-nulling semijoin
+    (`_rewrite_having_finer_dims_to_membership`), whose `is not null` guard on the
+    CASE-nulled rollup keys collides with rollup's legitimate NULL subtotal keys —
+    silently dropping every subtotal row. The driver of the q14 token sink."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_HAVING_CROSSROWSET_MODEL)
+    text = """
+auto overall_total <- sum(samt) + sum(wamt);
+auto overall_count <- count(sid) + count(wid);
+rowset overall_avg <- select overall_total / overall_count as avg_val;
+with by_channel as union(
+  (select 'STORE' as channel, sbrand as brand, sum(samt) as total_sales),
+  (select 'WEB' as channel, wbrand as brand, sum(wamt) as total_sales)
+) -> (channel, brand, total_sales);
+select
+    by_channel.channel,
+    by_channel.brand,
+    sum(by_channel.total_sales) as total_sales
+having sum(by_channel.total_sales) > overall_avg.avg_val
+by rollup (by_channel.channel, by_channel.brand)
+order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    # avg_val = 335/4 = 83.75; HAVING sum(total_sales) > 83.75 applied to every
+    # group, subtotals included.
+    assert [(r[0], r[1], float(r[2])) for r in results] == [
+        (None, None, 335.0),
+        ("STORE", None, 130.0),
+        ("STORE", 10, 100.0),
+        ("WEB", None, 205.0),
+        ("WEB", 11, 200.0),
     ]
 
 

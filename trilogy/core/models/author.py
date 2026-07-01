@@ -2526,6 +2526,68 @@ class SubselectItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
 
 
 @dataclass
+class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
+    """An inline ``(select …)`` subquery.
+
+    Desugared at hydration into an anonymous single-output rowset. Semantically
+    it IS that rowset concept (``content``) — build lowers it to the bare
+    concept, so a grain-less body cross-joins. The ``select`` payload is
+    authoring-only: the renderer uses it to reproduce the inline ``(select …)``
+    form instead of leaking the synthetic ``_subquery_*`` rowset statement.
+    """
+
+    content: ConceptRef
+    select: Any
+    name: str = ""
+
+    def __post_init__(self):
+        if isinstance(self.content, Concept):
+            self.content = ConceptRef(
+                address=self.content.address, datatype=self.content.datatype
+            )
+
+    def __repr__(self):
+        return f"<Subquery: {str(self.content)}>"
+
+    def __str__(self):
+        return self.__repr__()
+
+    def with_reference_replacement(self, replacements: ReferenceReplacements):
+        return SubqueryItem(
+            content=(
+                self.content.with_reference_replacement(replacements)
+                if isinstance(self.content, ReferenceReplaceable)
+                else self.content
+            ),
+            select=self.select,
+            name=self.name,
+        )
+
+    def with_namespace(self, namespace: str) -> "SubqueryItem":
+        return SubqueryItem(
+            content=(
+                self.content.with_namespace(namespace)
+                if isinstance(self.content, Namespaced)
+                else self.content
+            ),
+            select=self.select,
+            name=self.name,
+        )
+
+    @property
+    def output(self) -> ConceptRef:
+        return self.content
+
+    @property
+    def output_datatype(self):
+        return self.content.datatype
+
+    @property
+    def concept_arguments(self) -> List[ConceptRef]:
+        return [self.content]
+
+
+@dataclass
 class RowsetLineage(Namespaced, ReferenceReplaceable):
     name: str
     derived_concepts: List[ConceptRef]

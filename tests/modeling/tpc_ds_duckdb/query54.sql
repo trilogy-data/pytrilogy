@@ -29,6 +29,7 @@ WITH my_customers AS
         store,
         date_dim
    WHERE c_current_addr_sk = ca_address_sk
+     AND ss_store_sk = s_store_sk
      AND ca_county = s_county
      AND ca_state = s_state
      AND ss_sold_date_sk = d_date_sk

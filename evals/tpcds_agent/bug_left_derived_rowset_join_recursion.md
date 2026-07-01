@@ -10,7 +10,18 @@ tokens / 50 iterations against the iteration cap).
 HEAD** (`git show HEAD:... | grep -c` = 0) — it is uncommitted code from the derived-rowset-join
 fix. Whoever owns that spike should own this. Verify against HEAD before assuming pre-existing.
 
-**Status:** root-caused with a minimal generic repro. NOT fixed. Hand off to execute.
+**Status:** FIXED 2026-06-30. `_producible_derived_join_keys` now declines any
+pairing whose other-side key is producible from THIS rowset (the LEFT-anchor
+substitution collapses `fut.period` onto the anchor's derived key, so its inputs
+are `agg`'s own outputs — sourcing it re-entered `agg`). LEFT now falls through to
+the standard left-anchor path and resolves as a real `LEFT OUTER JOIN` (correct
+rows; unmatched anchor row kept, ratio NULL) — better than the clean-error floor.
+INNER unchanged. Plus defense-in-depth: a bare `RecursionError` is now labelled a
+clean "Resolution error: query could not be planned; this is a bug"
+(`scripts/common.py`) — a RecursionError is always a framework bug — and bucketed
+`planner-recursion` in eval analysis (`evals/common/analyze_run.py`).
+Tests: `tests/test_left_derived_rowset_join.py`,
+`tests/scripts/test_config.py::test_handle_execution_exception_labels_recursion_errors`.
 
 ---
 

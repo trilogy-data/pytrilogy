@@ -2198,6 +2198,10 @@ class BaseDialect:
             render_columns = sorted(select_columns.values(), key=lambda x: x)
         else:
             render_columns = list(select_columns.values())
+        if not render_columns:
+            # a sourceless constant grouping node (e.g. `count(1) by *`) has no
+            # output columns; emit a placeholder so the CTE is valid SQL.
+            render_columns = ["1 as __constant"]
         lookups = {v: i for i, v in enumerate(render_columns)}
         select_concept_index = {k: lookups[v] + 1 for k, v in select_columns.items()}
         source: str | None = cte.base_name

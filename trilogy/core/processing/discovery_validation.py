@@ -32,6 +32,12 @@ def _is_scalar_only(node: StrategyNode, condition: BoolExpr | None = None) -> bo
     being filtered (e.g. `select sum(cost) as v where v > 1000`) is the query's
     result, not a cross-joined constant — the predicate must be applied, so the
     node is not exempt."""
+    # A pure-literal condition (no row arguments, e.g. a constant-folded
+    # `c > 50` -> `1 = 0`) is a query-level filter that must always be applied;
+    # it belongs to no scope's rows, so the overlap check below would vacuously
+    # exempt it. Never exempt such a condition.
+    if condition is not None and not condition.row_arguments:
+        return False
     resolved = node.resolve()
     visible = [
         c for c in resolved.output_concepts if c.address not in resolved.hidden_concepts
@@ -57,6 +63,8 @@ def _is_independent_scope(node: StrategyNode, condition: BoolExpr) -> bool:
     outputs (e.g. q75 narrows `deduped.sales.date.year` per multi-select arm),
     that's a consumer filter on the rowset's rows and must be applied, not
     exempted."""
+    if not condition.row_arguments:
+        return False
     resolved = node.resolve()
     visible = [
         c for c in resolved.output_concepts if c.address not in resolved.hidden_concepts

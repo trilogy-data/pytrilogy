@@ -86,7 +86,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 ### Not SQL — what to never write
 
 - **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
-- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate to a global scalar.
+- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate across all data (a single row output).
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`

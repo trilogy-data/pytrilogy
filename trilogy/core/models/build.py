@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
+from decimal import Decimal
 from functools import cached_property, reduce, singledispatchmethod
 from typing import (
     TYPE_CHECKING,
@@ -71,6 +72,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     RowsetLineage,
     SelectLineage,
+    SubqueryItem,
     SubselectComparison,
     SubselectItem,
     UndefinedConcept,
@@ -2601,6 +2603,7 @@ class Factory:
             int
             | str
             | float
+            | Decimal
             | list
             | date
             | TupleWrapper
@@ -2615,6 +2618,7 @@ class Factory:
         int
         | str
         | float
+        | Decimal
         | list
         | date
         | TupleWrapper
@@ -3409,6 +3413,12 @@ class Factory:
             content=factory._build_concept_ref(base.content),
             rowset=factory._build_rowset_lineage(base.rowset),
         )
+
+    @_build_dispatch.register
+    def _(self, base: SubqueryItem) -> BuildConcept:
+        # A scalar subquery IS its single rowset output; drop the authoring
+        # `select` payload and build the bare concept (grain-less → cross-join).
+        return self.build(base.content)
 
     @_build_dispatch.register
     def _(self, base: SubselectItem) -> BuildSubselectItem:
