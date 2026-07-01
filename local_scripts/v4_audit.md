@@ -222,7 +222,7 @@ The remaining 7 — NO size-ceiling and NO cosmetic entries left, all VERBOSITY 
 | bucket | count | meaning |
 | --- | --- | --- |
 | `_V4_VERBOSITY` | 2 | rows match, v4 materially longer (measured). Real regressions. |
-| `_V4_STRUCTURE` | 4 | rows match on consistent data; join-type/source/shape differs. |
+| `_V4_STRUCTURE` | 3 | rows match on consistent data; join-type/source/shape differs. |
 | `_INLINE` | 0 | both pruned 2026-06-30 (ncaa dual-conditioned; aggregate_of_aggregate stale). |
 | `_CRASH_INVALID_REF` | 0 | (unused — reserved string; no entries reference it). |
 | `_TPCDS_SIZE` | 0 | q30.alt pruned 2026-06-30 — **no size-ceiling entries remain**. |
@@ -235,6 +235,20 @@ are now exactly two: (1) the remaining `_V4_VERBOSITY` family (2 left:
 all_rows join now `on 1=1`; residual is the derive-in-scan `wakeful` layer) — and
 `aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape), and
 (2) `_V4_STRUCTURE` join/source diffs to verify for row impact.
+
+### 2026-07-01 — filter_scalar staging: ROWS VERIFIED, test conditioned + pruned (_V4_STRUCTURE)
+
+`test_filter_scalar_aggregate_not_restricted_by_staging`: executed all 4
+permutations under v4 — rows CORRECT everywhere. The filter-scalar `avg(price) by
+category` ranges over the full items table in v4 (sale_count == 1, not 2 — a
+2023-restricted avg would give 2), so the bug the test guards is absent. v4 also
+sources the OUTER scan from the pre-joined staging table (its `non_partial_for`
+matches the outer `sale_year=2023`), which is equivalent + correct; and v4
+correctly AVOIDS staging in permutation 3 (no year filter → staging incomplete).
+The over-broad P2 `staged not in sql` shape assertion (conflated "avg restricted"
+with "staging used at all") is now gated on the v3 planner; the `sale_count` row
+check is the real guard and holds under both. Not a v4 bug — a valid alternative
+plan. Test-only change (no source), pruned.
 
 ### 2026-07-01 — persist-with-where partial-source reuse FIXED + pruned (_V4_STRUCTURE)
 

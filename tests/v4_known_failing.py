@@ -123,8 +123,16 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # re-expression requirement when the query `where` and the ds `non_partial_for`
     # are mutually implied (population is exactly the desired rows). v4 now reads
     # `upper_name` (no CASE, no category_id), matching v3. XPASS in isolation.
-    # filter_scalar staging: v4 sources staged_sales_tbl where v3 does not (ROWS UNVERIFIED).
-    "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _V4_STRUCTURE,
+    # filter_scalar staging pruned 2026-07-01: ROWS VERIFIED CORRECT under v4 across
+    # all 4 permutations. The filter-scalar avg(price) ranges over the full items
+    # table in v4 (sale_count == 1, not 2 -- a restricted avg would give 2), so the
+    # bug the test guards is absent. v4 additionally sources the OUTER scan from the
+    # pre-joined staging table (its non_partial_for matches the outer sale_year=2023
+    # filter) -- equivalent + correct, and v4 correctly avoids staging in
+    # permutation 3 (no year filter -> staging incomplete). The P2 `staged not in
+    # sql` shape assertion (over-broad: it conflated "avg restricted" with "staging
+    # used at all") is now conditioned on the v3 planner; the sale_count row check
+    # is the real guard and holds under both.
     # provider_name: drops a join, FULL JOIN on real key vs v3 LEFT OUTER+INNER; rows match
     # on consistent data, diverge on orphan/dividend-less rows (full vs inner).
     "tests/modeling/stocks/test_stocks.py::test_provider_name": _V4_STRUCTURE,

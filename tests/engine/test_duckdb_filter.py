@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from trilogy import Dialects
+from trilogy.constants import CONFIG
 from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
@@ -658,8 +659,17 @@ select count(sale_id) as sale_count;
     # not staged_sales_tbl (which would restrict it to year=2023).
     staged = build_executor(include_staging=True)
     sql = gen_sql(staged, filter_scalar_query)
+    # The filter-scalar avg must range over the full items dim (items_tbl), not a
+    # 2023-restricted source -- otherwise item 3 (price 100, a 2022 sale) drops
+    # and the count becomes 2. The sale_count == 1 check below is the real guard.
     assert "items_tbl" in sql, sql
-    assert "staged_sales_tbl" not in sql, sql
+    if not CONFIG.use_v4_discovery:
+        # v3 sources the outer scan from items+sales. v4 legitimately uses the
+        # pre-joined staging table for the OUTER scan (its non_partial_for matches
+        # the outer sale_year = 2023 filter) -- equivalent rows, and the avg still
+        # sources items_tbl. (v4 correctly does NOT use staging in permutation 3,
+        # where no sale_year filter makes staging incomplete.)
+        assert "staged_sales_tbl" not in sql, sql
     result = staged.execute_text(filter_scalar_query)[0].fetchall()
     assert result[0].sale_count == 1
 
