@@ -1,6 +1,45 @@
+import pytest
+
 from tests.helpers.executor import mock_factory
 from trilogy import Dialects
+from trilogy.constants import CONFIG
 from trilogy.dialect import PrestoConfig
+
+_GRAND_TOTAL_QUERY = """
+key date_string string;
+key date_converted <- date_string::date;
+key id int;
+auto latest_date <- max(date_converted) by *;
+datasource ds_info(
+    date_string,
+    id
+)
+grain (date_string, id)
+query '''
+select '2021-01-01' as date_string, 1 as id
+union all select '2021-02-01' as date_string, 2 as id
+''';
+where date_converted = latest_date
+select date_converted, count(id) as id_count;
+"""
+
+
+@pytest.mark.parametrize("use_v4", [False, True])
+def test_grand_total_aggregate_cross_joins_not_all_rows(use_v4: bool) -> None:
+    """A `max(x) by *` grand-total aggregate is single-row: it must cross-join
+    ON 1=1 and never materialize the abstract `__preql_internal.all_rows` marker
+    as a real join column. The v4 planner regressed this twice by sourcing that
+    concept (once demanding it as an aggregate `by` input in `_upstream_aggregate`),
+    which forced `1 as __preql_internal_all_rows` on both sides and an equality
+    join. Guard both planners."""
+    original = CONFIG.use_v4_discovery
+    try:
+        CONFIG.use_v4_discovery = use_v4
+        sql = Dialects.DUCK_DB.default_executor().generate_sql(_GRAND_TOTAL_QUERY)[-1]
+    finally:
+        CONFIG.use_v4_discovery = original
+    assert "__preql_internal_all_rows" not in sql, sql
+    assert "on 1=1" in sql, sql
 
 
 def test_bound_conversion_existence() -> None:

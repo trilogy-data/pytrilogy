@@ -19,6 +19,7 @@ by the v3 generators (`gen_group_node`, `gen_filter_node`,
 from typing import Callable
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -140,7 +141,14 @@ def _upstream_aggregate(
     alone and the input merge cross-joins ON 1=1. Mirrors `_aggregate_input_grain`
     (which already includes it) so the graph edges and the computed input grain
     agree."""
-    base = list(_lineage_args(concept, environment))
+    # A grand-total (`by *`) aggregate's grouping key is the abstract
+    # `__preql_internal.all_rows` marker. It is a single-row cross-join marker,
+    # never a real sourced column -- demanding it forces the input scan to
+    # project `1 as __preql_internal.all_rows` and the consumer to INNER JOIN on
+    # it instead of cross-joining ON 1=1 (v3 strips it in `gen_group_node`).
+    base = [
+        c for c in _lineage_args(concept, environment) if c.name != ALL_ROWS_CONCEPT
+    ]
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
             if isinstance(arg, BuildConcept):

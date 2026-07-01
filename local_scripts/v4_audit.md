@@ -208,18 +208,19 @@ Pruned `test_select_literal_is_rendered_with_aggregate_projection`.
 
 ## Current tracked state (re-bucketed 2026-06-28 — NOT all cosmetic)
 
-`tests/v4_known_failing.py` tracks **9 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
+`tests/v4_known_failing.py` tracks **8 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
 `test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, q10, q23. q2.2 pruned
 2026-06-28. `rowset_alias` (wrong-rows), q2.1, and `rowset_arithmetic` pruned 2026-06-29.
 `select_literal` (constant fold), q30.alt (dimension-rejoin GA-spine), both `_INLINE`
 entries (ncaa::adhoc07 dual-conditioned; aggregate_of_aggregate stale), and
 `aggregate_filter_uses_having` (filter-item CASE-WHEN-after-HAVING-pushdown) pruned
-2026-06-30. The remaining 9 — NO size-ceiling and NO cosmetic entries left, all
-VERBOSITY or STRUCTURE:
+2026-06-30. `in_subselect_with_inlined_datasource` (existence-source pushdown/inline
+interaction — was a correctness bug, not verbosity) pruned 2026-07-01. The remaining
+8 — NO size-ceiling and NO cosmetic entries left, all VERBOSITY or STRUCTURE:
 
 | bucket | count | meaning |
 | --- | --- | --- |
-| `_V4_VERBOSITY` | 4 | rows match, v4 materially longer (measured). Real regressions. |
+| `_V4_VERBOSITY` | 3 | rows match, v4 materially longer (measured). Real regressions. |
 | `_V4_STRUCTURE` | 5 | rows match on consistent data; join-type/source/shape differs. |
 | `_INLINE` | 0 | both pruned 2026-06-30 (ncaa dual-conditioned; aggregate_of_aggregate stale). |
 | `_CRASH_INVALID_REF` | 0 | (unused — reserved string; no entries reference it). |
@@ -228,11 +229,53 @@ VERBOSITY or STRUCTURE:
 The `rowset_alias` wrong-rows correctness bug is FIXED (cartesian product → INNER
 join on the shared grain key; rows verified 3=3). The last genuine **length**
 regression (q2.1) and the last size-ceiling miss (q30.alt) are FIXED. Open themes
-are now exactly two: (1) the remaining `_V4_VERBOSITY` family (4 left:
-`bound_conversion_existence_presto`, `in_subselect_with_inlined_datasource`,
+are now exactly two: (1) the remaining `_V4_VERBOSITY` family (3 left:
+`bound_conversion_existence_presto`,
 `aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape —, and
 `two_merge_aggregate`), and (2) `_V4_STRUCTURE` join/source diffs to verify for row
 impact.
+
+### 2026-07-01 — grand-total (`by *`) aggregate now cross-joins ON 1=1 (partial: bound_conversion)
+
+v4 was materializing the abstract `__preql_internal.all_rows` grand-total marker
+as a REAL column: the input scan emitted `1 as __preql_internal_all_rows`, the
+aggregate CTE emitted it too, and the consumer joined `INNER JOIN ... on
+all_rows = all_rows` instead of v3's `on 1=1`. Root cause: `_upstream_aggregate`
+(concept_graph) demands the aggregate's `by` concepts via
+`BuildAggregateWrapper.concept_arguments = function.concept_arguments + self.by`,
+which includes `all_rows` — v3 explicitly strips `ALL_ROWS_CONCEPT` in
+`gen_group_node`. Fix: `_upstream_aggregate` drops `ALL_ROWS_CONCEPT` from the
+demanded concepts (v4-only; provably equivalent since all_rows=1 on both sides ⟺
+1=1). `bound_conversion_existence_presto` 1249→1094; constant column gone, join
+now `on 1=1`. Broad win for ANY grand-total aggregate join. Full v4 sweep 4309/0.
+Regression-locked (this is the SECOND time this sourcing regressed):
+`test_grand_total_aggregate_cross_joins_not_all_rows` (test_bound_conversion_
+existence.py) asserts no `__preql_internal_all_rows` column + `on 1=1`,
+parametrized over BOTH planners; fails on the pre-fix v4 tree, passes after.
+
+**NOT pruned:** the entry asserts a SQL fragment referencing
+`"quizzical"."date_converted"`, but v4 still differs from v3 by an extra `wakeful`
+grouping CTE + a `highfalutin` projection layer — v4 keeps the base key
+(`date_string`) and RE-DERIVES `date_converted` rather than computing the cast in
+the scan projection like v3. That residual is the separate passthrough/derive-in-
+scan family (the hard residual), untouched here.
+
+### 2026-07-01 — in_subselect existence-source pushdown/inline bug FIXED
+
+`test_in_subselect_with_inlined_datasource` was mis-bucketed as verbosity — it was
+a CORRECTNESS bug (invalid SQL). For `where it.price > 5 and it.item_id in
+cs.item_id`, v4 applied the membership TWICE: on the items ROOT (referencing a
+DANGLING `cs_catalog_sales` CTE = the un-inlined `cs_item_id` alias) AND on the
+FINAL node (correctly inlined). Root cause is a SHARED optimizer-ordering bug:
+`inline_datasource` runs BEFORE `predicate_pushdown` and folds the membership's
+subselect source into the child; pushdown then tries to promote that membership
+onto the child's parent, but the inlined source has no dependency CTE to re-hang —
+so it writes a `source_map` entry with no backing dependency (dangling) and the
+child copy isn't cleanly removed. The raw planner and pushdown-alone are both
+correct; only the combination breaks. Fix: `_check_parent` (predicate_pushdown)
+vetoes the push when an existence source is inlined into the child (a `source_map`
+entry with no promotable dependency). v4 now applies the membership once, inlined,
+valid. Shared optimizer; v3 sweep 4317/0 and v4 sweep 4308/0 both clean.
 
 ### 2026-06-30 — aggregate_filter HAVING CASE-WHEN verbosity FIXED
 

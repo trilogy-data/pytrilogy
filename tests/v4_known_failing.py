@@ -99,8 +99,16 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # bare when the CTE's SOLE (non-join) parent's condition implies the filter's
     # where -- the pushdown's own safety invariant guarantees every surviving row
     # satisfies it. XPASS in isolation + full v4 sweep; v3 + v4 sweeps clean.
-    # in_subselect: IN-subquery source not inlined; references concept alias cs_item_id.
-    "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _V4_VERBOSITY,
+    # in_subselect pruned 2026-07-01 (was a correctness bug, not verbosity):
+    # InlineDatasource runs before predicate_pushdown and folds the membership's
+    # subselect source into the child. Pushdown then tried to promote that
+    # membership up to the child's parent, but the inlined source has no
+    # dependency CTE to re-hang -- so the parent's IN referenced a dangling
+    # `cs_catalog_sales` (the un-inlined `cs_item_id` alias) AND the child copy
+    # survived (membership applied twice = invalid + duplicated). Fix: `_check_
+    # parent` (predicate_pushdown) vetoes the push when an existence source is
+    # inlined into the child (source_map entry with no promotable dependency). v4
+    # now applies it once, inlined. Shared optimizer; v3 + v4 sweeps clean.
     # usa_names anonymous aggregate-filter: same joins, +70% extra CTE/structure.
     "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous": _V4_VERBOSITY,
     # --- STRUCTURE: rows match on consistent data; plan/join/source differs (2026-06-28) ---
