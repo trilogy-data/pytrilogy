@@ -5,8 +5,71 @@
 scalar) emits the leaf-grain rows correctly but drops **every** rollup subtotal and grand-total
 row. The query "runs fine"; the rollup the author asked for just isn't there.
 
-**Status:** confirmed + root-caused to the mechanism (generated SQL), reproduced against the eval
-workspace with a clean HAVING on/off toggle. Minimal synthetic not yet isolated (see Scope). NOT fixed.
+## SIBLING (still OPEN 2026-07-01): the WHERE-path drops the grand total (different mechanism)
+
+`test_rollup_where_crossrowset_preserves_grand_total` fails — a DISTINCT bug from the HAVING one,
+NOT fixed by the `_is_single_row_rowset_scalar` recursion (verified: original + fixed gate both
+drop it). Realistic for q14: the agent falls back to `where` when it botches HAVING clause order.
+
+Root cause (from generated SQL): the WHERE predicate requiring the cross-rowset join is applied
+**TWICE**:
+1. leaf-grain CTE `thoughtful` (pre-rollup) — correct: `... INNER JOIN highfalutin on 1=1 WHERE cheerful.ch_total_sales > overall_avg_sale`, drops the failing channels.
+2. the outermost SELECT (post-rollup) re-applies the SAME predicate: `... INNER JOIN highfalutin on 1=1 WHERE questionable.ch_total_sales > overall_avg_sale`. But `questionable` re-fetches `ch_total_sales` via `cooperative LEFT OUTER JOIN thoughtful ON cooperative.ch_channel = thoughtful.ch_channel`, and the ROLLUP grand-total row has `ch_channel = NULL` → the join misses → `ch_total_sales = NULL` → `NULL > scalar` → grand total dropped.
+
+Fix direction (planner/SQL-gen layer, NOT the parse-time gate): a cross-rowset-join WHERE that is
+already satisfied pre-rollup must not be re-applied above the rollup (it's redundant), or the
+post-rollup re-fetch must not null the grand-total row's leaf field. Locus: where a join-requiring
+WHERE condition is attached at both the leaf node and the outermost select (`query_processor.py` /
+dialect rendering), around the `cooperative`→`questionable` LEFT-join re-fetch + outer WHERE
+duplication. Owned by the rollup-fix author (adjacent code); the HAVING-path recursion fix does not
+reach it.
+
+---
+
+**Status:** PARTIALLY FIXED — REOPENED 2026-07-01. The 2026-06-30 fix handles the scalar
+referenced **directly** (`having <agg> > overall_avg.avg_val`) and its test
+(`test_rollup_having_crossrowset_preserves_subtotals`) passes. But it MISSES the scalar referenced
+through an **`auto`/BASIC indirection** — the natural form the q14 agent used. See "REOPENED" below.
+
+## REOPENED 2026-07-01 — `auto`-wrapped cross-rowset scalar still drops subtotals
+
+Minimal A/B on the SAME model (`_ROLLUP_HAVING_CROSSROWSET_MODEL`), only the HAVING operand differs:
+
+```trilogy
+rowset ov <- select (sum(samt)+sum(wamt))/(count(sid)+count(wid)) as v;
+# ... union by_channel(channel, brand, total_sales) ...
+
+# A) DIRECT rowset-output ref  -> 5 rows, 3 subtotals  ✓ (covered by existing test)
+having sum(by_channel.total_sales) > ov.v            by rollup (by_channel.channel, by_channel.brand)
+
+# B) AUTO indirection          -> 2 rows, 0 subtotals ✗ SUBTOTALS DROPPED (not covered)
+auto avg_val <- ov.v;
+having sum(by_channel.total_sales) > avg_val         by rollup (by_channel.channel, by_channel.brand)
+```
+
+`(B)` is exactly what TPC-DS q14 does — `auto overall_avg_sale <- overall_stats.total_value /
+overall_stats.total_count; ... having sum(...) > overall_avg_sale`. It is the dominant driver of the
+q14 4.15M-token sink (run 20260701-033309): every framework obstacle q14 hit is fixed EXCEPT this,
+so the agent's natural formulation still silently loses the rollup and it can't converge.
+
+**Root cause of the gap:** the fix's `_is_single_row_rowset_scalar` gate matches a HAVING operand
+that IS a `RowsetItem` (single-row rowset output). An `auto`/derived concept wrapping that output
+(`avg_val <- ov.v`, or `ov.tv / ov.tc`) has `derivation=BASIC`, so the gate returns False → the
+predicate is again treated as a finer-dimension membership → CASE-key-nulling → subtotals dropped.
+
+**Fix direction (extends the landed fix):** make `_is_single_row_rowset_scalar` see THROUGH BASIC
+indirection — a concept whose lineage transitively resolves to only single-row rowset scalars (and
+literals/constants) is itself a single-row scalar and must broadcast, not route to the semijoin.
+Recurse over `concept_arguments` of a BASIC concept.
+
+**Additional failing unit test to add** (currently FAILS):
+`tests/engine/test_duckdb.py::test_rollup_having_auto_wrapped_crossrowset_scalar_preserves_subtotals`
+— identical to the passing test but with `auto avg_val <- overall_avg.avg_val;` and
+`having sum(by_channel.total_sales) > avg_val`; assert the same 5-row result (subtotals present).
+
+---
+
+**(original 2026-06-30 fix notes below — still valid for the direct-reference case)**
 
 **Impact:** THE driver of the TPC-DS **q14** token sink (3.76M prompt tokens, run 20260701-013044).
 The agent got a rollup result with no subtotal rows, correctly noticed "still no nulls! the rollup
@@ -88,6 +151,35 @@ the other rollup-interaction guards.
   rewrite implements — `project_having_post_aggregation_non_output_refs`).
 - q05 rollup-subtotal preservation (`test_duckdb.py::test_rollup_sibling_column_join_preserves_subtotals`).
 - q70 grouping-in-where/having guards.
+
+## Actual fix (2026-06-30)
+
+The CASE-null was a downstream symptom of a **mis-routed HAVING predicate**, driven by two defects
+in `trilogy/parsing/v2/select_finalize.py`. Both fixes live in `_promote_having_aggregates_to_outputs`:
+
+1. **Cross-rowset scalar not promoted.** After aggregate promotion the HAVING is
+   `_virt_agg_sum > overall_avg.avg_val`. `overall_avg.avg_val` (a ratio-of-aggregates rowset
+   output) is classified `derivation=ROWSET`, `granularity=MULTI_ROW`, `is_aggregate=False` —
+   mis-tagged, because its source rowset select is grainless (one row). The scalar-promotion gate
+   only accepted `is_aggregate` / `AGGREGATE|WINDOW` / `SINGLE_ROW`, so it skipped the scalar → it
+   never became a hidden output → not in `allowed_addresses` → `needs_membership` treated it as a
+   *finer dimension* and routed the whole predicate into the grain-key CASE-nulling semijoin. Fix:
+   new `_is_single_row_rowset_scalar` (a `RowsetItem` over a non-union `SelectLineage` with empty
+   `grain.components`) added to the gate.
+
+2. **Bare HAVING aggregate not matched to the rollup projection.** With (1) fixed the membership no
+   longer fires, but the planner then split the projected `total_sales` (`GROUP BY ROLLUP`) from the
+   HAVING-gate aggregate (plain `GROUP BY`) and joined them back — the gate node had no NULL-key
+   rows, so subtotals still vanished. Cause: `_propagate_select_grouping` stamps the rollup keys onto
+   each projection aggregate's `by`, so projected `total_sales` sig `(SUM,(x,),(brand,channel))` ≠
+   bare HAVING `sum(x)` sig `(SUM,(x,),())` → promotion minted a fresh plain-grain `_virt_agg_sum`.
+   Fix: `rollup_alias_by_bare_sig` maps each projection whose `by` equals the `select.grouping` keys
+   to its output ref under the bare-`by` signature; a matching bare HAVING aggregate is substituted
+   onto that projected alias (the working `having total_sales > scalar` form) instead of minted.
+
+Result SQL: one `GROUP BY ROLLUP` CTE + top-level `WHERE total_sales > overall_avg_avg_val`
+(scalar broadcast via `on 1=1`) — identical to the plain-fact case. Both rollup and non-rollup now
+correct. Guardrails held (rollup-sibling, all having/rollup/grouping tests, 152 tpc-ds modeling).
 
 ## File pointers
 

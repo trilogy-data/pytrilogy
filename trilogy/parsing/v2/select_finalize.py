@@ -1188,7 +1188,11 @@ def _promotion_grows_grain(
     return bool(combined.components - base_components)
 
 
-def _is_single_row_rowset_scalar(named: Concept) -> bool:
+def _is_single_row_rowset_scalar(
+    named: Concept,
+    concepts: Mapping[str, Concept] | None = None,
+    _seen: set[str] | None = None,
+) -> bool:
     """True for a rowset output whose source select is grainless — it produces
     exactly one row and so broadcasts like a scalar (``rowset r <- select
     sum(x)/sum(y) as v``). Such an output is mis-tagged ``MULTI_ROW`` granularity
@@ -1197,12 +1201,34 @@ def _is_single_row_rowset_scalar(named: Concept) -> bool:
     grain-key semijoin — which silently drops rollup subtotal rows (NULL-key
     collision) and doesn't even filter correctly on a plain grouped select.
     Restricted to a single (non-union) ``SelectLineage``: a union of grainless
-    arms yields one row *per arm*, not a single broadcast row."""
+    arms yields one row *per arm*, not a single broadcast row.
+
+    Also true for a BASIC concept derived only from single-row rowset scalars
+    (plus literals) — e.g. ``auto avg <- ov.total / ov.count``. Combining scalars
+    stays a single broadcast row, but the wrapper is ``derivation=BASIC`` (not a
+    ``RowsetItem``), so without recursing the wrapper the HAVING predicate is
+    again misrouted into the semijoin and rollup subtotals vanish. This is the
+    natural HAVING form (`having sum(x) > my_scalar`), so it must be covered.
+    Requires ``concepts`` to resolve the BASIC args (they arrive as ``ConceptRef``)."""
     lineage = named.lineage
-    if not isinstance(lineage, RowsetItem):
-        return False
-    select = lineage.rowset.select
-    return isinstance(select, SelectLineage) and not select.grain.components
+    if isinstance(lineage, RowsetItem):
+        select = lineage.rowset.select
+        return isinstance(select, SelectLineage) and not select.grain.components
+    if concepts is not None and named.derivation == Derivation.BASIC:
+        args = named.concept_arguments
+        if not args:
+            return False
+        if _seen is None:
+            _seen = set()
+        if named.address in _seen:
+            return False
+        _seen.add(named.address)
+        resolved = [concepts.get(a.address) for a in args]
+        return all(
+            r is not None and _is_single_row_rowset_scalar(r, concepts, _seen)
+            for r in resolved
+        )
+    return False
 
 
 def _promote_having_aggregates_to_outputs(
@@ -1321,7 +1347,7 @@ def _promote_having_aggregates_to_outputs(
             named.is_aggregate
             or named.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
             or named.granularity == Granularity.SINGLE_ROW
-            or _is_single_row_rowset_scalar(named)
+            or _is_single_row_rowset_scalar(named, context.concepts)
         )
         if not grain_determined:
             continue

@@ -5,7 +5,9 @@ metadata:
   type: project
 ---
 
-OPEN (handoff written). SILENT WRONG RESULTS. A `by rollup (...)` select whose `having` compares an aggregate to a scalar from a SEPARATE rowset (cross-rowset/cross-source) emits leaf rows fine but drops EVERY subtotal + grand-total row. Query "works", but the requested rollup is gone.
+PARTIALLY FIXED — REOPENED 2026-07-01. SILENT WRONG RESULTS. A `by rollup (...)` select whose `having` compares an aggregate to a scalar from a SEPARATE rowset drops EVERY subtotal/grand-total row.
+
+**REOPENED case (2026-07-01):** the 2026-06-30 fix handles the scalar referenced DIRECTLY (`having <agg> > overall_avg.avg_val`) — test `test_rollup_having_crossrowset_preserves_subtotals` passes. It MISSES the scalar wrapped in an `auto`/BASIC (`auto avg_val <- overall_avg.avg_val; having <agg> > avg_val`) → subtotals still silently dropped. That `auto` form is exactly what q14 uses (`auto overall_avg_sale <- overall_stats.total_value/overall_stats.total_count`) → still the q14 4.15M-token sink (run 20260701-033309). A/B (same model): direct ref → 5 rows/3 subtotals; auto ref → 2 rows/0 subtotals. Cause: `_is_single_row_rowset_scalar` matches only a direct RowsetItem, not a BASIC concept derived from one. Fix=recurse through BASIC concept_arguments so a scalar transitively derived from single-row rowset scalars broadcasts. Add failing test `test_rollup_having_auto_wrapped_crossrowset_scalar_preserves_subtotals`.
 
 Confirmed on q14 (THE 3.76M-token sink, run 20260701-013044): agent noticed "no rollup rows appearing" and thrashed. Toggle proof against workspace: WITH `having sum(total_sales) > overall_avg.avg_sale_value` → 0 null-key rows; drop that one line → 32 null-key rows. `ROLLUP` is in the SQL both times — DuckDB makes the subtotal rows, the HAVING rewrite eliminates them.
 

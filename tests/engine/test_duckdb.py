@@ -597,6 +597,89 @@ order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
     ]
 
 
+def test_rollup_having_auto_wrapped_crossrowset_scalar_preserves_subtotals():
+    """Same as above, but the cross-rowset scalar is referenced through an `auto`
+    indirection (`auto avg_val <- ...; having sum(x) > avg_val`) — the natural
+    HAVING form, and exactly what TPC-DS q14 writes. The single-row-scalar detector
+    only matched a direct `RowsetItem` ref, so an `auto`/BASIC wrapper (incl. a
+    ratio of two rowset outputs) fell through to the finer-dim grain-key semijoin
+    and silently dropped every rollup subtotal. Must recurse through BASIC args."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_HAVING_CROSSROWSET_MODEL)
+    text = """
+rowset overall <- select sum(samt) + sum(wamt) as total_value, count(sid) + count(wid) as total_count;
+auto avg_val <- overall.total_value / overall.total_count;
+with by_channel as union(
+  (select 'STORE' as channel, sbrand as brand, sum(samt) as total_sales),
+  (select 'WEB' as channel, wbrand as brand, sum(wamt) as total_sales)
+) -> (channel, brand, total_sales);
+select
+    by_channel.channel,
+    by_channel.brand,
+    sum(by_channel.total_sales) as total_sales
+having sum(by_channel.total_sales) > avg_val
+by rollup (by_channel.channel, by_channel.brand)
+order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r[0], r[1], float(r[2])) for r in results] == [
+        (None, None, 335.0),
+        ("STORE", None, 130.0),
+        ("STORE", 10, 100.0),
+        ("WEB", None, 205.0),
+        ("WEB", 11, 200.0),
+    ]
+
+
+_ROLLUP_WHERE_CROSSROWSET_MODEL = """
+key sid int;
+property sid.schannel string;
+property sid.samt float;
+property sid.scnt int;
+datasource all_sales (sid: sid, schannel: schannel, samt: samt, scnt: scnt)
+grain (sid)
+query '''select 1 as sid, 'STORE' as schannel, 100.0 as samt, 1 as scnt union all
+         select 2, 'STORE', 30.0, 1 union all
+         select 3, 'WEB', 5.0, 1 union all
+         select 4, 'WEB', 200.0, 1 union all
+         select 5, 'CATALOG', 7.0, 1''';
+"""
+
+
+def test_rollup_where_crossrowset_preserves_grand_total():
+    """`by rollup` + a WHERE that filters a rowset field against a cross-rowset
+    scalar must keep the rollup subtotal/grand-total rows. The scalar requires a
+    join, so the WHERE predicate is duplicated to the outermost query (above the
+    rollup) and re-applied there; the grand-total row's join key is NULL, so its
+    re-fetched rowset field comes back NULL and `NULL > scalar` drops it. A literal
+    RHS is resolved fully pre-rollup and keeps the grand total (control). This is
+    the WHERE-path sibling of test_rollup_having_crossrowset_preserves_subtotals,
+    and the form the q14 agent actually used (HAVING after `by rollup` won't
+    parse). The natural formulation, so the highest-impact q14 blocker."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_WHERE_CROSSROWSET_MODEL)
+    text = """
+auto overall_avg_sale <- sum(samt) by * / count(scnt) by *;
+with ch as
+select schannel as channel, sum(samt) as total_sales, count(scnt) as sale_count;
+select
+    ch.channel,
+    sum(ch.total_sales) as total_sales,
+    sum(ch.sale_count) as total_count
+where ch.total_sales > overall_avg_sale
+by rollup (ch.channel)
+order by ch.channel asc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    # avg = 342/5 = 68.4; channels kept: STORE(130), WEB(205); CATALOG(7) dropped.
+    # Rollup over the kept channels keeps the grand-total row.
+    assert [(r[0], float(r[1]), r[2]) for r in results] == [
+        (None, 335.0, 4),
+        ("STORE", 130.0, 2),
+        ("WEB", 205.0, 2),
+    ]
+
+
 def test_predicate_not_pushed_past_window_order_key():
     """A filter on a window's ORDER BY key (an aggregate also materialized in
     the upstream group) must not be pushed below/into the window — SQL WHERE

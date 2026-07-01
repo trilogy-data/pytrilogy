@@ -30,6 +30,40 @@ def test_validate_preql_content_allows_valid_syntax():
     assert pv.validate_preql_content("q.preql", "select 1 -> answer;") is None
 
 
+def test_detect_having_after_grouping():
+    assert pv.detect_having_after_grouping(
+        "select s.c, sum(s.a) as t by rollup (s.c) having sum(s.a) > 5;"
+    )
+    assert pv.detect_having_after_grouping(
+        "select x, sum(y) as t\nby cube (x)\nhaving sum(y) > 5\norder by x;"
+    )
+    # Correct order (HAVING before the grouping clause) must not match.
+    assert not pv.detect_having_after_grouping(
+        "select s.c, sum(s.a) as t having sum(s.a) > 5 by rollup (s.c);"
+    )
+    # A `having` in a *separate* statement after a grouping select must not match.
+    assert not pv.detect_having_after_grouping(
+        "select x, sum(y) as t by rollup (x); select z having count(z) > 1;"
+    )
+
+
+def test_validate_preql_content_hints_having_after_grouping():
+    """The q14 agent's failure: HAVING placed after `by rollup` (SQL order) is a
+    parse error with an opaque "expected order_by or limit". The refusal must add
+    the reorder hint."""
+    content = (
+        "key sid int;\nproperty sid.c string;\nproperty sid.a float;\n"
+        "datasource s (sid: sid, c: c, a: a) grain (sid)\n"
+        "query '''select 1 as sid, 'x' as c, 1.0 as a''';\n"
+        "select s.c, sum(s.a) as t\nby rollup (s.c)\nhaving sum(s.a) > 5\n"
+        "order by s.c;\n"
+    )
+    msg = pv.validate_preql_content("q.preql", content)
+    assert msg is not None
+    assert "not syntactically valid Trilogy" in msg
+    assert "HAVING must come *before*" in msg
+
+
 def test_validate_preql_syntax_lark_fallback_when_wheel_absent(monkeypatch):
     """If the rust parser raises ImportError, validation falls back to lark."""
     import trilogy.parsing.parse_engine_v2 as pe
