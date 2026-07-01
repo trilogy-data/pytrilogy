@@ -90,8 +90,15 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # isolation + full sweep.
     # bound_conversion presto: 1022->1249 (+22%).
     "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto": _V4_VERBOSITY,
-    # aggregate_filter HAVING: keeps HAVING but adds a CASE WHEN wrapper, 272->522 (+92%).
-    "tests/engine/test_duckdb_filter.py::test_aggregate_filter_uses_having": _V4_VERBOSITY,
+    # aggregate_filter HAVING pruned 2026-06-30 (522->442, no more CASE WHEN):
+    # predicate pushdown relocates `count(...) > 1` into the group parent's
+    # HAVING and strips the copy from the filter consumer, so `cte.condition` no
+    # longer named it and the filter-item reverted to a redundant `CASE WHEN
+    # count > 1 THEN order_id ELSE NULL`. Fix: the renderer
+    # (`_filter_guaranteed_by_sole_parent`, base.py) also renders the content
+    # bare when the CTE's SOLE (non-join) parent's condition implies the filter's
+    # where -- the pushdown's own safety invariant guarantees every surviving row
+    # satisfies it. XPASS in isolation + full v4 sweep; v3 + v4 sweeps clean.
     # in_subselect: IN-subquery source not inlined; references concept alias cs_item_id.
     "tests/engine/test_duckdb_filter.py::test_in_subselect_with_inlined_datasource": _V4_VERBOSITY,
     # usa_names anonymous aggregate-filter: same joins, +70% extra CTE/structure.
@@ -108,10 +115,15 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/stocks/test_stocks.py::test_provider_name": _V4_STRUCTURE,
     # tpc_h adhoc07: INNER -> RIGHT/FULL outer join types; rows VERIFIED MATCH (sf=0.01).
     "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07": _V4_STRUCTURE,
-    # --- genuinely cosmetic (+3%, same join) -- safe to dual-condition on use_v4_discovery ---
-    "tests/modeling/ncaa/test_ncaa.py::test_adhoc07": _INLINE,
-    # --- PRUNE CANDIDATE: passes under v4 in isolation (--runxfail), confirm in full sweep ---
-    "tests/complex/test_complex_source_fetching.py::test_aggregate_of_aggregate": _INLINE,
+    # ncaa::test_adhoc07 pruned 2026-06-30: not a size diff -- v4 renders the
+    # user-named `eligible` concept (CASE WHEN count(game_id) > 10 THEN 1 ELSE 0)
+    # as a materialized column referenced by name in the window ORDER BY, where v3
+    # inlines the same CASE. Provably equivalent rows (the column IS that CASE);
+    # the ncaa source is a BigQuery public dataset, not locally executable, so
+    # equivalence is verified from the SQL. The test regex is now dual-conditioned
+    # on CONFIG.use_v4_discovery to accept either rendering. Passes under both.
+    # test_aggregate_of_aggregate pruned 2026-06-30: passes under v4 in isolation
+    # AND full sweep (was a stale prune-candidate).
     # --- tpc-ds: SQL-length-ceiling regressions (correct rows, more verbose) ---
     # Pruned 2026-06-26 (pass in isolation + tracked-group + full sweep): test_two (q02),
     # test_forty_seven (q47), test_fifty_seven (q57), test_seventy_six (q76).

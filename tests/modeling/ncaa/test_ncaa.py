@@ -5,6 +5,7 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Dialects, Executor
+from trilogy.constants import CONFIG
 from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import BuildUnionDatasource, Factory
 from trilogy.core.models.environment import Environment
@@ -155,11 +156,25 @@ def test_adhoc07():
     }, env.concepts["scoring_criteria"].grain.components
     generated = engine.generate_sql(text)[0]
 
-    # Validate the window's order-by references a CASE on the count and a
-    # sum/count ratio. The merge_aggregate optimization may fold the upstream
-    # MERGE CTE into the window, so we don't pin to a specific CTE name.
+    # Validate the window's order-by ranks by the `eligible` flag then the
+    # sum/count ratio. The v3 planner inlines the `eligible` CASE (WHEN count > 10
+    # THEN 1 ELSE 0) directly into the ORDER BY; the v4 planner materializes the
+    # user-named `eligible` concept as an upstream column and references it by
+    # name -- the same CASE expression, provably equivalent rows (the eligible
+    # column IS `CASE WHEN count(game_id) > 10 THEN 1 ELSE 0 END`). Accept either
+    # rendering; don't pin the upstream CTE name (merge_aggregate may fold it).
+    if CONFIG.use_v4_discovery:
+        eligible_term = r'"\w+"\."eligible"'
+    else:
+        eligible_term = (
+            r'CASE\s+WHEN\s+"\w+"\."_virt_agg_count_\d+"\s*>\s*10'
+            r"\s+THEN 1\s+ELSE 0\s+END"
+        )
     pattern = re.compile(
-        r'rank\(\) over \(order by CASE\s+WHEN\s+"\w+"\."_virt_agg_count_\d+"\s*>\s*10\s+THEN 1\s+ELSE 0\s+END desc,\s*"\w+"\."_virt_agg_sum_\d+"\s*/\s*"\w+"\."_virt_agg_count_\d+" desc\s*\) as "player_rank"',
+        r"rank\(\) over \(order by "
+        + eligible_term
+        + r'\s*desc,\s*"\w+"\."_virt_agg_sum_\d+"\s*/\s*"\w+"\."_virt_agg_count_\d+"'
+        r'\s*desc\s*\) as "player_rank"',
         re.MULTILINE,
     )
     assert pattern.search(generated), generated.strip()

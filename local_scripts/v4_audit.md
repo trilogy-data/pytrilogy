@@ -208,27 +208,45 @@ Pruned `test_select_literal_is_rendered_with_aggregate_projection`.
 
 ## Current tracked state (re-bucketed 2026-06-28 — NOT all cosmetic)
 
-`tests/v4_known_failing.py` tracks **12 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
+`tests/v4_known_failing.py` tracks **9 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
 `test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, q10, q23. q2.2 pruned
 2026-06-28. `rowset_alias` (wrong-rows), q2.1, and `rowset_arithmetic` pruned 2026-06-29.
-`select_literal` (constant fold) and q30.alt (dimension-rejoin GA-spine) pruned
-2026-06-30. The remaining 12 (NO size-ceiling entries left — all VERBOSITY /
-STRUCTURE / cosmetic shape-asserts):
+`select_literal` (constant fold), q30.alt (dimension-rejoin GA-spine), both `_INLINE`
+entries (ncaa::adhoc07 dual-conditioned; aggregate_of_aggregate stale), and
+`aggregate_filter_uses_having` (filter-item CASE-WHEN-after-HAVING-pushdown) pruned
+2026-06-30. The remaining 9 — NO size-ceiling and NO cosmetic entries left, all
+VERBOSITY or STRUCTURE:
 
 | bucket | count | meaning |
 | --- | --- | --- |
 | `_V4_VERBOSITY` | 4 | rows match, v4 materially longer (measured). Real regressions. |
 | `_V4_STRUCTURE` | 5 | rows match on consistent data; join-type/source/shape differs. |
-| `_INLINE` | 2 | `ncaa::adhoc07` genuinely cosmetic; `aggregate_of_aggregate` passes (prune candidate). |
-| `_CRASH_INVALID_REF` | 1 | (unused — reserved string; no entries reference it). |
+| `_INLINE` | 0 | both pruned 2026-06-30 (ncaa dual-conditioned; aggregate_of_aggregate stale). |
+| `_CRASH_INVALID_REF` | 0 | (unused — reserved string; no entries reference it). |
 | `_TPCDS_SIZE` | 0 | q30.alt pruned 2026-06-30 — **no size-ceiling entries remain**. |
 
 The `rowset_alias` wrong-rows correctness bug is FIXED (cartesian product → INNER
 join on the shared grain key; rows verified 3=3). The last genuine **length**
-regression (q2.1) is FIXED. Open themes are now: (1) the remaining verbosity
-family (`v4_verbosity_handoff.md`), (2) structural join/source diffs to verify
-for row impact, and (3) q30.alt GA-spine (`v4_dimension_projection_rejoin_handoff.md`,
-the only remaining STRUCTURE size-ceiling miss).
+regression (q2.1) and the last size-ceiling miss (q30.alt) are FIXED. Open themes
+are now exactly two: (1) the remaining `_V4_VERBOSITY` family (4 left:
+`bound_conversion_existence_presto`, `in_subselect_with_inlined_datasource`,
+`aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape —, and
+`two_merge_aggregate`), and (2) `_V4_STRUCTURE` join/source diffs to verify for row
+impact.
+
+### 2026-06-30 — aggregate_filter HAVING CASE-WHEN verbosity FIXED
+
+`filter X where count(...) > N` rendered a redundant `CASE WHEN count > N THEN X
+ELSE NULL` in v4 (522 vs v3's 272). Root cause is shared, not v4-specific:
+`_push_having_into_group_parent` (predicate_pushdown) relocates the aggregate
+predicate into the group parent's HAVING and STRIPS the copy from the filter
+consumer, so `cte.condition` no longer names it and the renderer's existing
+bare-render check (base.py:1046, keyed on `cte.condition`) missed it — reverting
+the filter-item to CASE WHEN. Fix: `_filter_guaranteed_by_sole_parent` (base.py)
+also renders content bare when the CTE's SOLE (non-join, can't NULL-pad) parent's
+condition implies the filter's where — exactly the pushdown's own safety
+invariant. v4 522→442 (bare `order_id`, HAVING kept). Shared renderer change; v3
+sweep 4317/0 and v4 sweep 4307/0 both clean.
 
 ## Size / verbosity analysis (2026-06-25)
 
