@@ -718,13 +718,29 @@ def _datasource_materializes(
     Matching on `ds.columns` (genuine bindings), not `output_concepts`, is
     deliberate: the latter includes merge-pseudonym-expanded entries that hide the
     real PARTIAL marker."""
-    if not _conditions_supported(ds, where, environment.concepts):
-        return False
     partial_covered = bool(
         where
         and ds.non_partial_for
         and condition_implies(where.conditional, ds.non_partial_for.conditional)
     )
+    # When the persisted population is EXACTLY the query's desired rows (the query
+    # `where` and the datasource's `non_partial_for` are mutually implied), the
+    # condition is already applied by materialization -- the datasource needs no
+    # column to re-express it. A `persist ... from select derived where cat = 1`
+    # drops the filter key (only the derived column is stored), so it can't pass
+    # `_conditions_supported`, but its baked-in population already satisfies a
+    # `... where cat = 1` query. Otherwise the datasource must express the
+    # (residual) condition itself.
+    population_is_exact = bool(
+        partial_covered
+        and where
+        and ds.non_partial_for
+        and condition_implies(ds.non_partial_for.conditional, where.conditional)
+    )
+    if not population_is_exact and not _conditions_supported(
+        ds, where, environment.concepts
+    ):
+        return False
     if ds.non_partial_for is not None and not partial_covered:
         return False
     return any(

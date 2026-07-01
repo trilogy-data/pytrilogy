@@ -222,7 +222,7 @@ The remaining 7 — NO size-ceiling and NO cosmetic entries left, all VERBOSITY 
 | bucket | count | meaning |
 | --- | --- | --- |
 | `_V4_VERBOSITY` | 2 | rows match, v4 materially longer (measured). Real regressions. |
-| `_V4_STRUCTURE` | 5 | rows match on consistent data; join-type/source/shape differs. |
+| `_V4_STRUCTURE` | 4 | rows match on consistent data; join-type/source/shape differs. |
 | `_INLINE` | 0 | both pruned 2026-06-30 (ncaa dual-conditioned; aggregate_of_aggregate stale). |
 | `_CRASH_INVALID_REF` | 0 | (unused — reserved string; no entries reference it). |
 | `_TPCDS_SIZE` | 0 | q30.alt pruned 2026-06-30 — **no size-ceiling entries remain**. |
@@ -235,6 +235,19 @@ are now exactly two: (1) the remaining `_V4_VERBOSITY` family (2 left:
 all_rows join now `on 1=1`; residual is the derive-in-scan `wakeful` layer) — and
 `aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape), and
 (2) `_V4_STRUCTURE` join/source diffs to verify for row impact.
+
+### 2026-07-01 — persist-with-where partial-source reuse FIXED + pruned (_V4_STRUCTURE)
+
+`test_persist_with_where`: v4 recomputed a `CASE` from the base table instead of
+reading the persisted `upper_name` datasource. The persist
+(`... from select test_upper_case_2 where category_id = 1`) stores only the
+derived column (no `category_id`), so `_datasource_materializes` ->
+`_conditions_supported` rejected it (can't re-express `category_id = 1`), even
+though its `non_partial_for = category_id = 1` already bakes in that exact
+population. Fix: `_datasource_materializes` (concept_strategies_v4, v4-only) skips
+`_conditions_supported` when the query `where` and the ds `non_partial_for` are
+mutually implied (population == desired rows). v4 now reads `upper_name` (no CASE,
+no `category_id`), matching v3. Full v4 sweep clean; v4-only change.
 
 ### 2026-07-01 — two_merge (merge_aggregate=False) passthrough residue FIXED + pruned
 

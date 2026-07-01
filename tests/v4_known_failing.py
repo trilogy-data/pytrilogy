@@ -114,8 +114,15 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # --- STRUCTURE: rows match on consistent data; plan/join/source differs (2026-06-28) ---
     # nested_greatest: v4 emits no group-by CTE projecting multi_wm (v3-shape guard).
     "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection": _V4_STRUCTURE,
-    # persist_with_where: persisted upper_name source not reused -> recomputes CASE.
-    "tests/persistence/test_basic_persistence.py::test_persist_with_where": _V4_STRUCTURE,
+    # persist_with_where pruned 2026-07-01: v4 recomputed the CASE from
+    # category_source instead of reading the persisted `upper_name`. The persist
+    # `... where category_id = 1` stores only the derived column (no category_id),
+    # so `_datasource_materializes` -> `_conditions_supported` rejected it (can't
+    # re-express `category_id = 1`), even though its `non_partial_for` already
+    # bakes in that exact population. Fix: `_datasource_materializes` skips the
+    # re-expression requirement when the query `where` and the ds `non_partial_for`
+    # are mutually implied (population is exactly the desired rows). v4 now reads
+    # `upper_name` (no CASE, no category_id), matching v3. XPASS in isolation.
     # filter_scalar staging: v4 sources staged_sales_tbl where v3 does not (ROWS UNVERIFIED).
     "tests/engine/test_duckdb_filter.py::test_filter_scalar_aggregate_not_restricted_by_staging": _V4_STRUCTURE,
     # provider_name: drops a join, FULL JOIN on real key vs v3 LEFT OUTER+INNER; rows match
