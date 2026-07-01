@@ -12,6 +12,7 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
+from trilogy.core.processing.discovery_utility import _output_is_rootless
 
 from .constants import FINAL_NODE_ID, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
@@ -34,6 +35,7 @@ class PlacementReason(Enum):
     UPSTREAM_MOST = "upstream_most"
     FINAL_RECONVERGENCE = "final_reconvergence"
     FINAL_CROSS_GRAIN_AGGREGATE = "final_cross_grain_aggregate"
+    DISCONNECTED_GATE = "disconnected_gate"
 
 
 @dataclass(frozen=True)
@@ -305,6 +307,29 @@ def plan_condition_placements(
                         atom=atom,
                         group_ids=(FINAL_NODE_ID,),
                         reason=PlacementReason.FINAL_RECONVERGENCE,
+                    )
+                )
+                continue
+            # A gate whose row inputs are only producible by groups disconnected
+            # from the mandatory outputs (e.g. `where x = 1` beside a rootless
+            # `unnest([...])`/constant output) has no covering contributor to host
+            # it -- its own root group is pruned from FINAL assembly, silently
+            # dropping the filter. Route it to FINAL, which cross-joins the gate's
+            # scan (the FINAL merge dedups to the output grain, so the gate acts as
+            # a 0/1-row EXISTS gate). Restricted to rootless outputs: a disconnected
+            # filter beside a real datasource output is a missing join and already
+            # raised at the connectivity pre-gate, so it never reaches here.
+            if (
+                mandatory_list
+                and candidates
+                and _output_is_rootless(mandatory_list)
+                and all(gid not in main_lineage for gid in candidates)
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(FINAL_NODE_ID,),
+                        reason=PlacementReason.DISCONNECTED_GATE,
                     )
                 )
                 continue

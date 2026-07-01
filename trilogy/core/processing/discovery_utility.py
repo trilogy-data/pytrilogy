@@ -705,6 +705,25 @@ def raise_if_disconnected(
         )
 
 
+def _output_is_rootless(outputs: List[BuildConcept]) -> bool:
+    """Every output has no datasource dependency: a constant, a single-row scalar,
+    or a value generated purely from literals (lineage but no concept arguments,
+    e.g. ``unnest([1,2,3,4])``). Such an output cannot correlate with any
+    datasource, so a disconnected WHERE on a real model can only be an EXISTS gate."""
+    if not outputs:
+        return False
+    return all(
+        c.granularity == Granularity.SINGLE_ROW
+        or c.derivation == Derivation.CONSTANT
+        or (
+            c.lineage is not None
+            and c.derivation != Derivation.ROOT
+            and not any(isinstance(a, BuildConcept) for a in c.concept_arguments)
+        )
+        for c in outputs
+    )
+
+
 def _is_global_aggregate_gate(
     group: List[BuildConcept], output_addresses: set[str]
 ) -> bool:
@@ -749,8 +768,14 @@ def raise_if_disconnected_for(
     subgraphs = disconnected_components(
         environment, concepts, g, island_rowsets=island_rowsets
     )
+    outputs_rootless = _output_is_rootless(outputs)
     subgraphs = [
-        grp for grp in subgraphs if not _is_global_aggregate_gate(grp, output_addresses)
+        grp
+        for grp in subgraphs
+        if not _is_global_aggregate_gate(grp, output_addresses)
+        and not (
+            outputs_rootless and all(c.address not in output_addresses for c in grp)
+        )
     ]
     if len(subgraphs) > 1:
         raise DisconnectedConceptsException(

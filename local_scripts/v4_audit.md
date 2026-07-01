@@ -236,6 +236,28 @@ all_rows join now `on 1=1`; residual is the derive-in-scan `wakeful` layer) — 
 `aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape), and
 (2) `_V4_STRUCTURE` join/source diffs to verify for row impact.
 
+### 2026-07-01 — disconnected raw-column gate FIXED (was UNTRACKED)
+
+`test_filter_constant_unrelated` (`where x = 1 SELECT unnest([1,2,3,4]) as value,
+'example' as dim`) raised `DisconnectedConceptsException` under v4 in isolation —
+an UNTRACKED failure (passed in-suite via ordering). Traced end-to-end: `x` IS
+sourced (a `grp:root:root:∅` ROOT group) and `x=1` IS placed on it, but
+`_assemble_final_node` keeps only groups covering a mandatory output, so the gate
+group is pruned and the filter silently vanishes. Fix (v4): (1)
+`discovery_utility._output_is_rootless` lets the connectivity pre-gate pass a
+disconnected condition-only subgraph when every output is rootless (constant /
+single-row / literal-generator like `unnest([...])`); a disconnected filter beside
+a real datasource output still raises (missing-join diagnostic kept). (2)
+`condition_placement` routes the disconnected gate atom to FINAL
+(`PlacementReason.DISCONNECTED_GATE`) so it cross-joins the gate scan and the merge
+dedups to the output grain — a 0/1-row EXISTS gate matching v3. Gate-fails (`x=5`)
+→ 0 rows (filter genuinely applied, not dropped); test now asserts both. Full v4
+sweep 4313 passed / 0 real fail (lone fail = live-Gemini flake). **Found 2 more
+UNTRACKED v4 isolation failures while here: `test_aggregate_filter` /
+`test_aggregate_filter_short_syntax` (usa_names) — SQL-shape mismatch, the hard
+aggregate-HAVING family (= tracked `test_aggregate_filter_anonymous`); pre-existing,
+not addressed here.**
+
 ### 2026-07-01 — filter_scalar staging: ROWS VERIFIED, test conditioned + pruned (_V4_STRUCTURE)
 
 `test_filter_scalar_aggregate_not_restricted_by_staging`: executed all 4

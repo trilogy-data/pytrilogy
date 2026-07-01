@@ -854,6 +854,26 @@ having value = 2;
 
     assert len(results) == 1
 
+    # The disconnected `where x = 1` is a gate (EXISTS), not a dropped filter:
+    # when the gated model has no matching row the whole (rootless) output is
+    # suppressed. A separate engine so the gate-fails datasource (`x = 5`) is the
+    # only `example` in scope.
+    gate_fails_engine = Dialects.DUCK_DB.default_executor()
+    gate_fails = """
+key x int;
+
+datasource example (
+x)
+grain (x)
+query '''
+select 5 as x''';
+
+where x = 1
+SELECT unnest([1,2,3,4]) as value, 'example' as dim
+having value = 2;
+"""
+    assert gate_fails_engine.execute_text(gate_fails)[0].fetchall() == []
+
 
 def test_filtered_aggregate_preserves_empty_groups(default_duckdb_engine: Executor):
     """A filtered aggregate (`agg(x ? cond)`) must keep every group, emitting
