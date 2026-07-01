@@ -2199,6 +2199,30 @@ def _assemble_final_node(
                 and c.derivation != Derivation.ROWSET
             )
         if is_root:
+            # A filter-only WHERE arg the SELECT never projects (q30.alt's
+            # `billing_customer.address.state = 'GA'`, FD by this dim bucket's
+            # key) is not in `group_concepts`, so `_root_atoms_satisfiable_from`
+            # would drop its atom and the fresh re-source would lose the WHERE.
+            # When such an arg was peeled INTO this bucket (a primary member),
+            # add it to the projection so plan_source sources the dim table and
+            # applies the filter (v3's `wakeful` = `customer ⋈ customer_address
+            # WHERE state = 'GA'`). It isn't mandatory, so the FINAL merge
+            # selects only the outputs and never leaks it. Restricted to bucket
+            # members so a global-aggregate/cross-arm filter arg (handled as a
+            # hidden cross-join input via `_filter_arg_parents`) is untouched.
+            bucket_members = _members_of(attrs, gid)
+            seen_group_addrs = {c.address for c in group_concepts}
+            group_concepts.extend(
+                c
+                for address in sorted(
+                    arg.address
+                    for atom in _atoms_at(attrs, gid)
+                    for arg in atom.row_arguments
+                    if arg.address in bucket_members
+                )
+                if address not in seen_group_addrs
+                and (c := _concept_at(environment, address)) is not None
+            )
             root_conditions = _wrap_atoms(
                 _root_atoms_satisfiable_from(_atoms_at(attrs, gid), group_concepts)
             )

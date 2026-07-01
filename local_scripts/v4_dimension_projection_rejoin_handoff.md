@@ -1,11 +1,44 @@
 # Size: dimension projection re-sourced through the fact (q81, q30.alt)
 
-Status: PARTIAL (2026-06-27). The dimension-split landed; q73 FIXED (xpass,
-promoted out of the registry). q10/q81/q30.alt now source dims STANDALONE (rows
-correct, no fact re-root) but stay `_TPCDS_SIZE` xfail on the residual redundant
-fact-scan feeder (q81 8987>8000; q30.alt 4904 but `web_returns`==2). Zero net-new
-regressions across the full tpc_ds sweep AND the engine/tpc_h/optimization/complex
-sweep. q65 trap avoided.
+Status: DONE (2026-06-30). q73/q81/q10/q94/q23 all FIXED + pruned earlier;
+**q30.alt FIXED + pruned 2026-06-30** — the last dimension-rejoin size miss. Zero
+net-new regressions on a full v4 sweep (4304 passed, 0 failed). q65 trap avoided.
+
+## 2026-06-30 landed — q30.alt second web_returns scan eliminated (read this first)
+
+The residual was a SECOND `web_returns` fact scan (`cooperative`) whose only job
+was to apply the post-aggregate GA filter `billing_customer.address.state = 'GA'`
+(FD by `billing_customer.id`) and pair it with `return_address.state`. The dim
+columns already peeled into `grp:root:root:∅:dim:billing_customer.id` (sourced
+standalone), but the FILTER column stayed on the fact bucket because the split's
+output-gate only peeled SELECTED columns. v3 folds the GA filter into `wakeful`
+(the same `customer ⋈ customer_address` dim scan that sources the output dims).
+
+Two coupled changes reproduce v3's shape (6193 → 6112, `web_returns`==1, GROUP
+BY==2):
+
+1. **`_split_root_dimension_clusters` + `_post_aggregate_filter_args`
+   (group_graph.py)** — also peel a filter-only member into the single-entity FD
+   dim bucket when it is a POST-aggregate (HAVING) filter arg. A HAVING arg
+   filters the OUTPUT after aggregation, so peeling it to a post-join dim scan +
+   semijoin is faithful (it does NOT affect the `juicy` avg, which is computed
+   from the full-population aggregate). The `pre_aggregate_filter_args` gate still
+   keeps a PRE-aggregate WHERE arg on the fact (must narrow the aggregate's input
+   rows). Grouping-key and finer-grain gates unchanged.
+2. **`_assemble_final_node` is_root block (strategy_builder.py)** — when a peeled
+   filter arg is a bucket member but not projected, add it to `group_concepts`
+   before building the fresh root projection. Otherwise
+   `_root_atoms_satisfiable_from` drops its atom (arg not satisfiable from the
+   projected outputs) and the fresh re-source silently loses the WHERE (wrong
+   rows). Restricted to `_members_of(gid)` so a global-aggregate/cross-arm filter
+   arg (handled as a hidden cross-join input via `_filter_arg_parents`) is
+   untouched — a broader version regressed q46/q59/q64/global-agg-filter.
+
+### Prior status (2026-06-27, superseded)
+
+The dimension-split landed; q73 FIXED. q10/q81/q30.alt sourced dims STANDALONE but
+stayed `_TPCDS_SIZE` xfail on the residual redundant fact-scan feeder (q30.alt
+`web_returns`==2). That residual is now closed.
 
 ## 2026-06-27 landed — the split + its gates (read this first)
 
