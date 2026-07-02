@@ -666,30 +666,24 @@ select schannel as channel, sum(samt) as total_sales, count(scnt) as sale_count;
 """
     # avg = 342/5 = 68.4; channels kept: STORE(130), WEB(205); CATALOG(7) dropped.
     # Rollup over the kept channels keeps the grand-total row.
-    aggregated = engine.execute_text(
-        prefix
-        + """
+    aggregated = engine.execute_text(prefix + """
 select ch.channel, sum(ch.total_sales) as total_sales, sum(ch.sale_count) as total_count
 where ch.total_sales > overall_avg_sale
 by rollup (ch.channel)
 order by ch.channel asc nulls first;
-"""
-    )[-1].fetchall()
+""")[-1].fetchall()
     assert [(r[0], float(r[1]), r[2]) for r in aggregated] == [
         (None, 335.0, 4),
         ("STORE", 130.0, 2),
         ("WEB", 205.0, 2),
     ]
     # Sibling field: filtered field is not the aggregated one; still must push below.
-    sibling = engine.execute_text(
-        prefix
-        + """
+    sibling = engine.execute_text(prefix + """
 select ch.channel, sum(ch.sale_count) as total_count
 where ch.total_sales > overall_avg_sale
 by rollup (ch.channel)
 order by ch.channel asc nulls first;
-"""
-    )[-1].fetchall()
+""")[-1].fetchall()
     assert [(r[0], r[1]) for r in sibling] == [(None, 4), ("STORE", 2), ("WEB", 2)]
 
 
@@ -1759,7 +1753,7 @@ merge first_parent into parent.id;
     assert (
         "local.first_parent",
         "parent.id",
-        JoinType.INNER,
+        JoinType.FULL,
     ) in executor.environment.merges
     build_env = executor.environment.materialize_for_select()
     recursive = build_env.alias_origin_lookup["local.first_parent"]

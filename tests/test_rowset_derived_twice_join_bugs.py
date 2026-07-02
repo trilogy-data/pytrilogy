@@ -71,7 +71,8 @@ rowset c <- where dedup.sales.year = 2002
 select dedup.sales.item.brand as brand, sum(dedup.net) as c_sum;
 rowset p <- where dedup.sales.year = 2001
 select dedup.sales.item.brand as brand, sum(dedup.net) as p_sum;
-inner join c.brand = p.brand
+where p.p_sum is not null
+left join c.brand = p.brand
 select c.brand, c.c_sum, p.p_sum order by c.brand asc;
 """
 

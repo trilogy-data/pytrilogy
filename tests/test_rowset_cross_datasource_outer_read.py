@@ -69,8 +69,9 @@ def test_cross_datasource_rowset_body_inline(models: Path):
         """
 import a as a;
 import b as b;
-inner join a.aid = b.bid
+where b.bv is not null
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb
+left join a.aid = b.bid
 limit 10;
 """,
     )
@@ -87,8 +88,10 @@ def test_cross_datasource_rowset_join_propagation(models: Path):
         """
 import a as a;
 import b as b;
-with rs as inner join a.aid = b.bid
-select a.aid as k, a.aw as extra, sum(a.av) as sa, sum(b.bv) as sb;
+with rs as
+where b.bv is not null
+select a.aid as k, a.aw as extra, sum(a.av) as sa, sum(b.bv) as sb
+left join a.aid = b.bid;
 select rs.extra, rs.sa, rs.sb limit 10;
 """,
     )
@@ -98,11 +101,11 @@ select rs.extra, rs.sa, rs.sb limit 10;
 
 
 def test_cross_datasource_rowset_join_resolves_correctly(models: Path):
-    # End-to-end: the rowset's internal INNER join must actually filter to matching
-    # keys and aggregate from BOTH datasources. aid 1,2 match a bid; aid 3 has no
-    # b row (dropped by the INNER join); bid 4 has no a row (dropped). The non-key
-    # property `aw` anchors each output row so we can assert per-row correctness
-    # without reading back the (still-xfailing) join key.
+    # End-to-end: the rowset's internal join must actually filter to matching keys
+    # and aggregate from BOTH datasources. aid 1,2 match a bid; aid 3 has no b row
+    # (dropped by `where b.bv is not null` over the LEFT join); bid 4 has no a row
+    # (dropped). The non-key property `aw` anchors each output row so we can assert
+    # per-row correctness without reading back the join key.
     eng = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=models)
     )
@@ -113,8 +116,10 @@ def test_cross_datasource_rowset_join_resolves_correctly(models: Path):
     rows = eng.execute_query("""
 import a as a;
 import b as b;
-with rs as inner join a.aid = b.bid
-select a.aid as k, a.aw as extra, sum(a.av) as sa, sum(b.bv) as sb;
+with rs as
+where b.bv is not null
+select a.aid as k, a.aw as extra, sum(a.av) as sa, sum(b.bv) as sb
+left join a.aid = b.bid;
 select rs.extra, rs.sa, rs.sb order by rs.extra;
 """).fetchall()
     assert [tuple(r) for r in rows] == [(1000.0, 10.0, 100.0), (2000.0, 20.0, 200.0)]
@@ -126,8 +131,10 @@ def test_cross_datasource_rowset_outer_read_key(models: Path):
         """
 import a as a;
 import b as b;
-with rs as inner join a.aid = b.bid
-select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
+with rs as
+where b.bv is not null
+select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb
+left join a.aid = b.bid;
 
 select rs.k, rs.sa, rs.sb limit 10;
 """,
@@ -136,10 +143,11 @@ select rs.k, rs.sa, rs.sb limit 10;
 
 
 def test_rowset_key_read_back_aligns_with_source(models: Path):
-    # `rs` is a INNER JOIN b on aid=bid -> its key is the INTERSECTION a∩b = {1,2}
-    # (a has {1,2,3}, b has {1,2,4}). Reading rs.k beside an EXTERNAL property (a.aw)
-    # via `join rs.k = a.aid` must retain that intersection, so only rows 1 and 2
-    # survive -- NOT the full a dimension. (Scoped INNER = set intersection.)
+    # `rs`'s key is the INTERSECTION a∩b = {1,2} (a has {1,2,3}, b has {1,2,4});
+    # b contributes only its key, so the intersection is expressed as
+    # `where a.aid in b.bid`. Reading rs.k beside an EXTERNAL property (a.aw) via a
+    # LEFT join back to a.aid (guarded `where a.aw is not null`) must retain that
+    # intersection, so only rows 1 and 2 survive -- NOT the full a dimension.
     eng = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=models)
     )
@@ -150,12 +158,14 @@ def test_rowset_key_read_back_aligns_with_source(models: Path):
     rows = eng.execute_query("""
 import a as a;
 import b as b;
-with rs as inner join a.aid = b.bid
+with rs as
+where a.aid in b.bid
 select a.aid as k, sum(a.av) as sa;
 
 
-select rs.k, a.aw,
-inner join rs.k = a.aid
+where a.aw is not null
+select rs.k, a.aw
+left join rs.k = a.aid
 order by rs.k;
 """).fetchall()
     assert [tuple(r) for r in rows] == [(1, 1000.0), (2, 2000.0)]
@@ -166,7 +176,7 @@ order by rs.k;
 # keyed by the join source a.aid) / a CANONICAL-side property (b.bv, keyed by the
 # join target b.bid). Expected rows are the CORRECT answer; cells the current
 # narrow read-back fix does not yet handle are strict-xfail so they are tracked
-# (and flip loudly when fixed). Data: a {1,2,3}, b {1,2,4} -> INNER {1,2},
+# (and flip loudly when fixed). Data: a {1,2,3}, b {1,2,4} ->
 # LEFT (a preserved) {1,2,3}, FULL (union) {1,2,3,4}.
 # ----------------------------------------------------------------------------
 
@@ -179,9 +189,7 @@ _READS = {
 def _outer_join_type(jt: str) -> str:
     if jt == "full":
         return "full"
-    if jt == "left":
-        return "left"
-    return "inner"
+    return "left"
 
 
 def _read_query(jt: str, read: str) -> str:
@@ -223,14 +231,6 @@ _MATRIX: list[tuple[str, str, list, str | None]] = [
     ("single", "k", [(1,), (2,), (3,)], None),
     ("single", "count", [(3,)], None),
     ("single", "k_aw", [(1, 1000.0), (2, 2000.0), (3, 3000.0)], None),
-    ("inner", "k", [(1,), (2,)], None),
-    ("inner", "count", [(2,)], None),
-    # The rowset body INNER-joins a.aid=b.bid -> keys {1,2}. Reading the key back
-    # (joined to either dimension) retains that restriction: {1,2}, not the full
-    # dimension. (Before the INNER-onto-rowset identity fix the rowset's filter was
-    # silently dropped and these returned the full {1,2,3}/{1,2,4}.)
-    ("inner", "k_aw", [(1, 1000.0), (2, 2000.0)], None),
-    ("inner", "k_bv", [(1, 100.0), (2, 200.0)], None),
     ("left", "k", [(1,), (2,), (3,)], None),
     ("left", "count", [(3,)], None),
     ("left", "k_aw", [(1, 1000.0), (2, 2000.0), (3, 3000.0)], None),
@@ -263,9 +263,10 @@ def test_rowset_key_readback_matrix(models: Path, jt: str, read: str, expected: 
 # ----------------------------------------------------------------------------
 
 
-def test_rowset_key_readback_inner_k(models: Path):
-    # Read back only the rowset's INNER-join key. The body joins a.aid = b.bid, so
-    # the key must be filtered to the matching ids {1,2} (aid 3 and bid 4 dropped).
+def test_rowset_key_readback_intersection_k(models: Path):
+    # Read back only the rowset's intersection key. The body LEFT-joins a.aid = b.bid
+    # guarded by `where b.bv is not null`, so the key is filtered to the matching ids
+    # {1,2} (aid 3 and bid 4 dropped) -- the same set a scoped inner join produced.
     eng = _matrix_engine(models)
     from trilogy.hooks import DebuggingHook
 
@@ -273,8 +274,10 @@ def test_rowset_key_readback_inner_k(models: Path):
     rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
-with rs as inner join a.aid = b.bid
-select a.aid as k, a.av as sa, b.bv as sb;
+with rs as
+where b.bv is not null
+select a.aid as k, a.av as sa, b.bv as sb
+left join a.aid = b.bid;
 select rs.k order by rs.k;
 """).fetchall()]
     assert rows == [(1,), (2,)]

@@ -1,7 +1,7 @@
 query_id = "46"
 generator = "v3"
-gen_length = 3464
-preql_size = 1110
+gen_length = 3336
+preql_size = 1109
 comp_size = 1474
 generated_sql = """
 
@@ -53,19 +53,11 @@ SELECT
     \"juicy\".\"bought_amt\" as \"bought_amt\",
     \"juicy\".\"bought_profit\" as \"bought_profit\"
 FROM
-    \"juicy\"
-    INNER JOIN \"wakeful\" on \"juicy\".\"bought_store_sales_customer_id\" = \"wakeful\".\"customer_id\"
+    \"wakeful\"
+    INNER JOIN \"juicy\" on \"wakeful\".\"customer_id\" = \"juicy\".\"bought_store_sales_customer_id\"
 WHERE
-    \"juicy\".\"bought_store_sales_customer_id\" = \"wakeful\".\"customer_id\" and \"wakeful\".\"customer_address_city\" != \"juicy\".\"bought_bought_city\"
+    \"wakeful\".\"customer_address_city\" != \"juicy\".\"bought_bought_city\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
 ORDER BY 
     \"wakeful\".\"customer_last_name\" asc nulls first,
     \"wakeful\".\"customer_first_name\" asc nulls first,

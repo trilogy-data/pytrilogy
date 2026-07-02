@@ -1,7 +1,7 @@
 query_id = "84"
 generator = "v3"
-gen_length = 2575
-preql_size = 676
+gen_length = 2463
+preql_size = 717
 comp_size = 606
 generated_sql = """
 
@@ -17,7 +17,7 @@ SELECT
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
 WHERE
-    \"customer_customers\".\"C_CURRENT_HDEMO_SK\" is not null
+    \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"customer_customers\".\"C_CURRENT_HDEMO_SK\" is not null
 
 GROUP BY
     1,
@@ -25,29 +25,18 @@ GROUP BY
     3,
     4,
     5,
-    6),
-cooperative as (
+    6)
 SELECT
-    \"highfalutin\".\"customer_demographics_id\" as \"customer_demographics_id\",
-    \"highfalutin\".\"customer_first_name\" as \"customer_first_name\",
-    \"highfalutin\".\"customer_last_name\" as \"customer_last_name\",
-    \"highfalutin\".\"customer_text_id\" as \"customer_text_id\"
+    \"highfalutin\".\"customer_text_id\" as \"customer_text_id\",
+    (coalesce(\"highfalutin\".\"customer_last_name\",'') || ', ' || coalesce(\"highfalutin\".\"customer_first_name\",'')) as \"customername\"
 FROM
     \"highfalutin\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"highfalutin\".\"customer_address_id\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"store_returns\" as \"returns_store_returns\" on \"highfalutin\".\"customer_demographics_id\" = \"returns_store_returns\".\"SR_CDEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"customer_household_demographic_household_demographics\" on \"highfalutin\".\"customer_household_demographic_id\" = \"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"income_band\" as \"customer_household_demographic_income_band_income_band\" on \"customer_household_demographic_household_demographics\".\"HD_INCOME_BAND_SK\" = \"customer_household_demographic_income_band_income_band\".\"IB_INCOME_BAND_SK\"
 WHERE
-    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000
-)
-SELECT
-    \"cooperative\".\"customer_text_id\" as \"customer_text_id\",
-    (coalesce(\"cooperative\".\"customer_last_name\",'') || ', ' || coalesce(\"cooperative\".\"customer_first_name\",'')) as \"customername\"
-FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"store_returns\" as \"returns_store_returns\" on \"cooperative\".\"customer_demographics_id\" is not distinct from \"returns_store_returns\".\"SR_CDEMO_SK\"
-WHERE
-    \"returns_store_returns\".\"SR_CDEMO_SK\" is not null and \"cooperative\".\"customer_demographics_id\" = \"returns_store_returns\".\"SR_CDEMO_SK\"
+    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and coalesce(\"highfalutin\".\"customer_demographics_id\",\"returns_store_returns\".\"SR_CDEMO_SK\") is not null and coalesce(\"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\",\"highfalutin\".\"customer_household_demographic_id\") is not null and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000 and \"returns_store_returns\".\"SR_TICKET_NUMBER\" is not null
 
 GROUP BY
     1,
@@ -55,5 +44,5 @@ GROUP BY
     \"returns_store_returns\".\"SR_ITEM_SK\",
     \"returns_store_returns\".\"SR_TICKET_NUMBER\"
 ORDER BY 
-    \"cooperative\".\"customer_text_id\" asc nulls first
+    \"highfalutin\".\"customer_text_id\" asc nulls first
 LIMIT (100)"""

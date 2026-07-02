@@ -121,18 +121,6 @@ class BuildEnvironment:
     # multiple optional sources stay directional LEFT_OUTER instead of collapsing
     # to a symmetric FULL (TPC-DS q78). Excludes environment `merge ~` joins.
     scoped_left_anchor_keys: set[str] = field(default_factory=set)
-    # Canonical keys of query-scoped INNER joins. An explicit `inner join` means
-    # "drop UNMATCHED rows" — but NULL keys are valid members and still align
-    # (`IS NOT DISTINCT FROM`). Join resolution consults this to keep the join
-    # INNER instead of letting a nullable FK widen it to FULL/LEFT (which silently
-    # null-extended the output in TPC-DS q29). Modifier.NULLABLE is unaffected.
-    scoped_inner_join_keys: set[str] = field(default_factory=set)
-    # Endpoints of query-scoped fact/dim (ROOT=ROOT) INNER joins that were
-    # DE-COLLAPSED (kept distinct identity + pseudonym). The WHERE-injection /
-    # property-anchoring only apply to these; rowset- and derived-key INNER joins
-    # keep their own machinery and must be excluded (they alias onto a ROOT, so a
-    # derivation check misclassifies them — TPC-DS q64).
-    scoped_inner_identity_sources: set[str] = field(default_factory=set)
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []

@@ -6,8 +6,10 @@ import all_sales as sales;
 # tuples — including across cs/ss/ws — before the outer SUM. The `deduped` rowset
 # materializes that 7-tuple via implicit GROUP BY at SELECT grain; the per-year
 # `curr`/`prev` rowsets each roll the deduped rows up to item-attribute grain, and
-# the inner join on the 4 item-attribute keys reproduces the reference's
-# `from all_sales curr_yr, all_sales prev_yr where curr_yr.<key> = prev_yr.<key>`.
+# the left join on the 4 item-attribute keys reproduces the reference's
+# `from all_sales curr_yr, all_sales prev_yr where curr_yr.<key> = prev_yr.<key>`
+# (the `curr_yr_cnt / prev_yr_cnt < 0.9` HAVING requires prev present, so left ==
+# inner here).
 auto cnt_per_row <- sales.quantity - coalesce(sales.return_quantity, 0);
 auto amt_per_row <- sales.ext_sales_price - coalesce(sales.return_amount, 0.0);
 
@@ -43,10 +45,10 @@ select
     sum(deduped.amt_per_row) as prev_amt,
 ;
 
-inner join curr.i_brand_id = prev.i_brand_id
-inner join curr.i_class_id = prev.i_class_id
-inner join curr.i_category_id = prev.i_category_id
-inner join curr.i_manufact_id = prev.i_manufact_id
+left join curr.i_brand_id = prev.i_brand_id
+left join curr.i_class_id = prev.i_class_id
+left join curr.i_category_id = prev.i_category_id
+left join curr.i_manufact_id = prev.i_manufact_id
 select
     2001 as prev_year,
     2002 as year_,

@@ -60,7 +60,8 @@ rowset bought <- select sale_cust, sum(amt) as total;
 """
 
 _QUERY = """
-inner join bought.sale_cust = cust_id
+where cname is not null
+left join bought.sale_cust = cust_id
 select cname, city, bought.total
 order by cname asc;
 """

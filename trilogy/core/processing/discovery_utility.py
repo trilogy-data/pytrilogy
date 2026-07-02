@@ -392,32 +392,18 @@ def generate_candidates_restrictive(
     priority_concept: BuildConcept,
     candidates: list[BuildConcept],
     exhausted: set[str],
-    scoped_inner_join_keys: set[str] | None = None,
-    # conditions_exist: bool,
 ) -> list[BuildConcept]:
     unselected_candidates = [
         x for x in candidates if x.address != priority_concept.address
     ]
-    # A pseudonym of the priority is normally "the same concept, already satisfied"
-    # -- skip it (a redundant co-source). EXCEPTION: a scoped-INNER-join partner is
-    # a genuinely distinct physical set we must co-source so the real filtering join
-    # forms (set intersection). Keep those; skip every other pseudonym.
-    scoped_inner = scoped_inner_join_keys or set()
 
+    # A pseudonym of the priority is "the same concept, already satisfied" -- skip
+    # it as a redundant co-source.
     def _keep_pseudonym(x: BuildConcept) -> bool:
-        if not (
+        return not (
             x.address in priority_concept.pseudonyms
             or priority_concept.address in x.pseudonyms
-        ):
-            return True  # not a pseudonym at all
-        # ROWSET scoped-inner keys need the pseudonym SKIPPED -- that skip is the
-        # bridge that lets a rowset's pseudonym-key stand in for the fact's key
-        # (q64). Only a plain ROOT fact/property partner is co-sourced.
-        if x.derivation == Derivation.ROWSET or priority_concept.derivation == (
-            Derivation.ROWSET
-        ):
-            return False
-        return x.address in scoped_inner or priority_concept.address in scoped_inner
+        )
 
     local_candidates = [
         x
@@ -914,11 +900,17 @@ def format_disconnected_subgraphs_error(
     island_rowsets: bool = True,
     line_number: int | None = None,
 ) -> str:
+    default_prefix = f"{DEFAULT_NAMESPACE}."
+
+    def strip_default(addr: str) -> str:
+        # default namespace is implicit; keep other namespaces qualified
+        return addr[len(default_prefix) :] if addr.startswith(default_prefix) else addr
+
     def render(group: List[BuildConcept]) -> str:
         addrs = sorted(c.address for c in group)
         # drop internal _virt_* scaffolding, but keep raw if that empties a group
         cleaned = [a for a in addrs if VIRTUAL_CONCEPT_PREFIX not in a]
-        return "{" + ", ".join(cleaned or addrs) + "}"
+        return "{" + ", ".join(strip_default(a) for a in (cleaned or addrs)) + "}"
 
     rendered = "; ".join(render(group) for group in subgraphs)
     location = f" (statement at line {line_number})" if line_number else ""
@@ -1262,8 +1254,5 @@ def get_loop_iteration_targets(
         priority_concept=priority_concept,
         candidates=local_all,
         exhausted=attempted,
-        scoped_inner_join_keys=(
-            environment.scoped_inner_join_keys if environment is not None else None
-        ),
     )
     return priority_concept, optional, conditions

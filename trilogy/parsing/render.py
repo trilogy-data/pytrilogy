@@ -976,7 +976,7 @@ class Renderer:
                 order_by = [
                     self.indent_lines(self.to_string(c)) for c in arg.order_by.items
                 ]
-        join_keyword = {"INNER": "inner", "LEFT_OUTER": "left", "FULL": "full"}
+        join_keyword = {"LEFT_OUTER": "left", "FULL": "full"}
         joins = [
             f"{join_keyword[j.join_type.name]} join"
             f" {j.source_address} = {j.target_address}"

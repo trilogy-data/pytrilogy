@@ -55,7 +55,7 @@ limit 10
 def test_q64_rowset_join_with_second_fact_join_hoist(engine_sf001):
     """Regression for the q64 stale-CTE-alias BinderException.
 
-    A scoped INNER join onto a filtering rowset (`catalog_item_agg`) carries the
+    A scoped LEFT join onto a filtering rowset (`catalog_item_agg`) carries the
     rowset's key forward as a pass-through CTE's own output. When a SECOND
     composite fact join (`ss<->pr`) and the broad dimension-join graph let
     JoinHoist lift the rowset join up to the shared grouped parent, the hoist
@@ -79,12 +79,12 @@ select
 left join cs.order_number = cr.order_number and cs.item.id = cr.item.id
 ;
 
-where ss.item.text_id in catalog_item_agg.item_id
-  and catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
+where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
   and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
   and ss.item.current_price between 65 and 74
   and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
   and ss.date.year in (1999, 2000)
+  and pr.return_amount is not null
 select
   ss.item.product_name, ss.item.text_id as item_id,
   ss.store.name as store_name, ss.store.zip as store_zip,
@@ -99,8 +99,8 @@ select
   sum(ss.ext_wholesale_cost) as wholesale_cost_sum,
   sum(ss.ext_list_price) as list_price_sum,
   sum(ss.coupon_amt) as coupon_amt_sum
-inner join ss.ticket_number = pr.ticket_number and ss.item.id = pr.item.id
-inner join ss.item.text_id = catalog_item_agg.item_id
+left join ss.ticket_number = pr.ticket_number and ss.item.id = pr.item.id
+left join ss.item.text_id = catalog_item_agg.item_id
 order by ss.item.product_name, ss.store.name
 limit 100;
 """

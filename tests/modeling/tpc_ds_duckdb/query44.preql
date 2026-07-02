@@ -28,7 +28,7 @@ select
 
 where
     ss.store.id = 1
-inner join ascending.rnk_a = descending.rnk_d
+left join ascending.rnk_a = descending.rnk_d
 select
     ascending.rnk_a as rnk,
     ascending.best_performing,

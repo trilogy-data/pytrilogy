@@ -129,9 +129,7 @@ def _producible_derived_join_keys(
     producible here; it falls through to the standard path / a clean disconnect."""
     producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
     scoped_keys = (
-        environment.scoped_inner_join_keys
-        | environment.scoped_full_join_keys
-        | environment.scoped_left_anchor_keys
+        environment.scoped_full_join_keys | environment.scoped_left_anchor_keys
     )
     seen: set[str] = set()
     result: list[tuple[BuildConcept, str]] = []
@@ -157,48 +155,6 @@ def _producible_derived_join_keys(
                 seen.add(derived.address)
                 result.append((derived, key_addr))
     return result
-
-
-def _validate_cross_rowset_inner_joins(
-    select: SelectLineage | MultiSelectLineage,
-    base_node: StrategyNode,
-    environment: BuildEnvironment,
-) -> None:
-    """A scoped INNER join between two *rowset* outputs is a genuine intersection
-    of two independent populations. The scoped-join machinery collapses both
-    operands onto one canonical column; when an operand contributes nothing else
-    its scan is pruned, leaving it only as a pseudonym of the survivor -- so the
-    intersection is silently lost. A projected/filtered reference to the pruned
-    side then has no source and renders a bare ``INVALID_REFERENCE_BUG`` sentinel
-    (or, with no WHERE, silently wrong results). The collapse model cannot express
-    this; raise a clean, actionable error pointing at the ``union(...)`` rewrite.
-
-    Only INNER joins between two ROWSET operands are flagged: a fact/dimension key
-    collapse (same entity) is legitimate, and a LEFT/FULL operand is genuinely
-    optional so pruning it is correct."""
-    if not isinstance(select, SelectLineage):
-        return
-    materialized = _producible_addresses(base_node, deep=True, include_pseudonyms=False)
-    for source_addr, target_addr, jointype in select.scoped_joins:
-        if jointype != JoinType.INNER:
-            continue
-        operands = [source_addr, target_addr]
-        if not all(
-            getattr(environment.concepts.get(a), "derivation", None)
-            == Derivation.ROWSET
-            for a in operands
-        ):
-            continue
-        pruned = [a for a in operands if a not in materialized]
-        if pruned:
-            raise UnresolvableQueryException(
-                f"Cannot resolve cross-rowset INNER join {source_addr} = "
-                f"{target_addr}: it intersects two independent rowsets but the "
-                f"collapse dropped {pruned[0]}, silently losing the intersection. "
-                "Rewrite the intersection as a `union(...)` of the arms with a "
-                "channel marker, then keep tuples whose `count_distinct(channel)` "
-                "equals the number of arms."
-            )
 
 
 def _build_rowset_body_node(
@@ -482,9 +438,7 @@ def _enrich_via_derived_join_key(
     # Source them so both sides expose the co-key (shared canonical address) and
     # the inferred join carries every authored key.
     scoped_keys = (
-        environment.scoped_inner_join_keys
-        | environment.scoped_full_join_keys
-        | environment.scoped_left_anchor_keys
+        environment.scoped_full_join_keys | environment.scoped_left_anchor_keys
     )
     derived_related = (
         {other for _, other in derived_keys}
@@ -695,7 +649,6 @@ def gen_rowset_node(
         f"{padding(depth)}{LOGGER_PREFIX} rowset derived concepts are {lineage.rowset.derived_concepts}"
     )
     base_node = _build_rowset_body_node(concept, lineage, select, history, depth)
-    _validate_cross_rowset_inner_joins(select, base_node, environment)
 
     rowset_relevant, additional_relevant, scoped_partial = _collect_advertised_outputs(
         lineage, select, environment, base_node, local_optional

@@ -539,7 +539,7 @@ select composite_id;
     assert (
         "local.composite_id_alt",
         "local.composite_id",
-        JoinType.INNER,
+        JoinType.FULL,
     ) in executor.environment.merges
     assert executor.environment.alias_origin_lookup == {}
     results = executor.execute_text(test_case)[0].fetchall()

@@ -1,15 +1,16 @@
-"""An INNER query-scoped join onto a FILTERING rowset must materialize the rowset
-and apply it as a restriction (semi-join). The rowset lists the qualifying key
-tuples; INNER-joining the fact to it keeps only fact rows whose key is in that set.
+"""A membership restriction (`x in rowset.key`) against a FILTERING rowset must
+materialize the rowset and apply it as a semi-join. The rowset lists the qualifying
+key tuples; `where fact_key in rowset_key` keeps only fact rows whose key is in that
+set. (This was formerly spelled `inner join fact_key = rowset.key`, a query-scoped
+join type since removed from the language; the rowset contributes only the join
+key, so the intersection is expressed as a membership filter rather than a
+LEFT-join + is-not-null.)
 
 Regression for TPC-DS q14: the agent built a rowset of (brand, class, category)
-tuples present in all 3 channels, then `inner join`-ed the fact's item keys to it.
-Substitution collapsed each fact key onto the rowset canonical AND attached the
-fact's datasource binding to it, so discovery sourced the rowset key from that raw
-column and SKIPPED the rowset body (its WHERE filter) entirely. One key silently
-dropped the filter (wrong rows); several keys sourced inconsistently and emitted
-invalid SQL ("Values list does not have a column named q_bid"). INNER-onto-rowset
-now uses the identity+pseudonym path (like LEFT/FULL) so the rowset materializes.
+tuples present in all 3 channels, then restricted the fact's item keys to it.
+Discovery must materialize the rowset body (its WHERE filter) rather than sourcing
+the rowset key from the fact's raw column and skipping the filter, which produced
+wrong rows or invalid SQL ("Values list does not have a column named q_bid").
 """
 
 from pathlib import Path
@@ -51,7 +52,7 @@ auto in_catalog <- sum(case when channel='CATALOG' then 1 else 0 end) by brand, 
 SINGLE_KEY = MODEL + _FILTER + """
 with q as where in_store>0 and in_web>0 and in_catalog>0 select brand as qb;
 select brand, sum(amt) as total
-inner join brand = q.qb
+where brand in q.qb
 order by brand;
 """
 
@@ -59,9 +60,7 @@ MULTI_KEY = MODEL + _FILTER + """
 with q as where in_store>0 and in_web>0 and in_catalog>0
 select brand as qb, cls as qc, cat as qt;
 select brand, sum(amt) as total
-inner join brand = q.qb
-inner join cls = q.qc
-inner join cat = q.qt
+where brand in q.qb and cls in q.qc and cat in q.qt
 order by brand;
 """
 

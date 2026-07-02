@@ -73,7 +73,8 @@ address num1;
     env1.add_import("env2", env2)
     env1.parse("""merge one into env2.one;""")
     # merge no longer rewrites the author env in place; it records a join pair
-    assert ("local.one", "env2.one", JoinType.INNER) in env1.merges
+    # (a non-partial merge is a FULL identity join)
+    assert ("local.one", "env2.one", JoinType.FULL) in env1.merges
     assert env1.concepts["name"].keys == {"local.one"}
     assert env1.datasources["num1"].grain.components == {"local.one"}
     assert env1.alias_origin_lookup == {}

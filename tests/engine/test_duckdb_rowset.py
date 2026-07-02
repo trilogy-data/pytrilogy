@@ -3,7 +3,7 @@ from logging import INFO
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import DisconnectedConceptsException
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.hooks.query_debugger import DebuggingHook
 
 _CONFLICTING_FILTER_FIXTURE = """
@@ -32,7 +32,8 @@ select 9 as line_id, 40 as item_id, 1999 as yr
 
 
 def test_rowset_query_scoped_join_conflicting_filter():
-    # A query-scoped inner join to a rowset, where the rowset and the outer
+    # A query-scoped LEFT join to a rowset (with a `having <partial> is not null`
+    # expressing the intersection), where the rowset and the outer
     # query filter the SAME dimension to DIFFERENT values (year 2000 vs 1999).
     # This used to crash the planner with `Have {...} need ...` because the
     # validator demanded every node carry the outer condition, but the rowset
@@ -49,14 +50,16 @@ rowset yr2000 <-
         count(line_id) as cnt_2000;
 
 where yr = 1999
-inner join yr2000.r_item_id = item_id
+left join item_id = yr2000.r_item_id
 select
     item_id,
     count(line_id) as cnt_1999,
     yr2000.cnt_2000 as cnt_2000
+having yr2000.cnt_2000 is not null
 order by item_id asc;
 """)[0].fetchall()
-    # Inner join keeps only items present in BOTH years (10, 20); item 30
+    # LEFT join + `having <partial measure> is not null` reproduces inner-join
+    # intersection: keeps only items present in BOTH years (10, 20); item 30
     # (2000 only) and item 40 (1999 only) drop out. Each count reflects its
     # own year scope independently.
     assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
@@ -158,7 +161,7 @@ def test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion():
     # surfaces as a clean, catchable error rather than a stack overflow.
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_SELF_WELD_FIXTURE)
-    with pytest.raises(DisconnectedConceptsException):
+    with pytest.raises(UnresolvableQueryException):
         executor.generate_sql("""
 rowset weeks <- select wk as ws, wk + 53 as nxt where yr = 2001;
 rowset cur_sums <-
@@ -169,7 +172,7 @@ rowset nxt_sums <-
     select wk as nxt_ws, sum(amt) as nxt;
 select cur_sums.src_ws, cur_sums.cur, nxt_sums.nxt
 left join cur_sums.src_ws = weeks.ws
-inner join weeks.nxt = nxt_sums.nxt_ws
+left join weeks.nxt = nxt_sums.nxt_ws
 order by cur_sums.src_ws asc;
 """)
 

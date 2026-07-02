@@ -36,7 +36,6 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
-    BuildParenthetical,
     BuildParamaterizedConceptReference,
     BuildRowsetItem,
     BuildSelectLineage,
@@ -746,13 +745,6 @@ def get_query_node(
     caches = history.build_caches
     if scoped_joins:
         caches.scoped_joins = scoped_joins
-        # Capture the TOP query's authored join endpoints ONCE. Nested builds
-        # (rowset bodies) pass their own/generated scoped_joins; de-collapse must
-        # key off only the authored set, so don't overwrite it.
-        if not caches.authored_join_endpoints:
-            caches.authored_join_endpoints = {
-                a for s, t, _jt in scoped_joins for a in (s, t)
-            }
     if environment.merges:
         existing = set(caches.scoped_joins)
         caches.scoped_joins = caches.scoped_joins + [
@@ -768,7 +760,6 @@ def get_query_node(
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
         scoped_joins=caches.scoped_joins,
-        authored_join_endpoints=caches.authored_join_endpoints,
     )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
         statement
@@ -782,7 +773,6 @@ def get_query_node(
         canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=caches.scoped_joins,
-        authored_join_endpoints=caches.authored_join_endpoints,
     )
 
     _carry_order_by_concepts(build_statement)
@@ -790,80 +780,6 @@ def get_query_node(
     graph = generate_graph(build_environment)
 
     search_concepts: list[BuildConcept] = list(build_statement.output_components)
-    # De-collapsed scoped INNER join: inject `a.k is not distinct from b.k` as a
-    # WHERE term so BOTH sides are sourced and the join filters (a real
-    # intersection), null-safe, without adding the keys to the select grain.
-    identity_sources = build_environment.scoped_inner_identity_sources
-    # A rowset existence-membership (`x in rs.col`) is resolved as a separate
-    # existence set, NOT a graph edge. Injecting a filtering scoped-join term into
-    # the same WHERE forces the other fact into that scope and splits the graph
-    # (the rowset's own row-args vs the join keys) -> DisconnectedConcepts (q64).
-    # Fall back to the collapse in that shape: it builds, and the de-collapse alone
-    # is unperturbed. (The intersection-filter loss only bites a JOIN-ONLY side that
-    # coexists with an existence rowset -- a narrow shape that still builds.)
-    has_existence = bool(
-        build_statement.where_clause is not None
-        and build_statement.where_clause.existence_arguments
-    )
-    if (
-        isinstance(build_statement, BuildSelectLineage)
-        and scoped_joins
-        and identity_sources
-        and not has_existence
-    ):
-        join_endpoints = {
-            a for s, t, jt in scoped_joins if jt is JoinType.INNER for a in (s, t)
-        }
-        # A datasource "contributes" if it provides a needed concept OTHER than a
-        # join key. Only inject when a side is JOIN-ONLY (contributes nothing else);
-        # when both contribute the join forms on its own and the redundant term
-        # would perturb an unrelated rowset's discovery (q64).
-        contributing: set[str] = {c.address for c in build_statement.output_components}
-        for c in build_statement.output_components:
-            contributing |= {a.address for a in c.concept_arguments}
-        contributing -= join_endpoints
-
-        def _side_contributes(addr: str) -> bool:
-            for ds in build_environment.datasources.values():
-                ds_addrs = {c.address for c in ds.output_concepts}
-                if addr in ds_addrs and (ds_addrs & contributing):
-                    return True
-            return False
-
-        terms: list[BuildParenthetical] = []
-        for js, jt_addr, jtype in scoped_joins:
-            if jtype is not JoinType.INNER:
-                continue
-            if js not in identity_sources and jt_addr not in identity_sources:
-                continue
-            sc = build_environment.concepts.get(js)
-            tc = build_environment.concepts.get(jt_addr)
-            if sc is None or tc is None or sc.address == tc.address:
-                continue
-            if _side_contributes(js) and _side_contributes(jt_addr):
-                continue
-            terms.append(
-                BuildParenthetical(
-                    content=BuildFunction(
-                        operator=FunctionType.IS_NOT_DISTINCT,
-                        arguments=[sc, tc],
-                        output_data_type=DataType.BOOL,
-                    )
-                )
-            )
-        if terms:
-            injected: BuildConditional | BuildParenthetical = terms[0]
-            for term in terms[1:]:
-                injected = BuildConditional(
-                    left=injected, right=term, operator=BooleanOperator.AND
-                )
-            if build_statement.where_clause is not None:
-                injected = BuildConditional(
-                    left=build_statement.where_clause.conditional,
-                    right=injected,
-                    operator=BooleanOperator.AND,
-                )
-            build_statement.where_clause = BuildWhereClause(conditional=injected)
     if CONFIG.use_v4_discovery:
         return _get_query_node_v4(
             build_statement=build_statement,

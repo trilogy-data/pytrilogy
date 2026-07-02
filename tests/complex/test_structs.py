@@ -144,7 +144,7 @@ SELECT
         assert (
             f"unnest_array.{val}",
             f"local.{val}",
-            JoinType.INNER,
+            JoinType.FULL,
         ) in executor.environment.merges
         assert f"unnest_array.{val}" in executor.environment.concepts
         assert f"unnest_array.{val}" not in executor.environment.alias_origin_lookup
@@ -214,12 +214,12 @@ SELECT
         assert (
             f"wrapper.{val}",
             f"local.{val}",
-            JoinType.INNER,
+            JoinType.FULL,
         ) in executor.environment.merges
         assert (
             f"unnest_array.{val}",
             f"local.{val}",
-            JoinType.INNER,
+            JoinType.FULL,
         ) in executor.environment.merges
         assert f"unnest_array.{val}" in executor.environment.concepts
         assert f"unnest_array.{val}" not in executor.environment.alias_origin_lookup

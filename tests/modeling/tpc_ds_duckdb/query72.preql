@@ -8,7 +8,7 @@ where
     and inv.date.week_seq = cs.sold_date.week_seq
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
-inner join inv.item.id = cs.item.id
+left join inv.item.id = cs.item.id
 select
     cs.item.desc as item_desc,
     inv.warehouse.name as warehouse_name,

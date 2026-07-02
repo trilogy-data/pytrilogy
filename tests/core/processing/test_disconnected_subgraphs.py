@@ -48,8 +48,10 @@ def test_format_message_lists_subgraphs_and_hint():
     message = format_disconnected_subgraphs_error([[a_id], [sb]])
 
     assert "2 disconnected" in message
-    assert "{local.a_id}" in message
-    assert "{local.sb}" in message
+    # default namespace is stripped from the rendered message
+    assert "{a_id}" in message
+    assert "{sb}" in message
+    assert "local." not in message
     assert "join or merge" in message
 
 
@@ -148,8 +150,8 @@ rowset nxt <- select s_week as w2, s_dow as dow2, sum(s_qty) as total2;
 def ratio(x) -> sum(cur.total ? cur.dow = x) by cur.w
   / sum(nxt.total2 ? nxt.dow2 = x) by cur.w;
 select cur.w, @ratio(0) as r
-  inner join cur.w + 1 = nxt.w2
-  inner join cur.dow = nxt.dow2;
+  left join cur.w + 1 = nxt.w2
+  left join cur.dow = nxt.dow2;
 """
 
 

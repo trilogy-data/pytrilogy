@@ -1,10 +1,13 @@
-# q64 as a query-scoped INNER `join`, "aggregate on keys, join text later" form:
+# q64 as a query-scoped `full join`, "aggregate on keys, join text later" form:
 # the per-year aggregates group on id keys only (item, store, sale/customer
 # address, the date years); the descriptive text (product name, store name/zip,
 # address fields) is enriched in the outer select. Enriching a property off a
 # renamed scoped-join key requires chaining the base key into the join group
 # (`agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id`); the arm-only address
-# ids are chained to their base directly. Matches PRAGMA tpcds(64) at sf=1 (2 rows).
+# ids are chained to their base directly. `full join` (not `left`) so the
+# coalesced canonical keys resolve completely; the `agg_00.cnt_00 <= agg_99.cnt_99`
+# WHERE requires both aggregates present, filtering it back to inner-join results.
+# Matches PRAGMA tpcds(64) at sf=1 (2 rows).
 import store_sales as ss;
 import catalog_returns as cr;
 
@@ -111,10 +114,10 @@ select
 # chained to their base so the address text enriches from them.
 where
     agg_00.cnt_00 <= agg_99.cnt_99
-inner join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id
-inner join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.id
-inner join agg_99.b_addr_99 = ss.sale_address.id
-inner join agg_99.c_addr_99 = ss.customer.address.id
+full join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id
+full join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.id
+full join agg_99.b_addr_99 = ss.sale_address.id
+full join agg_99.c_addr_99 = ss.customer.address.id
 select
     --ss.item.id,
     --ss.store.id,

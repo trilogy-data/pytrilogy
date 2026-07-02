@@ -1,7 +1,7 @@
 query_id = "75"
 generator = "v3"
-gen_length = 11551
-preql_size = 1815
+gen_length = 11450
+preql_size = 1811
 comp_size = 2939
 generated_sql = """
 
@@ -244,19 +244,19 @@ FROM
 SELECT
     2001 as \"prev_year\",
     2002 as \"year_\",
-    \"friendly\".\"curr_i_brand_id\" as \"curr_i_brand_id\",
-    \"friendly\".\"curr_i_class_id\" as \"curr_i_class_id\",
-    \"friendly\".\"curr_i_category_id\" as \"curr_i_category_id\",
-    \"friendly\".\"curr_i_manufact_id\" as \"curr_i_manufact_id\",
+    coalesce(\"abhorrent\".\"prev_i_brand_id\",\"friendly\".\"curr_i_brand_id\") as \"curr_i_brand_id\",
+    coalesce(\"abhorrent\".\"prev_i_class_id\",\"friendly\".\"curr_i_class_id\") as \"curr_i_class_id\",
+    coalesce(\"abhorrent\".\"prev_i_category_id\",\"friendly\".\"curr_i_category_id\") as \"curr_i_category_id\",
+    coalesce(\"abhorrent\".\"prev_i_manufact_id\",\"friendly\".\"curr_i_manufact_id\") as \"curr_i_manufact_id\",
     \"abhorrent\".\"prev_prev_cnt\" as \"prev_yr_cnt\",
     \"friendly\".\"curr_curr_cnt\" as \"curr_yr_cnt\",
     \"friendly\".\"curr_curr_cnt\" - \"abhorrent\".\"prev_prev_cnt\" as \"sales_cnt_diff\",
     \"friendly\".\"curr_curr_amt\" - \"abhorrent\".\"prev_prev_amt\" as \"sales_amt_diff\"
 FROM
     \"friendly\"
-    INNER JOIN \"abhorrent\" on \"friendly\".\"curr_i_brand_id\" = \"abhorrent\".\"prev_i_brand_id\" AND \"friendly\".\"curr_i_category_id\" = \"abhorrent\".\"prev_i_category_id\" AND \"friendly\".\"curr_i_class_id\" = \"abhorrent\".\"prev_i_class_id\" AND \"friendly\".\"curr_i_manufact_id\" = \"abhorrent\".\"prev_i_manufact_id\"
+    LEFT OUTER JOIN \"abhorrent\" on \"friendly\".\"curr_i_brand_id\" = \"abhorrent\".\"prev_i_brand_id\" AND \"friendly\".\"curr_i_category_id\" = \"abhorrent\".\"prev_i_category_id\" AND \"friendly\".\"curr_i_class_id\" = \"abhorrent\".\"prev_i_class_id\" AND \"friendly\".\"curr_i_manufact_id\" = \"abhorrent\".\"prev_i_manufact_id\"
 WHERE
-    \"friendly\".\"curr_i_brand_id\" = \"abhorrent\".\"prev_i_brand_id\" and \"friendly\".\"curr_i_class_id\" = \"abhorrent\".\"prev_i_class_id\" and \"friendly\".\"curr_i_category_id\" = \"abhorrent\".\"prev_i_category_id\" and \"friendly\".\"curr_i_manufact_id\" = \"abhorrent\".\"prev_i_manufact_id\" and cast(\"friendly\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"abhorrent\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
+    cast(\"friendly\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"abhorrent\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
 
 ORDER BY 
     \"sales_cnt_diff\" asc nulls first,

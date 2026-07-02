@@ -539,7 +539,6 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
-        authored_join_endpoints: set[str] | None = None,
     ) -> "BuildEnvironment":
         """helper method"""
         from trilogy.core.models.build import Factory
@@ -557,7 +556,6 @@ class Environment:
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
             scoped_joins=build_scoped_joins,
-            authored_join_endpoints=authored_join_endpoints,
         )
         return factory.build(self)
 
@@ -575,7 +573,11 @@ class Environment:
             return None
         if Modifier.PARTIAL in modifiers:
             return (target.address, source.address, JoinType.LEFT_OUTER)
-        return (source.address, target.address, JoinType.INNER)
+        # A non-partial `merge` asserts the two keys are one identity present on
+        # BOTH sides -> a FULL join over the coalesced canonical key (the language
+        # has no INNER; a filtering condition downstream may still let the optimizer
+        # narrow the emitted SQL join to INNER).
+        return (source.address, target.address, JoinType.FULL)
 
     def add_merge_join(
         self,

@@ -117,11 +117,10 @@ def select_statement(
 def _validate_join_groups(node: SyntaxNode, joins: list[SelectJoin]) -> None:
     """A query-scoped join collapses all `=`-related keys into one equivalence
     group (union-find). A FULL edge spans rows absent from either side, so it
-    cannot coherently coexist with an INNER/LEFT edge on the SAME group (the
-    INNER says "key must match" while the FULL says "key may be one-sided") — a
-    FULL group must be entirely FULL. INNER and LEFT may mix freely (a shared
-    anchor with some required and some optional sources is well-defined), and
-    distinct (disjoint-key) groups may use any types."""
+    cannot coherently coexist with a LEFT edge on the SAME group (the LEFT says
+    "key may be one-sided against the anchor" while the FULL says "key may be
+    one-sided against either side") — a FULL group must be entirely FULL.
+    Distinct (disjoint-key) groups may use any types."""
     parent: dict[str, str] = {}
 
     def find(x: str) -> str:
@@ -178,11 +177,18 @@ def join_clause(
 ) -> list[SelectJoin]:
     args = hydrated_children(node, hydrate)
     join_type = next(a for a in args if isinstance(a, JoinType))
-    if join_type not in (JoinType.INNER, JoinType.LEFT_OUTER, JoinType.FULL):
+    if join_type is JoinType.INNER:
         raise fail(
             node,
-            f"`{join_type.value}` join is not yet supported in query-scoped joins;"
-            " use INNER, LEFT, or FULL",
+            "`inner` join is not supported in query-scoped joins; use LEFT or FULL"
+            " and express an intersection with a filter condition (e.g. `LEFT JOIN"
+            " a = b WHERE <b property> is not null`).",
+        )
+    if join_type not in (JoinType.LEFT_OUTER, JoinType.FULL):
+        raise fail(
+            node,
+            f"`{join_type.value}` join is not supported in query-scoped joins;"
+            " use LEFT or FULL",
         )
     # Each `join_group` is one `=`-chained equivalence group. Multiple groups
     # arise from the `a = b and c = d` sugar, which is exactly equivalent to two

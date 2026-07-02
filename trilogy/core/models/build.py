@@ -2228,18 +2228,17 @@ def _build_scoped_merge_index(
 ) -> tuple[dict[str, str], set[str]]:
     """Collapse build-scoped joins into a union-find map (source address ->
     canonical target address) plus the set of partial source addresses.
-    Non-partial `merge a into b` is represented as an INNER join pair and makes
-    b the root, so an N-way blend collapses every member to one canonical
-    concept.
+    Non-partial `merge a into b` is a FULL join pair rooted on `b`, so an N-way
+    blend collapses every member to one canonical concept.
 
     Partiality drives the eventual datasource-join type. Direction matches SQL
     `A LEFT JOIN B`: in `LEFT JOIN a = b` the LEFT operand `a` is preserved and the
     RIGHT operand `b` is optional. So for LEFT the TARGET (`b`) collapses onto the
     SOURCE (`a`) — making `a` the complete canonical anchor — and `b` is marked
     partial. The partial side is therefore always the collapsed-away side, which is
-    what the rowset partiality propagation expects. INNER collapses source->target
-    and marks neither. FULL collapses source->target, marks neither, and is driven
-    by the scoped_full_join_keys registry at join-resolution time instead."""
+    what the rowset partiality propagation expects. FULL collapses source->target,
+    marks neither, and is driven by the scoped_full_join_keys registry at
+    join-resolution time instead."""
     parent: dict[str, str] = {}
 
     def find(x: str) -> str:
@@ -2279,13 +2278,7 @@ class Factory:
         datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
         aggregate_grain: Grain | None = None,
-        authored_join_endpoints: set[str] | None = None,
     ):
-        # Endpoint addresses of the TOP query's AUTHORED inner-join clauses. Only
-        # these get de-collapsed; joins GENERATED during the build (e.g. a ~partial
-        # multi-source join for `is_returned`) must stay collapsed. None => treat
-        # every scoped-join endpoint as authored (direct materialize_for_select).
-        self.authored_join_endpoints = authored_join_endpoints
         self.grain = grain or Grain()
         # Grain at which a bare (no explicit `by`) aggregate resolves, when it
         # differs from `self.grain`. Used by the WHERE-clause factory: WHERE runs
@@ -2295,16 +2288,17 @@ class Factory:
         self.aggregate_grain = aggregate_grain
         self.environment = environment
         # Build-scoped joins (query JOIN clauses plus environment MERGE
-        # statements) relate two key concepts. TWO mechanisms do this, split by
+        # statements — the same relation declared at different scopes, resolved
+        # identically) relate two key concepts. TWO mechanisms do this, split by
         # JOIN SEMANTICS (not by key kind — a root-keyed FULL still needs
-        # coalesce, a derived-keyed INNER still substitutes):
+        # coalesce):
         #
         #   * SUBSTITUTION (scoped_merge_map -> `_build_concept` swap): the
         #     source address is replaced by its canonical target everywhere
         #     (refs, grain components, datasource column bindings). Correct ONLY
         #     when the key equality holds on EVERY output row, so one logical key
-        #     can render from one physical column: INNER, global `merge`, the
-        #     FULL canonical-key registry, and dependent-grain collapse.
+        #     can render from one physical column: the FULL canonical-key
+        #     registry and dependent-grain collapse.
         #
         #   * IDENTITY + pseudonym + coalesce (scoped_merge_sources +
         #     scoped_outer_identity_sources, coalesced at the merge node): the
@@ -2328,9 +2322,13 @@ class Factory:
             self.scoped_joins
         )
         self._source_identity_addresses: set[str] = set()
+        # A global `merge` IS a scoped join persisted on the environment (FULL
+        # non-partial / LEFT partial). It resolves identically to the equivalent
+        # query-scoped join; the only difference is scope (merges are re-injected
+        # at sub-build boundaries, query joins are not).
         full_join_sources = {
             source
-            for source, _, join_type in self.scoped_joins
+            for source, target, join_type in self.scoped_joins
             if join_type is JoinType.FULL
         }
         self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
@@ -2349,43 +2347,19 @@ class Factory:
             for addr in (s, t)
         }
 
-        # Canonical keys of *query-scoped* LEFT joins (the preserved-anchor side).
+        # Canonical keys of scoped LEFT joins (the preserved-anchor side).
         # A LEFT join's source `s` is the anchor and becomes the canonical root, so
         # its key address marks the anchor. Join resolution uses this to base the
         # join tree on the complete anchor so EACH optional source becomes a
         # directional LEFT_OUTER rather than two co-anchored partials collapsing to
-        # FULL (TPC-DS q78). Environment `merge ~` LEFT joins are EXCLUDED: their
-        # consolidation is a symmetric multi-fact FULL by design, not a directional
-        # anchor preservation.
-        merge_tuples = set(environment.merges)
+        # FULL (TPC-DS q78). A `merge ~` is the same directional relation declared
+        # globally and anchors identically.
         self.scoped_left_anchor_keys: set[str] = {
             self.scoped_merge_map.get(s, s)
             for s, t, jt in self.scoped_joins
-            if jt is JoinType.LEFT_OUTER and (s, t, jt) not in merge_tuples
+            if jt is JoinType.LEFT_OUTER
         }
 
-        # Canonical keys of *query-scoped* INNER joins. Keep the join INNER (don't
-        # let a nullable FK widen it to outer); NULL keys still align via the
-        # NULLABLE modifier, so anonymous rows are matched, not dropped. Both sides
-        # collapse onto the merge canonical, so that key marks the join. Excludes
-        # environment `merge ~` INNER joins (global identity, not a query directive).
-        self.scoped_inner_join_keys: set[str] = {
-            self.scoped_merge_map.get(addr, addr)
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.INNER and (s, t, jt) not in merge_tuples
-            for addr in (s, t)
-        }
-
-        # Collapsed-away sources that get the merge-style source-identity +
-        # pseudonym handling below (so a *derived* join key stays sourceable from
-        # the collapsed side). INNER asserts source == target — a symmetric
-        # equality exactly like a global `merge` — so every INNER source
-        # qualifies. LEFT additionally needs it for a derived key that has no
-        # datasource binding (root/rowset LEFT keys already resolve via the
-        # column-partial / rowset machinery and must not be double-handled).
-        # FULL on a derived key behaves like INNER for sourcing; its both-sides
-        # coalesce of the canonical key is wired at the merge node. Root/rowset
-        # FULL keeps the canonical-column full-join-key machinery instead.
         def _is_binding_keyed(addr: str) -> bool:
             c = environment.concepts.get(addr)
             return c is None or c.derivation in (Derivation.ROOT, Derivation.ROWSET)
@@ -2393,10 +2367,6 @@ class Factory:
         def _is_rowset_keyed(addr: str) -> bool:
             c = environment.concepts.get(addr)
             return c is not None and c.derivation == Derivation.ROWSET
-
-        def _is_plain_key(addr: str) -> bool:
-            c = environment.concepts.get(addr)
-            return c is not None and c.derivation == Derivation.ROOT
 
         self.scoped_rowset_outer_sources: set[str] = {
             s
@@ -2408,54 +2378,11 @@ class Factory:
             for s, t, jt in self.scoped_joins
             if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
         }
-        # INNER join onto a rowset: the collapsed-away source must NOT be
-        # substituted onto the rowset canonical. Substitution would attach the
-        # source's datasource binding to the rowset concept, letting discovery
-        # source the rowset key from that raw column and silently SKIP the
-        # rowset's own lineage (its WHERE filter) entirely — wrong results for
-        # one key, invalid SQL for several (the keys source inconsistently). The
-        # rowset must materialize from its lineage and INNER-join as a
-        # restriction, exactly like the OUTER-rowset identity path. So these
-        # sources keep their own identity + a pseudonym to the canonical instead
-        # of being swapped. Regular fact/dim INNER joins stay on substitution
-        # (multi-way parity + dependent-grain collapse rely on it).
-        # INNER equality is symmetric, so union-find may pick EITHER endpoint as
-        # the group canonical and may collapse the other one transitively (a
-        # repeated-left-anchor star join `a=b, a=c` roots a,c onto b even though
-        # c was never an authored source). Every collapsed endpoint — not just
-        # the authored source — must keep its identity, or a rowset spoke gets
-        # substituted onto the canonical and loses its own WHERE filter.
-        self.scoped_rowset_inner_sources: set[str] = {
-            addr
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.INNER and (_is_rowset_keyed(s) or _is_rowset_keyed(t))
-            for addr in (s, t)
-            if addr in self.scoped_merge_map
-        }
-
-        def _is_authored(addr: str) -> bool:
-            # None => direct materialize_for_select: every passed join is authored.
-            return authored_join_endpoints is None or addr in authored_join_endpoints
-
-        self.scoped_inner_identity_sources: set[str] = {
-            addr
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.INNER
-            and (s, t, jt) not in merge_tuples
-            and _is_plain_key(s)
-            and _is_plain_key(t)
-            and _is_authored(s)
-            and _is_authored(t)
-            for addr in (s, t)
-            if addr in self.scoped_merge_map
-        }
         self.scoped_key_merge_map = {
             source: target
             for source, target in self.scoped_merge_map.items()
             if source not in full_join_sources
             and source not in self.scoped_rowset_outer_targets
-            and source not in self.scoped_rowset_inner_sources
-            and source not in self.scoped_inner_identity_sources
         }
         self.scoped_merge_sources: set[str] = set()
         # OUTER-join keys with a datasource/rowset binding (ROOT/ROWSET) keep
@@ -2467,41 +2394,23 @@ class Factory:
         # partiality, so it stays in scoped_partial_derived and out of this set.)
         self.scoped_outer_identity_sources: set[str] = set()
         scoped_pseudonym_sources: set[str] = set()
+        # EVERY collapsed-away endpoint of a FULL/LEFT relation (any endpoint the
+        # union-find mapped to a canonical other than itself — a LEFT's target, a
+        # FULL's source, or either endpoint displaced by a chained relation) keeps
+        # its own identity plus a mutual pseudonym to its canonical, so the
+        # relation stays sourceable from both sides even when one side has no
+        # independent source (e.g. `merge derived_metric into unbound_property`,
+        # where the canonical is only reachable through the source's derivation).
         for s, t, jt in self.scoped_joins:
-            if jt is JoinType.INNER:
-                # Symmetric equality: wire every collapsed endpoint (see the
-                # scoped_rowset_inner_sources note above), not just the authored
-                # source, so a transitively-collapsed spoke stays sourceable via
-                # its pseudonym back to the group canonical.
-                for addr in (s, t):
-                    if addr in self.scoped_merge_map:
-                        self.scoped_merge_sources.add(addr)
-                        scoped_pseudonym_sources.add(addr)
-            elif jt is JoinType.LEFT_OUTER and not _is_binding_keyed(t):
-                # LEFT collapses target->source; the target is the partial side.
-                # A derived target lacks a binding to carry partiality, so it
-                # needs the merge mechanism and stays in scoped_partial_derived.
-                self.scoped_merge_sources.add(t)
-                scoped_pseudonym_sources.add(t)
-            elif jt is JoinType.LEFT_OUTER:
-                # Binding-keyed (root/rowset) target: same identity/pseudonym
-                # wiring so it stays sourceable, but its partiality is owned by
-                # the binding / rowset machinery (excluded from partial_derived).
-                self.scoped_merge_sources.add(t)
-                self.scoped_outer_identity_sources.add(t)
-                scoped_pseudonym_sources.add(t)
-            elif jt is JoinType.FULL and not _is_binding_keyed(s):
-                # FULL collapses source->target exactly like INNER, so a derived
-                # collapsed-away source needs the merge mechanism to stay
-                # sourceable from its own derivation (no datasource binding). The
-                # both-sides coalesce of the FULL key is wired at the merge node.
-                self.scoped_merge_sources.add(s)
-            elif jt is JoinType.FULL:
-                # Binding-keyed source: keep its own identity + a mutual pseudonym
-                # so either authored side renders from the merge-node coalesce.
-                self.scoped_merge_sources.add(s)
-                self.scoped_outer_identity_sources.add(s)
-                scoped_pseudonym_sources.add(s)
+            if jt not in (JoinType.LEFT_OUTER, JoinType.FULL):
+                continue
+            for addr in (s, t):
+                if addr not in self.scoped_merge_map:
+                    continue
+                self.scoped_merge_sources.add(addr)
+                scoped_pseudonym_sources.add(addr)
+                if _is_binding_keyed(addr):
+                    self.scoped_outer_identity_sources.add(addr)
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
@@ -2520,13 +2429,6 @@ class Factory:
             # when the links are present.
             pending: list[tuple[str, str]] = []
             for source in scoped_pseudonym_sources:
-                # A binding-keyed FULL source keeps its identity/pseudonym wiring;
-                # a derived FULL source keeps the canonical-column machinery.
-                if source not in self.scoped_merge_map or (
-                    source in full_join_sources
-                    and source not in self.scoped_outer_identity_sources
-                ):
-                    continue
                 canonical_addr = self.scoped_merge_map[source]
                 if source not in self.pseudonym_map.get(canonical_addr, ()):
                     pending.append((source, canonical_addr))
@@ -2864,8 +2766,6 @@ class Factory:
             and base.address not in self._source_identity_addresses
             and base.address not in self.scoped_rowset_outer_sources
             and base.address not in self.scoped_rowset_outer_targets
-            and base.address not in self.scoped_rowset_inner_sources
-            and base.address not in self.scoped_inner_identity_sources
         ):
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
@@ -3513,10 +3413,7 @@ class Factory:
         normalized: set[str] = set()
         env_concepts = self.environment.concepts
         for c in components:
-            if (
-                c in self.scoped_merge_map
-                and c not in self.scoped_inner_identity_sources
-            ):
+            if c in self.scoped_merge_map:
                 normalized.add(self.scoped_merge_map[c])
             elif c in env_concepts:
                 normalized.add(env_concepts[c].address)
@@ -3805,8 +3702,6 @@ class Factory:
             ),
             scoped_full_join_keys=set(self.scoped_full_join_keys),
             scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
-            scoped_inner_join_keys=set(self.scoped_inner_join_keys),
-            scoped_inner_identity_sources=set(self.scoped_inner_identity_sources),
         )
 
         for k, v in base.concepts.all_items():
@@ -3838,15 +3733,12 @@ class Factory:
             )
             if src is None:
                 continue
-            # For a merge-style source (INNER, or a LEFT derived key), build the
-            # source as its OWN identity (its lineage + address), not the
-            # collapsed target, so the merged key can be sourced from the
-            # collapsed side (mirroring global merge). The main build loop
-            # already cached source_addr -> the collapsed target in
-            # local_concepts and __build_concept would early-exit on it; evict it
-            # across this build and restore the collapse mapping after. Other
-            # sources (root/rowset LEFT, FULL) keep the prior behavior (the
-            # partial / full-join machinery owns their resolution).
+            # Build the collapsed-away source as its OWN identity (its lineage +
+            # address), not the collapsed target, so the joined key stays
+            # sourceable from the collapsed side. The main build loop already
+            # cached source_addr -> the collapsed target in local_concepts and
+            # __build_concept would early-exit on it; evict it across this build
+            # and restore the collapse mapping after.
             if source_addr in self.scoped_merge_sources:
                 collapsed = self.local_concepts.pop(source_addr, None)
                 previous_identity_addresses = self._source_identity_addresses

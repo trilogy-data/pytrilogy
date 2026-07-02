@@ -36,8 +36,9 @@ QUERY = """import orders as orders;
 with a as select orders.oid as oid, orders.amt as amt where orders.status = 1;
 with b as select orders.oid as oid, orders.amt as amt where orders.status = 2;
 
+where b.amt is not null
 select a.oid, a.amt, b.oid, b.amt
-inner join a.oid = b.oid + 1
+left join a.oid = b.oid + 1
 order by a.oid asc;
 """
 

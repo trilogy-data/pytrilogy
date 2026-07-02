@@ -23,7 +23,9 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 
 ### Query-scoped join (the default)
 
-inner|left|full join <a> = <b> [= <c>] blends concepts or expressions (from any source - models, rowsets etc) inside one SELECT by marking them as 'fully' or 'partially' equivalent.
+left|full join <a> = <b> [= <c>] blends concepts or expressions (from any source - models, rowsets etc) inside one SELECT by marking them as 'fully' or 'partially' equivalent.
+
+There is no 'inner' join - use where/having conditions when you need to restrict the output to an intersection of some form. (customers who have orders, students who have enrollments, countries in two datasets, etc).
 
 Place it right after the select list (the SQL-like spot); 
 
@@ -32,13 +34,15 @@ Joins indicate that concepts are *the same*; it is a conceptual operation not a 
 
 Right unsupported; just flip to a left.
 
- A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. 
+ A full key-group must be entirely full (no mixing with left on the same key; full join a = b = c chains one all-full group); left joins mix freely. 
  
-Chain = c to pull additional concepts into a join. Joins can be on expresseions. join on a computed/offset key (`inner join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+Chain = c to pull additional concepts into a join. Joins can be on expressions. join on a computed/offset key (`full join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
 
 Joins do NOT drop nulls. Joins will merge null values across dimension keys. To filter out nulls, explicitly use not-null conditions.
 
-Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH inner join a.order_number = b.order_number AND inner join a.item.id = b.item.id. Matching only one key of a multi-key grain fans out and double-counts — a top cause of wrong results.
+Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. 
+trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH full join a.order_number = b.order_number AND full join a.item.id = b.item.id. 
+Matching only one key of a multi-key grain may cause duplication.
 
 Full example: trilogy agent-info syntax example scoped-join.
 

@@ -51,14 +51,6 @@ def test_left_derived_rowset_join_does_not_recurse():
     assert "LEFT OUTER JOIN" in sql
 
 
-def test_inner_derived_rowset_join_still_resolves():
-    sql = _sql(
-        "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
-        "inner join agg.period + 53 = fut.period;"
-    )
-    assert "INVALID_REFERENCE_BUG" not in sql
-
-
 def test_left_plain_equality_rowset_join_still_resolves():
     sql = _sql(
         "select agg.period, sum(agg.tot) / sum(fut.tot) as r "

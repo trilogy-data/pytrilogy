@@ -1,17 +1,13 @@
-"""Repro: an INNER join to a dim (supplying the binding key) combined with two
-OUTER (LEFT) rowset joins off the same anchor key emitted invalid SQL — the
-downstream coalesce referenced the binding key column on the dim-bridge CTE, but
-that CTE hid the binding key and projected only the renamed join-key alias.
+"""A dim bridge (supplying the binding key) combined with two OUTER (LEFT) rowset
+joins off the same anchor key must render valid SQL — the downstream coalesce must
+reference a column the dim-bridge CTE actually projects, not a hidden binding key.
 
-Surfaced on TPC-DS q11 (run 20260624-133456): three aggregate rowsets per year,
-an INNER join to `customer` for the binding key, and two LEFT joins to lay the
-other years' revenue side by side. All-INNER and pure-all-LEFT both compiled;
-the INNER-to-dim + >=2 LEFT mix raised
-`Binder Error: Values list "<cte>" does not have a column named "c_id"`.
+Surfaced on TPC-DS q11: three aggregate rowsets per year joined to `customer` for
+the binding key, and two LEFT joins to lay the other years' revenue side by side.
 
-FIXED 2026-06-24: `QueryDatasource.get_alias` now walks the pseudonym closure and
-prefers a NON-hidden member, so the merged OUTER key renders from the dim-bridge
-CTE's actually-projected join-key alias instead of its hidden binding key.
+`QueryDatasource.get_alias` walks the pseudonym closure and prefers a NON-hidden
+member, so the merged OUTER key renders from the dim-bridge CTE's actually-projected
+join-key alias instead of its hidden binding key.
 """
 
 from pathlib import Path
@@ -90,22 +86,6 @@ def _sql(models: Path, j1: str, j2: str, j3: str) -> str:
 def _rows(models: Path, j1: str, j2: str, j3: str) -> list[tuple]:
     res = _executor(models).execute_text(_QUERY.format(j1=j1, j2=j2, j3=j3))[0]
     return [tuple(r) for r in res.fetchall()]
-
-
-def test_inner_to_dim_plus_two_left_rowsets_compiles(models: Path):
-    # The crashing mix: INNER to the dim for the binding key + two LEFT rowsets.
-    # Previously emitted `coalesce("<dim-bridge>"."c_id", ...)` where the bridge
-    # CTE hid `c_id` and projected only the renamed join-key alias -> BinderError.
-    sql = _sql(models, "inner", "left", "left")
-    assert "INVALID" not in sql
-    assert "coalesce" in sql.lower()
-    # Executing the SQL is the real guard: the dim-bridge CTE's OUTER coalesce
-    # must reference a column it actually projects, or DuckDB raises BinderError.
-    # The binding key resolves correctly, so each anchor customer's other-year
-    # revenue attaches to the right row (this is what the crash prevented).
-    rows = _rows(models, "inner", "left", "left")
-    assert ("A001", "Alice", 5.0, 3.0) in rows
-    assert ("B002", "Bob", None, 4.0) in rows
 
 
 def test_all_left_unaffected(models: Path):

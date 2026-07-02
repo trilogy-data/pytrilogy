@@ -113,7 +113,6 @@ def get_join_type(
     nullables: dict[str, list[str]],
     all_connecting_keys: set[str],
     full_join_keys: set[str] | None = None,
-    inner_join_keys: set[str] | None = None,
 ) -> JoinType:
     # A query-scoped FULL join registers its canonical key here. Both sides bind
     # it completely (it is NOT partial) — the FULL JOIN itself spans the rows
@@ -126,23 +125,6 @@ def get_join_type(
     left_is_nullable = _has_any(all_connecting_keys, left, nullables)
     right_is_partial = _has_any(all_connecting_keys, right, partials)
     right_is_nullable = _has_any(all_connecting_keys, right, nullables)
-
-    # A query-scoped INNER join stays INNER even when its FK is nullable: the user
-    # asked to drop UNMATCHED rows, so nullability must not widen it to FULL/LEFT
-    # (the silent null-extension behind TPC-DS q29). NULL keys are NOT dropped —
-    # they still ALIGN via Modifier.NULLABLE (`IS NOT DISTINCT FROM`, stamped in
-    # get_modifiers), so anonymous rows are preserved/matched, not lost. Gated on
-    # NOT partial: a partial side is a genuine scoped LEFT/FULL directive (e.g.
-    # `inner join k=a` mixed with `left join k=b` on one group) whose outer
-    # directionality must be preserved. Automatic (non-scoped) nullable joins are
-    # untouched and keep widening to outer to preserve their NULL-key rows.
-    if (
-        inner_join_keys
-        and all_connecting_keys & inner_join_keys
-        and not left_is_partial
-        and not right_is_partial
-    ):
-        return JoinType.INNER
 
     left_complete = not left_is_partial and not left_is_nullable
     right_complete = not right_is_partial and not right_is_nullable
@@ -256,7 +238,6 @@ def resolve_join_order_v2(
     grain_size: dict[str, int] | None = None,
     full_join_keys: set[str] | None = None,
     anchor_key_nodes: set[str] | None = None,
-    inner_join_keys: set[str] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -384,7 +365,6 @@ def resolve_join_order_v2(
                     nullables,
                     all_connecting_keys,
                     full_join_keys,
-                    inner_join_keys,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -638,9 +618,6 @@ def get_node_joins(
     # Anchor-key nodes of query-scoped LEFT joins: the join tree bases on the
     # complete source providing one so co-anchored optional sources stay LEFT.
     anchor_key_nodes = {canon_node(a) for a in environment.scoped_left_anchor_keys}
-    # Canonical keys of query-scoped INNER joins: keep INNER (don't let a nullable
-    # FK widen them to outer); NULL keys still align via the NULLABLE modifier.
-    inner_join_keys = {canon_node(a) for a in environment.scoped_inner_join_keys}
     joins = resolve_join_order_v2(
         graph,
         partials=partials,
@@ -648,7 +625,6 @@ def get_node_joins(
         grain_size=grain_size,
         full_join_keys=full_join_keys,
         anchor_key_nodes=anchor_key_nodes,
-        inner_join_keys=inner_join_keys,
     )
     return [
         BaseJoin(

@@ -17,7 +17,7 @@ select
     sum(store_sales.net_profit) as profit,
 ;
 
-inner join bought.store_sales.customer.id = customer.id
+left join customer.id = bought.store_sales.customer.id
 select
     customer.last_name,
     customer.first_name,

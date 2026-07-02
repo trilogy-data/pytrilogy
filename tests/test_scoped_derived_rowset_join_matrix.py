@@ -75,7 +75,7 @@ COMPOSITE_KEYS = {
     "comp_mixed": "agg.period + 53 = fut.period and agg.region = fut.region",
     "comp_deriv": "agg.period + 53 = fut.period and agg.region + 1 = fut.region",
 }
-JOINS = ["inner", "left", "full"]
+JOINS = ["left", "full"]
 
 
 def _build_sql(base: str, tail: str) -> str:
@@ -143,7 +143,6 @@ def _rows(base: str, tail: str):
     "key,jt,exp_join,exp_rows",
     [
         # derived on the anchor: fut.period = agg.period + 53
-        ("agg.period + 53 = fut.period", "inner", "INNER", [(1, 150 / 37)]),
         (
             "agg.period + 53 = fut.period",
             "left",
@@ -151,7 +150,6 @@ def _rows(base: str, tail: str):
             [(1, 150 / 37), (2, None), (54, None)],
         ),
         # derived on the looked-up side: agg.period = fut.period + 53
-        ("agg.period = fut.period + 53", "inner", "INNER", [(54, 37 / 150)]),
         (
             "agg.period = fut.period + 53",
             "left",
@@ -159,7 +157,6 @@ def _rows(base: str, tail: str):
             [(1, None), (2, None), (54, 37 / 150)],
         ),
         # multiplicative: fut.period = agg.period * 2
-        ("agg.period * 2 = fut.period", "inner", "INNER", [(1, 150 / 20)]),
         (
             "agg.period * 2 = fut.period",
             "left",
@@ -184,53 +181,6 @@ def test_composite_both_plain_left_join_stays_left():
         "left join agg.period = fut.period and agg.region = fut.region;",
     )
     assert got_join == "LEFT"
-
-
-CO_KEY_SALES = """key sid int;
-property sid.store int;
-property sid.period int;
-property sid.yr int;
-property sid.amt float;
-datasource sales (sid: sid, s: store, p: period, y: yr, a: amt) grain (sid)
-query '''
-select 1 sid, 1 s, 1 p, 1 y, 10.0 a union all
-select 2 sid, 2 s, 1 p, 1 y, 100.0 a union all
-select 3 sid, 1 s, 11 p, 2 y, 20.0 a union all
-select 4 sid, 2 s, 11 p, 2 y, 200.0 a''';
-"""
-CO_KEY_HEAD = """import sales as s;
-rowset a <- where s.yr = 1 select s.store, s.period, sum(s.amt) as tot;
-rowset b <- where s.yr = 2 select s.store, s.period, sum(s.amt) as tot;
-select a.store, a.period, a.tot / b.tot as r
-"""
-
-
-def _co_key_rows(join: str):
-    with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp)
-        (d / "sales.preql").write_text(CO_KEY_SALES)
-        eng = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=d))
-        text = CO_KEY_HEAD + join + ";"
-        sql = eng.generate_sql(text)[-1]
-        store_in_join = any(
-            "store" in ln.lower()
-            for ln in sql.splitlines()
-            if " join " in ln.lower() and " on " in ln.lower()
-        )
-        rows = sorted(tuple(r) for r in eng.execute_text(text)[0].fetchall())
-        return store_in_join, rows
-
-
-def test_composite_mixed_key_inner_join_keeps_equality_co_key():
-    """A cross-rowset INNER join ANDing a plain-equality key with a derived key
-    (`a.store = b.store and a.period + 10 = b.period`) must keep BOTH keys. The
-    equality co-key was silently dropped, fanning each store's ratio across every
-    store. Correct: one row per store (each store's own next-period ratio)."""
-    store_in_join, rows = _co_key_rows(
-        "inner join a.store = b.store and a.period + 10 = b.period"
-    )
-    assert store_in_join, "equality co-key `a.store = b.store` dropped from the join"
-    assert rows == [(1, 1, 0.5), (2, 1, 0.5)]
 
 
 @pytest.mark.xfail(

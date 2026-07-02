@@ -1,7 +1,7 @@
 query_id = "44"
 generator = "v3"
-gen_length = 3062
-preql_size = 1003
+gen_length = 3141
+preql_size = 1002
 comp_size = 1462
 generated_sql = """
 
@@ -101,14 +101,14 @@ SELECT
 FROM
     \"juicy\")
 SELECT
-    \"vacuous\".\"ascending_rnk_a\" as \"rnk\",
+    coalesce(\"vacuous\".\"ascending_rnk_a\",\"young\".\"descending_rnk_d\") as \"rnk\",
     \"vacuous\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"young\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"young\"
-    INNER JOIN \"vacuous\" on \"young\".\"descending_rnk_d\" = \"vacuous\".\"ascending_rnk_a\"
+    \"vacuous\"
+    LEFT OUTER JOIN \"young\" on \"vacuous\".\"ascending_rnk_a\" = \"young\".\"descending_rnk_d\"
 WHERE
-    \"vacuous\".\"ascending_rnk_a\" < 11
+    coalesce(\"vacuous\".\"ascending_rnk_a\",\"young\".\"descending_rnk_d\") < 11
 
 ORDER BY 
     \"rnk\" asc nulls first,

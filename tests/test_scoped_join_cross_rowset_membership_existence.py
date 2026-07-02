@@ -65,7 +65,8 @@ def _query(join_clause: str) -> str:
     return (
         MODEL
         + f"select {PROJ} {join_clause} "
-        + "where cur_sales.ws in weeks_2001 order by cur_sales.ws;"
+        + "where ftr_sales.sales_amt is not null and cur_sales.ws in weeks_2001 "
+        + "order by cur_sales.ws;"
     )
 
 
@@ -78,11 +79,11 @@ def executor() -> Executor:
     "join_clause,expected",
     [
         (
-            "inner join cur_sales.ws = ftr_sales.ws",
+            "left join cur_sales.ws = ftr_sales.ws",
             [(1, 40.0, 40.0), (2, None, None)],
         ),
         (
-            "inner join cur_sales.ws = ftr_sales.ws - 53",
+            "left join cur_sales.ws = ftr_sales.ws - 53",
             [(1, 40.0, 50.0), (2, None, 40.0)],
         ),
     ],
