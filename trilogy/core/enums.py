@@ -232,6 +232,7 @@ class FunctionType(Enum):
     GREATEST = "greatest"
     LEAST = "least"
     IS_NULL = "isnull"
+    IS_NOT_DISTINCT = "is_not_distinct"
     NULLIF = "nullif"
     BOOL = "bool"
 

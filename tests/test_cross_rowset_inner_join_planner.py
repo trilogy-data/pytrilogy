@@ -10,18 +10,19 @@ source and the renderer emits `INVALID_REFERENCE_BUG`.
 
 Design notes for the fix (from an initial spike, reverted):
   * De-collapsing the INNER key (keep both endpoints' identity + a mutual
-    pseudonym, like LEFT/FULL) is correct and necessary, but not sufficient.
-  * Forcing the absent side in by injecting the bare join-key concept works ONLY
-    when that key is the other datasource's grain (`fk = b_pk`). For a property/
-    FK key shared via import (e.g. `week_seq`, a property of `date`), injecting
-    the bare key sources it from the shared dimension, disconnected from the fact
-    that owns the relationship -> the join filters against a free-floating
-    dimension and the filter is lost (regressed TPC-DS q72 + the inventory/sales
-    commutativity test).
-  * The correct mechanism is a datasource-level SEMIJOIN: materialize the SPECIFIC
-    other datasource grouped to the join key (`a where a.k in (select k from b
-    where ...)`), so a shared-column WHERE narrows both sides and there is no
-    fan-out.
+    pseudonym, like LEFT/FULL) is correct and necessary for single-key fact/dim
+    joins, but a scoped join on a PROPERTY key (e.g. `week_seq`) is not yet safe
+    to de-collapse (regressed TPC-DS q29 + the inventory/sales commutativity test,
+    independent of any injection) -- needs further work.
+  * Forcing the absent side in must be CONDITIONAL: only when that side
+    contributes nothing (not projected AND not referenced in WHERE). Injecting the
+    join key unconditionally regressed q72 (which already sources inventory via its
+    WHERE) by duplicating its multi-measure assembly -- a query-complexity blowup,
+    not wrong results.
+  * The likely mechanism for the absent-side case is a datasource-level SEMIJOIN:
+    materialize the SPECIFIC other datasource grouped to the join key (`a where a.k
+    in (select k from b where ...)`), so a shared-column WHERE narrows both sides
+    with no fan-out.
 
 These tests pin the target behavior and are strict-xfail until that lands.
 """
@@ -31,13 +32,6 @@ import pytest
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 from trilogy.executor import Executor
-
-pytestmark = pytest.mark.xfail(
-    reason="scoped INNER join collapse drops the filter; fix (datasource-level "
-    "semijoin materialization of the absent side) not yet landed",
-    strict=True,
-)
-
 
 @pytest.fixture
 def executor() -> Executor:
@@ -118,6 +112,10 @@ rowset sc <-
 """
 
 
+@pytest.mark.xfail(
+    reason="rowset<->rowset INNER intersection not yet migrated off collapse",
+    strict=True,
+)
 def test_rowset_inner_join_intersect_selects_correct_rows(executor: Executor):
     query = ROWSET + "select sc.last_name order by sc.last_name;"
     sql = executor.generate_sql(query)[-1]
@@ -126,6 +124,10 @@ def test_rowset_inner_join_intersect_selects_correct_rows(executor: Executor):
     assert rows == ["Smith"]
 
 
+@pytest.mark.xfail(
+    reason="rowset<->rowset INNER intersection not yet migrated off collapse",
+    strict=True,
+)
 def test_rowset_inner_join_intersect_count(executor: Executor):
     query = ROWSET + "select count(sc.last_name) as c;"
     sql = executor.generate_sql(query)[-1]

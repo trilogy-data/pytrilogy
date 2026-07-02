@@ -562,19 +562,25 @@ def _env_for(root: Path, imports: str):
     return env
 
 
-def test_buildenv_collapses_source_concept_to_target(models: Path):
+def test_buildenv_inner_join_keeps_identity_with_pseudonym(models: Path):
     env = _env_for(models, "import orders as orders;\nimport customers as customers;")
     be = env.materialize_for_select(
         scoped_joins=[("orders.customer_id", "customers.customer_id", JoinType.INNER)]
     )
-    # source resolves to the target concept; target is unchanged
-    assert be.concepts["orders.customer_id"].address == "customers.customer_id"
-    assert be.concepts["customers.customer_id"].address == "customers.customer_id"
+    # A fact/dim INNER join is a real filtering join, not an equivalence collapse:
+    # each key keeps its OWN address + a pseudonym to the other, so both sides stay
+    # independently sourceable and the join filters (set intersection).
+    src = be.concepts["orders.customer_id"]
+    tgt = be.concepts["customers.customer_id"]
+    assert src.address == "orders.customer_id"
+    assert "customers.customer_id" in src.pseudonyms
+    assert tgt.address == "customers.customer_id"
+    assert "orders.customer_id" in tgt.pseudonyms
     # the global author env is untouched
     assert env.concepts["orders.customer_id"].address == "orders.customer_id"
 
 
-def test_buildenv_multiway_collapses_all_sources_to_one_canonical(
+def test_buildenv_multiway_inner_relates_all_via_pseudonym(
     three_fact_models: Path,
 ):
     env = _env_for(
@@ -587,13 +593,14 @@ def test_buildenv_multiway_collapses_all_sources_to_one_canonical(
             ("f1.d.dim_id", "f3.d.dim_id", JoinType.INNER),
         ]
     )
-    # union-find: both sources collapse to the final target (f3), one canonical key
-    assert be.concepts["f1.d.dim_id"].address == "f3.d.dim_id"
-    assert be.concepts["f2.d.dim_id"].address == "f3.d.dim_id"
-    # a dependent's grain collapses too (the whole point — no N distinct keys)
-    attr_grain = be.concepts["f1.d.attr"].grain.components
-    assert "f3.d.dim_id" in attr_grain
-    assert "f1.d.dim_id" not in attr_grain and "f2.d.dim_id" not in attr_grain
+    # No substitution: each key keeps its own address; union-find picks one
+    # canonical (f3) and every member relates to it by pseudonym.
+    assert be.concepts["f1.d.dim_id"].address == "f1.d.dim_id"
+    assert be.concepts["f2.d.dim_id"].address == "f2.d.dim_id"
+    assert "f3.d.dim_id" in be.concepts["f1.d.dim_id"].pseudonyms
+    assert "f3.d.dim_id" in be.concepts["f2.d.dim_id"].pseudonyms
+    # a dependent's grain stays on its OWN key (related to the canonical by pseudonym)
+    assert "f1.d.dim_id" in be.concepts["f1.d.attr"].grain.components
 
 
 def test_buildenv_left_join_marks_datasource_binding_partial(models: Path):
@@ -628,8 +635,10 @@ def test_buildenv_inner_join_binding_not_partial(models: Path):
         scoped_joins=[("orders.customer_id", "customers.customer_id", JoinType.INNER)]
     )
     orders_ds = be.datasources["orders.orders"]
+    # de-collapse: orders binds its OWN key identity (not the canonical target),
+    # and an INNER join marks neither side partial.
     binding = next(
-        c for c in orders_ds.columns if c.concept.address == "customers.customer_id"
+        c for c in orders_ds.columns if c.concept.address == "orders.customer_id"
     )
     assert Modifier.PARTIAL not in binding.modifiers
 

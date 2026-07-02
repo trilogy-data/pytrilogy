@@ -1043,6 +1043,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.BOOL,
         arg_count=1,
     ),
+    FunctionType.IS_NOT_DISTINCT: FunctionConfig(
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.BOOL,
+        arg_count=2,
+    ),
     FunctionType.STRUCT: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,

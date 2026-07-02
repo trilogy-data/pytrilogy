@@ -392,11 +392,33 @@ def generate_candidates_restrictive(
     priority_concept: BuildConcept,
     candidates: list[BuildConcept],
     exhausted: set[str],
+    scoped_inner_join_keys: set[str] | None = None,
     # conditions_exist: bool,
 ) -> list[BuildConcept]:
     unselected_candidates = [
         x for x in candidates if x.address != priority_concept.address
     ]
+    # A pseudonym of the priority is normally "the same concept, already satisfied"
+    # -- skip it (a redundant co-source). EXCEPTION: a scoped-INNER-join partner is
+    # a genuinely distinct physical set we must co-source so the real filtering join
+    # forms (set intersection). Keep those; skip every other pseudonym.
+    scoped_inner = scoped_inner_join_keys or set()
+
+    def _keep_pseudonym(x: BuildConcept) -> bool:
+        if not (
+            x.address in priority_concept.pseudonyms
+            or priority_concept.address in x.pseudonyms
+        ):
+            return True  # not a pseudonym at all
+        # ROWSET scoped-inner keys need the pseudonym SKIPPED -- that skip is the
+        # bridge that lets a rowset's pseudonym-key stand in for the fact's key
+        # (q64). Only a plain ROOT fact/property partner is co-sourced.
+        if x.derivation == Derivation.ROWSET or priority_concept.derivation == (
+            Derivation.ROWSET
+        ):
+            return False
+        return x.address in scoped_inner or priority_concept.address in scoped_inner
+
     local_candidates = [
         x
         for x in unselected_candidates
@@ -405,8 +427,7 @@ def generate_candidates_restrictive(
             x.granularity != Granularity.SINGLE_ROW
             or x.derivation == Derivation.CONSTANT
         )
-        and x.address not in priority_concept.pseudonyms
-        and priority_concept.address not in x.pseudonyms
+        and _keep_pseudonym(x)
     ]
 
     # if it's single row, joins are irrelevant. Fetch without keys.
@@ -1241,5 +1262,8 @@ def get_loop_iteration_targets(
         priority_concept=priority_concept,
         candidates=local_all,
         exhausted=attempted,
+        scoped_inner_join_keys=(
+            environment.scoped_inner_join_keys if environment is not None else None
+        ),
     )
     return priority_concept, optional, conditions

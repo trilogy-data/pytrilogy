@@ -136,11 +136,10 @@ select rs.k, rs.sa, rs.sb limit 10;
 
 
 def test_rowset_key_read_back_aligns_with_source(models: Path):
-    # Reading the rowset key beside an EXTERNAL property (a.aw) must DECLARE the
-    # relationship with an explicit join — a bare `select rs.k, a.aw` should not
-    # silently auto-source. With `join rs.k = a.aid` the key collapses onto a.aid;
-    # since no rowset-specific output is projected, the read resolves against the
-    # full a dimension (all three rows — the rowset's INNER filter isn't retained).
+    # `rs` is a INNER JOIN b on aid=bid -> its key is the INTERSECTION a∩b = {1,2}
+    # (a has {1,2,3}, b has {1,2,4}). Reading rs.k beside an EXTERNAL property (a.aw)
+    # via `join rs.k = a.aid` must retain that intersection, so only rows 1 and 2
+    # survive -- NOT the full a dimension. (Scoped INNER = set intersection.)
     eng = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=models)
     )
@@ -153,13 +152,13 @@ import a as a;
 import b as b;
 with rs as inner join a.aid = b.bid
 select a.aid as k, sum(a.av) as sa;
-                             
+
 
 select rs.k, a.aw,
-inner join rs.k = a.aid                             
+inner join rs.k = a.aid
 order by rs.k;
 """).fetchall()
-    assert [tuple(r) for r in rows] == [(1, 1000.0), (2, 2000.0), (3, 3000.0)]
+    assert [tuple(r) for r in rows] == [(1, 1000.0), (2, 2000.0)]
 
 
 # --- Read-back matrix: project the rowset key (`a.aid as k`) under each internal

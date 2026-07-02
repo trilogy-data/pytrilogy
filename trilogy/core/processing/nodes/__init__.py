@@ -34,6 +34,11 @@ class BuildCaches:
     # (source_address, target_address, JoinType). Applied during the build and
     # shared so every sub-select (rowsets, multiselect arms) inherits them.
     scoped_joins: list = field(default_factory=list)
+    # Endpoint addresses of the top query's AUTHORED `inner join` clauses only.
+    # De-collapse keys off this (not `scoped_joins`, which also accumulates joins
+    # GENERATED during the build -- e.g. a `~partial` multi-source join like
+    # store_sales<->store_returns for `is_returned`, which must stay collapsed).
+    authored_join_endpoints: set = field(default_factory=set)
 
 
 @dataclass

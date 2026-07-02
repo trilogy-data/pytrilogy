@@ -666,6 +666,35 @@ def gen_select_merge_node(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
+    # Anchor scoped-INNER-join property keys to their owning entity. When this
+    # merge sources such a key (a fact attribute reached via an FK, e.g. a fact's
+    # week via a date FK), also source its key(s): that pulls the fact in at its
+    # own grain so both scoped-inner-join keys co-source from ONE fact scan, rather
+    # than the attribute floating to the dimension and decorrelating from the
+    # fact's other key (the item-vs-week leak). Internal sourcing concepts only --
+    # the consumer selects what it needs, so extra keys don't change the grain.
+    anchor_key_addresses: set[str] = set()
+    if environment.scoped_inner_join_keys:
+        have = {c.address for c in all_concepts}
+        anchor_keys: list[BuildConcept] = []
+        for c in all_concepts:
+            if c.address not in environment.scoped_inner_join_keys:
+                continue
+            # Only a plain property attribute (keyed by another concept) floats to
+            # its dimension and needs anchoring. A KEY (its own identity) or a
+            # rowset/derived join key has its own machinery -- skip them.
+            if c.purpose != Purpose.PROPERTY or c.derivation != Derivation.ROOT:
+                continue
+            for key_addr in c.keys or set():
+                if key_addr in have:
+                    continue
+                kc = environment.concepts.get(key_addr)
+                if kc is not None:
+                    anchor_keys.append(kc)
+                    have.add(key_addr)
+        if anchor_keys:
+            all_concepts = list(all_concepts) + anchor_keys
+            anchor_key_addresses = {kc.address for kc in anchor_keys}
     abstract_props = [
         c
         for c in all_concepts
@@ -806,7 +835,7 @@ def gen_select_merge_node(
             return None
         parents.extend(abstract_nodes)
 
-    if len(parents) == 1 and not constants:
+    if len(parents) == 1 and not constants and not anchor_key_addresses:
         candidate: StrategyNode = parents[0]
     else:
         logger.info(
@@ -857,8 +886,15 @@ def gen_select_merge_node(
                 rollup_at_merge = additive_aggs
                 force_merge_group = True
 
+        # Anchor keys ride on the parent scans (to co-source the join keys from one
+        # fact) but are NOT node outputs: emit the pre-anchor concepts and GROUP to
+        # that grain, so the correlated (item, week) pairs are deduped rather than
+        # fanning the consumer out. Otherwise keep the requested outputs as-is.
+        merge_outputs = [
+            c for c in all_concepts if c.address not in anchor_key_addresses
+        ]
         candidate = MergeNode(
-            output_concepts=all_concepts,
+            output_concepts=merge_outputs,
             input_concepts=unique(
                 normals
                 + abstract_props
@@ -871,18 +907,23 @@ def gen_select_merge_node(
             conditions=merge_conditions,
             preexisting_conditions=preexisting_conditions,
             force_join_type=force_join_type,
-            force_group=force_merge_group,
+            force_group=True if anchor_key_addresses else force_merge_group,
             rollup_concepts=rollup_at_merge or None,
         )
 
     if conditions:
+        # Validate against the requested outputs (anchors are sourcing-only inputs,
+        # grouped away, so they are not node outputs).
+        validate_targets = [
+            c for c in all_concepts if c.address not in anchor_key_addresses
+        ]
         completion_mandatory = unique(
-            all_concepts + list(conditions.row_arguments), "address"
+            validate_targets + list(conditions.row_arguments), "address"
         )
         complete, _, _, _, _ = validate_stack(
             environment,
             [candidate],
-            all_concepts,
+            validate_targets,
             completion_mandatory,
             conditions=conditions,
             accept_partial=accept_partial,

@@ -539,6 +539,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        authored_join_endpoints: set[str] | None = None,
     ) -> "BuildEnvironment":
         """helper method"""
         from trilogy.core.models.build import Factory
@@ -556,6 +557,7 @@ class Environment:
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
             scoped_joins=build_scoped_joins,
+            authored_join_endpoints=authored_join_endpoints,
         )
         return factory.build(self)
 

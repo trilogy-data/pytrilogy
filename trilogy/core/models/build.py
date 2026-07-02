@@ -2279,7 +2279,13 @@ class Factory:
         datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
         aggregate_grain: Grain | None = None,
+        authored_join_endpoints: set[str] | None = None,
     ):
+        # Endpoint addresses of the TOP query's AUTHORED inner-join clauses. Only
+        # these get de-collapsed; joins GENERATED during the build (e.g. a ~partial
+        # multi-source join for `is_returned`) must stay collapsed. None => treat
+        # every scoped-join endpoint as authored (direct materialize_for_select).
+        self.authored_join_endpoints = authored_join_endpoints
         self.grain = grain or Grain()
         # Grain at which a bare (no explicit `by`) aggregate resolves, when it
         # differs from `self.grain`. Used by the WHERE-clause factory: WHERE runs
@@ -2388,6 +2394,10 @@ class Factory:
             c = environment.concepts.get(addr)
             return c is not None and c.derivation == Derivation.ROWSET
 
+        def _is_plain_key(addr: str) -> bool:
+            c = environment.concepts.get(addr)
+            return c is not None and c.derivation == Derivation.ROOT
+
         self.scoped_rowset_outer_sources: set[str] = {
             s
             for s, _, jt in self.scoped_joins
@@ -2422,12 +2432,30 @@ class Factory:
             for addr in (s, t)
             if addr in self.scoped_merge_map
         }
+
+        def _is_authored(addr: str) -> bool:
+            # None => direct materialize_for_select: every passed join is authored.
+            return authored_join_endpoints is None or addr in authored_join_endpoints
+
+        self.scoped_inner_identity_sources: set[str] = {
+            addr
+            for s, t, jt in self.scoped_joins
+            if jt is JoinType.INNER
+            and (s, t, jt) not in merge_tuples
+            and _is_plain_key(s)
+            and _is_plain_key(t)
+            and _is_authored(s)
+            and _is_authored(t)
+            for addr in (s, t)
+            if addr in self.scoped_merge_map
+        }
         self.scoped_key_merge_map = {
             source: target
             for source, target in self.scoped_merge_map.items()
             if source not in full_join_sources
             and source not in self.scoped_rowset_outer_targets
             and source not in self.scoped_rowset_inner_sources
+            and source not in self.scoped_inner_identity_sources
         }
         self.scoped_merge_sources: set[str] = set()
         # OUTER-join keys with a datasource/rowset binding (ROOT/ROWSET) keep
@@ -2837,6 +2865,7 @@ class Factory:
             and base.address not in self.scoped_rowset_outer_sources
             and base.address not in self.scoped_rowset_outer_targets
             and base.address not in self.scoped_rowset_inner_sources
+            and base.address not in self.scoped_inner_identity_sources
         ):
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
@@ -3484,7 +3513,10 @@ class Factory:
         normalized: set[str] = set()
         env_concepts = self.environment.concepts
         for c in components:
-            if c in self.scoped_merge_map:
+            if (
+                c in self.scoped_merge_map
+                and c not in self.scoped_inner_identity_sources
+            ):
                 normalized.add(self.scoped_merge_map[c])
             elif c in env_concepts:
                 normalized.add(env_concepts[c].address)
@@ -3774,6 +3806,7 @@ class Factory:
             scoped_full_join_keys=set(self.scoped_full_join_keys),
             scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
             scoped_inner_join_keys=set(self.scoped_inner_join_keys),
+            scoped_inner_identity_sources=set(self.scoped_inner_identity_sources),
         )
 
         for k, v in base.concepts.all_items():
