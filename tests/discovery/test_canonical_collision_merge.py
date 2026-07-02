@@ -72,10 +72,14 @@ def _generate(query: str = QUERY, model: str = MODEL):
 
 
 def test_basic_canonical_collision_s1_arm_sources_own_physical_column():
+    import re
+
     sql = _generate("select s1, m1;", model=BASIC_MODEL)
     assert "INVALID_REFERENCE_BUG" not in sql, sql
-    assert sql.count('FROM\n    "facts"') == 1, sql
-    assert sql.count('FROM\n    "dim_base"') == 1, sql
+    # exactly one scan of each table, in any join seat (the `merge ~` anchor
+    # may seed the tree from the complete side)
+    assert len(re.findall(r'(?:FROM|JOIN)\s+"facts"', sql)) == 1, sql
+    assert len(re.findall(r'(?:FROM|JOIN)\s+"dim_base"', sql)) == 1, sql
     assert '"facts"."d1"' in sql, sql
     assert '"facts"."d2" as "d2"' not in sql, sql
 

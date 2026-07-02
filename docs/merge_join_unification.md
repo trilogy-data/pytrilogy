@@ -16,7 +16,9 @@ globally (merge) or locally (join) — same plan, same rows. The only difference
 is **scope** (below). `tests/test_join_merge_parity.py` pins this, including the
 asymmetric-domain LEFT case and the merge-as-imputation case (relation target
 with no independent source, sourceable only through the other side's
-derivation).
+derivation). `tests/join_matrix/` is the systematic oracle-driven sweep (key
+kind × join type × form × nullability × composites × multiway × consumption);
+see its README for the cell map and the pinned-defect xfails.
 
 There is no INNER at the language level. A non-partial relation is FULL (keep
 all rows, coalesce the key); a partial relation is LEFT. SQL may still narrow a
@@ -59,7 +61,11 @@ All relations land in `Factory.scoped_joins` and feed:
   `merge derived_metric into unbound_property`).
 - Join typing at resolution: `scoped_full_join_keys` drives FULL,
   `scoped_left_anchor_keys` seeds the join tree on the LEFT anchor (q78
-  directional dedup) — both now include merges and query joins alike.
+  directional dedup) — both now include merges and query joins alike. An anchor
+  key is only ACTIVE in a plan when some present source is partial against it;
+  otherwise the boost would perturb join trees in queries that don't touch the
+  relation's optional side at all (a global `merge ~`'s key shows up
+  everywhere its complete side does — gcat).
 - Coalesce of distinct physical key columns happens at the merge node.
 
 ## Known incompleteness (pre-existing, unchanged)

@@ -183,14 +183,11 @@ def test_composite_both_plain_left_join_stays_left():
     assert got_join == "LEFT"
 
 
-@pytest.mark.xfail(
-    reason="composite scoped LEFT join with a MIXED derived+plain key splits into "
-    "two join levels and widens the plain half to FULL -> spurious right-only rows. "
-    "Pre-existing q78-family bug. See "
-    "evals/tpcds_agent/bug_composite_mixed_key_scoped_left_join_widens_full.md",
-    strict=True,
-)
 def test_composite_mixed_key_left_join_should_not_widen():
+    # KNOWN-BROKEN: composite scoped LEFT join with a MIXED derived+plain key
+    # splits into two join levels and widens the plain half to FULL -> spurious
+    # right-only rows. Pre-existing q78-family bug. See
+    # evals/tpcds_agent/bug_composite_mixed_key_scoped_left_join_widens_full.md
     got_join, rows = _rows(
         BASE2,
         "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
@@ -199,3 +196,75 @@ def test_composite_mixed_key_left_join_should_not_widen():
     # Should be a LEFT join with NO right-only (NULL-period) rows.
     assert got_join == "LEFT"
     assert all(r[0] is not None for r in rows)
+
+
+# --- shared-canonical composite (plain-eq co-key + derived key) --------------
+# q59 shape: a parent rowset (weekly_store) with two year-filtered CHILD rowsets
+# (this_year / next_year), both projecting the parent key (store_id). The two
+# child store_id concepts collapse to ONE canonical (via the parent pseudonym),
+# so when the scoped join carries a DERIVED co-key, the planner treats store_id
+# as "already unified", builds the this_year branch WITHOUT store_id, and the
+# inferred join keys on the derived week key ALONE -> cross-store fan-out.
+# NOTE: a bare `property row_id.k` synthetic model of this shape RecursionErrors
+# (a separate failure, see bug_left_derived_rowset_join_recursion.md), so this
+# guard is built against a grain-keyed / conformed-dimension model.
+CONFORMED = """key rid int;
+property rid.store int;
+property rid.week_seq int;
+property rid.year int;
+property rid.sales_price float;
+datasource sales (rid: rid, s: store, w: week_seq, y: year, sp: sales_price) grain (rid)
+query '''
+select 1 rid, 1 s, 1 w, 2001 y, 100.0 sp union all
+select 2 rid, 1 s, 1 w, 2001 y, 50.0 sp union all
+select 3 rid, 2 s, 1 w, 2001 y, 30.0 sp union all
+select 4 rid, 1 s, 53 w, 2002 y, 7.0 sp union all
+select 5 rid, 2 s, 53 w, 2002 y, 20.0 sp union all
+select 6 rid, 1 s, 2 w, 2001 y, 200.0 sp union all
+select 7 rid, 1 s, 54 w, 2002 y, 40.0 sp''';
+"""
+Q59 = """import sales as ss;
+with weekly_store as
+where ss.year = 2001 or ss.year = 2002
+select ss.store as store_id, ss.week_seq as week_seq, ss.year as year,
+       sum(ss.sales_price) as tot ;
+with this_year as
+where weekly_store.year = 2001
+select weekly_store.store_id, weekly_store.week_seq, weekly_store.tot ;
+with next_year as
+where weekly_store.year = 2002
+select weekly_store.store_id, weekly_store.week_seq, weekly_store.tot ;
+left join this_year.store_id = next_year.store_id
+  and next_year.week_seq = this_year.week_seq + 52
+select this_year.store_id, this_year.week_seq,
+       this_year.tot / next_year.tot as ratio
+order by this_year.store_id, this_year.week_seq;
+"""
+
+
+def _q59_rows():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "sales.preql").write_text(CONFORMED)
+        eng = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=d))
+        prev = sys.getrecursionlimit()
+        sys.setrecursionlimit(4000)
+        try:
+            return [tuple(r) for r in eng.execute_text(Q59)[0].fetchall()]
+        finally:
+            sys.setrecursionlimit(prev)
+
+
+def test_q59_shared_canonical_composite_left_join_no_fanout():
+    # KNOWN-BROKEN: shared-canonical composite scoped LEFT join (plain-eq co-key
+    # whose two sides collapse to ONE canonical via a common parent rowset, + a
+    # derived key) drops the equality co-key -- the this_year branch is built
+    # without store_id so the inferred join carries only the derived week key ->
+    # cross-store fan-out. See
+    # evals/tpcds_agent/bug_q59_composite_derived_left_join_drops_equality_key_fanout.md
+    rows = _q59_rows()
+    # store_id, week_seq, ratio. Correct = one row per (store, week_seq), no
+    # cross-store fan-out: (1,1,150/7), (2,1,30/20), (1,2,200/40).
+    keys = [(r[0], r[1]) for r in rows]
+    assert len(keys) == len(set(keys)), f"cross-store fan-out: {rows}"
+    assert sorted(keys) == [(1, 1), (1, 2), (2, 1)]

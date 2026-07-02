@@ -2468,6 +2468,13 @@ class Factory:
         # grain (see `_abstract_resolution_grain`).
         self._building: list[str] = []
 
+    def _scoped_join_key_groups(self) -> dict[str, set[str]]:
+        """Authored join-key equivalence groups, canonical -> all members."""
+        groups: dict[str, set[str]] = {}
+        for source, target in self.scoped_merge_map.items():
+            groups.setdefault(target, {target}).add(source)
+        return groups
+
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
             return None
@@ -3702,6 +3709,7 @@ class Factory:
             ),
             scoped_full_join_keys=set(self.scoped_full_join_keys),
             scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
+            scoped_join_key_groups=self._scoped_join_key_groups(),
         )
 
         for k, v in base.concepts.all_items():

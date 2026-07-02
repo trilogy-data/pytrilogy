@@ -116,11 +116,39 @@ class BuildEnvironment:
     # this to emit a FULL JOIN for the key, instead of inferring it from a
     # (falsely-)partial binding — so the gate and rowset enrichment are unaffected.
     scoped_full_join_keys: set[str] = field(default_factory=set)
-    # Canonical keys of query-scoped LEFT joins (the preserved-anchor side). Join
+    # Canonical keys of scoped LEFT joins (the preserved-anchor side). Join
     # resolution anchors the join tree on the complete source providing these so
     # multiple optional sources stay directional LEFT_OUTER instead of collapsing
-    # to a symmetric FULL (TPC-DS q78). Excludes environment `merge ~` joins.
+    # to a symmetric FULL (TPC-DS q78).
     scoped_left_anchor_keys: set[str] = field(default_factory=set)
+    # Members of each build-scoped join key equivalence group, keyed by the
+    # group's canonical address: exactly the authored relation endpoints (union
+    # of the scoped merge map's source->canonical entries), NOT the transitive
+    # pseudonym closure — a rowset key's body/parent pseudonyms are not join
+    # operands. Consumed via `distinct_scoped_join_group_members`.
+    scoped_join_key_groups: Dict[str, set[str]] = field(default_factory=dict)
+
+    def distinct_scoped_join_group_members(self) -> set[str]:
+        """Addresses of scoped-join key-group members that keep their own
+        physical identity, for groups with two or more such members.
+
+        Only these carry an exposure obligation: a root-keyed merge member is
+        substituted onto the group canonical (one physical column — nothing to
+        expose separately), while rowset and derived-expression keys stay
+        distinct columns that each joined side must materialize. A member of
+        such a group is never satisfied through a group-mate pseudonym: the
+        join between the sides needs each side's own column (TPC-DS q59)."""
+        out: set[str] = set()
+        for members in self.scoped_join_key_groups.values():
+            distinct = [
+                member
+                for member in members
+                if (concept := self.concepts.get(member)) is not None
+                and concept.address == member
+            ]
+            if len(distinct) >= 2:
+                out.update(distinct)
+        return out
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []

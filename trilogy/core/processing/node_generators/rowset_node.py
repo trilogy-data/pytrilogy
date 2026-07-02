@@ -520,6 +520,26 @@ def _enrich_rowset_node(
     optionals and merges them back onto the rowset. Returns the bare rowset node
     when no enrichment is possible/required."""
     remaining = unsatisfied_optionals(local_optional, node)
+    # A scoped-join key-group member is NOT satisfied through its group-mate
+    # pseudonym: the merge between this rowset and the enrichment side joins the
+    # two physical columns, so the other side must materialize its OWN member.
+    # `unsatisfied_optionals` would drop it here (this node's group-mate output
+    # pseudonym-matches it), the enrichment request would omit it, and the
+    # inferred join would silently lose that key — cross-producting the rows on
+    # whatever keys remain (TPC-DS q59). Re-add it unless this node exposes the
+    # member itself.
+    group_members = environment.distinct_scoped_join_group_members()
+    if group_members:
+        node_outputs = {x.address for x in node.output_concepts}
+        remaining_addresses = {x.address for x in remaining}
+        for optional in local_optional:
+            if (
+                optional.address in group_members
+                and optional.address not in node_outputs
+                and optional.address not in remaining_addresses
+            ):
+                remaining.append(optional)
+                remaining_addresses.add(optional.address)
     # An outer WHERE can reference a concept the rowset doesn't produce (e.g. a
     # dimension property reachable only via the declared `join rs.k = dim.key`).
     # That arg must be sourced and the predicate applied even when every SELECT

@@ -25,7 +25,42 @@ correct-behavior escape hatch. That escape hatch is **gone** — only `left`/`fu
 **both fan out** for this shape. There is currently **no correct authoring form** for
 "intersect two child rowsets of a common parent on a shared plain key + a derived key."
 
-**Status:** reproduced + root-caused to the locus. NOT fixed. Hand off to executor.
+**Status: FIXED 2026-07-02** — one request-level change in `_enrich_rowset_node`
+(rowset_node.py): a scoped-join key-group member is NOT satisfied through its
+group-mate pseudonym when computing the enrichment request. Pseudonym equivalence
+proves the value is readable from the other side once the join EXISTS; using it to
+prune the join's own inputs is circular and deleted the co-key column from one side,
+so the inferred join carried the derived key alone. The member now stays in the
+enrichment mandatory list unless the node exposes it itself, so the other side
+materializes its own column and `get_node_joins` pairs both keys. Groups come from
+the new `BuildEnvironment.scoped_join_key_groups` (exactly the scoped-merge-map
+endpoints) via `distinct_scoped_join_group_members()` — only members that keep their
+own physical identity (rowset/derived keys) qualify; root-keyed merge members are
+substituted onto one canonical column and are exempt (TPC-DS q2's `merge …date.*`).
+This fixed the shared-canonical fan-out AND the comp_mixed LEFT widening; both former
+guards now assert correct rows, plus `tests/join_matrix/test_composite_matrix.py`
+sweeps the composite kinds. RESIDUAL (strict xfail
+`test_full_derived_key_as_left_operand_direction`): a FULL pair with the derived expr
+as the LEFT operand collapses the rowset key onto it as canonical and still drops the
+key or disconnects — author the derived expr on the right of `=`.
+
+**Root cause — pinned upstream of `get_node_joins` (traced 2026-07-02).** The two datasources
+feeding the top-level join are:
+- `next_year` → outputs `{store_id, week_seq, tot}`
+- `this_year` → outputs `{week_seq, tot, _virt_func_add}` — **store_id is absent** (the CTE
+  GROUPs BY store_id but never projects it).
+
+`build_canonical_address_map` collapses `next_year.store_id → this_year.store_id` (one canonical
+class via the shared `weekly_store.store_id` parent pseudonym). Because the scoped-merge already
+treats store_id as unified, the source-resolution that materializes the DERIVED key re-grains the
+this_year branch to `(_virt_func_add, week_seq, tot)` and **drops the store_id co-key from its
+outputs** — assuming it is satisfiable from the next_year side. In `get_node_joins` store_id is
+then connected to only ONE datasource, so it is not a *connecting concept*, no ON condition is
+emitted for it, and the inferred join carries the derived week key alone → cross-store fan-out.
+So the defect is that the derived-key CTE materialization drops the plain co-key from the
+this_year projection; `get_node_joins`' shared-canonical logic then merely can't recover it. The
+fix must keep the plain co-key materialized on BOTH branches (as `_enrich_via_derived_join_key`
+does for the rowset-enrichment path, which this top-level cross-rowset join does not take).
 
 ---
 

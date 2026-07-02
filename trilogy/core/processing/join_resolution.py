@@ -253,16 +253,25 @@ def resolve_join_order_v2(
     datasources = sorted(x for x in g.nodes if x.startswith("ds~"))
     concepts = sorted(x for x in g.nodes if x.startswith("c~"))
 
-    # A source is an anchor when it provides a query-scoped LEFT anchor key as a
+    # A source is an anchor when it provides a scoped-LEFT anchor key as a
     # COMPLETE (non-partial) concept. Optional sources reference the same key but
-    # are partial against it, so they are excluded.
+    # are partial against it, so they are excluded. An anchor key is only ACTIVE
+    # when some present source is partial against it — the boost exists to keep
+    # optional sources directional (LEFT, not FULL); if this particular plan has
+    # no optional side (e.g. a global `merge ~` whose partial counterpart isn't
+    # in the query), seeding the tree on it would just perturb unrelated joins.
     anchor_sources: frozenset[str] = frozenset()
     if anchor_key_nodes:
+        active_anchor_keys = {
+            key
+            for key in anchor_key_nodes
+            if any(key in partials.get(ds, []) for ds in datasources)
+        }
         anchor_sources = frozenset(
             ds
             for ds in datasources
-            if (set(g.neighbors(ds)) & anchor_key_nodes)
-            and not (anchor_key_nodes & set(partials.get(ds, [])))
+            if (set(g.neighbors(ds)) & active_anchor_keys)
+            and not (active_anchor_keys & set(partials.get(ds, [])))
         )
 
     all_connections: dict[tuple[str, str], set[str]] = {}

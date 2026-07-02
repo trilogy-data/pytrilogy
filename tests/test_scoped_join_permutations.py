@@ -20,10 +20,9 @@ Coverage elsewhere (not duplicated here):
 * rowset keys (distinct + shared base) — test_scoped_join_rowset_outer_blend.py, test_scoped_join.py
 * build-env contracts + FULL registry — test_scoped_join.py
 
-KNOWN GAP captured below as a strict xfail: projecting the *source* side of a
-FULL scoped join on a ROOT key drops the coalesce (the datasource binding is
-substituted to the canonical, so only the canonical side carries the FULL
-coalesce). Projecting the canonical/target side is correct. See
+Projecting the *source* side of a FULL scoped join on a ROOT key coalesces
+correctly (FULL binding-keyed sources stay on the identity path, so both members
+coalesce regardless of which is projected). See
 ``test_full_source_side_projection_coalesces``.
 """
 

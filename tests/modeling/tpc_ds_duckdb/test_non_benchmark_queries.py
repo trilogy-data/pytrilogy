@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from trilogy import Dialects, Executor
+from trilogy import Dialects
 from trilogy.constants import CONFIG
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
@@ -631,10 +631,12 @@ limit 5;
     engine.execute_query(query).fetchall()
 
 
-def test_merge_grain_discovery(engine: Executor):
-
-    engine.parse_text("""import store_sales as store_sales;""")
-    environment = engine.environment
+def test_merge_grain_discovery():
+    # pure-discovery test: use a FRESH environment, not the shared session
+    # engine's — earlier tests in this module run `merge` statements that
+    # persist on the shared env and would change this grain
+    environment = Environment(working_path=working_path)
+    parse_text("""import store_sales as store_sales;""", environment)
     build_environment = environment.materialize_for_select()
     graph = generate_graph(build_environment)
 
