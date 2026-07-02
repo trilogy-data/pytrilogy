@@ -65,6 +65,15 @@ _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
     "exceeds the v3-tuned length ceiling (more CTEs / less compact)"
 )
+_V4_MASKED_LEAK = (
+    "v4 failure EXPOSED 2026-07-02 by fixing a CONFIG.use_v4_discovery leak "
+    "(test_v4_node_generators._generate_v4_sql restored it to a hardcoded False in "
+    "a finally, so the rest of each sweep silently ran under v3). These fail under "
+    "v4 but passed in-suite under the leaked v3 planner -- real, previously-masked "
+    "v4 gaps now tracked pending per-family triage/fix. Dominant families: "
+    "rowset-cross-datasource outer read, scoped-join outer key. Fix the plan, then "
+    "prune; do NOT re-mask."
+)
 # Genuine v4 crashes (NOT size/shape). The existence-recursion crash (q10/q2.1/rowset)
 # was FIXED 2026-06-25: `_existence_parents_for` deep-copies a cyclic existence-parent
 # subtree, and `gen_root` resolves multi-arg existence sources at build time. Those
@@ -219,4 +228,70 @@ V4_KNOWN_FAILING: dict[str, str] = {
     # passthrough_after_pushdown`) that runs even when merge_aggregate is off
     # (passthrough removal is orthogonal to aggregate merging). v4 now 9 == v3;
     # default path (merge_aggregate=True) untouched. XPASS in isolation.
+    # --- MASKED-LEAK batch (tracked 2026-07-02): real v4 failures that a
+    # CONFIG.use_v4_discovery leak hid by silently running them under v3 in the
+    # full sweep. Now tracked; triage/fix per family, then prune. ---
+    "tests/discovery/test_aggregate_handling.py::test_aggregate_by_grain_with_derived_of_key": _V4_MASKED_LEAK,
+    "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter": _V4_MASKED_LEAK,
+    "tests/discovery/test_canonical_collision_merge.py::test_canonical_collision_single_source_both_columns": _V4_MASKED_LEAK,
+    "tests/discovery/test_global_avg_filter_group_fanout.py::test_global_avg_filter_does_not_fan_out_group": _V4_MASKED_LEAK,
+    "tests/discovery/test_outer_where_pushes_into_global_agg.py::test_outer_where_pushes_into_global_agg_with_post_agg_filter": _V4_MASKED_LEAK,
+    "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_non_correlated": _V4_MASKED_LEAK,
+    "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by": _V4_MASKED_LEAK,
+    "tests/engine/test_duckdb.py::test_derived_membership_existence": _V4_MASKED_LEAK,
+    "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key": _V4_MASKED_LEAK,
+    "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion": _V4_MASKED_LEAK,
+    "tests/engine/test_duckdb_rowset.py::test_scoped_left_join_coalesce_keeps_unmatched": _V4_MASKED_LEAK,
+    "tests/engine/test_duckdb_rowset.py::test_tvf_union_arm_local_join": _V4_MASKED_LEAK,
+    "tests/engine/test_duckdb_rowset.py::test_tvf_union_order_by_grouped_away_column": _V4_MASKED_LEAK,
+    "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_aggregated": _V4_MASKED_LEAK,
+    "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_in_tvf": _V4_MASKED_LEAK,
+    "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_row_grain": _V4_MASKED_LEAK,
+    "tests/modeling/gcat/test_gcat.py::test_case_key": _V4_MASKED_LEAK,
+    "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection": _V4_MASKED_LEAK,
+    "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters": _V4_MASKED_LEAK,
+    "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join": _V4_MASKED_LEAK,
+    "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order": _V4_MASKED_LEAK,
+    "tests/modeling/stocks/test_stocks.py::test_import": _V4_MASKED_LEAK,
+    "tests/modeling/test_complex.py::test_window_clone": _V4_MASKED_LEAK,
+    "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_membership_in_having_auto_concept_renders_valid_subselect": _V4_MASKED_LEAK,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_fifty_nine": _V4_MASKED_LEAK,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_forty_six": _V4_MASKED_LEAK,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven": _V4_MASKED_LEAK,
+    "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four": _V4_MASKED_LEAK,
+    "tests/modeling/tpc_h/test_tpch_queries.py::test_four": _V4_MASKED_LEAK,
+    "tests/modeling/tpc_h/test_tpch_queries.py::test_seventeen": _V4_MASKED_LEAK,
+    "tests/test_join_merge_parity.py::test_chained_equality_join_matches_pairwise": _V4_MASKED_LEAK,
+    "tests/test_join_merge_parity.py::test_chained_full_join_all_buckets": _V4_MASKED_LEAK,
+    "tests/test_join_merge_parity.py::test_disjoint_inner_and_full_groups": _V4_MASKED_LEAK,
+    "tests/test_join_merge_parity.py::test_multi_way_inner_join_merge_parity": _V4_MASKED_LEAK,
+    "tests/test_join_merge_parity.py::test_scoped_full_join_on_nonrowset_derived_key": _V4_MASKED_LEAK,
+    "tests/test_join_merge_parity.py::test_scoped_join_on_nonrowset_derived_key": _V4_MASKED_LEAK,
+    "tests/test_join_merge_parity.py::test_scoped_left_join_on_nonrowset_derived_key": _V4_MASKED_LEAK,
+    "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain": _V4_MASKED_LEAK,
+    "tests/test_parsing.py::test_circular_aliasing_inverse": _V4_MASKED_LEAK,
+    "tests/test_query_processing.py::test_query_aggregation": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_propagation": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_resolves_correctly": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_outer_read_key": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_aw": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_bv": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_inner_k": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_aw": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_bv": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_matrix": _V4_MASKED_LEAK,
+    "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans": _V4_MASKED_LEAK,
+    "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure": _V4_MASKED_LEAK,
+    "tests/test_scoped_join.py::test_rowset_outer_join_shared_base_no_fanout": _V4_MASKED_LEAK,
+    "tests/test_scoped_join_dim_bridge_outer_key.py::test_all_left_unaffected": _V4_MASKED_LEAK,
+    "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles": _V4_MASKED_LEAK,
+    "tests/test_scoped_join_property_enrichment.py::test_enrich_property_off_scoped_join_key_chained": _V4_MASKED_LEAK,
+    "tests/test_scoped_join_property_enrichment.py::test_enrich_property_off_scoped_join_key_unchained_unresolvable": _V4_MASKED_LEAK,
+    "tests/test_scoped_join_rowset_outer_blend.py::test_left_join_blends_two_rowset_measures": _V4_MASKED_LEAK,
+    "tests/test_scoped_join_rowset_outer_blend.py::test_left_join_optional_key_projects_preserved_value": _V4_MASKED_LEAK,
+    "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved": _V4_MASKED_LEAK,
+    "tests/test_three_source_scoped_outer_join.py::test_three_source_star_outer_join_anchor_preserved": _V4_MASKED_LEAK,
+    "tests/test_three_source_scoped_outer_join.py::test_two_source_outer_join_anchor_preserved": _V4_MASKED_LEAK,
+    "tests/test_where_clause.py::test_case_where": _V4_MASKED_LEAK,
+    "tests/test_where_clause.py::test_where_scalar": _V4_MASKED_LEAK,
 }

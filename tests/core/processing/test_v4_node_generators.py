@@ -66,11 +66,12 @@ def _search(env, benv, addresses, conditions=None):
 def _generate_v4_sql(text: str) -> str:
     env = Environment()
     executor = Dialects.DUCK_DB.default_executor(environment=env)
+    prior = CONFIG.use_v4_discovery
     CONFIG.use_v4_discovery = True
     try:
         statements = executor.generate_sql(text)
     finally:
-        CONFIG.use_v4_discovery = False
+        CONFIG.use_v4_discovery = prior
     return statements[-1]
 
 

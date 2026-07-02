@@ -118,9 +118,13 @@ def test_aggregate_filter():
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
+    # The leading `.*?` tolerates a CTE before the aggregate CTE: v4 emits the base
+    # `usa_names` scan as one shared CTE (reused by the aggregate and the filtered
+    # join), where v3 duplicates the scan inline. Rows are identical; the aggregate
+    # structure + WHERE below are still asserted exactly.
     pattern = r"""
 WITH\s+
-[a-z_]+\s+as\s+\(
+.*?[a-z_]+\s+as\s+\(
 \s*SELECT
 \s*"[^"]+"\."name"\s+as\s+"name",
 \s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",
@@ -159,10 +163,12 @@ def test_aggregate_filter_short_syntax():
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
-    # After CollapseSingleParent optimization, aggregate selects directly from datasource
+    # After CollapseSingleParent optimization, aggregate selects directly from
+    # datasource. Leading `.*?` tolerates a preceding CTE: v4 emits the base scan as
+    # one shared CTE (v3 duplicates it inline); rows identical, aggregate asserted.
     pattern = r"""
 WITH\s+
-[a-z_]+\s+as\s+\(
+.*?[a-z_]+\s+as\s+\(
 \s*SELECT
 \s*"[^"]+"\."name"\s+as\s+"name",
 \s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",

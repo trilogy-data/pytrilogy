@@ -1,4 +1,21 @@
-# v4 compatibility audit (last refreshed 2026-06-27, post full-sweep)
+# v4 compatibility audit (last refreshed 2026-07-02, post leak-fix sweep)
+
+## ⚠️ 2026-07-02 — the prior "green v4 sweep" was PARTLY BOGUS (CONFIG leak fixed)
+
+Every previous "0 failed" full v4 sweep under-counted failures. `_generate_v4_sql`
+(tests/core/processing/test_v4_node_generators.py) restored
+`CONFIG.use_v4_discovery` to a HARDCODED `False` in a `finally` (not the prior
+value). CONFIG is a process-global singleton and that file sorts early, so from
+that point on the ENTIRE rest of each sweep silently ran under **v3** — later "v4"
+tests validated v3 SQL, passing v3-shape assertions and hiding real v4 failures.
+Fixed: (1) that `finally` restores `prior`; (2) `conftest._restore_global_config`
+(function-scoped autouse) snapshots+restores `use_v4_discovery` + `optimizations`
+around every test. The FIRST honest v4 sweep then surfaced **~77 real failures**
+(previously masked), now tracked in `v4_known_failing.py` under `_V4_MASKED_LEAK`
+(64 nodeids) pending per-family triage. Dominant families: rowset-cross-datasource
+outer read (~18-24) and scoped-join outer key (~20). **v4 is substantially farther
+from parity than earlier sections of this file claim** — treat the "~8 tracked /
+near-parity" framing below as pre-leak-fix and stale.
 
 This file is the current handoff for v4 discovery work. The authoritative skip list is
 `tests/v4_known_failing.py`; reclassify with `python local_scripts/v4_classify.py`
@@ -252,11 +269,18 @@ a real datasource output still raises (missing-join diagnostic kept). (2)
 (`PlacementReason.DISCONNECTED_GATE`) so it cross-joins the gate scan and the merge
 dedups to the output grain — a 0/1-row EXISTS gate matching v3. Gate-fails (`x=5`)
 → 0 rows (filter genuinely applied, not dropped); test now asserts both. Full v4
-sweep 4313 passed / 0 real fail (lone fail = live-Gemini flake). **Found 2 more
-UNTRACKED v4 isolation failures while here: `test_aggregate_filter` /
-`test_aggregate_filter_short_syntax` (usa_names) — SQL-shape mismatch, the hard
-aggregate-HAVING family (= tracked `test_aggregate_filter_anonymous`); pre-existing,
-not addressed here.**
+sweep 4313 passed / 0 real fail (lone fail = live-Gemini flake); v3 sweep 4318 / 0
+real fail (lone fail = live-OpenAI flake).
+
+Also FIXED the 2 untracked siblings found while here: `test_aggregate_filter` /
+`test_aggregate_filter_short_syntax` (usa_names). NOT hard — v4's rows are identical
+to v3 (same aggs-by-name, same `WHERE abs(...)` on materialized aggs, same final
+projection); v4 just emits the base `usa_names` scan as ONE shared CTE (reused by
+the aggregate + the filtered join) where v3 duplicates it inline (arguably better).
+The regex over-specified CTE ordering (pinned the aggregate CTE as FIRST); a leading
+`.*?` now tolerates a preceding CTE. Test-only; passes v3 + v4 in isolation. The
+tracked `test_aggregate_filter_anonymous` remains the genuinely-hard sibling
+(HAVING vs CASE+downstream-WHERE duplication).
 
 ### 2026-07-01 — filter_scalar staging: ROWS VERIFIED, test conditioned + pruned (_V4_STRUCTURE)
 
