@@ -55,12 +55,20 @@ def _write(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _oracle(join_type: str) -> list[tuple]:
+def _oracle(join_type: str, form: str) -> list[tuple]:
     shift = lambda k: k + 1  # noqa: E731
     a = aggregate(LEFT_ROWS, shift)
     b = aggregate(RIGHT_ROWS, shift)
     c = aggregate(MID_ROWS, shift)
-    keys = set(a) if join_type == "left" else set(a) | set(b) | set(c)
+    if join_type == "left":
+        keys = set(a)
+    elif form == "merge":
+        # the merge stack is a chain of EQUAL declarations, narrowed to the
+        # three-way intersection by default (lying declaration = author
+        # error); the query-scoped `full join` chain keeps the union.
+        keys = set(a) & set(b) & set(c)
+    else:
+        keys = set(a) | set(b) | set(c)
     return sort_rows([(k, a.get(k), b.get(k), c.get(k)) for k in keys])
 
 
@@ -70,5 +78,5 @@ def test_three_way_derived_key(tmp_path: Path, join_type: str, form: str):
     relation = RELATIONS[(join_type, form)]
     query = HEAD + relation + "\n" + SELECT
     rows = run_cell(_write(tmp_path), query)
-    want = _oracle(join_type)
+    want = _oracle(join_type, form)
     assert rows == want, f"{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"

@@ -1,6 +1,6 @@
 query_id = "95"
 generator = "v3"
-gen_length = 4031
+gen_length = 4130
 preql_size = 716
 comp_size = 1010
 generated_sql = """
@@ -32,12 +32,12 @@ FROM
     \"abundant\"),
 thoughtful as (
 SELECT
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"returned_orders\"
+    coalesce(\"web_sales_web_returns\".\"WR_ORDER_NUMBER\",\"web_sales_web_sales\".\"WS_ORDER_NUMBER\") as \"returned_orders\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
-    LEFT OUTER JOIN \"memory\".\"web_returns\" as \"web_sales_web_returns\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_web_returns\".\"WR_ITEM_SK\" AND \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" = \"web_sales_web_returns\".\"WR_ORDER_NUMBER\"
+    INNER JOIN \"memory\".\"web_returns\" as \"web_sales_web_returns\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_web_returns\".\"WR_ITEM_SK\" AND \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" = \"web_sales_web_returns\".\"WR_ORDER_NUMBER\"
 WHERE
-    (\"web_sales_web_returns\".\"WR_ORDER_NUMBER\" is not null) is True and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null)
+    (\"web_sales_web_returns\".\"WR_ORDER_NUMBER\" is not null) is True and coalesce(\"web_sales_web_returns\".\"WR_ORDER_NUMBER\",\"web_sales_web_sales\".\"WS_ORDER_NUMBER\") in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null)
 
 GROUP BY
     1),

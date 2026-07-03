@@ -2309,14 +2309,13 @@ class Factory:
         #     a row-by-row `coalesce` of both columns and substitution — having
         #     destroyed one column — could not represent it.
         #
-        # KNOWN INCOMPLETENESS: for a ROOT OUTER key both run — the output
-        # concept stays projectable via identity (alias_origin_lookup) but its
-        # DATASOURCE BINDING is still substituted to the canonical. So the FULL
-        # coalesce attaches only to the canonical side; projecting the authored
-        # source key renders its raw (NULL-on-unmatched) column. Rowset keys
-        # keep distinct bindings and coalesce on either side. See the strict
-        # xfail in tests/test_scoped_join_permutations.py. scoped_partial_sources
-        # marks the LEFT-join side whose datasource binding must be partial.
+        # ROOT OUTER keys stay on the identity path end-to-end: a
+        # binding-keyed OUTER source (scoped_outer_identity_sources, below)
+        # keeps its own binding instead of substituting to the canonical, so
+        # the FULL coalesce spans both members regardless of which side is
+        # projected (pinned in tests/test_scoped_join_permutations.py).
+        # scoped_partial_sources marks the LEFT-join side whose datasource
+        # binding must be partial.
         self.scoped_joins: list[tuple[str, str, JoinType]] = scoped_joins or []
         self.scoped_merge_map, self.scoped_partial_sources = _build_scoped_merge_index(
             self.scoped_joins

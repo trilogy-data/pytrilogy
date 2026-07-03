@@ -1,6 +1,6 @@
 query_id = "30"
 generator = "v3"
-gen_length = 7147
+gen_length = 7142
 preql_size = 2007
 comp_size = 1507
 generated_sql = """
@@ -85,7 +85,7 @@ SELECT
     \"yummy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"yummy\"
-    LEFT OUTER JOIN \"juicy\" on \"yummy\".\"web_returns_return_address_state\" is not distinct from \"juicy\".\"web_returns_return_address_state\"
+    INNER JOIN \"juicy\" on \"yummy\".\"web_returns_return_address_state\" is not distinct from \"juicy\".\"web_returns_return_address_state\"
 WHERE
     \"yummy\".\"customer_state_returns_2002\" > 1.2 * \"juicy\".\"_virt_agg_avg_3885168128306444\"
 

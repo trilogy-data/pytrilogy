@@ -52,10 +52,12 @@ class Optimizations:
     upgrade_outer_key_set_equivalence: bool = True
     # Trust EQUAL domain declarations (non-partial `merge a into b`) when
     # narrowing outer joins: the merged key's FULL join may upgrade to INNER
-    # once both sides pass the completeness tests. Default OFF until the
-    # SUBSET/UNION default flip (docs/subset_union_join_design.md) — on
-    # declaration-violating data the narrowed join drops the violating rows.
-    narrow_equal_domain_joins: bool = False
+    # once both sides pass the completeness tests. Default ON since the
+    # always-preserving render flip (docs/subset_union_join_design.md) — a
+    # lying declaration is an author error, and the narrowed join dropping
+    # the violating rows is the ruled semantics. Query-scoped `full join` /
+    # `union join` keys never narrow regardless.
+    narrow_equal_domain_joins: bool = True
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
     join_hoist: bool = True

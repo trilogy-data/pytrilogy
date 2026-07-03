@@ -836,9 +836,12 @@ select sales.brand as brand, sum(sales.amt) as amt_02;
 @pytest.mark.parametrize(
     "jointype,expected",
     [
-        # LEFT (SQL `y01 LEFT JOIN y02`): left operand y01 preserved -> brand 1 +
-        # brand 2 (2001-only); brand 3 (2002-only) drops.
-        ("LEFT", [(1, 15.0, 15.0), (2, 20.0, None)]),
+        # LEFT declares y02.brand ⊆ y01.brand; both rowsets are filtered, so
+        # the subset can't be proven against the filtered 2001 side and the
+        # preserving render stands — brand 3 (2002-only) survives NULL-padded.
+        # Row restriction is an explicit filter (`where y01.amt_01 is not
+        # null`), never a silent join drop.
+        ("LEFT", [(1, 15.0, 15.0), (2, 20.0, None), (3, None, 30.0)]),
         # FULL: every brand from either year, padded NULL on the missing side.
         ("FULL", [(1, 15.0, 15.0), (2, 20.0, None), (3, None, 30.0)]),
     ],

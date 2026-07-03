@@ -131,12 +131,23 @@ _MATRIX: list[tuple[str, str, object]] = [
     ),
     (
         # HAVING inside the rowset, then enrich a base-keyed property via join.
-        # HAVING sum>9 keeps items 1,2 -> apple, banana.
+        # HAVING sum>9 keeps items 1,2 -> apple, banana. Joins are
+        # row-preserving: items outside the rowset survive NULL-padded, so the
+        # restriction to rowset rows is the explicit `rs.sq is not null`.
         "having_then_enrich_property",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
         [("apple", 15), ("banana", 10)],
+    ),
+    (
+        # ... and without the explicit filter the enrichment preserves:
+        # cherry (item 3, fails HAVING) survives with a NULL measure.
+        "having_then_enrich_property_preserving",
+        SALES_MODEL
+        + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
+        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        [("apple", 15), ("banana", 10), ("cherry", None)],
     ),
     (
         # HAVING (inside rowset) AND an outer membership filter (over a name-derived
@@ -180,12 +191,15 @@ _MATRIX: list[tuple[str, str, object]] = [
         [(1, 15), (2, 10)],
     ),
     # --- cross-rowset WHERE/JOIN comparison (year-over-year) ---
+    # joins are row-preserving; the intersection is the explicit both-sides
+    # `is not null` idiom (one-sided not-null keeps the other side's
+    # exclusive rows).
     (
         "cross_rowset_yoy_join",
         SALES_MODEL
         + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
         + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
-        + "where y00.s00 is not null select y99.k, y99.s99, y00.s00\nleft join y99.k = y00.k2 order by y99.k;",
+        + "where y99.s99 is not null and y00.s00 is not null select y99.k, y99.s99, y00.s00\nleft join y99.k = y00.k2 order by y99.k;",
         [(1, 10, 5), (2, 7, 3)],
     ),
     (

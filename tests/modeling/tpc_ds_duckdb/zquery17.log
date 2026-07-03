@@ -1,6 +1,6 @@
 query_id = "17"
 generator = "v3"
-gen_length = 8166
+gen_length = 8205
 preql_size = 1375
 comp_size = 1588
 generated_sql = """
@@ -30,8 +30,8 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"analysis_catalog_sales\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_catalog_sales\".\"CS_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_catalog_date_date\" on \"analysis_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"analysis_catalog_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"analysis_store_store\" on \"analysis_store_sales\".\"SS_STORE_SK\" = \"analysis_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
 WHERE
     \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_return_date_date\".\"D_YEAR\" in (2001,2002) and \"analysis_catalog_date_date\".\"D_YEAR\" in (2001,2002) and SR_RETURN_TIME_SK IS NOT NULL
 
@@ -40,8 +40,8 @@ GROUP BY
     2,
     3,
     4,
-    \"analysis_catalog_sales\".\"CS_ITEM_SK\",
-    \"analysis_catalog_sales\".\"CS_ORDER_NUMBER\"),
+    \"analysis_catalog_sales\".\"CS_ORDER_NUMBER\",
+    coalesce(\"analysis_catalog_sales\".\"CS_ITEM_SK\",\"analysis_item_items\".\"I_ITEM_SK\",\"analysis_store_returns\".\"SR_ITEM_SK\",\"analysis_store_sales\".\"SS_ITEM_SK\")),
 yummy as (
 SELECT
     \"analysis_item_items\".\"I_ITEM_DESC\" as \"analysis_item_desc\",
@@ -56,8 +56,8 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"wakeful\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"wakeful\".\"analysis_customer_id\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"wakeful\".\"analysis_item_id\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_catalog_date_date\" on \"wakeful\".\"analysis_catalog_date_id\" = \"analysis_catalog_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"analysis_store_store\" on \"analysis_store_sales\".\"SS_STORE_SK\" = \"analysis_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
 WHERE
     \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_return_date_date\".\"D_YEAR\" in (2001,2002) and \"analysis_catalog_date_date\".\"D_YEAR\" in (2001,2002) and SR_RETURN_TIME_SK IS NOT NULL
 
@@ -67,8 +67,8 @@ GROUP BY
     3,
     4,
     5,
-    \"analysis_store_sales\".\"SS_TICKET_NUMBER\",
-    \"wakeful\".\"analysis_item_id\"),
+    coalesce(\"analysis_item_items\".\"I_ITEM_SK\",\"analysis_store_returns\".\"SR_ITEM_SK\",\"analysis_store_sales\".\"SS_ITEM_SK\",\"wakeful\".\"analysis_item_id\"),
+    coalesce(\"analysis_store_returns\".\"SR_TICKET_NUMBER\",\"analysis_store_sales\".\"SS_TICKET_NUMBER\")),
 concerned as (
 SELECT
     \"vacuous\".\"analysis_item_desc\" as \"analysis_item_desc\",
@@ -107,9 +107,9 @@ GROUP BY
     2,
     3)
 SELECT
-    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
-    coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") as \"analysis_item_desc\",
-    coalesce(\"concerned\".\"analysis_store_state\",\"juicy\".\"analysis_store_state\") as \"analysis_store_state\",
+    \"juicy\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
+    \"juicy\".\"analysis_item_desc\" as \"analysis_item_desc\",
+    \"juicy\".\"analysis_store_state\" as \"analysis_store_state\",
     coalesce(\"juicy\".\"store_sales_quantitycount\",0) as \"store_sales_quantitycount\",
     \"juicy\".\"store_sales_quantityave\" as \"store_sales_quantityave\",
     \"juicy\".\"store_sales_quantitystdev\" as \"store_sales_quantitystdev\",
@@ -118,15 +118,15 @@ SELECT
     \"juicy\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
     \"juicy\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
     \"juicy\".\"_virt_agg_stddev_2955055239782943\" / \"juicy\".\"_virt_agg_avg_8572613716165371\" as \"store_returns_quantitycov\",
-    coalesce(\"concerned\".\"catalog_sales_quantitycount\",0) as \"catalog_sales_quantitycount\",
+    \"concerned\".\"catalog_sales_quantitycount\" as \"catalog_sales_quantitycount\",
     \"concerned\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
     \"concerned\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\",
     \"concerned\".\"_virt_agg_stddev_2693366057110854\" / \"concerned\".\"_virt_agg_avg_1688371525139287\" as \"catalog_sales_quantitycov\"
 FROM
     \"concerned\"
-    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_text_id\" = \"juicy\".\"analysis_item_text_id\" AND \"concerned\".\"analysis_store_state\" is not distinct from \"juicy\".\"analysis_store_state\"
+    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_text_id\" is not distinct from \"juicy\".\"analysis_item_text_id\" AND \"concerned\".\"analysis_store_state\" is not distinct from \"juicy\".\"analysis_store_state\"
 ORDER BY 
-    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") asc nulls first,
-    coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") asc nulls first,
-    coalesce(\"concerned\".\"analysis_store_state\",\"juicy\".\"analysis_store_state\") asc nulls first
+    \"juicy\".\"analysis_item_text_id\" asc nulls first,
+    \"juicy\".\"analysis_item_desc\" asc nulls first,
+    \"juicy\".\"analysis_store_state\" asc nulls first
 LIMIT (100)"""

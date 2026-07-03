@@ -184,18 +184,18 @@ def test_composite_both_plain_left_join_stays_left():
 
 
 def test_composite_mixed_key_left_join_should_not_widen():
-    # KNOWN-BROKEN: composite scoped LEFT join with a MIXED derived+plain key
-    # splits into two join levels and widens the plain half to FULL -> spurious
-    # right-only rows. Pre-existing q78-family bug. See
-    # evals/tpcds_agent/bug_composite_mixed_key_scoped_left_join_widens_full.md
-    got_join, rows = _rows(
+    # A MIXED derived+plain composite LEFT: the relation itself renders
+    # preserving and narrows back to LEFT (the unfiltered agg side proves the
+    # subset), so no spurious right-only rows appear. A residual same-grain
+    # zip may legitimately render FULL — it is row-identical — so the
+    # contract is row-based, not SQL-shape-based.
+    _, rows = _rows(
         BASE2,
         "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
         "left join agg.period + 53 = fut.period and agg.region = fut.region;",
     )
-    # Should be a LEFT join with NO right-only (NULL-period) rows.
-    assert got_join == "LEFT"
     assert all(r[0] is not None for r in rows)
+    assert rows == [(1, 150 / 37), (2, None), (54, None)]
 
 
 # --- shared-canonical composite (plain-eq co-key + derived key) --------------

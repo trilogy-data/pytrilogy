@@ -1,6 +1,6 @@
 query_id = "98"
 generator = "v3"
-gen_length = 3326
+gen_length = 3325
 preql_size = 750
 comp_size = 811
 generated_sql = """
@@ -62,16 +62,16 @@ SELECT
     \"abundant\".\"store_sales_item_text_id\" as \"store_sales_item_text_id\",
     \"abundant\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"abundant\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"abundant\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
     \"abundant\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     \"abundant\".\"item_revenue\" as \"item_revenue\",
     ( \"abundant\".\"item_revenue\" * 100.0 ) / (\"thoughtful\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
 FROM
     \"abundant\"
-    LEFT OUTER JOIN \"thoughtful\" on \"abundant\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\"
+    INNER JOIN \"thoughtful\" on \"abundant\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\"
 ORDER BY 
     \"abundant\".\"store_sales_item_category\" asc nulls first,
-    \"abundant\".\"store_sales_item_class\" asc nulls first,
+    \"thoughtful\".\"store_sales_item_class\" asc nulls first,
     \"abundant\".\"store_sales_item_text_id\" asc nulls first,
     \"abundant\".\"store_sales_item_desc\" asc nulls first,
     \"revenueratio\" asc nulls first"""

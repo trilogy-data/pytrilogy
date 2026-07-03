@@ -114,39 +114,38 @@ def get_join_type(
     all_connecting_keys: set[str],
     full_join_keys: set[str] | None = None,
 ) -> JoinType:
-    # A query-scoped FULL join registers its canonical key here. Both sides bind
-    # it completely (it is NOT partial) — the FULL JOIN itself spans the rows
-    # absent from either side and `_build_joinkeys` coalesces the key. Driving
-    # FULL from this registry (rather than the partial flag) keeps the key
-    # complete, so the unresolvable-source gate and rowset enrichment never fire.
+    # Rendering is row-preserving by default: a relation declares DOMAIN
+    # knowledge, never row intent, and no join silently drops a row
+    # (docs/subset_union_join_design.md). The narrowing pass
+    # (UpgradeOuterFromKeySetEquivalence) restores a directional/INNER form
+    # only when provably row-identical.
+    #
+    # UNION-declared keys (query-scoped `full join` / `union join`, non-partial
+    # merges): neither domain contains the other — FULL, key coalesced by
+    # `_build_joinkeys`, and the registry also vetoes narrowing. Driving FULL
+    # from this registry (rather than the partial flag) keeps the key complete,
+    # so the unresolvable-source gate and rowset enrichment never fire.
     if full_join_keys and all_connecting_keys & full_join_keys:
         return JoinType.FULL
-    # PARTIALITY and NULLABILITY are orthogonal. A partial side holds a SUBSET
-    # of the key's values and is the optional side — partials decide direction.
-    # A nullable key is COMPLETE, with NULLs among its values: it null-safes the
-    # equality (get_modifiers) and affects the TYPE only through one rule —
-    # NULL-key rows must never silently drop, so when a side's NULLs have no
-    # possible null-safe partner (that side nullable, the OTHER side not), the
-    # join must preserve that side even where direction would drop it. When
-    # both sides are nullable, the null-safe equality pairs the NULL groups and
-    # the authored direction stands.
     left_is_partial = _has_any(all_connecting_keys, left, partials)
     right_is_partial = _has_any(all_connecting_keys, right, partials)
     left_is_nullable = _has_any(all_connecting_keys, left, nullables)
     right_is_nullable = _has_any(all_connecting_keys, right, nullables)
 
-    if left_is_partial and right_is_partial:
+    # A partial side declares a SUBSET domain. Subset speaks to VALUES and
+    # NULL is not a value, so partiality and nullability never interact here:
+    # render preserving, and the narrowing pass restores direction exactly
+    # when the superset side provably carries the key's full domain and the
+    # subset side's NULLs have a null-safe partner.
+    if left_is_partial or right_is_partial:
         return JoinType.FULL
-    if right_is_partial:
-        if right_is_nullable and not left_is_nullable:
-            return JoinType.FULL
-        return JoinType.LEFT_OUTER
-    if left_is_partial:
-        if left_is_nullable and not right_is_nullable:
-            return JoinType.FULL
-        return JoinType.RIGHT_OUTER
+    # Neither side partial: each binding declares the key's full domain
+    # (EQUAL — mutual subset), whose narrowed form is INNER. NULL-key rows
+    # must still never drop: when both sides are nullable the null-safe
+    # equality (get_modifiers) pairs the NULL groups, and a nullable side
+    # with no null-safe partner keeps the join preserving toward it.
     if left_is_nullable and right_is_nullable:
-        return JoinType.FULL
+        return JoinType.INNER
     if left_is_nullable:
         return JoinType.LEFT_OUTER
     if right_is_nullable:

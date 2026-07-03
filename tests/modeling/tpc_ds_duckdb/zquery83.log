@@ -1,6 +1,6 @@
 query_id = "83"
 generator = "v3"
-gen_length = 5054
+gen_length = 5095
 preql_size = 1586
 comp_size = 2195
 generated_sql = """
@@ -79,7 +79,7 @@ GROUP BY
     2,
     3,
     \"questionable\".\"sales_order_id\",
-    \"sales_item_items\".\"I_ITEM_SK\"),
+    coalesce(\"questionable\".\"sales_item_id\",\"sales_item_items\".\"I_ITEM_SK\")),
 abhorrent as (
 SELECT
     \"concerned\".\"sales_item_text_id\" as \"sales_item_text_id\"

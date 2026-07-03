@@ -12,6 +12,7 @@ import pytest
 
 from tests.join_matrix.harness import (
     aggregate,
+    expected_equal,
     expected_full,
     expected_left,
     matrix_rows,
@@ -49,31 +50,60 @@ KINDS = {
     ),
 }
 
-# per join type: (join clause template, merge statement template, oracle)
+# per join type: (join clause template, merge statement template,
+# join-form oracle, merge-form oracle).
 # `left join L = R` anchors L; its merge equivalent is `merge R into ~L`.
 # SUBSET/UNION are the domain-declaration spellings of the same two relations
 # (docs/subset_union_join_design.md): `subset join R = L` declares R ⊆ L (the
 # superset L anchors — row parity with authored LEFT), `union join L = R`
-# declares neither contains the other (row parity with FULL).
+# declares neither contains the other (never narrows, keeps FULL rows). The
+# non-partial merge is the EQUAL declaration: with `narrow_equal_domain_joins`
+# defaulted on it narrows to INNER, and on these deliberately declaration-
+# violating rows that DROPS the side-exclusive rows (lying declaration =
+# author error) — so the merge-form full/union cells rule intersection while
+# the query-scoped join forms keep the preserving FULL rows.
 TYPES = {
-    "full": ("full join {l} = {r}", "merge {l} into {r};", expected_full),
-    "left": ("left join {l} = {r}", "merge {r} into ~{l};", expected_left),
-    "subset": ("subset join {r} = {l}", "merge {r} into ~{l};", expected_left),
-    "union": ("union join {l} = {r}", "merge {l} into {r};", expected_full),
+    "full": (
+        "full join {l} = {r}",
+        "merge {l} into {r};",
+        expected_full,
+        expected_equal,
+    ),
+    "left": (
+        "left join {l} = {r}",
+        "merge {r} into ~{l};",
+        expected_left,
+        expected_left,
+    ),
+    "subset": (
+        "subset join {r} = {l}",
+        "merge {r} into ~{l};",
+        expected_left,
+        expected_left,
+    ),
+    "union": (
+        "union join {l} = {r}",
+        "merge {l} into {r};",
+        expected_full,
+        expected_equal,
+    ),
 }
 
 
-def _oracle(kind: str, join_type: str, nullable: bool = False) -> list[tuple]:
+def _oracle(
+    kind: str, join_type: str, form: str, nullable: bool = False
+) -> list[tuple]:
     key_fn = (lambda k: k + 1) if kind == "derived" else None
     left_rows, right_rows = matrix_rows(nullable)
     left = aggregate(left_rows, key_fn)
     right = aggregate(right_rows, key_fn)
-    return TYPES[join_type][2](left, right)
+    oracle = TYPES[join_type][2] if form == "join" else TYPES[join_type][3]
+    return oracle(left, right)
 
 
 def _query(kind: str, join_type: str, form: str) -> str:
     head, left_op, right_op, select = KINDS[kind]
-    join_tpl, merge_tpl, _ = TYPES[join_type]
+    join_tpl, merge_tpl = TYPES[join_type][0], TYPES[join_type][1]
     tpl = join_tpl if form == "join" else merge_tpl
     return head + tpl.format(l=left_op, r=right_op) + "\n" + select
 
@@ -84,7 +114,7 @@ def _query(kind: str, join_type: str, form: str) -> str:
 def test_two_source_single_key(tmp_path: Path, kind: str, join_type: str, form: str):
     query = _query(kind, join_type, form)
     rows = run_cell(write_models(tmp_path), query)
-    want = _oracle(kind, join_type)
+    want = _oracle(kind, join_type, form)
     assert rows == want, f"{kind}/{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"
 
 
@@ -92,35 +122,17 @@ def test_two_source_single_key(tmp_path: Path, kind: str, join_type: str, form: 
 # and a NULL-key row on each side. NULL keys are valid members: they must match
 # null-safely (one (None, 16, 1600) row, never two half-rows or a drop), and an
 # authored LEFT must stay LEFT (no nullable-driven widening to FULL).
-_XFAIL_DERIVED_NULL_LEFT_ZIP = pytest.mark.xfail(
-    strict=True,
-    reason="derived-key LEFT with NULL keys: the relation itself is null-safe "
-    "and correctly typed, but the final same-grain zip between the two "
-    "aggregate branches is a generator-authored NodeJoin rendered as INNER "
-    "with plain `=` — the kb-side branch loses the key's nullability through "
-    "the kb->ka substitution rename, so the NULL key group drops at the zip. "
-    "FULL and all rowset/root kinds are fully correct.",
-)
-_NULLABLE_MARKS = {
-    ("derived", "left"): (_XFAIL_DERIVED_NULL_LEFT_ZIP,),
-    # subset is the same superset-anchored relation — same zip defect.
-    ("derived", "subset"): (_XFAIL_DERIVED_NULL_LEFT_ZIP,),
-}
-
-
+# The former derived-LEFT zip xfails dissolved with the always-preserving flip:
+# the scan-level nullability stamp for computed BASIC keys keeps the zip
+# null-safe, so narrowing to INNER stays row-identical.
 @pytest.mark.parametrize(
     "kind,join_type,form",
-    [
-        pytest.param(k, t, f, marks=_NULLABLE_MARKS.get((k, t), ()))
-        for k in KINDS
-        for t in TYPES
-        for f in ("join", "merge")
-    ],
+    [pytest.param(k, t, f) for k in KINDS for t in TYPES for f in ("join", "merge")],
 )
 def test_two_source_single_key_nullable(
     tmp_path: Path, kind: str, join_type: str, form: str
 ):
     query = _query(kind, join_type, form)
     rows = run_cell(write_models(tmp_path, nullable=True), query)
-    want = _oracle(kind, join_type, nullable=True)
+    want = _oracle(kind, join_type, form, nullable=True)
     assert rows == want, f"{kind}/{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"

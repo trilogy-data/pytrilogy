@@ -1,6 +1,6 @@
 query_id = "64"
 generator = "v3"
-gen_length = 19565
+gen_length = 19752
 preql_size = 3765
 comp_size = 3783
 generated_sql = """
@@ -71,22 +71,22 @@ SELECT
     \"ss_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_demographic_marital_status\",
     \"ss_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_demographics_marital_status\",
     \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
-    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
     \"ss_store_sales\".\"SS_COUPON_AMT\" as \"ss_coupon_amt\",
     \"ss_store_sales\".\"SS_LIST_PRICE\" as \"ss_list_price\",
     \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
-    \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\",
-    \"ss_store_sales\".\"SS_WHOLESALE_COST\" as \"ss_wholesale_cost\"
+    \"ss_store_sales\".\"SS_WHOLESALE_COST\" as \"ss_wholesale_cost\",
+    coalesce(\"ss_item_items\".\"I_ITEM_SK\",\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\") as \"ss_item_id\",
+    coalesce(\"ss_store_returns\".\"SR_TICKET_NUMBER\",\"ss_store_sales\".\"SS_TICKET_NUMBER\") as \"ss_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"ss_customer_demographic_customer_demographics\" on \"ss_store_sales\".\"SS_CDEMO_SK\" = \"ss_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"ss_customer_demographics_customer_demographics\" on \"ss_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"ss_customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"ss_item_items\".\"I_ITEM_SK\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null
+    coalesce(\"ss_item_items\".\"I_ITEM_SK\",\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\") in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null
 
 GROUP BY
     1,

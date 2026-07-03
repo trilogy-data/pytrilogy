@@ -14,6 +14,7 @@ from tests.join_matrix.harness import (
     LEFT_ROWS,
     RIGHT_ROWS,
     aggregate,
+    expected_equal,
     expected_full,
     expected_left,
     run_cell,
@@ -41,11 +42,16 @@ RELATIONS = {
 }
 
 
-def _base(join_type: str) -> list[tuple]:
+def _base(join_type: str, form: str) -> list[tuple]:
     left = aggregate(LEFT_ROWS)
     right = aggregate(RIGHT_ROWS)
     if join_type in ("left", "subset"):
         return expected_left(left, right)
+    # the merge form of full/union is the EQUAL declaration, narrowed to
+    # intersection by default (lying declaration = author error); the
+    # query-scoped join forms keep the preserving FULL rows.
+    if form == "merge":
+        return expected_equal(left, right)
     return expected_full(left, right)
 
 
@@ -66,7 +72,9 @@ def test_post_join_where_on_optional_measure(tmp_path: Path, join_type: str, for
     # side and change the join population.
     query = _query(join_type, form, "where rb.tot > 150\n")
     rows = run_cell(write_models(tmp_path), query)
-    want = sort_rows([r for r in _base(join_type) if r[2] is not None and r[2] > 150])
+    want = sort_rows(
+        [r for r in _base(join_type, form) if r[2] is not None and r[2] > 150]
+    )
     assert rows == want, f"{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"
 
 
@@ -77,5 +85,5 @@ def test_intersection_via_not_null(tmp_path: Path, join_type: str, form: str):
     # on a non-key attribute of the optional side
     query = _query(join_type, form, "where rb.tot is not null\n")
     rows = run_cell(write_models(tmp_path), query)
-    want = sort_rows([r for r in _base(join_type) if r[2] is not None])
+    want = sort_rows([r for r in _base(join_type, form) if r[2] is not None])
     assert rows == want, f"{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"

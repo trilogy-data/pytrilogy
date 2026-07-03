@@ -26,6 +26,7 @@ from trilogy.core.models.author import (
     Conditional,
     Function,
     MultiSelectLineage,
+    RowsetItem,
     SelectLineage,
     WhereClause,
 )
@@ -1150,6 +1151,33 @@ def process_chart(
     )
 
 
+def _collect_rowset_scoped_joins(
+    environment: Environment,
+    statement: SelectStatement | MultiSelectStatement,
+) -> list[tuple[str, str, JoinType]]:
+    """Scoped joins authored inside rowset bodies (`with rs as left join ...`).
+
+    They ride the rowset's select lineage, not the outer statement's
+    ``join_clauses``, but their declarations must still reach the CTE-level
+    narrowing registries."""
+    out: list[tuple[str, str, JoinType]] = []
+    seen_rowsets: set[str] = set()
+    pools: list[dict] = [dict(environment.concepts.items())]
+    local = getattr(statement, "local_concepts", None)
+    if local:
+        pools.append(dict(local))
+    for pool in pools:
+        for concept in pool.values():
+            lineage = getattr(concept, "lineage", None)
+            if not isinstance(lineage, RowsetItem):
+                continue
+            if lineage.rowset.name in seen_rowsets:
+                continue
+            seen_rowsets.add(lineage.rowset.name)
+            out.extend(getattr(lineage.rowset.select, "scoped_joins", []) or [])
+    return out
+
+
 def process_query(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
@@ -1199,7 +1227,38 @@ def process_query(
     build_scoped_joins.extend(
         merge for merge in environment.merges if merge not in build_scoped_joins
     )
-    scoped_merge_map, _ = _build_scoped_merge_index(build_scoped_joins)
+    # rowset-BODY joins (`with rs as left join ... select ...`) live on the
+    # rowset's select lineage, not the outer statement; fold them in so their
+    # keys reach the narrowing registries (subset map / FULL veto) too.
+    build_scoped_joins.extend(
+        t
+        for t in _collect_rowset_scoped_joins(environment, statement)
+        if t not in build_scoped_joins
+    )
+    # scoped_partial_sources = the subset side of every LEFT/subset relation by
+    # its OWN address (side-specific); mapped to its superset counterpart it
+    # feeds SUBSET-driven directional narrowing.
+    scoped_merge_map, scoped_partial_sources = _build_scoped_merge_index(
+        build_scoped_joins
+    )
+    subset_join_map = {
+        addr: scoped_merge_map[addr]
+        for addr in scoped_partial_sources
+        if addr in scoped_merge_map
+    }
+    # For each subset address, the raw datasources that bind it NATIVELY —
+    # computed on the author environment, i.e. PRE-substitution, so it
+    # survives the canonical collapse and arbitrates same-address join pairs
+    # by provenance in the narrowing pass.
+    subset_binding_sources: dict[str, set[str]] = {}
+    for addr in subset_join_map:
+        sources: set[str] = set()
+        for ds in environment.datasources.values():
+            if any(col.concept.address == addr for col in ds.columns):
+                sources.add(ds.identifier)
+                sources.add(ds.safe_identifier)
+        if sources:
+            subset_binding_sources[addr] = sources
     # Canonical keys of explicit OUTER joins: flagged so the outer-join upgrade
     # optimization never collapses author-requested preservation back to INNER.
     # LEFT/merge join typing is carried by the partial flag (set on the optional
@@ -1237,6 +1296,9 @@ def process_query(
         having_alias=having_alias,
         full_join_keys=full_join_keys,
         equal_join_keys=equal_join_keys,
+        subset_join_map=subset_join_map,
+        scoped_canonical=scoped_merge_map,
+        subset_binding_sources=subset_binding_sources,
     )
     _expose_downstream_referenced_columns(final_ctes, root_cte)
     return ProcessedQuery(

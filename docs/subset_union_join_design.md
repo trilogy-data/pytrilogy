@@ -1,76 +1,98 @@
 # SUBSET / UNION joins — design sketch
 
-Status: **phase 1 landed** (2026-07-02, owner-approved direction). Successor
-to the LEFT/FULL scoped-join paradigm; see `merge_join_unification.md` for the
-landed relation mechanisms these declarations ride on.
+Status: **phase 2 landed** (2026-07-03). Rendering is row-preserving by
+default; the narrowing pass is load-bearing. See `merge_join_unification.md`
+for the relation mechanisms these declarations ride on.
 
-## Landed (phase 1 — declarations + narrowing groundwork)
+## Landed (phase 1 — declarations + narrowing groundwork, 2026-07-02)
 
 - **Syntax**: `subset join a = b` (a ⊆ b) and `union join a = b` parse in both
   grammars and normalize at hydration (`_normalize_select_join`) onto the two
   landed relation mechanisms — SUBSET to the superset-anchored LEFT_OUTER
-  tuple (`merge a into ~b` scoped to the query; superset anchors, subset side
-  partial, nullable promotion applies), UNION to the FULL-registry relation.
-  `SelectJoin.authored` keeps the declared form for round-trip rendering.
-  Row contracts pinned cell-for-cell in `tests/join_matrix/`.
-- **EQUAL narrowing** (`CONFIG.optimizations.narrow_equal_domain_joins`,
-  default OFF): a non-partial `merge a into b` is treated as an EQUAL domain
-  declaration — its keys release the FULL-preservation veto in
-  `UpgradeOuterFromKeySetEquivalence` and may narrow FULL → INNER, including
-  between two *authoritative scans* (direct unfiltered single-datasource
-  sides; that completeness evidence is only trusted for EQUAL-declared keys).
-  Query-scoped `full join` / `union join` keys never narrow. Proof cells:
-  `tests/join_matrix/test_narrowing_matrix.py`.
-- Deliberately NOT landed: the render flip (below), reinterpretation of
-  authored `left join`, agent-doc (`trilogy/ai/constants.py`) migration, and
-  SUBSET-driven FULL → directional narrowing (pre-flip, LEFT is already the
-  narrowest row-identical rendering for a declared subset — the case only
-  materializes once defaults render FULL).
-
-## Remaining (phase 2 — the flip)
-
-- Flip rendering to always row-preserving (FULL + `is not distinct from`) with
-  the narrowing pass load-bearing; dissolve the `get_join_type` decision table.
-- SUBSET-driven FULL → directional narrowing (superset side complete +
-  subset side null-partnered) — becomes live once defaults render FULL.
-- Re-rule the `tests/join_matrix/` oracles for always-preserving semantics;
-  the residual derived-LEFT-zip xfails should dissolve.
-- Apply the migration mapping (below): authored `left join` needing row drops
-  gains its explicit filter; deprecate/remove `left join`/`full join`;
-  migrate agent docs (`trilogy/ai/constants.py`) and TPC-DS references.
-- Decide the EQUAL spelling (keep `merge`?) and default
-  `narrow_equal_domain_joins` on; add the opt-in lying-subset validation.
-
-## Phase 2 implementation notes (learned building phase 1)
-
-- **The zip xfails do NOT route through `get_join_type`.** Generator-authored
-  NodeJoins (the derived-LEFT same-grain zip family) are typed in
-  `translate_node_joins` / the merge-node paths. Dissolving the decision table
-  flips only datasource-join typing; the preserving default must also land in
-  those generator seams or the xfails survive the flip.
-- **Defaulting `narrow_equal_domain_joins` on re-rules existing matrix
-  cells.** The adversarial rows violate EQUAL by construction, and both sides
-  of the root-key merge cells are *authoritative scans* — with the flag on
-  they legitimately narrow to INNER and lose the side-exclusive rows. That
-  becomes the correct ruling (lying declaration = author error), so the
-  merge-form full cells' oracle moves to intersection semantics; do it
-  deliberately, alongside the opt-in validation.
-- **Narrowing coverage boundaries** (the perf-cliff map): completeness
-  evidence is `group_to_grain` CTEs or (EQUAL-gated) authoritative scans;
-  `UnionCTE` sides are opaque; a *filtered* superset side never proves
-  subset-match — identical filters don't help, since a filter on another
-  column can drop domain values asymmetrically. Post-flip, every FULL failing
-  these tests stays FULL; measure against the TPC-DS timing logs before
-  flipping.
-- **Provenance seam**: EQUAL vs UNION classification lives in `process_query`
-  (statement FULL tuples are subtracted from merge-derived equal keys — an
-  authored `union join` on a merged key keeps the veto). Downstream of
-  hydration, `subset join` is indistinguishable from swapped `left join`
-  (deliberate); if phase 2 keeps `left join` row-drop semantics through a
-  deprecation window, it needs a provenance registry at this same seam.
+  tuple (`merge a into ~b` scoped to the query), UNION to the FULL-registry
+  relation. `SelectJoin.authored` keeps the declared form for round-trip
+  rendering. Row contracts pinned cell-for-cell in `tests/join_matrix/`.
 - `JoinType.SUBSET` / `JoinType.UNION` exist as parse-level enum members only
-  and must never reach SQL rendering — hydration (`_normalize_select_join`)
-  is the single normalization point.
+  and never reach SQL rendering — hydration (`_normalize_select_join`) is the
+  single normalization point.
+
+## Landed (phase 2 — the flip, 2026-07-03)
+
+- **`get_join_type` decision table dissolved** (join_resolution.py). Rendering
+  is preserving-by-default: any partial (SUBSET-declared) side renders FULL —
+  partiality and nullability never interact (subset speaks to VALUES, NULL is
+  not a value). Neither-side-partial keys are EQUAL by binding declaration and
+  render INNER (both-nullable pairs bind null-safely instead of widening to
+  FULL); a nullable side with no null-safe partner keeps a preserving
+  directional join toward it. The nullable-vetoes-partial arbitration and the
+  merge~-vs-authored-LEFT conflict are gone.
+- **SUBSET-driven directional narrowing**
+  (`UpgradeOuterFromKeySetEquivalence._narrow_directionally`): a FULL narrows
+  to the directional join preserving the superset side — and a directional
+  join whose preserved side fully matches narrows to INNER — when the subset
+  side is DECLARED (CTE partial stamps, or the side-specific
+  `subset_join_map` for derived keys) and the superset side PROVES value
+  completeness. Evidence: `group_to_grain` grain membership, authoritative
+  scans (including off-grain non-partial bindings), 1:1 passthrough /
+  grain-arity rowset wrappers, BASIC/ROWSET lineage transfer
+  (`_complete_values` — a derived key's domain is the image of its inputs'),
+  and preserved-base join CTEs. A *filtered* superset side never proves —
+  those FULLs stay FULL and row restriction is the author's explicit filter.
+- **Same-address pair arbitration by provenance**: when several relations
+  collapse onto one canonical group the partial stamps land symmetrically;
+  `subset_binding_sources` (subset address → datasources natively binding it,
+  computed on the author environment PRE-substitution) identifies the true
+  subset side of the rendered pair. Full relation-scoped partiality
+  provenance remains future work; this registry covers the double-relation
+  readback family.
+- **Registries** built in `process_query` and threaded through
+  `optimize_ctes`: `full_join_keys` (UNION veto), `equal_join_keys`,
+  `subset_join_map`, `scoped_canonical`, `subset_binding_sources`. Rowset-BODY
+  scoped joins (`with rs as left join ... select ...`) are folded into the
+  registries via `_collect_rowset_scoped_joins`.
+- **EQUAL narrowing defaults ON** (`narrow_equal_domain_joins: bool = True`).
+  The adversarial merge-form matrix cells were re-ruled to intersection
+  semantics (lying declaration = author error). EQUAL evidence extends past
+  classic key-set equivalence: value-completeness on both sides + equivalent
+  filters, null-safing the pair when a side is nullable (NULL groups pair —
+  never a silent drop), and EQUAL-trust intersection completeness for
+  all-INNER zips of complete parents (the 3-way merge stack).
+- **Opt-in lying-declaration validation**:
+  `trilogy/core/domain_validation.py` — one containment COUNT per declared
+  direction (`validate_domains`); must run against a clean (unmerged) parse
+  since an active merge makes the check self-referential. Proof cells:
+  `tests/join_matrix/test_domain_validation.py`.
+- **Migrations applied**: TPC-DS q77 (arm-local `is not null` filters restore
+  the reference's row drops; the only battery query that needed one — the
+  rest narrow or already carry restricting filters); the intersection-idiom
+  pins across the test suite (`tests/test_rowset_offset_join_contract.py`,
+  `test_rowset_generation_matrix.py`, `test_join_merge_parity.py`, q78 anchor
+  family, …) gained their explicit both-sides `is not null` filters with
+  preserving-contract variants; agent docs (`trilogy/ai/constants.py`,
+  `syntax_examples.py`) teach subset/union as primary with left/full as
+  legacy aliases.
+- **EQUAL spelling**: `merge a into b` stays the EQUAL declaration (it already
+  carries identity semantics); no new keyword.
+
+## Deferred / residuals
+
+- `left join` / `full join` spellings are retained as legacy aliases (mapping
+  below) rather than removed — they are pure domain declarations now, with no
+  row-drop semantics and no deprecation-window provenance registry needed.
+- Row-identical zips between re-aggregated branches may still RENDER FULL when
+  their evidence is ambiguous (e.g. a measure in the zip key set); rows are
+  correct, the cost is perf. SQL-shape assertions were re-ruled to row
+  contracts where this bites (comp_mixed).
+- Full relation-scoped partiality provenance (stamps keyed by relation, not
+  address) would subsume `subset_binding_sources` and let more double-relation
+  shapes narrow. (The former root-OUTER binding-substitution xfail in
+  `tests/test_scoped_join_permutations.py` was fixed pre-flip — binding-keyed
+  OUTER sources stay on the identity path — but the address-level stamp
+  ambiguity it exemplified is this same seam.) Phase 3 design:
+  docs/domain_graph_design.md — an environment-level concept domain graph
+  (directed domain relations with edge conditions + functional-dependency
+  edges for cardinality reduction) replacing the registries and stamp
+  carve-outs wholesale.
 
 ## Motivation
 

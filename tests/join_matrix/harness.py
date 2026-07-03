@@ -126,3 +126,11 @@ def expected_full(left: dict, right: dict) -> list[tuple]:
 
 def expected_left(left: dict, right: dict) -> list[tuple]:
     return sort_rows([(k, left[k], right.get(k)) for k in left])
+
+
+def expected_equal(left: dict, right: dict) -> list[tuple]:
+    """An EQUAL declaration (non-partial `merge`) narrows to INNER when both
+    sides prove complete; on data violating the declaration the violating
+    (side-exclusive) rows drop — the ruled semantics for a lying declaration."""
+    keys = set(left) & set(right)
+    return sort_rows([(k, left[k], right[k]) for k in keys])

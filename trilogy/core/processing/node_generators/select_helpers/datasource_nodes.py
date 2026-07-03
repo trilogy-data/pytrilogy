@@ -34,6 +34,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
+from trilogy.core.processing.nodes.base_node import _propagates_argument_nulls
 from trilogy.core.processing.utility import padding
 
 if TYPE_CHECKING:
@@ -371,10 +372,19 @@ def create_datasource_node(
             [] if partial_is_full else [c for c in output_concepts if c in partial_lcl]
         ),
         rollup_concepts=rollup_concepts,
+        # a BASIC derivation computed at this scan (`l_key + 1`) is NULL
+        # wherever its nullable argument is — stamp it here or downstream
+        # non-null proofs walk through this node and strip null-safety
         nullable_concepts=[
             c
             for c in output_concepts
-            if c in nullable_lcl
+            if (
+                c in nullable_lcl
+                or (
+                    _propagates_argument_nulls(c)
+                    and any(arg in nullable_lcl for arg in c.concept_arguments)
+                )
+            )
             and not proven_non_null.intersection(
                 {c.address, c.canonical_address, *c.pseudonyms}
             )

@@ -392,7 +392,7 @@ def test_equal_join_key_still_requires_completeness():
 
 
 def test_narrow_equal_domain_joins_config_gates_plan():
-    """`narrow_equal_domain_joins` (default OFF) controls whether the rule plan
+    """`narrow_equal_domain_joins` (default ON) controls whether the rule plan
     forwards EQUAL keys — off, an EQUAL-declared key keeps the FULL veto."""
     from trilogy.constants import CONFIG
     from trilogy.core.optimization import build_optimization_rule_plan
@@ -402,23 +402,23 @@ def test_narrow_equal_domain_joins_config_gates_plan():
             p for p in plan if p.name == "upgrade_outer_key_set_equivalence"
         ).rule_factory()
 
-    assert CONFIG.optimizations.narrow_equal_domain_joins is False
-    off = _rule(
+    assert CONFIG.optimizations.narrow_equal_domain_joins is True
+    on = _rule(
         build_optimization_rule_plan(
             full_join_keys={"test.CLASS"}, equal_join_keys={"test.CLASS"}
         )
     )
-    assert off.full_join_keys == {"test.CLASS"}
-    CONFIG.optimizations.narrow_equal_domain_joins = True
+    assert on.full_join_keys == set()
+    CONFIG.optimizations.narrow_equal_domain_joins = False
     try:
-        on = _rule(
+        off = _rule(
             build_optimization_rule_plan(
                 full_join_keys={"test.CLASS"}, equal_join_keys={"test.CLASS"}
             )
         )
-        assert on.full_join_keys == set()
+        assert off.full_join_keys == {"test.CLASS"}
     finally:
-        CONFIG.optimizations.narrow_equal_domain_joins = False
+        CONFIG.optimizations.narrow_equal_domain_joins = True
 
 
 _TWO_SOURCE_MODEL = """
@@ -443,22 +443,26 @@ def _generated_sql(model: str, query: str) -> str:
 
 
 def _with_narrowing(model: str, query: str) -> str:
+    return _generated_sql(model, query)
+
+
+def _without_narrowing(model: str, query: str) -> str:
     from trilogy.constants import CONFIG
 
-    CONFIG.optimizations.narrow_equal_domain_joins = True
+    CONFIG.optimizations.narrow_equal_domain_joins = False
     try:
         return _generated_sql(model, query)
     finally:
-        CONFIG.optimizations.narrow_equal_domain_joins = False
+        CONFIG.optimizations.narrow_equal_domain_joins = True
 
 
 def test_equal_merge_narrows_full_to_inner_end_to_end():
-    """A non-partial `merge` declares EQUAL domains: under the narrowing flag
-    the merged key's FULL join between two authoritative scans renders INNER.
-    Default-off keeps today's FULL."""
+    """A non-partial `merge` declares EQUAL domains: by default the merged
+    key's FULL join between two authoritative scans renders INNER; opting out
+    of `narrow_equal_domain_joins` keeps the preserving FULL."""
     model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
     query = "select ka, sum(va) -> ta, sum(vb) -> tb;"
-    assert "FULL JOIN" in _generated_sql(model, query)
+    assert "FULL JOIN" in _without_narrowing(model, query)
     narrowed = _with_narrowing(model, query)
     assert "FULL JOIN" not in narrowed
     assert "INNER JOIN" in narrowed

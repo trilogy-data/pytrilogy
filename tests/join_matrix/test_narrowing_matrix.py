@@ -2,16 +2,16 @@
 (docs/subset_union_join_design.md).
 
 These cells use HONEST data — both sides carry the same key set — because
-narrowing is only sound when the declaration holds; the adversarial rows of
-the main matrix violate an EQUAL declaration by construction (which is why
-`narrow_equal_domain_joins` defaults off until the SUBSET/UNION default flip).
+narrowing is only row-neutral when the declaration holds; the adversarial
+rows of the main matrix violate an EQUAL declaration by construction (those
+cells rule intersection semantics — lying declaration = author error).
 
 Pinned contracts:
-- EQUAL (non-partial `merge`) + narrowing flag: FULL renders INNER, rows
+- EQUAL (non-partial `merge`) narrows by default: FULL renders INNER, rows
   unchanged vs the un-narrowed plan.
 - UNION (`union join`) never narrows, flag or not — the declaration says the
   domains may diverge even when today's data happens to match.
-- flag off (default): EQUAL keeps today's FULL.
+- flag off (opt-out): EQUAL keeps the preserving FULL.
 """
 
 from pathlib import Path
@@ -26,6 +26,8 @@ from tests.join_matrix.harness import (
 )
 from trilogy.constants import CONFIG
 from trilogy.parsing.parse_engine_v2 import clear_parse_cache
+
+_DEFAULT_NARROW = type(CONFIG.optimizations)().narrow_equal_domain_joins
 
 # Same key set {1, 2, 3} on both sides (duplicates kept to guard fan-out).
 HONEST_LEFT: list[tuple[int, int | None, int]] = [
@@ -67,7 +69,7 @@ def _run(workdir: Path, query: str, narrow: bool) -> tuple[str, list[tuple]]:
         sql = engine.generate_sql(statements[-1])[-1]
         rows = [tuple(r) for r in engine.execute_raw_sql(sql).fetchall()]
     finally:
-        CONFIG.optimizations.narrow_equal_domain_joins = False
+        CONFIG.optimizations.narrow_equal_domain_joins = _DEFAULT_NARROW
         clear_parse_cache()
     return sql, sort_rows(rows)
 
@@ -87,10 +89,14 @@ def test_equal_declaration_narrows_to_inner(tmp_path: Path):
     assert rows == _oracle(), rows
 
 
-def test_equal_declaration_default_keeps_full(tmp_path: Path):
+def test_equal_declaration_flag_off_keeps_full(tmp_path: Path):
     sql, rows = _run(_write_models(tmp_path), EQUAL_QUERY, narrow=False)
     assert "FULL JOIN" in sql, sql
     assert rows == _oracle(), rows
+
+
+def test_narrowing_defaults_on():
+    assert _DEFAULT_NARROW is True
 
 
 @pytest.mark.parametrize("narrow", [False, True])

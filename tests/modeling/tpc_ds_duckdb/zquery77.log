@@ -1,7 +1,7 @@
 query_id = "77"
 generator = "v3"
-gen_length = 9144
-preql_size = 3062
+gen_length = 9256
+preql_size = 3148
 comp_size = 3129
 generated_sql = """
 
@@ -39,8 +39,8 @@ SELECT
     sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"_sr_grouped_sr_returns\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"ss_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
 
@@ -129,7 +129,10 @@ SELECT
     coalesce(\"dapper\".\"ws_grouped_ws_wp_id\",\"puffy\".\"wr_grouped_wr_wp_id\") as \"___tvf_arm_2_u_id\"
 FROM
     \"dapper\"
-    LEFT OUTER JOIN \"puffy\" on \"dapper\".\"ws_grouped_ws_wp_id\" = \"puffy\".\"wr_grouped_wr_wp_id\"),
+    LEFT OUTER JOIN \"puffy\" on \"dapper\".\"ws_grouped_ws_wp_id\" = \"puffy\".\"wr_grouped_wr_wp_id\"
+WHERE
+    \"dapper\".\"ws_grouped_ws_sales\" is not null
+),
 charming as (
 SELECT
     \"macho\".\"ss_grouped_ss_profit\" - cast(coalesce(\"busy\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"___tvf_arm_1_u_profit\",
@@ -139,7 +142,10 @@ SELECT
     coalesce(\"busy\".\"sr_grouped_sr_store_id\",\"macho\".\"ss_grouped_ss_store_id\") as \"___tvf_arm_1_u_id\"
 FROM
     \"macho\"
-    LEFT OUTER JOIN \"busy\" on \"macho\".\"ss_grouped_ss_store_id\" = \"busy\".\"sr_grouped_sr_store_id\"),
+    LEFT OUTER JOIN \"busy\" on \"macho\".\"ss_grouped_ss_store_id\" = \"busy\".\"sr_grouped_sr_store_id\"
+WHERE
+    \"macho\".\"ss_grouped_ss_sales\" is not null
+),
 cooperative as (
 SELECT
     cast(sum(\"thoughtful\".\"cr_grouped_cr_returns_per_cc\") as numeric(15,2)) as \"___tvf_arm_0_u_returns\",

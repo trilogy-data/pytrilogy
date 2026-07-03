@@ -97,9 +97,11 @@ select c.brand, c.c_qty, p.p_qty order by c.brand asc;
 """,
         [(10, 7, 7), (20, 15, 3), (30, 4, None)],
     ),
-    # partial merge (`merge x into ~y`) is a directional LEFT join anchored on
-    # y. Anchoring on the 2001 rowset drops the 2002-only brand 30 that a FULL
-    # would keep — pins that merge~ and `left join` share the anchor machinery.
+    # partial merge (`merge x into ~y`) declares c.brand ⊆ p.brand. Both
+    # rowsets are FILTERED, so the subset can't be proven against the 2001
+    # side and the preserving render stands: the 2002-only brand 30 survives
+    # with a NULL p_qty — pins that merge~ and `left join` share the
+    # declaration machinery and both render row-preserving.
     "partial_merge_left_anchor": (
         """
 import sales as sales;
@@ -113,6 +115,26 @@ import sales as sales;
 rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
 rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
 merge c.brand into ~p.brand;
+select p.brand, p.p_qty, c.c_qty order by p.brand asc;
+""",
+        [(10, 7, 7), (20, 3, 15), (30, None, 4)],
+    ),
+    # ... and the explicit `is not null` idiom restores the old anchored rows.
+    "partial_merge_left_anchor_filtered": (
+        """
+import sales as sales;
+rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
+rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
+where p.p_qty is not null
+left join p.brand = c.brand
+select p.brand, p.p_qty, c.c_qty order by p.brand asc;
+""",
+        """
+import sales as sales;
+rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
+rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
+merge c.brand into ~p.brand;
+where p.p_qty is not null
 select p.brand, p.p_qty, c.c_qty order by p.brand asc;
 """,
         [(10, 7, 7), (20, 3, 15)],

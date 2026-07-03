@@ -55,12 +55,13 @@ select
     item_id,
     count(line_id) as cnt_1999,
     yr2000.cnt_2000 as cnt_2000
-having yr2000.cnt_2000 is not null
+having cnt_1999 > 0 and yr2000.cnt_2000 is not null
 order by item_id asc;
 """)[0].fetchall()
-    # LEFT join + `having <partial measure> is not null` reproduces inner-join
-    # intersection: keeps only items present in BOTH years (10, 20); item 30
-    # (2000 only) and item 40 (1999 only) drop out. Each count reflects its
+    # joins are row-preserving, so a 2000-only item survives with a 0 count on
+    # the 1999 side (count over no rows is 0, not NULL) — the intersection is
+    # the explicit both-sides filter: `cnt_1999 > 0` drops item 30 (2000 only)
+    # and the `is not null` drops item 40 (1999 only). Each count reflects its
     # own year scope independently.
     assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
 

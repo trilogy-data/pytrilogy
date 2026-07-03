@@ -17,38 +17,38 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 | Goal | Use |
 |---|---|
 | Typical query | no select, no merge, all fields accessed through dot-paths |
-| Blend two models on shared keys inside one query | scoped `inner\|left\|full join` (the default) |
+| Blend two models on shared keys inside one query | scoped `subset\|union join` (the default) |
 | Make a connection universal to all queries in a file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
 
 ### Query-scoped join (the default)
 
-left|full join <a> = <b> [= <c>] blends concepts or expressions (from any source - models, rowsets etc) inside one SELECT by marking them as 'fully' or 'partially' equivalent.
+subset|union join <a> = <b> [= <c>] blends concepts or expressions (from any source - models, rowsets etc) inside one SELECT by DECLARING how their value domains relate. A join declares DOMAIN knowledge, never row intent:
 
-There is no 'inner' join - use where/having conditions when you need to restrict the output to an intersection of some form. (customers who have orders, students who have enrollments, countries in two datasets, etc).
+- `subset join a = b` declares a's values are contained in b's (a ⊆ b). b is authoritative for the key; a's rows all find a partner.
+- `union join a = b` declares neither domain contains the other; the key is the coalesce of both sides and unmatched rows from both sides are kept.
 
-Place it right after the select list (the SQL-like spot); 
+Rendering is always row-preserving: no join ever silently drops a row. The optimizer narrows to directional/INNER joins only when provably row-identical (an unfiltered authoritative side). Row restriction is ALWAYS an explicit predicate: to get an intersection (customers who have orders, items in both years), add explicit conditions — `where <optional side attr> is not null` on each side you require. A one-sided `is not null` keeps the other side's exclusive rows.
 
-Semantics are similar to SQL: inner asserts strict equivalence - they are the same set; left says the right side is partial and may end up null; full keeps unmatched rows from both sides. 
-Joins indicate that concepts are *the same*; it is a conceptual operation not a field operation. inner join a=b means that a is null and b is not null is tautologically always false.
+There is no 'inner' join. Is explicit conditions (is not null, etc) to restrict results.
 
-Right unsupported; just flip to a left.
+Place it right after the select list (the SQL-like spot).
 
- A full key-group must be entirely full (no mixing with left on the same key; full join a = b = c chains one all-full group); left joins mix freely. 
- 
-Chain = c to pull additional concepts into a join. Joins can be on expressions. join on a computed/offset key (`full join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+A union key-group must be entirely union (no mixing with subset on the same key; union join a = b = c chains one group); subset joins mix freely.
 
-Joins do NOT drop nulls. Joins will merge null values across dimension keys. To filter out nulls, explicitly use not-null conditions.
+Chain = c to pull additional concepts into a join. Joins can be on expressions: a computed/offset key (`union join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
 
-Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. 
-trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH full join a.order_number = b.order_number AND full join a.item.id = b.item.id. 
+Joins do NOT drop nulls. NULL is not a value: nullability never affects the declared domain relation, and NULL keys match null-safely. To filter out nulls, explicitly use not-null conditions.
+
+Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain.
+trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH union join a.order_number = b.order_number AND union join a.item.id = b.item.id.
 Matching only one key of a multi-key grain may cause duplication.
 
 Full example: trilogy agent-info syntax example scoped-join.
 
 merge (model-level)
 
-merge <a> into <b> is the persistent equivalent of a join (whole query/file). Prefer a scoped join; use merge only when the connection is universal. merge a into ~b marks b the superset, so a is a partial subset (brought-in side nullable, like left join); plain merge a into b asserts strict equivalence (like inner join). One merge per shared concept.
+merge <a> into <b> is the persistent equivalent of a join (whole query/file). Prefer a scoped join; use merge only when the connection is universal. merge a into ~b declares a SUBSET domain (a ⊆ b, like subset join a = b); plain merge a into b declares EQUAL domains — the strongest claim, letting the planner treat either side as authoritative and narrow joins to INNER. A lying declaration (data outside the declared domain) is an author error: the narrowed join drops the violating rows. One merge per shared concept.
 
 union (row stacking)
 
@@ -63,7 +63,7 @@ Full example: trilogy agent-info syntax example union-stack-channels.
 WHERE?            # filters data BEFORE it reaches aggregates or windows
 SELECT            # Defines the output grain for aggregates
   <EXPR> [AS <ALIAS>], ...
-  INNER|LEFT|FULL JOIN <a> = <b> [= <c>] ...   # one or more join concepts beyond model defaults
+  SUBSET|UNION JOIN <a> = <b> [= <c>] ...   # one or more join concepts beyond model defaults (LEFT/FULL legacy aliases)
 HAVING?           # filters final projection
 ORDER BY?
 LIMIT?

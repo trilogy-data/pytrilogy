@@ -269,24 +269,24 @@ address baz;
 @pytest.mark.parametrize(
     "left_partial,left_nullable,right_partial,right_nullable,expected",
     [
+        # Rendering is preserving-by-default (docs/subset_union_join_design.md):
+        # a partial side declares a SUBSET domain and renders FULL — the
+        # narrowing pass (UpgradeOuterFromKeySetEquivalence) restores direction
+        # only when the superset side provably carries the key's full domain.
         (False, False, False, False, JoinType.INNER),
-        (True, False, False, False, JoinType.RIGHT_OUTER),
-        # left is nullable, not partial — preserve left's NULL-key rows; RIGHT_OUTER
-        # would drop them. LEFT_OUTER is the mirror of the (False,False,True,False)
-        # partial-right case above.
+        (True, False, False, False, JoinType.FULL),
+        # left is nullable, not partial — preserve left's NULL-key rows;
+        # the non-nullable right has nothing to null-safely match them.
         (False, True, False, False, JoinType.LEFT_OUTER),
-        (False, False, True, False, JoinType.LEFT_OUTER),
-        # right is nullable, left is not — INNER would drop right's NULL rows
-        # since the non-nullable left has nothing to match them. Preserve the
-        # nullable side DIRECTIONALLY (mirror of the left-nullable case above);
-        # both sides are complete, so the left has no unmatched rows and
-        # RIGHT_OUTER is row-identical to FULL.
+        (False, False, True, False, JoinType.FULL),
+        # right is nullable, left is not — mirror of the case above.
         (False, False, False, True, JoinType.RIGHT_OUTER),
         (True, False, True, False, JoinType.FULL),
-        (False, True, False, True, JoinType.FULL),
-        # left is BOTH partial and nullable — partial wants RIGHT_OUTER (preserve
-        # the complete right), nullable wants LEFT_OUTER (preserve NULL-key rows).
-        # FULL satisfies both.
+        # both nullable: the null-safe equality (get_modifiers) pairs the NULL
+        # groups, so INNER is the narrowed EQUAL form.
+        (False, True, False, True, JoinType.INNER),
+        # any partial side renders preserving, nullable or not — subset speaks
+        # to VALUES, NULL is not a value, and the two never interact here.
         (True, True, False, False, JoinType.FULL),
         (False, False, True, True, JoinType.FULL),
         (True, True, True, True, JoinType.FULL),
@@ -340,7 +340,8 @@ def test_get_join_type_empty_connecting_keys():
 
 
 def test_get_join_type_multiple_connecting_keys():
-    """Test that ANY partial/nullable key among multiple connecting keys triggers incomplete"""
+    """ANY partial key among multiple connecting keys makes the relation a
+    declared subset — rendered preserving."""
     left = "table_a"
     right = "table_b"
     partials = {"table_b": ["key1"]}  # Only one of three keys is partial
@@ -348,7 +349,7 @@ def test_get_join_type_multiple_connecting_keys():
     all_connecting_keys = {"key1", "key2", "key3"}
 
     result = get_join_type(left, right, partials, nullables, all_connecting_keys)
-    assert result == JoinType.LEFT_OUTER
+    assert result == JoinType.FULL
 
 
 def test_render_join_coalesce():

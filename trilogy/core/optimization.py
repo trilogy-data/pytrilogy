@@ -443,12 +443,18 @@ def build_optimization_rule_plan(
     having_alias: bool = False,
     full_join_keys: set[str] | None = None,
     equal_join_keys: set[str] | None = None,
+    subset_join_map: dict[str, str] | None = None,
+    scoped_canonical: dict[str, str] | None = None,
+    subset_binding_sources: dict[str, set[str]] | None = None,
 ) -> list[OptimizationRulePlan]:
     opts = CONFIG.optimizations
     full_join_keys = full_join_keys or set()
     equal_join_keys = (
         (equal_join_keys or set()) if opts.narrow_equal_domain_joins else set()
     )
+    subset_join_map = subset_join_map or {}
+    scoped_canonical = scoped_canonical or {}
+    subset_binding_sources = subset_binding_sources or {}
     plan: list[OptimizationRulePlan] = []
 
     if opts.merge_aggregate:
@@ -614,6 +620,9 @@ def build_optimization_rule_plan(
                 rule_factory=lambda: UpgradeOuterFromKeySetEquivalence(
                     full_join_keys=full_join_keys,
                     equal_join_keys=equal_join_keys,
+                    subset_join_map=subset_join_map,
+                    scoped_canonical=scoped_canonical,
+                    subset_binding_sources=subset_binding_sources,
                 ),
                 depends_on=_enabled_dependencies(
                     ("upgrade_join_on_guards.final", opts.upgrade_condition_joins)
@@ -708,6 +717,9 @@ def optimize_ctes(
     having_alias: bool = False,
     full_join_keys: set[str] | None = None,
     equal_join_keys: set[str] | None = None,
+    subset_join_map: dict[str, str] | None = None,
+    scoped_canonical: dict[str, str] | None = None,
+    subset_binding_sources: dict[str, set[str]] | None = None,
 ) -> list[CTE | UnionCTE]:
     direct_parent: CTE | UnionCTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
@@ -726,6 +738,9 @@ def optimize_ctes(
         having_alias=having_alias,
         full_join_keys=full_join_keys,
         equal_join_keys=equal_join_keys,
+        subset_join_map=subset_join_map,
+        scoped_canonical=scoped_canonical,
+        subset_binding_sources=subset_binding_sources,
     )
     log_optimization_rule_plan(rule_plan)
     for phase in rule_plan:

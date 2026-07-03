@@ -339,29 +339,33 @@ limit 100;
     ),
     SyntaxExample(
         name="scoped-join",
-        title="Blend two models in one query with a scoped left/full join",
+        title="Blend two models in one query with a scoped subset/union join",
         summary=(
-            "`select <cols> left|full join anchor.key = brought_in.key (= other.key ...)?` (right after "
+            "`select <cols> subset|union join a.key = b.key (= other.key ...)?` (right after "
             "the select list) blends a second model into ONE query — the PREFERRED "
             "alternative to `merge`. JOIN ON THE FULL GRAIN: one clause per key in "
             "the shared `@<k1, k2>` grain"
         ),
         body="""\
 # A query-scoped `join` blends a second model into ONE select without editing the
-# model files (the query-local equivalent of `merge`).
-# Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot). 
-# The LEFT key is the BASE concept; the RIGHT key is the brought in, just like SQL
-#   left  join  -> brought-in side optional/nullable (unmatched anchor rows kept)
-#   full  join  -> BOTH sides optional (unmatched rows from EITHER side kept)
+# model files (the query-local equivalent of `merge`). A join DECLARES how the
+# two keys' value domains relate — it never drops rows (rendering is always
+# row-preserving; restrict rows with explicit `is not null` filters):
+#   subset join a = b  -> declares a's values are contained in b's (a is the
+#                         narrow side, b authoritative; a rows all match)
+#   union  join a = b  -> neither domain contains the other; the key coalesces
+#                         and unmatched rows from EITHER side are kept
+# Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot).
 import enrollments as enroll;
 import students as students;
 
-# (1) SINGLE-KEY blend: bring students onto enrollments by the shared student key
-# (students.id is the brought-in LEFT key, enroll.student_id the anchor).
+# (1) SINGLE-KEY blend: bring students onto enrollments by the shared student
+# key. Enrollment student ids are a SUBSET of all student ids, so declare that;
+# majors with no enrollments are preserved with a NULL count.
 select
     students.major,
     count(enroll.id) as enrollments,
-left join students.id = enroll.student_id
+subset join enroll.student_id = students.id
 order by enrollments desc nulls first
 limit 100;
 
@@ -384,8 +388,8 @@ select
     completed_by.completed_cnt,
     incomplete_by.incomplete_cnt,
     null_completed.null_completed_cnt,
-left join completed_by.dept = incomplete_by.dept = null_completed.dept
-left join completed_by.course = incomplete_by.course = null_completed.course
+union join completed_by.dept = incomplete_by.dept = null_completed.dept
+union join completed_by.course = incomplete_by.course = null_completed.course
 order by completed_by.dept asc nulls first
 limit 100;
 
@@ -401,7 +405,7 @@ select
     y2020.cnt as cnt_2020,
     y2021.cnt as cnt_2021,
     y2021.cnt - y2020.cnt as yoy_diff,
-full join y2020.dept = y2021.dept
+union join y2020.dept = y2021.dept
 order by yoy_diff desc nulls first
 limit 100;
 
@@ -418,7 +422,7 @@ select
     cur_year.yr,
     cur_year.cnt as this_year,
     prev_year.cnt as prior_year,
-full join cur_year.yr = prev_year.yr + 1
+union join cur_year.yr = prev_year.yr + 1
 order by cur_year.yr asc
 limit 100;
 
@@ -428,16 +432,19 @@ limit 100;
 #    duplication. Chain `= c` to also pull a base key into the join
 #    group so its properties stay reachable (`full join a.k = b.k = base.k`).
 #  - Stacked clauses of the SAME type can share one prefix via `and`:
-#    `full join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `full join` clauses.
+#    `union join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `union join` clauses.
 #    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
-#    ONE group — both compose: `full join a.k = b.k = base.k and a.k2 = b.k2`.
+#    ONE group — both compose: `union join a.k = b.k = base.k and a.k2 = b.k2`.
 #  - A join key may be ANY expression (a computed/offset key, an aggregate, a
 #    window), not only a bare field — see (4). Only `=` equality is supported.
-#  - `left`, and `full` are supported (NOT `right` — swap the operands
-#    for a right join). `left` keeps unmatched anchor rows; 
-#   `full` keeps unmatched rows from
-#    BOTH sides. A `full` key-group must be ALL full (can't mix `full` with
-#    `left` on the SAME key; `full join a = b = c` chains one full group);
+#  - Joins NEVER drop rows: for an intersection (rows present in BOTH sides),
+#    add explicit conditions — `where <side_a attr> is not null and <side_b
+#    attr> is not null`. A one-sided `is not null` keeps the other side's
+#    exclusive rows.
+#  - `left join a = b` / `full join a = b` are legacy aliases for
+#    `subset join b = a` / `union join a = b` (NOT `right` — swap operands).
+#    A union key-group must be ALL union (can't mix with subset on the SAME
+#    key; `union join a = b = c` chains one union group);
 """,
     ),
     SyntaxExample(

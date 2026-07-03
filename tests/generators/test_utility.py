@@ -119,10 +119,13 @@ def test_resolve_join_order_v2():
 
     output = resolve_join_order_v2(g, partials, {})
 
+    # every join here binds a partial (subset-declared) key, so all render
+    # preserving — the optimizer narrows later when the superset side proves
+    # complete (docs/subset_union_join_design.md).
     assert output == [
         JoinOrderOutput(
             right="ds~orders",
-            type=JoinType.LEFT_OUTER,
+            type=JoinType.FULL,
             keys={"ds~products": {"c~product_id"}},
         ),
         JoinOrderOutput(
@@ -132,9 +135,6 @@ def test_resolve_join_order_v2():
         ),
         JoinOrderOutput(
             right="ds~customer_address",
-            # customer was null-extended by the FULL join above; building onto it
-            # is upgraded to FULL (a FULL predecessor is symmetric, so the upgrade
-            # cannot depend on which side it recorded as left/right).
             type=JoinType.FULL,
             keys={"ds~customer": {"c~customer_id"}},
         ),

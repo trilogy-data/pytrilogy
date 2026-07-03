@@ -1,6 +1,6 @@
 query_id = "93"
 generator = "v3"
-gen_length = 912
+gen_length = 917
 preql_size = 409
 comp_size = 669
 generated_sql = """
@@ -12,8 +12,8 @@ SELECT
 	END) as \"sumsales\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
-    INNER JOIN \"memory\".\"reason\" as \"ss_return_reason_reason\" on \"ss_store_returns\".\"SR_REASON_SK\" = \"ss_return_reason_reason\".\"R_REASON_SK\"
+    FULL JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    RIGHT OUTER JOIN \"memory\".\"reason\" as \"ss_return_reason_reason\" on \"ss_store_returns\".\"SR_REASON_SK\" = \"ss_return_reason_reason\".\"R_REASON_SK\"
 WHERE
     \"ss_return_reason_reason\".\"R_REASON_DESC\" = 'reason 28'
 

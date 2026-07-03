@@ -39,7 +39,7 @@ rename, hoist, or repartition intermediate CTEs.
 
 from __future__ import annotations
 
-from trilogy.core.enums import JoinType, SourceType
+from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -96,6 +96,8 @@ def _complete_distinct(
     concept: BuildConcept,
     side_cte: CTE | UnionCTE,
     allow_scan_evidence: bool = False,
+    partial_closure: bool = True,
+    ignore_partial_addrs: set[str] | None = None,
 ) -> bool:
     """True when ``side_cte`` projects every distinct value of ``concept``
     *for the concept's full value space*.
@@ -118,20 +120,33 @@ def _complete_distinct(
     """
     if not isinstance(side_cte, CTE):
         return False
-    if not side_cte.group_to_grain and not (
+    keys = _key_addresses(concept)
+    # For the equivalence path the partial stamps close over pseudonyms (a
+    # stamp may live on a pre-merge address). For the DIRECTIONAL path the
+    # closure is wrong twice over: a scoped join pseudonym-links the two
+    # sides' key concepts (smearing the subset side's stamp onto the superset
+    # side), and a scoped-join-induced stamp (``ignore_partial_addrs`` — the
+    # subset sides of declared relations) speaks to the RELATION, not to the
+    # side's coverage of its own concept — an authoritative scan carries all
+    # of its concept's values regardless of what relations were declared over
+    # it. There, only an exact-address stamp from outside the declarations
+    # (e.g. an authored `~` binding) blocks.
+    if partial_closure:
+        partial_addrs: set[str] = set()
+        for partial in side_cte.partial_concepts:
+            partial_addrs |= _key_addresses(partial)
+        if partial_addrs & keys:
+            return False
+    elif (
+        {p.address for p in side_cte.partial_concepts} - (ignore_partial_addrs or set())
+    ) & {concept.address}:
+        return False
+    if side_cte.group_to_grain or (
         allow_scan_evidence and _authoritative_scan(side_cte)
     ):
-        return False
-    grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
-    if not grain_addrs:
-        return False
-    keys = _key_addresses(concept)
-    if not (grain_addrs & keys):
-        return False
-    partial_addrs: set[str] = set()
-    for partial in side_cte.partial_concepts:
-        partial_addrs |= _key_addresses(partial)
-    return not (partial_addrs & keys)
+        grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
+        return bool(grain_addrs & keys)
+    return False
 
 
 def _accumulate_filter(
@@ -213,6 +228,293 @@ def _pair_key_sets_equivalent(
     )
 
 
+_COMPLETENESS_TRANSFERRING = (Derivation.BASIC, Derivation.ROWSET)
+
+
+def _complete_values(
+    concept: BuildConcept,
+    side_cte: CTE | UnionCTE,
+    ignore_partial_addrs: set[str] | None = None,
+) -> bool:
+    """The side carries every value of the concept's domain — the superset
+    test for directional narrowing. Weaker than ``_complete_distinct``:
+    duplicates are allowed (fan-out is a property of the data, not of the
+    join type narrowing picks), and a derived concept's domain is the image
+    of its inputs' domains, so completeness transfers through BASIC/ROWSET
+    lineage — but never through a FILTER, which restricts values."""
+    if _complete_distinct(
+        concept,
+        side_cte,
+        allow_scan_evidence=True,
+        partial_closure=False,
+        ignore_partial_addrs=ignore_partial_addrs,
+    ):
+        return True
+    # a non-partial binding on an authoritative scan carries the concept's
+    # full value set even OFF the grain — grain membership only matters for
+    # distinctness, which value completeness does not need. (Only reachable
+    # from declaration-gated paths, so scan trust is declaration-gated too.)
+    if (
+        isinstance(side_cte, CTE)
+        and _authoritative_scan(side_cte)
+        and any(concept.address == c.address for c in side_cte.output_columns)
+        and not (
+            ({p.address for p in side_cte.partial_concepts})
+            - (ignore_partial_addrs or set())
+        )
+        & {concept.address}
+    ):
+        return True
+    if _complete_via_preserved_base(concept, side_cte, ignore_partial_addrs):
+        return True
+    # a pure 1:1 passthrough (a rowset translation wrapper: no grouping, no
+    # joins, no condition, one parent) preserves its parent's row set, so
+    # completeness carries through the projection rename
+    if (
+        isinstance(side_cte, CTE)
+        and side_cte.condition is None
+        and not side_cte.joins
+        and len(side_cte.parent_ctes) == 1
+        and isinstance(side_cte.parent_ctes[0], CTE)
+    ):
+        parent = side_cte.parent_ctes[0]
+        keys = _key_addresses(concept)
+        for parent_concept in parent.output_columns:
+            if _key_addresses(parent_concept) & keys and _complete_values(
+                parent_concept, parent, ignore_partial_addrs
+            ):
+                return True
+        # a rowset translation renames the key with NO shared address across
+        # the boundary; the wrapper's grain IS the renamed parent grain, so
+        # grain membership at matching arity carries the parent's grain
+        # completeness through the rename
+        grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
+        parent_grain = set(parent.grain.components) if parent.grain else set()
+        if (
+            grain_addrs & keys
+            and parent.group_to_grain
+            and parent_grain
+            and len(parent_grain) == len(grain_addrs)
+            and not (
+                {p.address for p in parent.partial_concepts}
+                - (ignore_partial_addrs or set())
+            )
+        ):
+            return True
+    if concept.derivation in _COMPLETENESS_TRANSFERRING:
+        args = concept.concept_arguments
+        return bool(args) and all(
+            _complete_values(arg, side_cte, ignore_partial_addrs) for arg in args
+        )
+    return False
+
+
+def _equal_intersection_complete(
+    concept: BuildConcept,
+    side_cte: CTE | UnionCTE,
+    ignore_partial_addrs: set[str] | None = None,
+) -> bool:
+    """EQUAL-trust evidence only: under an EQUAL declaration all group members
+    name ONE value space, so an unfiltered all-INNER zip of complete parents
+    joined on this key group stays complete BY DECLARATION — the rows the
+    intersection drops are exactly the ones the declaration says don't exist.
+    Never used on the proof-based (subset-directional) path."""
+    if not isinstance(side_cte, CTE) or side_cte.condition is not None:
+        return False
+    raw_joins = side_cte.joins or []
+    joins = [j for j in raw_joins if isinstance(j, Join)]
+    if not joins or len(joins) != len(raw_joins):
+        return False
+    if any(j.jointype != JoinType.INNER for j in joins):
+        return False
+    keys = _key_addresses(concept)
+    for j in joins:
+        for p in j.joinkey_pairs or []:
+            if not (_key_addresses(p.left) & keys and _key_addresses(p.right) & keys):
+                return False
+    parents = [p for p in side_cte.parent_ctes if isinstance(p, CTE)]
+    if not parents:
+        return False
+    for parent in parents:
+        if not any(
+            _key_addresses(out) & keys
+            and (
+                _complete_values(out, parent, ignore_partial_addrs)
+                or _equal_intersection_complete(out, parent, ignore_partial_addrs)
+            )
+            for out in parent.output_columns
+        ):
+            return False
+    return True
+
+
+def _complete_via_preserved_base(
+    concept: BuildConcept,
+    side_cte: CTE | UnionCTE,
+    ignore_partial_addrs: set[str] | None = None,
+) -> bool:
+    """A join CTE carries a key's full value set when the key is provided by
+    an authoritative scan the CTE's joins only PRESERVE — LEFT_OUTER/FULL
+    null-extend the other side, never dropping the provider's rows. Covers
+    relation CTEs whose scans are inlined (no parent CTEs to recurse into) —
+    e.g. the narrowed subset relation itself, read back at a coarser level.
+
+    A provider on the RIGHT side of a LEFT_OUTER join does not qualify: that
+    side's unmatched rows drop, so its value set is filtered by the join."""
+    if not isinstance(side_cte, CTE):
+        return False
+    if side_cte.condition is not None:
+        return False
+    raw_joins = side_cte.joins or []
+    joins = [j for j in raw_joins if isinstance(j, Join)]
+    if not joins or len(joins) != len(raw_joins):
+        return False
+    if any(j.jointype not in (JoinType.LEFT_OUTER, JoinType.FULL) for j in joins):
+        return False
+    if concept.address in (
+        {p.address for p in side_cte.partial_concepts} - (ignore_partial_addrs or set())
+    ):
+        return False
+    dropped_ids: set[str] = set()
+    for j in joins:
+        if j.jointype != JoinType.LEFT_OUTER or j.right_cte is None:
+            continue
+        dropped_ids.add(j.right_cte.name)
+        for ds in getattr(j.right_cte.source, "datasources", []) or []:
+            dropped_ids |= {ds.identifier, ds.safe_identifier}
+    scan_ids = {
+        ident
+        for ds in side_cte.source.datasources
+        if isinstance(ds, BuildDatasource)
+        for ident in (ds.identifier, ds.safe_identifier)
+    }
+    providers = set(side_cte.source_map.get(concept.address, []) or [])
+    return bool((providers - dropped_ids) & scan_ids)
+
+
+def _scan_identifiers(side_cte: CTE | UnionCTE) -> set[str]:
+    """All raw-scan identifiers feeding this side (recursing the source tree
+    and parent CTEs)."""
+    out: set[str] = set()
+
+    def walk_source(source) -> None:
+        for ds in getattr(source, "datasources", []) or []:
+            if isinstance(ds, BuildDatasource):
+                out.add(ds.identifier)
+                out.add(ds.safe_identifier)
+            else:
+                walk_source(ds)
+
+    seen: set[str] = set()
+
+    def walk_cte(cte) -> None:
+        if not isinstance(cte, CTE) or cte.name in seen:
+            return
+        seen.add(cte.name)
+        walk_source(cte.source)
+        for parent in cte.parent_ctes:
+            walk_cte(parent)
+
+    walk_cte(side_cte)
+    return out
+
+
+def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
+    """The side marks the key partial — a SUBSET domain declaration (a `~`
+    binding, `merge a into ~b`, or a scoped subset/left join) propagated up
+    the CTE chain via ``partial_concepts``."""
+    if not isinstance(side_cte, CTE):
+        return False
+    keys = _key_addresses(concept)
+    partial_addrs: set[str] = set()
+    for partial in side_cte.partial_concepts:
+        partial_addrs |= _key_addresses(partial)
+    return bool(partial_addrs & keys)
+
+
+def _pair_side_fully_matches(
+    sub_concept: BuildConcept,
+    sub_cte: CTE | UnionCTE,
+    sup_concept: BuildConcept,
+    sup_cte: CTE | UnionCTE,
+    subset_join_map: dict[str, str] | None = None,
+    scoped_canonical: dict[str, str] | None = None,
+    subset_binding_sources: dict[str, set[str]] | None = None,
+) -> bool:
+    """Every row of the subset side finds a partner on the superset side, so a
+    join preserving the subset side's unmatched rows preserves nothing.
+
+    Requires the SUBSET domain declaration on the sub side (a lying
+    declaration is an author error — narrowing then drops the violating rows,
+    the ruled semantics), plus proof the superset side carries the key's full
+    domain HERE: complete-distinct with scan evidence trusted because the
+    author declared the relation, and a filter-free chain — a *filtered*
+    superset side never proves subset-match, since a filter on another column
+    can drop domain values asymmetrically.
+
+    The declaration arrives one of two ways: ``subset_join_map`` (a scoped
+    subset/left join or ``merge ~`` keyed by the subset side's OWN exact
+    address — the two endpoints are distinct concepts, one per side, so the
+    plain address is side-specific and the map's target names the superset
+    counterpart), or a ``partial_concepts`` stamp on the sub side, where both
+    endpoints name one concept and must share a source address."""
+
+    def canon(addr: str) -> str:
+        return (scoped_canonical or {}).get(addr, addr)
+
+    # a chained relation (`a ⊆ rs` + `b ⊆ a`) puts all endpoints in one
+    # canonical group whose root may be any member — same-group membership,
+    # not the map target itself, identifies the declared counterpart. A
+    # SAME-address pair carries no declared direction (group membership is
+    # vacuous when both endpoints are one concept) — only the side-specific
+    # partial stamps can arbitrate it.
+    declared = bool(
+        subset_join_map
+        and sub_concept.address != sup_concept.address
+        and sub_concept.address in subset_join_map
+        and (
+            subset_join_map[sub_concept.address] in _key_addresses(sup_concept)
+            or canon(sub_concept.address)
+            in {canon(a) for a in _key_addresses(sup_concept)}
+        )
+    )
+    if not declared:
+        if _source_address(sub_concept) != _source_address(sup_concept):
+            return False
+        if not _declared_partial(sub_concept, sub_cte):
+            return False
+        # SAME-address pair: partial stamps land symmetrically when several
+        # relations share one canonical group, so the stamps alone cannot say
+        # which side is the subset HERE. This pair is the rendering of a
+        # relation whose subset member got substituted onto the pair address —
+        # arbitrate by PROVENANCE: the subset side is the one scanning a
+        # datasource that natively binds a folded-away subset address of this
+        # group (``subset_binding_sources``, computed pre-substitution), and
+        # the superset side must not.
+        if sub_concept.address == sup_concept.address:
+            if not (subset_join_map and subset_binding_sources and scoped_canonical):
+                return False
+            pair_canon = (scoped_canonical or {}).get(
+                sub_concept.address, sub_concept.address
+            )
+            sub_ids = _scan_identifiers(sub_cte)
+            sup_ids = _scan_identifiers(sup_cte)
+            if not any(
+                s != sub_concept.address
+                and (scoped_canonical or {}).get(s, s) == pair_canon
+                and (subset_binding_sources.get(s) or set()) & sub_ids
+                and not (subset_binding_sources.get(s) or set()) & sup_ids
+                for s in subset_join_map
+            ):
+                return False
+    # relation-induced stamps (the declarations' subset sides) never speak to
+    # a side's coverage of its OWN concept — exclude them from the
+    # completeness veto so the superset side can still prove itself.
+    if not _complete_values(sup_concept, sup_cte, set(subset_join_map or {})):
+        return False
+    return _accumulate_filter(sup_cte) is None
+
+
 class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
     """Upgrade FULL/LEFT/RIGHT OUTER → INNER when each join key pair has
     identical conceptual value sets on both sides.
@@ -254,6 +556,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         self,
         full_join_keys: set[str] | None = None,
         equal_join_keys: set[str] | None = None,
+        subset_join_map: dict[str, str] | None = None,
+        scoped_canonical: dict[str, str] | None = None,
+        subset_binding_sources: dict[str, set[str]] | None = None,
     ) -> None:
         # Canonical addresses of query-scoped FULL-join keys; joins on these
         # must never be upgraded to INNER (FULL's key stays complete, so the
@@ -261,6 +566,16 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         # which the completeness tests below legitimately arbitrate.
         self.equal_join_keys = equal_join_keys or set()
         self.full_join_keys = (full_join_keys or set()) - self.equal_join_keys
+        # subset side (exact, side-specific address) → superset counterpart
+        # for every SUBSET-declared relation; feeds directional narrowing.
+        self.subset_join_map = subset_join_map or {}
+        # full member → canonical-group-root map for scoped relations, used to
+        # recognize chained-relation counterparts by group membership.
+        self.scoped_canonical = scoped_canonical or {}
+        # subset address → raw datasource identifiers natively binding it
+        # (computed PRE-substitution); arbitrates same-address pairs by
+        # provenance.
+        self.subset_binding_sources = subset_binding_sources or {}
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -282,43 +597,151 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             ):
                 continue
             right_cte = join.right_cte
-            if not all(
-                _pair_key_sets_equivalent(
+            if self._upgrade_to_inner(cte, join, right_cte):
+                changed = True
+                continue
+            if self._narrow_directionally(cte, join, right_cte):
+                changed = True
+        return changed, None
+
+    def _pair_equal_declared(self, pair) -> bool:
+        return bool(
+            self.equal_join_keys
+            and (_key_addresses(pair.left) | _key_addresses(pair.right))
+            & self.equal_join_keys
+        )
+
+    def _upgrade_to_inner(
+        self, cte: CTE, join: Join, right_cte: CTE | UnionCTE
+    ) -> bool:
+        assert join.joinkey_pairs
+
+        def pair_equal(pair) -> bool:
+            equal_declared = self._pair_equal_declared(pair)
+            if _pair_key_sets_equivalent(
+                pair.left,
+                pair.cte,
+                pair.right,
+                right_cte,
+                # Authoritative-scan completeness is only trusted for keys
+                # the author DECLARED equal-domain; see _authoritative_scan.
+                allow_scan_evidence=equal_declared,
+            ):
+                return True
+            # An EQUAL declaration is itself the cross-concept bridge (the
+            # merge collapses two concepts into one value space), so the
+            # renamed-grain evidence of the directional machinery applies:
+            # both sides carrying every value + equivalent filters is exactly
+            # the no-unmatched-rows proof.
+            if not equal_declared:
+                return False
+            ignore = set(self.subset_join_map or {})
+            return (
+                (
+                    _complete_values(pair.left, pair.cte, ignore)
+                    or _equal_intersection_complete(pair.left, pair.cte, ignore)
+                )
+                and (
+                    _complete_values(pair.right, right_cte, ignore)
+                    or _equal_intersection_complete(pair.right, right_cte, ignore)
+                )
+                and _filters_equivalent(
+                    _accumulate_filter(pair.cte),
+                    _accumulate_filter(right_cte),
+                )
+            )
+
+        if not all(pair_equal(pair) for pair in join.joinkey_pairs):
+            return False
+        # A key that is nullable on a side but joined with plain ``=`` (the
+        # pair carries no NULLABLE modifier) carries NULL rows the equality
+        # never matches — e.g. a ROLLUP subtotal/grand-total key. Upgrading
+        # to INNER would silently drop them, so leave the OUTER join. (A
+        # null-safe pair, the twin-rollup case, matches NULLs and is safe.)
+        # For an EQUAL-DECLARED key both sides name one value space, so the
+        # right response is to null-safe the pair — NULL is a valid member
+        # and the NULL groups pair — rather than refuse the upgrade.
+        for pair in join.joinkey_pairs:
+            if pair.is_nullable:
+                continue
+            if _key_nullable(pair.left, pair.cte) or _key_nullable(
+                pair.right, right_cte
+            ):
+                if self._pair_equal_declared(pair):
+                    pair.modifiers = list(pair.modifiers) + [Modifier.NULLABLE]
+                else:
+                    return False
+        original = join.jointype
+        join.jointype = JoinType.INNER
+        left_name = join.joinkey_pairs[0].cte.name
+        self.log(
+            f"{cte.name}: {original.value} → INNER on key-set equivalence "
+            f"between {left_name} and {right_cte.name}"
+        )
+        return True
+
+    def _narrow_directionally(
+        self, cte: CTE, join: Join, right_cte: CTE | UnionCTE
+    ) -> bool:
+        """SUBSET-driven narrowing: preservation of a side that provably has no
+        unmatched rows is a no-op, so drop it.
+
+        A side needs preservation only for (a) key values missing from the
+        other side — none when it is subset-DECLARED against a proven-complete
+        superset side (``_pair_side_fully_matches``) — or (b) NULL-key rows
+        with no null-safe partner — none when the pair is null-safe or the
+        side proves non-null. FULL narrows to the directional join preserving
+        the superset side; a directional join whose preserved side fully
+        matches narrows to INNER."""
+        assert join.joinkey_pairs
+
+        def right_matches_left() -> bool:
+            return all(
+                _pair_side_fully_matches(
+                    pair.right,
+                    right_cte,
+                    pair.left,
+                    pair.cte,
+                    self.subset_join_map,
+                    self.scoped_canonical,
+                    self.subset_binding_sources,
+                )
+                and (pair.is_nullable or not _key_nullable(pair.right, right_cte))
+                for pair in join.joinkey_pairs or []
+            )
+
+        def left_matches_right() -> bool:
+            return all(
+                _pair_side_fully_matches(
                     pair.left,
                     pair.cte,
                     pair.right,
                     right_cte,
-                    # Authoritative-scan completeness is only trusted for keys
-                    # the author DECLARED equal-domain; see _authoritative_scan.
-                    allow_scan_evidence=bool(
-                        self.equal_join_keys
-                        and (_key_addresses(pair.left) | _key_addresses(pair.right))
-                        & self.equal_join_keys
-                    ),
+                    self.subset_join_map,
+                    self.scoped_canonical,
+                    self.subset_binding_sources,
                 )
-                for pair in join.joinkey_pairs
-            ):
-                continue
-            # A key that is nullable on a side but joined with plain ``=`` (the
-            # pair carries no NULLABLE modifier) carries NULL rows the equality
-            # never matches — e.g. a ROLLUP subtotal/grand-total key. Upgrading
-            # to INNER would silently drop them, so leave the OUTER join. (A
-            # null-safe pair, the twin-rollup case, matches NULLs and is safe.)
-            if any(
-                not pair.is_nullable
-                and (
-                    _key_nullable(pair.left, pair.cte)
-                    or _key_nullable(pair.right, right_cte)
-                )
-                for pair in join.joinkey_pairs
-            ):
-                continue
-            original = join.jointype
-            join.jointype = JoinType.INNER
-            changed = True
-            left_name = join.joinkey_pairs[0].cte.name
-            self.log(
-                f"{cte.name}: {original.value} → INNER on key-set equivalence "
-                f"between {left_name} and {right_cte.name}"
+                and (pair.is_nullable or not _key_nullable(pair.left, pair.cte))
+                for pair in join.joinkey_pairs or []
             )
-        return changed, None
+
+        original = join.jointype
+        target: JoinType | None = None
+        if join.jointype == JoinType.FULL:
+            if right_matches_left():
+                target = JoinType.LEFT_OUTER
+            elif left_matches_right():
+                target = JoinType.RIGHT_OUTER
+        elif join.jointype == JoinType.LEFT_OUTER and left_matches_right():
+            target = JoinType.INNER
+        elif join.jointype == JoinType.RIGHT_OUTER and right_matches_left():
+            target = JoinType.INNER
+        if target is None:
+            return False
+        join.jointype = target
+        left_name = join.joinkey_pairs[0].cte.name
+        self.log(
+            f"{cte.name}: {original.value} → {target.value} on declared-subset "
+            f"full-match between {left_name} and {right_cte.name}"
+        )
+        return True

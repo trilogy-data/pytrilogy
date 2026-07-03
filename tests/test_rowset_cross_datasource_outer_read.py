@@ -145,9 +145,10 @@ select rs.k, rs.sa, rs.sb limit 10;
 def test_rowset_key_read_back_aligns_with_source(models: Path):
     # `rs`'s key is the INTERSECTION a∩b = {1,2} (a has {1,2,3}, b has {1,2,4});
     # b contributes only its key, so the intersection is expressed as
-    # `where a.aid in b.bid`. Reading rs.k beside an EXTERNAL property (a.aw) via a
-    # LEFT join back to a.aid (guarded `where a.aw is not null`) must retain that
-    # intersection, so only rows 1 and 2 survive -- NOT the full a dimension.
+    # `where a.aid in b.bid`. Joins are row-preserving and the rowset side is
+    # filtered (the membership), so the read-back LEFT join cannot narrow —
+    # restricting to rowset rows is the explicit `rs.sa is not null`; with it,
+    # only rows 1 and 2 survive — NOT the full a dimension.
     eng = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=models)
     )
@@ -163,7 +164,7 @@ where a.aid in b.bid
 select a.aid as k, sum(a.av) as sa;
 
 
-where a.aw is not null
+where a.aw is not null and rs.sa is not null
 select rs.k, a.aw
 left join rs.k = a.aid
 order by rs.k;
@@ -293,7 +294,10 @@ select rs.k order by rs.k;
 
 def test_rowset_key_readback_left_k_aw(models: Path):
     # LEFT body preserves all a rows {1,2,3}; read the key beside a SOURCE-side
-    # property (a.aw, keyed by the join source a.aid).
+    # property (a.aw, keyed by the join source a.aid). The read-back join adds
+    # a second relation onto the same canonical key group; the narrowing pass
+    # arbitrates the same-address body pair by binding provenance
+    # (subset_binding_sources) and still narrows the body onto its a anchor.
     eng = _matrix_engine(models)
     rows = [tuple(r) for r in eng.execute_query("""
 import a as a;

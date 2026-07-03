@@ -70,7 +70,10 @@ with l0_union as union(
         cr_totals.cr_total_returns::numeric(15,2) as u_returns,
         sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss::numeric(15,2) as u_profit,
     ),
-    (left join ss_grouped.ss_store_id = sr_grouped.sr_store_id
+    # joins are row-preserving: the explicit `is not null` restricts each arm
+    # to its sales side (returns-only stores/pages drop, per the reference).
+    (where ss_grouped.ss_sales is not null
+     left join ss_grouped.ss_store_id = sr_grouped.sr_store_id
      select
         'store channel' as u_channel,
         ss_grouped.ss_store_id as u_id,
@@ -78,7 +81,8 @@ with l0_union as union(
         coalesce(sr_grouped.sr_returns, 0)::numeric(15,2) as u_returns,
         ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0)::numeric(15,2) as u_profit,
     ),
-    (left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id
+    (where ws_grouped.ws_sales is not null
+     left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id
      select
         'web channel' as u_channel,
         ws_grouped.ws_wp_id as u_id,

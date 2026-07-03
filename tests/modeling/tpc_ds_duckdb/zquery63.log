@@ -1,6 +1,6 @@
 query_id = "63"
 generator = "v3"
-gen_length = 2320
+gen_length = 2212
 preql_size = 1372
 comp_size = 1795
 generated_sql = """
@@ -29,7 +29,7 @@ FROM
 GROUP BY
     1)
 SELECT
-    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\",
+    \"cheerful\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
     \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
@@ -42,7 +42,7 @@ WHERE
 	END > 0.1
 
 ORDER BY 
-    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") asc,
+    \"cheerful\".\"store_sales_item_manager_id\" asc,
     \"cooperative\".\"avg_monthly_sales\" asc,
     \"cheerful\".\"sum_sales\" asc
 LIMIT (100)"""

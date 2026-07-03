@@ -1,6 +1,6 @@
 query_id = "84"
 generator = "v3"
-gen_length = 2213
+gen_length = 2463
 preql_size = 717
 comp_size = 606
 generated_sql = """
@@ -36,7 +36,7 @@ FROM
     INNER JOIN \"memory\".\"household_demographics\" as \"customer_household_demographic_household_demographics\" on \"highfalutin\".\"customer_household_demographic_id\" = \"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"income_band\" as \"customer_household_demographic_income_band_income_band\" on \"customer_household_demographic_household_demographics\".\"HD_INCOME_BAND_SK\" = \"customer_household_demographic_income_band_income_band\".\"IB_INCOME_BAND_SK\"
 WHERE
-    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000 and \"returns_store_returns\".\"SR_TICKET_NUMBER\" is not null
+    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and coalesce(\"highfalutin\".\"customer_demographics_id\",\"returns_store_returns\".\"SR_CDEMO_SK\") is not null and coalesce(\"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\",\"highfalutin\".\"customer_household_demographic_id\") is not null and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000 and \"returns_store_returns\".\"SR_TICKET_NUMBER\" is not null
 
 GROUP BY
     1,
