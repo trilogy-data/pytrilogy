@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
+from trilogy.core.domain_graph import DomainGraph, EdgeScope, mint_binding_edges
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
@@ -42,7 +43,6 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
-    _build_scoped_merge_index,
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -1218,76 +1218,49 @@ def process_query(
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
     )
-    join_tuples = {
-        (j.source_address, j.target_address, j.join_type) for j in join_clauses
-    }
-    build_scoped_joins = [
-        (j.source_address, j.target_address, j.join_type) for j in join_clauses
+    # Every scoped join is a domain DECLARATION; collect them scope-tagged, in
+    # declaration-priority order (statement, then global merges, then
+    # rowset-BODY joins — `with rs as left join ...`, which ride the rowset's
+    # select lineage, not the outer statement's join_clauses). The narrowing
+    # registries below are queries against the resulting graph
+    # (docs/domain_graph_design.md): the subset side of every LEFT/subset
+    # relation feeds directional narrowing; EQUAL/INCOMPARABLE endpoints veto
+    # the outer-join upgrade (an EQUAL key may still narrow to INNER once
+    # completeness tests pass — a query-scoped FULL/UNION key never does).
+    scoped_pairs: list[tuple[tuple[str, str, JoinType], EdgeScope]] = []
+    seen_joins: set[tuple[str, str, JoinType]] = set()
+    tagged: list[tuple[tuple[str, str, JoinType], EdgeScope]] = [
+        (
+            (j.source_address, j.target_address, j.join_type),
+            EdgeScope.STATEMENT,
+        )
+        for j in join_clauses
     ]
-    build_scoped_joins.extend(
-        merge for merge in environment.merges if merge not in build_scoped_joins
-    )
-    # rowset-BODY joins (`with rs as left join ... select ...`) live on the
-    # rowset's select lineage, not the outer statement; fold them in so their
-    # keys reach the narrowing registries (subset map / FULL veto) too.
-    build_scoped_joins.extend(
-        t
+    tagged.extend((merge, EdgeScope.GLOBAL) for merge in environment.merges)
+    tagged.extend(
+        (t, EdgeScope.ROWSET)
         for t in _collect_rowset_scoped_joins(environment, statement)
-        if t not in build_scoped_joins
     )
-    # scoped_partial_sources = the subset side of every LEFT/subset relation by
-    # its OWN address (side-specific); mapped to its superset counterpart it
-    # feeds SUBSET-driven directional narrowing.
-    scoped_merge_map, scoped_partial_sources = _build_scoped_merge_index(
-        build_scoped_joins
-    )
-    subset_join_map = {
-        addr: scoped_merge_map[addr]
-        for addr in scoped_partial_sources
-        if addr in scoped_merge_map
-    }
+    for join, scope in tagged:
+        if join not in seen_joins:
+            seen_joins.add(join)
+            scoped_pairs.append((join, scope))
+    domain_graph = DomainGraph.from_scoped_joins(scoped_pairs)
+    for binding in mint_binding_edges(environment):
+        domain_graph.add_binding(binding)
+    scoped_merge_map = dict(domain_graph.canonical_map())
+    subset_join_map = domain_graph.subset_join_map()
     # For each subset address, the raw datasources that bind it NATIVELY —
-    # computed on the author environment, i.e. PRE-substitution, so it
+    # from the author model's binding edges, i.e. PRE-substitution, so it
     # survives the canonical collapse and arbitrates same-address join pairs
     # by provenance in the narrowing pass.
     subset_binding_sources: dict[str, set[str]] = {}
     for addr in subset_join_map:
-        sources: set[str] = set()
-        for ds in environment.datasources.values():
-            if any(col.concept.address == addr for col in ds.columns):
-                sources.add(ds.identifier)
-                sources.add(ds.safe_identifier)
+        sources = domain_graph.binding_sources(addr)
         if sources:
             subset_binding_sources[addr] = sources
-    # Canonical keys of explicit OUTER joins: flagged so the outer-join upgrade
-    # optimization never collapses author-requested preservation back to INNER.
-    # LEFT/merge join typing is carried by the partial flag (set on the optional
-    # side at resolution) and needs no veto. FULL deliberately keeps its key
-    # complete (registry-driven, not partial), so the outer-join upgrade can't
-    # see it's preserving disjoint populations — protect FULL keys explicitly.
-    full_join_keys = {
-        scoped_merge_map.get(addr, addr)
-        for source, target, join_type in build_scoped_joins
-        if join_type is JoinType.FULL
-        for addr in (source, target)
-    }
-    # A non-partial global `merge a into b` DECLARES equal domains (mutual
-    # subset — docs/subset_union_join_design.md), unlike a query-scoped
-    # FULL/UNION join, which declares that neither domain contains the other.
-    # An EQUAL key may therefore narrow to INNER once the completeness tests
-    # pass; keys also authored as a query-scoped FULL/UNION keep the veto.
-    statement_full_keys = {
-        scoped_merge_map.get(addr, addr)
-        for source, target, join_type in build_scoped_joins
-        if join_type is JoinType.FULL and (source, target, join_type) in join_tuples
-        for addr in (source, target)
-    }
-    equal_join_keys = {
-        scoped_merge_map.get(addr, addr)
-        for source, target, join_type in environment.merges
-        if join_type is JoinType.FULL
-        for addr in (source, target)
-    } - statement_full_keys
+    full_join_keys = domain_graph.outer_relation_keys()
+    equal_join_keys = domain_graph.equal_narrowable_keys()
 
     final_ctes = optimize_ctes(
         deduped_ctes,

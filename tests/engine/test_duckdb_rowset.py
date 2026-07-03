@@ -1281,3 +1281,58 @@ order by top_states.state_total desc, top_states.state asc;
         ("D", 30.0),
         ("E", 20.0),
     ]
+
+
+_AGG_RATIO_FIXTURE = """
+key line_id int;
+property line_id.wh_name string;
+property line_id.wh_sqft int;
+property line_id.yr int;
+property line_id.amt float;
+
+datasource lines (
+    line_id: line_id,
+    wh_name: wh_name,
+    wh_sqft: wh_sqft,
+    yr: yr,
+    amt: amt,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 'A' as wh_name, 100 as wh_sqft, 2001 as yr, 10.0 as amt union all
+select 2 as line_id, 'A' as wh_name, 100 as wh_sqft, 2001 as yr, 20.0 as amt union all
+select 3 as line_id, 'B' as wh_name, 50 as wh_sqft, 2001 as yr, 5.0 as amt union all
+select 4 as line_id, 'B' as wh_name, 50 as wh_sqft, 2000 as yr, 99.0 as amt
+''';
+"""
+
+
+def test_rowset_aggregate_over_dimension_ratio_not_grouped():
+    # Regression (TPC-DS q66): an outer select that divides a rowset's aggregate
+    # output by a rowset *dimension* output (`agg.sales / nullif(agg.sqft, 0)`)
+    # collapses into a single grouping SELECT. The ratio is aggregate-bearing, but
+    # has_local_aggregate lacked a Derivation.ROWSET arm (its sibling
+    # check_is_not_in_group has one), so the ratio was misclassified as a group
+    # key and emitted in GROUP BY -> DuckDB "GROUP BY cannot contain aggregates".
+    executor = Dialects.DUCK_DB.default_executor()
+    query = _AGG_RATIO_FIXTURE + """
+rowset agg <-
+where yr = 2001
+select
+    wh_name as warehouse_name,
+    wh_sqft as warehouse_square_feet,
+    sum(amt) as monthly_sales;
+select
+    agg.warehouse_name,
+    agg.warehouse_square_feet,
+    agg.monthly_sales,
+    agg.monthly_sales / nullif(agg.warehouse_square_feet, 0) as sales_per_sqft
+order by agg.warehouse_name asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "GROUP BY" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [
+        ("A", 100, 30.0, 0.3),
+        ("B", 50, 5.0, 0.1),
+    ]

@@ -35,8 +35,8 @@ SELECT
     \"cooperative\".\"order_date\" as \"order_date\",
     \"cooperative\".\"order_ship_priority\" as \"order_ship_priority\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"cooperative\" on \"cheerful\".\"order_id\" = \"cooperative\".\"order_id\"
+    \"cooperative\"
+    INNER JOIN \"cheerful\" on \"cooperative\".\"order_id\" = \"cheerful\".\"order_id\"
 ORDER BY 
     \"cheerful\".\"q_revenue\" desc,
     \"cooperative\".\"order_date\" asc

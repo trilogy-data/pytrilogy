@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, ItemsView, Never, ValuesView
 
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.exceptions import (
     UndefinedConceptException,
 )
@@ -127,6 +128,12 @@ class BuildEnvironment:
     # pseudonym closure — a rowset key's body/parent pseudonyms are not join
     # operands. Consumed via `distinct_scoped_join_group_members`.
     scoped_join_key_groups: Dict[str, set[str]] = field(default_factory=dict)
+    # The full concept domain graph for this build: declared edges (global
+    # merges + this build's scoped-join overlay) plus structural, binding and
+    # FD edges minted from the author model (docs/domain_graph_design.md).
+    # The scoped_* registries above are derivable from it; they remain as
+    # compat shims until consumers migrate to graph queries.
+    domain_graph: DomainGraph = field(default_factory=DomainGraph)
 
     def distinct_scoped_join_group_members(self) -> set[str]:
         """Addresses of scoped-join key-group members that keep their own

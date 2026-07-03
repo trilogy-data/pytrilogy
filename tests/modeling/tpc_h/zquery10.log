@@ -1,6 +1,6 @@
 query_id = "10"
 generator = "v3"
-gen_length = 2115
+gen_length = 2120
 preql_size = 419
 comp_size = 579
 generated_sql = """
@@ -13,7 +13,7 @@ SELECT
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
-    INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
 WHERE
     \"order_orders\".\"o_orderdate\" >= date '1993-10-01' and \"order_orders\".\"o_orderdate\" < date '1994-01-01' and \"lineitem\".\"l_returnflag\" = 'R'
 

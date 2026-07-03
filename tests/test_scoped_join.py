@@ -276,25 +276,24 @@ SELECT customers.region, sum(orders.order_amount) -> amt;
     }
 
 
-def test_build_scoped_merge_index():
-    from trilogy.core.models.build import _build_scoped_merge_index
+def test_scoped_join_canonical_collapse():
+    from trilogy.core.domain_graph import DomainGraph, EdgeScope
 
-    merge_map, partial = _build_scoped_merge_index([("a", "b", JoinType.INNER)])
-    assert merge_map == {"a": "b"} and partial == set()
-    # chained joins collapse transitively onto the final target
-    merge_map, _ = _build_scoped_merge_index(
-        [("a", "b", JoinType.INNER), ("b", "c", JoinType.INNER)]
-    )
-    assert merge_map == {"a": "c", "b": "c"}
+    def graph(*joins):
+        return DomainGraph.from_scoped_joins([(j, EdgeScope.STATEMENT) for j in joins])
+
+    # chained FULL joins collapse transitively onto the final target
+    g = graph(("a", "b", JoinType.FULL), ("b", "c", JoinType.FULL))
+    assert g.canonical_map() == {"a": "c", "b": "c"}
     # LEFT (SQL `a LEFT JOIN b`): preserve the source `a`, so `b` collapses onto
-    # `a` (a is canonical) and `b` is the partial/optional side.
-    merge_map, partial = _build_scoped_merge_index([("a", "b", JoinType.LEFT_OUTER)])
-    assert merge_map == {"b": "a"} and partial == {"b"}
+    # `a` (a is canonical) and `b` is the partial/subset side.
+    g = graph(("a", "b", JoinType.LEFT_OUTER))
+    assert g.canonical_map() == {"b": "a"} and g.subset_sources() == {"b"}
     # FULL marks NEITHER partial — its canonical key is complete and the FULL JOIN
     # is driven by the scoped_full_join_keys registry, not the partial flag. The
     # source still collapses onto the canonical target (union-find).
-    merge_map, partial = _build_scoped_merge_index([("a", "b", JoinType.FULL)])
-    assert merge_map == {"a": "b"} and partial == set()
+    g = graph(("a", "b", JoinType.FULL))
+    assert g.canonical_map() == {"a": "b"} and g.subset_sources() == set()
 
 
 DIM_ITEM = """key item_id int;

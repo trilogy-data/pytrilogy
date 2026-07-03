@@ -41,6 +41,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import (
     FrozenEnvironmentException,
+    InvalidSyntaxException,
     UndefinedConceptException,
 )
 from trilogy.core.models.author import (
@@ -590,8 +591,40 @@ class Environment:
         pair = self.merge_to_join(source, target, modifiers)
         if pair is None or pair in self.merges:
             return False
+        self._lint_merge_declaration(pair, source, target)
         self.merges.append(pair)
         return True
+
+    def _lint_merge_declaration(
+        self,
+        pair: tuple[str, str, JoinType],
+        source: Concept,
+        target: Concept,
+    ) -> None:
+        """Author-time contradiction lint: check the new declared domain edge
+        against prior merge declarations plus the two endpoints' own
+        structural derivation edges. Deliberately shallow — the full graph is
+        a build-time artifact; this only needs the facts already in hand."""
+        from trilogy.core.domain_graph import (
+            DomainGraph,
+            EdgeScope,
+            declared_edge_from_join,
+            structural_domain_edge,
+        )
+
+        edge = declared_edge_from_join(*pair, scope=EdgeScope.GLOBAL)
+        if edge is None:
+            return
+        graph = DomainGraph.from_scoped_joins(
+            [(merge, EdgeScope.GLOBAL) for merge in self.merges]
+        )
+        for concept in (source, target):
+            structural = structural_domain_edge(concept)
+            if structural is not None:
+                graph.add_edge(structural)
+        reason = graph.contradicts(edge)
+        if reason:
+            raise InvalidSyntaxException(f"Invalid merge declaration: {reason}")
 
     def duplicate(self):
         return Environment(

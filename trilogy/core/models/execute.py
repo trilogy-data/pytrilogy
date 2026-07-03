@@ -460,6 +460,13 @@ class CTE:
                 return False
             if c.derivation == Derivation.AGGREGATE:
                 return True
+            # a rowset output renders as its underlying content here; mirror
+            # check_is_not_in_group and recurse so a rowset aggregate is still
+            # recognized as aggregate-bearing (e.g. inside a `agg / dim` ratio).
+            if c.derivation == Derivation.ROWSET and isinstance(
+                c.lineage, BuildRowsetItem
+            ):
+                return has_local_aggregate(c.lineage.content)
             if (
                 c.purpose == Purpose.METRIC
                 and isinstance(c.lineage, BuildFunction)

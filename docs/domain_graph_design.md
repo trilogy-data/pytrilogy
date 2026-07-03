@@ -1,9 +1,46 @@
 # Concept domain graph — design sketch (phase 3)
 
-Status: **design, not started** (2026-07-03, owner-approved direction; start in
-a clean session). Successor to the registry/stamp workarounds phase 2 landed
+Status: **step 1 landed** (2026-07-03; `trilogy/core/domain_graph.py`,
+`tests/core/test_domain_graph.py`). The graph exists and today's registries
+are derived from it (see "Landed" below); steps 2–5 of the migration plan
+remain. Successor to the registry/stamp workarounds phase 2 landed
 (docs/subset_union_join_design.md, "Deferred / residuals") and to the bespoke
 grain/FD reasoning scattered through join and discovery machinery.
+
+## Landed (step 1, 2026-07-03)
+
+- `trilogy/core/domain_graph.py`: `DomainEdge` (SUBSET/EQUAL/INCOMPARABLE ×
+  declared/structural/binding provenance × global/statement/rowset scope ×
+  optional condition), `BindingEdge` population facts, `FDEdge` with
+  population scope, and `DomainGraph` with `relation()`, `determines()`
+  (transitive FD closure over ≡-classes, complete-binding globalization),
+  `with_overlay()`, and `contradicts()`.
+- Author/build split (owner constraint): the author `Environment` stores NO
+  graph and gains no serialized state — declared edges derive on demand from
+  `merges` / statement join clauses. The full graph (declared + structural +
+  binding + FD) is assembled per build and lives on
+  `BuildEnvironment.domain_graph`.
+- Registry compat shims: `Factory` (`scoped_merge_map`,
+  `scoped_partial_sources`, `scoped_full_join_keys`,
+  `scoped_left_anchor_keys`, `scoped_join_key_groups`) and
+  `process_query` (`subset_join_map`, `subset_binding_sources`,
+  `full_join_keys`, `equal_join_keys`) are now graph queries with unchanged
+  outputs; `_build_scoped_merge_index` is dissolved into
+  `DomainGraph.canonical_map()`. The EQUAL-vs-∦ distinction previously
+  recovered via the `statement_full_keys` provenance hack is now a
+  first-class relation label + scope tag.
+- Author-time contradiction lint (`Environment._lint_merge_declaration`):
+  a global merge declaring the reverse of a conditioned structural subset
+  (the "reversed operands?" case) or conflicting with ∦ fails at parse.
+- Structural minting covers FILTER derivations and rowset outputs (filtered
+  body → conditioned ⊑, unfiltered → ≡); BASIC image edges deferred (open
+  question 2's conservative default), union arms not yet minted.
+
+Open questions settled: (1) no interning — conditions live on edges,
+populations are (node, condition) pairs at query time; (3) FD scopes
+reference binding populations by datasource identifier; (4) the overlay
+rides the existing `scoped_joins` parameter path; (2) and (5) deferred as
+written.
 
 One environment-level directed graph over concepts, carrying TWO edge
 families:

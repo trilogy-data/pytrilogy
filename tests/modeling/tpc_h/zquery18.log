@@ -1,6 +1,6 @@
 query_id = "18"
 generator = "v3"
-gen_length = 1292
+gen_length = 1335
 preql_size = 317
 comp_size = 543
 generated_sql = """
@@ -19,14 +19,14 @@ HAVING
 ),
 thoughtful as (
 SELECT
-    \"order_customer_customers\".\"c_custkey\" as \"order_customer_id\",
     \"order_customer_customers\".\"c_name\" as \"order_customer_name\",
     \"order_orders\".\"o_orderdate\" as \"order_date\",
     \"order_orders\".\"o_orderkey\" as \"order_id\",
-    \"order_orders\".\"o_totalprice\" as \"order_total_price\"
+    \"order_orders\".\"o_totalprice\" as \"order_total_price\",
+    coalesce(\"order_customer_customers\".\"c_custkey\",\"order_orders\".\"o_custkey\") as \"order_customer_id\"
 FROM
     \"memory\".\"customer\" as \"order_customer_customers\"
-    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"order_customer_customers\".\"c_custkey\" = \"order_orders\".\"o_custkey\"
+    RIGHT OUTER JOIN \"memory\".\"orders\" as \"order_orders\" on \"order_customer_customers\".\"c_custkey\" = \"order_orders\".\"o_custkey\"
 WHERE
     \"order_orders\".\"o_orderkey\" is not null
 )

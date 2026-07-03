@@ -22,6 +22,7 @@ from typing import (
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
     NUMBERING_WINDOW_TYPES,
@@ -2223,45 +2224,22 @@ def materialize_constant(x):
     return x
 
 
-def _build_scoped_merge_index(
+def scope_tagged_joins(
     joins: list[tuple[str, str, JoinType]],
-) -> tuple[dict[str, str], set[str]]:
-    """Collapse build-scoped joins into a union-find map (source address ->
-    canonical target address) plus the set of partial source addresses.
-    Non-partial `merge a into b` is a FULL join pair rooted on `b`, so an N-way
-    blend collapses every member to one canonical concept.
-
-    Partiality drives the eventual datasource-join type. Direction matches SQL
-    `A LEFT JOIN B`: in `LEFT JOIN a = b` the LEFT operand `a` is preserved and the
-    RIGHT operand `b` is optional. So for LEFT the TARGET (`b`) collapses onto the
-    SOURCE (`a`) — making `a` the complete canonical anchor — and `b` is marked
-    partial. The partial side is therefore always the collapsed-away side, which is
-    what the rowset partiality propagation expects. FULL collapses source->target,
-    marks neither, and is driven by the scoped_full_join_keys registry at
-    join-resolution time instead."""
-    parent: dict[str, str] = {}
-
-    def find(x: str) -> str:
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    partial: set[str] = set()
-    for source, target, join_type in joins:
-        rs, rt = find(source), find(target)
-        if rs != rt:
-            # LEFT preserves the source (left operand) -> source is the canonical
-            # root; every other join type roots on the target.
-            if join_type is JoinType.LEFT_OUTER:
-                parent[rt] = rs
-            else:
-                parent[rs] = rt
-        if join_type is JoinType.LEFT_OUTER:
-            partial.add(target)
-    merge_map = {a: find(a) for a in parent if find(a) != a}
-    return merge_map, partial
+    environment: Environment,
+) -> list[tuple[tuple[str, str, JoinType], EdgeScope]]:
+    """Tag each build-scoped join tuple with its declaration scope: a tuple
+    persisted on the environment is a global `merge`, anything else arrived
+    from a statement. The scope decides what a FULL tuple DECLARES — a global
+    merge asserts EQUAL domains, a query `union join` asserts INCOMPARABLE."""
+    global_merges = set(environment.merges)
+    return [
+        (
+            join,
+            EdgeScope.GLOBAL if join in global_merges else EdgeScope.STATEMENT,
+        )
+        for join in joins
+    ]
 
 
 class Factory:
@@ -2317,9 +2295,14 @@ class Factory:
         # scoped_partial_sources marks the LEFT-join side whose datasource
         # binding must be partial.
         self.scoped_joins: list[tuple[str, str, JoinType]] = scoped_joins or []
-        self.scoped_merge_map, self.scoped_partial_sources = _build_scoped_merge_index(
-            self.scoped_joins
+        # The declared-edge domain graph for this build: every scoped join is
+        # a domain DECLARATION (subset / equal / incomparable) and the legacy
+        # registries below are graph queries (docs/domain_graph_design.md).
+        self.domain_graph = DomainGraph.from_scoped_joins(
+            scope_tagged_joins(self.scoped_joins, environment)
         )
+        self.scoped_merge_map = dict(self.domain_graph.canonical_map())
+        self.scoped_partial_sources = self.domain_graph.subset_sources()
         self._source_identity_addresses: set[str] = set()
         # A global `merge` IS a scoped join persisted on the environment (FULL
         # non-partial / LEFT partial). It resolves identically to the equivalent
@@ -2339,12 +2322,7 @@ class Factory:
         # is what drives join resolution to emit a FULL JOIN for it (see
         # get_join_type). Both join sides collapse onto the canonical address, so
         # both binding datasources advertise it and the FULL JOIN coalesces them.
-        self.scoped_full_join_keys: set[str] = {
-            self.scoped_merge_map.get(addr, addr)
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.FULL
-            for addr in (s, t)
-        }
+        self.scoped_full_join_keys: set[str] = self.domain_graph.outer_relation_keys()
 
         # Canonical keys of scoped LEFT joins (the preserved-anchor side).
         # A LEFT join's source `s` is the anchor and becomes the canonical root, so
@@ -2353,11 +2331,7 @@ class Factory:
         # directional LEFT_OUTER rather than two co-anchored partials collapsing to
         # FULL (TPC-DS q78). A `merge ~` is the same directional relation declared
         # globally and anchors identically.
-        self.scoped_left_anchor_keys: set[str] = {
-            self.scoped_merge_map.get(s, s)
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.LEFT_OUTER
-        }
+        self.scoped_left_anchor_keys: set[str] = self.domain_graph.left_anchor_keys()
 
         def _is_binding_keyed(addr: str) -> bool:
             c = environment.concepts.get(addr)
@@ -2479,10 +2453,7 @@ class Factory:
 
     def _scoped_join_key_groups(self) -> dict[str, set[str]]:
         """Authored join-key equivalence groups, canonical -> all members."""
-        groups: dict[str, set[str]] = {}
-        for source, target in self.scoped_merge_map.items():
-            groups.setdefault(target, {target}).add(source)
-        return groups
+        return self.domain_graph.join_key_groups()
 
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
@@ -3719,6 +3690,7 @@ class Factory:
             scoped_full_join_keys=set(self.scoped_full_join_keys),
             scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
             scoped_join_key_groups=self._scoped_join_key_groups(),
+            domain_graph=assemble_full_graph(base, self.domain_graph),
         )
 
         for k, v in base.concepts.all_items():

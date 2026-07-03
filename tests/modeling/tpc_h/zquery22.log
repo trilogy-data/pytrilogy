@@ -1,6 +1,6 @@
 query_id = "22"
 generator = "v3"
-gen_length = 1711
+gen_length = 1749
 preql_size = 589
 comp_size = 806
 generated_sql = """
@@ -17,8 +17,8 @@ WHERE
 thoughtful as (
 SELECT
     \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
-    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
-    \"orders_customer_customers\".\"c_phone\" as \"orders_customer_phone\"
+    \"orders_customer_customers\".\"c_phone\" as \"orders_customer_phone\",
+    coalesce(\"orders_customer_customers\".\"c_custkey\",\"orders_orders\".\"o_custkey\") as \"orders_customer_id\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
     LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
