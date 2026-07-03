@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
+from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BuildConcept,
@@ -507,6 +508,7 @@ def reduce_concept_pairs(
     pairs: list[ConceptPair],
     right_source: DataSource,
     join_type: JoinType = JoinType.INNER,
+    domain_graph: "DomainGraph | None" = None,
 ) -> list[ConceptPair]:
     from trilogy.core.enums import Purpose
 
@@ -516,11 +518,38 @@ def reduce_concept_pairs(
     right_keys = {
         pair.right.address for pair in pairs if pair.right.purpose == Purpose.KEY
     }
+    grain_components = set(right_source.grain.components)
+    # FD-closure pruning (docs/domain_graph_design.md step 4): a pair both of
+    # whose sides are functionally determined by the SURVIVING joined keys is
+    # redundant — equality on the determinants implies equality here. The
+    # closure sees what the local property check below cannot: transitive
+    # dependencies and grain FDs carried through complete bindings. Greedy over
+    # a working determinant set so mutually-dependent keys keep exactly one
+    # pair; grain pairs are never pruned (the grain restriction below relies
+    # on them).
+    fd_pruned: set[int] = set()
+    if domain_graph is not None and domain_graph.fd_edges:
+        working_left = set(left_keys)
+        working_right = set(right_keys)
+        for index, pair in enumerate(pairs):
+            left_addr, right_addr = pair.left.address, pair.right.address
+            if right_addr in grain_components:
+                continue
+            determinant_left = working_left - {left_addr}
+            determinant_right = working_right - {right_addr}
+            if not (determinant_left and determinant_right):
+                continue
+            if domain_graph.determines(
+                determinant_left, left_addr
+            ) and domain_graph.determines(determinant_right, right_addr):
+                fd_pruned.add(index)
+                working_left.discard(left_addr)
+                working_right.discard(right_addr)
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
     is_outer = join_type in OUTER_JOIN_TYPES
     right_left_seen: dict[tuple[str, str], bool] = {}
-    for pair in pairs:
+    for index, pair in enumerate(pairs):
         dedup_key = (pair.right.address, pair.existing_datasource.identifier)
         if dedup_key in seen:
             continue
@@ -542,6 +571,8 @@ def reduce_concept_pairs(
             and pair.right.keys
             and pair.right.keys.issubset(right_keys)
         ):
+            continue
+        if index in fd_pruned:
             continue
 
         seen.add(dedup_key)
@@ -686,6 +717,7 @@ def get_node_joins(
                 ],
                 ds_node_map[j.right],
                 j.type,
+                domain_graph=environment.domain_graph,
             ),
         )
         for j in joins

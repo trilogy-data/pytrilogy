@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.domain_graph import DomainGraph, EdgeScope, mint_binding_edges
+from trilogy.core.domain_graph import DomainGraph, EdgeScope
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
@@ -1246,10 +1246,6 @@ def process_query(
             seen_joins.add(join)
             scoped_pairs.append((join, scope))
     domain_graph = DomainGraph.from_scoped_joins(scoped_pairs)
-    # binding facts ride along (PRE-substitution, from the author model) so
-    # the narrowing pass can arbitrate same-address join pairs by provenance.
-    for binding in mint_binding_edges(environment):
-        domain_graph.add_binding(binding)
     scoped_merge_map = dict(domain_graph.canonical_map())
 
     final_ctes = optimize_ctes(

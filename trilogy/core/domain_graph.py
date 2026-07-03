@@ -159,6 +159,7 @@ class DomainGraph:
         self._binding_keys: set[tuple] = set()
         self._fd_keys: set[tuple] = set()
         self._canonical: dict[str, str] | None = None
+        self._eq_classes: dict[str, str] | None = None
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -187,6 +188,7 @@ class DomainGraph:
         self._edge_keys.add(key)
         self.edges.append(edge)
         self._canonical = None
+        self._eq_classes = None
         return True
 
     def add_binding(self, edge: BindingEdge) -> bool:
@@ -336,7 +338,11 @@ class DomainGraph:
 
     def _equivalence_classes(self) -> dict[str, str]:
         """Representative map under EQUAL edges (declared or structural,
-        unconditioned) — the ≡-classes the partial order lives over."""
+        unconditioned) — the ≡-classes the partial order lives over. Cached;
+        invalidated on edge mutation (relation queries are hot in join
+        planning)."""
+        if self._eq_classes is not None:
+            return self._eq_classes
         parent: dict[str, str] = {}
 
         def find(x: str) -> str:
@@ -351,7 +357,8 @@ class DomainGraph:
                 left_root, right_root = find(edge.source), find(edge.target)
                 if left_root != right_root:
                     parent[left_root] = right_root
-        return {a: find(a) for a in parent}
+        self._eq_classes = {a: find(a) for a in parent}
+        return self._eq_classes
 
     def _subset_reachable(self, start: str, goal: str, rep: dict[str, str]) -> bool:
         """Directed reachability start ⊑ ... ⊑ goal over SUBSET edges between

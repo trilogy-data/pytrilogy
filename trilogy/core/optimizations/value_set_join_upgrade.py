@@ -393,16 +393,24 @@ def _complete_via_preserved_base(
     return bool((providers - dropped_ids) & scan_ids)
 
 
-def _scan_identifiers(side_cte: CTE | UnionCTE) -> set[str]:
-    """All raw-scan identifiers feeding this side (recursing the source tree
-    and parent CTEs)."""
+def _side_origins(side_cte: CTE | UnionCTE, group: set[str]) -> set[str]:
+    """The origin domain nodes this side carries for a canonical key group:
+    the authored addresses of substituted column bindings (threaded forward
+    from the build — ``BuildColumnAssignment.origin_address``) whose bound
+    concept renders in ``group``, collected across the side's source tree and
+    parent chain. Per-COLUMN stamps discriminate where physical datasource
+    identity cannot (one table binding several relation endpoints, shared-base
+    self-joins reading distinct columns)."""
     out: set[str] = set()
 
     def walk_source(source) -> None:
         for ds in getattr(source, "datasources", []) or []:
             if isinstance(ds, BuildDatasource):
-                out.add(ds.identifier)
-                out.add(ds.safe_identifier)
+                for column in ds.columns:
+                    if column.origin_address is not None and (
+                        _key_addresses(column.concept) & group
+                    ):
+                        out.add(column.origin_address)
             else:
                 walk_source(ds)
 
@@ -462,7 +470,6 @@ def _pair_side_fully_matches(
     domain_graph: DomainGraph,
     subset_join_map: dict[str, str],
     scoped_canonical: dict[str, str],
-    subset_binding_sources: dict[str, set[str]],
 ) -> bool:
     """Every row of the subset side finds a partner on the superset side, so a
     join preserving the subset side's unmatched rows preserves nothing.
@@ -489,21 +496,21 @@ def _pair_side_fully_matches(
         # relations share one canonical group, so the stamps alone cannot say
         # which side is the subset HERE. This pair is the rendering of a
         # relation whose subset member got substituted onto the pair address —
-        # arbitrate by PROVENANCE: the subset side is the one scanning a
-        # datasource that natively binds a folded-away subset address of this
-        # group (the graph's author-side binding facts, PRE-substitution), and
-        # the superset side must not.
+        # arbitrate by the ORIGIN DOMAIN NODES threaded forward from the
+        # build: the subset side carries a declared-subset origin of this
+        # group that the superset side does not.
         if sub_concept.address == sup_concept.address:
-            if not (subset_join_map and subset_binding_sources):
+            if not subset_join_map:
                 return False
             pair_canon = scoped_canonical.get(sub_concept.address, sub_concept.address)
-            sub_ids = _scan_identifiers(sub_cte)
-            sup_ids = _scan_identifiers(sup_cte)
+            group = _key_addresses(sub_concept) | {pair_canon}
+            sub_origins = _side_origins(sub_cte, group)
+            sup_origins = _side_origins(sup_cte, group)
             if not any(
                 s != sub_concept.address
                 and scoped_canonical.get(s, s) == pair_canon
-                and (subset_binding_sources.get(s) or set()) & sub_ids
-                and not (subset_binding_sources.get(s) or set()) & sup_ids
+                and s in sub_origins
+                and s not in sup_origins
                 for s in subset_join_map
             ):
                 return False
@@ -579,17 +586,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         # subset side (exact, side-specific address) → superset counterpart
         # for every SUBSET-declared relation; feeds directional narrowing.
         self.subset_join_map = graph.subset_join_map()
-        # full member → canonical-group-root map for scoped relations, used to
-        # recognize chained-relation counterparts by group membership.
+        # full member → canonical-group-root map for scoped relations; maps a
+        # rendered same-address pair back to its relation group.
         self.scoped_canonical = dict(graph.canonical_map())
-        # subset address → raw datasource identifiers natively binding it
-        # (the graph's author-side binding facts, i.e. PRE-substitution);
-        # arbitrates same-address pairs by provenance.
-        self.subset_binding_sources = {
-            addr: sources
-            for addr in self.subset_join_map
-            if (sources := graph.binding_sources(addr))
-        }
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -719,7 +718,6 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                     self.domain_graph,
                     self.subset_join_map,
                     self.scoped_canonical,
-                    self.subset_binding_sources,
                 )
                 and (pair.is_nullable or not _key_nullable(pair.right, right_cte))
                 for pair in join.joinkey_pairs or []
@@ -735,7 +733,6 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                     self.domain_graph,
                     self.subset_join_map,
                     self.scoped_canonical,
-                    self.subset_binding_sources,
                 )
                 and (pair.is_nullable or not _key_nullable(pair.left, pair.cte))
                 for pair in join.joinkey_pairs or []

@@ -266,6 +266,121 @@ address baz;
     )  # Should keep both since they're different concepts
 
 
+def _fd_test_sources():
+    env, _ = parse("""
+key a int;
+key b int;
+key x int;
+
+datasource dim (a, b) grain (a)
+address dim_tbl;
+
+datasource f1 (a, b, x) grain (x)
+address f1_tbl;
+        """)
+    build_env = env.materialize_for_select()
+    a = build_env.concepts["a"]
+    b = build_env.concepts["b"]
+    x = build_env.concepts["x"]
+    dim = build_env.datasources["dim"]
+    f1 = build_env.datasources["f1"]
+    left_qds = QueryDatasource(
+        input_concepts=[a, b],
+        output_concepts=[a, b],
+        datasources=[dim],
+        grain=BuildGrain(components={a.address}),
+        joins=[],
+        source_map={a.address: {dim}, b.address: {dim}},
+    )
+    # right grain {a, x} is NOT a subset of the join keys, so the existing
+    # grain restriction stays out of the way and the FD prune is what decides
+    right_qds = QueryDatasource(
+        input_concepts=[a, b, x],
+        output_concepts=[a, b, x],
+        datasources=[f1],
+        grain=BuildGrain(components={a.address, x.address}),
+        joins=[],
+        source_map={a.address: {f1}, b.address: {f1}, x.address: {f1}},
+    )
+    return build_env, a, b, left_qds, right_qds
+
+
+def test_reduce_concept_pairs_fd_through_binding():
+    """`dim` binds a and b completely at grain (a), so a → b holds globally
+    (the domain graph's complete-binding rule) — the b pair is redundant once
+    a is joined. Without the graph the reduction cannot see through the
+    binding and keeps both (the pre-graph behavior, pinned here too)."""
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=b, right=b, existing_datasource=left_qds),
+    ]
+    without_graph = reduce_concept_pairs(list(pairs), right_qds)
+    assert len(without_graph) == 2
+    with_graph = reduce_concept_pairs(
+        list(pairs), right_qds, domain_graph=build_env.domain_graph
+    )
+    assert len(with_graph) == 1, with_graph
+    assert with_graph[0].left == a
+
+
+def test_reduce_concept_pairs_fd_never_prunes_grain_pair():
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    x = build_env.concepts["x"]
+    right_qds.grain = BuildGrain(components={b.address, x.address})
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=b, right=b, existing_datasource=left_qds),
+    ]
+    reduced = reduce_concept_pairs(
+        list(pairs), right_qds, domain_graph=build_env.domain_graph
+    )
+    assert any(p.right == b for p in reduced), reduced
+
+
+def test_reduce_concept_pairs_fd_transitive():
+    """Pure transitive closure: A → B, B → C prunes the c pair when a is
+    joined, even though no single declaration relates a to c."""
+    from trilogy.core.domain_graph import DomainGraph, FDEdge
+
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    c = build_env.concepts["x"]
+    graph = DomainGraph(
+        fd_edges=[
+            FDEdge(determinants=frozenset({a.address}), dependent=b.address),
+            FDEdge(determinants=frozenset({b.address}), dependent=c.address),
+        ]
+    )
+    right_qds.grain = BuildGrain(components={a.address})
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=c, right=c, existing_datasource=left_qds),
+    ]
+    reduced = reduce_concept_pairs(list(pairs), right_qds, domain_graph=graph)
+    assert len(reduced) == 1
+    assert reduced[0].left == a
+
+
+def test_reduce_concept_pairs_fd_mutual_keeps_one():
+    """Mutually-dependent keys (a → b and b → a) keep exactly one pair —
+    greedy over the surviving determinant set, never both pruned."""
+    from trilogy.core.domain_graph import DomainGraph, FDEdge
+
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    graph = DomainGraph(
+        fd_edges=[
+            FDEdge(determinants=frozenset({a.address}), dependent=b.address),
+            FDEdge(determinants=frozenset({b.address}), dependent=a.address),
+        ]
+    )
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=b, right=b, existing_datasource=left_qds),
+    ]
+    reduced = reduce_concept_pairs(list(pairs), right_qds, domain_graph=graph)
+    assert len(reduced) == 1, reduced
+
+
 @pytest.mark.parametrize(
     "left_partial,left_nullable,right_partial,right_nullable,expected",
     [

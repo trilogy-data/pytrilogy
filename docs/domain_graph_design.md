@@ -58,16 +58,60 @@ written.
   it: a concept EQUAL-merged onto a declared subset side now counts).
 - Battery-verified identical: TPC-DS zquery SQL logs byte-stable; join
   matrix + scoped-join/rowset suites green.
-- **Residual (2b.3)**: the same-address arbitration still infers the subset
-  side from physical scan identifiers × binding facts (now read from the
-  graph, but the LOGIC is unchanged), and the `partial_closure` /
-  `ignore_partial_addrs` stamp carve-outs remain. Deleting both requires
-  threading each CTE output's ORIGIN domain node (origin address +
-  accumulated condition) forward from the build — the "Resolution
-  semantics" section's design. That is where the new narrowing wins
-  (double-relation readback, shared-base shapes; q64 timing target) unlock.
-  Note: touches `execute.py` (CTE model), which currently carries unrelated
-  in-flight work.
+- **2b.3 (origin threading, first tranche — landed)**: the build now threads
+  origin domain nodes forward at the BINDING level:
+  `BuildColumnAssignment.origin_address` records the authored address a
+  scoped join/merge substituted onto the relation's canonical
+  (`Factory._build_column_assignment`). The narrowing pass's same-address
+  arbitration reads these stamps (`_side_origins`) instead of inferring the
+  subset side from physical scan identifiers × datasource binding scans —
+  `subset_binding_sources` and `_scan_identifiers` are DELETED, and the
+  optimizer's coupling to physical layout with them. Per-column stamps also
+  discriminate where identifiers cannot (one table binding several relation
+  endpoints). 19 dependent tests (root-key scoped LEFT rendering, the
+  readback family, permutation matrix) arbitrate; all green + battery
+  byte-stable.
+- **Finding**: the remaining conservative one-datasource shape (e.g.
+  `left join emp.eid = emp.mid`, both endpoints in one table) degrades
+  UPSTREAM of narrowing — the join planner renders the folded endpoint with
+  the anchor's own column (`e = e`; row-correct only via grain uniqueness).
+  Endpoint identity must survive source-binding selection in
+  `get_node_joins` before any narrowing evidence can exist. Same seam as
+  the pinned q59 shared-canonical bug. The binding-level origin stamps are
+  the substrate for that fix.
+- **Residual**: `partial_closure` / `ignore_partial_addrs` stamp carve-outs
+  in `_complete_distinct`/`_complete_values` remain (they speak to the
+  RELATION vs own-coverage split; deletable once completeness consults
+  origin nodes + the graph directly). Rowset-boundary origin stamps (for
+  shared-base self-join rowset keys) not yet minted — those pairs currently
+  render distinct addresses via the identity path, so nothing consumes them
+  yet.
+
+## Landed (step 4, first consumer, 2026-07-03)
+
+- `reduce_concept_pairs` consumes FD closure: a greedy pre-pass over the
+  surviving determinant set prunes any join pair both of whose sides are
+  functionally determined by the remaining joined keys
+  (`domain_graph.determines`, threaded from
+  `BuildEnvironment.domain_graph` at the `get_node_joins` call site). This
+  closes the doc's "cannot see through bindings" gap — a dimension binding
+  A and B completely at grain (A) now proves A → B globally and the
+  redundant B pair drops from scan-level joins — plus transitive chains
+  (A → B → C). Grain pairs and mutually-dependent determinants are
+  protected (exactly one of a mutual pair survives). The existing property
+  and grain-subset heuristics are retained unchanged alongside.
+- New FD/cardinality matrix tier: `tests/join_matrix/test_fd_matrix.py`
+  (junk-dimension enrichment: join must ride the determining key alone, no
+  fan-out, oracle rows) + unit coverage in `tests/nodes/utility/test_joins.py`
+  (through-binding, transitive, mutual, grain-protected).
+- TPC-DS battery byte-stable (its multi-key joins are grain/property pairs
+  the old heuristics already reduce) — the prune fires on shapes the old
+  code could not see, never differently on ones it could.
+- SCOPE NOTE (owner, 2026-07-03): v4 discovery FD paths are EXCLUDED from
+  step 4 — v4 is a parallel migration target; drive v3 to the ideal state
+  first. Remaining step-4 v3 consumers: grain satisfaction
+  (`calculate_joined_pregrain` / `grain_satisfied_by_pregrain` — the
+  "<grain key> uniquely defines <other key>" gap).
 
 One environment-level directed graph over concepts, carrying TWO edge
 families:

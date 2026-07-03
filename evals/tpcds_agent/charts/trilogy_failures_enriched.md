@@ -1,35 +1,349 @@
-# Trilogy failure analysis — 20260703-134501
+# Trilogy failure analysis — 20260703-151512
 
-- Run `20260703-134501` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 213 | failed: 29 (14%)
+- Run `20260703-151512` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 283 | failed: 42 (15%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 21 | 72% |
-| `syntax-parse` | 6 | 21% |
-| `join-resolution` | 1 | 3% |
-| `type-error` | 1 | 3% |
+| `other` | 30 | 71% |
+| `syntax-parse` | 10 | 24% |
+| `cli-misuse` | 1 | 2% |
+| `join-resolution` | 1 | 2% |
 
 ## Detail
 
 ### `other`
 
-- `trilogy `
+- `trilogy run query05.preql`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 48 column 12 (char 1823). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run --import raw/all_sales:s select s.return_channel_dim_text_id, sum(s.return_amount) as ret_amt where s.return_date.date between '2000-08-23'::date…ot in (select s2.channel_dim_text_id where s2.date.date between '2000-08-23'::date and '2000-09-06'::date and s2.channel_dim_id is not null) limit 5;`
+  Unexpected error in query05.preql: (_duckdb.BinderException) Binder Error: column "returns_agg_s_return_channel_dim_id" must appear in the GROUP BY clause or must be part of an aggregate function.
+  Either add it to the GROUP BY list, or use "ANY_VALUE(returns_agg_s_return_channel_dim_id)" if the exact value of "returns_agg_s_return_channel_dim_id" is not important.
 
-  ```text
-  Syntax error in stdin: 3 undefined concept references; fix all before re-running:
-    - s2.channel_dim_text_id (line 2, col 233, in SELECT); did you mean: s.channel_dim_text_id, s2.channel_dim_id, s.channel_dim_id?
-    - s2.date.date (line 2, col 262, in WHERE); did you mean: s.date.date, s.return_date.date, s.billing_customer.first_sales_date.date, s.billing_customer.first_shipto_date.date, s.ship_customer.first_sales_date.date, s.ship_customer.first_shipto_date.date?
-    - s2.channel_dim_id (line 2, col 329, in WHERE); did you mean: s.channel_dim_id, s2.channel_dim_text_id, s.channel_dim_text_id?
+  LINE 256:     "rambunctious"."returns_agg_s_return_channel_dim_id" as...
+                ^
+  [SQL:
+  WITH
+  busy as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "s_channel_dim_id",
+      "s_catalog_sales_unified"."CS_SOLD_DATE_SK" as "s_date_id",
+      "s_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "s_ext_sales_price",
+      "s_catalog_sales_unified"."CS_NET_PROFIT" as "s_net_profit"
+  FROM
+      "catalog_sales" as "s_catalog_sales_unified"
+  WHERE
+      "s_catalog_sales_unified"."CS_CATALOG_PAGE_SK" is not null
+
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_sales_unified"."SS_STORE_SK" as "s_channel_dim_id",
+      "s_store_sales_unified"."SS_SOLD_DATE_SK" as "s_date_id",
+      "s_store_sales_unified"."SS_EXT_SALES_PRICE" as "s_ext_sales_price",
+      "s_store_sales_unified"."SS_NET_PROFIT" as "s_net_profit"
+  FROM
+      "store_sales" as "s_store_sales_unified"
+  WHERE
+      "s_store_sales_unified"."SS_STORE_SK" is not null
+
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_sales_unified"."WS_WEB_SITE_SK" as "s_channel_dim_id",
+      "s_web_sales_unified"."WS_SOLD_DATE_SK" as "s_date_id",
+      "s_web_sales_unified"."WS_EXT_SALES_PRICE" as "s_ext_sales_price",
+      "s_web_sales_unified"."WS_NET_PROFIT" as "s_net_profit"
+  FROM
+      "web_sales" as "s_web_sales_unified"
+  WHERE
+      "s_web_sales_unified"."WS_WEB_SITE_SK" is not null
+  ),
+  scrawny as (
+  SELECT
+      "s_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "s_channel_dim_id",
+      "s_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "s_channel_dim_text_id"
+  FROM
+      "catalog_page" as "s_catalog_dim_unified"
+  WHERE
+      "s_catalog_dim_unified"."CP_CATALOG_PAGE_SK" is not null
+
+  UNION ALL
+  SELECT
+      "s_store_dim_unified"."S_STORE_SK" as "s_channel_dim_id",
+      "s_store_dim_unified"."S_STORE_ID" as "s_channel_dim_text_id"
+  FROM
+      "store" as "s_store_dim_unified"
+  WHERE
+      "s_store_dim_unified"."S_STORE_SK" is not null
+
+  UNION ALL
+  SELECT
+      "s_web_dim_unified"."web_site_sk" as "s_channel_dim_id",
+      "s_web_dim_unified"."web_site_id" as "s_channel_dim_text_id"
+  FROM
+      "web_site" as "s_web_dim_unified"
+  WHERE
+      "s_web_dim_unified"."web_site_sk" is not null
+  ),
+  uneven as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_returns_unified"."CR_ITEM_SK" as "s_item_id",
+      "s_catalog_returns_unified"."CR_ORDER_NUMBER" as "s_order_id",
+      "s_catalog_returns_unified"."CR_RETURN_AMOUNT" as "s_return_amount",
+      "s_catalog_returns_unified"."CR_RETURNED_DATE_SK" as "s_return_date_id",
+      "s_catalog_returns_unified"."CR_NET_LOSS" as "s_return_net_loss"
+  FROM
+      "catalog_returns" as "s_catalog_returns_unified"
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_returns_unified"."SR_ITEM_SK" as "s_item_id",
+      "s_store_returns_unified"."SR_TICKET_NUMBER" as "s_order_id",
+      "s_store_returns_unified"."SR_RETURN_AMT" as "s_return_amount",
+      "s_store_returns_unified"."SR_RETURNED_DATE_SK" as "s_return_date_id",
+      "s_store_returns_unified"."SR_NET_LOSS" as "s_return_net_loss"
+  FROM
+      "store_returns" as "s_store_returns_unified"
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_returns_unified"."WR_ITEM_SK" as "s_item_id",
+      "s_web_returns_unified"."WR_ORDER_NUMBER" as "s_order_id",
+      "s_web_returns_unified"."WR_RETURN_AMT" as "s_return_amount",
+      "s_web_returns_unified"."WR_RETURNED_DATE_SK" as "s_return_date_id",
+      "s_web_returns_unified"."WR_NET_LOSS" as "s_return_net_loss"
+  FROM
+      "web_returns" as "s_web_returns_unified"),
+  juicy as (
+  SELECT
+       'CATALOG'  as "s_channel",
+      "s_catalog_returns_unified"."CR_ITEM_SK" as "s_item_id",
+      "s_catalog_returns_unified"."CR_ORDER_NUMBER" as "s_order_id",
+      "s_catalog_returns_unified"."CR_CATALOG_PAGE_SK" as "s_return_channel_dim_id"
+  FROM
+      "catalog_returns" as "s_catalog_returns_unified"
+  WHERE
+      "s_catalog_returns_unified"."CR_CATALOG_PAGE_SK" is not null
+
+  UNION ALL
+  SELECT
+       'STORE'  as "s_channel",
+      "s_store_returns_unified"."SR_ITEM_SK" as "s_item_id",
+      "s_store_returns_unified"."SR_TICKET_NUMBER" as "s_order_id",
+      "s_store_returns_unified"."SR_STORE_SK" as "s_return_channel_dim_id"
+  FROM
+      "store_returns" as "s_store_returns_unified"
+  WHERE
+      "s_store_returns_unified"."SR_STORE_SK" is not null
+
+  UNION ALL
+  SELECT
+       'WEB'  as "s_channel",
+      "s_web_sales_unified"."WS_ITEM_SK" as "s_item_id",
+      "s_web_sales_unified"."WS_ORDER_NUMBER" as "s_order_id",
+      "s_web_sales_unified"."WS_WEB_SITE_SK" as "s_return_channel_dim_id"
+  FROM
+      "web_sales" as "s_web_sales_unified"
+  WHERE
+      "s_web_sales_unified"."WS_WEB_SITE_SK" is not null
+  ),
+  cheerful as (
+  SELECT
+      "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_SK" as "s_return_channel_dim_id",
+      "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_ID" as "s_return_channel_dim_text_id"
+  FROM
+      "catalog_page" as "s_catalog_dim_return_unified"
+  WHERE
+      "s_catalog_dim_return_unified"."CP_CATALOG_PAGE_SK" is not null
+
+  UNION ALL
+  SELECT
+      "s_store_dim_return_unified"."S_STORE_SK" as "s_return_channel_dim_id",
+      "s_store_dim_return_unified"."S_STORE_ID" as "s_return_channel_dim_text_id"
+  FROM
+      "store" as "s_store_dim_return_unified"
+  WHERE
+      "s_store_dim_return_unified"."S_STORE_SK" is not null
+
+  UNION ALL
+  SELECT
+      "s_web_dim_return_unified"."web_site_sk" as "s_return_channel_dim_id",
+      "s_web_dim_return_unified"."web_site_id" as "s_return_channel_dim_text_id"
+  FROM
+      "web_site" as "s_web_dim_return_unified"
+  WHERE
+      "s_web_dim_return_unified"."web_site_sk" is not null
+  ),
+  protective as (
+  SELECT
+      "busy"."s_channel" as "s_channel",
+      "busy"."s_channel_dim_id" as "s_channel_dim_id",
+      sum(coalesce("busy"."s_ext_sales_price",0)) as "_sales_agg_ext_sales",
+      sum(coalesce("busy"."s_net_profit",0)) as "_sales_agg_net_profit"
+  FROM
+      "busy"
+      INNER JOIN "date_dim" as "s_date_date" on "busy"."s_date_id" = "s_date_date"."D_DATE_SK"
+  WHERE
+      cast("s_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
+
+  GROUP BY
+      1,
+      2),
+  friendly as (
+  SELECT
+      "scrawny"."s_channel_dim_id" as "s_channel_dim_id",
+      "scrawny"."s_channel_dim_text_id" as "s_channel_dim_text_id"
+  FROM
+      "scrawny"
+  GROUP BY
+      1,
+      2),
+  concerned as (
+  SELECT
+      "juicy"."s_return_channel_dim_id" as "s_return_channel_dim_id",
+      coalesce("juicy"."s_channel","uneven"."s_channel") as "s_channel",
+      sum(coalesce("uneven"."s_return_amount",0)) as "_returns_agg_ret_amount",
+      sum(coalesce("uneven"."s_return_net_loss",0)) as "_returns_agg_ret_net_loss"
+  FROM
+      "juicy"
+      INNER JOIN "uneven" on "juicy"."s_channel" = "uneven"."s_channel" AND "juicy"."s_item_id" = "uneven"."s_item_id" AND "juicy"."s_order_id" = "uneven"."s_order_id"
+      INNER JOIN "date_dim" as "s_return_date_date" on "uneven"."s_return_date_id" = "s_return_date_date"."D_DATE_SK"
+  WHERE
+      cast("s_return_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' and "juicy"."s_return_channel_dim_id" is not null
+
+  GROUP BY
+      1,
+      2),
+  thoughtful as (
+  SELECT
+      "cheerful"."s_return_channel_dim_id" as "s_return_channel_dim_id"
+  FROM
+      "cheerful"
+  GROUP BY
+      1,
+      "cheerful"."s_return_channel_dim_text_id"),
+  puzzled as (
+  SELECT
+      "friendly"."s_channel_dim_id" as "s_channel_dim_id",
+      "friendly"."s_channel_dim_text_id" as "s_channel_dim_text_id",
+      "protective"."_sales_agg_ext_sales" as "_sales_agg_ext_sales",
+      "protective"."_sales_agg_net_profit" as "_sales_agg_net_profit",
+      "protective"."s_channel" as "s_channel"
+  FROM
+      "protective"
+      INNER JOIN "friendly" on "protective"."s_channel_dim_id" = "friendly"."s_channel_dim_id"),
+  sparkling as (
+  SELECT
+      "concerned"."_returns_agg_ret_amount" as "_returns_agg_ret_amount",
+      "concerned"."_returns_agg_ret_net_loss" as "_returns_agg_ret_net_loss",
+      "concerned"."s_channel" as "s_channel",
+      "thoughtful"."s_return_channel_dim_id" as "s_return_channel_dim_id"
+  FROM
+      "concerned"
+      INNER JOIN "thoughtful" on "concerned"."s_return_channel_dim_id" = "thoughtful"."s_return_channel_dim_id"),
+  waggish as (
+  SELECT
+      "puzzled"."_sales_agg_ext_sales" as "sales_agg_ext_sales",
+      "puzzled"."_sales_agg_net_profit" as "sales_agg_net_profit",
+      "puzzled"."s_channel" as "sales_agg_s_channel",
+      "puzzled"."s_channel_dim_id" as "sales_agg_s_channel_dim_id",
+      "puzzled"."s_channel_dim_text_id" as "sales_agg_s_channel_dim_text_id"
+  FROM
+      "puzzled"),
+  abhorrent as (
+  SELECT
+      "sparkling"."_returns_agg_ret_amount" as "returns_agg_ret_amount",
+      "sparkling"."_returns_agg_ret_net_loss" as "returns_agg_ret_net_loss",
+      "sparkling"."s_channel" as "returns_agg_s_channel",
+      "sparkling"."s_return_channel_dim_id" as "returns_agg_s_return_channel_dim_id"
+  FROM
+      "sparkling"),
+  rambunctious as (
+  SELECT
+      "abhorrent"."returns_agg_ret_amount" as "returns_agg_ret_amount",
+      "abhorrent"."returns_agg_ret_net_loss" as "returns_agg_ret_net_loss",
+      "waggish"."sales_agg_ext_sales" as "sales_agg_ext_sales",
+      "waggish"."sales_agg_net_profit" as "sales_agg_net_profit",
+      "waggish"."sales_agg_s_channel_dim_text_id" as "sales_agg_s_channel_dim_text_id",
+      coalesce("abhorrent"."returns_agg_s_channel","waggish"."sales_agg_s_channel") as "returns_agg_s_channel",
+      coalesce("abhorrent"."returns_agg_s_channel","waggish"."sales_agg_s_channel") as "sales_agg_s_channel",
+      coalesce("abhorrent"."returns_agg_s_return_channel_dim_id","waggish"."sales_agg_s_channel_dim_id") as "returns_agg_s_return_channel_dim_id",
+      coalesce("abhorrent"."returns_agg_s_return_channel_dim_id","waggish"."sales_agg_s_channel_dim_id") as "sales_agg_s_channel_dim_id"
+  FROM
+      "abhorrent"
+      FULL JOIN "waggish" on "abhorrent"."returns_agg_s_channel" = "waggish"."sales_agg_s_channel" AND "abhorrent"."returns_agg_s_return_channel_dim_id" = "waggish"."sales_agg_s_channel_dim_id"),
+  puffy as (
+  SELECT
+      "rambunctious"."returns_agg_s_return_channel_dim_id" as "returns_agg_s_return_channel_dim_id",
+      "rambunctious"."sales_agg_s_channel" as "sales_agg_s_channel",
+      grouping("rambunctious"."sales_agg_s_channel") as "_virt_agg_grouping_2335873445943412",
+      grouping("rambunctious"."sales_agg_s_channel_dim_id") as "_virt_agg_grouping_2679570584196302",
+      sum("rambunctious"."returns_agg_ret_amount") as "_virt_agg_sum_5684104003332447",
+      sum("rambunctious"."returns_agg_ret_net_loss") as "_virt_agg_sum_1006578281048606",
+      sum("rambunctious"."sales_agg_ext_sales") as "_virt_agg_sum_4786848671953554",
+      sum("rambunctious"."sales_agg_net_profit") as "_virt_agg_sum_1043362569701221"
+  FROM
+      "rambunctious"
+  GROUP BY
+      ROLLUP (2, "rambunctious"."sales_agg_s_channel_dim_id"))
+  SELECT
+      CASE
+  	WHEN "puffy"."_virt_agg_grouping_2335873445943412" = 1 THEN null
+  	ELSE CASE
+  	coalesce("puffy"."sales_agg_s_channel","rambunctious"."sales_agg_s_channel")
+  	WHEN 'STORE' THEN 'store channel'
+  	WHEN 'CATALOG' THEN 'catalog channel'
+  	WHEN 'WEB' THEN 'web channel'
+  	END
+  	END as "channel_type",
+      CASE
+  	WHEN "puffy"."_virt_agg_grouping_2335873445943412" = 1 or "puffy"."_virt_agg_grouping_2679570584196302" = 1 THEN null
+  	ELSE CASE
+  	coalesce("puffy"."sales_agg_s_channel","rambunctious"."sales_agg_s_channel")
+  	WHEN 'STORE' THEN ('store' || "rambunctious"."sales_agg_s_channel_dim_text_id")
+  	WHEN 'CATALOG' THEN ('catalog_page' || "rambunctious"."sales_agg_s_channel_dim_text_id")
+  	WHEN 'WEB' THEN ('web_site' || "rambunctious"."sales_agg_s_channel_dim_text_id")
+  	END
+  	END as "entity_id",
+      coalesce("puffy"."_virt_agg_sum_4786848671953554",0) as "total_ext_sales",
+      coalesce("puffy"."_virt_agg_sum_5684104003332447",0) as "total_returns",
+      coalesce("puffy"."_virt_agg_sum_1043362569701221",0) - coalesce("puffy"."_virt_agg_sum_1006578281048606",0) as "net_profit"
+  FROM
+      "puffy"
+      FULL JOIN "rambunctious" on "puffy"."returns_agg_s_return_channel_dim_id" is not distinct from "rambunctious"."returns_agg_s_return_channel_dim_id" AND "puffy"."sales_agg_s_channel" is not distinct from "rambunctious"."sales_agg_s_channel"
+  GROUP BY
+      1,
+      2,
+      3,
+      4,
+      5
+  ORDER BY
+      "channel_type" asc nulls first,
+      "entity_id" asc nulls first
+  LIMIT (100)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
 - `trilogy file read query05.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -38,13 +352,43 @@
 
   ```text
   Syntax error in query23.preql: 2 undefined concept references; fix all before re-running:
-    - last_name (line 74, col 10, in ORDER BY); did you mean: store.customer.last_name, store.return_customer.last_name, catalog.ship_customer.last_name, catalog.bill_customer.last_name, web.billing_customer.last_name, web.ship_customer.last_name?
-    - first_name (line 74, col 37, in ORDER BY); did you mean: store.customer.first_name, store.return_customer.first_name, catalog.ship_customer.first_name, catalog.bill_customer.first_name, web.billing_customer.first_name, web.ship_customer.first_name?
+    - customer_totals.cust_id (line 29, col 31, in SELECT); did you mean: customer_totals.cust_total, cs.customer_address.text_id, cs.customer_address.id?
+    - customer_totals.cust_total (line 30, col 11, in WHERE); did you mean: customer_totals.cust_id, max_cust_total?
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run test_count_years.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Unexpected error in test_count_years.preql: _pair_side_fully_matches() takes 7 positional arguments but 8 were given
+  ```
+- `trilogy run test_count_years.preql`
+
+  ```text
+  Unexpected error in test_count_years.preql: _pair_side_fully_matches() takes 7 positional arguments but 8 were given
+  ```
+- `trilogy run test_count_years.preql`
+
+  ```text
+  Unexpected error in test_count_years.preql: 'UpgradeOuterFromKeySetEquivalence' object has no attribute 'subset_binding_sources'
+  ```
+- `trilogy run test_direct_join.preql`
+
+  ```text
+  Unexpected error in test_direct_join.preql: 'UpgradeOuterFromKeySetEquivalence' object has no attribute 'subset_binding_sources'
+  ```
+- `trilogy run test_direct_join2.preql`
+
+  ```text
+  Unexpected error in test_direct_join2.preql: 'UpgradeOuterFromKeySetEquivalence' object has no attribute 'subset_binding_sources'
+  ```
+- `trilogy run test_check_dup2.preql`
+
+  ```text
+  Syntax error in test_check_dup2.preql: Undefined concept: local.code (line 31, col 8, in SELECT). Suggestions: ['t1.code', 't2.code', '_t2_code']
+  ```
+- `trilogy run test_check_dup2.preql`
+
+  ```text
+  Syntax error in test_check_dup2.preql: Ambiguous reference 'joined.code': matches ['joined.t1.code', 'joined.t2.code']. Qualify the full path to disambiguate.
   ```
 - `trilogy file read query59.preql`
 
@@ -54,533 +398,113 @@
 - `trilogy run query64.preql`
 
   ```text
-  Syntax error in query64.preql: Nothing was executed: parsed 9 definition statement(s) (4 concepts, 4 imports, 1 rowset) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
+  Resolution error in query64.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 28). The requested concepts split into 2 disconnected subgraphs: {cs.item.id, cat_ext_list_by_item}; {cat_refund_by_item}. Are you missing a join or merge statement to relate them?
   ```
 - `trilogy run query64.preql`
 
   ```text
-  Resolution error in query64.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 17). The requested concepts split into 2 disconnected subgraphs: {cs.item.id, cat_ext_list_price_by_item}; {cat_refund_by_item}. Are you missing a join or merge statement to relate them?
+  Syntax error in query64.preql: Ambiguous reference 'ss_with_sr.year': matches ['ss_with_sr.ss.customer.first_sales_date.year', 'ss_with_sr.ss.customer.first_shipto_date.year', 'ss_with_sr.ss.date.year']. Qualify the full path to disambiguate.
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+  Syntax error in query64.preql: 14 undefined concept references; fix all before re-running:
+    - ss_agg.ss_item_product_name (line 40, col 5, in SELECT); did you mean: ss_agg.ss.item.product_name, ss.item.product_name, sr.item.product_name?
+    - ss_agg.ss_store_name (line 41, col 5, in SELECT); did you mean: ss_agg.ss.store.name, ss_agg.ss_store_zip, ss.store.name?
+    - ss_agg.ss_store_zip (line 42, col 5, in SELECT); did you mean: ss_agg.ss.store.zip, ss_agg.ss_store_name, ss_agg.ss_customer_address_zip?
+    - ss_agg.ss_sale_address_street_number (line 43, col 5, in SELECT); did you mean: ss_agg.ss.sale_address.street_number, ss_agg.ss_sale_address_street_name, ss_agg.ss_customer_address_street_number?
+    - ss_agg.ss_sale_address_street_name (line 44, col 5, in SELECT); did you mean: ss_agg.ss_sale_address_street_number, ss_agg.ss.sale_address.street_name, ss_agg.ss_customer_address_street_name?
+    - ss_agg.ss_sale_address_city (line 45, col 5, in SELECT); did you mean: ss_agg.ss.sale_address.city, ss_agg.ss_sale_address_zip, ss_agg.ss_customer_address_city?
+    - ss_agg.ss_sale_address_zip (line 46, col 5, in SELECT); did you mean: ss_agg.ss.sale_address.zip, ss_agg.ss_sale_address_city, ss_agg.ss_customer_address_zip?
+    - ss_agg.ss_customer_address_street_number (line 47, col 5, in SELECT); did you mean: ss_agg.ss_customer_address_street_name, ss_agg.ss.customer.address.street_number, ss_agg.ss_sale_address_street_number?
+    - ss_agg.ss_customer_address_street_name (line 48, col 5, in SELECT); did you mean: ss_agg.ss_customer_address_street_number, ss_agg.ss.customer.address.street_name, ss_agg.ss_sale_address_street_name?
+    - ss_agg.ss_customer_address_city (line 49, col 5, in SELECT); did you mean: ss_agg.ss_customer_address_zip, ss_agg.ss.customer.address.city, ss_agg.ss_sale_address_city?
+    - ss_agg.ss_customer_address_zip (line 50, col 5, in SELECT); did you mean: ss_agg.ss_customer_address_city, ss_agg.ss.customer.address.zip, ss_agg.ss_sale_address_zip?
+    - ss_agg.ss_date_year (line 51, col 5, in SELECT); did you mean: ss_agg.ss.date.year, ss_agg.ss_store_name, ss.date.year?
+    - ss_agg.ss_customer_first_sales_date_year (line 52, col 5, in SELECT); did you mean: ss_agg.ss.customer.first_sales_date.year, ss_agg.ss_customer_first_shipto_date_year, ss.customer.first_sales_date.year?
+    - ss_agg.ss_customer_first_shipto_date_year (line 53, col 5, in SELECT); did you mean: ss_agg.ss.customer.first_shipto_date.year, ss_agg.ss_customer_first_sales_date_year, ss.customer.first_shipto_date.year?
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+  Resolution error in query64.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {yr1999.ss_with_sr.coupon_amt_sum, yr1999.ss_with_sr.list_price_sum, yr1999.ss_with_sr.sale_lines, yr1999.ss_with_sr.ss.customer.address.city, yr1999.ss_with_sr.ss.customer.address.street_name, yr1999.ss_with_sr.ss.customer.address.street_number, yr1999.ss_with_sr.ss.customer.address.zip, yr1999.ss_with_sr.ss.item.id, yr1999.ss_with_sr.ss.item.product_name, yr1999.ss_with_sr.ss.sale_address.city, yr1999.ss_with_sr.ss.sale_address.street_name, yr1999.ss_with_sr.ss.sale_address.street_number, yr1999.ss_with_sr.ss.sale_address.zip, yr1999.ss_with_sr.ss.store.name, yr1999.ss_with_sr.ss.store.zip, yr1999.ss_with_sr.wholesale_cost_sum, yr2000.ss_with_sr.coupon_amt_sum, yr2000.ss_with_sr.list_price_sum, yr2000.ss_with_sr.sale_lines, yr2000.ss_with_sr.wholesale_cost_sum}
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+  Resolution error in query64.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 69). The requested concepts split into 2 disconnected subgraphs: {yr1999.coupon_amt_sum, yr1999.list_price_sum, yr1999.sale_lines, yr1999.ss.customer.address.city, yr1999.ss.customer.address.street_name, yr1999.ss.customer.address.street_number, yr1999.ss.customer.address.zip, yr1999.ss.item.id, yr1999.ss.item.product_name, yr1999.ss.sale_address.city, yr1999.ss.sale_address.street_name, yr1999.ss.sale_address.street_number, yr1999.ss.sale_address.zip, yr1999.ss.store.name, yr1999.ss.store.zip, yr1999.wholesale_cost_sum}; {yr2000.coupon_amt_sum, yr2000.list_price_sum, yr2000.sale_lines, yr2000.wholesale_cost_sum}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+  Resolution error in query64.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {agg00.base_agg.coupon_amt_sum, agg00.base_agg.list_price_sum, agg00.base_agg.sale_lines, agg00.base_agg.wholesale_cost_sum, agg99.base_agg.coupon_amt_sum, agg99.base_agg.list_price_sum, agg99.base_agg.sale_lines, agg99.base_agg.ss.customer.address.city, agg99.base_agg.ss.customer.address.street_name, agg99.base_agg.ss.customer.address.street_number, agg99.base_agg.ss.customer.address.zip, agg99.base_agg.ss.item.id, agg99.base_agg.ss.item.product_name, agg99.base_agg.ss.sale_address.city, agg99.base_agg.ss.sale_address.street_name, agg99.base_agg.ss.sale_address.street_number, agg99.base_agg.ss.sale_address.zip, agg99.base_agg.ss.store.name, agg99.base_agg.ss.store.zip, agg99.base_agg.wholesale_cost_sum}
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+  {
+    "event": "statement_result",
+    "index": 0,
+    "total": 1,
+    "duration_ms": 21.658,
+    "success": false,
+    "error": "Could not render the query: Missing source reference to ss.item.id. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).\n\nFull SQL with sentinel(s):\n\nWITH \nwakeful as (\nSELECT\n    \"cr_catalog_returns\".\"CR_ITEM_SK\" as \"qualifying_item_ids\"\nFROM\n    \"catalog_sales\" as \"cr_sales_catalog_sales\"\n    INNER
+  …
+    \"waggish\".\"paired_base_agg_ss_item_product_name\" asc,\n    \"waggish\".\"paired_base_agg_ss_store_name\" asc,\n    \"waggish\".\"paired_next_sale_lines\" asc,\n    \"waggish\".\"paired_base_agg_wholesale_cost_sum\" asc,\n    \"waggish\".\"paired_next_wholesale_cost_sum\" asc",
+    "error_type": "ValueError"
+  }
+  {
+    "event": "summary",
+    "statements": 1,
+    "duration_ms": 22.012,
+    "ok": false,
+    "rows": 0
+  }
+  {
+    "event": "output_truncated",
+    "dropped_events": 1,
+    "note": "Output exceeded the tool cap; trailing events dropped. Narrow the call (--regex, --show, fewer rows) to see the rest."
+  }
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query66.preql`
+- `trilogy file read raw/web_sales.preql`
 
   ```text
-  Syntax error in query66.preql: Undefined concept: sales.sold_date.year. Suggestions: ['sales.date.year', 'sales.return_date.year', 'sales.billing_customer.first_sales_date.year', 'sales.billing_customer.first_shipto_date.year', 'sales.ship_customer.first_sales_date.year', 'sales.ship_customer.first_shipto_date.year']
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query66.preql`
+- `trilogy file read query67.preql`
 
   ```text
-  Syntax error in query66.preql: All arguments to coalesce must be of compatible types, have {<DataType.STRING: 'string'>, <DataType.INTEGER: 'int'>} for [ref:agg.qual_sales.wh_name, ref:months.m_num]
-  ```
-- `trilogy run query66.preql`
-
-  ```text
-  Unexpected error in query66.preql: (_duckdb.BinderException) Binder Error: GROUP BY clause cannot contain aggregates!
-
-  LINE 112: ... not null and "yummy"."_qual_sales_wh_sqft" != 0 THEN coalesce(sum("yummy"."_qual_sales_sales_amt"),0) / "yummy"."_qual_sa...
-                                                                              ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-       'CATALOG'  as "sales_channel",
-      "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
-      "sales_catalog_sales_unified"."CS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
-      "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" as "sales_warehouse_id",
-      "sales_ship_mode_ship_mode"."SM_CARRIER" as "sales_ship_mode_carrier",
-      "sales_time_time"."T_TIME" as "sales_time_time"
-  FROM
-      "catalog_sales" as "sales_catalog_sales_unified"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_catalog_sales_unified"."CS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_catalog_sales_unified"."CS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-  WHERE
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" is not null and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-
-  UNION ALL
-  SELECT
-       'WEB'  as "sales_channel",
-      "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
-      "sales_web_sales_unified"."WS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
-      "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" as "sales_warehouse_id",
-      "sales_ship_mode_ship_mode"."SM_CARRIER" as "sales_ship_mode_carrier",
-      "sales_time_time"."T_TIME" as "sales_time_time"
-  FROM
-      "web_sales" as "sales_web_sales_unified"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_web_sales_unified"."WS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_web_sales_unified"."WS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-  WHERE
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" is not null and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-  ),
-  thoughtful as (
-  SELECT
-      "cheerful"."sales_channel" as "sales_channel",
-      "cheerful"."sales_date_id" as "sales_date_id",
-      "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
-      "cheerful"."sales_net_paid" as "sales_net_paid",
-      "cheerful"."sales_net_paid_inc_tax" as "sales_net_paid_inc_tax",
-      "cheerful"."sales_quantity" as "sales_quantity",
-      "cheerful"."sales_sales_price" as "sales_sales_price",
-      "cheerful"."sales_warehouse_id" as "sales_warehouse_id"
-  FROM
-      "cheerful"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      "cheerful"."sales_ship_mode_carrier",
-      "cheerful"."sales_time_time"),
-  yummy as (
-  SELECT
-      "sales_date_date"."D_MOY" as "_qual_sales_mo",
-      "sales_date_date"."D_YEAR" as "_qual_sales_yr",
-      "sales_warehouse_warehouse"."w_city" as "_qual_sales_wh_city",
-      "sales_warehouse_warehouse"."w_country" as "_qual_sales_wh_country",
-      "sales_warehouse_warehouse"."w_county" as "_qual_sales_wh_county",
-      "sales_warehouse_warehouse"."w_state" as "_qual_sales_wh_state",
-      "sales_warehouse_warehouse"."w_warehouse_name" as "_qual_sales_wh_name",
-      "sales_warehouse_warehouse"."w_warehouse_sq_ft" as "_qual_sales_wh_sqft",
-      CASE
-  	WHEN "thoughtful"."sales_channel" = 'WEB' THEN "thoughtful"."sales_quantity" * "thoughtful"."sales_ext_sales_price"
-  	WHEN "thoughtful"."sales_channel" = 'CATALOG' THEN "thoughtful"."sales_quantity" * "thoughtful"."sales_sales_price"
-  	END as "_qual_sales_sales_amt",
-      CASE
-  	WHEN "thoughtful"."sales_channel" = 'WEB' THEN "thoughtful"."sales_quantity" * "thoughtful"."sales_net_paid"
-  	WHEN "thoughtful"."sales_channel" = 'CATALOG' THEN "thoughtful"."sales_quantity" * "thoughtful"."sales_net_paid_inc_tax"
-  	END as "_qual_sales_net_amt"
-  FROM
-      "thoughtful"
-      INNER JOIN "date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-      LEFT OUTER JOIN "warehouse" as "sales_warehouse_warehouse" on "thoughtful"."sales_warehouse_id" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "sales_date_date"."D_YEAR" = 2001
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      "thoughtful"."sales_channel"),
-  juicy as (
-  SELECT
-      "yummy"."_qual_sales_wh_city" as "warehouse_city",
-      "yummy"."_qual_sales_wh_country" as "warehouse_country",
-      "yummy"."_qual_sales_wh_county" as "warehouse_county",
-      "yummy"."_qual_sales_wh_name" as "warehouse_name",
-      "yummy"."_qual_sales_wh_sqft" as "warehouse_square_feet",
-      "yummy"."_qual_sales_wh_state" as "warehouse_state",
-      "yummy"."_qual_sales_yr" as "agg_qual_sales_yr",
-      $1 as "ship_carriers",
-      CASE
-  	WHEN "yummy"."_qual_sales_wh_sqft" is not null and "yummy"."_qual_sales_wh_sqft" != 0 THEN coalesce(sum("yummy"."_qual_sales_sales_amt"),0) / "yummy"."_qual_sales_wh_sqft"
-  	ELSE cast(0 as float)
-  	END as "monthly_sales_per_sqft",
-      coalesce("yummy"."_qual_sales_mo",unnest(generate_series(1, 12, 1))) as "month_num",
-      coalesce(sum("yummy"."_qual_sales_net_amt"),0) as "monthly_net",
-      coalesce(sum("yummy"."_qual_sales_sales_amt"),0) as "monthly_sales"
-  FROM
-      "yummy"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      9,
-      10,
-      "yummy"."_qual_sales_mo")
-  SELECT
-      "juicy"."warehouse_name" as "warehouse_name",
-      "juicy"."warehouse_square_feet" as "warehouse_square_feet",
-      "juicy"."warehouse_city" as "warehouse_city",
-      "juicy"."warehouse_county" as "warehouse_county",
-      "juicy"."warehouse_state" as "warehouse_state",
-      "juicy"."warehouse_country" as "warehouse_country",
-      "juicy"."ship_carriers" as "ship_carriers",
-      "juicy"."agg_qual_sales_yr" as "agg_qual_sales_yr",
-      "juicy"."month_num" as "month_num",
-      "juicy"."monthly_sales" as "monthly_sales",
-      "juicy"."monthly_sales_per_sqft" as "monthly_sales_per_sqft",
-      "juicy"."monthly_net" as "monthly_net"
-  FROM
-      "juicy"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12
-  ORDER BY
-      "juicy"."warehouse_name" asc nulls first,
-      "juicy"."agg_qual_sales_yr" asc nulls first
-  LIMIT (100)]
-  [parameters: ('DHL,BARIAN',)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query66.preql`
-
-  ```text
-  Unexpected error in query66.preql: (_duckdb.BinderException) Binder Error: UNNEST not supported here
-
-  LINE 51:     coalesce("sales_date_date"."D_MOY",unnest(generate_series(1, 12, 1))) as "month_num",
-                                                  ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-       'CATALOG'  as "sales_channel",
-      "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
-      "sales_catalog_sales_unified"."CS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
-      "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" as "sales_warehouse_id"
-  FROM
-      "catalog_sales" as "sales_catalog_sales_unified"
-      INNER JOIN "date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_catalog_sales_unified"."CS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_catalog_sales_unified"."CS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-      INNER JOIN "warehouse" as "sales_warehouse_warehouse" on "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" is not null and "sales_date_date"."D_YEAR" = 2001 and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-
-  UNION ALL
-  SELECT
-       'WEB'  as "sales_channel",
-      "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
-      "sales_web_sales_unified"."WS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
-      "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" as "sales_warehouse_id"
-  FROM
-      "web_sales" as "sales_web_sales_unified"
-      INNER JOIN "date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_web_sales_unified"."WS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_web_sales_unified"."WS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-      INNER JOIN "warehouse" as "sales_warehouse_warehouse" on "sales_web_sales_unified"."WS_WAREHOUSE_SK" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" is not null and "sales_date_date"."D_YEAR" = 2001 and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-  ),
-  uneven as (
-  SELECT
-      "sales_date_date"."D_YEAR" as "agg_yr",
-      "sales_warehouse_warehouse"."w_city" as "warehouse_city",
-      "sales_warehouse_warehouse"."w_country" as "warehouse_country",
-      "sales_warehouse_warehouse"."w_county" as "warehouse_county",
-      "sales_warehouse_warehouse"."w_state" as "warehouse_state",
-      "sales_warehouse_warehouse"."w_warehouse_name" as "warehouse_name",
-      "sales_warehouse_warehouse"."w_warehouse_sq_ft" as "warehouse_square_feet",
-      $1 as "ship_carriers",
-      coalesce("sales_date_date"."D_MOY",unnest(generate_series(1, 12, 1))) as "month_num",
-      coalesce(sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_ext_sales_price"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_sales_price"
-  	END),0) / nullif("sales_warehouse_warehouse"."w_warehouse_sq_ft",0) as "monthly_sales_per_sqft",
-      coalesce(sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_ext_sales_price"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_sales_price"
-  	END),0) as "monthly_sales",
-      coalesce(sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_net_paid"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_net_paid_inc_tax"
-  	END),0) as "monthly_net"
-  FROM
-      "cheerful"
-      LEFT OUTER JOIN "date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-      LEFT OUTER JOIN "warehouse" as "sales_warehouse_warehouse" on "cheerful"."sales_warehouse_id" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "cheerful"."sales_channel" in ('WEB','CATALOG')
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      9,
-      10,
-      "sales_date_date"."D_MOY")
-  SELECT
-      "uneven"."warehouse_name" as "warehouse_name",
-      "uneven"."warehouse_square_feet" as "warehouse_square_feet",
-      "uneven"."warehouse_city" as "warehouse_city",
-      "uneven"."warehouse_county" as "warehouse_county",
-      "uneven"."warehouse_state" as "warehouse_state",
-      "uneven"."warehouse_country" as "warehouse_country",
-      "uneven"."ship_carriers" as "ship_carriers",
-      "uneven"."agg_yr" as "agg_yr",
-      "uneven"."month_num" as "month_num",
-      "uneven"."monthly_sales" as "monthly_sales",
-      "uneven"."monthly_sales_per_sqft" as "monthly_sales_per_sqft",
-      "uneven"."monthly_net" as "monthly_net"
-  FROM
-      "uneven"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12
-  ORDER BY
-      "uneven"."warehouse_name" asc nulls first,
-      "uneven"."agg_yr" asc nulls first
-  LIMIT (100)]
-  [parameters: ('DHL,BARIAN',)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query66.preql`
-
-  ```text
-  Unexpected error in query66.preql: (_duckdb.BinderException) Binder Error: GROUP BY clause cannot contain aggregates!
-
-  LINE 55:     sum(CASE
-               ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-       'CATALOG'  as "sales_channel",
-      "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
-      "sales_catalog_sales_unified"."CS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
-      "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" as "sales_warehouse_id"
-  FROM
-      "catalog_sales" as "sales_catalog_sales_unified"
-      INNER JOIN "date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_catalog_sales_unified"."CS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_catalog_sales_unified"."CS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-      INNER JOIN "warehouse" as "sales_warehouse_warehouse" on "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" is not null and "sales_date_date"."D_YEAR" = 2001 and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-
-  UNION ALL
-  SELECT
-       'WEB'  as "sales_channel",
-      "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
-      "sales_web_sales_unified"."WS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
-      "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" as "sales_warehouse_id"
-  FROM
-      "web_sales" as "sales_web_sales_unified"
-      INNER JOIN "date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_web_sales_unified"."WS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_web_sales_unified"."WS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-      INNER JOIN "warehouse" as "sales_warehouse_warehouse" on "sales_web_sales_unified"."WS_WAREHOUSE_SK" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" is not null and "sales_date_date"."D_YEAR" = 2001 and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-  )
-  SELECT
-      "sales_warehouse_warehouse"."w_warehouse_name" as "agg_warehouse_name",
-      "sales_warehouse_warehouse"."w_warehouse_sq_ft" as "agg_warehouse_square_feet",
-      "sales_warehouse_warehouse"."w_city" as "agg_warehouse_city",
-      "sales_warehouse_warehouse"."w_county" as "agg_warehouse_county",
-      "sales_warehouse_warehouse"."w_state" as "agg_warehouse_state",
-      "sales_warehouse_warehouse"."w_country" as "agg_warehouse_country",
-      $1 as "ship_carriers",
-      "sales_date_date"."D_YEAR" as "agg_yr",
-      "sales_date_date"."D_MOY" as "agg_month_num",
-      sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_ext_sales_price"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_sales_price"
-  	END) as "agg_monthly_sales",
-      sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_ext_sales_price"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_sales_price"
-  	END) / nullif("sales_warehouse_warehouse"."w_warehouse_sq_ft",0) as "monthly_sales_per_sqft",
-      sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_net_paid"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_net_paid_inc_tax"
-  	END) as "agg_monthly_net"
-  FROM
-      "cheerful"
-      LEFT OUTER JOIN "date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-      LEFT OUTER JOIN "warehouse" as "sales_warehouse_warehouse" on "cheerful"."sales_warehouse_id" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "cheerful"."sales_channel" in ('WEB','CATALOG')
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      8,
-      9,
-      11
-  ORDER BY
-      "agg_warehouse_name" asc nulls first,
-      "agg_yr" asc nulls first
-  LIMIT (100)]
-  [parameters: ('DHL,BARIAN',)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query66.preql`
-
-  ```text
-  Unexpected error in query66.preql: (_duckdb.BinderException) Binder Error: GROUP BY clause cannot contain aggregates!
-
-  LINE 55:     sum(CASE
-               ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-       'CATALOG'  as "sales_channel",
-      "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
-      "sales_catalog_sales_unified"."CS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
-      "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" as "sales_warehouse_id"
-  FROM
-      "catalog_sales" as "sales_catalog_sales_unified"
-      INNER JOIN "date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_catalog_sales_unified"."CS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_catalog_sales_unified"."CS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-      INNER JOIN "warehouse" as "sales_warehouse_warehouse" on "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" is not null and "sales_date_date"."D_YEAR" = 2001 and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-
-  UNION ALL
-  SELECT
-       'WEB'  as "sales_channel",
-      "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-      "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-      "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
-      "sales_web_sales_unified"."WS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-      "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
-      "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" as "sales_warehouse_id"
-  FROM
-      "web_sales" as "sales_web_sales_unified"
-      INNER JOIN "date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-      INNER JOIN "ship_mode" as "sales_ship_mode_ship_mode" on "sales_web_sales_unified"."WS_SHIP_MODE_SK" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-      INNER JOIN "time_dim" as "sales_time_time" on "sales_web_sales_unified"."WS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
-      INNER JOIN "warehouse" as "sales_warehouse_warehouse" on "sales_web_sales_unified"."WS_WAREHOUSE_SK" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "sales_web_sales_unified"."WS_WAREHOUSE_SK" is not null and "sales_date_date"."D_YEAR" = 2001 and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN') and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638
-  )
-  SELECT
-      "sales_warehouse_warehouse"."w_warehouse_name" as "agg_warehouse_name",
-      "sales_warehouse_warehouse"."w_warehouse_sq_ft" as "agg_warehouse_square_feet",
-      "sales_warehouse_warehouse"."w_city" as "agg_warehouse_city",
-      "sales_warehouse_warehouse"."w_county" as "agg_warehouse_county",
-      "sales_warehouse_warehouse"."w_state" as "agg_warehouse_state",
-      "sales_warehouse_warehouse"."w_country" as "agg_warehouse_country",
-      $1 as "ship_carriers",
-      "sales_date_date"."D_YEAR" as "agg_yr",
-      "sales_date_date"."D_MOY" as "agg_month_num",
-      sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_ext_sales_price"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_sales_price"
-  	END) as "agg_monthly_sales",
-      sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_ext_sales_price"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_sales_price"
-  	END) / nullif("sales_warehouse_warehouse"."w_warehouse_sq_ft",0) as "monthly_sales_per_sqft",
-      sum(CASE
-  	WHEN "cheerful"."sales_channel" = 'WEB' THEN "cheerful"."sales_quantity" * "cheerful"."sales_net_paid"
-  	WHEN "cheerful"."sales_channel" = 'CATALOG' THEN "cheerful"."sales_quantity" * "cheerful"."sales_net_paid_inc_tax"
-  	END) as "agg_monthly_net"
-  FROM
-      "cheerful"
-      LEFT OUTER JOIN "date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-      LEFT OUTER JOIN "warehouse" as "sales_warehouse_warehouse" on "cheerful"."sales_warehouse_id" = "sales_warehouse_warehouse"."w_warehouse_sk"
-  WHERE
-      "cheerful"."sales_channel" in ('WEB','CATALOG')
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      8,
-      9,
-      11
-  ORDER BY
-      "agg_warehouse_name" asc nulls first,
-      "agg_yr" asc nulls first
-  LIMIT (100)]
-  [parameters: ('DHL,BARIAN',)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 4181 (char 4180). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 39 column 13 (char 1299). Re-issue the call with valid JSON arguments.
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy run query77.preql`
 
   ```text
-  Syntax error in query77.preql: ORDER BY contains aggregate `grouping(local.channel_name)` (line 5), which is not a SELECT output. Aggregates cannot be computed in the ordering scope; add it to SELECT — prefix with `--` to keep it out of the output rows — and order by the alias, e.g. `select ..., --grouping(local.channel_name) as g order by g desc`.
+  Syntax error in query77.preql: ORDER BY contains aggregate `grouping(local._channel)` (line 10), which is not a SELECT output. Aggregates cannot be computed in the ordering scope; add it to SELECT — prefix with `--` to keep it out of the output rows — and order by the alias, e.g. `select ..., --grouping(local._channel) as g order by g desc`.
   ```
 - `trilogy file read query77.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read query80.preql`
+- `trilogy file read raw/all_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query87.preql`
+
+  ```text
+  Resolution error in query87.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 18). The requested concepts split into 3 disconnected subgraphs: {in_catalog}; {in_store}; {in_web}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run query87.preql`
+
+  ```text
+  Unexpected error in query87.preql: Invalid input concepts to node! ['store_combos.store.customer.last_name'] are missing non-hidden parent nodes; have {'catalog_combos.catalog.bill_customer.first_name', 'web_combos.web.billing_customer.last_name', 'catalog_combos.catalog.date.date', 'web_combos.web.billing_customer.first_name', 'web_combos.web.date.date', 'catalog_combos.catalog.bill_customer.last_name'} and hidden set() from root {'catalog_combos.catalog.date.date', 'catalog_combos.catalog.bill_customer.last_name', 'catalog_combos.catalog.bill_customer.first_name'}
   ```
 - `trilogy file read query87.preql`
 
@@ -590,142 +514,235 @@
 
 ### `syntax-parse`
 
-- `trilogy file write query05.preql --content import raw/all_sales as all;
+- `trilogy file write query59.preql --content import raw.store_sales as ss;
 
-# Sales arm: aggregate sales metrics by channel and sale entity
-# Filter by sale dat…tity_id = returns_arm.entity_id
-by rollup (channel_name, entity_label)
-order by channel_name asc nulls first, entity_label asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 1:8
-    |
-  1 | import raw/all_sales as all;
-    |        ^---
-    |
-    = expected IMPORT_DOT
-  Location:
-  import ??? raw/all_sales as all;  # Sales...
-
-  Write stats: received 1920 chars / 1920 bytes; tail: …'ame asc nulls first, entity_label asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write query23.preql --content import raw.store_sales as store;
-import raw.catalog_sales as catalog;
-import raw.web_sales as web;
-
-# Step 1: Freq…um(combined_sales.total_sales) as total_sales
-order by last_name asc nulls first, first_name asc nulls first, total_sales asc nulls first
+auto sun <- sum(ss.sales_price ? ss.date.day_of_week = 0) by ss.store.id, ss.date.w…ar.week_seq = next_year.week_seq - 52
+order by
+    store_name nulls first,
+    store_code nulls first,
+    this_year_week_seq nulls first
 limit 100;
 `
 
   ```text
-  refused to write 'query23.preql': not syntactically valid Trilogy.
+  refused to write 'query59.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 12:35
+    --> 56:5
      |
-  12 |     --count_distinct(store.item.id, store.date.date) as pair_count
-     |                                   ^---
+  56 |     on this_year.text_id = next_year.text_id
+     |     ^---
      |
-     = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+     = expected limit, order_by, where, having, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, select_grouping, or JOIN_TYPE
   Location:
-  ...--count_distinct(store.item.id ??? , store.date.date) as pair_cou...
+  ...oin this_year = next_year     ??? on this_year.text_id = next_ye...
 
-  Write stats: received 2661 chars / 2661 bytes; tail: …'ame asc nulls first, total_sales asc nulls first\\nlimit 100;\\n'.
+  Write stats: received 2640 chars / 2640 bytes; tail: …' nulls first,\\n    this_year_week_seq nulls first\\nlimit 100;\\n'.
+  ```
+- `trilogy run --import raw.store_sales:ss select ss.store.id, ss.store.name, ss.store.text_id, count(1) as cnt by ss.store.id;`
+
+  ```text
+  Syntax error in stdin:  --> 2:70
+    |
+  2 | select ss.store.id, ss.store.name, ss.store.text_id, count(1) as cnt by ss.store.id;
+    |                                                                      ^---
+    |
+    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ...tore.text_id, count(1) as cnt ??? by ss.store.id;
+  ```
+- `trilogy run --import raw.store_sales:ss select ss.store.text_id, ss.store.name, sum(ss.sales_price) as total_units by ss.store.text_id limit 10;`
+
+  ```text
+  Syntax error in stdin:  --> 2:76
+    |
+  2 | select ss.store.text_id, ss.store.name, sum(ss.sales_price) as total_units by ss.store.text_id limit 10;
+    |                                                                            ^---
+    |
+    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ...s.sales_price) as total_units ??? by ss.store.text_id limit 10;
+  ```
+- `trilogy file write test_grain.preql --content import raw.store_sales as ss;
+
+with weekly_totals as
+select
+    ss.store.name as store_name,
+    ss.store.text_…   weekly_totals.store_code,
+    weekly_totals.week,
+    count(1) as cnt
+by weekly_totals.store_code, weekly_totals.week
+order by cnt desc
+limit 20;
+`
+
+  ```text
+  refused to write 'test_grain.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 16:1
+     |
+  16 | by weekly_totals.store_code, weekly_totals.week
+     | ^---
+     |
+     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ...als.week,     count(1) as cnt ??? by weekly_totals.store_code, w...
+
+  Write stats: received 384 chars / 384 bytes; tail: …'.store_code, weekly_totals.week\\norder by cnt desc\\nlimit 20;\\n'.
+  ```
+- `trilogy file write test_year_filter.preql --content import raw.store_sales as ss;
+
+auto total_price_by_text_id <- sum(ss.sales_price) by ss.store.text_id, ss…001
+select
+    ss.store.text_id as code,
+    ss.date.week_seq as week,
+    total_price_by_text_id as total
+;
+
+select count(1) as cnt from this_year;
+`
+
+  ```text
+  refused to write 'test_year_filter.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
+  Location:
+  ...tal ;  select count(1) as cnt ??? from this_year;
+
+  Write stats: received 325 chars / 325 bytes; tail: …'_text_id as total\\n;\\n\\nselect count(1) as cnt from this_year;\\n'.
+  ```
+- `trilogy file write test_dup_check.preql --content import raw.store_sales as ss;
+
+auto total_price_by_text_id <- sum(ss.sales_price) by ss.store.text_id, ss.d…by code, week
+;
+
+select combo_counts.code, combo_counts.week, combo_counts.rcnt
+where combo_counts.rcnt > 1
+order by combo_counts.rcnt desc
+limit 5;
+`
+
+  ```text
+  refused to write 'test_dup_check.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 19:1
+     |
+  19 | by code, week
+     | ^---
+     |
+     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+     week,     count(1) as rcnt ??? by code, week ;  select combo_...
+
+  Write stats: received 563 chars / 563 bytes; tail: …'bo_counts.rcnt > 1\\norder by combo_counts.rcnt desc\\nlimit 5;\\n'.
+  ```
+- `trilogy file write test_count_years.preql --content import raw.store_sales as ss;
+
+auto total_price_by_text_id <- sum(ss.sales_price) by ss.store.text_id, ss…week_seq as week,
+    total_price_by_text_id as total
+;
+
+select count(1) as this_count from this_year;
+select count(1) as next_count from next_year;
+`
+
+  ```text
+  refused to write 'test_count_years.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
+  Location:
+  ...select count(1) as this_count ??? from this_year; select count(1...
+
+  Write stats: received 528 chars / 528 bytes; tail: …'om this_year;\\nselect count(1) as next_count from next_year;\\n'.
   ```
 - `trilogy file write query64.preql --content import raw.store_sales as ss;
 import raw.catalog_sales as cs;
 import raw.catalog_returns as cr;
-import raw.store_r…a.zip = b.zip
-  and b.cnt <= a.cnt
-order by
-  a.product_name asc,
-  a.name asc,
-  b.cnt asc,
-  a.wholesale_cost_sum asc,
-  b.wholesale_cost_sum asc
+import raw.store_r…lines,
+    sum(ss.ext_wholesale_cost) as wholesale_cost_sum,
+    sum(ss.ext_list_price) as list_price_sum,
+    sum(ss.coupon_amt) as coupon_amt_sum
 ;`
 
   ```text
   refused to write 'query64.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 69:23
+    --> 14:134
      |
-  69 | subset join agg_sales as a = agg_sales as b
-     |                       ^---
+  14 | auto cum_refund_amt <- coalesce(sum(cr.refunded_cash), 0) + coalesce(sum(cr.reversed_charge), 0) + coalesce(sum(cr.store_credit), 0) as total_refund;
+     |                                                                                                                                      ^---
      |
-     = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ...nt_2000 subset join agg_sales ??? as a = agg_sales as b where
+  ...esce(sum(cr.store_credit), 0) ??? as total_refund;  # Items wher...
 
-  Write stats: received 2658 chars / 2658 bytes; tail: …'sc,\\n  a.wholesale_cost_sum asc,\\n  b.wholesale_cost_sum asc\\n;'.
+  Write stats: received 1934 chars / 1934 bytes; tail: …'s list_price_sum,\\n    sum(ss.coupon_amt) as coupon_amt_sum\\n;'.
+  ```
+- `trilogy file write query64.preql --content import raw.store_sales as ss;
+import raw.catalog_returns as cr;
+import raw.store_returns as sr;
+
+# --- Catalog qua…9.base_agg.ss.item.product_name,
+    agg99.base_agg.ss.store.name,
+    agg00.sale_lines,
+    agg99.wholesale_cost_sum,
+    agg00.wholesale_cost_sum
+;`
+
+  ```text
+  refused to write 'query64.preql': not syntactically valid Trilogy.
+
+  Parse error:
+     --> 102:9
+      |
+  102 |     1999,
+      |         ^---
+      |
+      = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...customer.address.zip,     1999 ??? ,     agg99.sale_lines,     ag...
+
+  Write stats: received 3941 chars / 3941 bytes; tail: …'    agg99.wholesale_cost_sum,\\n    agg00.wholesale_cost_sum\\n;'.
   ```
 - `trilogy file write query67.preql --content import raw.store_sales as ss;
 
-# Compute summed sales = sum of ext_sales_price (which = sales_price * quantity), t…_year asc nulls first,
+auto null_category <- ss.item.category is null;
+auto cat_group <- case when null_ca…month_of_year asc nulls first,
          ss.store.text_id asc nulls first,
-         summed_sales asc nulls first,
-         cat_rank asc nulls first
+         sum_sales asc nulls first,
+         rnk asc nulls first
 limit 100;`
 
   ```text
   refused to write 'query67.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 22:1
+    --> 35:1
      |
-  22 | where ss.date.year = 2000
+  35 | having
      | ^---
      |
      = expected limit or order_by
   Location:
-  ...th_of_year, ss.store.text_id) ??? where ss.date.year = 2000 havi...
+  ...th_of_year, ss.store.text_id) ??? having     rnk <= 100 order by...
 
   Hint: HAVING must come *before* the `by rollup/cube/grouping sets` clause in Trilogy (the reverse of SQL's `GROUP BY ... HAVING`). Reorder to:
       select <cols> having <cond> by rollup (<keys>) order by <cols> limit <n>;
 
-  Write stats: received 1364 chars / 1364 bytes; tail: …'sc nulls first,\\n         cat_rank asc nulls first\\nlimit 100;'.
+  Write stats: received 1717 chars / 1717 bytes; tail: …'les asc nulls first,\\n         rnk asc nulls first\\nlimit 100;'.
   ```
-- `trilogy file write test_null.preql`
+
+### `cli-misuse`
+
+- `trilogy explore raw/date_dim.preql`
 
   ```text
-  refused to write 'test_null.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 8:1
-    |
-  8 | by sales.channel, sales.outlet_id
-    | ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...else 0 end) as cnt_no_outlet
-   ??? by sales.channel, sales.outlet...
-
-  Write stats: received 314 chars / 314 bytes; tail: …' sales.channel, sales.outlet_id asc nulls first\r\\nlimit 20;\r\\n'.
-  ```
-- `trilogy file write test_null.preql`
-
-  ```text
-  refused to write 'test_null.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 8:1
-    |
-  8 | by sales.channel, sales.outlet_id
-    | ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ..._sales_price) as sales_total
-   ??? by sales.channel, sales.outlet...
-
-  Write stats: received 307 chars / 307 bytes; tail: …' sales.channel, sales.outlet_id asc nulls first\r\\nlimit 20;\r\\n'.
+  Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
   ```
 
 ### `join-resolution`
@@ -733,13 +750,5 @@ limit 100;`
 - `trilogy run query64.preql`
 
   ```text
-  Resolution error in query64.preql: Could not resolve connections for query with output ['ss.item.product_name<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.id<Purpose.KEY>Derivation.ROOT>', 'ss.store.name<Purpose.PROPERTY>Derivation.ROOT>', 'ss.store.zip<Purpose.PROPERTY>Derivation.ROOT>', 'local._agg_1999_sale_street_number<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_sale_street_name<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_sale_city<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_sale_zip<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_cust_street_number<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_cust_street_name<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_cust_city<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_cust_zip<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_sale_year<Purpose.CONSTANT>Derivation.CONSTANT>', 'local._agg_1999_first_sales_year<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_first_ship_year<Purpose.PROPERTY>Derivation.BASIC>', 'local._agg_1999_cnt<Purpose.METRIC>Derivation.AGGREGATE>', 'local._agg_1999_wholesale_cost_sum<Purpose.METRIC>Derivation.AGGREGATE>', 'local._agg_1999_list_price_sum<Purpose.METRIC>Derivation.AGGREGATE>', 'local._agg_1999_coupon_sum<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-
-### `type-error`
-
-- `trilogy run query87.preql`
-
-  ```text
-  Unexpected error in query87.preql: Tuple elements have incompatible types STRING and DATE
+  Resolution error in query64.preql: Could not resolve connections for query with output ['local.items_with_store_return<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
   ```

@@ -276,6 +276,36 @@ SELECT customers.region, sum(orders.order_amount) -> amt;
     }
 
 
+def test_scoped_join_column_binding_origin_stamp():
+    """A scoped join folding one binding onto another's canonical address must
+    thread the authored ORIGIN forward on the column (the same-address
+    narrowing arbitration reads it; physical datasource identity does not
+    discriminate when one table binds several relation endpoints)."""
+    from trilogy.parser import parse
+
+    env, _ = parse(
+        """key aid int;
+key bid int;
+property aid.av float;
+datasource a_src (x: aid, v: av) grain (aid) address a_tbl;
+datasource b_src (y: bid) grain (bid) address b_tbl;
+"""
+    )
+    build_env = env.materialize_for_select(
+        scoped_joins=[("local.aid", "local.bid", JoinType.LEFT_OUTER)]
+    )
+    b_cols = {
+        (c.origin_address, c.concept.address)
+        for c in build_env.datasources["local.b_src"].columns
+    }
+    assert ("local.bid", "local.aid") in b_cols, b_cols
+    a_cols = {
+        (c.origin_address, c.concept.address)
+        for c in build_env.datasources["local.a_src"].columns
+    }
+    assert all(origin is None for origin, _ in a_cols), a_cols
+
+
 def test_scoped_join_canonical_collapse():
     from trilogy.core.domain_graph import DomainGraph, EdgeScope
 

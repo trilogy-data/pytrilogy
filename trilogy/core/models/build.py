@@ -1959,6 +1959,13 @@ class BuildColumnAssignment:
     alias: str | RawColumnExpr | BuildFunction | BuildAggregateWrapper
     concept: BuildConcept
     modifiers: set[Modifier] = field(default_factory=set)
+    # The author-declared concept address this column bound BEFORE a scoped
+    # join/merge substituted it onto the relation's canonical address — the
+    # column's ORIGIN DOMAIN NODE (docs/domain_graph_design.md), threaded
+    # FORWARD so plan-level rulings on a same-address join pair can resolve
+    # which relation endpoint each side physically carries. None = no
+    # substitution; the concept's own address is its origin.
+    origin_address: str | None = None
 
     @property
     def is_complete(self) -> bool:
@@ -3006,6 +3013,14 @@ class Factory:
             ),
             concept=fetched,
             modifiers=modifiers,
+            # a scoped join/merge substituted this binding onto the relation's
+            # canonical address — thread the authored origin forward so
+            # same-address join-pair rulings can tell the sides apart.
+            origin_address=(
+                address
+                if address in self.scoped_merge_map and fetched.address != address
+                else None
+            ),
         )
 
     @_build_dispatch.register
