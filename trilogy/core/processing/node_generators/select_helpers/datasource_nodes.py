@@ -307,10 +307,17 @@ def create_datasource_node(
         or (c.is_aggregate and c.address in datasource_output_addresses)
     ]
     output_addresses = {c.address for c in output_concepts}
+    # Partiality is a binding-level fact: an address also bound complete here
+    # (a relation folded a second endpoint onto it) is still fully providable.
+    complete_addresses = {
+        c.concept.address for c in datasource.columns if c.is_complete
+    }
     partial_concepts = [
         c.concept
         for c in datasource.columns
-        if not c.is_complete and c.concept.address in output_addresses
+        if not c.is_complete
+        and c.concept.address in output_addresses
+        and c.concept.address not in complete_addresses
     ]
 
     partial_lcl = CanonicalBuildConceptList(concepts=partial_concepts)

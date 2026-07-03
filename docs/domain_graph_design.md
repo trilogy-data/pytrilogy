@@ -136,6 +136,80 @@ written.
   (plan-time `get_join_type` on the graph), and — deferred with v4 — the
   discovery FD paths and step-5 unification.
 
+## Landed (step 5 mechanical + endpoint-identity first tranche, 2026-07-03)
+
+- **Step 5, mechanical half**: `get_node_joins` and the rowset enrichment
+  paths consult `BuildEnvironment.domain_graph` directly
+  (`outer_relation_keys()` for the FULL veto, `left_anchor_keys()` for
+  anchors, `subset_sources()` for the rowset advertised-key partial); the
+  `scoped_full_join_keys` / `scoped_left_anchor_keys` / BuildEnvironment
+  `scoped_partial_sources` shim fields are DELETED. Battery byte-stable.
+- **Step 5, ruling on the semantic half**: under the phase-2
+  always-preserving flip, plan-time typing is deliberately conservative
+  (any subset evidence → preserving render; narrowing restores direction
+  with origin arbitration downstream). Per-side origin discrimination at
+  plan time therefore cannot change the *type* decision — the remaining
+  behavioral value of "join-pair rulings as graph queries" lives entirely
+  in pair emission and column selection, i.e. the endpoint-identity seam.
+  Step 5 and that seam are ONE project from here. `scoped_partial_derived`
+  (graph facts × author derivations) stays until per-side origin nodes
+  subsume it.
+- **Endpoint-identity, first tranche (the one-table shapes)**:
+  - Partiality de-smeared at BOTH address-level summaries: a datasource
+    address bound complete AND partial (a relation folded a second endpoint
+    onto it) is no longer partial for the source
+    (`BuildDatasource.partial_concepts`, scan-node partials in
+    `datasource_nodes.py`). Partiality is a binding-level fact.
+  - `get_alias` picks the NATIVE (unsubstituted, non-partial) binding when
+    several columns bind one address — the concept as itself never renders
+    a folded endpoint's column.
+  - Result: `left join eid = mid` / `subset join` with both keys in ONE
+    table now resolves with exactly the two-table semantics (the anchor
+    column is the unified axis). FULL/UNION one-table is REJECTED clean at
+    build (the unified key must coalesce across two reads of the table —
+    needs a two-instance plan discovery cannot yet produce); the error
+    points at the double-import idiom, which works and is pinned.
+  - Guards: `tests/test_scoped_join.py` — union-rejected, subset unified
+    axis, outside-binding, double-import self-relation.
+- **Recalibrated goal (owner, 2026-07-03)**: byte-stability of the TPC-DS
+  SQL logs is NOT a requirement — correctness plus performance is. The
+  graph should be used to safely unblock MORE optimized joins (INNER over
+  outer, plain `=` over `is not distinct from`) wherever provable; log
+  diffs that narrow joins are wins. First named target: q64 (33s→53s after
+  the always-preserving flip; the readback/shared-base shapes that still
+  render FULL).
+
+## Landed (cross-CTE null-rejection propagation, 2026-07-03)
+
+- `UpgradeJoinOnGuards` now consumes proofs from DOWNSTREAM CTEs
+  (`_external_forced_map`, join_upgrade.py): per producer, the output
+  addresses EVERY consumer forces non-null — via its WHERE proofs (plain
+  single-source projections only; COALESCE masks a one-sided NULL), its
+  rendered INNER equalities on the producer's columns, and transitively its
+  own forced set through plain pass-throughs (gated to group keys across an
+  aggregation). Opaque consumers (EXISTS reads, UnionCTEs, window-computing
+  CTEs) kill the set — every consumer must reject, or none may. Application
+  at the producer is gated the same way: group keys only when grouped, and
+  single-source projections so an output-level rejection maps onto raw join
+  columns.
+- q64: the readback `LEFT OUTER JOIN busy` (four-key agg join) → INNER; the
+  final `WHERE cnt_00 <= cnt_99` lives two CTEs downstream. Whole battery
+  correct (106/106), exactly this one join changed — the rule is surgical.
+- **Remaining q64 FULLs (rule B, designed not built)**: the four authored-∦
+  `full join` FULLs in the enrichment CTE (`sedate`) carry the narrowing
+  veto, but their subset direction is PROVABLE from the graph: the agg-side
+  keys derive from `ss.store.id`/`ss.item.id`/address ids whose dimension
+  bindings are complete, so agg ⊑ dim by construction → FULL→LEFT
+  (preserving the dim side), whose dim-only rows the downstream now-INNER
+  join then rejects → INNER end-to-end. Needs: value-set evidence
+  (structural ⊑ through rowset/aggregate lineage + complete binding) applied
+  where the ∦ veto currently blanket-blocks. The one-per-battery census
+  (only q64's join changed) says same-CTE + cross-CTE null-rejection is
+  exhausted; rule B is where the remaining FULLs are.
+- Also mapped: q04 carries six `is not distinct from` equalities
+  (null-safe reduction target), q09/q97/q77/q05 FULLs are partly legitimate
+  channel unions.
+
 One environment-level directed graph over concepts, carrying TWO edge
 families:
 

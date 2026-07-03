@@ -102,26 +102,14 @@ class BuildEnvironment:
     materialized_canonical_concepts: set[str] = field(default_factory=set)
     non_partial_materialized_canonical_concepts: set[str] = field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = field(default_factory=dict)
-    # Source addresses of LEFT (partial) build-scoped joins — the rowset node
-    # uses this to mark the advertised target join key partial (drives
-    # LEFT-OUTER).
-    scoped_partial_sources: set[str] = field(default_factory=set)
-    # The subset of scoped_partial_sources whose key is a *derived* concept (no
-    # datasource column binding) and is therefore resolved via the merge
-    # mechanism. It survives as a distinct output only on the partial side, so
-    # join resolution marks it partial there (a root/rowset partial key collapses
-    # away and is handled by the column-partial / rowset machinery instead).
+    # The subset of the graph's declared-subset sources whose key is a *derived*
+    # concept (no datasource column binding) and is therefore resolved via the
+    # merge mechanism. It survives as a distinct output only on the partial side,
+    # so join resolution marks it partial there (a root/rowset partial key
+    # collapses away and is handled by the column-partial / rowset machinery
+    # instead). Composite of graph facts and author derivations; dissolves once
+    # join typing consults per-side origin nodes directly.
     scoped_partial_derived: set[str] = field(default_factory=set)
-    # Registry of canonical keys of build-scoped FULL joins. The key is complete
-    # (both sides bind it; the FULL JOIN coalesces it). join resolution consults
-    # this to emit a FULL JOIN for the key, instead of inferring it from a
-    # (falsely-)partial binding — so the gate and rowset enrichment are unaffected.
-    scoped_full_join_keys: set[str] = field(default_factory=set)
-    # Canonical keys of scoped LEFT joins (the preserved-anchor side). Join
-    # resolution anchors the join tree on the complete source providing these so
-    # multiple optional sources stay directional LEFT_OUTER instead of collapsing
-    # to a symmetric FULL (TPC-DS q78).
-    scoped_left_anchor_keys: set[str] = field(default_factory=set)
     # Members of each build-scoped join key equivalence group, keyed by the
     # group's canonical address: exactly the authored relation endpoints (union
     # of the scoped merge map's source->canonical entries), NOT the transitive

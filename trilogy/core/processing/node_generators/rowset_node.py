@@ -129,7 +129,8 @@ def _producible_derived_join_keys(
     producible here; it falls through to the standard path / a clean disconnect."""
     producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
     scoped_keys = (
-        environment.scoped_full_join_keys | environment.scoped_left_anchor_keys
+        environment.domain_graph.outer_relation_keys()
+        | environment.domain_graph.left_anchor_keys()
     )
     seen: set[str] = set()
     result: list[tuple[BuildConcept, str]] = []
@@ -245,7 +246,7 @@ def _collect_advertised_outputs(
             if collapsed.address not in present_map:
                 rowset_relevant.append(collapsed)
                 present_map[collapsed.address] = collapsed
-        if derived_address in environment.scoped_partial_sources:
+        if derived_address in environment.domain_graph.subset_sources():
             scoped_partial.append(advertised)
 
     additional_relevant = [
@@ -462,7 +463,8 @@ def _enrich_via_derived_join_key(
     # Source them so both sides expose the co-key (shared canonical address) and
     # the inferred join carries every authored key.
     scoped_keys = (
-        environment.scoped_full_join_keys | environment.scoped_left_anchor_keys
+        environment.domain_graph.outer_relation_keys()
+        | environment.domain_graph.left_anchor_keys()
     )
     derived_related = (
         {other for _, other in derived_keys}

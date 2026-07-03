@@ -147,7 +147,7 @@ def test_unsupported_join_types_rejected(models: Path, jointype: str):
 
 def test_full_join_key_is_not_partial(models: Path):
     # FULL no longer hijacks the partial flag — the key stays complete and the
-    # FULL JOIN is driven by the scoped_full_join_keys registry instead.
+    # FULL JOIN is driven by the domain graph's EQUAL/∦ endpoints instead.
     _, parsed = parse_text(_select("FULL"), root=models)
     join = parsed[-1].join_clauses[0]
     assert join.join_type is JoinType.FULL
@@ -155,13 +155,13 @@ def test_full_join_key_is_not_partial(models: Path):
 
 
 def test_full_join_registers_canonical_key(models: Path):
-    # the build advertises the FULL join's canonical key in the registry that
-    # join resolution consults to emit a FULL JOIN.
+    # the build advertises the FULL join's canonical key on the domain graph,
+    # which join resolution consults to emit a FULL JOIN.
     env = _env_for(models, "import orders as orders;\nimport customers as customers;")
     be = env.materialize_for_select(
         scoped_joins=[("orders.customer_id", "customers.customer_id", JoinType.FULL)]
     )
-    assert be.scoped_full_join_keys == {"customers.customer_id"}
+    assert be.domain_graph.outer_relation_keys() == {"customers.customer_id"}
     # and the key is bound complete (NOT partial) on both datasources
     for ds_name in ("orders.orders", "customers.customers"):
         binding = next(
@@ -283,14 +283,12 @@ def test_scoped_join_column_binding_origin_stamp():
     discriminate when one table binds several relation endpoints)."""
     from trilogy.parser import parse
 
-    env, _ = parse(
-        """key aid int;
+    env, _ = parse("""key aid int;
 key bid int;
 property aid.av float;
 datasource a_src (x: aid, v: av) grain (aid) address a_tbl;
 datasource b_src (y: bid) grain (bid) address b_tbl;
-"""
-    )
+""")
     build_env = env.materialize_for_select(
         scoped_joins=[("local.aid", "local.bid", JoinType.LEFT_OUTER)]
     )
@@ -1231,3 +1229,93 @@ ORDER BY customers.region asc;
     assert _exec_rows(eng, multi_models, sugar) == _exec_rows(
         eng, multi_models, stacked
     )
+
+
+_EMP = """key eid int;
+key mid int;
+property eid.name string;
+
+datasource emp (e: eid, m: mid, n: name)
+grain (eid)
+query '''
+select 1 e, 3 m, 'alice' n union all
+select 2 e, 3 m, 'bob' n union all
+select 3 e, 4 m, 'carol' n union all
+select 4 e, cast(null as int) m, 'dan' n
+''';
+"""
+
+
+@pytest.mark.parametrize("join_kw", ["full", "union"])
+def test_same_table_union_relation_rejected(tmp_path: Path, join_kw: str):
+    """Both endpoints of a FULL/UNION relation bound ONLY in one table: the
+    unified key coalesces across the two endpoints' populations, which a single
+    scan cannot represent — the plan silently rendered one endpoint's own
+    column as the unified axis. Fail clean, pointing at the double-import idiom
+    (endpoint-identity seam, docs/domain_graph_design.md)."""
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    env = Environment()
+    env.parse(_EMP)
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    with pytest.raises(InvalidSyntaxException, match=r"bound\s+only in the same"):
+        eng.generate_sql(f"{join_kw} join eid = mid select name, mid;")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "left join eid = mid select name, mid;",
+        "subset join mid = eid select name, mid;",
+    ],
+)
+def test_same_table_subset_relation_unified_axis(query: str):
+    """A LEFT/SUBSET relation between two keys of ONE table resolves: the
+    anchor's own column IS the unified axis, exactly the two-table semantics
+    (the folded `mid` renders the eid axis). Previously masked by the
+    datasource-level partial smear: the folded endpoint's PARTIAL binding hid
+    the complete binding of the same address."""
+    env = Environment()
+    env.parse(_EMP)
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = eng.generate_sql(query)[-1]
+    rows = {tuple(r) for r in eng.execute_raw_sql(sql).fetchall()}
+    assert rows == {("alice", 1), ("bob", 2), ("carol", 3), ("dan", 4)}, rows
+
+
+def test_same_table_endpoint_with_outside_binding_allowed(tmp_path: Path):
+    # a second table binding one endpoint keeps the relation resolvable — the
+    # guard must not fire when resolution can route through it.
+    env = Environment()
+    env.parse(_EMP + """
+datasource managers (m: mid) grain (mid)
+query '''select 3 m union all select 4 m''';
+""")
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = eng.generate_sql("left join eid = mid select name, mid;")[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+
+
+def test_same_table_double_import_self_relation(tmp_path: Path):
+    # the guard's suggested idiom: two imports of the model give the endpoints
+    # distinct concepts/datasources, so the relation renders a real self-join
+    # reading each endpoint's own column.
+    (tmp_path / "emp.preql").write_text(_EMP)
+    eng = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    sql = eng.generate_sql("""
+import emp as e1;
+import emp as e2;
+
+left join e2.eid = e1.mid
+select e1.name, e2.name -> manager_name;
+""")[-1]
+    rows = {tuple(r) for r in eng.execute_raw_sql(sql).fetchall()}
+    assert rows == {
+        (None, "alice"),
+        (None, "bob"),
+        ("alice", "carol"),
+        ("bob", "carol"),
+        ("carol", "dan"),
+    }, rows

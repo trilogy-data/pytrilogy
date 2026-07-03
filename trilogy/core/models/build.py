@@ -2074,7 +2074,16 @@ class BuildDatasource:
 
     @property
     def partial_concepts(self) -> List[BuildConcept]:
-        return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
+        # Partiality is a fact about a BINDING, not the datasource: an address
+        # also bound complete here (a second endpoint of a relation folded onto
+        # it) is still fully providable — only addresses with NO complete
+        # binding are partial for the source.
+        full = self.full_concepts
+        return [
+            c.concept
+            for c in self.columns
+            if Modifier.PARTIAL in c.modifiers and c.concept.address not in full
+        ]
 
     @property
     def column_level_partial_concepts(self) -> List[BuildConcept]:
@@ -2097,21 +2106,35 @@ class BuildDatasource:
         # this logic needs to be refined.
         # if concept.lineage:
         # #     return None
+        # Several columns can bind one address when a relation folded a second
+        # endpoint onto it; the concept AS ITSELF renders from its native
+        # (unsubstituted, non-partial) binding, never a folded endpoint's
+        # column. Tiers: first native exact match > first exact/pseudonym
+        # match > canonical-address match.
+        native_match = None
         exact_match = None
         canonical_match = None
         for x in self.columns:
-            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
-                exact_match = x
-                break
-            if (
+            is_exact = (
+                x.concept == concept or x.concept.with_grain(concept.grain) == concept
+            )
+            if is_exact or (
                 concept.address in x.concept.pseudonyms
                 or x.concept.address in concept.pseudonyms
             ):
-                exact_match = x
-                break
+                if exact_match is None:
+                    exact_match = x
+                if (
+                    is_exact
+                    and x.origin_address is None
+                    and Modifier.PARTIAL not in x.modifiers
+                ):
+                    native_match = x
+                    break
+                continue
             if x.concept.canonical_address == concept.canonical_address:
                 canonical_match = x
-        match = exact_match or canonical_match
+        match = native_match or exact_match or canonical_match
         if match is not None:
             if use_raw_name:
                 return match.alias
@@ -2323,22 +2346,11 @@ class Factory:
         self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
         for source, target in self.scoped_merge_map.items():
             self.scoped_merge_sources_by_target[target].add(source)
-        # Canonical keys of FULL joins: partial against every side pre-resolution,
-        # but complete (coalesced) in the resolved FULL JOIN output.
-        # Registry of FULL-join canonical keys. The key stays complete; this set
-        # is what drives join resolution to emit a FULL JOIN for it (see
-        # get_join_type). Both join sides collapse onto the canonical address, so
-        # both binding datasources advertise it and the FULL JOIN coalesces them.
-        self.scoped_full_join_keys: set[str] = self.domain_graph.outer_relation_keys()
-
-        # Canonical keys of scoped LEFT joins (the preserved-anchor side).
-        # A LEFT join's source `s` is the anchor and becomes the canonical root, so
-        # its key address marks the anchor. Join resolution uses this to base the
-        # join tree on the complete anchor so EACH optional source becomes a
-        # directional LEFT_OUTER rather than two co-anchored partials collapsing to
-        # FULL (TPC-DS q78). A `merge ~` is the same directional relation declared
-        # globally and anchors identically.
-        self.scoped_left_anchor_keys: set[str] = self.domain_graph.left_anchor_keys()
+        # FULL-join canonical keys (graph EQUAL/∦ endpoints) and LEFT anchor keys
+        # (declared-subset anchors) are no longer materialized here — join
+        # resolution queries them from BuildEnvironment.domain_graph directly
+        # (outer_relation_keys / left_anchor_keys).
+        self._validate_scoped_join_endpoint_identity(environment)
 
         def _is_binding_keyed(addr: str) -> bool:
             c = environment.concepts.get(addr)
@@ -2461,6 +2473,50 @@ class Factory:
     def _scoped_join_key_groups(self) -> dict[str, set[str]]:
         """Authored join-key equivalence groups, canonical -> all members."""
         return self.domain_graph.join_key_groups()
+
+    def _validate_scoped_join_endpoint_identity(self, environment: Environment) -> None:
+        """Reject a FULL/UNION relation between two ROOT keys bound only in the
+        same table(s): the unified key is a coalesce ACROSS the two endpoints'
+        populations, which a single scan cannot represent — the plan silently
+        renders one endpoint's own column as the unified axis instead (wrong
+        whenever either domain has values the other lacks). No two-instance
+        plan exists yet (docs/domain_graph_design.md, endpoint-identity seam);
+        fail clean and point at the working idiom. LEFT/SUBSET relations
+        resolve fine one-table: the anchor column IS the unified axis. Endpoints
+        with a binding OUTSIDE the shared tables can still resolve and pass."""
+        pairs = [(s, t) for s, t, jt in self.scoped_joins if jt is JoinType.FULL]
+        if not pairs:
+            return
+        binding_map: dict[str, set[str]] | None = None
+        for source, target in pairs:
+            source_concept = environment.concepts.get(source)
+            target_concept = environment.concepts.get(target)
+            if source_concept is None or target_concept is None:
+                continue
+            if not (
+                source_concept.derivation is Derivation.ROOT
+                and target_concept.derivation is Derivation.ROOT
+            ):
+                continue
+            if binding_map is None:
+                binding_map = defaultdict(set)
+                for datasource in environment.datasources.values():
+                    if datasource.status != DatasourceState.PUBLISHED:
+                        continue
+                    for column in datasource.columns:
+                        binding_map[column.concept.address].add(datasource.identifier)
+            source_bindings = binding_map.get(source, set())
+            target_bindings = binding_map.get(target, set())
+            if source_bindings and source_bindings == target_bindings:
+                shared = ", ".join(sorted(source_bindings))
+                raise InvalidSyntaxException(
+                    f"Cannot union '{source}' with '{target}': both keys are bound "
+                    f"only in the same datasource(s) ({shared}), and the unified "
+                    "key must coalesce across two separate reads of it. Import the "
+                    "model twice under different namespaces and relate the two "
+                    "imports' keys instead (e.g. `import emp as e1; import emp as "
+                    "e2; ... join e1.key = e2.other_key`)."
+                )
 
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
@@ -3697,13 +3753,10 @@ class Factory:
         new = BuildEnvironment(
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,
-            scoped_partial_sources=set(self.scoped_partial_sources),
             scoped_partial_derived=(
                 (self.scoped_merge_sources & self.scoped_partial_sources)
                 - self.scoped_outer_identity_sources
             ),
-            scoped_full_join_keys=set(self.scoped_full_join_keys),
-            scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
             scoped_join_key_groups=self._scoped_join_key_groups(),
             domain_graph=assemble_full_graph(base, self.domain_graph),
         )

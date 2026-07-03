@@ -677,11 +677,17 @@ def get_node_joins(
         partials[ds_node] = p_list
         nullables[ds_node] = n_list
 
-    # Canonical keys of query-scoped FULL joins, mapped into graph concept nodes.
-    full_join_keys = {canon_node(a) for a in environment.scoped_full_join_keys}
-    # Anchor-key nodes of query-scoped LEFT joins: the join tree bases on the
-    # complete source providing one so co-anchored optional sources stay LEFT.
-    anchor_key_nodes = {canon_node(a) for a in environment.scoped_left_anchor_keys}
+    # Canonical keys of query-scoped FULL joins (EQUAL/∦ declared edges),
+    # mapped into graph concept nodes.
+    full_join_keys = {
+        canon_node(a) for a in environment.domain_graph.outer_relation_keys()
+    }
+    # Anchor-key nodes of query-scoped LEFT joins (declared-subset anchors): the
+    # join tree bases on the complete source providing one so co-anchored
+    # optional sources stay LEFT.
+    anchor_key_nodes = {
+        canon_node(a) for a in environment.domain_graph.left_anchor_keys()
+    }
     joins = resolve_join_order_v2(
         graph,
         partials=partials,
