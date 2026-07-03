@@ -174,13 +174,18 @@ def test_scoped_derived_rowset_join_correct(key, jt, exp_join, exp_rows):
 
 
 def test_composite_both_plain_left_join_stays_left():
-    """Control: a both-plain composite LEFT key keeps LEFT directionality."""
-    got_join, _ = _rows(
+    """Control: a both-plain composite LEFT key never widens past LEFT. Both
+    sides are the SAME unfiltered rollup (structural ≡ per key by
+    construction), so the zip is row-identical under INNER — the twin-rollup
+    upgrade — and the contract is row-based: exact rows, join no wider than
+    the authored LEFT."""
+    got_join, rows = _rows(
         BASE2,
         "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
         "left join agg.period = fut.period and agg.region = fut.region;",
     )
-    assert got_join == "LEFT"
+    assert got_join in ("LEFT", "INNER")
+    assert rows == [(1, 1.0), (2, 1.0), (54, 1.0)]
 
 
 def test_composite_mixed_key_left_join_should_not_widen():

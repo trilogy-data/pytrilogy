@@ -396,13 +396,39 @@ class DomainGraph:
         be conservatively wrong in one direction, and a proven ⊑ path means
         every sub-side row finds a partner on a complete superset side, so
         preserving the sub side is a no-op. The ∦ stays in the graph; nothing
-        narrows where no proof exists. Same-class (≡) is deliberately NOT
-        accepted: EQUAL-declared narrowing is config-gated elsewhere."""
+        narrows where no proof exists. A same-class pair proves only through
+        STRUCTURAL equality (identity images — containment by construction):
+        declared EQUAL narrowing is trust-gated by config elsewhere, so a
+        class merged by a declared ≡ is not itself a proof."""
         rep = self._equivalence_classes()
         sub_class, sup_class = rep.get(sub, sub), rep.get(sup, sup)
         if sub_class == sup_class:
-            return False
+            return self._structurally_equal(sub, sup)
         return self._subset_reachable(sub_class, sup_class, rep)
+
+    def _structurally_equal(self, left: str, right: str) -> bool:
+        """Same ≡-class under STRUCTURAL unconditioned EQUAL edges alone —
+        true-by-construction value identity (alias/unfiltered-rowset images),
+        independent of any declaration."""
+        parent: dict[str, str] = {}
+
+        def find(x: str) -> str:
+            parent.setdefault(x, x)
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        for edge in self.edges:
+            if (
+                edge.relation is DomainRelation.EQUAL
+                and edge.provenance is EdgeProvenance.STRUCTURAL
+                and edge.condition is None
+            ):
+                left_root, right_root = find(edge.source), find(edge.target)
+                if left_root != right_root:
+                    parent[left_root] = right_root
+        return find(left) == find(right) and left != right
 
     def relation(
         self,
@@ -598,6 +624,13 @@ def structural_domain_edge(concept: Any) -> DomainEdge | None:
         )
     if isinstance(lineage, RowsetItem):
         body = lineage.rowset.select
+        # A scoped join in the body collapses join-group members onto one
+        # rendered key: the output's domain is then the GROUP's (a FULL body
+        # key is the union of both members — a proper superset of either), so
+        # neither ≡ nor ⊑ against the single content concept holds. Mint
+        # nothing rather than a lying edge.
+        if getattr(body, "scoped_joins", None):
+            return None
         where = getattr(body, "where_clause", None)
         having = getattr(body, "having_clause", None)
         restricting = where if where is not None else having

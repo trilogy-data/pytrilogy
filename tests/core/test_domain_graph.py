@@ -259,6 +259,30 @@ with aliased as
 select aid as renamed where name = 'y';
 """
 
+SCOPED_BODY_MODEL = """
+key aid int;
+key bid int;
+property aid.av float;
+property bid.bv float;
+
+datasource a_source (aid: aid, av: av) grain (aid) address a_table;
+datasource b_source (bid: bid, bv: bv) grain (bid) address b_table;
+
+with joined as
+full join aid = bid
+select aid as k, sum(av) as sa, sum(bv) as sb;
+"""
+
+
+def test_scoped_join_body_mints_no_output_edges():
+    """A scoped join in a rowset body collapses join-group members onto one
+    rendered key — a FULL body key is the UNION of both members, a proper
+    superset of either — so neither ≡ nor ⊑ against the single content
+    concept holds and no edge may be minted (a lying ≡ let rule B narrow the
+    outer readback FULL and drop union-only rows)."""
+    env, _ = parse(SCOPED_BODY_MODEL)
+    assert not [e for e in mint_structural_edges(env) if e.source.startswith("joined.")]
+
 
 def test_mint_structural_edges():
     env, _ = parse(MODEL)

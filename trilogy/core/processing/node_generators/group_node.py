@@ -11,6 +11,8 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildRowsetItem,
+    BuildUnionSelectLineage,
     BuildWhereClause,
     LooseBuildConceptList,
     concept_is_relevant,
@@ -115,6 +117,31 @@ def get_aggregate_grain(
     return BuildGrain.from_concepts(parent_concepts)
 
 
+def _union_bag_siblings(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> List[BuildConcept]:
+    """The full set of outputs of the `union(...)` bag `concept` is one output of.
+
+    A `union(...)` (SQL UNION ALL) is a bag: its outputs are all bare KEY grain
+    components with no reducible sub-grain (the row identity is the whole tuple,
+    and two stacked rows may share every other column). An aggregate over one
+    union output — e.g. ``sum(combined.value)`` grouped by ``combined.gid`` — must
+    sum every stacked row, so the group parent must source the *whole* union grain
+    (all sibling outputs). Sourcing only the referenced subset lets the discovery
+    loop de-duplicate to that subset before the aggregate, silently dropping rows.
+
+    Empty unless `concept` is a union output (inline TVF or rowset-wrapped)."""
+    lineage = concept.lineage
+    addresses: set[str] = set()
+    if isinstance(lineage, BuildUnionSelectLineage):
+        addresses = {item.aligned_concept for item in lineage.align.items}
+    elif isinstance(lineage, BuildRowsetItem):
+        content = lineage.content
+        if content is not None and content.derivation == Derivation.TVF_UNION:
+            addresses = set(lineage.rowset.derived_concepts)
+    return [environment.concepts[a] for a in addresses if a in environment.concepts]
+
+
 def get_group_parent_inputs(
     parent_concepts: List[BuildConcept], environment: BuildEnvironment
 ) -> List[BuildConcept]:
@@ -127,7 +154,10 @@ def get_group_parent_inputs(
             for c in parent.grain.components
             if c in environment.concepts
         ]
-    return unique(parent_concepts + preserved, "address")
+    bag_siblings: List[BuildConcept] = []
+    for parent in parent_concepts:
+        bag_siblings += _union_bag_siblings(parent, environment)
+    return unique(parent_concepts + preserved + bag_siblings, "address")
 
 
 def _can_include_optional_aggregate(

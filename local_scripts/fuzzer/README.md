@@ -15,7 +15,8 @@ The fixed datasets deliberately include:
 The generated families cover scalar filters, grouped aggregates, WHERE/HAVING,
 nested and membership rowsets, filtered/statistical functions, ROLLUP/CUBE,
 aggregate and partitioned windows, relational `union(...)`, derived
-`subset join`/`union join`, and chasm/fanout aggregation.
+`subset join`/`union join`, multiway and composite domain joins, offset join
+expressions, nested parent-grain aggregates, and chasm/fanout aggregation.
 
 Run everything from the repository root:
 

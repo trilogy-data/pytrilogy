@@ -332,6 +332,128 @@ order by a.gid
     return cases
 
 
+def _having_cases(seed: SeedData) -> list[FuzzCase]:
+    hidden_body = """
+rowset repeated_groups <- select
+    group_id as gid,
+    sum(event_amount) as total
+having count(event_id) > 1;
+
+select repeated_groups.gid, repeated_groups.total
+order by repeated_groups.gid asc;
+"""
+    hidden_oracle = """
+select gid, sum(amount)
+from events
+group by gid
+having count(eid) > 1
+order by gid
+"""
+    comparison_body = """
+select
+    group_id,
+    sum(event_amount) as total
+having sum(event_amount) > count(event_id) * 3
+order by group_id asc;
+"""
+    comparison_oracle = """
+select gid, sum(amount)
+from events
+group by gid
+having sum(amount) > count(eid) * 3
+order by gid
+"""
+    parent_total_body = """
+select
+    group_id,
+    active,
+    sum(event_amount) as total,
+    sum(event_amount) by group_id as group_total
+having sum(event_amount) < 0.6 * sum(event_amount) by group_id
+order by group_id asc, active asc;
+"""
+    parent_total_oracle = """
+select g.gid, g.active, g.total, t.group_total
+from (
+    select gid, active, sum(amount) as total
+    from events
+    group by gid, active
+) g
+join (
+    select gid, sum(amount) as group_total
+    from events
+    group by gid
+) t on g.gid = t.gid
+where g.total < 0.6 * t.group_total
+order by g.gid, g.active
+"""
+    nested_avg_body = """
+select
+    group_id,
+    active,
+    sum(event_amount) as total,
+    avg(sum(event_amount) by group_id, active) by active as active_average
+having sum(event_amount)
+    > avg(sum(event_amount) by group_id, active) by active
+order by group_id asc, active asc;
+"""
+    nested_avg_oracle = """
+select gid, active, total, active_average
+from (
+    select
+        gid,
+        active,
+        total,
+        avg(total) over (partition by active) as active_average
+    from (
+        select gid, active, sum(amount) as total
+        from events
+        group by gid, active
+    ) grouped
+) compared
+where total > active_average
+order by gid, active
+"""
+    return [
+        _case(
+            seed,
+            "having",
+            "nonprojected_count",
+            "HAVING promotes a COUNT that is absent from rowset outputs.",
+            ("having", "rowset", "aggregate", "hidden"),
+            hidden_body,
+            hidden_oracle,
+        ),
+        _case(
+            seed,
+            "having",
+            "aggregate_comparison",
+            "HAVING compares independently rendered SUM and COUNT aggregates.",
+            ("having", "aggregate", "comparison"),
+            comparison_body,
+            comparison_oracle,
+        ),
+        _case(
+            seed,
+            "having",
+            "parent_grain_total",
+            "A detail aggregate is compared with its parent-grain total.",
+            ("having", "aggregate", "nested", "parent_grain"),
+            parent_total_body,
+            parent_total_oracle,
+        ),
+        _case(
+            seed,
+            "having",
+            "nested_average",
+            "A grouped total is compared with an average of grouped totals.",
+            ("having", "aggregate", "nested", "avg"),
+            nested_avg_body,
+            nested_avg_oracle,
+        ),
+    ]
+
+
 def _window_cases(seed: SeedData) -> list[FuzzCase]:
     lag_body = """
 rowset grouped <- select group_id as gid, sum(event_amount) as total;
@@ -408,6 +530,62 @@ select
 from events
 order by eid
 """
+    wrapped_lead_body = """
+rowset grouped <- select group_id as gid, sum(event_amount) as total;
+with windowed as select
+    grouped.gid as gid,
+    grouped.total as total,
+    lead(grouped.total, 1) over (order by grouped.gid asc) as next_total;
+
+where windowed.next_total is not null
+select windowed.gid, windowed.total, windowed.next_total
+order by windowed.gid asc;
+"""
+    wrapped_lead_oracle = """
+select gid, total, next_total
+from (
+    select gid, total, lead(total, 1) over (order by gid) as next_total
+    from (
+        select gid, sum(amount) as total
+        from events
+        group by gid
+    ) grouped
+) windowed
+where next_total is not null
+order by gid
+"""
+    semijoin_body = """
+rowset grouped <- select
+    group_id as gid,
+    active as flag,
+    sum(event_amount) as total;
+
+select
+    grouped.gid,
+    grouped.total - lag(grouped.total, 1) over (
+        partition by grouped.gid
+        order by grouped.flag asc
+    ) as change
+having grouped.flag = true
+order by grouped.gid asc;
+"""
+    semijoin_oracle = """
+select gid, total - previous_total
+from (
+    select
+        gid,
+        active,
+        total,
+        lag(total, 1) over (partition by gid order by active) as previous_total
+    from (
+        select gid, active, sum(amount) as total
+        from events
+        group by gid, active
+    ) grouped
+) windowed
+where active = true
+order by gid
+"""
     return [
         _case(
             seed,
@@ -444,6 +622,24 @@ order by eid
             ("window", "row_number", "partition"),
             row_number_body,
             row_number_oracle,
+        ),
+        _case(
+            seed,
+            "window",
+            "wrapped_lead_filter",
+            "A wrapping rowset filters a LEAD output after window evaluation.",
+            ("window", "rowset", "lead", "where", "nested"),
+            wrapped_lead_body,
+            wrapped_lead_oracle,
+        ),
+        _case(
+            seed,
+            "window",
+            "offgrain_having_semijoin",
+            "HAVING filters an off-grain dimension used inside a LAG window.",
+            ("window", "rowset", "lag", "having", "semijoin"),
+            semijoin_body,
+            semijoin_oracle,
         ),
     ]
 
@@ -548,6 +744,48 @@ order by gid
             nested_oracle,
         )
     )
+    three_arm_body = """
+with combined as union(
+    (
+        where event_id % 3 = 0
+        select event_id as eid, group_id as gid, event_amount as value
+    ),
+    (
+        where event_id % 3 = 1
+        select event_id as eid, group_id as gid, event_amount as value
+    ),
+    (
+        where event_id % 3 = 2
+        select event_id as eid, group_id as gid, event_amount as value
+    )
+) -> (eid, gid, value);
+
+select combined.gid, sum(combined.value) as total
+order by combined.gid asc;
+"""
+    three_arm_oracle = """
+select gid, sum(value)
+from (
+    select eid, gid, amount as value from events where eid % 3 = 0
+    union all
+    select eid, gid, amount as value from events where eid % 3 = 1
+    union all
+    select eid, gid, amount as value from events where eid % 3 = 2
+) combined
+group by gid
+order by gid
+"""
+    cases.append(
+        _case(
+            seed,
+            "union",
+            "three_arm_partition",
+            "Three UNION ALL arms partition rows by a modulo expression.",
+            ("union", "three_way", "expression", "aggregate"),
+            three_arm_body,
+            three_arm_oracle,
+        )
+    )
     return cases
 
 
@@ -632,6 +870,44 @@ from events
 group by cube (gid, active)
 order by gid asc nulls last, active asc nulls last
 """
+    rollup_having_body = """
+select group_id, sum(event_amount) as total
+having sum(event_amount) > 0
+by rollup (group_id)
+order by group_id asc nulls last;
+"""
+    rollup_having_oracle = """
+select gid, sum(amount)
+from events
+group by rollup (gid)
+having sum(amount) > 0
+order by gid asc nulls last
+"""
+    rollup_window_body = """
+select
+    group_id,
+    sum(event_amount) as total,
+    grouping(group_id) as grouping_level,
+    rank() over (
+        partition by grouping(group_id)
+        order by sum(event_amount) desc
+    ) as level_rank
+by rollup (group_id)
+order by grouping_level asc, level_rank asc, group_id asc nulls last;
+"""
+    rollup_window_oracle = """
+select
+    gid,
+    sum(amount),
+    grouping(gid) as grouping_level,
+    rank() over (
+        partition by grouping(gid)
+        order by sum(amount) desc
+    ) as level_rank
+from events
+group by rollup (gid)
+order by grouping_level, level_rank, gid asc nulls last
+"""
     return [
         _case(
             seed,
@@ -650,6 +926,24 @@ order by gid asc nulls last, active asc nulls last
             ("grouping", "cube", "aggregate", "boolean", "nullable"),
             cube_body,
             cube_oracle,
+        ),
+        _case(
+            seed,
+            "grouping",
+            "rollup_having",
+            "HAVING filters detail and subtotal rows produced by ROLLUP.",
+            ("grouping", "rollup", "aggregate", "having", "nullable"),
+            rollup_having_body,
+            rollup_having_oracle,
+        ),
+        _case(
+            seed,
+            "grouping",
+            "rollup_window_rank",
+            "RANK partitions ROLLUP rows by their grouping level.",
+            ("grouping", "rollup", "window", "rank", "aggregate"),
+            rollup_window_body,
+            rollup_window_oracle,
         ),
     ]
 
@@ -733,6 +1027,163 @@ order by {key_projection} asc nulls last
     return cases
 
 
+def _multiway_join_cases(seed: SeedData) -> list[FuzzCase]:
+    subset_body = """
+rowset all_groups <- select group_id as gid, sum(event_amount) as total;
+rowset positive_groups <- where event_amount > 0
+select group_id as gid, sum(event_amount) as positive_total;
+rowset active_groups <- where active
+select group_id as gid, sum(event_amount) as active_total;
+
+select
+    all_groups.gid,
+    all_groups.total,
+    positive_groups.positive_total,
+    active_groups.active_total
+subset join positive_groups.gid = all_groups.gid
+subset join active_groups.gid = all_groups.gid
+order by all_groups.gid asc;
+"""
+    subset_oracle = """
+select a.gid, a.total, p.total, x.total
+from (
+    select gid, sum(amount) as total
+    from events
+    group by gid
+) a
+left join (
+    select gid, sum(amount) as total
+    from events
+    where amount > 0
+    group by gid
+) p on a.gid = p.gid
+left join (
+    select gid, sum(amount) as total
+    from events
+    where active
+    group by gid
+) x on a.gid = x.gid
+order by a.gid
+"""
+    union_body = """
+rowset bucket_zero <- where event_id % 3 = 0
+select group_id as gid, sum(event_amount) as total_zero;
+rowset bucket_one <- where event_id % 3 = 1
+select group_id as gid, sum(event_amount) as total_one;
+rowset bucket_two <- where event_id % 3 = 2
+select group_id as gid, sum(event_amount) as total_two;
+
+select
+    bucket_zero.gid,
+    bucket_zero.total_zero,
+    bucket_one.total_one,
+    bucket_two.total_two
+union join bucket_zero.gid = bucket_one.gid = bucket_two.gid
+order by bucket_zero.gid asc;
+"""
+    union_oracle = """
+select
+    coalesce(z.gid, o.gid, t.gid),
+    z.total,
+    o.total,
+    t.total
+from (
+    select gid, sum(amount) as total
+    from events
+    where eid % 3 = 0
+    group by gid
+) z
+full join (
+    select gid, sum(amount) as total
+    from events
+    where eid % 3 = 1
+    group by gid
+) o on z.gid = o.gid
+full join (
+    select gid, sum(amount) as total
+    from events
+    where eid % 3 = 2
+    group by gid
+) t on coalesce(z.gid, o.gid) = t.gid
+order by coalesce(z.gid, o.gid, t.gid)
+"""
+    return [
+        _case(
+            seed,
+            "multiway_join",
+            "two_subsets_one_anchor",
+            "Two filtered subset rowsets share one complete aggregate anchor.",
+            ("join", "subset", "multiway", "rowset", "aggregate"),
+            subset_body,
+            subset_oracle,
+        ),
+        _case(
+            seed,
+            "multiway_join",
+            "three_way_union_chain",
+            "A chained union declaration coalesces three disjoint rowsets.",
+            ("join", "union", "multiway", "rowset", "three_way"),
+            union_body,
+            union_oracle,
+        ),
+    ]
+
+
+def _composite_join_cases(seed: SeedData) -> list[FuzzCase]:
+    body = """
+rowset even_events <- where event_id % 2 = 0
+select
+    group_id as gid,
+    active as flag,
+    sum(event_amount) as even_total;
+rowset odd_events <- where event_id % 2 = 1
+select
+    group_id as gid,
+    active as flag,
+    sum(event_amount) as odd_total;
+
+select
+    even_events.gid,
+    even_events.flag,
+    even_events.even_total,
+    odd_events.odd_total
+union join even_events.gid = odd_events.gid
+union join even_events.flag = odd_events.flag
+order by even_events.gid asc, even_events.flag asc;
+"""
+    oracle = """
+select
+    coalesce(e.gid, o.gid),
+    coalesce(e.active, o.active),
+    e.total,
+    o.total
+from (
+    select gid, active, sum(amount) as total
+    from events
+    where eid % 2 = 0
+    group by gid, active
+) e
+full join (
+    select gid, active, sum(amount) as total
+    from events
+    where eid % 2 = 1
+    group by gid, active
+) o on e.gid = o.gid and e.active = o.active
+order by coalesce(e.gid, o.gid), coalesce(e.active, o.active)
+"""
+    return [
+        _case(
+            seed,
+            "composite_join",
+            "two_plain_keys",
+            "A union relation joins aggregate rowsets on a composite key.",
+            ("join", "union", "composite", "rowset", "aggregate"),
+            body,
+            oracle,
+        )
+    ]
+
+
 def _derived_join_cases(seed: SeedData) -> list[FuzzCase]:
     cases = []
     variants = (
@@ -791,6 +1242,42 @@ order by {projection} asc nulls last
                 oracle,
             )
         )
+    offset_body = """
+rowset left_side <- select left_key as k, sum(left_value) as total;
+rowset right_side <- select union_key as k, sum(union_value) as total;
+
+select
+    coalesce(left_side.k + 1, right_side.k) as joined_key,
+    left_side.total,
+    right_side.total
+union join left_side.k + 1 = right_side.k
+order by joined_key asc nulls last;
+"""
+    offset_oracle = """
+select coalesce(l.k + 1, r.k), l.total, r.total
+from (
+    select k, sum(value) as total
+    from left_facts
+    group by k
+) l
+full join (
+    select k, sum(value) as total
+    from union_facts
+    group by k
+) r on l.k + 1 is not distinct from r.k
+order by coalesce(l.k + 1, r.k) asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "derived_join",
+            "offset_expression",
+            "A full-domain relation joins a transformed key to a plain key.",
+            ("join", "union", "derived", "offset", "rowset", "nullable"),
+            offset_body,
+            offset_oracle,
+        )
+    )
     return cases
 
 
@@ -904,11 +1391,14 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _aggregate_cases,
         _function_cases,
         _rowset_cases,
+        _having_cases,
         _window_cases,
         _union_cases,
         _membership_cases,
         _grouping_cases,
         _join_cases,
+        _multiway_join_cases,
+        _composite_join_cases,
         _derived_join_cases,
         _chasm_cases,
     )

@@ -252,6 +252,33 @@ written.
     REVERTED: it broke the veto's contract
     (`test_full_join_key_veto_blocks_upgrade`) and bought nothing — the pair
     fails the standard machinery anyway.
+- **Chain null-extension guard** (`_null_extended_before`): a sub side's
+  full-match claim is about ITS OWN rows; when the sub side is a chain
+  member that an EARLIER outer join in the same CTE's FROM chain
+  null-extended, the chain carries rows where the sub side's key is NULL —
+  plain equality never matches them, so the target join's preservation is
+  load-bearing and must stay. Caught by `test_join_grain`
+  (stores→orders→products: store3's row has NULL product_id and only
+  survives via the FULL); guards both `_narrow_directionally`'s
+  left-matches-right direction and `_upgrade_to_inner`. Residual mapped but
+  NOT built: the symmetric PRE-DROP hole (an earlier INNER dropping the sup
+  side's rows before the target join reads its values) predates this work.
+- **Scoped-join-body mint gate**: a rowset whose BODY carries scoped joins
+  mints NO structural domain edges for its outputs — the collapse makes an
+  output's domain the join GROUP's (a FULL body key is the union of both
+  members, a proper superset of either), so neither ≡ nor ⊑ against the
+  single content concept holds. A lying ≡ let rule B narrow the outer
+  readback FULL of `with rs as full join a.aid = b.bid select a.aid as k`
+  and drop union-only rows (`test_rowset_key_readback_full_k_aw`).
+- **Same-class ⊑ proofs**: `proven_subset` accepts a same-≡-class pair only
+  through STRUCTURAL equality (`_structurally_equal` — alias/unfiltered-
+  rowset identity images, containment by construction); a class merged by a
+  DECLARED ≡ is not a proof (EQUAL narrowing stays config-gated). Needed
+  because structural ≡ edges now reach the optimizer and would otherwise
+  erase declared ⊑ direction between rowset keys (the scoped-rowset matrix
+  regression). Consequence: two identical unfiltered rollups zipped on a
+  scoped LEFT now upgrade to INNER (twin-rollup, row-identical) — the
+  matrix control cell's contract was updated to row-based.
 - **Carve-out deletion**: `partial_closure` / `ignore_partial_addrs`
   parameters and the `subset_join_map`-derived ignore sets are gone.
   `_complete_distinct` keeps only the closure semantics (the equivalence

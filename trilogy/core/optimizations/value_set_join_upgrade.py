@@ -206,6 +206,36 @@ def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:
     return condition_implies(a, b) and condition_implies(b, a)
 
 
+def _null_extended_before(cte: CTE, target: Join, member: str) -> bool:
+    """Whether ``member``'s columns can be NULL-extended in the rows entering
+    ``target`` — an earlier outer join in this CTE's FROM chain preserved rows
+    where ``member`` has no partner. ``member``'s key is NULL on those rows, a
+    plain-equality join never matches them, and ``target``'s preservation is
+    load-bearing for exactly those rows: narrowing would drop them even though
+    the member's own row population fully matches."""
+    extended: set[str] = set()
+    joined: set[str] = set()
+    for j in cte.joins or []:
+        if j is target:
+            break
+        if not isinstance(j, Join):
+            continue
+        left_names = {p.cte.name for p in j.joinkey_pairs or [] if p.cte is not None}
+        right_name = j.right_cte.name if j.right_cte is not None else None
+        if j.jointype is JoinType.LEFT_OUTER and right_name:
+            extended.add(right_name)
+        elif j.jointype is JoinType.RIGHT_OUTER:
+            extended |= joined | left_names
+        elif j.jointype is JoinType.FULL:
+            extended |= joined | left_names
+            if right_name:
+                extended.add(right_name)
+        joined |= left_names
+        if right_name:
+            joined.add(right_name)
+    return member in extended
+
+
 def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """True when ``side_cte`` can emit NULL for ``concept`` — e.g. a ROLLUP/CUBE/
     GROUPING SETS grouping key carries NULL at its subtotal/grand-total rows."""
@@ -722,6 +752,15 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
 
         if not all(pair_equal(pair) for pair in join.joinkey_pairs):
             return False
+        # A chain member null-extended by an EARLIER outer join carries rows
+        # where its key is absent; equality never matches them, so this join's
+        # preservation is load-bearing for those rows regardless of the two
+        # sides' own value-set equivalence.
+        if any(
+            _null_extended_before(cte, join, pair.cte.name)
+            for pair in join.joinkey_pairs
+        ):
+            return False
         # A key that is nullable on a side but joined with plain ``=`` (the
         # pair carries no NULLABLE modifier) carries NULL rows the equality
         # never matches — e.g. a ROLLUP subtotal/grand-total key. Upgrading
@@ -765,7 +804,14 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         with no null-safe partner — none when the pair is null-safe or the
         side proves non-null. FULL narrows to the directional join preserving
         the superset side; a directional join whose preserved side fully
-        matches narrows to INNER."""
+        matches narrows to INNER.
+
+        The sub side's full-match claim is about ITS OWN rows; when the sub
+        side is a chain member that an EARLIER outer join in this CTE's FROM
+        chain null-extended, the chain carries rows where the sub side is
+        absent — a plain-equality join never matches them, so the target
+        join's preservation is load-bearing for exactly those rows and must
+        stay (``_null_extended_before``)."""
         assert join.joinkey_pairs
 
         def right_matches_left() -> bool:
@@ -797,6 +843,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                     graph_proof_only=graph_proof_only,
                 )
                 and (pair.is_nullable or not _key_nullable(pair.left, pair.cte))
+                and not _null_extended_before(cte, join, pair.cte.name)
                 for pair in join.joinkey_pairs or []
             )
 

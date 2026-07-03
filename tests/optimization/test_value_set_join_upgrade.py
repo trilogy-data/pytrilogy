@@ -491,6 +491,56 @@ def test_rule_b_filtered_superset_keeps_veto():
     assert root.joins[0].jointype == JoinType.FULL
 
 
+def test_null_extended_chain_member_keeps_preservation():
+    """A chain member null-extended by an EARLIER outer join carries rows
+    where its key is absent; a later join on that key must keep its
+    preservation even when the member's own rows fully match (the
+    stores→orders→products shape: store3's row has NULL product_id and only
+    survives via the FULL)."""
+    store = _concept("STORE_ID")
+    product = _concept("PRODUCT_ID")
+    stores = _datasource_cte("stores", [store])
+    orders = _datasource_cte("orders", [store, product])
+    orders.partial_concepts = [store, product]
+    products = _grouped_child("products", _datasource_cte("p_src", [product]), product)
+    root = _datasource_cte("root", [store, product])
+    root.parent_ctes = [stores, orders, products]
+    root.joins = [
+        Join(
+            jointype=JoinType.LEFT_OUTER,
+            right_cte=orders,
+            modifiers=[Modifier.NULLABLE],
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=store,
+                    right=store,
+                    existing_datasource=stores.source,
+                    cte=stores,
+                    modifiers=[Modifier.NULLABLE],
+                )
+            ],
+        ),
+        Join(
+            jointype=JoinType.FULL,
+            right_cte=products,
+            modifiers=[Modifier.NULLABLE],
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=product,
+                    right=product,
+                    existing_datasource=orders.source,
+                    cte=orders,
+                    modifiers=[Modifier.NULLABLE],
+                )
+            ],
+        ),
+    ]
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
+    assert not changed
+    assert root.joins[1].jointype == JoinType.FULL
+
+
 def test_genuine_partial_stamp_narrows_same_address_full():
     """A same-address pair where one side carries a genuine coverage stamp (a
     `~` binding — no declared relation involved) and the other side is

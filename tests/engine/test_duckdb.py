@@ -631,6 +631,41 @@ order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
     ]
 
 
+def test_union_subset_aggregate_preserves_row_multiplicity():
+    """A `union(...) -> (...)` that stacks per-row values feeds a grouped rowset
+    consumer. Two distinct rows can share the same (non-selected-key) column
+    values; summing a subset of the union outputs must sum every stacked row, not
+    a de-duplicated set. Regression: the union outputs were all bare KEY grain
+    components, so sourcing a strict subset (gid, value) inserted a spurious
+    GROUP BY (gid, value) that collapsed the duplicate rows before the SUM."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text("""
+key event_id int;
+property event_id.event_amount int;
+property event_id.gid int;
+property event_id.active bool;
+datasource events (eid: event_id, gid: gid, amount: event_amount, active: active)
+grain (event_id)
+query '''select 1 as eid, 1 as gid, 0 as amount, false as active
+union all select 2 as eid, 1 as gid, -2 as amount, true as active
+union all select 3 as eid, 2 as gid, 6 as amount, true as active
+union all select 4 as eid, 2 as gid, 6 as amount, true as active
+union all select 5 as eid, 3 as gid, 9 as amount, false as active
+union all select 6 as eid, 3 as gid, 1 as amount, true as active
+union all select 7 as eid, 4 as gid, 12 as amount, false as active''';
+""")
+    text = """
+with combined as union(
+    (where active select event_id as eid, gid as gid, event_amount as value),
+    (where not active select event_id as eid, gid as gid, event_amount as value)
+) -> (eid, gid, value);
+rowset rolled <- select combined.gid as gid, sum(combined.value) as total;
+select rolled.gid, rolled.total order by rolled.gid asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r[0], r[1]) for r in results] == [(1, -2), (2, 12), (3, 10), (4, 12)]
+
+
 _ROLLUP_WHERE_CROSSROWSET_MODEL = """
 key sid int;
 property sid.schannel string;
