@@ -262,7 +262,10 @@ written.
   survives via the FULL); guards both `_narrow_directionally`'s
   left-matches-right direction and `_upgrade_to_inner`. Residual mapped but
   NOT built: the symmetric PRE-DROP hole (an earlier INNER dropping the sup
-  side's rows before the target join reads its values) predates this work.
+  side's rows before the target join reads its values) predates this work —
+  handoff: docs/handoff_narrowing_soundness_residuals.md (with two further
+  evidence audits: the structural-EQUAL mint for multi-source rowset bodies,
+  and sup-side pseudonym-address `~` stamps).
 - **Scoped-join-body mint gate**: a rowset whose BODY carries scoped joins
   mints NO structural domain edges for its outputs — the collapse makes an
   output's domain the join GROUP's (a FULL body key is the union of both
