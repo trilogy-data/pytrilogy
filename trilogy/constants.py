@@ -50,6 +50,12 @@ class Optimizations:
     merge_irrelevant_group_by: bool = True
     upgrade_condition_joins: bool = True
     upgrade_outer_key_set_equivalence: bool = True
+    # Trust EQUAL domain declarations (non-partial `merge a into b`) when
+    # narrowing outer joins: the merged key's FULL join may upgrade to INNER
+    # once both sides pass the completeness tests. Default OFF until the
+    # SUBSET/UNION default flip (docs/subset_union_join_design.md) — on
+    # declaration-violating data the narrowed join drops the violating rows.
+    narrow_equal_domain_joins: bool = False
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
     join_hoist: bool = True

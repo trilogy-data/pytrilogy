@@ -148,10 +148,14 @@ class GroupNode(StrategyNode):
             if applied and is_scalar_condition(applied)
             else set()
         )
+        # union the source-analysis nullables with node-level nullables — the
+        # latter carry inferred nullability for concepts COMPUTED in this
+        # subtree (e.g. a derived join key over a nullable column)
+        node_nullable = {x.address for x in self.nullable_concepts}
         nullable_concepts = [
             x
             for x in self.output_concepts
-            if x.address in nullable_addresses
+            if (x.address in nullable_addresses or x.address in node_nullable)
             and not proven_non_null.intersection(
                 {x.address, x.canonical_address, *x.pseudonyms}
             )

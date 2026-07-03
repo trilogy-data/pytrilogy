@@ -145,11 +145,17 @@ class FromClause:
 class SelectJoin:
     """A query-scoped join: a local merge of `source` (the brought-in key) into
     `target` (the anchor key kept in this select). Applied only to the per-query
-    environment, never the global one."""
+    environment, never the global one.
+
+    `join_type` is always one of the two relation mechanisms (LEFT_OUTER /
+    FULL); `authored` keeps the surface declaration (SUBSET / UNION / LEFT /
+    FULL) for round-trip rendering and optimizer metadata — a SUBSET is stored
+    with its operands swapped onto the superset anchor."""
 
     join_type: JoinType
     source_address: str
     target_address: str
+    authored: JoinType | None = None
 
     @property
     def modifiers(self) -> List[Modifier]:

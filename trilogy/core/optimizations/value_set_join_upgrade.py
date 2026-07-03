@@ -39,12 +39,12 @@ rename, hoist, or repartition intermediate CTEs.
 
 from __future__ import annotations
 
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
 )
-from trilogy.core.models.execute import CTE, Join, UnionCTE
+from trilogy.core.models.execute import CTE, BuildDatasource, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -73,7 +73,30 @@ def _key_addresses(concept: BuildConcept) -> set[str]:
     )
 
 
-def _complete_distinct(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
+def _authoritative_scan(side_cte: CTE | UnionCTE) -> bool:
+    """A direct, unfiltered scan of a single datasource. Such a side carries
+    its bindings' full value sets — the datasource IS the source of the
+    concept's values (a partial binding is rejected by the caller like any
+    other partial). Only consulted for EQUAL-declared keys: for undeclared
+    keys a non-partial binding is a weaker claim than an author declaration
+    (fact FKs are routinely complete-in-schema but value-subsets in data)."""
+    if not isinstance(side_cte, CTE):
+        return False
+    if side_cte.condition is not None:
+        return False
+    source = side_cte.source
+    if source.source_type != SourceType.DIRECT_SELECT:
+        return False
+    return len(source.datasources) == 1 and isinstance(
+        source.datasources[0], BuildDatasource
+    )
+
+
+def _complete_distinct(
+    concept: BuildConcept,
+    side_cte: CTE | UnionCTE,
+    allow_scan_evidence: bool = False,
+) -> bool:
     """True when ``side_cte`` projects every distinct value of ``concept``
     *for the concept's full value space*.
 
@@ -95,7 +118,9 @@ def _complete_distinct(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """
     if not isinstance(side_cte, CTE):
         return False
-    if not side_cte.group_to_grain:
+    if not side_cte.group_to_grain and not (
+        allow_scan_evidence and _authoritative_scan(side_cte)
+    ):
         return False
     grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
     if not grain_addrs:
@@ -174,12 +199,13 @@ def _pair_key_sets_equivalent(
     left_cte: CTE | UnionCTE,
     right_concept: BuildConcept,
     right_cte: CTE | UnionCTE,
+    allow_scan_evidence: bool = False,
 ) -> bool:
     if _source_address(left_concept) != _source_address(right_concept):
         return False
-    if not _complete_distinct(left_concept, left_cte):
+    if not _complete_distinct(left_concept, left_cte, allow_scan_evidence):
         return False
-    if not _complete_distinct(right_concept, right_cte):
+    if not _complete_distinct(right_concept, right_cte, allow_scan_evidence):
         return False
     return _filters_equivalent(
         _accumulate_filter(left_cte),
@@ -206,7 +232,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
       WHERE: filters fail mutual implication.
     - Sides without ``group_to_grain``: cardinality unknown, can't claim
       the side carries every distinct value.
-    - Query-scoped FULL joins (``full_join_keys``): the two sides
+    - Query-scoped FULL/UNION joins (``full_join_keys``): the two sides
       are independent populations with potentially disjoint key sets, and FULL
       deliberately keeps its key complete (registry-driven, not partial), so
       the complete-distinct test can't see the disjointness. The scoped merge
@@ -214,13 +240,27 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
       fool the source-address / complete-distinct test into treating two
       distinct populations as the same value space. (LEFT/merge joins carry the
       partial flag and need no protection — the test fails naturally.)
+
+    ``equal_join_keys`` releases that veto for keys whose FULL relation is an
+    EQUAL domain DECLARATION (non-partial `merge a into b` — mutual subset,
+    docs/subset_union_join_design.md): the canonical collapse then genuinely
+    names one value space, so the standard completeness tests apply and the
+    join may narrow to INNER. Populated only when
+    ``CONFIG.optimizations.narrow_equal_domain_joins`` is on — narrowing
+    trusts the declaration; data violating it loses the violating rows.
     """
 
-    def __init__(self, full_join_keys: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        full_join_keys: set[str] | None = None,
+        equal_join_keys: set[str] | None = None,
+    ) -> None:
         # Canonical addresses of query-scoped FULL-join keys; joins on these
         # must never be upgraded to INNER (FULL's key stays complete, so the
-        # partial-driven checks can't protect it).
-        self.full_join_keys = full_join_keys or set()
+        # partial-driven checks can't protect it) — except keys declared EQUAL,
+        # which the completeness tests below legitimately arbitrate.
+        self.equal_join_keys = equal_join_keys or set()
+        self.full_join_keys = (full_join_keys or set()) - self.equal_join_keys
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -243,7 +283,19 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 continue
             right_cte = join.right_cte
             if not all(
-                _pair_key_sets_equivalent(pair.left, pair.cte, pair.right, right_cte)
+                _pair_key_sets_equivalent(
+                    pair.left,
+                    pair.cte,
+                    pair.right,
+                    right_cte,
+                    # Authoritative-scan completeness is only trusted for keys
+                    # the author DECLARED equal-domain; see _authoritative_scan.
+                    allow_scan_evidence=bool(
+                        self.equal_join_keys
+                        and (_key_addresses(pair.left) | _key_addresses(pair.right))
+                        & self.equal_join_keys
+                    ),
+                )
                 for pair in join.joinkey_pairs
             ):
                 continue

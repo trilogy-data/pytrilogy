@@ -35,8 +35,7 @@ select a.store, a.period, a.tot / b.tot as r
 
 CASES = {
     # derived key present -> BUG (store dropped). Correct answer = 2 rows (per-store 0.5).
-    "equality+derived (store AND period+10)  [BUG: store dropped -> 4 rows]":
-        "inner join a.store = b.store and a.period + 10 = b.period",
+    "equality+derived (store AND period+10)  [BUG: store dropped -> 4 rows]": "inner join a.store = b.store and a.period + 10 = b.period",
     # control: plain equality on the shifted values via a named yr2 offset would be
     # contrived; the two-equality control lives in the .md trigger matrix.
 }
@@ -47,7 +46,9 @@ def main() -> None:
         d = Path(tmp)
         (d / "sales.preql").write_text(SALES)
         eng = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=d))
-        eng.execute_raw_sql("create table sales_tbl (sid int, s int, p int, y int, a double)")
+        eng.execute_raw_sql(
+            "create table sales_tbl (sid int, s int, p int, y int, a double)"
+        )
         # yr1: store1 p1=10, store2 p1=100 ;  yr2: store1 p11=20, store2 p11=200
         # Correct per-store ratios: store1 10/20=0.5, store2 100/200=0.5  -> 2 rows.
         eng.execute_raw_sql(
@@ -62,10 +63,14 @@ def main() -> None:
                 if " join " in ln.lower() and " on " in ln.lower()
             )
             rows = sorted(tuple(r) for r in eng.execute_raw_sql(sql).fetchall())
-            print(f"  store_in_join={store_in_join!s:5}  rows={len(rows)} (correct=2)  {name}")
+            print(
+                f"  store_in_join={store_in_join!s:5}  rows={len(rows)} (correct=2)  {name}"
+            )
             for r in rows:
                 print(f"      store={r[0]} period={r[1]} ratio={r[2]}")
-        print("  cross-store ratios (0.05, 5.0) = the fan-out; correct output is only 0.5 twice.")
+        print(
+            "  cross-store ratios (0.05, 5.0) = the fan-out; correct output is only 0.5 twice."
+        )
 
 
 if __name__ == "__main__":

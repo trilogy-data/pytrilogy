@@ -28,18 +28,12 @@ with b as select orders.grp as grp, sum(orders.amt) as tot where orders.status =
 """
 
 CASES = {
-    "R1_reagg_anchor_derived  [BUG: should PASS]":
-        "select a.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp + 1 = b.grp;",
-    "R2_plain_projection      [pass: offset-contract]":
-        "select a.grp, a.tot, b.tot inner join a.grp + 1 = b.grp;",
-    "R3_derived_on_b_side      [pass]":
-        "select a.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp = b.grp + 1;",
-    "R4_keep_b_key_output      [pass]":
-        "select a.grp, b.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp + 1 = b.grp;",
-    "R5_only_b_reagg          [BUG: should PASS]":
-        "select a.grp, a.tot, sum(b.tot) as bt inner join a.grp + 1 = b.grp;",
-    "R6_plain_equality         [pass]":
-        "select a.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp = b.grp;",
+    "R1_reagg_anchor_derived  [BUG: should PASS]": "select a.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp + 1 = b.grp;",
+    "R2_plain_projection      [pass: offset-contract]": "select a.grp, a.tot, b.tot inner join a.grp + 1 = b.grp;",
+    "R3_derived_on_b_side      [pass]": "select a.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp = b.grp + 1;",
+    "R4_keep_b_key_output      [pass]": "select a.grp, b.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp + 1 = b.grp;",
+    "R5_only_b_reagg          [BUG: should PASS]": "select a.grp, a.tot, sum(b.tot) as bt inner join a.grp + 1 = b.grp;",
+    "R6_plain_equality         [pass]": "select a.grp, sum(a.tot) as at, sum(b.tot) as bt inner join a.grp = b.grp;",
 }
 
 

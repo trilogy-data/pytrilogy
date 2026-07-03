@@ -89,7 +89,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.parsing.common import arbitrary_to_concept, row_tuple_function
 from trilogy.parsing.v2.rules_context import RuleContext
-from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
+from trilogy.parsing.v2.semantic_state import ConceptLookup, ConceptUpdateKind
 
 
 def _merged_local_concepts(
@@ -1190,7 +1190,7 @@ def _promotion_grows_grain(
 
 def _is_single_row_rowset_scalar(
     named: Concept,
-    concepts: Mapping[str, Concept] | None = None,
+    concepts: ConceptLookup | Mapping[str, Concept] | None = None,
     _seen: set[str] | None = None,
 ) -> bool:
     """True for a rowset output whose source select is grainless — it produces

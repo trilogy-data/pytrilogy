@@ -51,9 +51,15 @@ KINDS = {
 
 # per join type: (join clause template, merge statement template, oracle)
 # `left join L = R` anchors L; its merge equivalent is `merge R into ~L`.
+# SUBSET/UNION are the domain-declaration spellings of the same two relations
+# (docs/subset_union_join_design.md): `subset join R = L` declares R ⊆ L (the
+# superset L anchors — row parity with authored LEFT), `union join L = R`
+# declares neither contains the other (row parity with FULL).
 TYPES = {
     "full": ("full join {l} = {r}", "merge {l} into {r};", expected_full),
     "left": ("left join {l} = {r}", "merge {r} into ~{l};", expected_left),
+    "subset": ("subset join {r} = {l}", "merge {r} into ~{l};", expected_left),
+    "union": ("union join {l} = {r}", "merge {l} into {r};", expected_full),
 }
 
 
@@ -86,27 +92,26 @@ def test_two_source_single_key(tmp_path: Path, kind: str, join_type: str, form: 
 # and a NULL-key row on each side. NULL keys are valid members: they must match
 # null-safely (one (None, 16, 1600) row, never two half-rows or a drop), and an
 # authored LEFT must stay LEFT (no nullable-driven widening to FULL).
-_XFAIL_ROWSET_NULL = pytest.mark.xfail(
+_XFAIL_DERIVED_NULL_LEFT_ZIP = pytest.mark.xfail(
     strict=True,
-    reason="nullability is not propagated from a `?` column through ROWSET "
-    "lineage: get_modifiers sees neither side as nullable, renders plain `=`, "
-    "and each side's NULL key group survives as a separate half-row instead of "
-    "matching null-safely (root-keyed cells correctly render "
-    "IS NOT DISTINCT FROM)",
+    reason="derived-key LEFT with NULL keys: the relation itself is null-safe "
+    "and correctly typed, but the final same-grain zip between the two "
+    "aggregate branches is a generator-authored NodeJoin rendered as INNER "
+    "with plain `=` — the kb-side branch loses the key's nullability through "
+    "the kb->ka substitution rename, so the NULL key group drops at the zip. "
+    "FULL and all rowset/root kinds are fully correct.",
 )
-_XFAIL_DERIVED_NULL = pytest.mark.xfail(
-    strict=True,
-    reason="a NULL derived join key (`k + 1` over a `?` nullable column) drops "
-    "the row entirely — including the LEFT anchor's own NULL-key row (row "
-    "LOSS, worse than the rowset half-row split)",
-)
-_NULLABLE_MARKS = {"rowset": (_XFAIL_ROWSET_NULL,), "derived": (_XFAIL_DERIVED_NULL,)}
+_NULLABLE_MARKS = {
+    ("derived", "left"): (_XFAIL_DERIVED_NULL_LEFT_ZIP,),
+    # subset is the same superset-anchored relation — same zip defect.
+    ("derived", "subset"): (_XFAIL_DERIVED_NULL_LEFT_ZIP,),
+}
 
 
 @pytest.mark.parametrize(
     "kind,join_type,form",
     [
-        pytest.param(k, t, f, marks=_NULLABLE_MARKS.get(k, ()))
+        pytest.param(k, t, f, marks=_NULLABLE_MARKS.get((k, t), ()))
         for k in KINDS
         for t in TYPES
         for f in ("join", "merge")

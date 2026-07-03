@@ -180,6 +180,15 @@ as a file.
 
 ---
 
+### trilogy ingest
+
+Bootstrap a Trilogy model from existing warehouse tables, files, or cloud
+objects. Run `trilogy agent-info ingest` for the full command reference
+(args, options, and warehouse/file/cloud examples). Use this when a user
+asks you to reverse-engineer a model from data that already exists.
+
+---
+
 ### trilogy file <subcommand>
 
 CRUD+ operations over filesystems. Local filesystem only.

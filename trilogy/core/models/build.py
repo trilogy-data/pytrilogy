@@ -2368,15 +2368,25 @@ class Factory:
             c = environment.concepts.get(addr)
             return c is not None and c.derivation == Derivation.ROWSET
 
+        # A FULL relation is symmetric, so the rowset-outer identity handling
+        # must engage whichever side the rowset key was authored on — keying on
+        # the source alone let `full join <derived expr> = <rowset key>` fall
+        # through to the substitution path, which destroys the derived key's
+        # column (the rowset key becomes the group canonical and the derived
+        # side has no binding for it). LEFT stays source-keyed: its operand
+        # order is directional by definition.
+        def _rowset_outer_pair(s: str, t: str, jt: JoinType) -> bool:
+            if jt is JoinType.LEFT_OUTER:
+                return _is_rowset_keyed(s)
+            if jt is JoinType.FULL:
+                return _is_rowset_keyed(s) or _is_rowset_keyed(t)
+            return False
+
         self.scoped_rowset_outer_sources: set[str] = {
-            s
-            for s, _, jt in self.scoped_joins
-            if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
+            s for s, t, jt in self.scoped_joins if _rowset_outer_pair(s, t, jt)
         }
         self.scoped_rowset_outer_targets: set[str] = {
-            t
-            for s, t, jt in self.scoped_joins
-            if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
+            t for s, t, jt in self.scoped_joins if _rowset_outer_pair(s, t, jt)
         }
         self.scoped_key_merge_map = {
             source: target

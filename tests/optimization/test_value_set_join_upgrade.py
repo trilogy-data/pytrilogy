@@ -332,6 +332,154 @@ def test_partial_concept_blocks_upgrade():
     assert root.joins[0].jointype == JoinType.FULL
 
 
+def test_full_join_key_veto_blocks_upgrade():
+    """A key registered as a query-scoped FULL/UNION join key never upgrades,
+    even when the completeness tests would pass — the canonical collapse hides
+    that the two sides are independent populations."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _grouped_child("right", source, cls)
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(
+        full_join_keys={cls.address}
+    ).optimize(root, {})
+
+    assert not changed
+    assert root.joins[0].jointype == JoinType.FULL
+
+
+def test_equal_join_key_releases_full_veto():
+    """The same key declared EQUAL (non-partial `merge a into b`) releases the
+    veto: the canonical genuinely names one value space, so the standard
+    completeness tests arbitrate and the join narrows."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _grouped_child("right", source, cls)
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(
+        full_join_keys={cls.address},
+        equal_join_keys={cls.address},
+    ).optimize(root, {})
+
+    assert changed
+    assert root.joins[0].jointype == JoinType.INNER
+
+
+def test_equal_join_key_still_requires_completeness():
+    """EQUAL only releases the veto — the completeness tests still gate the
+    narrowing (a non-grouped side keeps the OUTER join)."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _datasource_cte("right_plain", [cls])
+    right.parent_ctes = [source]
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(
+        full_join_keys={cls.address},
+        equal_join_keys={cls.address},
+    ).optimize(root, {})
+
+    assert not changed
+    assert root.joins[0].jointype == JoinType.FULL
+
+
+def test_narrow_equal_domain_joins_config_gates_plan():
+    """`narrow_equal_domain_joins` (default OFF) controls whether the rule plan
+    forwards EQUAL keys — off, an EQUAL-declared key keeps the FULL veto."""
+    from trilogy.constants import CONFIG
+    from trilogy.core.optimization import build_optimization_rule_plan
+
+    def _rule(plan):
+        return next(
+            p for p in plan if p.name == "upgrade_outer_key_set_equivalence"
+        ).rule_factory()
+
+    assert CONFIG.optimizations.narrow_equal_domain_joins is False
+    off = _rule(
+        build_optimization_rule_plan(
+            full_join_keys={"test.CLASS"}, equal_join_keys={"test.CLASS"}
+        )
+    )
+    assert off.full_join_keys == {"test.CLASS"}
+    CONFIG.optimizations.narrow_equal_domain_joins = True
+    try:
+        on = _rule(
+            build_optimization_rule_plan(
+                full_join_keys={"test.CLASS"}, equal_join_keys={"test.CLASS"}
+            )
+        )
+        assert on.full_join_keys == set()
+    finally:
+        CONFIG.optimizations.narrow_equal_domain_joins = False
+
+
+_TWO_SOURCE_MODEL = """
+key ka int;
+key kb int;
+property ka.va int;
+property kb.vb int;
+
+datasource dsa (a: ka, v: va) grain (ka) address dsa;
+datasource dsb (b: kb, v: vb) grain (kb) address dsb;
+"""
+
+
+def _generated_sql(model: str, query: str) -> str:
+    from trilogy import Dialects
+    from trilogy.parsing.parse_engine_v2 import clear_parse_cache
+
+    clear_parse_cache()
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(model)
+    return executor.generate_sql(query)[-1]
+
+
+def _with_narrowing(model: str, query: str) -> str:
+    from trilogy.constants import CONFIG
+
+    CONFIG.optimizations.narrow_equal_domain_joins = True
+    try:
+        return _generated_sql(model, query)
+    finally:
+        CONFIG.optimizations.narrow_equal_domain_joins = False
+
+
+def test_equal_merge_narrows_full_to_inner_end_to_end():
+    """A non-partial `merge` declares EQUAL domains: under the narrowing flag
+    the merged key's FULL join between two authoritative scans renders INNER.
+    Default-off keeps today's FULL."""
+    model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
+    query = "select ka, sum(va) -> ta, sum(vb) -> tb;"
+    assert "FULL JOIN" in _generated_sql(model, query)
+    narrowed = _with_narrowing(model, query)
+    assert "FULL JOIN" not in narrowed
+    assert "INNER JOIN" in narrowed
+
+
+def test_union_join_never_narrows_end_to_end():
+    """A query-scoped `union join` declares that NEITHER domain contains the
+    other — the FULL join must survive narrowing even under the flag."""
+    query = "select ka, va, vb union join ka = kb;"
+    assert "FULL JOIN" in _generated_sql(_TWO_SOURCE_MODEL, query)
+    assert "FULL JOIN" in _with_narrowing(_TWO_SOURCE_MODEL, query)
+
+
+def test_union_join_veto_beats_equal_merge_on_same_key():
+    """A key both merged (EQUAL) and authored as a query-scoped UNION keeps
+    the preservation veto — the stronger in-query declaration wins."""
+    model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
+    query = "select ka, va, vb union join ka = kb;"
+    assert "FULL JOIN" in _with_narrowing(model, query)
+
+
 def test_pair_helper_resolves_canonical_concept_aliases():
     """The pair check matches on ``canonical_address`` of the join key
     concepts, so different *local* aliases pointing to the same underlying

@@ -5,6 +5,7 @@ from typing import List, Optional
 from trilogy.core.enums import (
     BooleanOperator,
     Derivation,
+    FunctionType,
     JoinType,
     Modifier,
     SourceType,
@@ -14,6 +15,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildFunction,
     BuildGrain,
     BuildOrderBy,
     LooseBuildConceptList,
@@ -140,6 +142,24 @@ def get_all_parent_partial(
     )
 
 
+# scalar functions that can return non-null from nullable inputs; a BASIC
+# derivation through anything else propagates its arguments' nullability
+_NULL_SUPPRESSING_OPERATORS = {
+    FunctionType.COALESCE,
+    FunctionType.CASE,
+    FunctionType.SIMPLE_CASE,
+}
+
+
+def _propagates_argument_nulls(concept: BuildConcept) -> bool:
+    if concept.derivation != Derivation.BASIC:
+        return False
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildFunction):
+        return False
+    return lineage.operator not in _NULL_SUPPRESSING_OPERATORS
+
+
 def get_all_parent_nullable(
     all_concepts: List[BuildConcept], parents: List["StrategyNode"]
 ) -> List[BuildConcept]:
@@ -154,6 +174,18 @@ def get_all_parent_nullable(
             c
             for c in all_concepts
             if any(c.address in addrs for addrs in nullable_addrs)
+            # a scalar derivation of a nullable input is itself nullable
+            # (`l_key + 1` is NULL wherever `l_key` is): infer it at the node
+            # that computes the derivation so address-based propagation carries
+            # it upward from here
+            or (
+                _propagates_argument_nulls(c)
+                and any(
+                    arg.address in addrs
+                    for addrs in nullable_addrs
+                    for arg in c.concept_arguments
+                )
+            )
         ],
         "address",
     )
@@ -333,9 +365,28 @@ class StrategyNode:
     def add_output_concepts(
         self, concepts: List[BuildConcept], rebuild: bool = True, unhide: bool = True
     ):
+        # nullability was computed at construction; keep it current for
+        # post-construction outputs (a derived concept computed over a nullable
+        # input is nullable wherever the input is)
+        upstream_nullable = {x.address for x in self.nullable_concepts}
+        for p in self.parents:
+            upstream_nullable |= {x.address for x in p.nullable_concepts}
+        nullable_addresses = {x.address for x in self.nullable_concepts}
         for concept in concepts:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
+                if concept.address not in nullable_addresses and (
+                    concept.address in upstream_nullable
+                    or (
+                        _propagates_argument_nulls(concept)
+                        and any(
+                            a.address in upstream_nullable
+                            for a in concept.concept_arguments
+                        )
+                    )
+                ):
+                    self.nullable_concepts.append(concept)
+                    nullable_addresses.add(concept.address)
             if unhide and concept.address in self.hidden_concepts:
                 self.hidden_concepts.remove(concept.address)
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)

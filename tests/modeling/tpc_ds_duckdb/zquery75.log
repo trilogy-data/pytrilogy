@@ -1,6 +1,6 @@
 query_id = "75"
 generator = "v3"
-gen_length = 11450
+gen_length = 11968
 preql_size = 1811
 comp_size = 2939
 generated_sql = """
@@ -187,15 +187,15 @@ GROUP BY
     \"vacuous\".\"deduped_sales_date_year\"),
 scrawny as (
 SELECT
-    \"late\".\"deduped_sales_item_brand_id\" as \"_curr_i_brand_id\",
-    \"late\".\"deduped_sales_item_category_id\" as \"_curr_i_category_id\",
-    \"late\".\"deduped_sales_item_class_id\" as \"_curr_i_class_id\",
-    \"late\".\"deduped_sales_item_manufacturer_id\" as \"_curr_i_manufact_id\",
     \"macho\".\"_curr_curr_amt\" as \"_curr_curr_amt\",
-    \"macho\".\"_curr_curr_cnt\" as \"_curr_curr_cnt\"
+    \"macho\".\"_curr_curr_cnt\" as \"_curr_curr_cnt\",
+    coalesce(\"late\".\"deduped_sales_item_brand_id\",\"macho\".\"deduped_sales_item_brand_id\") as \"_curr_i_brand_id\",
+    coalesce(\"late\".\"deduped_sales_item_category_id\",\"macho\".\"deduped_sales_item_category_id\") as \"_curr_i_category_id\",
+    coalesce(\"late\".\"deduped_sales_item_class_id\",\"macho\".\"deduped_sales_item_class_id\") as \"_curr_i_class_id\",
+    coalesce(\"late\".\"deduped_sales_item_manufacturer_id\",\"macho\".\"deduped_sales_item_manufacturer_id\") as \"_curr_i_manufact_id\"
 FROM
     \"late\"
-    INNER JOIN \"macho\" on \"late\".\"deduped_sales_item_brand_id\" = \"macho\".\"deduped_sales_item_brand_id\" AND \"late\".\"deduped_sales_item_category_id\" = \"macho\".\"deduped_sales_item_category_id\" AND \"late\".\"deduped_sales_item_class_id\" = \"macho\".\"deduped_sales_item_class_id\" AND \"late\".\"deduped_sales_item_manufacturer_id\" = \"macho\".\"deduped_sales_item_manufacturer_id\"
+    INNER JOIN \"macho\" on \"late\".\"deduped_sales_item_brand_id\" = \"macho\".\"deduped_sales_item_brand_id\" AND \"late\".\"deduped_sales_item_category_id\" is not distinct from \"macho\".\"deduped_sales_item_category_id\" AND \"late\".\"deduped_sales_item_class_id\" is not distinct from \"macho\".\"deduped_sales_item_class_id\" AND \"late\".\"deduped_sales_item_manufacturer_id\" = \"macho\".\"deduped_sales_item_manufacturer_id\"
 GROUP BY
     1,
     2,
@@ -205,15 +205,15 @@ GROUP BY
     6),
 sparkling as (
 SELECT
-    \"concerned\".\"deduped_sales_item_brand_id\" as \"_prev_i_brand_id\",
-    \"concerned\".\"deduped_sales_item_category_id\" as \"_prev_i_category_id\",
-    \"concerned\".\"deduped_sales_item_class_id\" as \"_prev_i_class_id\",
-    \"concerned\".\"deduped_sales_item_manufacturer_id\" as \"_prev_i_manufact_id\",
     \"young\".\"_prev_prev_amt\" as \"_prev_prev_amt\",
-    \"young\".\"_prev_prev_cnt\" as \"_prev_prev_cnt\"
+    \"young\".\"_prev_prev_cnt\" as \"_prev_prev_cnt\",
+    coalesce(\"concerned\".\"deduped_sales_item_brand_id\",\"young\".\"deduped_sales_item_brand_id\") as \"_prev_i_brand_id\",
+    coalesce(\"concerned\".\"deduped_sales_item_category_id\",\"young\".\"deduped_sales_item_category_id\") as \"_prev_i_category_id\",
+    coalesce(\"concerned\".\"deduped_sales_item_class_id\",\"young\".\"deduped_sales_item_class_id\") as \"_prev_i_class_id\",
+    coalesce(\"concerned\".\"deduped_sales_item_manufacturer_id\",\"young\".\"deduped_sales_item_manufacturer_id\") as \"_prev_i_manufact_id\"
 FROM
     \"concerned\"
-    INNER JOIN \"young\" on \"concerned\".\"deduped_sales_item_brand_id\" = \"young\".\"deduped_sales_item_brand_id\" AND \"concerned\".\"deduped_sales_item_category_id\" = \"young\".\"deduped_sales_item_category_id\" AND \"concerned\".\"deduped_sales_item_class_id\" = \"young\".\"deduped_sales_item_class_id\" AND \"concerned\".\"deduped_sales_item_manufacturer_id\" = \"young\".\"deduped_sales_item_manufacturer_id\"
+    INNER JOIN \"young\" on \"concerned\".\"deduped_sales_item_brand_id\" = \"young\".\"deduped_sales_item_brand_id\" AND \"concerned\".\"deduped_sales_item_category_id\" is not distinct from \"young\".\"deduped_sales_item_category_id\" AND \"concerned\".\"deduped_sales_item_class_id\" is not distinct from \"young\".\"deduped_sales_item_class_id\" AND \"concerned\".\"deduped_sales_item_manufacturer_id\" = \"young\".\"deduped_sales_item_manufacturer_id\"
 GROUP BY
     1,
     2,
@@ -254,7 +254,7 @@ SELECT
     \"friendly\".\"curr_curr_amt\" - \"abhorrent\".\"prev_prev_amt\" as \"sales_amt_diff\"
 FROM
     \"friendly\"
-    LEFT OUTER JOIN \"abhorrent\" on \"friendly\".\"curr_i_brand_id\" = \"abhorrent\".\"prev_i_brand_id\" AND \"friendly\".\"curr_i_category_id\" = \"abhorrent\".\"prev_i_category_id\" AND \"friendly\".\"curr_i_class_id\" = \"abhorrent\".\"prev_i_class_id\" AND \"friendly\".\"curr_i_manufact_id\" = \"abhorrent\".\"prev_i_manufact_id\"
+    LEFT OUTER JOIN \"abhorrent\" on \"friendly\".\"curr_i_brand_id\" = \"abhorrent\".\"prev_i_brand_id\" AND \"friendly\".\"curr_i_category_id\" is not distinct from \"abhorrent\".\"prev_i_category_id\" AND \"friendly\".\"curr_i_class_id\" is not distinct from \"abhorrent\".\"prev_i_class_id\" AND \"friendly\".\"curr_i_manufact_id\" = \"abhorrent\".\"prev_i_manufact_id\"
 WHERE
     cast(\"friendly\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"abhorrent\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
 

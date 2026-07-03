@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, JoinType, SourceType
+from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -22,6 +22,7 @@ from trilogy.core.processing.grain_utility import (
 )
 from trilogy.core.processing.join_resolution import (
     _collect_deep_partial_addresses,
+    _side_nullable,
     compute_outer_null_status,
     get_node_joins,
     prune_outer_join_pairs,
@@ -216,6 +217,16 @@ class MergeNode(StrategyNode):
             right = join.right_node.resolve()
             if left.identifier == right.identifier:
                 raise SyntaxError(f"Cannot join node {left.identifier} to itself")
+            # generator-authored joins carry no null-safety analysis; compute it
+            # here like inferred joins do (get_modifiers), else a nullable join
+            # key silently drops its NULL matches through the plain equality
+            modifiers = list(join.modifiers)
+            if Modifier.NULLABLE not in modifiers and join.concepts:
+                if all(
+                    _side_nullable(concept, left) and _side_nullable(concept, right)
+                    for concept in join.concepts
+                ):
+                    modifiers.append(Modifier.NULLABLE)
             joins.append(
                 BaseJoin(
                     left_datasource=left,
@@ -223,7 +234,7 @@ class MergeNode(StrategyNode):
                     join_type=join.join_type,
                     concepts=join.concepts,
                     concept_pairs=join.concept_pairs,
-                    modifiers=join.modifiers,
+                    modifiers=modifiers,
                 )
             )
         return joins
@@ -583,8 +594,15 @@ class MergeNode(StrategyNode):
             ),
             joins=qd_joins,
             grain=grain,
+            # union the join-analysis nullables (null-extended outer sides,
+            # nullable source columns) with node-level nullables — the latter
+            # carry inferred nullability for concepts COMPUTED at this node
+            # (e.g. a derived join key over a nullable column)
             nullable_concepts=[
-                x for x in final_output_concepts if x.address in nullable_concepts
+                x
+                for x in final_output_concepts
+                if x.address in nullable_concepts
+                or any(x.address == n.address for n in self.nullable_concepts)
             ],
             partial_concepts=self.partial_concepts,
             rollup_concepts=rollup_concepts,

@@ -276,10 +276,12 @@ address baz;
         # partial-right case above.
         (False, True, False, False, JoinType.LEFT_OUTER),
         (False, False, True, False, JoinType.LEFT_OUTER),
-        # right is nullable, left is not — LEFT_OUTER would drop right's NULL
-        # rows since the non-nullable left has nothing to match them. Upgrade
-        # to FULL.
-        (False, False, False, True, JoinType.FULL),
+        # right is nullable, left is not — INNER would drop right's NULL rows
+        # since the non-nullable left has nothing to match them. Preserve the
+        # nullable side DIRECTIONALLY (mirror of the left-nullable case above);
+        # both sides are complete, so the left has no unmatched rows and
+        # RIGHT_OUTER is row-identical to FULL.
+        (False, False, False, True, JoinType.RIGHT_OUTER),
         (True, False, True, False, JoinType.FULL),
         (False, True, False, True, JoinType.FULL),
         # left is BOTH partial and nullable — partial wants RIGHT_OUTER (preserve

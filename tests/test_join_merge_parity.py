@@ -442,5 +442,5 @@ def test_full_mixed_with_other_type_in_one_group_rejected(
 ):
     # FULL polluting an INNER/LEFT group is ambiguous -> rejected at parse time.
     select = "select ka, sum(a.a_id) as na order by ka asc;"
-    with pytest.raises(ParseError, match="FULL join cannot be mixed"):
+    with pytest.raises(ParseError, match="FULL/UNION join cannot be mixed"):
         _run(multi_engine, tmp_path, _MULTI_HEAD + clauses + "\n" + select)

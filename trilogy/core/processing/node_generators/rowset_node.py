@@ -295,6 +295,29 @@ def _build_translation_node(
     resolves across the query boundary — in particular a collapsed join key whose
     authored source (e.g. `a.aid`) only exists inside the body as the join
     canonical (`b.bid`)."""
+    # nullability propagates by ADDRESS between nodes, but a rowset output is a
+    # new address wrapping its body content — map through the BuildRowsetItem
+    # content (and pseudonyms) so a `?` column's nullability survives the
+    # rowset boundary (else a NULL rowset join key stops matching null-safely)
+    base_nullable: set[str] = set()
+    for c in base_node.nullable_concepts:
+        base_nullable.add(c.address)
+        base_nullable.update(c.pseudonyms)
+    nullable = [
+        x
+        for x in rowset_relevant + additional_relevant
+        if x.address in base_nullable
+        or (set(x.pseudonyms) & base_nullable)
+        or (
+            isinstance(x.lineage, BuildRowsetItem)
+            and (
+                x.lineage.content.address in base_nullable
+                # the content is typically a body-local alias whose pseudonyms
+                # carry the authored source address (`local._ra_k` ~ `a.l_key`)
+                or (set(x.lineage.content.pseudonyms) & base_nullable)
+            )
+        )
+    ]
     node = RowsetNode(
         input_concepts=[
             x
@@ -306,6 +329,7 @@ def _build_translation_node(
         parents=[base_node],
         depth=depth,
         partial_concepts=list(base_node.partial_concepts),
+        nullable_concepts=nullable,
     )
     if select.where_clause:
         for item in additional_relevant:

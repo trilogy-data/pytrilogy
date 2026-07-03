@@ -142,6 +142,13 @@ class JoinType(Enum):
     FULL = "full"
     RIGHT_OUTER = "right outer"
     CROSS = "cross"
+    # Relation DECLARATIONS (docs/subset_union_join_design.md): domain knowledge,
+    # not row intent. Parse-level only — the join-clause hydrator normalizes
+    # SUBSET(a ⊆ b) to the superset-anchored LEFT_OUTER relation (`merge a into
+    # ~b`) and UNION (disjoint-capable domains) to FULL; neither may reach SQL
+    # rendering.
+    SUBSET = "subset"
+    UNION = "union"
 
     @property
     def merge_modifiers(self) -> list[Modifier]:

@@ -16,6 +16,7 @@ from trilogy.core.enums import (
     DatasourceState,
     DatePart,
     FunctionType,
+    JoinType,
     Modifier,
     PersistMode,
     Purpose,
@@ -976,12 +977,24 @@ class Renderer:
                 order_by = [
                     self.indent_lines(self.to_string(c)) for c in arg.order_by.items
                 ]
-        join_keyword = {"LEFT_OUTER": "left", "FULL": "full"}
-        joins = [
-            f"{join_keyword[j.join_type.name]} join"
-            f" {j.source_address} = {j.target_address}"
-            for j in arg.join_clauses
-        ]
+        join_keyword = {
+            JoinType.LEFT_OUTER: "left",
+            JoinType.FULL: "full",
+            JoinType.SUBSET: "subset",
+            JoinType.UNION: "union",
+        }
+        joins = []
+        for j in arg.join_clauses:
+            authored = j.authored or j.join_type
+            # A SUBSET declaration is stored superset-anchored (source = the
+            # superset); render back in authored `subset join <subset> = <superset>`
+            # order.
+            left, right = (
+                (j.target_address, j.source_address)
+                if authored is JoinType.SUBSET
+                else (j.source_address, j.target_address)
+            )
+            joins.append(f"{join_keyword[authored]} join {left} = {right}")
 
         grouping = self._render_select_grouping(arg.grouping) if arg.grouping else None
         return QUERY_TEMPLATE.render(

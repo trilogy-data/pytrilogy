@@ -121,27 +121,36 @@ def get_join_type(
     # complete, so the unresolvable-source gate and rowset enrichment never fire.
     if full_join_keys and all_connecting_keys & full_join_keys:
         return JoinType.FULL
+    # PARTIALITY and NULLABILITY are orthogonal. A partial side holds a SUBSET
+    # of the key's values and is the optional side — partials decide direction.
+    # A nullable key is COMPLETE, with NULLs among its values: it null-safes the
+    # equality (get_modifiers) and affects the TYPE only through one rule —
+    # NULL-key rows must never silently drop, so when a side's NULLs have no
+    # possible null-safe partner (that side nullable, the OTHER side not), the
+    # join must preserve that side even where direction would drop it. When
+    # both sides are nullable, the null-safe equality pairs the NULL groups and
+    # the authored direction stands.
     left_is_partial = _has_any(all_connecting_keys, left, partials)
-    left_is_nullable = _has_any(all_connecting_keys, left, nullables)
     right_is_partial = _has_any(all_connecting_keys, right, partials)
+    left_is_nullable = _has_any(all_connecting_keys, left, nullables)
     right_is_nullable = _has_any(all_connecting_keys, right, nullables)
 
-    left_complete = not left_is_partial and not left_is_nullable
-    right_complete = not right_is_partial and not right_is_nullable
-
-    if not left_complete and not right_complete:
+    if left_is_partial and right_is_partial:
         return JoinType.FULL
-    elif not left_complete and right_complete:
-        # Partial means missing rows; nullable means complete rows with NULL keys.
-        if left_is_nullable and left_is_partial:
-            return JoinType.FULL
-        if left_is_nullable:
-            return JoinType.LEFT_OUTER
-        return JoinType.RIGHT_OUTER
-    elif not right_complete and left_complete:
-        if right_is_nullable:
+    if right_is_partial:
+        if right_is_nullable and not left_is_nullable:
             return JoinType.FULL
         return JoinType.LEFT_OUTER
+    if left_is_partial:
+        if left_is_nullable and not right_is_nullable:
+            return JoinType.FULL
+        return JoinType.RIGHT_OUTER
+    if left_is_nullable and right_is_nullable:
+        return JoinType.FULL
+    if left_is_nullable:
+        return JoinType.LEFT_OUTER
+    if right_is_nullable:
+        return JoinType.RIGHT_OUTER
     return JoinType.INNER
 
 
@@ -261,6 +270,7 @@ def resolve_join_order_v2(
     # no optional side (e.g. a global `merge ~` whose partial counterpart isn't
     # in the query), seeding the tree on it would just perturb unrelated joins.
     anchor_sources: frozenset[str] = frozenset()
+    active_anchor_keys: set[str] = set()
     if anchor_key_nodes:
         active_anchor_keys = {
             key
@@ -435,7 +445,22 @@ def _side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
     if side is None:
         return False
     equivalent = concept.equivalent_addresses
-    return any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts)
+    if any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts):
+        return True
+    # a side that COMPUTES the join key from nullable inputs yields NULL keys
+    # too (`l_key + 1` is NULL wherever `l_key` is) even when the derived key
+    # itself never got flagged
+    from trilogy.core.processing.nodes.base_node import _propagates_argument_nulls
+
+    if not _propagates_argument_nulls(concept):
+        return False
+    args = {a.address for a in concept.concept_arguments}
+    if not args:
+        return False
+    side_nullable: set[str] = set()
+    for nc in side.nullable_concepts:
+        side_nullable |= nc.equivalent_addresses
+    return bool(args & side_nullable)
 
 
 def get_modifiers(

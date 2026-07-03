@@ -1190,6 +1190,9 @@ def process_query(
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
     )
+    join_tuples = {
+        (j.source_address, j.target_address, j.join_type) for j in join_clauses
+    }
     build_scoped_joins = [
         (j.source_address, j.target_address, j.join_type) for j in join_clauses
     ]
@@ -1209,6 +1212,23 @@ def process_query(
         if join_type is JoinType.FULL
         for addr in (source, target)
     }
+    # A non-partial global `merge a into b` DECLARES equal domains (mutual
+    # subset — docs/subset_union_join_design.md), unlike a query-scoped
+    # FULL/UNION join, which declares that neither domain contains the other.
+    # An EQUAL key may therefore narrow to INNER once the completeness tests
+    # pass; keys also authored as a query-scoped FULL/UNION keep the veto.
+    statement_full_keys = {
+        scoped_merge_map.get(addr, addr)
+        for source, target, join_type in build_scoped_joins
+        if join_type is JoinType.FULL and (source, target, join_type) in join_tuples
+        for addr in (source, target)
+    }
+    equal_join_keys = {
+        scoped_merge_map.get(addr, addr)
+        for source, target, join_type in environment.merges
+        if join_type is JoinType.FULL
+        for addr in (source, target)
+    } - statement_full_keys
 
     final_ctes = optimize_ctes(
         deduped_ctes,
@@ -1216,6 +1236,7 @@ def process_query(
         statement,
         having_alias=having_alias,
         full_join_keys=full_join_keys,
+        equal_join_keys=equal_join_keys,
     )
     _expose_downstream_referenced_columns(final_ctes, root_cte)
     return ProcessedQuery(

@@ -72,13 +72,12 @@ HEAD_SHIFTED = (
 )
 SELECT = "select ta.s, ta.w, ta.tot, nb.tot order by ta.s asc, ta.w asc;"
 
-# (kind, join_type) -> (head, join key clause). Operand order carries meaning:
-# a LEFT pair anchors its LEFT operand, so every LEFT pair leads with ta's key
-# (consistent ta anchor; a MIXED-anchor composite legitimately composes to FULL
-# — see test_mixed_anchor_composite_composes_to_full). A FULL derived pair must
-# put the derived expr on the RIGHT (it becomes the group canonical); the
-# reverse direction is a pinned defect — see
-# test_full_derived_key_as_left_operand_direction.
+# (kind, join_type) -> (head, join key clause). Operand order carries meaning
+# for LEFT: a pair anchors its LEFT operand, so every LEFT pair leads with ta's
+# key (consistent ta anchor; a MIXED-anchor composite legitimately composes to
+# FULL — see test_mixed_anchor_composite_composes_to_full). FULL is symmetric;
+# both operand orders must behave identically — the derived-as-left-operand
+# order is pinned separately in test_full_derived_key_as_left_operand_direction.
 CLAUSES = {
     ("both_plain", "left"): (HEAD_SHIFTED, "ta.s = nb.s and ta.w = nb.w"),
     ("both_plain", "full"): (HEAD_SHIFTED, "ta.s = nb.s and ta.w = nb.w"),
@@ -136,16 +135,11 @@ def test_composite_key_join(tmp_path: Path, kind: str, join_type: str):
     assert len(keys) == len(set(keys)), f"fan-out: {rows}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a FULL scoped join whose DERIVED expr is the LEFT operand collapses "
-    "the ROWSET key onto it as group canonical, which engages the substitution "
-    "path instead of the rowset-outer identity machinery: the derived key drops "
-    "from the ON (intra-store fan-out) or the reference graph disconnects, "
-    "varying by hash seed. Author the derived expr on the RIGHT of `=` as a "
-    "workaround.",
-)
 def test_full_derived_key_as_left_operand_direction(tmp_path: Path):
+    # FULL is symmetric: the derived expr on the LEFT of `=` (rowset key as the
+    # group canonical) must behave identically to the derived-on-the-right
+    # form. This direction used to fall through to the substitution path and
+    # drop the derived key (intra-store fan-out) or disconnect.
     query = HEAD + "full join ta.s = nb.s and ta.w + 52 = nb.w\n" + SELECT
     rows = run_cell(write_models(tmp_path), query)
     keys = [(r[0], r[1]) for r in rows]

@@ -143,9 +143,10 @@ def _validate_join_groups(node: SyntaxNode, joins: list[SelectJoin]) -> None:
             raise fail(
                 node,
                 f"Conflicting join types ({names}) on keys joined into one group: a "
-                "FULL join cannot be mixed with another type on the same key (it is "
-                "ambiguous whether the key is required or one-sided). Make the whole "
-                "group FULL (e.g. `FULL JOIN a = b = c`), or use a distinct key.",
+                "FULL/UNION join cannot be mixed with another type on the same key "
+                "(it is ambiguous whether the key is required or one-sided). Make the "
+                "whole group one type (e.g. `UNION JOIN a = b = c`), or use a "
+                "distinct key.",
             )
 
 
@@ -180,15 +181,20 @@ def join_clause(
     if join_type is JoinType.INNER:
         raise fail(
             node,
-            "`inner` join is not supported in query-scoped joins; use LEFT or FULL"
-            " and express an intersection with a filter condition (e.g. `LEFT JOIN"
-            " a = b WHERE <b property> is not null`).",
+            "`inner` join is not supported in query-scoped joins; use SUBSET,"
+            " UNION, LEFT or FULL and express an intersection with a filter"
+            " condition (e.g. `LEFT JOIN a = b WHERE <b property> is not null`).",
         )
-    if join_type not in (JoinType.LEFT_OUTER, JoinType.FULL):
+    if join_type not in (
+        JoinType.LEFT_OUTER,
+        JoinType.FULL,
+        JoinType.SUBSET,
+        JoinType.UNION,
+    ):
         raise fail(
             node,
             f"`{join_type.value}` join is not supported in query-scoped joins;"
-            " use LEFT or FULL",
+            " use SUBSET, UNION, LEFT or FULL",
         )
     # Each `join_group` is one `=`-chained equivalence group. Multiple groups
     # arise from the `a = b and c = d` sugar, which is exactly equivalent to two
@@ -248,14 +254,39 @@ def _resolve_join_group(
                 f"`{la}`), which degenerates to `1=1`. Join distinct keys (e.g. "
                 "separate rowset outputs or distinct expressions).",
             )
-        joins.append(
-            SelectJoin(
-                join_type=join_type,
-                source_address=la,
-                target_address=ra,
-            )
-        )
+        joins.append(_normalize_select_join(join_type, la, ra))
     return joins
+
+
+def _normalize_select_join(join_type: JoinType, la: str, ra: str) -> SelectJoin:
+    """Normalize relation DECLARATIONS onto the two landed relation mechanisms
+    (docs/subset_union_join_design.md). `subset join a = b` declares a ⊆ b: the
+    superset `b` is the complete anchor and `a` is partial against it — exactly
+    `merge a into ~b` scoped to this query, so it maps to that relation's
+    superset-anchored LEFT_OUTER tuple. `union join a = b` declares neither
+    domain contains the other — the coalescing FULL relation. The authored form
+    is kept for round-trip rendering and optimizer metadata (a UNION key must
+    never narrow to INNER; an EQUAL/merge key may)."""
+    if join_type is JoinType.SUBSET:
+        return SelectJoin(
+            join_type=JoinType.LEFT_OUTER,
+            source_address=ra,
+            target_address=la,
+            authored=JoinType.SUBSET,
+        )
+    if join_type is JoinType.UNION:
+        return SelectJoin(
+            join_type=JoinType.FULL,
+            source_address=la,
+            target_address=ra,
+            authored=JoinType.UNION,
+        )
+    return SelectJoin(
+        join_type=join_type,
+        source_address=la,
+        target_address=ra,
+        authored=join_type,
+    )
 
 
 def _resolve_join_key(

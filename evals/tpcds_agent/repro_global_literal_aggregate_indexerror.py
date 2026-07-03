@@ -40,9 +40,14 @@ def main() -> None:
         d = Path(tmp)
         (d / "sales.preql").write_text(SALES)
         for name, q in CASES.items():
-            eng = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=d))
+            eng = Dialects.DUCK_DB.default_executor(
+                environment=Environment(working_path=d)
+            )
             try:
-                eng.generate_sql("import sales as s; " + q.replace("item", "s.item").replace("sid", "s.sid"))
+                eng.generate_sql(
+                    "import sales as s; "
+                    + q.replace("item", "s.item").replace("sid", "s.sid")
+                )
                 print(f"  OK         {name}")
             except IndexError:
                 print(f"  IndexError {name}")

@@ -17,30 +17,58 @@ power-scaled values (fan-out changes sums), and an opt-in nullable axis
 
 | file | axes |
 |---|---|
-| `test_two_source_matrix.py` | key kind (root / derived / rowset) × join type (LEFT / FULL) × form (join / merge) × nullable |
+| `test_two_source_matrix.py` | key kind (root / derived / rowset) × join type (LEFT / FULL / SUBSET / UNION) × form (join / merge) × nullable |
 | `test_composite_matrix.py` | composite key kind (both-plain / plain+derived / derived+derived) × join type; fan-out uniqueness guard |
 | `test_multiway_matrix.py` | 3-way derived-key relations: chained/pairwise join form vs merge stack |
 | `test_consumption_matrix.py` | post-join WHERE on the optional side; `is not null` intersection idiom × form |
+| `test_narrowing_matrix.py` | declared-domain narrowing proofs on HONEST data: EQUAL (`merge`) FULL→INNER under `narrow_equal_domain_joins`; UNION never narrows |
+
+SUBSET/UNION (docs/subset_union_join_design.md) are the domain-declaration
+spellings of the two landed relations: `subset join a = b` (a ⊆ b, superset
+anchors — row parity with the swapped authored LEFT / `merge a into ~b`) and
+`union join a = b` (neither contains the other — row parity with FULL). The
+matrix pins that parity cell-for-cell; the always-preserving render flip is a
+future re-ruling of these oracles.
 
 Known-broken cells are `xfail(strict=True)` with the defect description and
 bug-doc pointer in the reason — a fix flips them loudly.
 
 ## Pinned defects (xfail cells)
 
-- **Nullable rowset keys** — `?` nullability doesn't propagate through rowset
-  lineage; NULL keys stop matching null-safely (two half-rows).
-- **Nullable derived keys** — NULL derived key drops the row entirely, even the
-  LEFT anchor's own row.
-- **FULL derived key as LEFT operand** — `full join ta.w + 52 = nb.w` collapses
-  the rowset key onto the derived expr as group canonical and drops the key or
-  disconnects; author the derived expr on the right of `=`.
+- **Nullable derived keys, LEFT** (2 cells) — the relation itself is null-safe
+  and correctly typed; the final same-grain zip between the two aggregate
+  branches is a generator-authored NodeJoin rendered INNER with plain `=` (the
+  kb-side branch loses nullability through the kb→ka substitution rename), so
+  the NULL key group drops at the zip. Expected to dissolve under the
+  SUBSET/UNION redesign (docs/subset_union_join_design.md).
 
-The q59 composite family (plain co-key dropped → fan-out; comp_mixed LEFT
-widening) was FIXED 2026-07-02 in `_enrich_rowset_node` (rowset_node.py): a
-scoped-join key-group member is never satisfied through its group-mate
-pseudonym when computing the enrichment request — each joined side must
-materialize its own column. The former live-failing guards in
-`tests/test_scoped_derived_rowset_join_matrix.py` now assert correct rows.
+## Join typing semantics (landed 2026-07-02)
+
+`get_join_type`: partials decide direction (partial = subset of VALUES, the
+optional side). Nullability is orthogonal — it null-safes the equality and
+affects type through ONE rule: a nullable side whose NULLs have no null-safe
+partner (the other side NOT nullable) must be preserved, promoting to FULL.
+When both sides are nullable, the null-safe equality pairs the NULL groups and
+the authored direction stands. This resolves the authored-LEFT vs `merge ~`
+consolidation conflict without a merge/join distinction.
+
+## Fixed 2026-07-02 (formerly pinned here)
+
+- **q59 composite family** (plain co-key dropped → fan-out; comp_mixed LEFT
+  widening): `_enrich_rowset_node` no longer satisfies a scoped-join key-group
+  member through its group-mate pseudonym — each joined side materializes its
+  own column. The former live-failing guards in
+  `tests/test_scoped_derived_rowset_join_matrix.py` now assert correct rows.
+- **FULL derived key as LEFT operand**: the rowset-outer identity machinery now
+  engages when EITHER endpoint of a FULL pair is rowset-keyed (FULL is
+  symmetric); previously that direction substituted the derived key away.
+- **NULL join keys silently not matching** (the half-row split / row-loss
+  family): nullability now propagates through the rowset boundary (translation
+  node), through BASIC derivations (`k + 1` over a `?` column), into
+  GroupNode/MergeNode resolution, and generator-authored NodeJoins compute
+  null-safety in `translate_node_joins` — so nullable keys render
+  `is not distinct from`. FULL cells and all root-keyed cells are fully
+  correct; LEFT cells are row-correct except the widening above.
 
 ## Legacy / adjacent join tests (regression pins, keep)
 

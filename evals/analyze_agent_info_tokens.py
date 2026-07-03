@@ -14,6 +14,7 @@ Usage:
     python evals/analyze_agent_info_tokens.py --json     # machine-readable
 Reusable on any markdown blob: --file <path> parses that file's headers instead.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,7 +36,9 @@ def token_counter():
         enc = tiktoken.get_encoding("cl100k_base")
         return (lambda s: len(enc.encode(s))), "tiktoken/cl100k_base"
     except Exception:
-        return (lambda s: round(len(s) / 4)), "chars/4 (approx; install tiktoken for exact)"
+        return (
+            lambda s: round(len(s) / 4)
+        ), "chars/4 (approx; install tiktoken for exact)"
 
 
 def split_markdown(md: str, depth: int) -> list[tuple[str, str]]:
@@ -77,16 +80,33 @@ def collect_blocks(depth: int, source_file: Path | None) -> list[tuple[str, str]
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--depth", type=int, default=2, help="deepest header level to break out (2=##, 3=###)")
-    ap.add_argument("--file", type=Path, default=None, help="analyze an arbitrary markdown file instead of constants.py")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--depth",
+        type=int,
+        default=2,
+        help="deepest header level to break out (2=##, 3=###)",
+    )
+    ap.add_argument(
+        "--file",
+        type=Path,
+        default=None,
+        help="analyze an arbitrary markdown file instead of constants.py",
+    )
     ap.add_argument("--json", action="store_true", help="emit JSON")
     args = ap.parse_args()
 
     count, label = token_counter()
     blocks = collect_blocks(args.depth, args.file)
     rows = [
-        {"block": name, "tokens": count(body), "chars": len(body), "lines": body.count("\n") + 1}
+        {
+            "block": name,
+            "tokens": count(body),
+            "chars": len(body),
+            "lines": body.count("\n") + 1,
+        }
         for name, body in blocks
     ]
     total = sum(r["tokens"] for r in rows) or 1
@@ -98,14 +118,22 @@ def main() -> int:
         r["cum_pct"] = round(100 * cum / total, 1)
 
     if args.json:
-        print(json.dumps({"tokenizer": label, "total_tokens": total, "blocks": rows}, indent=2))
+        print(
+            json.dumps(
+                {"tokenizer": label, "total_tokens": total, "blocks": rows}, indent=2
+            )
+        )
         return 0
 
-    print(f"agent-info token report  |  tokenizer: {label}  |  total ~{total:,} tokens\n")
+    print(
+        f"agent-info token report  |  tokenizer: {label}  |  total ~{total:,} tokens\n"
+    )
     print(f"{'tokens':>7} {'pct':>5} {'cum%':>5} {'lines':>5}  block")
     print("-" * 78)
     for r in rows:
-        print(f"{r['tokens']:>7,} {r['pct']:>4}% {r['cum_pct']:>4}% {r['lines']:>5}  {r['block']}")
+        print(
+            f"{r['tokens']:>7,} {r['pct']:>4}% {r['cum_pct']:>4}% {r['lines']:>5}  {r['block']}"
+        )
     print(
         "\nReading: blocks at the top dominate the per-turn cost. Keep the few "
         "high-value ones\nas defaults; the long tail (small cum-% gain each) are "
