@@ -109,9 +109,32 @@ written.
   code could not see, never differently on ones it could.
 - SCOPE NOTE (owner, 2026-07-03): v4 discovery FD paths are EXCLUDED from
   step 4 — v4 is a parallel migration target; drive v3 to the ideal state
-  first. Remaining step-4 v3 consumers: grain satisfaction
-  (`calculate_joined_pregrain` / `grain_satisfied_by_pregrain` — the
-  "<grain key> uniquely defines <other key>" gap).
+  first.
+
+## Landed (step 4 second consumer + step 3, 2026-07-03)
+
+- Grain satisfaction consumes the FD closure:
+  `_join_right_preserves_cardinality` (now taking the environment) accepts a
+  right grain whose uncovered components the join keys functionally
+  determine — the "join on A can never fan out B" proof — and
+  `grain_satisfied_by_pregrain` accepts pregrain components the target grain
+  determines (group-by on {A, B} reduces to {A}). Both use global-scope
+  closure only (declared property FDs + complete-binding-globalized grain
+  FDs); population-scoped trust is deliberately not extended here.
+- Step 3: `declared_domain_relations` regenerates from the graph's declared
+  edges — and this FIXED A REAL BUG: the merge-tuple reading checked the
+  REVERSED containment for subsets (merge tuples store the anchor first, so
+  `merge a into ~b` was validated as b ⊆ a). The adversarial proof data
+  carries one exclusive value per side, so the old cells were
+  direction-blind; they now assert the checked source is the declared subset
+  side. The author-time contradiction lint (the other half of step 3) landed
+  with step 1.
+- TPC-DS battery byte-stable across all of the above.
+- Remaining after this: the q59 endpoint-identity seam (upstream of
+  narrowing; origin stamps are the substrate), the
+  `partial_closure`/`ignore_partial_addrs` carve-outs, step 5
+  (plan-time `get_join_type` on the graph), and — deferred with v4 — the
+  discovery FD paths and step-5 unification.
 
 One environment-level directed graph over concepts, carrying TWO edge
 families:

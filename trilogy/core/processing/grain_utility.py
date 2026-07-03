@@ -173,7 +173,10 @@ def _concept_covered_by_grain(
     )
 
 
-def _join_right_preserves_cardinality(join: BaseJoin | UnnestJoin) -> bool:
+def _join_right_preserves_cardinality(
+    join: BaseJoin | UnnestJoin,
+    environment: BuildEnvironment,
+) -> bool:
     if not isinstance(join, BaseJoin):
         return False
     if join.join_type in (JoinType.FULL, JoinType.RIGHT_OUTER, JoinType.CROSS):
@@ -196,8 +199,22 @@ def _join_right_preserves_cardinality(join: BaseJoin | UnnestJoin) -> bool:
     coverage: set[str] = set()
     for key in materialized_keys:
         coverage.update(_concept_coverage_addresses(key))
-    return right_grain.components.issubset(coverage) or any(
+    if right_grain.components.issubset(coverage) or any(
         _concept_covers_grain(key, right_grain) for key in materialized_keys
+    ):
+        return True
+    # FD closure (docs/domain_graph_design.md step 4): grain components the
+    # join keys functionally determine admit at most one right row per key
+    # tuple — cardinality is preserved even though the components are not
+    # among the keys (the "join on A can never fan out B" proof that grain
+    # arithmetic alone cannot see through bindings).
+    graph = environment.domain_graph
+    if not graph.fd_edges:
+        return False
+    determinants = coverage | {key.address for key in materialized_keys}
+    return all(
+        graph.determines(determinants, component)
+        for component in right_grain.components - coverage
     )
 
 
@@ -236,9 +253,9 @@ def _join_right_grain_can_be_omitted(
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> bool:
-    return _join_right_preserves_cardinality(join) and _join_left_keys_covered_by_grain(
-        join, grain, environment
-    )
+    return _join_right_preserves_cardinality(
+        join, environment
+    ) and _join_left_keys_covered_by_grain(join, grain, environment)
 
 
 def _datasource_addresses(source: GrainSource) -> set[str]:
@@ -343,7 +360,18 @@ def grain_satisfied_by_pregrain(
     # Without this, a pregrain carrying the source keys looks like extra
     # grain to a merge node whose grain only references the align alias.
     coverage = _grain_coverage_addresses(grain, environment)
-    return pregrain.components.issubset(coverage)
+    if pregrain.components.issubset(coverage):
+        return True
+    # FD closure: a pregrain component the grain functionally determines is
+    # constant within each group, so grouping by {grain, component} reduces
+    # to {grain} — the pregrain is satisfied without regrouping.
+    graph = environment.domain_graph
+    if not graph.fd_edges:
+        return False
+    return all(
+        graph.determines(coverage, component)
+        for component in pregrain.components - coverage
+    )
 
 
 def condition_key_grain(

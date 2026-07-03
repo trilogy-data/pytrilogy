@@ -29,11 +29,18 @@ def test_subset_violation_detected(tmp_path: Path):
     workdir = write_models(tmp_path)
     relations = _relations(workdir, "merge b.r_key into ~a.l_key;")
     assert [r.declaration for r in relations] == ["subset"]
+    # DIRECTION: the declared subset side is the checked source — the lie is
+    # a b-side value missing from a, never the reverse (the adversarial data
+    # has one exclusive value per side, so a reversed check also counts 1;
+    # only the source address distinguishes them).
+    assert relations[0].source == "b.r_key"
+    assert relations[0].target == "a.l_key"
     clean = make_engine(workdir)
     clean.parse_text(HEAD)
     violations = validate_domains(clean, relations)
     assert len(violations) == 1
     assert violations[0].violating_values == 1
+    assert violations[0].check.source == "b.r_key"
 
 
 def test_equal_violation_detected_both_directions(tmp_path: Path):

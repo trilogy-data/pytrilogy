@@ -21,7 +21,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from trilogy.core.enums import JoinType
+from trilogy.core.domain_graph import (
+    DomainGraph,
+    EdgeScope,
+)
+from trilogy.core.domain_graph import (
+    DomainRelation as DomainRelationKind,
+)
 
 if TYPE_CHECKING:
     from trilogy.core.models.environment import Environment
@@ -30,7 +36,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class DomainRelation:
-    source: str
+    source: str  # the declared SUBSET side for "subset"; checked source ⊆ target
     target: str
     declaration: str  # "subset" | "equal"
 
@@ -50,12 +56,21 @@ class DomainViolation:
 
 
 def declared_domain_relations(environment: "Environment") -> list[DomainRelation]:
+    """Declared relations from the domain graph's edges: a SUBSET edge is
+    stored subset-side-first (source ⊑ target), so the containment check
+    direction is correct by construction. (The former merge-tuple reading
+    checked the REVERSED direction for subsets — merge tuples store the
+    anchor first — and the adversarial proof data, carrying one exclusive
+    value per side, could not tell the difference.)"""
+    graph = DomainGraph.from_scoped_joins(
+        [(merge, EdgeScope.GLOBAL) for merge in environment.merges]
+    )
     out: list[DomainRelation] = []
-    for source, target, join_type in environment.merges:
-        if join_type is JoinType.LEFT_OUTER:
-            out.append(DomainRelation(source, target, "subset"))
-        elif join_type is JoinType.FULL:
-            out.append(DomainRelation(source, target, "equal"))
+    for edge in graph.edges:
+        if edge.relation is DomainRelationKind.SUBSET:
+            out.append(DomainRelation(edge.source, edge.target, "subset"))
+        elif edge.relation is DomainRelationKind.EQUAL:
+            out.append(DomainRelation(edge.source, edge.target, "equal"))
     return out
 
 
