@@ -1,4 +1,10 @@
 from trilogy.constants import MagicConstants
+from trilogy.core.domain_graph import (
+    DomainEdge,
+    DomainGraph,
+    DomainRelation,
+    EdgeScope,
+)
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -28,6 +34,36 @@ from trilogy.core.optimizations.value_set_join_upgrade import (
     _filters_equivalent,
     _pair_key_sets_equivalent,
 )
+
+
+def _union_declared_graph(address: str) -> DomainGraph:
+    """A query-scoped `union join <other> = <address>` declaration: the two
+    domains are incomparable and the canonical collapses onto ``address``."""
+    return DomainGraph(
+        edges=[
+            DomainEdge(
+                source="test.other_member",
+                target=address,
+                relation=DomainRelation.INCOMPARABLE,
+                scope=EdgeScope.STATEMENT,
+            )
+        ]
+    )
+
+
+def _equal_declared_graph(address: str) -> DomainGraph:
+    """A global non-partial `merge <other> into <address>` declaration: equal
+    domains, canonical collapsing onto ``address``."""
+    return DomainGraph(
+        edges=[
+            DomainEdge(
+                source="test.other_member",
+                target=address,
+                relation=DomainRelation.EQUAL,
+                scope=EdgeScope.GLOBAL,
+            )
+        ]
+    )
 
 
 def _concept(name: str):
@@ -344,7 +380,7 @@ def test_full_join_key_veto_blocks_upgrade():
     _outer_join(root, JoinType.FULL, left, right, cls)
 
     changed, _ = UpgradeOuterFromKeySetEquivalence(
-        full_join_keys={cls.address}
+        domain_graph=_union_declared_graph(cls.address)
     ).optimize(root, {})
 
     assert not changed
@@ -363,8 +399,7 @@ def test_equal_join_key_releases_full_veto():
     _outer_join(root, JoinType.FULL, left, right, cls)
 
     changed, _ = UpgradeOuterFromKeySetEquivalence(
-        full_join_keys={cls.address},
-        equal_join_keys={cls.address},
+        domain_graph=_equal_declared_graph(cls.address)
     ).optimize(root, {})
 
     assert changed
@@ -383,8 +418,7 @@ def test_equal_join_key_still_requires_completeness():
     _outer_join(root, JoinType.FULL, left, right, cls)
 
     changed, _ = UpgradeOuterFromKeySetEquivalence(
-        full_join_keys={cls.address},
-        equal_join_keys={cls.address},
+        domain_graph=_equal_declared_graph(cls.address)
     ).optimize(root, {})
 
     assert not changed
@@ -393,9 +427,12 @@ def test_equal_join_key_still_requires_completeness():
 
 def test_narrow_equal_domain_joins_config_gates_plan():
     """`narrow_equal_domain_joins` (default ON) controls whether the rule plan
-    forwards EQUAL keys — off, an EQUAL-declared key keeps the FULL veto."""
+    honors EQUAL declarations — off, an EQUAL-declared key keeps the FULL
+    veto."""
     from trilogy.constants import CONFIG
     from trilogy.core.optimization import build_optimization_rule_plan
+
+    graph = _equal_declared_graph("test.CLASS")
 
     def _rule(plan):
         return next(
@@ -403,19 +440,11 @@ def test_narrow_equal_domain_joins_config_gates_plan():
         ).rule_factory()
 
     assert CONFIG.optimizations.narrow_equal_domain_joins is True
-    on = _rule(
-        build_optimization_rule_plan(
-            full_join_keys={"test.CLASS"}, equal_join_keys={"test.CLASS"}
-        )
-    )
+    on = _rule(build_optimization_rule_plan(domain_graph=graph))
     assert on.full_join_keys == set()
     CONFIG.optimizations.narrow_equal_domain_joins = False
     try:
-        off = _rule(
-            build_optimization_rule_plan(
-                full_join_keys={"test.CLASS"}, equal_join_keys={"test.CLASS"}
-            )
-        )
+        off = _rule(build_optimization_rule_plan(domain_graph=graph))
         assert off.full_join_keys == {"test.CLASS"}
     finally:
         CONFIG.optimizations.narrow_equal_domain_joins = True

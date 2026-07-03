@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from trilogy.constants import CONFIG, logger
+from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import Derivation
 from trilogy.core.models.execute import CTE, Join, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
@@ -441,20 +442,9 @@ def _enabled_dependencies(*names: tuple[str, bool]) -> tuple[str, ...]:
 
 def build_optimization_rule_plan(
     having_alias: bool = False,
-    full_join_keys: set[str] | None = None,
-    equal_join_keys: set[str] | None = None,
-    subset_join_map: dict[str, str] | None = None,
-    scoped_canonical: dict[str, str] | None = None,
-    subset_binding_sources: dict[str, set[str]] | None = None,
+    domain_graph: DomainGraph | None = None,
 ) -> list[OptimizationRulePlan]:
     opts = CONFIG.optimizations
-    full_join_keys = full_join_keys or set()
-    equal_join_keys = (
-        (equal_join_keys or set()) if opts.narrow_equal_domain_joins else set()
-    )
-    subset_join_map = subset_join_map or {}
-    scoped_canonical = scoped_canonical or {}
-    subset_binding_sources = subset_binding_sources or {}
     plan: list[OptimizationRulePlan] = []
 
     if opts.merge_aggregate:
@@ -618,11 +608,8 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="upgrade_outer_key_set_equivalence",
                 rule_factory=lambda: UpgradeOuterFromKeySetEquivalence(
-                    full_join_keys=full_join_keys,
-                    equal_join_keys=equal_join_keys,
-                    subset_join_map=subset_join_map,
-                    scoped_canonical=scoped_canonical,
-                    subset_binding_sources=subset_binding_sources,
+                    domain_graph=domain_graph,
+                    narrow_equal_domain_joins=opts.narrow_equal_domain_joins,
                 ),
                 depends_on=_enabled_dependencies(
                     ("upgrade_join_on_guards.final", opts.upgrade_condition_joins)
@@ -715,11 +702,7 @@ def optimize_ctes(
     root_cte: CTE | UnionCTE,
     select: SelectStatement | MultiSelectStatement,
     having_alias: bool = False,
-    full_join_keys: set[str] | None = None,
-    equal_join_keys: set[str] | None = None,
-    subset_join_map: dict[str, str] | None = None,
-    scoped_canonical: dict[str, str] | None = None,
-    subset_binding_sources: dict[str, set[str]] | None = None,
+    domain_graph: DomainGraph | None = None,
 ) -> list[CTE | UnionCTE]:
     direct_parent: CTE | UnionCTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
@@ -736,11 +719,7 @@ def optimize_ctes(
     phase_actions: dict[str, bool] = {}
     rule_plan = build_optimization_rule_plan(
         having_alias=having_alias,
-        full_join_keys=full_join_keys,
-        equal_join_keys=equal_join_keys,
-        subset_join_map=subset_join_map,
-        scoped_canonical=scoped_canonical,
-        subset_binding_sources=subset_binding_sources,
+        domain_graph=domain_graph,
     )
     log_optimization_rule_plan(rule_plan)
     for phase in rule_plan:

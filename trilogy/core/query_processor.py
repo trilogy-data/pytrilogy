@@ -1221,12 +1221,12 @@ def process_query(
     # Every scoped join is a domain DECLARATION; collect them scope-tagged, in
     # declaration-priority order (statement, then global merges, then
     # rowset-BODY joins — `with rs as left join ...`, which ride the rowset's
-    # select lineage, not the outer statement's join_clauses). The narrowing
-    # registries below are queries against the resulting graph
-    # (docs/domain_graph_design.md): the subset side of every LEFT/subset
-    # relation feeds directional narrowing; EQUAL/INCOMPARABLE endpoints veto
-    # the outer-join upgrade (an EQUAL key may still narrow to INNER once
-    # completeness tests pass — a query-scoped FULL/UNION key never does).
+    # select lineage, not the outer statement's join_clauses). The resulting
+    # graph (docs/domain_graph_design.md) feeds CTE-level join narrowing: the
+    # subset side of every LEFT/subset relation drives directional narrowing;
+    # EQUAL/INCOMPARABLE endpoints veto the outer-join upgrade (an EQUAL key
+    # may still narrow to INNER once completeness tests pass — a query-scoped
+    # FULL/UNION key never does).
     scoped_pairs: list[tuple[tuple[str, str, JoinType], EdgeScope]] = []
     seen_joins: set[tuple[str, str, JoinType]] = set()
     tagged: list[tuple[tuple[str, str, JoinType], EdgeScope]] = [
@@ -1246,32 +1246,18 @@ def process_query(
             seen_joins.add(join)
             scoped_pairs.append((join, scope))
     domain_graph = DomainGraph.from_scoped_joins(scoped_pairs)
+    # binding facts ride along (PRE-substitution, from the author model) so
+    # the narrowing pass can arbitrate same-address join pairs by provenance.
     for binding in mint_binding_edges(environment):
         domain_graph.add_binding(binding)
     scoped_merge_map = dict(domain_graph.canonical_map())
-    subset_join_map = domain_graph.subset_join_map()
-    # For each subset address, the raw datasources that bind it NATIVELY —
-    # from the author model's binding edges, i.e. PRE-substitution, so it
-    # survives the canonical collapse and arbitrates same-address join pairs
-    # by provenance in the narrowing pass.
-    subset_binding_sources: dict[str, set[str]] = {}
-    for addr in subset_join_map:
-        sources = domain_graph.binding_sources(addr)
-        if sources:
-            subset_binding_sources[addr] = sources
-    full_join_keys = domain_graph.outer_relation_keys()
-    equal_join_keys = domain_graph.equal_narrowable_keys()
 
     final_ctes = optimize_ctes(
         deduped_ctes,
         root_cte,
         statement,
         having_alias=having_alias,
-        full_join_keys=full_join_keys,
-        equal_join_keys=equal_join_keys,
-        subset_join_map=subset_join_map,
-        scoped_canonical=scoped_merge_map,
-        subset_binding_sources=subset_binding_sources,
+        domain_graph=domain_graph,
     )
     _expose_downstream_referenced_columns(final_ctes, root_cte)
     return ProcessedQuery(

@@ -39,6 +39,7 @@ rename, hoist, or repartition intermediate CTEs.
 
 from __future__ import annotations
 
+from trilogy.core.domain_graph import DomainGraph, ResolvedRelation
 from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
@@ -432,14 +433,36 @@ def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     return bool(partial_addrs & keys)
 
 
+def _declared_subset_of(
+    graph: DomainGraph, sub_concept: BuildConcept, sup_concept: BuildConcept
+) -> bool:
+    """The author declared the sub side's concept a subset of the sup side's:
+    a directed ⊑ path over the declared edges (traversal handles chained
+    relations — `a ⊑ rs` + `b ⊑ a` — and EQUAL hops natively; the old
+    canonical-group-membership approximation is subsumed). The sub side keys
+    on its OWN exact address — the two relation endpoints are distinct
+    concepts, one per side, so the plain address is side-specific — while the
+    sup side matches through its pseudonym/canonical closure, since rendering
+    may have re-addressed it."""
+    if sub_concept.address == sup_concept.address:
+        return False
+    for candidate in sorted(_key_addresses(sup_concept)):
+        if candidate == sub_concept.address:
+            continue
+        if graph.relation(sub_concept.address, candidate) is ResolvedRelation.SUBSET:
+            return True
+    return False
+
+
 def _pair_side_fully_matches(
     sub_concept: BuildConcept,
     sub_cte: CTE | UnionCTE,
     sup_concept: BuildConcept,
     sup_cte: CTE | UnionCTE,
-    subset_join_map: dict[str, str] | None = None,
-    scoped_canonical: dict[str, str] | None = None,
-    subset_binding_sources: dict[str, set[str]] | None = None,
+    domain_graph: DomainGraph,
+    subset_join_map: dict[str, str],
+    scoped_canonical: dict[str, str],
+    subset_binding_sources: dict[str, set[str]],
 ) -> bool:
     """Every row of the subset side finds a partner on the superset side, so a
     join preserving the subset side's unmatched rows preserves nothing.
@@ -452,32 +475,11 @@ def _pair_side_fully_matches(
     superset side never proves subset-match, since a filter on another column
     can drop domain values asymmetrically.
 
-    The declaration arrives one of two ways: ``subset_join_map`` (a scoped
-    subset/left join or ``merge ~`` keyed by the subset side's OWN exact
-    address — the two endpoints are distinct concepts, one per side, so the
-    plain address is side-specific and the map's target names the superset
-    counterpart), or a ``partial_concepts`` stamp on the sub side, where both
-    endpoints name one concept and must share a source address."""
-
-    def canon(addr: str) -> str:
-        return (scoped_canonical or {}).get(addr, addr)
-
-    # a chained relation (`a ⊆ rs` + `b ⊆ a`) puts all endpoints in one
-    # canonical group whose root may be any member — same-group membership,
-    # not the map target itself, identifies the declared counterpart. A
-    # SAME-address pair carries no declared direction (group membership is
-    # vacuous when both endpoints are one concept) — only the side-specific
-    # partial stamps can arbitrate it.
-    declared = bool(
-        subset_join_map
-        and sub_concept.address != sup_concept.address
-        and sub_concept.address in subset_join_map
-        and (
-            subset_join_map[sub_concept.address] in _key_addresses(sup_concept)
-            or canon(sub_concept.address)
-            in {canon(a) for a in _key_addresses(sup_concept)}
-        )
-    )
+    The declaration arrives one of two ways: a ⊑ path in the domain graph
+    (``_declared_subset_of`` — distinct endpoint concepts, one per side), or
+    a ``partial_concepts`` stamp on the sub side, where both endpoints name
+    one concept and must share a source address."""
+    declared = _declared_subset_of(domain_graph, sub_concept, sup_concept)
     if not declared:
         if _source_address(sub_concept) != _source_address(sup_concept):
             return False
@@ -489,19 +491,17 @@ def _pair_side_fully_matches(
         # relation whose subset member got substituted onto the pair address —
         # arbitrate by PROVENANCE: the subset side is the one scanning a
         # datasource that natively binds a folded-away subset address of this
-        # group (``subset_binding_sources``, computed pre-substitution), and
+        # group (the graph's author-side binding facts, PRE-substitution), and
         # the superset side must not.
         if sub_concept.address == sup_concept.address:
-            if not (subset_join_map and subset_binding_sources and scoped_canonical):
+            if not (subset_join_map and subset_binding_sources):
                 return False
-            pair_canon = (scoped_canonical or {}).get(
-                sub_concept.address, sub_concept.address
-            )
+            pair_canon = scoped_canonical.get(sub_concept.address, sub_concept.address)
             sub_ids = _scan_identifiers(sub_cte)
             sup_ids = _scan_identifiers(sup_cte)
             if not any(
                 s != sub_concept.address
-                and (scoped_canonical or {}).get(s, s) == pair_canon
+                and scoped_canonical.get(s, s) == pair_canon
                 and (subset_binding_sources.get(s) or set()) & sub_ids
                 and not (subset_binding_sources.get(s) or set()) & sup_ids
                 for s in subset_join_map
@@ -510,7 +510,7 @@ def _pair_side_fully_matches(
     # relation-induced stamps (the declarations' subset sides) never speak to
     # a side's coverage of its OWN concept — exclude them from the
     # completeness veto so the superset side can still prove itself.
-    if not _complete_values(sup_concept, sup_cte, set(subset_join_map or {})):
+    if not _complete_values(sup_concept, sup_cte, set(subset_join_map)):
         return False
     return _accumulate_filter(sup_cte) is None
 
@@ -554,28 +554,42 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
 
     def __init__(
         self,
-        full_join_keys: set[str] | None = None,
-        equal_join_keys: set[str] | None = None,
-        subset_join_map: dict[str, str] | None = None,
-        scoped_canonical: dict[str, str] | None = None,
-        subset_binding_sources: dict[str, set[str]] | None = None,
+        domain_graph: DomainGraph | None = None,
+        narrow_equal_domain_joins: bool = True,
     ) -> None:
-        # Canonical addresses of query-scoped FULL-join keys; joins on these
-        # must never be upgraded to INNER (FULL's key stays complete, so the
-        # partial-driven checks can't protect it) — except keys declared EQUAL,
-        # which the completeness tests below legitimately arbitrate.
-        self.equal_join_keys = equal_join_keys or set()
-        self.full_join_keys = (full_join_keys or set()) - self.equal_join_keys
+        # The statement's declared-edge domain graph (plus author binding
+        # facts) — the one source of truth for what relations were authored
+        # (docs/domain_graph_design.md). The derived views below are the
+        # legacy registry shapes the pass still consumes internally; they
+        # dissolve as the predicates migrate to direct graph queries.
+        graph = domain_graph or DomainGraph()
+        self.domain_graph = graph
+        # Canonical addresses of EQUAL-declared keys (non-partial `merge a
+        # into b` — mutual subset): the canonical collapse genuinely names one
+        # value space, so the completeness tests below legitimately arbitrate
+        # and the join may narrow to INNER. Narrowing trusts the declaration;
+        # data violating it loses the violating rows.
+        self.equal_join_keys = (
+            graph.equal_narrowable_keys() if narrow_equal_domain_joins else set()
+        )
+        # Canonical addresses of ∦-declared (query-scoped FULL/UNION) keys;
+        # joins on these must never be upgraded to INNER (FULL's key stays
+        # complete, so the partial-driven checks can't protect it).
+        self.full_join_keys = graph.outer_relation_keys() - self.equal_join_keys
         # subset side (exact, side-specific address) → superset counterpart
         # for every SUBSET-declared relation; feeds directional narrowing.
-        self.subset_join_map = subset_join_map or {}
+        self.subset_join_map = graph.subset_join_map()
         # full member → canonical-group-root map for scoped relations, used to
         # recognize chained-relation counterparts by group membership.
-        self.scoped_canonical = scoped_canonical or {}
+        self.scoped_canonical = dict(graph.canonical_map())
         # subset address → raw datasource identifiers natively binding it
-        # (computed PRE-substitution); arbitrates same-address pairs by
-        # provenance.
-        self.subset_binding_sources = subset_binding_sources or {}
+        # (the graph's author-side binding facts, i.e. PRE-substitution);
+        # arbitrates same-address pairs by provenance.
+        self.subset_binding_sources = {
+            addr: sources
+            for addr in self.subset_join_map
+            if (sources := graph.binding_sources(addr))
+        }
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -702,6 +716,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                     right_cte,
                     pair.left,
                     pair.cte,
+                    self.domain_graph,
                     self.subset_join_map,
                     self.scoped_canonical,
                     self.subset_binding_sources,
@@ -717,6 +732,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                     pair.cte,
                     pair.right,
                     right_cte,
+                    self.domain_graph,
                     self.subset_join_map,
                     self.scoped_canonical,
                     self.subset_binding_sources,

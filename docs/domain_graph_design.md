@@ -42,6 +42,33 @@ reference binding populations by datasource identifier; (4) the overlay
 rides the existing `scoped_joins` parameter path; (2) and (5) deferred as
 written.
 
+## Landed (step 2, partial, 2026-07-03)
+
+- The narrowing pass is GRAPH-FED: `process_query` → `optimize_ctes` →
+  `build_optimization_rule_plan` pass the statement `DomainGraph` (declared
+  edges + author binding facts); the five-registry plumbing
+  (`full_join_keys`, `equal_join_keys`, `subset_join_map`,
+  `scoped_canonical`, `subset_binding_sources` parameters) is deleted.
+  `UpgradeOuterFromKeySetEquivalence(domain_graph, narrow_equal_domain_joins)`
+  derives what it still needs internally.
+- Directional narrowing's declared-counterpart check is a `relation()`
+  traversal (`_declared_subset_of`): chained relations and EQUAL hops
+  resolve by ⊑-reachability over ≡-classes, subsuming the old
+  canonical-group-membership approximation (and legitimately strengthening
+  it: a concept EQUAL-merged onto a declared subset side now counts).
+- Battery-verified identical: TPC-DS zquery SQL logs byte-stable; join
+  matrix + scoped-join/rowset suites green.
+- **Residual (2b.3)**: the same-address arbitration still infers the subset
+  side from physical scan identifiers × binding facts (now read from the
+  graph, but the LOGIC is unchanged), and the `partial_closure` /
+  `ignore_partial_addrs` stamp carve-outs remain. Deleting both requires
+  threading each CTE output's ORIGIN domain node (origin address +
+  accumulated condition) forward from the build — the "Resolution
+  semantics" section's design. That is where the new narrowing wins
+  (double-relation readback, shared-base shapes; q64 timing target) unlock.
+  Note: touches `execute.py` (CTE model), which currently carries unrelated
+  in-flight work.
+
 One environment-level directed graph over concepts, carrying TWO edge
 families:
 
