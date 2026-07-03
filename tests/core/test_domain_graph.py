@@ -126,6 +126,27 @@ def test_relation_resolution():
     assert mutual.relation("m", "n") is ResolvedRelation.EQUAL
 
 
+def test_proven_subset_ignores_incomparable():
+    """Rule B's proof query: ⊑ reachability consults containment evidence even
+    where an authored ∦ would short-circuit ``relation``; same-class (≡) and
+    unrelated pairs stay unproven."""
+    graph = DomainGraph(
+        edges=[
+            subset("a", "b", provenance=EdgeProvenance.STRUCTURAL),
+            subset("b", "c", provenance=EdgeProvenance.STRUCTURAL),
+            incomparable("a", "c", scope=EdgeScope.STATEMENT),
+            equal("c", "d"),
+            incomparable("x", "y", scope=EdgeScope.STATEMENT),
+        ]
+    )
+    assert graph.relation("a", "c") is ResolvedRelation.INCOMPARABLE
+    assert graph.proven_subset("a", "c")
+    assert graph.proven_subset("a", "d")
+    assert not graph.proven_subset("c", "a")
+    assert not graph.proven_subset("x", "y")
+    assert not graph.proven_subset("c", "d")
+
+
 def test_fd_closure_transitive():
     graph = DomainGraph(
         fd_edges=[
@@ -233,6 +254,9 @@ auto filtered <- filter aid where aid > 2;
 
 with rs as
 select aid where name = 'x';
+
+with aliased as
+select aid as renamed where name = 'y';
 """
 
 
@@ -251,6 +275,13 @@ def test_mint_structural_edges():
         e.relation is DomainRelation.SUBSET and e.condition is not None
         for e in rowset_edges
     ), "filtered rowset body means every output is a conditioned subset"
+    # a pure alias is the identity image: value-EQUAL to its argument, so the
+    # aliased-rowset chain proves aliased.renamed ⊑ aid end to end
+    graph = assemble_full_graph(env, DomainGraph())
+    assert ("local._aliased_renamed", "local.aid", DomainRelation.EQUAL) in {
+        (e.source, e.target, e.relation) for e in graph.edges
+    }
+    assert graph.proven_subset("aliased.renamed", "local.aid")
 
 
 def test_mint_binding_and_fd_edges():

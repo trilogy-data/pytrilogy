@@ -843,3 +843,45 @@ having value = 2;
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     assert len(results) == 1
+
+
+def test_filtered_aggregate_preserves_empty_groups(default_duckdb_engine: Executor):
+    """A filtered aggregate (`agg(x ? cond)`) must keep every group, emitting
+    NULL/0 for groups with no qualifying rows — not push the predicate into a
+    query-level WHERE that drops those groups (fuzzer:
+    edge__function__filtered_aggregates)."""
+    test = """
+key group_id int;
+key event_id int;
+property event_id.event_amount int;
+property event_id.nullable_amount int?;
+property event_id.active bool;
+datasource events (
+    eid: event_id,
+    gid: group_id,
+    amount: event_amount,
+    nullable_amount: nullable_amount,
+    active: active
+)
+grain (event_id)
+query '''select 1 as eid, 1 as gid, 10 as amount, null as nullable_amount, true as active
+union all select 2 as eid, 1 as gid, 5 as amount, 2 as nullable_amount, false as active
+union all select 3 as eid, 2 as gid, 7 as amount, 7 as nullable_amount, true as active
+union all select 4 as eid, 2 as gid, 3 as amount, null as nullable_amount, false as active
+union all select 5 as eid, 3 as gid, 11 as amount, 1 as nullable_amount, true as active
+union all select 6 as eid, 4 as gid, 4 as amount, null as nullable_amount, true as active''';
+
+select
+    group_id,
+    sum(event_amount ? active) as active_total,
+    sum(event_amount ? not active) as inactive_total,
+    count(event_id ? nullable_amount is null) as null_count
+order by group_id asc;
+"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert [tuple(r) for r in results] == [
+        (1, 10, 5, 1),
+        (2, 7, 3, 1),
+        (3, 11, None, 0),
+        (4, 4, None, 1),
+    ]

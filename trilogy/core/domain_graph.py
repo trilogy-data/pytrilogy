@@ -160,6 +160,7 @@ class DomainGraph:
         self._fd_keys: set[tuple] = set()
         self._canonical: dict[str, str] | None = None
         self._eq_classes: dict[str, str] | None = None
+        self._subset_sources: set[str] | None = None
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -189,6 +190,7 @@ class DomainGraph:
         self.edges.append(edge)
         self._canonical = None
         self._eq_classes = None
+        self._subset_sources = None
         return True
 
     def add_binding(self, edge: BindingEdge) -> bool:
@@ -257,13 +259,16 @@ class DomainGraph:
 
     def subset_sources(self) -> set[str]:
         """The subset side of every declared SUBSET relation, by its OWN
-        address (historical scoped_partial_sources)."""
-        return {
-            e.source
-            for e in self.edges
-            if e.relation is DomainRelation.SUBSET
-            and e.provenance is EdgeProvenance.DECLARED
-        }
+        address (historical scoped_partial_sources). Cached — completeness
+        predicates consult it per join pair."""
+        if self._subset_sources is None:
+            self._subset_sources = {
+                e.source
+                for e in self.edges
+                if e.relation is DomainRelation.SUBSET
+                and e.provenance is EdgeProvenance.DECLARED
+            }
+        return self._subset_sources
 
     def subset_join_map(self) -> dict[str, str]:
         """subset address -> its canonical superset counterpart."""
@@ -381,6 +386,23 @@ class DomainGraph:
                     seen.add(nxt)
                     frontier.append(nxt)
         return False
+
+    def proven_subset(self, sub: str, sup: str) -> bool:
+        """Directed ⊑ reachability between ≡-classes, ignoring ∦ declarations.
+
+        The containment EVIDENCE alone — declared/structural ⊑ edges and
+        unconditioned ≡ hops. Proof-based row-identity narrowing consults this
+        where ``relation``'s ∦ short-circuit would mask it: an authored ∦ can
+        be conservatively wrong in one direction, and a proven ⊑ path means
+        every sub-side row finds a partner on a complete superset side, so
+        preserving the sub side is a no-op. The ∦ stays in the graph; nothing
+        narrows where no proof exists. Same-class (≡) is deliberately NOT
+        accepted: EQUAL-declared narrowing is config-gated elsewhere."""
+        rep = self._equivalence_classes()
+        sub_class, sup_class = rep.get(sub, sub), rep.get(sup, sup)
+        if sub_class == sup_class:
+            return False
+        return self._subset_reachable(sub_class, sup_class, rep)
 
     def relation(
         self,
@@ -539,13 +561,33 @@ def structural_domain_edge(concept: Any) -> DomainEdge | None:
 
     Filter derivation `x' <- x ? cond` and a filtered rowset body give a
     subset edge carrying the filter; an unfiltered rowset output is
-    value-equal to its body concept (grouping preserves the value set).
-    BASIC image edges are deferred (they transfer completeness but not
-    distinctness without an injectivity table — design doc open question 2).
+    value-equal to its body concept (grouping preserves the value set); a
+    pure alias (`x as y` — the identity image, trivially injective) is
+    value-equal to its argument. Other BASIC image edges are deferred (they
+    transfer completeness but not distinctness without an injectivity table
+    — design doc open question 2).
     """
-    from trilogy.core.models.author import ConceptRef, FilterItem, RowsetItem
+    from trilogy.core.enums import FunctionType
+    from trilogy.core.models.author import (
+        ConceptRef,
+        FilterItem,
+        Function,
+        RowsetItem,
+    )
 
     lineage = getattr(concept, "lineage", None)
+    if (
+        isinstance(lineage, Function)
+        and lineage.operator is FunctionType.ALIAS
+        and len(lineage.arguments) == 1
+        and isinstance(lineage.arguments[0], ConceptRef)
+    ):
+        return DomainEdge(
+            source=concept.address,
+            target=lineage.arguments[0].address,
+            relation=DomainRelation.EQUAL,
+            provenance=EdgeProvenance.STRUCTURAL,
+        )
     if isinstance(lineage, FilterItem) and isinstance(lineage.content, ConceptRef):
         return DomainEdge(
             source=concept.address,

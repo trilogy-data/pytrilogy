@@ -3,6 +3,7 @@ from trilogy.core.domain_graph import (
     DomainEdge,
     DomainGraph,
     DomainRelation,
+    EdgeProvenance,
     EdgeScope,
 )
 from trilogy.core.enums import (
@@ -385,6 +386,127 @@ def test_full_join_key_veto_blocks_upgrade():
 
     assert not changed
     assert root.joins[0].jointype == JoinType.FULL
+
+
+def _two_concept_outer_join(
+    parent_holder: CTE, jointype: JoinType, left: CTE, right: CTE, left_key, right_key
+):
+    parent_holder.parent_ctes = [left, right]
+    parent_holder.joins = [
+        Join(
+            jointype=jointype,
+            right_cte=right,
+            modifiers=[Modifier.NULLABLE],
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=left_key,
+                    right=right_key,
+                    existing_datasource=left.source,
+                    cte=left,
+                    modifiers=[Modifier.NULLABLE],
+                )
+            ],
+        )
+    ]
+
+
+def test_rule_b_structural_proof_narrows_vetoed_full():
+    """Rule B: an authored ∦ vetoes the equivalence upgrade, but a structural
+    ⊑ path (rowset/filter lineage) against a complete, filter-free superset
+    side proves every sub-side row finds a partner — FULL narrows to the
+    directional join preserving the superset side, never to INNER."""
+    cls = _concept("CLASS")
+    sub = _concept("SUB")
+    graph = DomainGraph(
+        edges=[
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.SUBSET,
+                provenance=EdgeProvenance.STRUCTURAL,
+                condition="year = 1999",
+            ),
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.INCOMPARABLE,
+                scope=EdgeScope.STATEMENT,
+            ),
+        ]
+    )
+    source_left = _datasource_cte("dim_src", [cls])
+    source_right = _datasource_cte("agg_src", [sub])
+    left = _grouped_child("left", source_left, cls)
+    right = _grouped_child("right", source_right, sub)
+    root = _datasource_cte("root", [cls])
+    _two_concept_outer_join(root, JoinType.FULL, left, right, cls, sub)
+
+    rule = UpgradeOuterFromKeySetEquivalence(domain_graph=graph)
+    assert rule.full_join_keys, "the ∦ declaration must land in the veto set"
+    changed, _ = rule.optimize(root, {})
+    assert changed
+    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+    # re-running must not narrow further: no ⊑ proof exists for the other
+    # direction, so the superset side's preservation stays
+    changed, _ = rule.optimize(root, {})
+    assert not changed
+    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+
+
+def test_rule_b_filtered_superset_keeps_veto():
+    """A filtered superset side never proves subset-match — a WHERE on another
+    column drops domain values asymmetrically, so the vetoed FULL stays."""
+    cls = _concept("CLASS")
+    sub = _concept("SUB")
+    graph = DomainGraph(
+        edges=[
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.SUBSET,
+                provenance=EdgeProvenance.STRUCTURAL,
+            ),
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.INCOMPARABLE,
+                scope=EdgeScope.STATEMENT,
+            ),
+        ]
+    )
+    source_left = _datasource_cte("dim_src", [cls])
+    source_right = _datasource_cte("agg_src", [sub])
+    left = _grouped_child("left", source_left, cls)
+    left.condition = BuildComparison(
+        left=cls, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
+    )
+    right = _grouped_child("right", source_right, sub)
+    root = _datasource_cte("root", [cls])
+    _two_concept_outer_join(root, JoinType.FULL, left, right, cls, sub)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(domain_graph=graph).optimize(
+        root, {}
+    )
+    assert not changed
+    assert root.joins[0].jointype == JoinType.FULL
+
+
+def test_genuine_partial_stamp_narrows_same_address_full():
+    """A same-address pair where one side carries a genuine coverage stamp (a
+    `~` binding — no declared relation involved) and the other side is
+    complete narrows FULL to the join preserving the complete side (the
+    vehicle→launch enrichment shape)."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("dim_src", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _datasource_cte("launchish", [cls])
+    right.partial_concepts = [cls]
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
+    assert changed
+    assert root.joins[0].jointype == JoinType.LEFT_OUTER
 
 
 def test_equal_join_key_releases_full_veto():

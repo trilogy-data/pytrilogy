@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.domain_graph import DomainGraph, EdgeScope
+from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
@@ -1245,7 +1245,13 @@ def process_query(
         if join not in seen_joins:
             seen_joins.add(join)
             scoped_pairs.append((join, scope))
-    domain_graph = DomainGraph.from_scoped_joins(scoped_pairs)
+    # The optimizer needs the FULL graph — structural ⊑ edges (rowset/filter
+    # lineage) and binding facts drive proof-based narrowing (rule B), not just
+    # the declared overlay. Registry shims filter on DECLARED provenance, so
+    # the canonical map and veto sets are unchanged by the extra edges.
+    domain_graph = assemble_full_graph(
+        environment, DomainGraph.from_scoped_joins(scoped_pairs)
+    )
     scoped_merge_map = dict(domain_graph.canonical_map())
 
     final_ctes = optimize_ctes(

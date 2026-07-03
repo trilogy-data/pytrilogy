@@ -7,7 +7,6 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildFilterItem,
-    BuildFunction,
     BuildWhereClause,
     resolve_concepts_with_equivalents,
 )
@@ -112,118 +111,6 @@ def _resolve_parent_row_outputs(
     return unique(parent_row_concepts + resolved, "address")
 
 
-def _filter_content_has_sibling_filters(
-    concept: BuildConcept,
-    environment: BuildEnvironment,
-) -> bool:
-    """True if another concept in the environment is a filter on the same
-    content as ``concept`` but with a different ``where``.
-
-    Signals that the trilogy planner is likely to co-aggregate the sibling
-    filters in a single CTE using CASE WHEN per filter — pushing each into
-    its own source CTE would force N separate scans instead of one. Suppress
-    the broader pushdown in that case so the original single-CTE shape wins.
-    """
-    if not isinstance(concept.lineage, FILTER_TYPES):
-        return False
-    content = concept.lineage.content
-    if not isinstance(content, BuildConcept):
-        return False
-    target_where = concept.lineage.where
-    for other in environment.concepts.values():
-        if other.address == concept.address:
-            continue
-        other_lineage = other.lineage
-        if not isinstance(other_lineage, FILTER_TYPES):
-            continue
-        other_content = other_lineage.content
-        if not isinstance(other_content, BuildConcept):
-            continue
-        if other_content.address != content.address:
-            continue
-        if other_lineage.where == target_where:
-            continue
-        return True
-    return False
-
-
-def _filter_content_has_unfiltered_aggregate(
-    concept: BuildConcept,
-    environment: BuildEnvironment,
-) -> bool:
-    """True if another concept in the environment aggregates the filter's
-    content directly (without going through this — or any — filter).
-
-    Example (q61): ``promotional_sales = sum(price ? channel = Y)`` and
-    ``total = sum(price)`` both share ``price`` as content. Pushing the
-    channel predicate into the source CTE filters the rows feeding ``total``
-    too — wrong result. Detect this and keep the per-row CASE WHEN.
-    """
-    if not isinstance(concept.lineage, FILTER_TYPES):
-        return False
-    content = concept.lineage.content
-    if not isinstance(content, BuildConcept):
-        return False
-    for other in environment.concepts.values():
-        if other.address == concept.address:
-            continue
-        other_lineage = other.lineage
-        if not isinstance(other_lineage, BuildAggregateWrapper):
-            continue
-        # Inspect the aggregate's args: a direct concept argument matching
-        # the filter content means the aggregate sees raw (unfiltered) rows
-        # of that column.
-        func = other_lineage.function
-        if not isinstance(func, BuildFunction):
-            continue
-        for arg in func.arguments:
-            if isinstance(arg, BuildConcept) and arg.address == content.address:
-                return True
-    return False
-
-
-def _optional_cosourced_with_content(
-    concept: BuildConcept,
-    local_optional: list[BuildConcept],
-    environment: BuildEnvironment,
-) -> bool:
-    """True if a single datasource provides the filter content *and* every
-    local_optional concept.
-
-    The disjoint pushdown lifts the predicate into the parent relation's
-    WHERE. That parent is a per-row source for both the filtered concept and
-    every local_optional concept. If an optional concept lives only on a
-    *different* datasource (joined to the content's source by a key), filtering
-    the content's rows drops the join partner's unmatched rows — undercounting
-    any aggregate over that optional concept. Two measures on two key-joined
-    sources (sales + filtered returns) hit exactly this. Require co-sourcing so
-    the pushed WHERE can never reach across a join.
-
-    The co-sourcing datasource must cover every optional concept *non-partially*
-    (``full_concepts``). A partial FK column (``orders.customer.id`` for a
-    no-order customer) means the complete value set lives on a different,
-    OUTER-joined dimension; filtering the content's rows and grouping by that
-    partial key drops the zero-match dimension entities (TPC-H q13: customers
-    with no orders vanish). Falling back to the CASE-WHEN aggregate form
-    preserves them.
-    """
-    if not isinstance(concept.lineage, FILTER_TYPES):
-        return False
-    content = concept.lineage.content
-    if not isinstance(content, BuildConcept):
-        return False
-    optional_addresses = _concept_addresses(local_optional)
-    for datasource in environment.datasources.values():
-        ds_addresses = {c.address for c in datasource.output_concepts}
-        if (
-            content.address in ds_addresses
-            and optional_addresses <= ds_addresses
-            and optional_addresses <= datasource.full_concepts
-        ):
-            return True
-    return False
-
-
 def pushdown_filter_to_parent(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -248,50 +135,14 @@ def pushdown_filter_to_parent(
             f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
         )
         optimized_pushdown = True
-    else:
-        # Filter predicate references no concept also in local_optional —
-        # surviving rows still carry valid values for every grain key, so
-        # pushing the predicate to source is safe. The filtered concept now
-        # lives on rows that all satisfy the condition (raw content, no
-        # CASE WHEN), and downstream aggregates over the smaller relation
-        # produce the same per-group result. Groups with *no* qualifying
-        # rows simply don't appear instead of appearing with NULL — same
-        # outcome for any consumer that doesn't treat NULL aggregates
-        # specially.
-        #
-        # Suppress this when sibling filter items on the same content exist
-        # (e.g. q02's seven `price ? day_of_week = N`): the planner fuses
-        # those into one CTE with N CASE WHEN aggregates, and pushing each
-        # individually splits that into N separate scans.
-        filter_concept_addrs = {c.address for c in filter_where.concept_arguments}
-        local_optional_addrs = {c.address for c in local_optional}
-        # Spine-like concepts (UNNEST date series, ROWSET, RECURSIVE) carry
-        # their own row identity independent of the filter content's source.
-        # An INNER JOIN against a pre-filtered source erases spine rows that
-        # have no match, but the consumer expects every spine row to appear
-        # (with NULL/0 aggregates for the missing ones). Block pushdown in
-        # that case.
-        SPINE_DERIVATIONS = {
-            Derivation.UNNEST,
-            Derivation.RECURSIVE,
-            Derivation.ROWSET,
-        }
-        has_spine_local = any(x.derivation in SPINE_DERIVATIONS for x in local_optional)
-        if (
-            filter_concept_addrs
-            and filter_concept_addrs.isdisjoint(local_optional_addrs)
-            and not has_spine_local
-            and _optional_cosourced_with_content(concept, local_optional, environment)
-            and not _filter_content_has_sibling_filters(concept, environment)
-            and not _filter_content_has_unfiltered_aggregate(concept, environment)
-        ):
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} filter predicate disjoint "
-                f"from local_optional ({filter_concept_addrs} vs "
-                f"{local_optional_addrs}); pushing predicate to parent"
-            )
-            optimized_pushdown = True
-
+    # A predicate disjoint from local_optional is NOT safe to push into the
+    # source WHERE: when the filtered concept feeds an aggregate grouped by an
+    # optional key (`sum(x ? cond) by k`), dropping the non-qualifying rows also
+    # drops any k-group with no qualifying row, but the aggregate-internal `?`
+    # must keep it (emitting NULL/0), unlike a query-level WHERE. gen_filter_node
+    # can't see whether a downstream aggregate/filter erases that distinction, so
+    # we always keep the per-row CASE WHEN here (fuzzer:
+    # edge__function__filtered_aggregates).
     return optimized_pushdown
 
 

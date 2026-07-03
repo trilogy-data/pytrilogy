@@ -1,6 +1,6 @@
 query_id = "64"
 generator = "v3"
-gen_length = 19747
+gen_length = 19765
 preql_size = 3765
 comp_size = 3783
 generated_sql = """
@@ -342,12 +342,12 @@ SELECT
 FROM
     \"sparkling\"
     INNER JOIN \"hard\" on 1=1
-    LEFT OUTER JOIN \"premium\" on \"sparkling\".\"ss_item_id\" = \"premium\".\"agg_99_item_sk_99\"
-    FULL JOIN \"puzzled\" on \"hard\".\"ss_store_id\" = \"puzzled\".\"agg_99_store_sk_99\"
     INNER JOIN \"puffy\" on 1=1
-    FULL JOIN \"charming\" on \"puffy\".\"ss_sale_address_id\" = \"charming\".\"agg_99_b_addr_99\"
     INNER JOIN \"rambunctious\" on 1=1
-    FULL JOIN \"protective\" on \"rambunctious\".\"ss_customer_address_id\" = \"protective\".\"agg_99_c_addr_99\"
+    LEFT OUTER JOIN \"premium\" on \"sparkling\".\"ss_item_id\" = \"premium\".\"agg_99_item_sk_99\"
+    LEFT OUTER JOIN \"puzzled\" on \"hard\".\"ss_store_id\" = \"puzzled\".\"agg_99_store_sk_99\"
+    LEFT OUTER JOIN \"charming\" on \"puffy\".\"ss_sale_address_id\" = \"charming\".\"agg_99_b_addr_99\"
+    LEFT OUTER JOIN \"protective\" on \"rambunctious\".\"ss_customer_address_id\" = \"protective\".\"agg_99_c_addr_99\"
 GROUP BY
     1,
     2,

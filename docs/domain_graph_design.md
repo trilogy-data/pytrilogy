@@ -210,6 +210,61 @@ written.
   (null-safe reduction target), q09/q97/q77/q05 FULLs are partly legitimate
   channel unions.
 
+## Landed (rule B + carve-out deletion, 2026-07-03)
+
+- **Rule B — graph-proven subset narrowing through the ∦ veto**
+  (value_set_join_upgrade.py / domain_graph.py / query_processor.py):
+  - `DomainGraph.proven_subset(sub, sup)` — directed ⊑ reachability between
+    ≡-classes that IGNORES ∦ declarations: the containment evidence alone.
+    Same-class is deliberately unproven (EQUAL narrowing stays config-gated).
+  - `structural_domain_edge` now also mints a structural EQUAL edge for a
+    pure `alias()` BASIC (the identity image, trivially injective) — the hop
+    that connects a rowset's aliased output (`select x as y`) to its source
+    concept. Without it the q64 chains break at `local._agg_99_*`.
+  - `process_query` assembles the FULL graph (`assemble_full_graph` over the
+    declared overlay) for the optimizer — structural/binding edges were
+    previously only on `BuildEnvironment.domain_graph`. Registry shims all
+    filter DECLARED provenance, so canonical maps and veto sets are
+    unchanged.
+  - `optimize()` no longer blanket-skips ∦-touching joins: they fall through
+    to `_narrow_directionally(graph_proof_only=True)` — only a proven ⊑ path
+    (`_proven_subset_of`, né `_declared_subset_of`) against a complete,
+    filter-free superset side narrows; the equivalence upgrade and stamp
+    heuristics stay vetoed. The ∦ stays declared.
+  - Same-address directional narrowing accepts a GENUINE coverage stamp
+    (`_genuine_partial_stamp`): a `~`-binding partial on the sub side, at an
+    address outside the graph's declared subset endpoints, absent on the sup
+    side — the vehicle→launch enrichment shape. This is what flipped the two
+    pre-existing gcat failures (`test_join_inclusion`,
+    `test_joint_join_concept_injection`) to passing, plus q23 (fact→item
+    LEFT→INNER), q77/q93 (store_sales↔store_returns FULL→LEFT), and
+    gcat `test_join_discovery_two` (FULL→RIGHT preserving the dim —
+    expectation updated).
+  - q64: the 3 readback FULLs in `sedate` → LEFT OUTER (structural ⊑ chains
+    `agg_99.* ⊑ alias ⊑ ss_rows_99.* ⊑ base` against complete dim sides).
+    Battery 106/106; q64 single-run exec 37.2s vs 39.0s at clean HEAD.
+  - NOT narrowed: the enrichment `customer FULL JOIN customer_address`
+    (C_CURRENT_ADDR_SK = CA_ADDRESS_SK). Both bindings are complete-in-schema
+    with no `~` and no declared/structural ⊑ — narrowing it would mean
+    trusting undeclared scan completeness for a fact-FK, which
+    `_authoritative_scan` deliberately rejects. A veto-refinement via origin
+    stamps (unveto same-address pairs with no ∦-member origins) was built and
+    REVERTED: it broke the veto's contract
+    (`test_full_join_key_veto_blocks_upgrade`) and bought nothing — the pair
+    fails the standard machinery anyway.
+- **Carve-out deletion**: `partial_closure` / `ignore_partial_addrs`
+  parameters and the `subset_join_map`-derived ignore sets are gone.
+  `_complete_distinct` keeps only the closure semantics (the equivalence
+  claim — relation stamps anywhere in the group disqualify, which is
+  load-bearing: ignoring them there would let a scoped-LEFT subset side claim
+  equivalence and upgrade to INNER). The directional claim has its own
+  predicate `_own_coverage_partial(concept, cte, graph)`: exact-address
+  stamps outside `graph.subset_sources()` (now cached) block; relation
+  stamps speak to the relation. `_complete_values` /
+  `_equal_intersection_complete` / `_complete_via_preserved_base` take the
+  graph instead of ignore sets. `subset_join_map` survives only for the
+  same-address ORIGIN arbitration (its legitimate use).
+
 One environment-level directed graph over concepts, carrying TWO edge
 families:
 

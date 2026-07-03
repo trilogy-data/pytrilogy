@@ -561,8 +561,11 @@ LIMIT 1
 ;
 """)
     sql = base.generate_sql(queries[-1])
+    # the launch side's vehicle keys are `~` bindings (⊑ the vehicle domain),
+    # lv_info binds them completely — the preserving FULL narrows to the join
+    # preserving only the complete dimension side
     pattern = (
-        r'FULL JOIN "lv_info" as "vehicle_lv_info" on '
+        r'RIGHT OUTER JOIN "lv_info" as "vehicle_lv_info" on '
         r'"(\w+)"\."vehicle_name" = "vehicle_lv_info"\."LV_Name" AND '
         r'"\1"\."vehicle_variant" = "vehicle_lv_info"\."LV_Variant"'
     )

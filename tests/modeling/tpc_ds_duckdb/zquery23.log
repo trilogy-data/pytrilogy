@@ -1,6 +1,6 @@
 query_id = "23"
 generator = "v3"
-gen_length = 8150
+gen_length = 8145
 preql_size = 1570
 comp_size = 2441
 generated_sql = """
@@ -55,7 +55,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"questionable\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"questionable\".\"sales_date_id\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
      'STORE'  = 'STORE'
 
