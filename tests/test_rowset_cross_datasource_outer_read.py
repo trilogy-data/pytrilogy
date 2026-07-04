@@ -357,3 +357,53 @@ full join rs.k = b.bid
 order by rs.k;
 """).fetchall()]
     assert rows == [(1, 100.0), (2, 200.0), (3, None), (4, 400.0)]
+
+
+# --- Subordinate coalesced-key read-back across the rowset boundary (TPC-DS q64).
+# A coalescing scoped join (`full`/`subset`/`union`) collapses the join-key group
+# (`a.aid = b.bid`) onto ONE canonical body column, leaving the authored side
+# (`a.aid`) only as a pseudonym. When `a.aid` is projected UNALIASED into the
+# rowset and referenced downstream by that authored address (`rs.a.aid`), the body
+# had no source-map entry for it -> the renderer emitted a Missing-source sentinel.
+# The read-back must render cleanly and match the single-statement oracle.
+# Data: a {1,2,3}, b {1,2,4}.
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("jt", ["subset", "union", "full", "left"])
+def test_rowset_subordinate_key_readback_no_sentinel(models: Path, jt: str):
+    sql = _gen(
+        models,
+        f"""
+import a as a;
+import b as b;
+with rs as
+select a.aid, count(a.av) as sa
+{jt} join a.aid = b.bid;
+select rs.a.aid, rs.sa order by rs.a.aid;
+""",
+    )
+    assert sql and "INVALID_REFERENCE_BUG" not in sql
+
+
+@pytest.mark.parametrize("jt", ["subset", "union", "full", "left"])
+def test_rowset_subordinate_key_readback_matches_single_statement(
+    models: Path, jt: str
+):
+    eng = _matrix_engine(models)
+    single = [tuple(r) for r in eng.execute_query(f"""
+import a as a;
+import b as b;
+select a.aid, count(a.av) as sa
+{jt} join a.aid = b.bid
+order by a.aid;
+""").fetchall()]
+    boundary = [tuple(r) for r in eng.execute_query(f"""
+import a as a;
+import b as b;
+with rs as
+select a.aid, count(a.av) as sa
+{jt} join a.aid = b.bid;
+select rs.a.aid, rs.sa order by rs.a.aid;
+""").fetchall()]
+    assert boundary == single

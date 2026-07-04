@@ -37,6 +37,7 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     GroupMode,
+    JoinType,
     Modifier,
     Ordering,
     PersistMode,
@@ -89,6 +90,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
     CompiledCTE,
+    Join,
     RecursiveCTE,
     UnionCTE,
 )
@@ -655,6 +657,39 @@ PARTITIONED BY (
 """.strip())
 
 
+def _outer_join_key_class(cte: CTE, address: str) -> list[BuildConcept]:
+    adjacent: dict[str, set[str]] = defaultdict(set)
+    for join in cte.joins:
+        if not isinstance(join, Join) or join.jointype not in (
+            JoinType.LEFT_OUTER,
+            JoinType.RIGHT_OUTER,
+            JoinType.FULL,
+        ):
+            continue
+        for pair in join.joinkey_pairs or []:
+            left = pair.left.address
+            right = pair.right.address
+            if left == right:
+                continue
+            adjacent[left].add(right)
+            adjacent[right].add(left)
+    if address not in adjacent:
+        return []
+    pending = [address]
+    seen: set[str] = set()
+    concepts: list[BuildConcept] = []
+    while pending:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        concept = cte.get_concept(current)
+        if concept is not None:
+            concepts.append(concept)
+        pending.extend(adjacent[current] - seen)
+    return concepts
+
+
 def safe_get_cte_value(
     coalesce: Callable,
     cte: CTE | UnionCTE,
@@ -675,6 +710,25 @@ def safe_get_cte_value(
         # a normal CTE, the raw-table alias for an inlined DatasourceCTE.
         alias = cte.source_key_for(source) if isinstance(cte, CTE) else source
         return f"{quote_char}{alias}{quote_char}.{safe_quote(rendered, quote_char)}"
+
+    if isinstance(cte, CTE):
+        key_class = _outer_join_key_class(cte, address)
+        if len(key_class) > 1:
+            renders: list[str] = []
+            for member in key_class:
+                for source in cte.source_map.get(member.address, []):
+                    rendered = cte.get_alias(member, source)
+                    if isinstance(rendered, str) and rendered.startswith(
+                        "INVALID_ALIAS:"
+                    ):
+                        continue
+                    use_map[source].add(member.address)
+                    renders.append(_format(source, rendered))
+            unique_renders = sorted(set(renders))
+            if len(unique_renders) > 1:
+                return coalesce(unique_renders, [])
+            if unique_renders:
+                return unique_renders[0]
 
     if not raw:
         # No explicit source, but an inlined datasource may still expose this

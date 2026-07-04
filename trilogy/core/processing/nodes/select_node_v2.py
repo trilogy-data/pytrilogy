@@ -224,7 +224,7 @@ class SelectNode(StrategyNode):
         return resolution
 
     def copy(self) -> "SelectNode":
-        return SelectNode(
+        node = SelectNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -244,6 +244,8 @@ class SelectNode(StrategyNode):
             ordering=self.ordering,
             existence_concepts=list(self.existence_concepts),
         )
+        node.limit = self.limit
+        return node
 
 
 class RowsetNode(SelectNode):
@@ -257,7 +259,7 @@ class RowsetNode(SelectNode):
     """
 
     def copy(self) -> "RowsetNode":
-        return RowsetNode(
+        node = RowsetNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -277,6 +279,8 @@ class RowsetNode(SelectNode):
             ordering=self.ordering,
             existence_concepts=list(self.existence_concepts),
         )
+        node.limit = self.limit
+        return node
 
 
 class ConstantNode(SelectNode):

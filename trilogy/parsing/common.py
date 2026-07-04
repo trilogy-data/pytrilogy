@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any, Iterable, List, Mapping, Tuple
+from typing import Any, Callable, Iterable, List, Mapping, Tuple
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
@@ -688,6 +688,53 @@ def concept_is_relevant(
     return True
 
 
+def _grain_contribution(
+    x: Concept,
+    lookup: Callable[[str], Concept | None],
+    environment: Environment | None,
+    _seen: frozenset[str] = frozenset(),
+) -> list[Concept]:
+    """The concept(s) `x` contributes to a grain.
+
+    - ALIAS: a rename of its source — recurse on the source so a window/grouping
+      source is substituted the same way it would be if referenced directly
+      (else an aliased window enters the grain as itself → build recursion).
+    - WINDOW: contribute the window's keys (partition + anchor), not the
+      row-distinct output whose order_by aggregate would otherwise be grouped by
+      this very output.
+    - BASIC wrapping a window AND referencing `grouping()`: a post-aggregation row
+      label, not a grain key; contribute the nested window's partition/anchor keys
+      (q70). A window-wrapping CASE without grouping (e.g. `top_x_by_metric`) is a
+      legitimate bucketing key and is left untouched.
+    - otherwise: itself.
+    """
+    if (
+        x.lineage
+        and isinstance(x.lineage, Function)
+        and x.lineage.operator == FunctionType.ALIAS
+        and environment
+    ):
+        source_addr = x.lineage.arguments[0].address  # type: ignore
+        source = lookup(source_addr)
+        if source is None or source_addr in _seen:
+            return [x]
+        return _grain_contribution(source, lookup, environment, _seen | {x.address})
+    if x.derivation == Derivation.WINDOW and x.keys and environment:
+        return [c for kaddr in x.keys if (c := lookup(kaddr)) is not None]
+    if (
+        x.derivation == Derivation.BASIC
+        and environment
+        and _gather_nested_windows(x.lineage)
+        and _references_grouping(x, environment)
+    ):
+        return [
+            c
+            for ref in _nested_window_grain_refs(x.lineage)
+            if (c := lookup(ref.address)) is not None
+        ]
+    return [x]
+
+
 def concepts_to_grain_concepts_ordered(
     concepts: Iterable[Concept | ConceptRef | str],
     environment: Environment | None,
@@ -722,48 +769,7 @@ def concepts_to_grain_concepts_ordered(
 
     preconcepts: list[Concept] = []
     for x in raw:
-        if (
-            x.lineage
-            and isinstance(x.lineage, Function)
-            and x.lineage.operator == FunctionType.ALIAS
-            and environment
-        ):
-            # alias is a renamed view of the source — use the source for grain
-            source_addr = x.lineage.arguments[0].address  # type: ignore
-            source = _lookup(source_addr)
-            preconcepts.append(source if source is not None else x)
-        elif x.derivation == Derivation.WINDOW and x.keys and environment:
-            # A window output (rank/row_number/…) is row-distinct, so it would
-            # otherwise enter the grain as itself. But its value is determined by
-            # its keys (partition + anchor), and its order_by may re-derive an
-            # aggregate that would then be grouped by this very output — a build
-            # recursion. Contribute the window's keys to the grain instead.
-            for kaddr in x.keys:
-                key_concept = _lookup(kaddr)
-                if key_concept is not None:
-                    preconcepts.append(key_concept)
-        elif (
-            x.derivation == Derivation.BASIC
-            and environment
-            and _gather_nested_windows(x.lineage)
-            and _references_grouping(x, environment)
-        ):
-            # A BASIC concept *wrapping* a window (e.g. a CASE whose branch is
-            # `rank(...) over (... order by sum(...))`) AND referencing a
-            # `grouping()` is a post-aggregation row label, not a grain key. Its
-            # own keys are the base-row grain, and entering the grain as itself
-            # lets the window's `order by sum(...)` be grouped by this concept
-            # while its `grouping()` resolves its `by` *to* the select grain —
-            # a build-time grain self-reference (q70 RecursionError). Contribute
-            # the nested window's partition/anchor keys instead. (A window-wrapping
-            # CASE without grouping — e.g. `top_x_by_metric` — is a legitimate
-            # bucketing grain key and is left untouched.)
-            for ref in _nested_window_grain_refs(x.lineage):
-                key_concept = _lookup(ref.address)
-                if key_concept is not None:
-                    preconcepts.append(key_concept)
-        else:
-            preconcepts.append(x)
+        preconcepts.extend(_grain_contribution(x, _lookup, environment))
     seen: set[str] = set()
     output: list[str] = []
     for sub in preconcepts:

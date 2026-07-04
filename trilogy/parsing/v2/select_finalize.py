@@ -869,6 +869,35 @@ def _child_exprs(node: Any) -> Iterator[Any]:
         yield from node.values()
 
 
+def _expression_contains_window(node: Any) -> bool:
+    if isinstance(node, (NavigationWindowItem, NumberingWindowItem)):
+        return True
+    return any(_expression_contains_window(child) for child in _child_exprs(node))
+
+
+def _window_key_addresses(node: Any) -> set[str]:
+    if isinstance(node, (NavigationWindowItem, NumberingWindowItem)):
+        refs = {
+            expr.address
+            for expr in [
+                *node.over,
+                *(item.expr for item in node.order_by),
+            ]
+            if isinstance(expr, ConceptRef)
+        }
+        if isinstance(node, NavigationWindowItem):
+            refs |= _window_key_addresses(node.content)
+        else:
+            for argument in node.arguments:
+                refs |= _window_key_addresses(argument)
+        return refs
+    return {
+        address
+        for child in _child_exprs(node)
+        for address in _window_key_addresses(child)
+    }
+
+
 def _collect_aggregate_wrappers(
     node: Any, predicate: Callable[[Any], bool]
 ) -> list[AggregateWrapper]:
@@ -914,9 +943,13 @@ def _select_rollup_spec(
 
 def _is_standard_grouping_aggregate(node: Any) -> bool:
     return (
-        isinstance(node, AggregateWrapper)
-        and node.grouping == AggregateGroupingMode.STANDARD
-        and node.function.operator in _GROUPING_FNS
+        _is_grouping_aggregate(node) and node.grouping == AggregateGroupingMode.STANDARD
+    )
+
+
+def _is_grouping_aggregate(node: Any) -> bool:
+    return (
+        isinstance(node, AggregateWrapper) and node.function.operator in _GROUPING_FNS
     )
 
 
@@ -924,6 +957,37 @@ def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
     """All STANDARD-mode ``grouping()``/``grouping_id()`` wrappers anywhere in an
     expression tree (e.g. nested inside a ``case`` that derives a rollup level)."""
     return _collect_aggregate_wrappers(node, _is_standard_grouping_aggregate)
+
+
+def _is_window_item(node: Any) -> bool:
+    return isinstance(node, (NavigationWindowItem, NumberingWindowItem))
+
+
+def _lineage_reaches(
+    lineage: Any, context: RuleContext, predicate: Callable[[Any], bool], seen: set[str]
+) -> bool:
+    """True when a node matching ``predicate`` is reachable from ``lineage``,
+    descending through by-name ``ConceptRef``s into their concept lineages so a
+    named ``auto`` concept is inspected too. A rowset output is a materialized
+    boundary (its aggregates ran inside the rowset's own pass), so descent stops
+    at a ``RowsetItem`` lineage — not an ``Expr`` node, so ``_child_exprs`` yields
+    nothing. ``seen`` guards against cyclic lineage."""
+    if predicate(lineage):
+        return True
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in seen:
+            return False
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if concept is None or isinstance(
+            concept, (UndefinedConcept, UndefinedConceptFull)
+        ):
+            return False
+        return _lineage_reaches(concept.lineage, context, predicate, seen)
+    return any(
+        _lineage_reaches(child, context, predicate, seen)
+        for child in _child_exprs(lineage)
+    )
 
 
 def _is_ungrouped_aggregate(node: Any) -> bool:
@@ -943,8 +1007,10 @@ def _collect_ungrouped_aggregates_deep(
     """Un-grouped aggregate wrappers reachable from a lineage, descending through
     by-name ``ConceptRef``s into their concept lineages — so a named
     ``auto t <- sum(x)`` (or a ``grouping()`` buried inside a derived level
-    concept) referenced in the SELECT still inherits the grouping spec. The
-    ``seen`` set guards against cyclic lineage."""
+    concept) referenced in the SELECT still inherits the grouping spec. Window
+    partition and ordering expressions are included because their aggregates
+    execute over the enclosing SELECT's grouped rows. The ``seen`` set guards
+    against cyclic lineage."""
     found: list[AggregateWrapper] = []
     if isinstance(lineage, ConceptRef):
         if lineage.address in seen:
@@ -960,6 +1026,12 @@ def _collect_ungrouped_aggregates_deep(
         found.append(cast(AggregateWrapper, lineage))
     for child in _child_exprs(lineage):
         found.extend(_collect_ungrouped_aggregates_deep(child, context, seen))
+    if isinstance(lineage, (NavigationWindowItem, NumberingWindowItem)):
+        for child in [
+            *lineage.over,
+            *(item.expr for item in lineage.order_by),
+        ]:
+            found.extend(_collect_ungrouped_aggregates_deep(child, context, seen))
     return found
 
 
@@ -1022,15 +1094,26 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
         )
     spec = select.grouping
     if spec is None:
-        # No grouping to propagate: just reject a stray projected grouping().
+        # No grouping to propagate: reject a stray projected grouping(), whether
+        # inline or reached through a named `auto g <- grouping(x)` concept — both
+        # render a groupless GROUPING() CTE -> DuckDB "GROUPING statement cannot be
+        # used without groups". A grouping() sharing a lineage with a window is the
+        # valid q70 post-aggregation label (the grain guard keeps it out of the
+        # grain and it renders against the window's aggregate GROUP BY), so a window
+        # anywhere in the item's reachable lineage exempts it.
         for item in select.selection:
             lineage = _item_lineage(item, context)
-            if lineage is not None and _collect_standard_grouping_wrappers(lineage):
-                raise InvalidSyntaxException(
-                    "grouping()/grouping_id() requires a `by rollup (…)`/"
-                    "`by cube (…)`/`by grouping sets (…)` clause on the enclosing "
-                    "select; it has no meaning without a grouping set."
-                )
+            if lineage is None or not _lineage_reaches(
+                lineage, context, _is_standard_grouping_aggregate, set()
+            ):
+                continue
+            if _lineage_reaches(lineage, context, _is_window_item, set()):
+                continue
+            raise InvalidSyntaxException(
+                "grouping()/grouping_id() requires a `by rollup (…)`/"
+                "`by cube (…)`/`by grouping sets (…)` clause on the enclosing "
+                "select; it has no meaning without a grouping set."
+            )
         return
     _validate_grouping_args_are_concepts(select, context)
     _normalize_grouping_args_to_rollup_keys(select, context)
@@ -1099,9 +1182,32 @@ def _existing_grouping_outputs(
         if not isinstance(item.content, ConceptTransform):
             continue
         fn = item.content.function
-        if isinstance(fn, AggregateWrapper) and _is_standard_grouping_aggregate(fn):
+        if isinstance(fn, AggregateWrapper) and _is_grouping_aggregate(fn):
             results.setdefault(_grouping_arg_key(fn), item.content.output.reference)
     return results
+
+
+def _substitute_window_grouping_outputs(select: SelectStatement) -> None:
+    outputs = _existing_grouping_outputs(select)
+    if not outputs:
+        return
+
+    def match(node: Any) -> ConceptRef | None:
+        if not _is_grouping_aggregate(node):
+            return None
+        return outputs.get(_grouping_arg_key(node))
+
+    for item in select.selection:
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        function = item.content.function
+        if not isinstance(function, (NavigationWindowItem, NumberingWindowItem)):
+            continue
+        rewritten = _substitute_condition_tree(function, match)
+        if rewritten is function:
+            continue
+        item.content.function = rewritten
+        item.content.output.lineage = rewritten
 
 
 def _promote_having_grouping_to_outputs(
@@ -1436,6 +1542,21 @@ def _rewrite_having_finer_dims_to_membership(
     if not select.having_clause:
         return
     grain_keys = sorted(select.grain.components)
+    stable_grain_keys = []
+    window_keys: set[str] = set()
+    for address in grain_keys:
+        concept = select.local_concepts.get(address) or context.concepts.get(address)
+        lineage = getattr(concept, "lineage", None)
+        if isinstance(lineage, (NavigationWindowItem, NumberingWindowItem)):
+            window_keys |= _window_key_addresses(lineage)
+            continue
+        if lineage is not None and _expression_contains_window(lineage):
+            window_keys |= _window_key_addresses(lineage)
+            continue
+        stable_grain_keys.append(address)
+    stable_grain_keys.extend(sorted(window_keys - set(stable_grain_keys)))
+    if stable_grain_keys:
+        grain_keys = stable_grain_keys
 
     def needs_membership(leaf: Any) -> bool:
         # SubselectComparison subclasses Comparison: an existing `x in <set>`
@@ -1670,7 +1791,11 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
         # row_arguments, not concept_arguments: an `x in <set>` membership's
         # existence RHS is sourced as a subselect at plan time and need not be
         # projected — only the row side must resolve.
-        allowed_for_having = allowed_addresses | set(select.grain.components)
+        allowed_for_having = (
+            allowed_addresses
+            | set(select.grain.components)
+            | {x.address for x in select.output_components}
+        )
         undefined_refs: list[str] = []
         unhandled_refs: list[str] = []
         for cref in select.having_clause.row_arguments:
@@ -1731,6 +1856,7 @@ def finalize_select_statement(
     # aggregate before grain calc, so the select grain reflects the grouping keys
     # and all measures share one grouping pass.
     _propagate_select_grouping(select, context)
+    _substitute_window_grouping_outputs(select)
     # Promote any HAVING grouping() to a hidden output before the SELECT loop so
     # it materializes in the ROLLUP CTE instead of stranding downstream.
     _promote_having_grouping_to_outputs(select, context)

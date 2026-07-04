@@ -16,7 +16,9 @@ The generated families cover scalar filters, grouped aggregates, WHERE/HAVING,
 nested and membership rowsets, filtered/statistical functions, ROLLUP/CUBE,
 aggregate and partitioned windows, relational `union(...)`, derived
 `subset join`/`union join`, multiway and composite domain joins, offset join
-expressions, nested parent-grain aggregates, and chasm/fanout aggregation.
+expressions, nested parent-grain aggregates, chasm/fanout aggregation,
+subordinate keys crossing rowset boundaries, and named grouping-derived
+window partitions under ROLLUP/CUBE.
 
 Run everything from the repository root:
 

@@ -131,6 +131,11 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             return False, None
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             return False, None
+        # a limited PARENT is an opaque boundary (fusing the child's group into
+        # it would re-aggregate below the limit); a limited CHILD is fine — its
+        # limit transfers to the merged CTE below.
+        if parent.limit is not None:
+            return False, None
         if not _is_group_by_cte(parent):
             return False, None
 
@@ -191,6 +196,11 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         ]
         parent.grain = cte.grain
         parent.hidden_concepts = parent.hidden_concepts.union(cte.hidden_concepts)
+        # LIMIT is the last logical operation of a SELECT — the child's limit
+        # (and its ORDER BY) carries onto the merged CTE unchanged
+        if cte.limit is not None:
+            parent.limit = cte.limit
+            parent.order_by = cte.order_by
 
         repoint_consumers(cte, parent, inverse_map)
 

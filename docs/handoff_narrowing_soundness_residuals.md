@@ -1,5 +1,49 @@
 # Handoff: join-narrowing soundness residuals (pre-drop hole + evidence audits)
 
+## RESOLVED 2026-07-03 (same day, later session) — all three tasks closed
+
+- **Task 1 (pre-drop hole): CLOSED, unreachable.** No repro constructible;
+  the invariant: every producer of a chain-earlier dropping join is either
+  proof-based (drops nothing on honest data), declaration-trusted (ruled
+  semantics), or WHERE-based — and the guards' proof is exactly that rows
+  NULL at the rejected address never survive any consumer output. Every row
+  a later narrowing could drop is padded on the sup-side chain, hence NULL at
+  that address, hence already dead under the same WHERE (null-safe NULL
+  matches produce partners instead of drops; `_null_extended_before` covers
+  the extension geometry). Pinned as row-identity cells in
+  `tests/join_matrix/test_predrop_chain_narrowing.py` — they fail loudly if a
+  future pass relocates/deletes a condition after join upgrades consumed it.
+- **Task 2 (structural-EQUAL mint audit): ONE reachable hole, FIXED.**
+  Multi-source unfiltered bodies are safe (always-preserving sourcing +
+  complete-by-declaration INNER zips + the unresolvable gate; matrix cells in
+  the same test file territory verified row-identical). The hole was a body
+  `LIMIT` — parsed onto the lineage but silently DROPPED by the build (wrong
+  rows regardless of narrowing), and had it applied, the unconditioned ≡
+  would lie in the ⊒ direction. Owner call: support limits. Landed: body
+  limit renders inside the rowset CTE chain (`_interpose_limit_node` in
+  rowset_node.py; ORDER BY co-located), optimizer passes treat a limited
+  PARENT as an opaque boundary (pushdown/hoist/dedup guards,
+  `_external_proofs` returns nothing for limited CTEs) while a limited CHILD
+  collapses freely with its limit+ORDER BY transferred (LIMIT is the last
+  logical op of a SELECT; the statement root carries the query limit during
+  optimization, so blocking child-side collapse regresses plan compactness —
+  q62), the mint emits UNCONDITIONED ⊑ for limited bodies
+  (`structural_domain_edge`), and the narrowing completeness predicates veto
+  limited chains (`_row_limited`). Tests: `tests/test_rowset_body_limit.py`.
+- **Task 3 (sup-side pseudonym `~` stamps): CLOSED, unreachable.** Build
+  substitution re-addresses partial stamps onto the RENDERED pair address
+  (verified by CTE introspection: a merged member's `~` stamp lands at the
+  pair address with the member as pseudonym), and a `~`-bound alias column
+  never becomes a key provider (unresolvable-source gate). The proposed
+  pseudonym-closure fix would FALSE-VETO a scan binding the key completely
+  beside a `~` projection of a merged sibling. Documented in
+  `_own_coverage_partial`'s docstring; pinned by
+  `test_merged_member_partial_stamp_blocks_completeness`.
+
+Original handoff below, for the reasoning record.
+
+---
+
 Written 2026-07-03, end of the session that landed rule B + the carve-out
 deletion (docs/domain_graph_design.md "Landed (rule B + carve-out deletion,
 2026-07-03)" is the full record; docs/handoff_rule_b_and_carveouts.md is the

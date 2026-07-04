@@ -16,6 +16,7 @@ from trilogy.core.processing.nodes import (
     History,
     MergeNode,
     RowsetNode,
+    SelectNode,
     StrategyNode,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -280,6 +281,94 @@ def _unhide_referenced_body_locals(
         base_node.rebuild_cache()
 
 
+def _expose_coalesced_key_contents(
+    node: RowsetNode,
+    base_node: StrategyNode,
+    advertised: list[BuildConcept],
+) -> None:
+    """Expose the authored source address of a coalesced join key downstream.
+
+    A coalescing scoped join (`full`/`subset`/`union`) collapses a join-key group
+    (`a.aid = b.bid`) onto ONE canonical body concept (`b.bid`), leaving each
+    authored side (`a.aid`) only as a *pseudonym* of that canonical. A rowset
+    output projecting `a.aid` carries `a.aid` as its `BuildRowsetItem.content`,
+    but the body materializes it solely under the canonical address — so a
+    downstream reference to `rs.a.aid` renders its content `a.aid`, finds no
+    source-map entry for it, and the renderer emits a Missing-source sentinel.
+
+    Add each such content address as a HIDDEN output so `resolve_concept_map`
+    sources it off the body's canonical column via that pseudonym (mirroring the
+    single-statement path, where the authored side is itself the projected
+    output). `left` joins don't collapse, so their content is a direct body
+    output and this is a no-op."""
+    base_available: set[str] = set()
+    base_pseudonyms: set[str] = set()
+    for c in base_node.output_concepts:
+        if c.address in base_node.hidden_concepts:
+            continue
+        base_available.add(c.address)
+        base_pseudonyms.update(c.pseudonyms)
+    extra: list[BuildConcept] = []
+    seen: set[str] = set()
+    for item in advertised:
+        if not isinstance(item.lineage, BuildRowsetItem):
+            continue
+        content = item.lineage.content
+        if (
+            content.address not in base_available
+            and content.address in base_pseudonyms
+            and content.address not in seen
+        ):
+            extra.append(content)
+            seen.add(content.address)
+    if extra:
+        node.add_output_concepts(extra, rebuild=False, unhide=False)
+        node.hide_output_concepts(extra, rebuild=False)
+
+
+def _interpose_limit_node(
+    base_node: StrategyNode,
+    select: SelectLineage | MultiSelectLineage,
+    environment: BuildEnvironment,
+    depth: int,
+) -> StrategyNode:
+    """Materialize the body's `limit` (with its ORDER BY) as a dedicated
+    passthrough node BETWEEN the body and the translation wrapper.
+
+    The limit must not live on the translation node itself: discovery applies
+    outer WHEREs onto that node (they would render pre-limit, changing which
+    rows fill the limit), and when the outer statement reuses it as the query
+    root its ordering is overwritten by the statement's and the root renders
+    without a CTE-level limit. A dedicated node keeps LIMIT+ORDER BY in their
+    own CTE; everything downstream is post-limit by construction, and the
+    optimizer treats the limited CTE as an opaque boundary."""
+    if select.limit is None:
+        return base_node
+    passthrough = [
+        x
+        for x in base_node.output_concepts
+        if x.address not in base_node.hidden_concepts
+    ]
+    limit_node = SelectNode(
+        input_concepts=passthrough,
+        output_concepts=passthrough,
+        environment=environment,
+        parents=[base_node],
+        depth=depth,
+        partial_concepts=list(base_node.partial_concepts),
+        nullable_concepts=list(base_node.nullable_concepts),
+    )
+    limit_node.limit = select.limit
+    # the ORDER BY the limit selects under was built onto the body root by
+    # get_query_node; hoist it here so both render in one SELECT (an inner
+    # ORDER BY without a limit carries no semantics and just costs a sort)
+    limit_node.ordering = base_node.ordering
+    base_node.ordering = None
+    base_node.rebuild_cache()
+    limit_node.rebuild_cache()
+    return limit_node
+
+
 def _build_translation_node(
     base_node: StrategyNode,
     rowset_relevant: list[BuildConcept],
@@ -319,6 +408,7 @@ def _build_translation_node(
             )
         )
     ]
+    source_node = _interpose_limit_node(base_node, select, environment, depth)
     node = RowsetNode(
         input_concepts=[
             x
@@ -327,7 +417,7 @@ def _build_translation_node(
         ],
         output_concepts=rowset_relevant + additional_relevant,
         environment=environment,
-        parents=[base_node],
+        parents=[source_node],
         depth=depth,
         partial_concepts=list(base_node.partial_concepts),
         nullable_concepts=nullable,
@@ -344,6 +434,10 @@ def _build_translation_node(
         if item.address not in existing_partial:
             node.partial_concepts.append(item)
             existing_partial.add(item.address)
+
+    _expose_coalesced_key_contents(
+        node, base_node, rowset_relevant + additional_relevant
+    )
 
     node.rebuild_cache()
     logger.info(

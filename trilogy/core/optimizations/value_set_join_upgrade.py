@@ -74,6 +74,25 @@ def _key_addresses(concept: BuildConcept) -> set[str]:
     )
 
 
+def _row_limited(
+    side_cte: CTE | UnionCTE, _visited: frozenset[str] = frozenset()
+) -> bool:
+    """A row LIMIT anywhere in the side's chain truncates its row population
+    (a rowset body `limit N`), so no value-completeness claim survives it —
+    the values beyond the limit are silently absent. Conservative by design:
+    a limit on a sibling branch preserved through outer joins could in
+    principle keep another provider complete, but the FULL it leaves behind
+    is the correct price for a truncating construct."""
+    if not isinstance(side_cte, CTE):
+        return False
+    if side_cte.limit is not None:
+        return True
+    if side_cte.name in _visited:
+        return False
+    next_visited = _visited | {side_cte.name}
+    return any(_row_limited(parent, next_visited) for parent in side_cte.parent_ctes)
+
+
 def _authoritative_scan(side_cte: CTE | UnionCTE) -> bool:
     """A direct, unfiltered scan of a single datasource. Such a side carries
     its bindings' full value sets — the datasource IS the source of the
@@ -83,7 +102,7 @@ def _authoritative_scan(side_cte: CTE | UnionCTE) -> bool:
     (fact FKs are routinely complete-in-schema but value-subsets in data)."""
     if not isinstance(side_cte, CTE):
         return False
-    if side_cte.condition is not None:
+    if side_cte.condition is not None or side_cte.limit is not None:
         return False
     source = side_cte.source
     if source.source_type != SourceType.DIRECT_SELECT:
@@ -122,6 +141,8 @@ def _complete_distinct(
     """
     if not isinstance(side_cte, CTE):
         return False
+    if _row_limited(side_cte):
+        return False
     keys = _key_addresses(concept)
     partial_addrs: set[str] = set()
     for partial in side_cte.partial_concepts:
@@ -150,7 +171,16 @@ def _own_coverage_partial(
     concept; an authoritative scan carries all of its concept's values
     regardless of what relations were declared over it. Only an exact-address
     stamp from outside the graph's declared subset endpoints (e.g. an
-    authored `~` binding) blocks."""
+    authored `~` binding) blocks.
+
+    Exact-address audit (2026-07-03): a genuine `~` stamp cannot hide at a
+    pseudonym address of the key. Build substitution re-addresses partial
+    stamps onto the RENDERED pair address (a merged member bound `~` stamps
+    the pair's own address, pseudonyms in tow), and a `~`-bound alias column
+    never serves as the key's provider (the unresolvable-source gate demands
+    a complete source). Closing this check over the pseudonym group would
+    instead FALSE-VETO a scan that binds the key completely alongside a `~`
+    projection of a merged sibling — its own coverage is complete."""
     subset_endpoints = graph.subset_sources()
     return any(
         p.address == concept.address and p.address not in subset_endpoints
@@ -282,8 +312,11 @@ def _complete_values(
     of its inputs' domains, so completeness transfers through BASIC/ROWSET
     lineage — but never through a FILTER, which restricts values. Only
     ``_own_coverage_partial`` stamps veto the claim — relation-induced
-    stamps speak to the relation, not the side's coverage."""
+    stamps speak to the relation, not the side's coverage. A row LIMIT
+    anywhere in the chain vetoes unconditionally (``_row_limited``)."""
     if not isinstance(side_cte, CTE):
+        return False
+    if _row_limited(side_cte):
         return False
     keys = _key_addresses(concept)
     if not _own_coverage_partial(concept, side_cte, graph):
@@ -351,7 +384,11 @@ def _equal_intersection_complete(
     joined on this key group stays complete BY DECLARATION — the rows the
     intersection drops are exactly the ones the declaration says don't exist.
     Never used on the proof-based (subset-directional) path."""
-    if not isinstance(side_cte, CTE) or side_cte.condition is not None:
+    if (
+        not isinstance(side_cte, CTE)
+        or side_cte.condition is not None
+        or side_cte.limit is not None
+    ):
         return False
     raw_joins = side_cte.joins or []
     joins = [j for j in raw_joins if isinstance(j, Join)]

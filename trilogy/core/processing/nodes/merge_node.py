@@ -112,6 +112,10 @@ def deduplicate_nodes(
                 and not merged[k1].partial_concepts
                 and not _has_applied_condition(merged[k2])
                 and not _has_applied_condition(merged[k1])
+                # a row-limited source is a proper row subset — never
+                # interchangeable with (or replaceable by) a superset source
+                and getattr(merged[k1], "limit", None) is None
+                and getattr(merged[k2], "limit", None) is None
             ):
                 og = merged[k1]
                 subset_to = merged[k2]

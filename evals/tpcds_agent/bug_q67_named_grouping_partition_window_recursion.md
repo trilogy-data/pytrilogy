@@ -1,5 +1,23 @@
 # q67 token sink — RecursionError on a named window concept partitioned by a `grouping()`-derived concept
 
+> **Bug #1 FIXED 2026-07-03.** `concepts_to_grain_concepts_ordered` (trilogy/parsing/common.py)
+> extracted its per-concept grain classifier into `_grain_contribution`; the ALIAS branch now
+> recurses on its source through that classifier, so an aliased window contributes the window's
+> keys (matching direct consumption) instead of the row-distinct window output itself. Repro:
+> `evals/tpcds_agent/repro_q67_named_grouping_partition_window_recursion.py`. Regression test:
+> `test_non_benchmark_queries.py::test_q67_named_grouping_partition_window_aliased_no_recursion`.
+> **Bug #2 FIXED 2026-07-03.** The stray-`grouping()`-without-rollup guard in
+> `_propagate_select_grouping` (trilogy/parsing/v2/select_finalize.py) only did a *shallow*
+> scan of each select item, so a `grouping()` reached through a named `auto` concept behind a
+> rename (`g_cat as gc`) was invisible and rendered a groupless `SELECT grouping(...)`. Replaced
+> the shallow check with `_lineage_reaches`, which descends through by-name `ConceptRef`s (and
+> stops at `RowsetItem` boundaries — a rowset that computed `grouping()` inside its own rollup is
+> a materialized column, still valid). Exempts the q70 window-wrapping-grouping label (a window
+> anywhere in the reachable lineage). Repro:
+> `evals/tpcds_agent/repro_q67_grouping_no_rollup_binder_error.py`. Tests:
+> `test_duckdb.py::test_grouping_over_rowset_output_no_rollup_raises_clean_error` +
+> `::test_grouping_computed_inside_rowset_rollup_downstream_select_executes`.
+
 Run: `evals/tpcds_agent/results/20260703-212501/` — q67 burned **1,360,195 tokens** and FAILED
 (final submitted query runs but `result set differs from reference`). Prior runs: ~174–272K.
 

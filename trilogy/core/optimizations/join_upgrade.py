@@ -860,6 +860,11 @@ class UpgradeJoinOnGuards(OptimizationRule):
         loops to fixpoint, so upgrades this pass enables feed the next."""
         if self.base_join_only:
             return set()
+        # A consumer's rejection applies POST-limit; using it to drop rows
+        # inside a row-limited CTE changes which rows fill the limit. The
+        # CTE's OWN condition (pre-limit) remains a valid proof source.
+        if cte.limit is not None:
+            return set()
         if self._forced_key != id(inverse_map):
             nodes: dict[str, CTE | UnionCTE] = {cte.name: cte}
             for consumers in inverse_map.values():

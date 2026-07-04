@@ -250,6 +250,50 @@ select case when grouping(brand) = 1 then 'tot' else brand end as ct,
             engine.generate_sql(select)
 
 
+def test_grouping_over_rowset_output_no_rollup_raises_clean_error():
+    """q67 Bug #2: `grouping()` applied to a rowset output in a DOWNSTREAM select
+    with no rollup renders a groupless `SELECT grouping(...)` (all outputs are
+    materialized rowset columns, so no GROUP BY) -> raw DuckDB "GROUPING statement
+    cannot be used without groups". The stray-grouping guard missed it because the
+    grouping is reached through a named `auto` concept behind a rename, invisible to
+    the shallow scan. Must be a clean author-time error, whether named or inline."""
+    for select in (
+        # named `auto` concept wrapping grouping() over a rowset output, renamed.
+        """
+rowset rd <- select brand, class, sum(amount) as summed by rollup (brand, class);
+auto g_cat <- grouping(rd.brand);
+select rd.brand, rd.class, rd.summed, g_cat as gc;
+""",
+        # inline grouping() over a rowset output.
+        """
+rowset rd <- select brand, class, sum(amount) as summed by rollup (brand, class);
+select rd.brand, rd.class, rd.summed, grouping(rd.brand) as gc;
+""",
+    ):
+        engine = Dialects.DUCK_DB.default_executor()
+        engine.execute_text(_ROLLUP_GROUPING_MODEL)
+        with raises(InvalidSyntaxException, match="grouping"):
+            engine.generate_sql(select)
+
+
+def test_grouping_computed_inside_rowset_rollup_downstream_select_executes():
+    """The valid sibling of the above: a rowset computes `grouping()` inside its
+    OWN `by rollup` pass and materializes it as a column; a downstream select just
+    projects that column (a flat read, no new groupless GROUPING()). Must NOT be
+    rejected — the stray-grouping guard stops at the rowset boundary."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+rowset rd <- select brand, class, sum(amount) as summed, grouping(brand) as gc
+    by rollup (brand, class);
+select rd.brand, rd.class, rd.summed, rd.gc
+order by rd.gc asc, rd.brand asc nulls last, rd.class asc nulls last;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    # gc=0 for every real/subtotal brand row; gc=1 only on the grand-total row.
+    assert [r[3] for r in results] == [0, 0, 0, 0, 0, 0, 1]
+
+
 def test_grouping_in_where_raises_clean_error():
     """`grouping()` in a WHERE clause is semantically invalid: WHERE runs before
     grouping, so there is no grouping set to anchor to. The planner used to

@@ -230,6 +230,10 @@ class StrategyNode:
             self.output_concepts, self.parents
         )
         self.ordering = ordering
+        # Row limit applied at this node's output (rowset body `limit N`).
+        # Attribute rather than an init param: only the rowset translation
+        # wrapper sets it, and copy()/_resolve() thread it through.
+        self.limit: Optional[int] = None
         self.depth = depth
         self.conditions = conditions
         self._refine_nullable_for_conditions()
@@ -522,6 +526,7 @@ class StrategyNode:
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
+            limit=self.limit,
             base_datasource=parent_sources[0] if len(parent_sources) == 1 else None,
         )
 
@@ -541,7 +546,7 @@ class StrategyNode:
         return qds
 
     def copy(self) -> "StrategyNode":
-        return self.__class__(
+        node = self.__class__(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -560,6 +565,8 @@ class StrategyNode:
             virtual_output_concepts=list(self.virtual_output_concepts),
             ordering=self.ordering,
         )
+        node.limit = self.limit
+        return node
 
 
 @dataclass

@@ -451,6 +451,11 @@ class PredicatePushdown(OptimizationRule):
     ):
         if not isinstance(candidate, BuildConceptArgs):
             return False
+        # Never push a predicate into a row-limited parent: filtering before
+        # the LIMIT changes which rows fill it (a rowset body `limit N` is a
+        # semantic boundary, not a plan detail).
+        if parent_cte.limit is not None:
+            return False
         if isinstance(parent_cte, UnionCTE):
             pruned = self._prune_union_parent(parent_cte, candidate, inverse_map)
             pushed = self._push_into_union_branches(
@@ -600,6 +605,10 @@ class PredicatePushdown(OptimizationRule):
         to a surviving HAVING-passed group row.
         """
         if not isinstance(parent_cte, CTE):
+            return False
+        # Relocating a predicate into a row-limited group applies it before
+        # the LIMIT, changing which rows fill it.
+        if parent_cte.limit is not None:
             return False
         # A HAVING is only valid where a GROUP BY is emitted.
         if not parent_cte.group_to_grain:

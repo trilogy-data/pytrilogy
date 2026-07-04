@@ -1,5 +1,18 @@
 # q64 token sink — subset/union (coalescing) join subordinate key vanishes across a rowset boundary
 
+> **FIXED 2026-07-03.** `rowset_node.py` `_build_translation_node` now calls
+> `_expose_coalesced_key_contents`: for every rowset output whose `BuildRowsetItem.content`
+> address is absent from the body's direct outputs but present as a **pseudonym** of one
+> (the coalescing-join canonical), it adds that content address as a HIDDEN output of the
+> translation `RowsetNode`. `resolve_concept_map` then sources it off the body's canonical
+> column via the pseudonym (mirroring the single-statement path), so a downstream
+> `rs.<subordinate>.item.id` renders instead of emitting the Missing-source sentinel.
+> Boundary read-back now matches the single-statement oracle for `subset`/`union`/`full`/`left`.
+> Regression coverage: `tests/test_rowset_cross_datasource_outer_read.py`
+> (`test_rowset_subordinate_key_readback_*`).
+
+
+
 Run: `evals/tpcds_agent/results/20260703-151512/` — q64 burned **2,099,128 tokens**, FAILED
 (reference 2 rows, candidate **12 rows** — silent fan-out, not the "2 vs 2" the harness summary implied;
 `report.json` `queries[id=64]` shows `cand_rows: 12`).

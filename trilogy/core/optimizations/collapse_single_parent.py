@@ -187,6 +187,14 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             else cte.condition
         )
 
+    # The child's row limit (and the ORDER BY it selects under) applies to the
+    # merged CTE's output — LIMIT is the last logical operation of a SELECT,
+    # so absorbing the parent's shape below it is row-identical. (The caller
+    # rejects limited PARENTS, the direction that would cross the boundary.)
+    if cte.limit is not None:
+        parent.limit = cte.limit
+        parent.order_by = cte.order_by
+
     if merge_mode == MergeMode.AGGREGATE:
         # Aggregate merge: keep only columns the child exposes (grouping keys +
         # aggregate outputs). Everything else is rolled up.
@@ -261,6 +269,13 @@ class CollapseSingleParent(OptimizationRule):
             return False, None
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
+            return False, None
+        # A row LIMIT on the PARENT is an opaque boundary: folding the child's
+        # shape into it moves work below the limit (pre-limit rows change).
+        # A limited CHILD is fine — LIMIT evaluates last in the merged SELECT
+        # and `apply_child_merge` carries it (with its ORDER BY) across.
+        if parent.limit is not None:
+            self.debug(f"Parent {parent.name} carries a row limit, skipping")
             return False, None
         if parent_is_ineligible(parent, merge_mode):
             self.debug(

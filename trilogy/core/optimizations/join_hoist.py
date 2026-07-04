@@ -203,6 +203,10 @@ class JoinHoist(OptimizationRule):
         Returns the plan, or None if nothing's hoistable."""
         if parent_cte.condition and not is_scalar_condition(parent_cte.condition):
             return None
+        # Hoisting a join+predicate into a row-limited parent filters before
+        # the LIMIT, changing which rows fill it.
+        if parent_cte.limit is not None:
+            return None
         non_materialized = {k for k, v in parent_cte.source_map.items() if v == []}
         for x in parent_cte.output_columns:
             if x.address in non_materialized and isinstance(x.lineage, BuildWindowItem):

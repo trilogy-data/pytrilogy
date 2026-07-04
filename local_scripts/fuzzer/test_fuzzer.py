@@ -14,7 +14,7 @@ def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
     second = generate_cases()
 
     assert first == second
-    assert len(first) == 98
+    assert len(first) == 116
     assert len({case.case_id for case in first}) == len(first)
     assert {case.seed for case in first} == {"edge", "dense"}
     assert {case.family for case in first} == {
@@ -28,7 +28,9 @@ def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
         "join",
         "membership",
         "multiway_join",
+        "named_grouping_window",
         "rowset",
+        "rowset_boundary",
         "scalar",
         "union",
         "window",
@@ -79,7 +81,7 @@ def test_random_datasets_are_repeatable_and_preserve_domain_invariants() -> None
         "random_002001",
         "random_002002",
     ]
-    assert len(generate_cases(seeds)) == 147
+    assert len(generate_cases(seeds)) == 174
 
 
 def test_repro_contains_standalone_program_and_diagnostics(tmp_path: Path) -> None:

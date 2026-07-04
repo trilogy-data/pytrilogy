@@ -1184,6 +1184,278 @@ order by coalesce(e.gid, o.gid), coalesce(e.active, o.active)
     ]
 
 
+def _rowset_boundary_cases(seed: SeedData) -> list[FuzzCase]:
+    cases = []
+    variants = (
+        ("subset", "subset join subordinate.k = anchor.k", "left join"),
+        ("union", "union join subordinate.k = anchor.k", "full join"),
+        ("full", "full join subordinate.k = anchor.k", "full join"),
+        ("left", "left join anchor.k = subordinate.k", "left join"),
+    )
+    for name, trilogy_join, sql_join in variants:
+        body = f"""
+rowset anchor <- select left_key as k, sum(left_value) as anchor_total;
+rowset subordinate <- select
+    subset_key as k,
+    sum(subset_value) as subordinate_total;
+
+with boundary as
+select
+    subordinate.k,
+    anchor.anchor_total,
+    subordinate.subordinate_total
+{trilogy_join};
+
+select
+    boundary.subordinate.k,
+    boundary.anchor_total,
+    boundary.subordinate_total
+order by boundary.subordinate.k asc nulls last;
+"""
+        key = "a.k" if name in ("subset", "left") else "coalesce(a.k, s.k)"
+        oracle = f"""
+select {key}, a.total, s.total
+from (
+    select k, sum(value) as total
+    from left_facts
+    group by k
+) a
+{sql_join} (
+    select k, sum(value) as total
+    from subset_facts
+    group by k
+) s on a.k is not distinct from s.k
+order by {key} asc nulls last
+"""
+        cases.append(
+            _case(
+                seed,
+                "rowset_boundary",
+                f"{name}_subordinate_readback",
+                (
+                    f"An unaliased subordinate {name} key crosses a rowset "
+                    "boundary under its authored address."
+                ),
+                (
+                    "rowset",
+                    "boundary",
+                    "subordinate",
+                    "coalesce",
+                    name,
+                    "nullable",
+                ),
+                body,
+                oracle,
+            )
+        )
+
+    composite_body = """
+rowset even_events <- where event_id % 2 = 0
+select
+    group_id as gid,
+    active as flag,
+    sum(event_amount) as even_total;
+rowset odd_events <- where event_id % 2 = 1
+select
+    group_id as gid,
+    active as flag,
+    sum(event_amount) as odd_total;
+
+with boundary as
+select
+    even_events.gid,
+    even_events.flag,
+    even_events.even_total,
+    odd_events.odd_total
+union join even_events.gid = odd_events.gid
+union join even_events.flag = odd_events.flag;
+
+select
+    boundary.even_events.gid,
+    boundary.even_events.flag,
+    boundary.even_total,
+    boundary.odd_total
+order by
+    boundary.even_events.gid asc,
+    boundary.even_events.flag asc;
+"""
+    composite_oracle = """
+select
+    coalesce(e.gid, o.gid),
+    coalesce(e.active, o.active),
+    e.total,
+    o.total
+from (
+    select gid, active, sum(amount) as total
+    from events
+    where eid % 2 = 0
+    group by gid, active
+) e
+full join (
+    select gid, active, sum(amount) as total
+    from events
+    where eid % 2 = 1
+    group by gid, active
+) o on e.gid = o.gid and e.active = o.active
+order by coalesce(e.gid, o.gid), coalesce(e.active, o.active)
+"""
+    cases.append(
+        _case(
+            seed,
+            "rowset_boundary",
+            "composite_subordinate_readback",
+            "Two subordinate composite keys cross a coalescing rowset boundary.",
+            (
+                "rowset",
+                "boundary",
+                "subordinate",
+                "coalesce",
+                "composite",
+                "union",
+            ),
+            composite_body,
+            composite_oracle,
+        )
+    )
+
+    window_body = """
+rowset anchor <- select left_key as k, sum(left_value) as anchor_total;
+rowset subordinate <- select
+    subset_key as k,
+    sum(subset_value) as subordinate_total;
+
+with boundary as
+select
+    subordinate.k,
+    anchor.anchor_total,
+    subordinate.subordinate_total
+subset join subordinate.k = anchor.k;
+
+select
+    boundary.subordinate.k,
+    boundary.anchor_total,
+    boundary.subordinate_total,
+    row_number() over (
+        order by boundary.subordinate.k asc
+    ) as key_row
+order by boundary.subordinate.k asc nulls last;
+"""
+    window_oracle = """
+select
+    a.k,
+    a.total,
+    s.total,
+    row_number() over (order by a.k asc nulls last)
+from (
+    select k, sum(value) as total
+    from left_facts
+    group by k
+) a
+left join (
+    select k, sum(value) as total
+    from subset_facts
+    group by k
+) s on a.k is not distinct from s.k
+order by a.k asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "rowset_boundary",
+            "subordinate_window_readback",
+            "A downstream window orders by a subordinate key crossing a boundary.",
+            (
+                "rowset",
+                "boundary",
+                "subordinate",
+                "window",
+                "subset",
+                "nullable",
+            ),
+            window_body,
+            window_oracle,
+        )
+    )
+    return cases
+
+
+def _named_grouping_window_cases(seed: SeedData) -> list[FuzzCase]:
+    cases = []
+    variants = (
+        ("rollup_alias", "rollup", False),
+        ("rollup_double_alias", "rollup", True),
+        ("cube_alias", "cube", False),
+    )
+    for name, grouping_mode, double_alias in variants:
+        alias_definition = "auto rank_alias <- named_rank;\n" if double_alias else ""
+        selected_rank = "rank_alias" if double_alias else "named_rank"
+        body = f"""
+auto partition_label <- case
+    when grouping(group_name) = 1 then '~TOTAL~'
+    else group_name
+end;
+auto named_rank <- rank(active) over (
+    partition by partition_label
+    order by sum(event_amount) desc
+);
+{alias_definition}
+select
+    group_name,
+    active,
+    sum(event_amount) as total,
+    {selected_rank} as ranked
+by {grouping_mode} (group_name, active)
+order by group_name asc nulls last, active asc nulls last;
+"""
+        oracle = f"""
+select
+    group_name,
+    active,
+    total,
+    rank() over (
+        partition by case
+            when name_grouping = 1 then '~TOTAL~'
+            else group_name
+        end
+        order by total desc
+    )
+from (
+    select
+        g.name as group_name,
+        e.active,
+        sum(e.amount) as total,
+        grouping(g.name) as name_grouping
+    from events e
+    join groups g on e.gid = g.gid
+    group by {grouping_mode} (g.name, e.active)
+) grouped
+order by group_name asc nulls last, active asc nulls last
+"""
+        cases.append(
+            _case(
+                seed,
+                "named_grouping_window",
+                name,
+                (
+                    "A named grouping-derived partition feeds a named window "
+                    f"through {'two aliases' if double_alias else 'an alias'} "
+                    f"under {grouping_mode.upper()}."
+                ),
+                (
+                    "grouping",
+                    grouping_mode,
+                    "window",
+                    "named",
+                    "alias",
+                    "nested" if double_alias else "single_alias",
+                ),
+                body,
+                oracle,
+            )
+        )
+    return cases
+
+
 def _derived_join_cases(seed: SeedData) -> list[FuzzCase]:
     cases = []
     variants = (
@@ -1399,6 +1671,8 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _join_cases,
         _multiway_join_cases,
         _composite_join_cases,
+        _rowset_boundary_cases,
+        _named_grouping_window_cases,
         _derived_join_cases,
         _chasm_cases,
     )

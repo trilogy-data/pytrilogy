@@ -469,6 +469,7 @@ def datasource_to_cte(
         base_name_override=base_name,
         base_alias_override=base_alias,
         order_by=query_datasource.ordering,
+        limit=query_datasource.limit,
         **extra_kwargs,
     )
     if cte.grain != query_datasource.grain:

@@ -307,6 +307,9 @@ class CTE:
             **self.existence_source_map,
             **other.existence_source_map,
         }
+        # copies of one logical CTE carry the same limit; keep it
+        if self.limit is None:
+            self.limit = other.limit
 
         return self
 
@@ -1202,6 +1205,8 @@ class QueryDatasource:
             force_group=self.force_group,
             hidden_concepts=hidden,
             ordering=self.ordering,
+            # only same-identifier QDSs merge, so limits agree; keep it
+            limit=self.limit if self.limit is not None else other.limit,
             base_datasource=merged_base,
         )
         logger.debug(

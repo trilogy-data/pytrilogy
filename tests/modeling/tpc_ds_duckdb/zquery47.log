@@ -1,6 +1,6 @@
 query_id = "47"
 generator = "v3"
-gen_length = 5201
+gen_length = 5220
 preql_size = 2146
 comp_size = 2473
 generated_sql = """
@@ -75,7 +75,7 @@ SELECT
     \"questionable\".\"nsum\" as \"nsum\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"store_sales_date_year\" = \"abundant\".\"store_sales_date_year\" AND \"questionable\".\"store_sales_item_brand_name\" = \"abundant\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"abundant\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"abundant\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" = \"abundant\".\"store_sales_store_name\"
+    INNER JOIN \"abundant\" on \"questionable\".\"store_sales_date_year\" = \"abundant\".\"store_sales_date_year\" AND \"questionable\".\"store_sales_item_brand_name\" = \"abundant\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"abundant\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"abundant\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" is not distinct from \"abundant\".\"store_sales_store_name\"
 WHERE
     \"questionable\".\"store_sales_date_year\" = 1999 and \"abundant\".\"avg_monthly_sales\" > 0 and CASE
 	WHEN \"abundant\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\") / \"abundant\".\"avg_monthly_sales\"

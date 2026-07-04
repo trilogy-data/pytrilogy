@@ -634,11 +634,17 @@ def structural_domain_edge(concept: Any) -> DomainEdge | None:
         where = getattr(body, "where_clause", None)
         having = getattr(body, "having_clause", None)
         restricting = where if where is not None else having
+        # A body `limit N` truncates rows the where/having gate can't see:
+        # the output is a proper subset the condition (if any) UNDERSTATES,
+        # so the edge must be an UNCONDITIONED ⊑ — a conditioned edge could
+        # prove same-class equality via condition_implies, and ≡ lies in the
+        # ⊒ direction (the 2026-07-03 mint audit's one reachable hole).
+        limited = getattr(body, "limit", None) is not None
         if restricting is not None:
             # a HAVING also restricts the body; the edge carries the WHERE
             # when both exist (condition completeness is a consumer concern
             # once the narrowing pass migrates — direction is what matters).
-            condition = restricting.conditional
+            condition = None if limited else restricting.conditional
             return DomainEdge(
                 source=concept.address,
                 target=lineage.content.address,
@@ -646,6 +652,19 @@ def structural_domain_edge(concept: Any) -> DomainEdge | None:
                 provenance=EdgeProvenance.STRUCTURAL,
                 condition=condition,
             )
+        if limited:
+            return DomainEdge(
+                source=concept.address,
+                target=lineage.content.address,
+                relation=DomainRelation.SUBSET,
+                provenance=EdgeProvenance.STRUCTURAL,
+            )
+        # Unfiltered, unlimited body ≡ soundness (audited 2026-07-03): a
+        # MULTI-SOURCE body cannot silently drop content rows — enrichment
+        # sourcing is always-preserving (phase 2), planner-emitted INNER zips
+        # require complete-by-declaration bindings on both sides, and an
+        # all-partial key has no complete source so the unresolvable gate
+        # rejects the query.
         return DomainEdge(
             source=concept.address,
             target=lineage.content.address,

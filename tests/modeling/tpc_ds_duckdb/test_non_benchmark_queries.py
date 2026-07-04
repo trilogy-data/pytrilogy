@@ -305,6 +305,33 @@ order by total_sum desc limit 5;
     assert rows
 
 
+def test_q67_named_grouping_partition_window_aliased_no_recursion(engine):
+    """q67 'top-100 by category rank': authoring the pieces as named `auto`
+    concepts — a window `rnk` partitioned by a NAMED grouping()-derived concept
+    `part`, consumed through an alias `rnk as r`, under a `by rollup(...)` select —
+    used to blow the build recursion limit. The ALIAS grain branch appended the
+    window concept itself instead of routing it through the window-key/grouping
+    substitution, so `rnk` (and its grouping-derived partition) re-entered the
+    select grain that grouping() resolves *to* — a cyclic grain. The aliased
+    window must contribute its keys, matching direct (unaliased) consumption."""
+    query = """
+import store_sales as ss;
+auto part <- case when grouping(ss.item.category) = 1 then '~GT~'
+             else ss.item.category end;
+auto rnk <- rank(ss.item.class) over (partition by part order by sum(ss.quantity) desc);
+where ss.date.year = 2000
+select ss.item.category, ss.item.class, sum(ss.quantity) as q, rnk as r
+by rollup (ss.item.category, ss.item.class)
+order by r asc limit 15;
+"""
+    # No RecursionError at build, no sentinel, and the SQL executes.
+    assert "INVALID_REFERENCE_BUG" not in engine.generate_sql(query)[-1]
+    rows = engine.execute_text(query)[-1].fetchall()
+    assert rows
+    # Ranks are 1-based dense within each partition; the top row is rank 1.
+    assert rows[0][3] == 1
+
+
 def test_copy_perf():
     env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;

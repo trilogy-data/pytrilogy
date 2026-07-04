@@ -145,7 +145,7 @@ def gen_window_node(
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
         return None
-    parent_node.resolve()
+    parent_resolution = parent_node.resolve()
     if not all(
         [
             x.address in [y.address for y in parent_node.output_concepts]
@@ -170,6 +170,14 @@ def gen_window_node(
         ],
         depth=depth,
         preexisting_conditions=conditions.conditional if conditions else None,
+        nullable_concepts=[
+            concept
+            for concept in output_targets
+            if any(
+                concept.address == nullable.address
+                for nullable in parent_resolution.nullable_concepts
+            )
+        ],
     )
     _window_node.rebuild_cache()
     _window_node.resolve()
