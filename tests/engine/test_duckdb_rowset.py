@@ -1336,3 +1336,141 @@ order by agg.warehouse_name asc;
         ("A", 100, 30.0, 0.3),
         ("B", 50, 5.0, 0.1),
     ]
+
+
+# store_sales keyed on the composite (item, ticket) grain, mirroring real
+# TPC-DS store_sales (one quantity per item-on-ticket).
+_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE = """
+key item int;
+key ticket int;
+property <item,ticket>.store_id int;
+property <item,ticket>.date_id int;
+property <item,ticket>.quantity int;
+key store_id int;
+property store_id.state string;
+key date_id int;
+property date_id.year int;
+
+datasource store_sales (
+    i: item,
+    t: ticket,
+    s: store_id,
+    d: date_id,
+    q: quantity,
+)
+grain (item, ticket)
+query '''
+select 1 as i, 100 as t, 1 as s, 1 as d, 5 as q union all
+select 2 as i, 100 as t, 1 as s, 1 as d, 7 as q union all
+select 1 as i, 101 as t, 2 as s, 1 as d, 11 as q union all
+select 3 as i, 102 as t, 2 as s, 2 as d, 13 as q
+''';
+
+datasource stores (s: store_id, st: state) grain (store_id)
+query ''' select 1 as s, 'CA' as st union all select 2 as s, 'NY' as st ''';
+
+datasource dates (d: date_id, y: year) grain (date_id)
+query ''' select 1 as d, 2001 as y union all select 2 as d, 2000 as y ''';
+
+key r_item int;
+key r_ticket int;
+property <r_item,r_ticket>.r_date_id int;
+property <r_item,r_ticket>.return_quantity int;
+key r_date_id int;
+property r_date_id.r_year int;
+
+datasource store_returns (
+    ri: r_item,
+    rt: r_ticket,
+    rd: r_date_id,
+    rq: return_quantity,
+)
+grain (r_item, r_ticket)
+query '''
+select 1 as ri, 100 as rt, 1 as rd, 2 as rq union all
+select 1 as ri, 101 as rt, 2 as rd, 3 as rq
+''';
+
+datasource return_dates (rd: r_date_id, ry: r_year) grain (r_date_id)
+query ''' select 1 as rd, 2001 as ry union all select 2 as rd, 2002 as ry ''';
+
+with r_filtered as
+where r_year in (2001, 2002)
+select r_ticket, r_item as ritem, return_quantity;
+"""
+
+
+def _composite_union_join_query(agg: str, keys: int) -> str:
+    join_keys = ["union join ticket = r_filtered.r_ticket"]
+    if keys >= 2:
+        join_keys.append("union join item = r_filtered.ritem")
+    if keys >= 3:
+        join_keys.append("union join quantity = r_filtered.return_quantity")
+    joins = "\n    ".join(join_keys)
+    return f"""
+where year = 2001
+select
+    state as st,
+    {agg}(quantity) as m,
+    count(r_filtered.return_quantity) as c
+    {joins}
+order by st asc, c asc;
+"""
+
+
+# Expected rows per (aggregate, key-count). The two-pass aggregate on the union
+# anchor is isolated into its own CTE and joined back on the carried composite
+# keys. Single-key: the CTE groups by (state, ticket) — a real multi-item group
+# (CA ticket 100 holds items 1&2, q=5,7) yields a genuine stddev/variance.
+# Composite key: (item, ticket) is unique, so the aggregate sits at its own
+# grain and collapses to NULL (stddev/variance of one value) — the grain-match
+# formula, not a bare ungrouped aggregate (which was the q17 binder error).
+_COMPOSITE_UNION_JOIN_EXPECTED = {
+    ("stddev", 1): [("CA", 1.4142135623730951, 1), ("NY", None, 1)],
+    ("stddev", 2): [("CA", None, 0), ("CA", None, 1), ("NY", None, 1)],
+    ("stddev", 3): [
+        ("CA", None, 0),
+        ("CA", None, 1),
+        ("NY", None, 1),
+        (None, None, None),
+    ],
+    ("variance", 1): [("CA", 2.0, 1), ("NY", None, 1)],
+    ("variance", 2): [("CA", None, 0), ("CA", None, 1), ("NY", None, 1)],
+    ("variance", 3): [
+        ("CA", None, 0),
+        ("CA", None, 1),
+        ("NY", None, 1),
+        (None, None, None),
+    ],
+}
+
+
+@pytest.mark.parametrize("keys", [1, 2, 3])
+@pytest.mark.parametrize("agg", ["stddev", "variance"])
+def test_composite_union_join_rowset_two_pass_aggregate_groups(agg, keys):
+    # q17: a two-pass aggregate (stddev/variance) on the anchor of a union join
+    # to a rowset is isolated into its own CTE joined back on the carried keys.
+    # When that CTE sits at its own grain (composite unique key) the renderer
+    # used to fall through to the real aggregate with no GROUP BY -> DuckDB
+    # binder error. stddev/variance now have a grain-match formula (NULL for a
+    # single-row group), so the CTE renders valid SQL without grouping.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
+    query = _composite_union_join_query(agg, keys)
+    sql = executor.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == _COMPOSITE_UNION_JOIN_EXPECTED[(agg, keys)]
+
+
+@pytest.mark.parametrize("agg", ["avg", "sum", "count"])
+def test_composite_union_join_rowset_simple_aggregate_still_groups(agg):
+    # Guard the grain-match formulas for the single-pass aggregates still elide
+    # to identity at grain (never a spurious GROUP BY that would collapse rows).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
+    query = _composite_union_join_query(agg, keys=2)
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert [r[0] for r in results] == ["CA", "CA", "NY"]
+    if agg == "count":
+        assert [r[2] for r in results] == [0, 1, 1]

@@ -600,15 +600,36 @@ FUNCTION_MAP = {
     FunctionType.CURRENT_TIMESTAMP: lambda x, types: "current_timestamp()",
 }
 
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+# How each aggregate collapses over a single-row group (i.e. when the node is
+# already at the aggregate's grain, so no GROUP BY is emitted). Every aggregate
+# in FunctionClass.AGGREGATE_FUNCTIONS MUST have an entry here — otherwise it
+# falls through to its real FUNCTION_MAP rendering and emits an invalid
+# ungrouped aggregate (see test_all_aggregates_have_grain_match_formula).
+# `sum/avg/max/min/any/bool_*` reduce to the value itself; `count` to a 0/1
+# presence flag; two-pass `stddev/variance` (sample) of one value are NULL;
+# `array_agg` is a singleton array; `grouping`/`grouping_id` off a rollup are 0.
+# The formulas are portable SQL, so dialects share this map (layered after their
+# own FUNCTION_MAP so it is never shadowed by a dialect aggregate override).
+AGGREGATE_GRAIN_MATCH_MAP = {
+    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.SUM: lambda args, types: f"{args[0]}",
     FunctionType.AVG: lambda args, types: f"{args[0]}",
     FunctionType.MAX: lambda args, types: f"{args[0]}",
     FunctionType.MIN: lambda args, types: f"{args[0]}",
     FunctionType.ANY: lambda args, types: f"{args[0]}",
+    FunctionType.STDDEV: lambda args, types: "NULL",
+    FunctionType.VARIANCE: lambda args, types: "NULL",
+    FunctionType.ARRAY_AGG: lambda args, types: f"[{args[0]}]",
+    FunctionType.BOOL_OR: lambda args, types: f"{args[0]}",
+    FunctionType.BOOL_AND: lambda args, types: f"{args[0]}",
+    FunctionType.GROUPING: lambda args, types: "0",
+    FunctionType.GROUPING_ID: lambda args, types: "0",
+}
+
+FUNCTION_GRAIN_MATCH_MAP = {
+    **FUNCTION_MAP,
+    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 

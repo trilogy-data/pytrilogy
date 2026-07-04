@@ -301,6 +301,22 @@ class CollapseSingleParent(OptimizationRule):
         if has_unsafe_derivations(parent):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
+
+        # A source_map entry pointing at the parent under an address the parent
+        # does not itself output is a pseudonym rename — e.g. a merge node
+        # exposing a canonical key (`local.step`) from a side that materializes
+        # its merged pseudonym (`stages.stage`). That mapping exists ONLY in
+        # this CTE's source_map; `apply_child_merge` does not carry it, and a
+        # lineage-less key has no local derivation to fall back on, so the
+        # collapsed CTE could never render the address (INVALID_REFERENCE_BUG).
+        parent_outputs = parent.output_lcl
+        for address, sources in cte.source_map.items():
+            if parent.name in sources and address not in parent_outputs:
+                self.log(
+                    f"CTE {cte.name} sources {address} from parent {parent.name} "
+                    "under a pseudonym rename the merge cannot carry, skipping"
+                )
+                return False, None
         if merge_mode == MergeMode.AGGREGATE:
             # An AGGREGATE merge wraps the parent's exposed columns in the child's
             # aggregates. A parent column that is rendered inline (no source_map

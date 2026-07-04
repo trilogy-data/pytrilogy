@@ -2,7 +2,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
 
 ENV_SNOWFLAKE_PW = "PREQL_SNOWFLAKE_PW"
 ENV_SNOWFLAKE_USER = "PREQL_SNOWFLAKE_USER"
@@ -40,10 +40,7 @@ FUNCTION_MAP = {
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args, types: f"{args[0]}",
-    FunctionType.AVG: lambda args, types: f"{args[0]}",
+    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 

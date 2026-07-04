@@ -9,6 +9,8 @@ from the GROUP parent are fine."""
 
 from types import SimpleNamespace
 
+import pytest
+
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation
 from trilogy.core.optimizations.collapse_single_parent import (
@@ -66,6 +68,106 @@ def test_gate_blocks_new_window_and_unnest():
             _col("local.derived", unsafe),
         )
         assert not basic_fold_into_group_is_safe(parent, child)
+
+
+# --- collapse of a rowset rename into an unbound merge key ------------------
+# An unbound merge/scoped-join key (a `merge`-canonical with no datasource
+# binding, no lineage) renders only through a materialized pseudonym-rename
+# column in a parent CTE. `CollapseSingleParent` must not fold the rename's
+# inline (empty-source) computation into the same CTE as a reference to the key
+# under a rename address the merge cannot carry (guard-1 in `optimize`); that
+# would emit INVALID_REFERENCE_BUG.
+
+
+FUNNEL_MERGE_MODEL = """
+key step int;
+property step.name <- CASE WHEN step = 1 THEN 'one' WHEN step = 2 THEN 'two' END;
+key actor int;
+key event_id int;
+property event_id.event_name string;
+
+datasource events (id: event_id, ename: event_name)
+grain (event_id)
+query '''select 1 id, 'a' as ename union all select 2 id, 'a' as ename
+         union all select 3 id, 'b' as ename''';
+
+with stages as
+SELECT
+    CASE WHEN event_name = 'a' THEN 1 ELSE 2 END -> stage,
+    event_id
+;
+merge stages.stage into step;
+merge stages.event_id into actor;
+"""
+
+
+def _funnel_executor():
+    env = Environment()
+    env, _ = env.parse(FUNNEL_MERGE_MODEL)
+    return env, Dialects.DUCK_DB.default_executor(environment=env)
+
+
+def test_funnel_count_over_unbound_merge_key_executes():
+    # `count(actor)` grouped by the unbound merge key `step` (via its rowset
+    # rename): guard-1 keeps the rename boundary so the key resolves. Regression
+    # for the funnel-remap CI failure.
+    env, executor = _funnel_executor()
+    _, statements = env.parse(
+        "SELECT --step,\n name, count(actor) -> event_count ORDER BY step asc;"
+    )
+    sql = executor.generate_sql(statements[-1])[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    rows = [tuple(r) for r in executor.execute_query(statements[-1]).fetchall()]
+    assert rows == [("one", 2), ("two", 1)]
+
+
+@pytest.mark.xfail(
+    reason="Selecting ONLY an unbound merge-key's derived property (no aggregate "
+    "or other anchor) fully collapses the rowset-rename boundary; the key's only "
+    "materialized alias is pruned and the bare key (no datasource binding, no "
+    "lineage) dead-ends at render. Detecting this needs full collapse-cascade / "
+    "downstream-survival knowledge no single-collapse guard has; a broad guard "
+    "over-blocks legitimate rowset collapses (TPC-DS q29/q64). Documented limit.",
+    strict=True,
+)
+def test_bare_unbound_merge_key_property_only_select():
+    env, executor = _funnel_executor()
+    _, statements = env.parse("SELECT name ORDER BY name asc;")
+    sql = executor.generate_sql(statements[-1])[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+
+
+def test_downstream_used_merge_key_alias_stays_collapsed():
+    # An unbound merge key whose rowset alias IS consumed downstream (here a
+    # semijoin membership) renders and executes normally. Companion to the xfail
+    # above: this shape has a surviving alias, so guard-1 leaves the collapse
+    # alone -- exercising the merge+rowset+downstream path end-to-end (the shape
+    # a broad strand guard over-blocked in TPC-DS q64).
+    model = """
+key oid int;
+property oid.label string;
+key item int;
+
+datasource orders (o: oid, i: item, lbl: label)
+grain (oid)
+query '''select 1 o, 10 i, 'x' as lbl union all select 2 o, 20 i, 'y' as lbl''';
+
+with picked as
+SELECT item as ritem, oid
+;
+merge picked.ritem into item;
+
+SELECT label
+WHERE item in picked.ritem
+ORDER BY label asc;
+"""
+    env = Environment()
+    env, statements = env.parse(model)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = executor.generate_sql(statements[-1])[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    rows = [tuple(r) for r in executor.execute_query(statements[-1]).fetchall()]
+    assert rows == [("x",), ("y",)]
 
 
 def test_basic_ratio_over_group_renders_single_group_cte():

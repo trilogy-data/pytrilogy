@@ -98,3 +98,44 @@ trigger it, so a test on the existing `tpc_ds_duckdb` models would pass vacuousl
 - Do NOT touch the agents' `ext_*` column choice — out of scope (guidance/model, not code).
 - Do NOT change the direct-FK (V1) sourcing path.
 - Do NOT expect this to flip the q64 eval to pass on its own.
+
+## 2026-07-04 addendum — repro re-confirmed live + trigger sharpened + one lever ruled out
+Still OPEN. Re-verified on current HEAD (after the q17 grain-match fix). A stripped
+V0/V1/V2 repro against the `raw.*` models reproduces the relative fan-out: V0=79, V1=79,
+**V2=245** (~3.1× = #customers sharing an address). Absolute counts differ from the
+canonical 2/9 only because the repro drops the color/marital/cs_ui filters; the fan-out
+signal is identical. Repro: `scratchpad/repro_q64.py`.
+
+Sharpened root cause (exact trigger isolated):
+- The concepts resolve **1:1 with no fan-out in isolation**: `select ss.customer.address.id,
+  ss.customer.address.city` → `customer_address` alone (50000 rows, address grain). The
+  customer hop is NOT inherent to the concepts.
+- The fan-out trigger is **inclusion of `ss.customer.id` in the enrichment source set**:
+  `select ss.customer.id, ss.customer.address.id, ss.customer.address.city` →
+  `customer INNER JOIN customer_address` (100000 rows, customer grain). `ss.customer.address.id`
+  has `purpose=KEY, keys={ss.customer.id}`, so wherever the coalescing-join enrichment sources
+  it *with its declared grain key*, it pulls `ss.customer.id` → the `customers` scan →
+  customer-population multiplicity. The V2 `wakeful` CTE is exactly
+  `customer FULL JOIN customer_address ON C_CURRENT_ADDR_SK = CA_ADDRESS_SK`
+  with `coalesce(CA_ADDRESS_SK, C_CURRENT_ADDR_SK)`.
+- Contrast V1: `ss.sale_address.id` has `keys={ss.item.id, ss.ticket_number}` (a direct FK at
+  fact grain, no intermediate ENTITY dimension), so its enrichment sources the property straight
+  off `customer_address` by the address id, 1:1. Only a key routed through an intermediate
+  *entity* (customer) whose own grain is coarser than the fact fans out.
+
+Lever RULED OUT: `strategy_builder._projection_root_concepts` (line ~1367) expands each concept
+to include `concept.keys`, which *looks* like the customer.id injector — but monkeypatching it to
+skip the keys-expansion for a dimension grain-key (a concept that is the sole grain component of
+some datasource) did NOT change V2 (still 245). So the customer.id enters through a DIFFERENT path
+in the coalescing-join enrichment (the `wakeful` dimension node is not built via that root
+projection). Next investigation should instrument the actual builder of the `wakeful`
+`{city, address.id}` node (it is customer+customer_address, no store_sales) to find where
+`ss.customer.id` / the customer-grain sourcing is injected — likely in the scoped-join key
+exposure / merge-completion enrichment, not the root projection.
+
+Domain-graph lever (still the recommended fix shape): the graph already binds
+`ss.customer.address.id` as the GRAIN of `customer_address` (`binding_sources` / `determines`
+gives the FD `ss.customer.address.id → ss.customer.address.city` at the address population). The
+enrichment of a coalesced/exposed scoped-join key should source the key + its FD-dependent
+properties at the key's own dimension grain (1:1) via that binding, instead of expanding to the
+key's declared `keys` (the intermediate entity). The precise injection site is not yet located.
