@@ -8,6 +8,7 @@ from trilogy.core.enums import ValidationScope
 from trilogy.core.exceptions import (
     DatasourceColumnBindingError,
     DatasourceGrainValidationError,
+    DatasourceModelValidationError,
     ModelValidationError,
 )
 from trilogy.core.models.core import (
@@ -264,6 +265,54 @@ def test_validate_datasource_fails_early_for_missing_grain_column():
         and "not present in datasource output: local.city" in child.message
         for child in exc_info.value.children or []
     )
+
+
+def test_unique_property_validation_rejects_duplicate_values():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        unique property id.code string;
+
+        datasource items (
+            id: id,
+            code: code,
+        )
+        grain (id)
+        query '''
+        SELECT 1 AS id, 'shared' AS code UNION ALL
+        SELECT 2, 'shared'
+        ''';
+        """)
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceModelValidationError)
+        and "Unique property local.code maps to multiple local.id values"
+        in child.message
+        for child in exc_info.value.children or []
+    )
+
+
+def test_property_validation_allows_duplicate_values():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.code string;
+
+        datasource items (
+            id: id,
+            code: code,
+        )
+        grain (id)
+        query '''
+        SELECT 1 AS id, 'shared' AS code UNION ALL
+        SELECT 2, 'shared'
+        ''';
+        """)
+
+    validate_environment(executor.environment, exec=executor)
 
 
 _MULTI_DATASOURCE_PREAMBLE = """
