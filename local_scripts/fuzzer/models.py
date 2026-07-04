@@ -110,13 +110,13 @@ query '''{sources["union_facts"]}''';
 
 key sale_id int;
 property sale_id.sale_amount int;
-datasource sales (id: sale_id, gid: group_id, amount: sale_amount)
+datasource sales (id: sale_id, gid: ~group_id, amount: sale_amount)
 grain (sale_id)
 query '''{sources["sales"]}''';
 
 key return_id int;
 property return_id.return_amount int;
-datasource returns (id: return_id, gid: group_id, amount: return_amount)
+datasource returns (id: return_id, gid: ~group_id, amount: return_amount)
 grain (return_id)
 query '''{sources["returns"]}''';
 

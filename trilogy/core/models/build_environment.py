@@ -123,6 +123,22 @@ class BuildEnvironment:
     # compat shims until consumers migrate to graph queries.
     domain_graph: DomainGraph = field(default_factory=DomainGraph)
 
+    def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
+        """Per scoped-join key group, its canonical plus the members that keep
+        their own physical identity (a substituted member resolves to the group
+        canonical, not itself), for groups with two or more such members."""
+        out: list[tuple[str, list[str]]] = []
+        for canonical, members in self.scoped_join_key_groups.items():
+            distinct = [
+                member
+                for member in members
+                if (concept := self.concepts.get(member)) is not None
+                and concept.address == member
+            ]
+            if len(distinct) >= 2:
+                out.append((canonical, distinct))
+        return out
+
     def distinct_scoped_join_group_members(self) -> set[str]:
         """Addresses of scoped-join key-group members that keep their own
         physical identity, for groups with two or more such members.
@@ -134,15 +150,24 @@ class BuildEnvironment:
         such a group is never satisfied through a group-mate pseudonym: the
         join between the sides needs each side's own column (TPC-DS q59)."""
         out: set[str] = set()
-        for members in self.scoped_join_key_groups.values():
-            distinct = [
-                member
-                for member in members
-                if (concept := self.concepts.get(member)) is not None
-                and concept.address == member
-            ]
-            if len(distinct) >= 2:
-                out.update(distinct)
+        for _, distinct in self._distinct_scoped_join_groups():
+            out.update(distinct)
+        return out
+
+    def distinct_scoped_join_group_mates(self) -> dict[str, set[str]]:
+        """Map each distinct-identity group member to its distinct group-mates,
+        restricted to COALESCING (EQUAL/INCOMPARABLE — `full`/`union`) key
+        groups: there both sides keep identity and each must materialize its
+        own column. SUBSET (`left`/`subset`) groups are excluded — they resolve
+        by substituting the optional side onto the anchor, so satisfying a
+        member through its group-mate pseudonym is the mechanism, not a leak."""
+        coalescing = self.domain_graph.outer_relation_keys()
+        out: dict[str, set[str]] = {}
+        for canonical, distinct in self._distinct_scoped_join_groups():
+            if canonical not in coalescing:
+                continue
+            for member in distinct:
+                out.setdefault(member, set()).update(m for m in distinct if m != member)
         return out
 
     def gen_concept_list_caches(self) -> None:

@@ -16,12 +16,15 @@ def _case(
 ) -> FuzzCase:
     case_id = f"{seed.name}__{family}__{name}"
     oracle = f"with {seed.oracle_ctes()}\n{oracle_body.strip()}"
+    normalized_tags = tuple(tags)
+    if "where " in body.lower() and "where" not in normalized_tags:
+        normalized_tags = (*normalized_tags, "where")
     return FuzzCase(
         case_id=case_id,
         seed=seed.name,
         family=family,
         description=description,
-        tags=tuple(tags),
+        tags=normalized_tags,
         trilogy=seed.trilogy_model() + body.strip() + "\n",
         oracle_sql=oracle,
     )
@@ -138,6 +141,374 @@ order by gid
             )
         )
     return cases
+
+
+def _complex_where_cases(seed: SeedData) -> list[FuzzCase]:
+    nested_boolean = _case(
+        seed,
+        "where_complex",
+        "nested_boolean_nulls",
+        "Nested AND/OR branches combine nullable and boolean predicates.",
+        ("where", "nested", "and", "or", "not", "nullable", "boolean"),
+        """
+where (active and nullable_amount is null)
+    or (not active and (event_amount < 0 or event_amount >= 10))
+select event_id, event_amount, nullable_amount, active
+order by event_id asc;
+""",
+        """
+select eid, amount, nullable_amount, active
+from events
+where (active and nullable_amount is null)
+   or (not active and (amount < 0 or amount >= 10))
+order by eid
+""",
+    )
+    compound_not = _case(
+        seed,
+        "where_complex",
+        "compound_not_parentheses",
+        "NOT wraps a parenthesized nullable boolean expression.",
+        ("where", "nested", "not", "or", "nullable", "boolean"),
+        """
+where not (active or nullable_amount is null)
+select event_id, nullable_amount, active
+order by event_id asc;
+""",
+        """
+select eid, nullable_amount, active
+from events
+where not (active or nullable_amount is null)
+order by eid
+""",
+    )
+    derived_between = _case(
+        seed,
+        "where_complex",
+        "derived_between",
+        "BETWEEN filters a nested ABS/COALESCE expression.",
+        ("where", "between", "function", "coalesce", "nullable", "derived"),
+        """
+where abs(coalesce(nullable_amount, event_amount)) between 2 and 10
+select event_id, event_amount, nullable_amount
+order by event_id asc;
+""",
+        """
+select eid, amount, nullable_amount
+from events
+where abs(coalesce(nullable_amount, amount)) between 2 and 10
+order by eid
+""",
+    )
+    case_comparison = _case(
+        seed,
+        "where_complex",
+        "case_comparison",
+        "An inline CASE expression feeds a numeric WHERE comparison.",
+        ("where", "case", "nullable", "derived", "comparison"),
+        """
+where case
+    when nullable_amount is null then event_amount
+    else nullable_amount
+end >= 5
+select event_id, event_amount, nullable_amount
+order by event_id asc;
+""",
+        """
+select eid, amount, nullable_amount
+from events
+where case
+    when nullable_amount is null then amount
+    else nullable_amount
+end >= 5
+order by eid
+""",
+    )
+    string_predicate = _case(
+        seed,
+        "where_complex",
+        "string_like_or_null",
+        "LIKE and string inequality sit on separate nullable OR branches.",
+        ("where", "like", "string", "or", "and", "nullable"),
+        """
+where required_name like 'A%'
+    or (nullable_name is not null and group_name != 'alpha')
+select group_id, group_name, nullable_name, required_name
+order by group_id asc;
+""",
+        """
+select gid, name, nullable_name, required_name
+from groups
+where required_name like 'A%'
+   or (nullable_name is not null and name != 'alpha')
+order by gid
+""",
+    )
+    membership_nested = _case(
+        seed,
+        "where_complex",
+        "membership_nested_boolean",
+        "Rowset membership participates in a nested boolean predicate.",
+        ("where", "membership", "rowset", "nested", "and", "or", "not"),
+        """
+rowset active_groups <- where active
+select group_id as gid;
+
+where (group_id in active_groups.gid and not active)
+    or (event_amount < 0 and active)
+select event_id, group_id, event_amount, active
+order by event_id asc;
+""",
+        """
+select eid, gid, amount, active
+from events e
+where (
+    gid in (select distinct gid from events where active)
+    and not active
+) or (amount < 0 and active)
+order by eid
+""",
+    )
+    not_in_keyset = _case(
+        seed,
+        "where_complex",
+        "not_in_keyset",
+        "NOT IN composes with a boolean predicate over a rowset keyset.",
+        ("where", "membership", "not_in", "rowset", "and", "boolean"),
+        """
+rowset negative_groups <- where event_amount < 0
+select group_id as gid;
+
+where group_id not in negative_groups.gid and active
+select event_id, group_id, event_amount
+order by event_id asc;
+""",
+        """
+select eid, gid, amount
+from events
+where gid not in (
+    select distinct gid from events where amount < 0
+) and active
+order by eid
+""",
+    )
+    post_join = _case(
+        seed,
+        "where_complex",
+        "post_join_mixed_sides",
+        "A nested post-join predicate references nullable measures from both sides.",
+        (
+            "where",
+            "join",
+            "union",
+            "rowset",
+            "independent_sources",
+            "nested",
+            "or",
+            "and",
+            "nullable",
+        ),
+        """
+rowset left_grouped <- where left_value <= 8
+select left_key as k, sum(left_value) as left_total;
+rowset right_grouped <- where union_value <= 80
+select union_key as k, sum(union_value) as right_total;
+
+where (left_grouped.left_total is null or right_grouped.right_total is null)
+    or (
+        left_grouped.k is not null
+        and left_grouped.left_total < right_grouped.right_total
+    )
+select
+    left_grouped.k,
+    left_grouped.left_total,
+    right_grouped.right_total
+union join left_grouped.k = right_grouped.k
+order by left_grouped.k asc nulls last;
+""",
+        """
+select coalesce(l.k, r.k), l.total, r.total
+from (
+    select k, sum(value) as total
+    from left_facts
+    where value <= 8
+    group by k
+) l
+full join (
+    select k, sum(value) as total
+    from union_facts
+    where value <= 80
+    group by k
+) r on l.k is not distinct from r.k
+where (l.total is null or r.total is null)
+   or (l.k is not null and l.total < r.total)
+order by coalesce(l.k, r.k) asc nulls last
+""",
+    )
+    aggregate_comparison = _case(
+        seed,
+        "where_complex",
+        "cross_rowset_aggregate_comparison",
+        "A post-join WHERE compares aggregates from complementary rowsets.",
+        (
+            "where",
+            "join",
+            "union",
+            "rowset",
+            "aggregate",
+            "cross_rowset",
+            "coalesce",
+            "or",
+        ),
+        """
+rowset active_groups <- where active
+select group_id as gid, sum(event_amount) as active_total;
+rowset inactive_groups <- where not active
+select group_id as gid, sum(event_amount) as inactive_total;
+
+where active_groups.active_total > coalesce(inactive_groups.inactive_total, 0)
+    or (
+        active_groups.active_total is null
+        and inactive_groups.inactive_total < 0
+    )
+select
+    active_groups.gid,
+    active_groups.active_total,
+    inactive_groups.inactive_total
+union join active_groups.gid = inactive_groups.gid
+order by active_groups.gid asc;
+""",
+        """
+select coalesce(a.gid, i.gid), a.total, i.total
+from (
+    select gid, sum(amount) as total
+    from events
+    where active
+    group by gid
+) a
+full join (
+    select gid, sum(amount) as total
+    from events
+    where not active
+    group by gid
+) i on a.gid = i.gid
+where a.total > coalesce(i.total, 0)
+   or (a.total is null and i.total < 0)
+order by coalesce(a.gid, i.gid)
+""",
+    )
+    window_boundary = _case(
+        seed,
+        "where_complex",
+        "window_boundary_boolean",
+        "A wrapping WHERE applies nested nullable logic after LEAD evaluation.",
+        ("where", "window", "rowset", "lead", "nested", "or", "and", "not"),
+        """
+rowset windowed <- select
+    event_id as eid,
+    event_amount as amount,
+    nullable_amount as optional,
+    lead(event_amount, 1) over (order by event_id asc) as next_amount;
+
+where (
+    windowed.next_amount is null
+    or windowed.next_amount > windowed.amount
+) and not (
+    windowed.optional is null
+    and windowed.amount < 0
+)
+select
+    windowed.eid,
+    windowed.amount,
+    windowed.optional,
+    windowed.next_amount
+order by windowed.eid asc;
+""",
+        """
+select eid, amount, nullable_amount, next_amount
+from (
+    select
+        eid,
+        amount,
+        nullable_amount,
+        lead(amount, 1) over (order by eid) as next_amount
+    from events
+) windowed
+where (next_amount is null or next_amount > amount)
+  and not (nullable_amount is null and amount < 0)
+order by eid
+""",
+    )
+    chasm_predicate = _case(
+        seed,
+        "where_complex",
+        "chasm_mixed_measure_predicate",
+        "A nested WHERE compares measures from two fanout-prone fact domains.",
+        (
+            "where",
+            "chasm",
+            "fanout",
+            "join",
+            "union",
+            "rowset",
+            "nested",
+            "coalesce",
+        ),
+        """
+rowset sale_groups <- select
+    group_id as gid,
+    sum(sale_amount) as sale_total;
+rowset return_groups <- select
+    group_id as gid,
+    sum(return_amount) as return_total;
+
+where (
+    sale_groups.sale_total > coalesce(return_groups.return_total, 0)
+    and return_groups.return_total is not null
+) or sale_groups.sale_total is null
+select
+    sale_groups.gid,
+    sale_groups.sale_total,
+    return_groups.return_total
+union join sale_groups.gid = return_groups.gid
+order by sale_groups.gid asc;
+""",
+        # sales/returns bind group_id partially (`~`); groups is the complete
+        # domain source, so each rowset aggregates over the FULL group domain
+        # (factless groups carry NULL totals) before the union join relates them.
+        """
+select g.gid, s.total, r.total
+from groups g
+left join (
+    select gid, sum(amount) as total
+    from sales
+    group by gid
+) s on g.gid = s.gid
+left join (
+    select gid, sum(amount) as total
+    from returns
+    group by gid
+) r on g.gid = r.gid
+where (
+    s.total > coalesce(r.total, 0)
+    and r.total is not null
+) or s.total is null
+order by g.gid
+""",
+    )
+    return [
+        nested_boolean,
+        compound_not,
+        derived_between,
+        case_comparison,
+        string_predicate,
+        membership_nested,
+        not_in_keyset,
+        post_join,
+        aggregate_comparison,
+        window_boundary,
+        chasm_predicate,
+    ]
 
 
 def _function_cases(seed: SeedData) -> list[FuzzCase]:
@@ -1184,6 +1555,158 @@ order by coalesce(e.gid, o.gid), coalesce(e.active, o.active)
     ]
 
 
+def _independent_rowset_join_cases(seed: SeedData) -> list[FuzzCase]:
+    rowsets = """
+rowset left_rows <- where left_value <= 8
+select
+    left_key as k,
+    left_id as row_id,
+    left_id % 2 as bucket,
+    left_value as value;
+rowset right_rows <- where union_value <= 80
+select
+    union_key as k,
+    union_id as row_id,
+    union_id % 2 as bucket,
+    union_value as value;
+"""
+    sql_rowsets = """
+from (
+    select k, id as row_id, id % 2 as bucket, value
+    from left_facts
+    where value <= 8
+) l
+full join (
+    select k, id as row_id, id % 2 as bucket, value
+    from union_facts
+    where value <= 80
+) r
+"""
+    # A projected member of a coalescing (`union`/`full`) join-key group renders
+    # as the row-by-row coalesce of the whole group (see
+    # tests/test_scoped_join_permutations.py) — the oracle projections below
+    # mirror that per variant, including the derived member (`row_id` ~
+    # `r.row_id - 1`) in the derived-equality variant.
+    variants = (
+        (
+            "single_key_fanout",
+            "union join left_rows.k = right_rows.k",
+            "on l.k is not distinct from r.k",
+            "A single-key union join preserves many-to-many rows from two "
+            "independently filtered rowsets.",
+            ("single_key", "fanout"),
+            "l.row_id",
+        ),
+        (
+            "composite_plain_equality",
+            (
+                "union join left_rows.k = right_rows.k "
+                "and left_rows.bucket = right_rows.bucket"
+            ),
+            (
+                "on l.k is not distinct from r.k "
+                "and l.bucket is not distinct from r.bucket"
+            ),
+            "A plain composite union join keeps both independently filtered rowsets.",
+            ("composite", "plain_equality"),
+            "l.row_id",
+        ),
+        (
+            "composite_derived_equality",
+            (
+                "union join left_rows.k = right_rows.k "
+                "and left_rows.row_id = right_rows.row_id - 1"
+            ),
+            ("on l.k is not distinct from r.k " "and l.row_id = r.row_id - 1"),
+            "A derived composite union join retains its plain co-key and both sides.",
+            ("composite", "derived_equality"),
+            "coalesce(l.row_id, r.row_id - 1)",
+        ),
+    )
+    cases = []
+    for name, trilogy_join, sql_join, description, variant_tags, l_row_id in variants:
+        body = f"""
+{rowsets}
+
+select
+    left_rows.k,
+    left_rows.row_id,
+    left_rows.value,
+    right_rows.row_id,
+    right_rows.value
+{trilogy_join}
+order by
+    left_rows.k asc nulls last,
+    left_rows.row_id asc nulls last,
+    right_rows.row_id asc nulls last;
+"""
+        oracle = f"""
+select
+    coalesce(l.k, r.k),
+    {l_row_id},
+    l.value,
+    r.row_id,
+    r.value
+{sql_rowsets}
+{sql_join}
+order by
+    coalesce(l.k, r.k) asc nulls last,
+    {l_row_id} asc nulls last,
+    r.row_id asc nulls last
+"""
+        cases.append(
+            _case(
+                seed,
+                "independent_rowset_join",
+                name,
+                description,
+                (
+                    "join",
+                    "union",
+                    "rowset",
+                    "independent_sources",
+                    "where",
+                    *variant_tags,
+                ),
+                body,
+                oracle,
+            )
+        )
+        key_only_body = f"""
+{rowsets}
+
+select left_rows.k, right_rows.k
+{trilogy_join}
+order by left_rows.k asc nulls last, right_rows.k asc nulls last;
+"""
+        key_only_oracle = f"""
+select coalesce(l.k, r.k), coalesce(r.k, l.k)
+{sql_rowsets}
+{sql_join}
+order by coalesce(l.k, r.k) asc nulls last, coalesce(r.k, l.k) asc nulls last
+"""
+        cases.append(
+            _case(
+                seed,
+                "independent_rowset_join",
+                f"{name}_key_only",
+                f"{description} Only the coalesced keys are projected.",
+                (
+                    "join",
+                    "union",
+                    "rowset",
+                    "independent_sources",
+                    "where",
+                    "key_only",
+                    *variant_tags,
+                ),
+                key_only_body,
+                key_only_oracle,
+            )
+        )
+    return cases
+
+
 def _rowset_boundary_cases(seed: SeedData) -> list[FuzzCase]:
     cases = []
     variants = (
@@ -1561,19 +2084,23 @@ select
     sum(return_amount) as returns_total
 order by group_id asc;
 """
+    # sales/returns bind group_id partially (`~`); groups is the complete
+    # domain source, so the chasm aggregation runs over the FULL group domain
+    # (factless groups carry NULL totals on both sides).
     direct_oracle = """
-select s.gid, s.total, r.total
-from (
+select g.gid, s.total, r.total
+from groups g
+left join (
     select gid, sum(amount) as total
     from sales
     group by gid
-) s
-join (
+) s on g.gid = s.gid
+left join (
     select gid, sum(amount) as total
     from returns
     group by gid
-) r on s.gid = r.gid
-order by s.gid
+) r on g.gid = r.gid
+order by g.gid
 """
     dimension_body = """
 select
@@ -1585,12 +2112,12 @@ order by group_name asc;
     dimension_oracle = """
 select g.name, s.total, r.total
 from groups g
-join (
+left join (
     select gid, sum(amount) as total
     from sales
     group by gid
 ) s on g.gid = s.gid
-join (
+left join (
     select gid, sum(amount) as total
     from returns
     group by gid
@@ -1609,17 +2136,18 @@ order by group_id asc;
     filtered_oracle = """
 select gid, sales_total, returns_total
 from (
-    select s.gid, s.total as sales_total, r.total as returns_total
-    from (
+    select g.gid, s.total as sales_total, r.total as returns_total
+    from groups g
+    left join (
         select gid, sum(amount) as total
         from sales
         group by gid
-    ) s
-    join (
+    ) s on g.gid = s.gid
+    left join (
         select gid, sum(amount) as total
         from returns
         group by gid
-    ) r on s.gid = r.gid
+    ) r on g.gid = r.gid
 ) totals
 where gid is not null
   and coalesce(sales_total, 0) + coalesce(returns_total, 0) > 10
@@ -1661,6 +2189,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
     builders = (
         _scalar_cases,
         _aggregate_cases,
+        _complex_where_cases,
         _function_cases,
         _rowset_cases,
         _having_cases,
@@ -1671,6 +2200,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _join_cases,
         _multiway_join_cases,
         _composite_join_cases,
+        _independent_rowset_join_cases,
         _rowset_boundary_cases,
         _named_grouping_window_cases,
         _derived_join_cases,

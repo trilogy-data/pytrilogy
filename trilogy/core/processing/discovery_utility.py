@@ -34,6 +34,7 @@ from trilogy.core.processing.nodes import (
     MultiSelectMergeNode,
     StrategyNode,
 )
+from trilogy.core.processing.rowset_islanding import island_rowsets_for_connectivity
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
 
@@ -595,87 +596,6 @@ def _aggregate_grain_only_parents(
     return out
 
 
-def _island_rowsets(
-    g: "ReferenceGraph", cg, grain_only: dict[str, set[str]] | None = None
-) -> None:
-    """Mutate the undirected connectivity copy ``cg`` so each rowset becomes an
-    island: a rowset is a materialized result, so from outside it you can reach
-    only its declared outputs through an explicit scoped join/merge — you cannot
-    navigate into its derivation to recover the base concepts it was computed
-    from. So sever every edge crossing a rowset boundary, then reconnect (a) a
-    rowset's own outputs to each other and (b) outputs related across rowsets by a
-    scoped-join pseudonym.
-
-    Without this, a property keyed on a base concept (e.g. ``store_id.name``) looks
-    falsely reachable from a rowset whose key was *renamed* off that base concept
-    (``select store_id as sk_a``): the global graph connects ``store_id`` to the
-    rowset through that internal derivation, so a genuine scoped-join disconnection
-    (the join group is ``{sk_a, sk_b}``, not ``store_id``) is masked and surfaces
-    as the generic unresolvable error instead of a named subgraph split.
-    """
-    members_by_rowset: dict[str, list[str]] = {}
-    nodes_by_address: dict[str, list[str]] = {}
-    rowset_nodes: set[str] = set()
-    for node, concept in g.concepts.items():
-        if concept.derivation != Derivation.ROWSET:
-            continue
-        rowset_nodes.add(node)
-        nodes_by_address.setdefault(concept.address, []).append(node)
-        if isinstance(concept.lineage, BuildRowsetItem):
-            members_by_rowset.setdefault(concept.lineage.rowset.name, []).append(node)
-
-    if not rowset_nodes:
-        return
-
-    island = rowset_nodes | {
-        n for n in cg.nodes if isinstance(n, str) and n.startswith("rowset~")
-    }
-    cg.remove_edges_from(
-        [(u, v) for u, v in cg.edges if (u in island) != (v in island)]
-    )
-
-    # reconnect each rowset's own outputs via a synthetic hub
-    for name, members in members_by_rowset.items():
-        hub = f"rowset_island~{name}"
-        cg.add_node(hub)
-        cg.add_edges_from((hub, m) for m in members if m in cg)
-        # A concept DERIVED from a rowset's declared output (a filtered aggregate
-        # `sum(cur.sales ? ...)`, `cur.x * 2`, etc.) legitimately consumes that
-        # output, but islanding severed the edge as a boundary crossing — wrongly
-        # orphaning the consumer (q02 `_virt_filter` over a rowset measure). A
-        # downstream consumer is a `g`-successor of an output; reconnect each
-        # external one to the hub. Only UPSTREAM navigation (predecessors — the
-        # base concepts the rowset was computed from) stays severed, which is the
-        # whole point of islanding. Skip a consumer that merely groups `by` the
-        # output (a grain-only parent): re-welding that edge would bridge two
-        # unrelated models through an aggregate's grouping key — exactly the bridge
-        # `_aggregate_grain_only_parents` drops upstream.
-        for member in members:
-            member_concept = g.concepts.get(member)
-            member_addr = member_concept.address if member_concept else None
-            for consumer in g.successors(member):
-                if consumer in island or consumer not in cg:
-                    continue
-                consumer_concept = g.concepts.get(consumer)
-                if (
-                    grain_only
-                    and consumer_concept is not None
-                    and member_addr in grain_only.get(consumer_concept.address, set())
-                ):
-                    continue
-                cg.add_edge(hub, consumer)
-
-    # reconnect outputs related across rowsets by a scoped-join pseudonym
-    for node in rowset_nodes:
-        concept = g.concepts[node]
-        for pseudonym in concept.pseudonyms:
-            if pseudonym == concept.address:
-                continue
-            for other in nodes_by_address.get(pseudonym, []):
-                if node in cg and other in cg:
-                    cg.add_edge(node, other)
-
-
 def _component_map(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
@@ -705,7 +625,7 @@ def _component_map(
                     cg.remove_edge(node, neighbor)
 
     if island_rowsets:
-        _island_rowsets(g, cg, grain_only)
+        island_rowsets_for_connectivity(g, cg, grain_only)
 
     comp_of: dict[str, int] = {}
     for i, component in enumerate(gx.connected_components(cg)):
@@ -731,7 +651,8 @@ def disconnected_components(
     ``_aggregate_grain_only_parents``) so a regroupable aggregate never bridges
     two otherwise-disconnected models through its grouping key.
 
-    ``island_rowsets`` controls rowset islanding (see ``_island_rowsets``): when
+    ``island_rowsets`` controls rowset islanding (see
+    ``island_rowsets_for_connectivity``): when
     set, a base concept reachable only by navigating into a rowset's derivation is
     not treated as a real join path. This is correct as a *post-failure* message
     refiner (the v3 path, where discovery has already failed independently), but as

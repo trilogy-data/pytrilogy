@@ -308,7 +308,47 @@ class MergeNode(StrategyNode):
                     j.join_type = self.force_join_type
         return joins
 
+    def _inject_scoped_join_key_exposure(self) -> None:
+        """Make every merged side expose its OWN member of each authored
+        coalescing join-key group (`union join a.k = b.k and a.d = b.d - 1`).
+
+        Join inference pairs the sides' visible outputs, so a side that
+        carries a member somewhere below but doesn't surface it (e.g. a basic
+        wrapper computing the derived member off a rowset drops the rowset's
+        plain co-key) silently loses that key from the join — cross-producting
+        the rows on whatever keys remain (q59). Only members available on the
+        side itself or its immediate parents are surfaced; a side unrelated to
+        a group is untouched."""
+        group_mates = self.environment.distinct_scoped_join_group_mates()
+        if not group_mates or self.node_joins is not None:
+            return
+        for parent in self.parents:
+            outputs = {c.address for c in parent.output_concepts}
+            changed = False
+            for member in group_mates:
+                if member in outputs:
+                    if member in parent.hidden_concepts:
+                        parent.unhide_output_concepts(
+                            [c for c in parent.output_concepts if c.address == member],
+                            rebuild=False,
+                        )
+                        changed = True
+                    continue
+                available = any(
+                    c.address == member and c.address not in grandparent.hidden_concepts
+                    for grandparent in parent.parents
+                    for c in grandparent.output_concepts
+                )
+                if available:
+                    concept = self.environment.concepts.get(member)
+                    if concept is not None:
+                        parent.add_output_concept(concept, rebuild=False)
+                        changed = True
+            if changed:
+                parent.rebuild_cache()
+
     def _resolve(self) -> QueryDatasource:
+        self._inject_scoped_join_key_exposure()
         parent_sources: List[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]

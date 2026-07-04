@@ -190,3 +190,51 @@ count, so this can't regress silently again. (Canonical
 `test_fifty_nine` only asserts SQL length < 12000, so it did NOT catch this — and
 strict row-scoring of the canonical also `fail`s 100-vs-100, worth a separate look
 but out of scope here.)
+
+---
+
+## FIXED 2026-07-04 — union-join-between-rowsets collapse resolved
+
+The doc's root-cause attribution to `_expose_coalesced_key_contents` was WRONG
+(disabling it changes nothing). The real defect was three independent holes,
+all in how discovery/join-resolution honor authored coalescing key groups:
+
+1. **Group-mate pseudonym leak (the collapse).** The union join makes
+   `this_year.code` / `next_year.code` MUTUAL pseudonyms;
+   `validate_concept` (discovery_validation.py) marked every pseudonym of a
+   found concept as found, so sourcing ONE rowset satisfied the other side's
+   key and discovery completed with a single node — the entire other side
+   dropped (case D, 7 vs 16 854). Fix: a distinct member of a coalescing
+   (`full`/`union`) key group is never satisfied through a group-mate
+   pseudonym unless the node's subtree materializes the mate itself; the mate
+   still lands in `found_map` so the authored relation keeps the stack
+   connected (`BuildEnvironment.distinct_scoped_join_group_mates`, restricted
+   to INCOMPARABLE-derived groups — SUBSET/LEFT substitution is exempt).
+2. **Derived key never materialized.** For `this_year.wk = next_year.wk - 52`
+   between two independently-sourced rowsets, nothing computed the derived
+   expression, so the completion merge joined on `code` alone (fan-out).
+   Fixes: `gen_rowset_node` materializes producible coalescing derived keys
+   onto the rowset node (`_materializable_derived_join_keys`), and
+   `MergeNode._resolve` re-grew the deleted exposure injection
+   (`_inject_scoped_join_key_exposure`) so every merged side surfaces its own
+   member of each authored key group.
+3. **Authored pairs pruned as redundant.** `reduce_concept_pairs`
+   (join_resolution.py) FD/grain-pruned the plain `k = k` co-key because the
+   right side's grain was covered — sound within one entity, unsound across
+   independently-authored ∦ sides. Authored coalescing members
+   (`DomainGraph.coalescing_relation_members`, INCOMPARABLE only) are exempt
+   from all three prunes.
+
+Regression cells: `tests/join_matrix/test_independent_rowset_matrix.py`
+(single-key keys-only — the smoking gun; single-key + measures; composite
+plain; composite derived; python-oracle expected rows) and the fuzzer
+`independent_rowset_join` family (12/12 pass; the `key_only` oracles were
+corrected to project the coalesced group value, matching the ruled semantics
+in `tests/test_scoped_join_permutations.py`).
+
+Related-but-separate finding (pre-existing, NOT this regression): the fuzzer
+`chasm` cases exposed that `sales`/`returns` bound `group_id` WITHOUT `~`,
+i.e. lyingly declared complete — rule-B directional narrowing then correctly
+(per ruled lying-declaration semantics) collapsed a union join to INNER.
+Fixed by marking those fact FK bindings `~` partial (models.py) and updating
+the chasm oracles to the groups-domain-preserving results.

@@ -159,6 +159,44 @@ def _producible_derived_join_keys(
     return result
 
 
+def _materializable_derived_join_keys(
+    node: StrategyNode, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """Derived-expression scoped-join keys (`next_year.wk - 52`) whose inputs
+    this rowset node already produces and which it does not yet expose.
+
+    Unlike `_producible_derived_join_keys` (the enrichment perspective, which
+    goes on to SOURCE the other side and so must decline pairings that would
+    re-enter this rowset), materializing is a purely local computation — the
+    key is a BASIC expression over this node's own outputs. Restricted to
+    COALESCING (`full`/`union`) relations, whose independent-rowset sides meet
+    only at the completion merge; `left`/`subset` resolve via the enrichment
+    machinery instead."""
+    producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
+    own = {c.address for c in node.output_concepts}
+    scoped_keys = environment.domain_graph.outer_relation_keys()
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+    for key_addr in scoped_keys:
+        key_concept = environment.concepts.get(key_addr)
+        if key_concept is None:
+            continue
+        for candidate_addr in {key_addr, *key_concept.pseudonyms}:
+            candidate = environment.concepts.get(candidate_addr)
+            if (
+                candidate is None
+                or candidate.derivation != Derivation.BASIC
+                or candidate.address in seen
+                or candidate.address in own
+            ):
+                continue
+            inputs = {a.address for a in candidate.concept_arguments}
+            if inputs and inputs <= producible:
+                seen.add(candidate.address)
+                out.append(candidate)
+    return out
+
+
 def _build_rowset_body_node(
     concept: BuildConcept,
     lineage: BuildRowsetItem,
@@ -708,8 +746,16 @@ def _enrich_rowset_node(
         if merged is not None:
             return merged
     bridge_keys = _pseudonym_bridge_keys(node.output_concepts, environment)
+    # A materialized coalescing-join key member (`next_year.wk - 52`) is a
+    # cross-rowset merge key, not an enrichment bridge: sourcing it through
+    # discovery re-enters this rowset and recurses.
+    coalescing_members = environment.distinct_scoped_join_group_mates()
     possible_joins = concept_to_relevant_joins(
-        [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]
+        [
+            x
+            for x in node.output_concepts
+            if x.derivation != Derivation.ROWSET and x.address not in coalescing_members
+        ]
         + [canonical for _, canonical in bridge_keys]
     )
     if not possible_joins:
@@ -803,6 +849,18 @@ def gen_rowset_node(
         environment,
         depth,
     )
+
+    # Materialize any derived-expression scoped-join key this rowset can
+    # compute off its own outputs (`next_year.wk - 52`) directly onto the
+    # node. When the other side is an independent rowset sourced separately
+    # (a union/full join between two rowsets), the completion merge infers
+    # joins from the sides' outputs alone — without the materialized key the
+    # derived pairing is invisible and the join silently drops it.
+    derived_join_keys = _materializable_derived_join_keys(node, environment)
+    if derived_join_keys:
+        for derived_key in derived_join_keys:
+            node.add_output_concept(derived_key, rebuild=False)
+        node.rebuild_cache()
 
     if conditions:
         merged = _apply_cross_rowset_where(

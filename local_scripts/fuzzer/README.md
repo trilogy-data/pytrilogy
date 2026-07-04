@@ -18,7 +18,10 @@ aggregate and partitioned windows, relational `union(...)`, derived
 `subset join`/`union join`, multiway and composite domain joins, offset join
 expressions, nested parent-grain aggregates, chasm/fanout aggregation,
 subordinate keys crossing rowset boundaries, and named grouping-derived
-window partitions under ROLLUP/CUBE.
+window partitions under ROLLUP/CUBE. Independent filtered rowset joins include
+single-key fanout and plain/derived composite keys. Complex WHERE predicates
+cover nested boolean trees, three-valued null logic, derived expressions,
+membership, and filters crossing join, window, and chasm boundaries.
 
 Run everything from the repository root:
 

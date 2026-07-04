@@ -15,7 +15,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildFunction,
-    BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -28,6 +27,10 @@ from trilogy.core.processing.node_generators.common import (
     reinject_common_join_keys_v2,
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
+from trilogy.core.processing.rowset_islanding import (
+    extract_address,
+    island_rowsets_for_weak_merge,
+)
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
 
@@ -51,10 +54,6 @@ def filter_pseudonyms_for_source(
             to_remove.add(max(lengths, key=lambda x: lengths.get(x, 0)))
     for node in to_remove:
         ds_graph.remove_node(node)
-
-
-def extract_address(node: str):
-    return node.split("~")[1].split("@")[0]
 
 
 def extract_concept(node: str, env: BuildEnvironment):
@@ -102,70 +101,6 @@ def extract_ds_components(
         if not any(parsed in x for x in graphs):
             graphs.append([parsed])
     return graphs
-
-
-ROWSET_HUB_PREFIX = "rowset_hub~"
-
-
-def island_rowsets_for_weak_merge(
-    g: ReferenceGraph, requested_concepts: list[BuildConcept]
-) -> None:
-    """Reshape the weak-merge graph so each rowset behaves like an opaque island.
-
-    A rowset is a materialized result: from outside you can reach only its
-    declared outputs through a scoped join — you cannot navigate INTO its body to
-    recover the base concepts it was computed from. The raw reference graph does
-    not honor that: a rowset output links to its internal ``content`` (the
-    concept behind its select), and through the shared base that content reaches
-    the OTHER rowset's internals — a phantom cross-rowset bridge that competes
-    with the real join key and trips the ambiguity guard. Two reshapes:
-
-    1. SEVER every edge between a rowset output and its ``content`` (the internal
-       it aliases), across ALL grain instances. Matching is by CANONICAL address
-       (graph nodes key on ``canonical_address``, not the friendly ``address``);
-       the default-grain-only lineage prune misses the other instances. This
-       islands the internal subtree from the output. Downstream consumers of the
-       output (the derived join key `a.grp + 1`) are NOT severed — something
-       downstream of a rowset legitimately links back to it.
-
-    2. LINK a rowset's co-produced outputs to each other via a per-rowset hub
-       node. A rowset measure reaches its own grain key only through an AGGREGATE
-       node, which the minimal-tree search always prunes — so the measure would
-       isolate and the tree couldn't span `{key, measure}` of one rowset. The hub
-       (named without a ``c~``/``ds~`` prefix so concept/datasource extraction
-       skips it — pure connectivity glue) models that they are co-produced. Each
-       rowset gets its OWN hub, so distinct rowsets are related ONLY by the cross
-       join key's pseudonym edge, never through the hub."""
-    nodes_by_canon: dict[str, list[str]] = {}
-    for node in g.nodes:
-        if str(node).startswith("c~"):
-            nodes_by_canon.setdefault(extract_address(node), []).append(node)
-
-    canon_by_rowset: dict[str, set[str]] = {}
-    to_remove: list[tuple[str, str]] = []
-    for concept in g.concepts.values():
-        if not isinstance(concept.lineage, BuildRowsetItem):
-            continue
-        canon_by_rowset.setdefault(concept.lineage.rowset.name, set()).add(
-            concept.canonical_address
-        )
-        content_canon = concept.lineage.content.canonical_address
-        for out_node in nodes_by_canon.get(concept.canonical_address, []):
-            for content_node in nodes_by_canon.get(content_canon, []):
-                to_remove.append((content_node, out_node))
-                to_remove.append((out_node, content_node))
-    g.remove_edges_from([e for e in to_remove if e in g.edges])
-
-    for name, canon_addrs in canon_by_rowset.items():
-        members = [
-            node for addr in canon_addrs for node in nodes_by_canon.get(addr, [])
-        ]
-        if len(members) < 2:
-            continue
-        hub = f"{ROWSET_HUB_PREFIX}{name}"
-        for member in members:
-            g.add_edge(hub, member)
-            g.add_edge(member, hub)
 
 
 def determine_induced_minimal_nodes(

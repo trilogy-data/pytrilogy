@@ -14,8 +14,11 @@ def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
     second = generate_cases()
 
     assert first == second
-    assert len(first) == 116
+    assert len(first) == 150
     assert len({case.case_id for case in first}) == len(first)
+    assert all(
+        "where " not in case.trilogy.lower() or "where" in case.tags for case in first
+    )
     assert {case.seed for case in first} == {"edge", "dense"}
     assert {case.family for case in first} == {
         "aggregate",
@@ -25,6 +28,7 @@ def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
         "function",
         "grouping",
         "having",
+        "independent_rowset_join",
         "join",
         "membership",
         "multiway_join",
@@ -34,6 +38,7 @@ def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
         "scalar",
         "union",
         "window",
+        "where_complex",
     }
     tags = {tag for case in first for tag in case.tags}
     assert {
@@ -81,7 +86,7 @@ def test_random_datasets_are_repeatable_and_preserve_domain_invariants() -> None
         "random_002001",
         "random_002002",
     ]
-    assert len(generate_cases(seeds)) == 174
+    assert len(generate_cases(seeds)) == 225
 
 
 def test_repro_contains_standalone_program_and_diagnostics(tmp_path: Path) -> None:

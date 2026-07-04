@@ -133,6 +133,22 @@ class ValidationResult(Enum):
     INCOMPLETE_CONDITION = 4
 
 
+def _deep_output_addresses(node: StrategyNode) -> set[str]:
+    """Every address produced anywhere in `node`'s parent subtree (own
+    addresses only, no pseudonyms)."""
+    acc: set[str] = set()
+    seen: set[int] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        acc.update(c.address for c in current.output_concepts)
+        stack.extend(current.parents)
+    return acc
+
+
 def validate_concept(
     concept: BuildConcept,
     node: StrategyNode,
@@ -144,6 +160,8 @@ def validate_concept(
     accept_partial: bool,
     seen: set[str],
     environment: BuildEnvironment,
+    group_mates: dict[str, set[str]],
+    node_deep_addresses: set[str],
 ):
     # logger.debug(
     #     f"Validating concept {concept.address} with accept_partial={accept_partial}"
@@ -167,6 +185,24 @@ def validate_concept(
             found_map[str(node)].add(concept)
     for v_address in concept.pseudonyms:
         if v_address in seen:
+            continue
+        # A scoped-join key-group member is never satisfied through a
+        # group-mate pseudonym: the join between the sides needs each side's
+        # own column, so counting the mate as found here collapses the join
+        # onto one side (union join between two independent rowsets, q59).
+        # A node whose subtree materializes the mate itself already represents
+        # the join — its coalesced output legitimately covers both members.
+        # The mate still lands in found_map: the authored join relates the two
+        # sides, so the stack is connected once each side sources its own.
+        if (
+            v_address in group_mates.get(concept.address, ())
+            and v_address not in node_deep_addresses
+        ):
+            mate = environment.alias_origin_lookup.get(
+                v_address
+            ) or environment.concepts.get(v_address)
+            if mate is not None:
+                found_map[str(node)].add(mate)
             continue
         if v_address in environment.alias_origin_lookup:
             # logger.debug(
@@ -193,6 +229,8 @@ def validate_concept(
             accept_partial,
             seen=seen,
             environment=environment,
+            group_mates=group_mates,
+            node_deep_addresses=node_deep_addresses,
         )
 
 
@@ -210,9 +248,11 @@ def validate_stack(
     partial_addresses: set[str] = set()
     virtual_addresses: set[str] = set()
     seen: set[str] = set()
+    group_mates = environment.distinct_scoped_join_group_mates()
 
     for node in stack:
         resolved = node.resolve()
+        node_deep_addresses = _deep_output_addresses(node) if group_mates else set()
 
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
@@ -229,6 +269,8 @@ def validate_stack(
                 accept_partial,
                 seen,
                 environment,
+                group_mates,
+                node_deep_addresses,
             )
         for concept in node.virtual_output_concepts:
             if concept.address in non_partial_addresses:

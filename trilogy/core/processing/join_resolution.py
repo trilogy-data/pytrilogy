@@ -503,6 +503,10 @@ def _collect_intrinsic_partial_addresses(
     return set()
 
 
+def _is_authored_coalescing_pair(pair: ConceptPair, members: set[str]) -> bool:
+    return pair.left.address in members or pair.right.address in members
+
+
 def reduce_concept_pairs(
     pairs: list[ConceptPair],
     right_source: DataSource,
@@ -518,6 +522,13 @@ def reduce_concept_pairs(
         pair.right.address for pair in pairs if pair.right.purpose == Purpose.KEY
     }
     grain_components = set(right_source.grain.components)
+    # An authored coalescing-join (`full`/`union`) key member pairs by its own
+    # physical column as part of the join's semantics. FD/grain implication
+    # holds within one entity, not across independently-authored sides —
+    # inferring such a pair away silently changes which rows match (q59).
+    coalescing_members: set[str] = (
+        domain_graph.coalescing_relation_members() if domain_graph else set()
+    )
     # FD-closure pruning (docs/domain_graph_design.md step 4): a pair both of
     # whose sides are functionally determined by the SURVIVING joined keys is
     # redundant — equality on the determinants implies equality here. The
@@ -533,6 +544,8 @@ def reduce_concept_pairs(
         for index, pair in enumerate(pairs):
             left_addr, right_addr = pair.left.address, pair.right.address
             if right_addr in grain_components:
+                continue
+            if _is_authored_coalescing_pair(pair, coalescing_members):
                 continue
             determinant_left = working_left - {left_addr}
             determinant_right = working_right - {right_addr}
@@ -563,12 +576,14 @@ def reduce_concept_pairs(
             pair.left.purpose == Purpose.PROPERTY
             and pair.left.keys
             and pair.left.keys.issubset(left_keys)
+            and not _is_authored_coalescing_pair(pair, coalescing_members)
         ):
             continue
         if (
             pair.right.purpose == Purpose.PROPERTY
             and pair.right.keys
             and pair.right.keys.issubset(right_keys)
+            and not _is_authored_coalescing_pair(pair, coalescing_members)
         ):
             continue
         if index in fd_pruned:
@@ -581,7 +596,12 @@ def reduce_concept_pairs(
     if right_source.grain.components and right_source.grain.components.issubset(
         all_keys
     ):
-        return [x for x in final if x.right.address in right_source.grain.components]
+        return [
+            x
+            for x in final
+            if x.right.address in right_source.grain.components
+            or _is_authored_coalescing_pair(x, coalescing_members)
+        ]
 
     return final
 

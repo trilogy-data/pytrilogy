@@ -289,6 +289,21 @@ class DomainGraph:
             for addr in (e.source, e.target)
         }
 
+    def coalescing_relation_members(self) -> set[str]:
+        """Raw (uncanonicalized) endpoints of declared INCOMPARABLE relations —
+        the authored key members of coalescing (`full`/`union`) joins. Each
+        pairs by its own physical column; equality on them is part of the
+        authored join semantics and must never be inferred away. EQUAL
+        (`merge`) declarations are excluded: their domains are declared
+        identical, so FD implication across the sides is sound."""
+        return {
+            addr
+            for e in self.edges
+            if e.relation is DomainRelation.INCOMPARABLE
+            and e.provenance is EdgeProvenance.DECLARED
+            for addr in (e.source, e.target)
+        }
+
     def statement_incomparable_keys(self) -> set[str]:
         """Canonicalized endpoints of statement-scoped ∦ declarations
         (historical statement_full_keys)."""
