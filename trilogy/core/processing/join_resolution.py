@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import JoinType, Modifier, SourceType
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -441,7 +442,7 @@ def resolve_join_order_v2(
     return output
 
 
-def _side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
+def side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
     if side is None:
         return False
     equivalent = concept.equivalent_addresses
@@ -450,17 +451,15 @@ def _side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
     # a side that COMPUTES the join key from nullable inputs yields NULL keys
     # too (`l_key + 1` is NULL wherever `l_key` is) even when the derived key
     # itself never got flagged
-    from trilogy.core.processing.nodes.base_node import _propagates_argument_nulls
-
-    if not _propagates_argument_nulls(concept):
+    if not propagates_argument_nulls(concept):
         return False
     args = {a.address for a in concept.concept_arguments}
     if not args:
         return False
-    side_nullable: set[str] = set()
+    nullable_addrs: set[str] = set()
     for nc in side.nullable_concepts:
-        side_nullable |= nc.equivalent_addresses
-    return bool(args & side_nullable)
+        nullable_addrs |= nc.equivalent_addresses
+    return bool(args & nullable_addrs)
 
 
 def get_modifiers(
@@ -470,7 +469,7 @@ def get_modifiers(
     right: DataSource | None,
 ) -> list[Modifier]:
     """Use null-safe equality only when both exposed join keys can be NULL."""
-    if _side_nullable(left_concept, left) and _side_nullable(right_concept, right):
+    if side_nullable(left_concept, left) and side_nullable(right_concept, right):
         return [Modifier.NULLABLE]
     return []
 

@@ -128,22 +128,6 @@ def show_statement_type(idx: int, total: int, statement_type: str) -> None:
         echo(style(f"{statement_num} ({statement_type})", fg="cyan", bold=True))
 
 
-# Maps definition statement class names to a short human label for the
-# "parsed N definitions but nothing executed" message.
-_DEFINITION_LABELS: dict[str, str] = {
-    "RowsetDerivationStatement": "rowset",
-    "ConceptDeclarationStatement": "concept",
-    "ConceptDerivationStatement": "concept",
-    "PropertiesDeclarationStatement": "property",
-    "ImportStatement": "import",
-    "Datasource": "datasource",
-    "MergeStatementV2": "merge",
-    "KeyMergeStatement": "merge",
-    "FunctionDeclaration": "function",
-    "TypeDeclaration": "type",
-}
-
-
 def _pluralize(label: str, count: int) -> str:
     if count == 1:
         return f"1 {label}"
@@ -154,9 +138,12 @@ def _pluralize(label: str, count: int) -> str:
 def summarize_definitions(definitions: list) -> str:
     """Human breakdown of parsed-but-non-executable statements, e.g.
     "1 rowset, 2 concepts". Falls back to a plain count for unknown types."""
+    # deferred: keep this display module import-light for CLI startup
+    from trilogy.executor import label_definition_statement
+
     counts: dict[str, int] = {}
     for d in definitions:
-        label = _DEFINITION_LABELS.get(type(d).__name__, "definition")
+        label = label_definition_statement(d)
         counts[label] = counts.get(label, 0) + 1
     # Stable, count-descending order so the dominant kind reads first.
     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))

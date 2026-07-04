@@ -1,5 +1,5 @@
 from trilogy.core.enums import FunctionClass, FunctionType
-from trilogy.core.functions import FUNCTION_REGISTRY
+from trilogy.core.functions import FUNCTION_FAMILIES, FUNCTION_REGISTRY, function_family
 
 RULE_PROMPT = r"""# Trilogy Syntax Guide
 
@@ -287,161 +287,7 @@ _AGENT_HIDDEN_FUNCTIONS = {
 }
 
 
-# Coarse semantic families so the reference reads as a handful of grouped lines
-# rather than one scrambled mega-line. A function falls into the first family it
-# matches; anything unlisted lands in "other".
-_FUNCTION_FAMILIES: list[tuple[str, frozenset[str]]] = [
-    (
-        "aggregate",
-        frozenset(
-            {
-                "count",
-                "count_distinct",
-                "sum",
-                "max",
-                "min",
-                "avg",
-                "stddev",
-                "variance",
-                "array_agg",
-                "bool_or",
-                "bool_and",
-                "any",
-                "grouping",
-                "grouping_id",
-            }
-        ),
-    ),
-    (
-        "string",
-        frozenset(
-            {
-                "lower",
-                "upper",
-                "ltrim",
-                "rtrim",
-                "trim",
-                "hex",
-                "concat",
-                "split",
-                "strpos",
-                "contains",
-                "len",
-                "substring",
-                "replace",
-                "regexp_contains",
-                "regexp_extract",
-                "regexp_replace",
-                "format_time",
-                "parse_time",
-            }
-        ),
-    ),
-    (
-        "date/time",
-        frozenset(
-            {
-                "date",
-                "datetime",
-                "timestamp",
-                "second",
-                "minute",
-                "hour",
-                "day",
-                "day_of_week",
-                "week",
-                "month",
-                "quarter",
-                "year",
-                "month_name",
-                "day_name",
-                "unix_to_timestamp",
-                "date_part",
-                "date_truncate",
-                "date_add",
-                "date_sub",
-                "date_diff",
-                "date_spine",
-                "current_date",
-                "current_datetime",
-                "current_timestamp",
-            }
-        ),
-    ),
-    (
-        "array/map/struct",
-        frozenset(
-            {
-                "unnest",
-                "array",
-                "array_distinct",
-                "array_sum",
-                "array_sort",
-                "array_to_string",
-                "array_transform",
-                "array_filter",
-                "generate_array",
-                "map_keys",
-                "map_values",
-                "struct",
-            }
-        ),
-    ),
-    (
-        "math",
-        frozenset(
-            {
-                "abs",
-                "sqrt",
-                "random",
-                "floor",
-                "ceil",
-                "round",
-                "mod",
-                "log",
-                "power",
-                "hash",
-            }
-        ),
-    ),
-    (
-        "conditional/cast",
-        frozenset(
-            {
-                "case",
-                "simple_case",
-                "coalesce",
-                "nullif",
-                "isnull",
-                "greatest",
-                "least",
-                "cast",
-            }
-        ),
-    ),
-    (
-        "geo",
-        frozenset(
-            {
-                "geo_from_text",
-                "geo_x",
-                "geo_y",
-                "geo_centroid",
-                "geo_point",
-                "geo_distance",
-                "geo_transform",
-            }
-        ),
-    ),
-]
-_FAMILY_ORDER = [label for label, _ in _FUNCTION_FAMILIES] + ["other"]
-
-
-def _function_family(name: str) -> str:
-    for label, members in _FUNCTION_FAMILIES:
-        if name in members:
-            return label
-    return "other"
+_FAMILY_ORDER = [label for label, _ in FUNCTION_FAMILIES] + ["other"]
 
 
 def _render_function_list(types) -> str:
@@ -456,7 +302,7 @@ def _render_function_list(types) -> str:
     fam_examples: dict[str, list[str]] = {}
     seen: list[str] = []
     for v in types:
-        fam = _function_family(v.value)
+        fam = function_family(v)
         if fam not in fam_sigs:
             fam_sigs[fam], fam_examples[fam] = {}, []
             seen.append(fam)

@@ -22,10 +22,10 @@ from trilogy.core.processing.grain_utility import (
 )
 from trilogy.core.processing.join_resolution import (
     _collect_deep_partial_addresses,
-    _side_nullable,
     compute_outer_null_status,
     get_node_joins,
     prune_outer_join_pairs,
+    side_nullable,
 )
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
@@ -227,7 +227,7 @@ class MergeNode(StrategyNode):
             modifiers = list(join.modifiers)
             if Modifier.NULLABLE not in modifiers and join.concepts:
                 if all(
-                    _side_nullable(concept, left) and _side_nullable(concept, right)
+                    side_nullable(concept, left) and side_nullable(concept, right)
                     for concept in join.concepts
                 ):
                     modifiers.append(Modifier.NULLABLE)

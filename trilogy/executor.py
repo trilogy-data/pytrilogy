@@ -25,17 +25,23 @@ from trilogy.core.statements.author import (
     STATEMENT_TYPES,
     ChartStatement,
     ConceptDeclarationStatement,
+    ConceptDerivationStatement,
     CopyStatement,
     CreateStatement,
+    FunctionDeclaration,
     ImportStatement,
+    KeyMergeStatement,
     MergeStatementV2,
     MockStatement,
     MultiSelectStatement,
     PersistStatement,
+    PropertiesDeclarationStatement,
     PublishStatement,
     RawSQLStatement,
+    RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
+    TypeDeclaration,
     ValidateStatement,
 )
 from trilogy.core.statements.execute import (
@@ -95,6 +101,29 @@ GENERATABLE_STATEMENT_TYPES = (
     MockStatement,
     ChartStatement,
 )
+
+# Human labels for the non-executable (definition) statement kinds, used by CLI
+# summaries of files that parse but produce nothing to run.
+DEFINITION_STATEMENT_LABELS: tuple[tuple[type, str], ...] = (
+    (RowsetDerivationStatement, "rowset"),
+    (ConceptDeclarationStatement, "concept"),
+    (ConceptDerivationStatement, "concept"),
+    (PropertiesDeclarationStatement, "property"),
+    (ImportStatement, "import"),
+    (Datasource, "datasource"),
+    (MergeStatementV2, "merge"),
+    (KeyMergeStatement, "merge"),
+    (FunctionDeclaration, "function"),
+    (TypeDeclaration, "type"),
+)
+
+
+def label_definition_statement(statement: object) -> str:
+    for cls, label in DEFINITION_STATEMENT_LABELS:
+        if isinstance(statement, cls):
+            return label
+    return "definition"
+
 
 _CHART_COPY_SIZE_KEYS = {"width", "height"}
 _CHART_COPY_SAVE_KEYS = {"scale": "scale_factor", "ppi": "ppi"}

@@ -93,6 +93,22 @@ ERROR_CODES: dict[int, str] = {
 }
 
 
+# A HAVING placed *after* the `by rollup/cube/grouping sets` clause is a parse
+# error — Trilogy orders HAVING *before* the grouping clause, the reverse of
+# SQL's `GROUP BY ... HAVING`. Agents reach for the SQL order and hit an opaque
+# "expected order_by or limit"; detect the shape to add a targeted hint. Matches
+# a grouping clause followed by `having` within the same statement (no `;`
+# between). Advisory only — gated behind an actual syntax error.
+_HAVING_AFTER_GROUPING = re.compile(
+    r"\bby\s+(?:rollup|cube|grouping\s+sets)\b(?:(?!;).)*?\bhaving\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def detect_having_after_grouping(content: str) -> bool:
+    return bool(_HAVING_AFTER_GROUPING.search(content))
+
+
 _SUBSELECT_RE = re.compile(r"\(\s*(with)\b", re.IGNORECASE)
 
 

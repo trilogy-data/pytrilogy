@@ -110,3 +110,83 @@ repro above, and `workspace/query59.preql` runs to 100 correct rows.
   correctly handled with `max(name) by text_id`). Case C's bare
   `subset join rs = rs` (no `.key`) is a malformed key, not a supported whole-
   rowset form — design doc only shows `subset join a.k = b.k`.
+
+---
+
+## Re-run 20260704-035023 — NEW silent wrong-result regression (NOT the crash)
+
+**q59 REGRESSED to FAIL, 1,918,016 tokens.** Report: `59 | fail | ref 100 | cand
+100 | result set differs from reference`. Verdict below is against the CURRENT
+working tree (battery commits `58037e728`→`c0d82fb1e` + the uncommitted
+build.py/join_resolution.py/rowset_node.py/merge_node.py diffs), engine built on
+`results/20260704-035023/workspace/` (DB copied to scratchpad to dodge a stray
+`Python313 PID 38544` file lock — the run's only `"Unexpected error"` in
+`agent_log.q59.conversation.txt` is that same transient `_duckdb.IOException`,
+NOT an engine bug).
+
+### (a) Original optimizer crash: FIXED, did NOT regress
+No `_pair_side_fully_matches` / `subset_binding_sources` error reproduces on any
+repro. `value_set_join_upgrade.py`: `_pair_side_fully_matches` def (L563) and both
+call sites (L856/L872) are in sync (7 positional + `graph_proof_only` kwarg);
+`subset_binding_sources` is fully removed. The fix landed committed in
+`c0d82fb1e full_work` (value_set_join_upgrade.py, 45 lines). Crash is gone.
+
+### (b) NEW framework bug — union join between two rowsets now COLLAPSES the sides
+Same commit `c0d82fb1e` also rewrote `rowset_node.py` (+96) and now **every**
+`union join` between two independent `where … select …` rowsets returns WRONG
+rows — the two sides collapse onto one canonical concept instead of joining.
+Ground truth from raw SQL on the run's DB in the last column:
+
+| Case | body | current engine | correct |
+|------|------|---------------:|--------:|
+| B composite derived | `code=code AND week=week-52` (2001 vs 2002) | **431** | 312 |
+| composite plain-eq | `code=code AND week=week` (2001 vs 2002) | **371** | 0 (weeks disjoint) |
+| D single key | `code=code` | **7** | 16 854 |
+| single week | `week=week` | **742** | 0 |
+
+D is the smoking gun: the generated SQL builds ONLY the `next_year` CTE and emits
+`next_year_code AS this_year_code, next_year_code AS next_year_code` — the entire
+`this_year` source is dropped (7 = 6 store codes + 1 null). B degrades to a
+chained double `FULL JOIN`: the first FULL JOIN (`juicy`) joins on the derived
+`week-52` key ALONE (drops the `code` co-key), a second re-adds code → 431 not 312.
+Contrast the bug-report matrix above (B=312, D=16 854) captured on the PRIOR
+working tree — those numbers regressed within the battery.
+
+**Optimizer is NOT the cause.** Toggling `upgrade_outer_key_set_equivalence` and
+`narrow_equal_domain_joins` OFF leaves B=431 / D=7 unchanged → the wrong result is
+produced in join RESOLUTION / rowset planning, upstream of every optimization pass.
+
+### Root cause (file:line)
+`trilogy/core/processing/node_generators/rowset_node.py::_expose_coalesced_key_contents`
+(def **L284**, called **L438**) + the coalescing-scoped-join key-group collapse it
+documents: a `full`/`subset`/`union` join "collapses a join-key group onto ONE
+canonical body concept, leaving each authored side only as a *pseudonym*." That is
+correct when one side is a subset of a shared base, but for TWO independent rowset
+SOURCES it means only the canonical side's CTE is materialized and the other side
+is exposed as a hidden pseudonym rather than joined — the join is lost (single key)
+or degrades to a co-key-dropping FULL-JOIN chain (composite). This rework REPLACED
+the 2026-07-02 fix `inject_scoped_join_key_exposure` in `MergeNode._resolve` (which
+made every merged side expose its OWN member of each authored key group so both
+stayed joinable); that function is now gone (`grep` finds no references).
+
+### What the agent hit this run (⇒ token sink)
+No crash. The agent wrote the natural `union join this_year.store_id =
+next_year.store_id and this_year.week_seq = next_year.week_seq - 52`, saw the
+collapse's fan-out/duplicate rows (same store+week 3×; log ~L1999–L3040), spent
+~30 messages theorising about null keys / non-unique keys, abandoned rowset+join,
+and fell back to a window `lead(…, 52)` shape (final `workspace/query59.preql`)
+that produced 100 rows differing from reference → fail. The silent wrong-result
+from the union-join collapse is the driver.
+
+### Classification
+**REGRESSED — NEW framework bug (silent wrong-result), introduced by the battery
+(`c0d82fb1e full_work`), NOT the original crash re-appearing and NOT agent
+variance.** The union-join-between-two-rowsets feature that this doc certified
+(B==312) is broken across single, composite-plain, and composite-derived keys.
+Add a join-matrix cell (`tests/join_matrix/`) for `union join` between two
+`where … select …` rowsets asserting single-key fan-out AND composite-key exact
+count, so this can't regress silently again. (Canonical
+`tests/modeling/tpc_ds_duckdb/query59.preql` uses window `lead`, not union join;
+`test_fifty_nine` only asserts SQL length < 12000, so it did NOT catch this — and
+strict row-scoring of the canonical also `fail`s 100-vs-100, worth a separate look
+but out of scope here.)

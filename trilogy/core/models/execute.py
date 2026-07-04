@@ -391,6 +391,42 @@ class CTE:
             return match_list.pop()
         return None
 
+    def outer_join_key_class(self, address: str) -> list[BuildConcept]:
+        """Transitive equivalence class of ``address`` under this CTE's
+        outer-join keys (LEFT/RIGHT/FULL). More than one member means no
+        single side is guaranteed non-null, so the key must render null-safely
+        (coalesced across members)."""
+        adjacent: dict[str, set[str]] = defaultdict(set)
+        for join in self.joins:
+            if not isinstance(join, Join) or join.jointype not in (
+                JoinType.LEFT_OUTER,
+                JoinType.RIGHT_OUTER,
+                JoinType.FULL,
+            ):
+                continue
+            for pair in join.joinkey_pairs or []:
+                left = pair.left.address
+                right = pair.right.address
+                if left == right:
+                    continue
+                adjacent[left].add(right)
+                adjacent[right].add(left)
+        if address not in adjacent:
+            return []
+        pending = [address]
+        seen: set[str] = set()
+        concepts: list[BuildConcept] = []
+        while pending:
+            current = pending.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            concept = self.get_concept(current)
+            if concept is not None:
+                concepts.append(concept)
+            pending.extend(adjacent[current] - seen)
+        return concepts
+
     def get_alias(
         self, concept: BuildConcept, source: str | None = None
     ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:

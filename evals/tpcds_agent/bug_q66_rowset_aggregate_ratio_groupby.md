@@ -135,6 +135,38 @@ symmetric fix proves insufficient. Add a guard test at both the codegen level (a
 is not in `group_concepts`) and an execute test using the minimal repro above. Re-check q66
 enriched churn drops back and confirm rows match `tests/modeling/tpc_ds_duckdb/query66.sql`.
 
+## Re-run 20260704-035023 — NOT a regression (agent authoring variance)
+
+**Regressed? NO. New framework bug? NO. Verdict: (c) engine correct, agent/authoring variance.**
+
+Context: q66 PASSED in run `20260703-212501`, then FAILED in `20260704-035023` after the
+"battery of fixes" (`c0d82fb1e`, `c263ea3db`, `80e38a3ed`, `58037e728`), burning 793,703 tokens.
+
+Findings (current engine, run's workspace `results/20260704-035023/workspace/`):
+
+1. **Fix intact.** The `Derivation.ROWSET` arm in `has_local_aggregate` is still present —
+   `trilogy/core/models/execute.py:505-508` (recurses into `c.lineage.content`). Not reverted.
+2. **Binder error does NOT reproduce.** The original minimal trigger (two-statement rowset,
+   `agg.monthly_sales / nullif(agg.warehouse_square_feet,0)`, matrix row 4) executes cleanly →
+   **5 rows OK**, no `GROUP BY cannot contain aggregates`.
+3. **The agent never hit the binder bug.** `agent_log.q66.conversation.txt` shows the final
+   `query66.preql` ran cleanly ("60 rows returned", `ok:true`) — no DuckDB error anywhere. The
+   agent returned control believing it was done.
+4. **Root cause of the FAIL = wrong output SHAPE (authoring), not codegen.** TPC-DS q66 is a
+   PIVOT: one row per warehouse with 36 monthly columns (jan_sales, jan_sales_per_sq_foot, …).
+   Reference = **5 rows** (wide). The `20260704-035023` agent authored a **long** single select
+   that also groups by `sales.date.month_of_year`, producing **60 rows** (5 warehouses × 12
+   months). `score_query` → `fail, ref_rows=5, cand_rows=60, 'result set differs from reference'`.
+   The passing `20260703-212501` agent authored the correct pivoted wide form (36 `sum/dim`
+   columns in one select) → 5/5 pass; canonical `tests/modeling/tpc_ds_duckdb/query66.preql`
+   (macro pivot) also builds clean (GROUP BY = `1, 2`, no aggregate) and yields the 5 ref rows.
+5. Note: the failing run's query IS the single-select `sum(...)/dim` form (matrix row 1, always
+   PASS) — it just adds `month_of_year` to the grain, so the fixed rowset-boundary path (row 4)
+   isn't even exercised. Nothing here touches the fixed code path.
+
+The 793K token burn is the agent thrashing on the wrong output shape (long vs pivoted), not on
+any engine error. No code change warranted.
+
 ## Repro artifacts
 - Scratch repro scripts used: `$TEMP/repro66{,b,c}.py` (transient; the BODY strings above are
   self-contained).

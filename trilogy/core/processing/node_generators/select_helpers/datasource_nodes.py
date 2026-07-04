@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from trilogy.constants import logger
 from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.graph_models import (
     ReferenceGraph,
     datasource_has_filter_sensitive_aggregate,
@@ -34,7 +35,6 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.nodes.base_node import _propagates_argument_nulls
 from trilogy.core.processing.utility import padding
 
 if TYPE_CHECKING:
@@ -388,7 +388,7 @@ def create_datasource_node(
             if (
                 c in nullable_lcl
                 or (
-                    _propagates_argument_nulls(c)
+                    propagates_argument_nulls(c)
                     and any(arg in nullable_lcl for arg in c.concept_arguments)
                 )
             )

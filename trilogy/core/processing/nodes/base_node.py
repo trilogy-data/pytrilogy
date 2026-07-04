@@ -5,17 +5,16 @@ from typing import List, Optional
 from trilogy.core.enums import (
     BooleanOperator,
     Derivation,
-    FunctionType,
     JoinType,
     Modifier,
     SourceType,
 )
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
-    BuildFunction,
     BuildGrain,
     BuildOrderBy,
     LooseBuildConceptList,
@@ -142,24 +141,6 @@ def get_all_parent_partial(
     )
 
 
-# scalar functions that can return non-null from nullable inputs; a BASIC
-# derivation through anything else propagates its arguments' nullability
-_NULL_SUPPRESSING_OPERATORS = {
-    FunctionType.COALESCE,
-    FunctionType.CASE,
-    FunctionType.SIMPLE_CASE,
-}
-
-
-def _propagates_argument_nulls(concept: BuildConcept) -> bool:
-    if concept.derivation != Derivation.BASIC:
-        return False
-    lineage = concept.lineage
-    if not isinstance(lineage, BuildFunction):
-        return False
-    return lineage.operator not in _NULL_SUPPRESSING_OPERATORS
-
-
 def get_all_parent_nullable(
     all_concepts: List[BuildConcept], parents: List["StrategyNode"]
 ) -> List[BuildConcept]:
@@ -179,7 +160,7 @@ def get_all_parent_nullable(
             # that computes the derivation so address-based propagation carries
             # it upward from here
             or (
-                _propagates_argument_nulls(c)
+                propagates_argument_nulls(c)
                 and any(
                     arg.address in addrs
                     for addrs in nullable_addrs
@@ -382,7 +363,7 @@ class StrategyNode:
                 if concept.address not in nullable_addresses and (
                     concept.address in upstream_nullable
                     or (
-                        _propagates_argument_nulls(concept)
+                        propagates_argument_nulls(concept)
                         and any(
                             a.address in upstream_nullable
                             for a in concept.concept_arguments

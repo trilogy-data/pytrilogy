@@ -104,3 +104,109 @@ present with 0 sales / 326.05 returns).
   `coalesce(sale_agg.sales, 0)` passthrough. The agent-info rollup docs
   (conv. lines 654-683, 2824-2862) show only base-model `sum(x) by rollup (…)`;
   they never warn that passthrough silently no-ops.
+
+---
+
+## Re-run 20260704-035023 — 3,170,128 tokens, STILL FAILED (worse churn, DIFFERENT root cause)
+
+**Verdict:** the original passthrough rollup-drop was **NOT fixed** (M7 still drops
+below), but the agent **did not hit it this run** — it wrote the recommended
+**fresh-`sum(…)` idiom (M6)**, so ROLLUP was emitted correctly. The failure + the
+doubled 3.17M-token churn came from a **NEW, distinct defect pair**, not the rollup
+drop. Net: q05 behavior *changed* — the framework rollup-drop was side-stepped by
+better authoring, but the run got WORSE because the new failure is even less
+diagnosable (the SQL now looks perfectly correct).
+
+### Was ROLLUP emitted? (current engine, workspace `20260704-035023/workspace/`)
+
+| Shape | ROLLUP/GROUPING SETS in SQL? | vs original doc |
+|---|:---:|---|
+| **Actual submitted `query05.preql`** (union rowset + FRESH `sum(combined.x)`) | **YES** — `GROUP BY ROLLUP (1,2)` | agent switched off passthrough → no drop |
+| M6 (union rowset + fresh `sum`) | **YES** | unchanged (was YES) |
+| M7 (`auto tot <- sum(x) by …` referenced as passthrough) | **NO — still silently dropped** | **UNCHANGED — bug still live** |
+
+So the underlying passthrough-drop (`_is_ungrouped_aggregate` requires `not
+node.by`, so a pre-`by`'d `auto`/rowset measure is never stamped —
+`select_finalize.py` `_is_ungrouped_aggregate` L993 / `_propagate_select_grouping`
+L1067) is **still present**. The battery of fixes reworked this area
+(new `_collect_ungrouped_aggregates_deep` descends ConceptRefs but stops at rowset
+boundaries) but did **not** close the passthrough hole. The agent simply avoided it.
+
+### What actually drove the 3.17M tokens THIS run
+
+The generated SQL is **correct** — `GROUP BY ROLLUP (1,2)` producing 700 rows
+(696 leaves + 3 channel subtotals + 1 grand total). The failure is the **ORDER BY**:
+
+```
+order by _level asc,                         -- line 52 of query05.preql
+    combined.channel_type asc nulls first,
+    combined.entity_id asc nulls first
+limit 100
+```
+
+renders to
+
+```
+ORDER BY grouping(channel_type) + grouping(entity_id) asc,  -- level 0 (leaves) FIRST
+         channel_type asc nulls first, entity_id asc nulls first
+LIMIT 100
+```
+
+`_level asc` sorts **leaves (level 0) first**, so the 100-row window is **100
+catalog leaves** and NEVER reaches the level-1 subtotals or the level-2 grand total
+→ result has **0 null-key rows**. The reference (`tests/modeling/tpc_ds_duckdb/
+query05.preql`) orders by `channel_label NULLS FIRST, entity_id NULLS FIRST` (no
+level), putting the grand total + subtotals **at the top** → they land inside the
+top 100. Confirmed: deleting `_level asc,` from the submitted query yields exactly
+the reference window — `[(None,None), ('catalog channel',None), <catalog leaves…>]`,
+2 null-key rows in the first 100. `score_query(...,5,...)` = **fail, ref 100 /
+cand 100, "result set differs"**; canonical `query05.preql` builds and yields the
+100 reference rows on the current engine (it is what score_query runs for the ref).
+
+**Two compounding defects:**
+
+1. **AUTHORING / reasoning error (the primary):** the agent *deliberately* chose
+   leaves-first ordering, reasoning (conv. 6552-6556, 7238-7247) *"leaves first
+   (level 0), then subtotals per channel (level 1), then grand total (level 2)… ✓"*
+   — not realizing that with `LIMIT 100` and 696 leaves, levels 1/2 fall outside
+   the window. It then "verified" correctness against **un-limited** column stats
+   (conv. 6558-6564, 6948: *"1 null channel, 4 null entity IDs … output looks
+   correct"*) — those nulls exist in the full 700-row rollup but are cut by the
+   ordered LIMIT. So the agent had a correct-looking ROLLUP + stats that "proved"
+   subtotals exist, and shipped. This is why churn *doubled*: unlike the original
+   run (where no ROLLUP was in the SQL, an eventually-findable signal), here every
+   artifact the agent inspected looked right.
+
+2. **GRAMMAR FOOTGUN (`--` is not a comment):** line 50 is
+   `--grouping(combined.channel_type) + grouping(combined.entity_id) as _level`,
+   which the agent believed it had *commented out*. Trilogy has no `--` line
+   comment (comments are `#`). Empirically the `--`-prefixed select item is
+   **excluded from the projection** (the final SELECT has 5 cols, no `_level`) but
+   its **`as _level` alias is still registered as a resolvable concept** — so
+   `order by _level asc` (line 52) silently binds to `grouping(ct)+grouping(eid)`.
+   Verified: `order by _level` with the "commented" line present → resolves to the
+   grouping expr; without any such line, or with a different name → clean
+   `UndefinedConceptException`. The agent's attempt to disable the level column had
+   no effect on the ORDER BY, cementing the leaves-first sort. This inconsistency
+   (line suppressed from output yet its alias leaks into ORDER BY) is a real,
+   separate framework footgun worth a diagnostic — but it is not the rollup drop.
+
+### Classification of the 20260704 failure
+
+- **Not a rollup-drop recurrence.** ROLLUP was emitted correctly; the original
+  framework bug did not fire (fresh-`sum` idiom used).
+- **Primary = authoring/reasoning:** `order by <grouping-level> asc` + `LIMIT 100`
+  is wrong for a nulls-first top-N; guidance should say order subtotals/grand-total
+  to the TOP (`… nulls first`, no ascending level) so they survive the LIMIT.
+- **Secondary = grammar footgun:** `--` silently registers-but-suppresses a select
+  alias that still resolves in ORDER BY. Candidate for a lint/diagnostic
+  ("`--` is not a comment; use `#`").
+- **Underlying passthrough rollup-drop = still open** (M7), just not exercised.
+
+**Did the battery of fixes change q05?** Yes — *worse in tokens, unchanged in
+outcome*. The passthrough rollup-drop is untouched/still live, but the agent
+side-stepped it with fresh sums (the doc's own guidance), then failed on a new,
+harder-to-diagnose ordering+LIMIT defect (aggravated by the `--` footgun), doubling
+churn from 1.64M → 3.17M. The fix priorities are now (a) the ORDER-BY-level-vs-LIMIT
+guidance and (b) the `--`-not-a-comment diagnostic, **in addition to** the
+still-unfixed passthrough rollup-drop.

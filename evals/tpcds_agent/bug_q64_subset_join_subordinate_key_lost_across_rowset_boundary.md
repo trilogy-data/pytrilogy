@@ -201,3 +201,62 @@ unrelated and had no effect here.
 **Canonical reference intact:** `score_query(..., custom_refs_dir=tests/modeling/tpc_ds_duckdb)` builds
 `tests/modeling/tpc_ds_duckdb/query64.preql` and returns `ref_rows=2` — the canonical still dodges the
 bug by chaining the base key into the join group.
+
+---
+
+## Re-run 20260704-035023 (2026-07-04) — SENTINEL FIXED; q64 now fails on a DIFFERENT defect
+
+**The original subordinate-key sentinel is FIXED by the battery of fixes** (`_expose_coalesced_key_contents`,
+landed 2026-07-03, see top-of-file note). The q64 eval STILL fails, but for an unrelated reason.
+
+**Minimal repro on the CURRENT engine** (built against `results/20260704-035023/workspace/`, `base_agg`
+selecting `ss.item.id`, `<jt> join ss.item.id = sr.item.id`, downstream `select base_agg.<ref>.item.id`):
+
+| join type | downstream ref | 2026-07-03 re-check | 2026-07-04 re-run |
+|-----------|----------------|---------------------|-------------------|
+| `subset` | `ss.item.id` (subordinate) | RENDER_SENTINEL | **OK rows=165 — FIXED** |
+| `union`  | `ss.item.id` | RENDER_SENTINEL | **OK rows=165 — FIXED** |
+| `full`   | `ss.item.id` | RENDER_SENTINEL | **OK rows=165 — FIXED** |
+| `left`   | `ss.item.id` | OK rows=165 | OK rows=165 (unchanged) |
+| `subset` | `sr.item.id` (anchor) | UndefinedConceptException | **UndefinedConceptException** (unchanged; `sr.item.id` isn't a rowset output — `ss.item.id` is the projected/canonical concept, so this is arguably correct, not the bug) |
+
+The `Missing source reference to ss.item.id` sentinel no longer reproduces for ANY coalescing join type.
+The collapsed key still materializes under the anchor alias
+(`coalesce("sr_item_items"."I_ITEM_SK","ss_item_items"."I_ITEM_SK","ss_store_sales"."SS_ITEM_SK") AS "sr_item_id"`),
+but `_expose_coalesced_key_contents` (rowset_node.py ~L284–326) now adds the subordinate authored address
+`ss.item.id` as a HIDDEN pseudonym output so `resolve_concept_map` sources it off that canonical column
+downstream — exactly as its docstring describes. Root-cause loci from the original handoff are the FIX loci.
+
+**What q64 hit this run — NOT the sentinel.** `report.json` `queries[id=64]`: `status: fail`,
+`ref_rows: 2`, `cand_rows: 2`, `detail: "result set differs from reference"`. `agent_log.q64.conversation.txt`
+contains **zero** `Missing source reference` occurrences; the only resolution error was one `Discovery error`
+(a cross-model `auto` mistake the agent corrected). The agent's `workspace/query64.preql` freely uses
+`subset join` for BOTH the catalog-qualify semijoin AND the final year self-pair
+(`subset join y1999.item_id = y2000.item_id and ... store_name ... store_zip`, L165–167) — the exact idiom the
+old bug blocked — and it renders + executes cleanly to 2 rows. So the agent was NOT forced around the shape;
+the framework accepted it.
+
+**Why it still fails = wrong VALUES (2 vs 2), a grain/fan-out defect distinct from this handoff.** Candidate vs
+reference (both 2 rows, keys/addresses identical):
+- Candidate projects **2 extra columns** `first_sales_year, first_ship_year` (agent added them to `agg_by_dim`'s
+  group-by + final select; reference q64 does not project them).
+- Sums are inflated: row1 `sum_wholesale` 1904.80 vs ref 95.24 (**20.0x**), `sum_list` 2819.00 vs 140.95 (20.0x);
+  row2 `sum_wholesale` 262.82 vs 7.73 (**~34x**) / y2000 side 5312.72 vs 94.87 (~56x). Notably `sum_coupon`
+  matches EXACTLY (1488.38, 0.00, 338.38) and `cnt` is 1 in both — i.e. NOT a uniform row fan-out (that would
+  inflate coupon and count too). The inflation hits only the wholesale/list sums, consistent with the agent's
+  finer `agg_by_dim` grain (extra first-sales/ship-year dims) combined with the final self-pair joining on
+  `(item_id, store_name, store_zip)` only — a partial cross-product over the year dims. This is an
+  agent-modeling / grain-correctness failure (compounded by a possible partial fan-out), **NOT** the
+  subordinate-key sentinel and **NOT** the earlier 12-/595-row full fan-out. Worth separate triage if q64
+  remains a token sink, but it is a new/different lead — the token burn dropped to 779,401 (from 850K→2.1M
+  when the sentinel forced navigation).
+
+**Canonical reference intact:** `tests/modeling/tpc_ds_duckdb/query64.preql` still `generate_sql`s cleanly on the
+current engine (execution against the eval duckdb errors only on a `memory.*` schema binding mismatch — an env
+artifact, not a build failure), and `score_query(..., custom_refs_dir=tests/modeling/tpc_ds_duckdb)` +
+`query64.sql` both return the reference **2 rows**.
+
+**Verdict:** the q64 subset/union/full subordinate-key-lost-across-rowset-boundary bug is **FIXED** (root cause
+`rowset_node.py` `_build_translation_node`/`_expose_coalesced_key_contents` ~L284–326). No regression or new
+sentinel introduced by the battery of fixes on this shape. q64's remaining eval failure is an unrelated
+wrong-value/grain defect in the agent's multi-level rowset self-pair.

@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any, Union
 
 from trilogy import Executor
+from trilogy.core.statements.author import ImportStatement
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
@@ -280,9 +281,7 @@ def execute_run_mode(
     # An import-only or empty body is a deliberately-supported no-op (validating
     # that imports/setup parse). But real definitions with no consuming select is
     # the false-success churn the agent hits — surface it as an error.
-    consumable = [
-        d for d in (definitions or []) if type(d).__name__ != "ImportStatement"
-    ]
+    consumable = [d for d in (definitions or []) if not isinstance(d, ImportStatement)]
     if not queries and consumable:
         _raise_no_executable_statements(definitions or [], start)
 
