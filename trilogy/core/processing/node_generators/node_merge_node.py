@@ -322,8 +322,16 @@ def inject_property_key_terminals(
     their own) sit directly on the anchor, so forcing them only perturbs the plan;
     only materialized keys can anchor a join."""
     existing = {c.address for c in all_concepts}
+    grain_keys = environment.domain_graph.sole_grain_keys()
     additions: List[BuildConcept] = []
     for c in all_concepts:
+        # A concept that is itself a 1:1 dimension grain key is directly
+        # sourceable at its own grain; its declared `keys` are an FK-path
+        # artifact. Promoting them routes through the coarser entity that
+        # carries it (customer for customer.address.id) and fans the
+        # enrichment out by that entity's population. Leave it (q64).
+        if c.address in grain_keys:
+            continue
         for key_addr in c.keys or set():
             if key_addr in existing:
                 continue

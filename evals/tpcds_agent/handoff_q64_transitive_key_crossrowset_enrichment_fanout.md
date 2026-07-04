@@ -1,6 +1,7 @@
 # HANDOFF — q64: 2-hop transitive-property cross-rowset enrichment fans out (incomplete coalescing-join fix)
 
-**Status:** OPEN, ready to implement. Root-caused, minimal repro + trigger matrix confirmed.
+**Status:** ✅ FIXED 2026-07-04. See "2026-07-04 resolution" at the bottom.
+**(original) Status:** OPEN, ready to implement. Root-caused, minimal repro + trigger matrix confirmed.
 **Full diagnosis:** `evals/tpcds_agent/bug_q64_customer_address_crossrowset_enrichment_fanout.md`
 **Classification:** genuine framework **silent** wrong-result bug (dup rows, no error). INCOMPLETE
 part of the 2026-07-03 coalescing-join subordinate-key fix. NOT a regression.
@@ -139,3 +140,40 @@ gives the FD `ss.customer.address.id → ss.customer.address.city` at the addres
 enrichment of a coalesced/exposed scoped-join key should source the key + its FD-dependent
 properties at the key's own dimension grain (1:1) via that binding, instead of expanding to the
 key's declared `keys` (the intermediate entity). The precise injection site is not yet located.
+
+## 2026-07-04 resolution (FIXED)
+
+**Masking corrected:** the raw-vs-test "model difference" was a red herring — the
+`store_sales`/`customer`/`address` models are BYTE-IDENTICAL between the two trees (only the
+`memory.` catalog prefix differs) and the generated SQL is byte-identical across scale factors.
+`test_sixty_four` masks the fan-out because it runs at **sf=0.01** (`engine_sf001`), where the
+query's own filters yield **0 result rows** — a fan-out multiplier × 0 = 0, passing vacuously vs a
+0-row reference. At sf=1 the real 2 rows appear, each duplicated 5× and 4× (= #customers sharing
+the address) → 9 rows. So no raw fixture is needed to reproduce or guard it — the committed test
+models do, at sf=1.
+
+**Injection site located:** `inject_property_key_terminals`
+(`trilogy/core/processing/node_generators/node_merge_node.py`). It force-injects a requested
+property's key as a mandatory Steiner terminal WHEN that key itself has keys (a finer FK), to stop
+a coarse-grain bridge fan-out. For the enrichment set `{ss.customer.address.id, city, zip,
+street_*}`: `ss.customer.address.id` has `keys={ss.customer.id}`, and `ss.customer.id` (in the
+store_sales context) has `keys={ss.ticket_number, ss.item.id}` — so the guard `not key.keys`
+passes and it force-injects `ss.customer.id`, routing address.id through the `customers` table
+(where it is a coarse non-grain FK) → `customer FULL JOIN customer_address` +
+`coalesce(CA_ADDRESS_SK, C_CURRENT_ADDR_SK)` → the fan-out. But `ss.customer.address.id` is ALSO
+the 1:1 GRAIN of `customer_address`; its `keys={customer.id}` is only an FK-path artifact.
+
+**Fix:** `inject_property_key_terminals` now skips promoting the keys of any concept that is
+itself a **sole datasource grain key**, via a new `DomainGraph.sole_grain_keys()` (reads the
+single-determinant BINDING FDs — a 1-column datasource grain mints an FD whose determinant set is
+exactly that lone address). Surgical: still forces `city → address.id` (first hop, preserves the
+anti-coarse-bridge purpose), but stops `address.id → customer.id` (harmful second hop).
+Generalizes to any dimension grain key wrongly promoted to its fact/entity FK.
+
+**Guard test:** `tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four_no_transitive_key_fanout`
+(default `engine` fixture = sf=1): generated q64 → 2 rows == 2 distinct (was 9/2).
+
+**Validated clean:** full `tpc_ds_duckdb` (107), `tpc_h` (28), `tests/join_matrix` +
+`core/test_domain_graph` + all scoped-join / rowset matrices (298), rowset/processing/engine
+(528); ruff + mypy (305 files) + black. Per scope note, this does NOT by itself flip the q64 eval
+(the eval failure was the agent's `ext_*` column slip — out of scope).

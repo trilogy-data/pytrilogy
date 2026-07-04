@@ -354,6 +354,22 @@ class DomainGraph:
                 out.add(b.safe_identifier)
         return out
 
+    def sole_grain_keys(self) -> set[str]:
+        """Addresses that are the SOLE grain component of some datasource — a
+        key bound 1:1 on its own table (a dimension key). Its declared `keys`
+        are an FK-path addressing artifact, not a physical determinant: key
+        promotion must not route through them, which pulls the coarser entity
+        and fans out (a transitive property `X → A → B` sourced through A's
+        table instead of B's own grain — TPC-DS q64 customer→address).
+
+        Read off the BINDING FD family: a single-column datasource grain mints
+        FDs whose determinant set is exactly that lone grain address."""
+        return {
+            next(iter(fd.determinants))
+            for fd in self.fd_edges
+            if fd.provenance is EdgeProvenance.BINDING and len(fd.determinants) == 1
+        }
+
     # --- resolution semantics ----------------------------------------------
 
     def _equivalence_classes(self) -> dict[str, str]:

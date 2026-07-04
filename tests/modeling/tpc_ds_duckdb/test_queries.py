@@ -589,6 +589,24 @@ def test_sixty_four(engine_sf001):
     _ = run_query(engine_sf001, 64, sql_override=True)
 
 
+def test_sixty_four_no_transitive_key_fanout(engine):
+    # q64 enriches a 2-hop transitive property (ss.customer.address.city) across a
+    # coalescing full-join boundary. Sourcing that property through the customer
+    # grain (customer FULL JOIN customer_address, ~2.3 rows/address) instead of the
+    # address grain fans each correct row out by #customers-sharing-the-address.
+    # test_sixty_four runs at sf=0.01 where the filters yield 0 rows, masking it;
+    # at sf=1 the correct 2 rows appear, so any duplication is a pure fan-out.
+    engine.environment = Environment(working_path=working_path)
+    text = (working_path / "query64.preql").read_text()
+    sql = engine.generate_sql(text)[-1]
+    rows = list(engine.execute_raw_sql(sql).fetchall())
+    assert len(rows) == len(set(rows)), (
+        f"transitive-key enrichment fan-out: {len(rows)} rows, "
+        f"{len(set(rows))} distinct"
+    )
+    assert len(rows) == 2, f"expected 2 rows, got {len(rows)}"
+
+
 def test_sixty_five(engine):
     query = run_query(engine, 65)
     assert len(query) < 5000, query
