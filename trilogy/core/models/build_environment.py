@@ -156,12 +156,18 @@ class BuildEnvironment:
 
     def distinct_scoped_join_group_mates(self) -> dict[str, set[str]]:
         """Map each distinct-identity group member to its distinct group-mates,
-        restricted to COALESCING (EQUAL/INCOMPARABLE — `full`/`union`) key
+        restricted to COALESCING (INCOMPARABLE — query `full`/`union` join) key
         groups: there both sides keep identity and each must materialize its
         own column. SUBSET (`left`/`subset`) groups are excluded — they resolve
         by substituting the optional side onto the anchor, so satisfying a
-        member through its group-mate pseudonym is the mechanism, not a leak."""
-        coalescing = self.domain_graph.outer_relation_keys()
+        member through its group-mate pseudonym is the mechanism, not a leak.
+        EQUAL (global `merge`) groups are likewise excluded: the merged domains
+        are declared identical and the canonical key may have no binding of its
+        own, so the pseudonym IS how it resolves."""
+        coalescing = {
+            self.domain_graph.canonical(addr)
+            for addr in self.domain_graph.coalescing_relation_members()
+        }
         out: dict[str, set[str]] = {}
         for canonical, distinct in self._distinct_scoped_join_groups():
             if canonical not in coalescing:

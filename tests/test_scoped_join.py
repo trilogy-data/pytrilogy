@@ -595,6 +595,76 @@ def test_buildenv_left_join_marks_datasource_binding_partial(models: Path):
     assert Modifier.PARTIAL not in orders_binding.modifiers
 
 
+# --- coalescing group-mates map: a query union/full join key member must not
+# be satisfied through its group-mate pseudonym (each side materializes its own
+# column — q59), but a GLOBAL merge declares EQUAL domains and the pseudonym IS
+# how a datasource-less canonical key resolves (funnel remap regression). -----
+
+# rowset output merged into a key with no datasource binding of its own; the
+# key's property derives from it. Resolution MUST route through the pseudonym.
+GLOBAL_MERGE_REMAP = """key step int;
+property step.name <- CASE WHEN step = 1 THEN 'one' WHEN step = 2 THEN 'two' END;
+key actor int;
+key event_id int;
+property event_id.event_name string;
+
+datasource events (id: event_id, name: event_name)
+grain (event_id) address events_tbl;
+
+with stages as
+WHERE event_name in ('a', 'b')
+SELECT
+    CASE WHEN event_name = 'a' THEN 1 ELSE 2 END -> stage,
+    event_id
+;
+merge stages.stage into step;
+merge stages.event_id into actor;
+"""
+
+TWO_ROWSETS = """key rid int;
+property rid.week int;
+property rid.year int;
+property rid.sales int;
+datasource fact (r: rid, w: week, y: year, v: sales) grain (rid)
+address fact_tbl;
+auto total <- sum(sales) by week, year;
+with this_year as
+where year = 2001
+select week as wk, total;
+with next_year as
+where year = 2002
+select week as wk, total;
+"""
+
+
+def test_buildenv_global_merge_creates_no_group_mates():
+    env, _ = parse_text(GLOBAL_MERGE_REMAP + "SELECT 1 -> one;")
+    be = env.materialize_for_select()
+    assert "local.step" in be.scoped_join_key_groups
+    assert be.distinct_scoped_join_group_mates() == {}
+
+
+def test_buildenv_union_join_rowset_keys_are_group_mates():
+    env, _ = parse_text(TWO_ROWSETS + "SELECT 1 -> one;")
+    be = env.materialize_for_select(
+        scoped_joins=[("this_year.wk", "next_year.wk", JoinType.FULL)]
+    )
+    mates = be.distinct_scoped_join_group_mates()
+    assert mates.get("this_year.wk") == {"next_year.wk"}
+    assert mates.get("next_year.wk") == {"this_year.wk"}
+
+
+def test_global_merge_rowset_output_into_unbound_key_resolves():
+    env, parsed = parse_text(GLOBAL_MERGE_REMAP + """SELECT
+    --step,
+    name,
+    count(actor) -> event_count
+ORDER BY step asc;
+""")
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    assert "name" in sql
+
+
 # --- end-to-end FULL JOIN execution: row-level correctness + datasource
 # selection. The scoped-join machinery marks a FULL-join key partial on both
 # sides and exempts it from the partial-source gate (it coalesces -> complete);

@@ -619,6 +619,12 @@ def run(spec: BenchmarkSpec) -> int:
                 toolset=category.harness,
             )
             result["id"] = qid
+            # Persist the subprocess stdout/stderr on a non-zero exit — it holds
+            # the crash traceback, which the structured jsonl log never captures.
+            if result.get("exit_code", 0) != 0 and result.get("output"):
+                (run_dir / f"crash.q{qid:02d}.txt").write_text(
+                    result["output"], encoding="utf-8"
+                )
             if worker != workspace:
                 produced = worker / f"query{qid:02d}{category.candidate_ext}"
                 if produced.exists():
