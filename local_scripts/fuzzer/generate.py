@@ -1720,12 +1720,12 @@ select
 """
     sql_rowsets = """
 from (
-    select k as customer_id, id % 2 as item_id
+    select distinct k as customer_id, id % 2 as item_id
     from left_facts
     where k is not null and value <= 8
 ) s
 full join (
-    select k as customer_id, id % 2 as item_id
+    select distinct k as customer_id, id % 2 as item_id
     from union_facts
     where k is not null and value <= 80
 ) c

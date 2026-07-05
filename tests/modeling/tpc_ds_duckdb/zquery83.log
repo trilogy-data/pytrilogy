@@ -1,6 +1,6 @@
 query_id = "83"
 generator = "v3"
-gen_length = 5095
+gen_length = 5100
 preql_size = 1586
 comp_size = 2195
 generated_sql = """
@@ -69,8 +69,8 @@ SELECT
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
-    INNER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
+    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_return_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null)
 

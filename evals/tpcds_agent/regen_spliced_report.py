@@ -63,7 +63,7 @@ def regen(run_dir: Path) -> None:
     (run_dir / "report.json").write_text(json.dumps(merged, indent=2), encoding="utf-8")
     (run_dir / "report.md").write_text(render_markdown(SPEC, merged), encoding="utf-8")
     try:
-        _, events = analyze_run.load_run(run_dir)
+        _, events = analyze_run.load_run_spliced(run_dir)
         cat = merged.get("meta", {}).get("category")
         suffix = f"_{cat}" if cat else ""
         analyze_run.render(

@@ -239,6 +239,62 @@ def _add_optional_aggregate_outputs(
     return unique(parent_concepts, "address"), unique(output_concepts, "address")
 
 
+def _matching_by_concept(
+    address: str,
+    by_concepts: List[BuildConcept],
+    environment: BuildEnvironment,
+) -> BuildConcept | None:
+    for by_concept in by_concepts:
+        if address == by_concept.address or address in by_concept.pseudonyms:
+            return by_concept
+    env_concept = environment.concepts.get(address)
+    if env_concept is not None:
+        for by_concept in by_concepts:
+            if by_concept.address in env_concept.pseudonyms:
+                return by_concept
+    return None
+
+
+def _resolve_grain_components(
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
+) -> List[BuildConcept]:
+    """Resolve the aggregate's grain components, preferring local_optional
+    equivalents so downstream consumers get the addresses they asked for.
+
+    A non-standard grouping mode (ROLLUP/CUBE/GROUPING SETS) renders its
+    GROUP BY from the wrapper's ``by`` addresses verbatim, so any grain dim
+    emitted under a different (join-group canonical or equivalent-swapped)
+    address becomes a bare, ungrouped column in the grouped CTE — illegal
+    SQL. Pin each grain dim that matches a ``by`` member (by address or
+    pseudonym) to that member's authored address; downstream consumers reach
+    the other addresses through pseudonyms."""
+    lineage = concept.lineage
+    by_concepts: List[BuildConcept] = (
+        list(lineage.by)
+        if isinstance(lineage, BuildAggregateWrapper)
+        and lineage.grouping != AggregateGroupingMode.STANDARD
+        else []
+    )
+    resolved: List[BuildConcept] = []
+    for address in concept.grain.components:
+        by_match = (
+            _matching_by_concept(address, by_concepts, environment)
+            if by_concepts
+            else None
+        )
+        if by_match is not None:
+            resolved.append(by_match)
+        else:
+            resolved.append(
+                resolve_concepts_with_equivalents(
+                    [address], environment, local_optional
+                )[0]
+            )
+    return resolved
+
+
 def _plan_group_outputs(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -252,11 +308,7 @@ def _plan_group_outputs(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts for {concept} {concept.lineage} are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
     output_concepts = [concept]
-    grain_components = resolve_concepts_with_equivalents(
-        concept.grain.components,
-        environment,
-        local_optional,
-    )
+    grain_components = _resolve_grain_components(concept, local_optional, environment)
     target_parent_grain = get_aggregate_grain(concept, environment)
     if _has_concrete_grain(concept):
         parent_concepts = unique(parent_concepts + grain_components, "address")

@@ -1,3 +1,31 @@
+"""Rowset node generation.
+
+A rowset is a SCOPE: its outputs are new addresses wrapping a closed body
+subplan, while the scoped-join machinery (canonical collapse, pseudonyms, the
+domain graph) operates on one flat address space. Anything derived from a
+rowset's outputs — a cast join key, a per-side presence probe — therefore has
+a well-defined value but no discovery-addressable place: discovery's only
+primitive is "source this address set", and "compute X on THIS side, before
+the merge" is not an address set. Two rules keep that seam sound; every
+join-expression special case in this file is an instance of one of them:
+
+1. OBLIGATION — a rowset node materializes, from its own outputs, every
+   concept the outer plan needs from ITS side of a declared relation: its
+   member of a derived join-key group, and any presence probe over its
+   outputs (`_local_exposure_obligations`, discharged unconditionally in
+   `gen_rowset_node`). The completion merge then relates sides by pseudonym
+   with no re-sourcing.
+2. EXCLUSION — no concept whose only computation path lies inside this node
+   may be requested from discovery during its enrichment
+   (`_externally_unsourceable`): asking can only re-enter this rowset
+   (the q02/q59/q97 recursion family).
+
+The two paths that RELATE this scope to others — enrichment across a derived
+join key (`_enrich_via_derived_join_key`) and cross-rowset WHERE handling
+(`_apply_cross_rowset_where`) — source the OTHER side, never back through
+this one.
+"""
+
 from typing import List
 
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
@@ -159,81 +187,80 @@ def _producible_derived_join_keys(
     return result
 
 
-def _materializable_derived_join_keys(
+def _is_presence_probe(address: str) -> bool:
+    """Per-side presence probe minted by `Factory._coalescing_presence_probe`
+    (the null-test rewrite for coalescing join key-group members). The single
+    place the probe naming convention is interpreted."""
+    return PRESENCE_PROBE_PREFIX in address
+
+
+def _local_exposure_obligations(
     node: StrategyNode, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    """Derived-expression scoped-join keys (`next_year.wk - 52`) whose inputs
-    this rowset node already produces and which it does not yet expose.
+    """OBLIGATION rule: every concept this rowset node must materialize from
+    its OWN outputs for the outer plan to relate or filter its side of a
+    declared relation. Purely local computations (BASICs over this node's own
+    outputs) — nothing is sourced. Two kinds:
 
-    Unlike `_producible_derived_join_keys` (the enrichment perspective, which
-    goes on to SOURCE the other side and so must decline pairings that would
-    re-enter this rowset), materializing is a purely local computation — the
-    key is a BASIC expression over this node's own outputs. Restricted to
-    COALESCING (`full`/`union`) relations, whose independent-rowset sides meet
-    only at the completion merge; `left`/`subset` resolve via the enrichment
-    machinery instead."""
+    - Derived-expression join-key members (`next_year.wk - 52`, `cast(k)`) of
+      declared outer relations. Coalescing (`full`/`union`) sides meet only at
+      the completion merge, which infers joins from the sides' outputs alone —
+      an unmaterialized member makes the authored pairing invisible and the
+      join silently drops it. (`left`/`subset` resolve via the enrichment
+      machinery — `_producible_derived_join_keys` — instead.)
+    - Presence probes whose member is an own output. A probe must compute
+      BEFORE the coalescing merge (post-merge the member's source is the fused
+      group coalesce, never NULL) and matches by exact address, never a
+      pseudonym — the group-mate's node carries the member as a pseudonym, and
+      computing the probe there would read the wrong side."""
     producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
     own = {c.address for c in node.output_concepts}
-    scoped_keys = environment.domain_graph.outer_relation_keys()
     out: list[BuildConcept] = []
     seen: set[str] = set()
-    for key_addr in scoped_keys:
+
+    def consider(candidate: BuildConcept | None, within: set[str]) -> None:
+        if (
+            candidate is None
+            or candidate.derivation != Derivation.BASIC
+            or candidate.address in seen
+            or candidate.address in own
+        ):
+            return
+        inputs = {a.address for a in candidate.concept_arguments}
+        if inputs and inputs <= within:
+            seen.add(candidate.address)
+            out.append(candidate)
+
+    for key_addr in environment.domain_graph.outer_relation_keys():
         key_concept = environment.concepts.get(key_addr)
         if key_concept is None:
             continue
         for candidate_addr in {key_addr, *key_concept.pseudonyms}:
-            candidate = environment.concepts.get(candidate_addr)
-            if (
-                candidate is None
-                or candidate.derivation != Derivation.BASIC
-                or candidate.address in seen
-                or candidate.address in own
-            ):
-                continue
-            inputs = {a.address for a in candidate.concept_arguments}
-            if inputs and inputs <= producible:
-                seen.add(candidate.address)
-                out.append(candidate)
+            consider(environment.concepts.get(candidate_addr), producible)
+    for concept in environment.concepts.values():
+        if _is_presence_probe(concept.address):
+            consider(concept, own)
     return out
 
 
-def _self_derived_basic(x: BuildConcept, producible: set[str]) -> bool:
-    """A BASIC whose every input this node can already produce: it has no
-    external source, so asking discovery for it can only route back through
-    this same rowset (recursion)."""
+def _externally_unsourceable(
+    x: BuildConcept, coalescing_members: dict[str, set[str]], producible: set[str]
+) -> bool:
+    """EXCLUSION rule: a concept discovery must never be asked to source on
+    behalf of this node. Two tests for one recursion family:
+
+    - registry: a materialized coalescing-join key member (`next_year.wk -
+      52`) is a cross-rowset merge key, not an enrichment bridge — each side
+      materializes its OWN member and the merge pairs them.
+    - structure: any BASIC computed purely from this node's own producible
+      addresses (materialized join keys, presence probes) has no external
+      source, so sourcing it can only route back through this same rowset."""
+    if x.address in coalescing_members:
+        return True
     if x.derivation != Derivation.BASIC:
         return False
     inputs = {a.address for a in x.concept_arguments}
     return bool(inputs) and inputs <= producible
-
-
-def _materializable_presence_probes(
-    node: StrategyNode, environment: BuildEnvironment
-) -> list[BuildConcept]:
-    """Presence probes (`Factory._coalescing_presence_probe`) whose member is
-    an OWN output of this rowset node.
-
-    A probe must compute BEFORE the coalescing merge — post-merge the member's
-    source is the fused group coalesce and the probe would never be NULL.
-    Matching is by exact address (never a pseudonym): the group-mate's node
-    also carries the member as a pseudonym, and computing the probe there
-    would read the wrong side."""
-    own = {c.address for c in node.output_concepts}
-    out: list[BuildConcept] = []
-    seen: set[str] = set()
-    for concept in environment.concepts.values():
-        if (
-            PRESENCE_PROBE_PREFIX not in concept.address
-            or concept.derivation != Derivation.BASIC
-            or concept.address in seen
-            or concept.address in own
-        ):
-            continue
-        inputs = {a.address for a in concept.concept_arguments}
-        if inputs and inputs <= own:
-            seen.add(concept.address)
-            out.append(concept)
-    return out
 
 
 def _build_rowset_body_node(
@@ -559,7 +586,7 @@ def _apply_cross_rowset_where(
     # on that side pre-merge, filtered post-merge — the generic path would
     # silently drop it (its rowset node has no joinable non-key output).
     if not any(
-        t.derivation == Derivation.ROWSET or PRESENCE_PROBE_PREFIX in t.address
+        t.derivation == Derivation.ROWSET or _is_presence_probe(t.address)
         for t in condition_targets
     ):
         return None
@@ -791,22 +818,14 @@ def _enrich_rowset_node(
         if merged is not None:
             return merged
     bridge_keys = _pseudonym_bridge_keys(node.output_concepts, environment)
-    # A materialized coalescing-join key member (`next_year.wk - 52`) is a
-    # cross-rowset merge key, not an enrichment bridge: sourcing it through
-    # discovery re-enters this rowset and recurses.
     coalescing_members = environment.distinct_scoped_join_group_mates()
-    # Same recursion by shape, not registry: a self-derived BASIC output
-    # (materialized join key, presence probe) has no external source, so it
-    # must never be handed to discovery as a join target. The registry check
-    # above stays as the semantic rule; this is the structural backstop.
     producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
     possible_joins = concept_to_relevant_joins(
         [
             x
             for x in node.output_concepts
             if x.derivation != Derivation.ROWSET
-            and x.address not in coalescing_members
-            and not _self_derived_basic(x, producible)
+            and not _externally_unsourceable(x, coalescing_members, producible)
         ]
         + [canonical for _, canonical in bridge_keys]
     )
@@ -902,25 +921,14 @@ def gen_rowset_node(
         depth,
     )
 
-    # Materialize any derived-expression scoped-join key this rowset can
-    # compute off its own outputs (`next_year.wk - 52`) directly onto the
-    # node. When the other side is an independent rowset sourced separately
-    # (a union/full join between two rowsets), the completion merge infers
-    # joins from the sides' outputs alone — without the materialized key the
-    # derived pairing is invisible and the join silently drops it.
-    derived_join_keys = _materializable_derived_join_keys(node, environment)
-    if derived_join_keys:
-        for derived_key in derived_join_keys:
-            node.add_output_concept(derived_key, rebuild=False)
-        node.rebuild_cache()
-
-    # Per-side presence probes over this rowset's outputs must likewise be
-    # computed here, pre-merge — sourced downstream they'd read the coalesced
-    # group column (never NULL) or re-enter this rowset (recursion).
-    presence_probes = _materializable_presence_probes(node, environment)
-    if presence_probes:
-        for probe in presence_probes:
-            node.add_output_concept(probe, rebuild=False)
+    # Discharge this scope's exposure obligations (module docstring rule 1):
+    # derived join-key members and presence probes computable off the node's
+    # own outputs, materialized here so the completion merge can relate this
+    # side without re-sourcing anything through it.
+    obligations = _local_exposure_obligations(node, environment)
+    if obligations:
+        for obligation in obligations:
+            node.add_output_concept(obligation, rebuild=False)
         node.rebuild_cache()
 
     if conditions:

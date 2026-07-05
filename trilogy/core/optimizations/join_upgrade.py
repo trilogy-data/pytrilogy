@@ -235,15 +235,22 @@ def _blocked_partials(
     operand_ds: set[str],
 ) -> set[str]:
     """Partial concepts that can't force ``operand`` present: a partial value
-    only blocks promotion when it renders from OUTSIDE the operand (a complete
-    copy lives elsewhere, and that's the column the predicate touches — q22's
-    customer key, q95's web_sales order number). A partial concept that renders
-    from the operand itself still forces it (the operand is genuinely where the
-    filtered value comes from)."""
+    only blocks promotion when it can render from OUTSIDE the operand (a
+    complete copy lives elsewhere, and the predicate can be satisfied by that
+    column — q22's customer key, q95's web_sales order number). A partial
+    concept that renders EXCLUSIVELY from the operand still forces it (the
+    operand is genuinely where the filtered value comes from).
+
+    Exclusivity, not mere overlap, is load-bearing: a shared join key
+    registered on both sides renders as ``COALESCE(operand, other)``, which
+    stays non-null on the operand's NULL-padded (unmatched) rows via the other
+    side — so a non-null proof on it can't reject those rows (q94: a semijoin
+    membership on ``order_number`` must not upgrade the padded ``web_returns``
+    join whose own ON-key it is)."""
     blocked: set[str] = set()
     for addr in partial:
         binds = set(cte.source_map.get(addr, ()))
-        if binds and not (binds & operand_ds):
+        if binds and not (binds <= operand_ds):
             blocked.add(addr)
     return blocked
 
@@ -338,50 +345,24 @@ def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
     return {c.address for c in cte.output_columns}
 
 
-def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
-    """Addresses available from the CTE's FROM clause — the LEFT side of the
-    chain's first join.
-
-    The "left" of an in-rendered join can come from any of:
-      - ``joins[0].left_cte`` (explicit).
-      - A ``parent_cte`` that isn't consumed as any join's right side.
-      - A ``joinkey_pair.cte`` attached to a join — set when an upstream CTE
-        was inlined into this one. Without this branch a chain whose left
-        side is an inlined CTE (e.g. gcat ``vehicle_lv_info``) shows up with
-        no ``parent_cte`` and no explicit ``left_cte``, so the rule would
-        otherwise see an empty left and (wrongly) treat shared join-key
-        columns as right-only proofs.
-      - A direct base datasource (raw table FROM).
-
-    Each non-seed parent gets consumed as some join's ``right_cte``; the
-    FROM-clause table is the leftover."""
-    if not isinstance(cte, CTE) or not cte.joins:
-        return set()
-    first = cte.joins[0]
-    if not isinstance(first, Join):
-        return set()
-    if first.left_cte is not None:
-        return _cte_addresses(first.left_cte)
-    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
-    for parent in cte.dependency_nodes(include_inlined=True):
-        if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
-            return _cte_addresses(parent)
-    # Inlined-left case: a join carries its own left CTE on the joinkey_pairs.
-    for j in cte.joins:
-        if not isinstance(j, Join):
-            continue
-        for pair in j.joinkey_pairs or []:
-            if not isinstance(pair, CTEConceptPair):
-                continue
-            if pair.cte.name not in right_names:
-                return _cte_addresses(pair.cte)
-    base = cte.source.base_datasource
-    if base is not None:
-        return {c.address for c in base.output_concepts}
-    return set()
-
-
 def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
+    """The CTE supplying the FROM clause — the LEFT side of the chain's first
+    join.
+
+    The "left" of an in-rendered join is resolved in priority order:
+      - ``joins[0].left_cte`` (explicit).
+      - The ``joinkey_pair.cte``\\s of the FIRST join — by construction those
+        supply the left values of the chain's first join, so they name the
+        FROM directly. This must beat the parent scan: a parent consumed only
+        through an existence subselect (a WHERE membership) never reaches the
+        join chain, and picking it as the seed makes the real FROM table's
+        columns look right-only, so a WHERE proof on a shared join key would
+        falsely promote the join (q94/q95's ``order_number in ...`` semijoin).
+      - A ``parent_cte`` that isn't consumed as any join's right side, skipping
+        existence-only parents where the existence map records them.
+      - A ``joinkey_pair.cte`` on any later join — covers a chain whose left
+        was an inlined CTE (e.g. gcat ``vehicle_lv_info``) with no
+        ``parent_cte`` and no explicit ``left_cte``."""
     if not isinstance(cte, CTE) or not cte.joins:
         return []
     first = cte.joins[0]
@@ -390,8 +371,25 @@ def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     if first.left_cte is not None:
         return [first.left_cte]
     right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
+    first_pair_seeds: list[CTE | UnionCTE] = []
+    seen_pair_names: set[str] = set()
+    for pair in first.joinkey_pairs or []:
+        if (
+            isinstance(pair, CTEConceptPair)
+            and pair.cte.name not in right_names
+            and pair.cte.name not in seen_pair_names
+        ):
+            seen_pair_names.add(pair.cte.name)
+            first_pair_seeds.append(pair.cte)
+    if first_pair_seeds:
+        return first_pair_seeds
+    existence = {s for vals in cte.existence_source_map.values() for s in vals}
     for parent in cte.dependency_nodes(include_inlined=True):
-        if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
+        if (
+            isinstance(parent, (CTE, UnionCTE))
+            and parent.name not in right_names
+            and not (_cte_source_keys(parent) & existence)
+        ):
             return [parent]
     for j in cte.joins:
         if not isinstance(j, Join):
@@ -400,6 +398,22 @@ def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
             if isinstance(pair, CTEConceptPair) and pair.cte.name not in right_names:
                 return [pair.cte]
     return []
+
+
+def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
+    """Addresses available from the CTE's FROM clause (see ``_seed_ctes``),
+    falling back to a direct base datasource (raw table FROM)."""
+    seeds = _seed_ctes(cte)
+    if seeds:
+        return {a for seed in seeds for a in _cte_addresses(seed)}
+    if not isinstance(cte, CTE) or not cte.joins:
+        return set()
+    if not isinstance(cte.joins[0], Join):
+        return set()
+    base = cte.source.base_datasource
+    if base is not None:
+        return {c.address for c in base.output_concepts}
+    return set()
 
 
 def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:

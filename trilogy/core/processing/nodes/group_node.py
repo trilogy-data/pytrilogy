@@ -141,7 +141,9 @@ class GroupNode(StrategyNode):
         # only shows up here as a preexisting condition) filters the rows, so
         # any concept it proves non-null must not be re-marked nullable by the
         # parent-derived recompute above — otherwise the join scorer emits an
-        # OUTER ``is not distinct from`` (defeats hash joins).
+        # OUTER ``is not distinct from`` (defeats hash joins). Consumers that
+        # judge the condition itself must not trust the resulting absence —
+        # see StrategyNode._refine_nullable_for_conditions.
         applied = self.preexisting_conditions or self.conditions
         proven_non_null = (
             condition_proves_non_null(applied)

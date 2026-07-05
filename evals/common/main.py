@@ -898,7 +898,7 @@ def run(spec: BenchmarkSpec) -> int:
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
 
     try:
-        _, events = analyze_run.load_run(run_dir)
+        _, events = analyze_run.load_run_spliced(run_dir)
         dashboard = analyze_run.render(
             report,
             events,

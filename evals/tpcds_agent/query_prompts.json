@@ -196,7 +196,7 @@
   {
     "id": 38,
     "grade": "medium",
-    "prompt": "Count the number of unique (customer last name, customer first name, sale date) combinations that appear in all three of store sales, catalog sales (by billing customer), and web sales (by billing customer) in the year 2000. Null customer IDs must be filtered from all. Return a single count value. Limit 100 rows."
+    "prompt": "Count the number of unique (customer last name, customer first name, sale date) combinations that appear in all three of store sales, catalog sales (by billing customer), and web sales (by billing customer) in the year 2000. Null customer IDs must be filtered from all; preserve null first/last names, etc. Return a single count value. Limit 100 rows."
   },
   {
     "id": 39,

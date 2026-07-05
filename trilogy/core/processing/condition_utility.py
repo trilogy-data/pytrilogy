@@ -942,6 +942,24 @@ def _coalesce_primary_proves_non_null(
     return concepts_implied_non_null(expr.arguments[0])
 
 
+def _forced_true_proofs(value: object) -> set[str]:
+    """Non-null proofs carried by ``<value> = True`` / ``IS True``.
+
+    Forcing ``value`` TRUE forces the boolean expression it names to be
+    satisfied, so everything THAT condition proves non-null holds too — both
+    for an inline condition and for a concept whose lineage is one (q95:
+    ``is_returned is True`` where ``is_returned <- _returned_order_number is
+    not null`` proves the NULL-padded column non-null, soundly licensing a
+    join upgrade the flag's own address never could)."""
+    while isinstance(value, BuildParenthetical):
+        value = value.content  # type: ignore[assignment]
+    if isinstance(value, BuildConcept) and isinstance(value.lineage, CONDITION_TYPES):
+        return condition_proves_non_null(value.lineage)
+    if isinstance(value, CONDITION_TYPES):
+        return condition_proves_non_null(value)
+    return set()
+
+
 def comparison_proves_non_null(
     atom: BuildComparison,
 ) -> set[str]:
@@ -964,9 +982,19 @@ def comparison_proves_non_null(
         # (any non-null literal) forces the operands non-null, like an equality.
         if is_null_literal(right) or is_null_literal(left):
             return set()
-        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        if right is True:
+            proofs |= _forced_true_proofs(left)
+        if left is True:
+            proofs |= _forced_true_proofs(right)
+        return proofs
     if op in NULL_PROPAGATING_OPS:
         proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        if op == ComparisonOperator.EQ:
+            if right is True:
+                proofs |= _forced_true_proofs(left)
+            if left is True:
+                proofs |= _forced_true_proofs(right)
         # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
         # default statically fails the comparison — surviving rows can only
         # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer

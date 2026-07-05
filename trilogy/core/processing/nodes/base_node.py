@@ -318,6 +318,13 @@ class StrategyNode:
         reflects the truth on its own rows, and downstream nodes inherit the
         improved view via ``get_all_parent_nullable`` without ever looking
         downstream themselves.
+
+        Caveat for consumers: after this refinement, absence from
+        ``nullable_concepts`` conflates "never nullable" with "nullable but
+        proven non-null by this node's own condition". Anything that reasons
+        about the condition itself (e.g. ``StripRedundantNotNull``) must not
+        treat absence as ground truth — the q78 bug stripped the very
+        ``IS NOT NULL`` whose presence caused the refinement.
         """
         if not self.conditions or not self.nullable_concepts:
             return

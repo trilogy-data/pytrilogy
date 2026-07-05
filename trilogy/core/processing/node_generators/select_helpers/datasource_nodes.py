@@ -345,6 +345,8 @@ def create_datasource_node(
     # must not carry NULLABLE downstream — otherwise the join scorer picks an
     # OUTER join rendered as ``is not distinct from`` (defeats hash joins).
     # Gate on routed_conditions: only filters actually pushed into this scan.
+    # Consumers that judge the condition itself must not trust the resulting
+    # absence — see StrategyNode._refine_nullable_for_conditions.
     proven_non_null = (
         condition_proves_non_null(routed_conditions) if routed_conditions else set()
     )

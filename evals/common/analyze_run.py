@@ -92,6 +92,43 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
     return report, events
 
 
+def load_run_spliced(run_dir: Path) -> tuple[dict, list[dict]]:
+    """Like :func:`load_run`, but also pulls in the event logs of queries spliced
+    from prior run(s) by walking the ``spliced_from`` chain — so per-query and
+    per-tool chart panels reflect the full benchmark, not just the freshly-run
+    subset. Each query id's events come from the nearest dir that ran it fresh;
+    already-seen ids are not reloaded from further back in the chain."""
+    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    events: list[dict] = []
+    seen: set[int] = set()
+    cur_dir: Path | None = run_dir
+    cur_report = report
+    first = True
+    while cur_dir is not None:
+        _, cur_events = load_run_events(cur_dir)
+        for e in cur_events:
+            qid = e.get("_query_id")
+            if qid is None:
+                if first:  # legacy unattributed logs only from the top dir
+                    events.append(e)
+                continue
+            if int(qid) not in seen:
+                events.append(e)
+        seen.update(
+            int(e["_query_id"]) for e in cur_events if e.get("_query_id") is not None
+        )
+        sf = cur_report.get("spliced_from")
+        if not sf:
+            break
+        prior = Path(sf["run_dir"])
+        if not (prior / "report.json").exists():
+            break
+        cur_report = json.loads((prior / "report.json").read_text(encoding="utf-8"))
+        cur_dir = prior
+        first = False
+    return report, events
+
+
 def _tool_label(name: str, arguments: dict | None) -> str:
     """Bar/table bucket for a tool call. ``trilogy`` is split by subcommand
     (``trilogy <args[0]>``) — half the iteration budget on exhausted runs goes

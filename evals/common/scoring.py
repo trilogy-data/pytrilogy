@@ -5,6 +5,7 @@ each generated query against the benchmark's reference query (``PRAGMA
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -283,18 +284,38 @@ def metrics_from_dict(d: dict) -> AgentMetrics:
     )
 
 
+# Significant figures used to canonicalize non-integer numeric cells before
+# comparison. A single-precision (`float32`) accumulation — e.g. a `0::float`
+# placeholder that coerces a money column to REAL — carries only ~7 significant
+# digits, so exact `DECIMAL(7,2)` reference sums and the Trilogy float sum can
+# diverge in the 7th+ significant digit (q05: grand total 112458735.49 vs
+# 112458734.70). Rounding both sides to 6 significant figures absorbs that drift
+# while staying far stricter than any genuine TPC-DS/H result difference (which
+# is proportionally much larger than 1e-6). Integer counts/ids are kept EXACT
+# (see below) so this tolerance never merges two distinct row counts.
+COMPARISON_SIG_FIGS = 6
+
+
+def _sig_round(x: float, sig: int) -> float:
+    """Round ``x`` to ``sig`` significant figures (relative precision)."""
+    if x == 0.0:
+        return 0.0
+    return round(x, -int(math.floor(math.log10(abs(x)))) + (sig - 1))
+
+
 def _round_cell(v: object) -> object:
     """Canonicalize numeric cells so values that are numerically equal compare
     equal regardless of Python type. The reference SQL emits ``Decimal`` for
     money/quantity columns while Trilogy-generated SQL often emits ``float``; an
     exact ``repr`` comparison wrongly flagged equal values as mismatches (e.g.
     ``19640463.31`` vs ``Decimal('19640463.31')``), silently failing correct
-    answers. We coerce ``int``/``float``/``Decimal`` to a float rounded to 9
-    decimals: that is finer than any genuine difference and below float's
-    exact-integer range (2**53) for any TPC-DS/H magnitude, so it cannot
-    introduce false passes, while also absorbing last-ULP noise from differing
-    arithmetic order (e.g. `a*100/b` vs `100*a/b`). Booleans, non-finite values,
-    out-of-range ints, and non-numeric cells are left untouched."""
+    answers. We coerce ``int``/``float``/``Decimal`` to a float; exact-integer
+    values (row counts, ids) are kept precise, while fractional values are
+    rounded to ``COMPARISON_SIG_FIGS`` significant figures. That absorbs
+    float32/last-ULP arithmetic-order noise (`a*100/b` vs `100*a/b`) proportional
+    to magnitude — which a fixed decimal-place round cannot, since the drift on a
+    large sum is an absolute value, not a sub-decimal one. Booleans, non-finite
+    values, out-of-range ints, and non-numeric cells are left untouched."""
     if isinstance(v, bool):
         return v
     if isinstance(v, Decimal):
@@ -308,7 +329,9 @@ def _round_cell(v: object) -> object:
     if isinstance(v, float):
         if v != v or v in (float("inf"), float("-inf")):
             return v
-        return round(v, 9)
+        if v == int(v) and abs(v) < 2**53:
+            return float(int(v))  # exact integer value (count/id): keep precise
+        return _sig_round(v, COMPARISON_SIG_FIGS)
     return v
 
 
