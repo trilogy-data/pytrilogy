@@ -1171,6 +1171,28 @@ def get_loop_iteration_targets(
         )
         conditions = None
 
+    # A single-row rowset scalar (e.g. `rowset stats <- select avg(x) as v`)
+    # is its own scope: the outer WHERE only reaches inside if it constrains a
+    # column that rowset exposes (mirrors _is_rowset_scope_exempt at
+    # validation). Routing an unrelated condition into its build force-co-
+    # sources the condition's row args next to the scalar (q23 clause) and
+    # welds foreign concepts onto the broadcast node — turning a clean 1=1
+    # cross join into a row-restricting merge (or a disconnect).
+    if (
+        conditions
+        and priority_concept.granularity == Granularity.SINGLE_ROW
+        and isinstance(priority_concept.lineage, BuildRowsetItem)
+    ):
+        rowset_outputs = set(priority_concept.lineage.rowset.derived_concepts)
+        if not any(
+            arg.address in rowset_outputs for arg in conditions.row_arguments
+        ):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
+                f"is an independent single-row rowset scalar; not routing the condition into its build"
+            )
+            conditions = None
+
     optional = generate_candidates_restrictive(
         priority_concept=priority_concept,
         candidates=local_all,

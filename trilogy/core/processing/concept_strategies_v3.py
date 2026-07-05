@@ -203,6 +203,9 @@ def initialize_loop_context(
         # check keys off lineage (its rowset expansion also covers a *sibling* field
         # of the aggregated one); a filter-only rowset output that is NOT upstream of
         # the grouping (an independent membership operand, q23) still forces here.
+        # Pseudonym twins count as upstream: a coalescing scoped join (`subset join
+        # a.k = b.k`) collapses the sides to one same-valued column, so a filter on
+        # the far side's address is a filter on the rollup's own input dim.
         nonstandard_grouping_upstream: set[str] = set()
         for m in mandatory_list:
             if (
@@ -210,14 +213,29 @@ def initialize_loop_context(
                 and m.lineage.grouping != AggregateGroupingMode.STANDARD
             ):
                 nonstandard_grouping_upstream |= get_upstream_concepts(m, nested=True)
-        required_filters += [
-            x
-            for x in conditions.row_arguments
-            if x.address not in mandatory_addresses
-            and x.derivation == Derivation.ROWSET
-            and x.granularity != Granularity.SINGLE_ROW
-            and x.address not in nonstandard_grouping_upstream
-        ]
+        pushed_below_grouping: set[str] = set()
+        candidate_filters = []
+        for x in conditions.row_arguments:
+            if (
+                x.address in mandatory_addresses
+                or x.derivation != Derivation.ROWSET
+                or x.granularity == Granularity.SINGLE_ROW
+            ):
+                continue
+            if {x.address, *x.pseudonyms} & nonstandard_grouping_upstream:
+                pushed_below_grouping.add(x.address)
+            else:
+                candidate_filters.append(x)
+        required_filters += candidate_filters
+        if pushed_below_grouping:
+            # the filter on these inputs is enforced below the grouping, at the
+            # input's own grain; requiring them here would drag the finer input
+            # back into the rollup output over the NULL-keyed subtotal rows
+            completion_mandatory = [
+                c
+                for c in completion_mandatory
+                if c.address not in pushed_below_grouping
+            ]
         if any(required_filters):
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row inputs {[x.address for x in required_filters]} present in mandatory list, forcing condition evaluation at this level. "

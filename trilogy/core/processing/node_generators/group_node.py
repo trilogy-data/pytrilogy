@@ -25,7 +25,13 @@ from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,
 )
-from trilogy.core.processing.nodes import GroupNode, History, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    History,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
 from trilogy.core.processing.utility import create_log_lambda, padding
 from trilogy.utility import unique
 
@@ -237,6 +243,58 @@ def _add_optional_aggregate_outputs(
             f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
         )
     return unique(parent_concepts, "address"), unique(output_concepts, "address")
+
+
+def _nonstandard_grouping_by_addresses(concept: BuildConcept) -> set[str]:
+    lineage = concept.lineage
+    if (
+        isinstance(lineage, BuildAggregateWrapper)
+        and lineage.grouping != AggregateGroupingMode.STANDARD
+    ):
+        return {c.address for c in lineage.by}
+    return set()
+
+
+def _pseudonym_linked(
+    concept: BuildConcept, outputs: List[BuildConcept]
+) -> bool:
+    return any(
+        concept.address in out.pseudonyms or out.address in concept.pseudonyms
+        for out in outputs
+    )
+
+
+def _wrap_grouping_passthrough(
+    group_node: GroupNode,
+    extra: List[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+) -> SelectNode:
+    """Surface pseudonym twins of a non-standard grouping node's outputs on a
+    passthrough select above it.
+
+    A ROLLUP/CUBE/GROUPING SETS node emits mixed-grain rows: subtotal rows
+    carry NULL dims, so enriching a pseudonym twin of a dim (e.g. the other
+    side of a coalescing scoped join) through a join back on those dims
+    silently drops the subtotal rows. The twin holds the same values as the
+    dim by construction, so a plain re-projection is both legal and exact.
+    The twins cannot live on the grouped node itself — a bare non-``by``
+    column inside the grouped CTE is illegal SQL."""
+    passthrough = [
+        x
+        for x in group_node.output_concepts
+        if x.address not in group_node.hidden_concepts
+    ]
+    return SelectNode(
+        input_concepts=passthrough,
+        output_concepts=unique(passthrough + extra, "address"),
+        environment=environment,
+        parents=[group_node],
+        depth=depth,
+        partial_concepts=list(group_node.partial_concepts),
+        nullable_concepts=list(group_node.nullable_concepts),
+        preexisting_conditions=group_node.preexisting_conditions,
+    )
 
 
 def _matching_by_concept(
@@ -608,7 +666,7 @@ def _build_group_node(
 
 def _reuse_wide_parent_for_enrichment(
     concept: BuildConcept,
-    group_node: GroupNode,
+    group_node: StrategyNode,
     output_concepts: List[BuildConcept],
     missing_optional: List[BuildConcept],
     grain_components: List[BuildConcept],
@@ -753,7 +811,19 @@ def gen_group_node(
             f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning group node"
         )
         return group_node
-    grouped_output_addr = _concept_addresses(group_node.usable_outputs)
+    result_node: StrategyNode = group_node
+    if _nonstandard_grouping_by_addresses(concept):
+        pseudonym_optional = [
+            x
+            for x in local_optional
+            if x.address not in _concept_addresses(group_node.usable_outputs)
+            and _pseudonym_linked(x, group_node.usable_outputs)
+        ]
+        if pseudonym_optional:
+            result_node = _wrap_grouping_passthrough(
+                group_node, pseudonym_optional, environment, depth
+            )
+    grouped_output_addr = _concept_addresses(result_node.usable_outputs)
     missing_optional = [
         x for x in local_optional if x.address not in grouped_output_addr
     ]
@@ -761,10 +831,10 @@ def gen_group_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for group node, has all of {[x.address for x in local_optional]}"
         )
-        return group_node
+        return result_node
     enrichment = _reuse_wide_parent_for_enrichment(
         concept=concept,
-        group_node=group_node,
+        group_node=result_node,
         output_concepts=output_concepts,
         missing_optional=missing_optional,
         grain_components=grain_components,
@@ -779,7 +849,7 @@ def gen_group_node(
         f"{padding(depth)}{LOGGER_PREFIX} group node for {concept.address} requires enrichment, missing {[x.address for x in missing_optional]}"
     )
     return gen_enrichment_node(
-        group_node,
+        result_node,
         join_keys=grain_components,
         local_optional=local_optional,
         environment=environment,
