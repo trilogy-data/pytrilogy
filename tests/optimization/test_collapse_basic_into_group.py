@@ -9,12 +9,12 @@ from the GROUP parent are fine."""
 
 from types import SimpleNamespace
 
-import pytest
-
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation
+from trilogy.core.models.build import BuildRowsetItem
 from trilogy.core.optimizations.collapse_single_parent import (
     basic_fold_into_group_is_safe,
+    produces_unbound_rowset,
 )
 
 
@@ -71,12 +71,51 @@ def test_gate_blocks_new_window_and_unnest():
 
 
 # --- collapse of a rowset rename into an unbound merge key ------------------
-# An unbound merge/scoped-join key (a `merge`-canonical with no datasource
-# binding, no lineage) renders only through a materialized pseudonym-rename
-# column in a parent CTE. `CollapseSingleParent` must not fold the rename's
-# inline (empty-source) computation into the same CTE as a reference to the key
-# under a rename address the merge cannot carry (guard-1 in `optimize`); that
-# would emit INVALID_REFERENCE_BUG.
+# A rowset output backing an unbound merge/scoped canonical key (no datasource
+# binding, renderable only through the rename) must not be folded away by
+# CollapseSingleParent -- the key would strand (INVALID_REFERENCE_BUG). A rowset
+# output that is unaliased, or backs a BOUND key, folds normally (zero cost).
+
+
+class _FakeGraph:
+    def __init__(self, bound):
+        self._bound = bound
+
+    def binding_sources(self, address):
+        return {"ds"} if address in self._bound else set()
+
+
+def _rowset_cte(*columns):
+    # force lineage to real BuildRowsetItem instances for isinstance checks
+    cols = []
+    for address, pseudonyms in columns:
+        c = SimpleNamespace(address=address, pseudonyms=set(pseudonyms))
+        c.lineage = BuildRowsetItem.__new__(BuildRowsetItem)
+        cols.append(c)
+    return SimpleNamespace(output_columns=cols)
+
+
+def test_unbound_rowset_gate_blocks_unbound_key_backing():
+    cte = _rowset_cte(("stages.stage", {"local.step"}))
+    graph = _FakeGraph(bound=set())  # local.step has no binding
+    assert produces_unbound_rowset(cte, graph)
+
+
+def test_unbound_rowset_gate_allows_bound_key_backing():
+    cte = _rowset_cte(("agg.item_sk", {"ss.item.id"}))
+    graph = _FakeGraph(bound={"ss.item.id"})
+    assert not produces_unbound_rowset(cte, graph)
+
+
+def test_unbound_rowset_gate_allows_unaliased_output():
+    cte = _rowset_cte(("rs.plain_col", set()))
+    graph = _FakeGraph(bound=set())
+    assert not produces_unbound_rowset(cte, graph)
+
+
+def test_unbound_rowset_gate_conservative_without_graph():
+    cte = _rowset_cte(("stages.stage", {"local.step"}))
+    assert produces_unbound_rowset(cte, None)
 
 
 FUNNEL_MERGE_MODEL = """
@@ -121,28 +160,24 @@ def test_funnel_count_over_unbound_merge_key_executes():
     assert rows == [("one", 2), ("two", 1)]
 
 
-@pytest.mark.xfail(
-    reason="Selecting ONLY an unbound merge-key's derived property (no aggregate "
-    "or other anchor) fully collapses the rowset-rename boundary; the key's only "
-    "materialized alias is pruned and the bare key (no datasource binding, no "
-    "lineage) dead-ends at render. Detecting this needs full collapse-cascade / "
-    "downstream-survival knowledge no single-collapse guard has; a broad guard "
-    "over-blocks legitimate rowset collapses (TPC-DS q29/q64). Documented limit.",
-    strict=True,
-)
 def test_bare_unbound_merge_key_property_only_select():
+    # Selecting ONLY an unbound merge key's derived property (no aggregate or
+    # other anchor) fully collapses the rowset boundary. The collapse guard
+    # keeps the rowset node (its rename backs the unbound key `step`) so the
+    # key still renders. A bound-key rowset would still fold (see the q64-shape
+    # test below), so this stays a zero-cost fix.
     env, executor = _funnel_executor()
     _, statements = env.parse("SELECT name ORDER BY name asc;")
     sql = executor.generate_sql(statements[-1])[-1]
     assert "INVALID_REFERENCE_BUG" not in sql
+    rows = [tuple(r) for r in executor.execute_query(statements[-1]).fetchall()]
+    assert rows == [("one",), ("two",)]
 
 
 def test_downstream_used_merge_key_alias_stays_collapsed():
     # An unbound merge key whose rowset alias IS consumed downstream (here a
-    # semijoin membership) renders and executes normally. Companion to the xfail
-    # above: this shape has a surviving alias, so guard-1 leaves the collapse
-    # alone -- exercising the merge+rowset+downstream path end-to-end (the shape
-    # a broad strand guard over-blocked in TPC-DS q64).
+    # semijoin membership) renders and executes normally -- exercising the
+    # merge+rowset+downstream path end-to-end.
     model = """
 key oid int;
 property oid.label string;

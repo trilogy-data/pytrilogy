@@ -451,7 +451,7 @@ def build_optimization_rule_plan(
         plan.append(
             OptimizationRulePlan(
                 name="collapse_single_parent",
-                rule_factory=CollapseSingleParent,
+                rule_factory=lambda: CollapseSingleParent(domain_graph=domain_graph),
             )
         )
     if opts.merge_irrelevant_group_by:
