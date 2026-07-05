@@ -128,17 +128,40 @@ def show_statement_type(idx: int, total: int, statement_type: str) -> None:
         echo(style(f"{statement_num} ({statement_type})", fg="cyan", bold=True))
 
 
+def _pluralize(label: str, count: int) -> str:
+    if count == 1:
+        return f"1 {label}"
+    plural = label + ("es" if label.endswith(("s", "x", "z")) else "s")
+    return f"{count} {plural}"
+
+
+def summarize_definitions(definitions: list) -> str:
+    """Human breakdown of parsed-but-non-executable statements, e.g.
+    "1 rowset, 2 concepts". Falls back to a plain count for unknown types."""
+    # deferred: keep this display module import-light for CLI startup
+    from trilogy.executor import label_definition_statement
+
+    counts: dict[str, int] = {}
+    for d in definitions:
+        label = label_definition_statement(d)
+        counts[label] = counts.get(label, 0) + 1
+    # Stable, count-descending order so the dominant kind reads first.
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join(_pluralize(label, count) for label, count in ordered)
+
+
 def show_execution_start(num_queries: int) -> None:
     """Show execution start message."""
     if is_json_mode():
         return  # chrome; the summary event reports the statement count
     statement_word = "statement" if num_queries == 1 else "statements"
+    hint = " (are you missing a select?)" if num_queries == 0 else ""
     if _core.RICH_AVAILABLE and _core.console is not None:
         _core.console.print(
-            f"\n[bold]Executing {num_queries} {statement_word}...[/bold]"
+            f"\n[bold]Executing {num_queries} {statement_word}...[/bold]{hint}"
         )
     else:
-        print_info(f"Executing {num_queries} {statement_word}...")
+        print_info(f"Executing {num_queries} {statement_word}...{hint}")
 
 
 def create_progress_context() -> "Progress":

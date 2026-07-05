@@ -7,7 +7,25 @@ the caret diagram surviving in the snippet, center-truncation anchoring on
 
 from __future__ import annotations
 
-from evals.common.analyze_run import _error_snippet, _format_args
+from evals.common.analyze_run import (
+    _error_snippet,
+    _format_args,
+    categorize_failure,
+)
+
+
+def test_categorize_planner_recursion():
+    assert (
+        categorize_failure(
+            "Resolution error: query could not be planned; this is a bug."
+        )
+        == "planner-recursion"
+    )
+    assert (
+        categorize_failure("RecursionError: maximum recursion depth exceeded")
+        == "planner-recursion"
+    )
+
 
 RAW_PARSE_ERROR = """\
 exit_code: 1

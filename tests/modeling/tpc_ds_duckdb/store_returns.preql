@@ -24,11 +24,11 @@ properties <item.id, ticket_number> (
 
 datasource store_returns (
     SR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
-    SR_RETURN_TIME_SK: time.id, # FK to the time-of-day the return was processed.
+    SR_RETURN_TIME_SK: ?time.id, # FK to the time-of-day the return was processed.
     SR_ITEM_SK: item.id, # FK to the returned item.
-    SR_CUSTOMER_SK: billing_customer.id, # FK to the customer initiating the return.
+    SR_CUSTOMER_SK: ?billing_customer.id, # FK to the customer initiating the return.
     SR_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at return time (optional).
-    SR_REASON_SK: return_reason.id, # FK to the return-reason code.
+    SR_REASON_SK: ?return_reason.id, # FK to the return-reason code.
     SR_RETURN_AMT: return_amount,
     SR_RETURN_QUANTITY: return_quantity,
     SR_NET_LOSS: net_loss,

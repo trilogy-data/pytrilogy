@@ -173,6 +173,10 @@ def main() -> int:
                 toolset=category.harness,
             )
             metrics = scoring.parse_agent_log(log_path)
+            if result.get("exit_code", 0) != 0 and result.get("output"):
+                (out / f"crash.q{qid:02d}.r{rep:02d}.txt").write_text(
+                    result["output"], encoding="utf-8"
+                )
             wrote = produced.exists()
             with score_lock:
                 try:

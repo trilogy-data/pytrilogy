@@ -73,7 +73,7 @@ Unexpected frameowrk level errors or bugs (generally, unhandled exceptions) -> B
 Does answering the question require a language feature we have not exposed?
 
 ### Agent Tool Issues
-Is the agent thrashing on tool use - truncated results, too many results, unclear what to use, args, tool failuer?
+Is the agent thrashing on tool use - truncated results, too many results, unclear what to use, args, tool failure?
 
 ### Bad Questions
 Not all the questions fully specify criteria or accurately map to the output or are phrased generically. Review 

@@ -152,7 +152,7 @@ def test_merge_bridged_models_resolve():
 
 
 def test_scoped_join_bridged_models_resolve():
-    _resolves(_A + _B + "select av, bv inner join a_id = b_id;")
+    _resolves(_A + _B + "select av, bv left join a_id = b_id;")
 
 
 def test_fk_joined_fact_dimension_resolves():
@@ -175,8 +175,9 @@ def test_message_names_subgraphs_and_suggests_fix():
         eng.generate_sql(_A + _B + "select av, bv;")
     message = str(exc.value)
     assert "disconnected subgraphs" in message
-    assert "{local.av}" in message
-    assert "{local.bv}" in message
+    # default namespace is stripped from the rendered message
+    assert "{av}" in message
+    assert "{bv}" in message
     assert "join or merge" in message
 
 

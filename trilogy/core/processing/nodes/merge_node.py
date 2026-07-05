@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, JoinType, SourceType
+from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -25,6 +25,7 @@ from trilogy.core.processing.join_resolution import (
     compute_outer_null_status,
     get_node_joins,
     prune_outer_join_pairs,
+    side_nullable,
 )
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
@@ -111,6 +112,10 @@ def deduplicate_nodes(
                 and not merged[k1].partial_concepts
                 and not _has_applied_condition(merged[k2])
                 and not _has_applied_condition(merged[k1])
+                # a row-limited source is a proper row subset — never
+                # interchangeable with (or replaceable by) a superset source
+                and getattr(merged[k1], "limit", None) is None
+                and getattr(merged[k2], "limit", None) is None
             ):
                 og = merged[k1]
                 subset_to = merged[k2]
@@ -216,6 +221,16 @@ class MergeNode(StrategyNode):
             right = join.right_node.resolve()
             if left.identifier == right.identifier:
                 raise SyntaxError(f"Cannot join node {left.identifier} to itself")
+            # generator-authored joins carry no null-safety analysis; compute it
+            # here like inferred joins do (get_modifiers), else a nullable join
+            # key silently drops its NULL matches through the plain equality
+            modifiers = list(join.modifiers)
+            if Modifier.NULLABLE not in modifiers and join.concepts:
+                if all(
+                    side_nullable(concept, left) and side_nullable(concept, right)
+                    for concept in join.concepts
+                ):
+                    modifiers.append(Modifier.NULLABLE)
             joins.append(
                 BaseJoin(
                     left_datasource=left,
@@ -223,7 +238,7 @@ class MergeNode(StrategyNode):
                     join_type=join.join_type,
                     concepts=join.concepts,
                     concept_pairs=join.concept_pairs,
-                    modifiers=join.modifiers,
+                    modifiers=modifiers,
                 )
             )
         return joins
@@ -293,7 +308,47 @@ class MergeNode(StrategyNode):
                     j.join_type = self.force_join_type
         return joins
 
+    def _inject_scoped_join_key_exposure(self) -> None:
+        """Make every merged side expose its OWN member of each authored
+        coalescing join-key group (`union join a.k = b.k and a.d = b.d - 1`).
+
+        Join inference pairs the sides' visible outputs, so a side that
+        carries a member somewhere below but doesn't surface it (e.g. a basic
+        wrapper computing the derived member off a rowset drops the rowset's
+        plain co-key) silently loses that key from the join — cross-producting
+        the rows on whatever keys remain (q59). Only members available on the
+        side itself or its immediate parents are surfaced; a side unrelated to
+        a group is untouched."""
+        group_mates = self.environment.distinct_scoped_join_group_mates()
+        if not group_mates or self.node_joins is not None:
+            return
+        for parent in self.parents:
+            outputs = {c.address for c in parent.output_concepts}
+            changed = False
+            for member in group_mates:
+                if member in outputs:
+                    if member in parent.hidden_concepts:
+                        parent.unhide_output_concepts(
+                            [c for c in parent.output_concepts if c.address == member],
+                            rebuild=False,
+                        )
+                        changed = True
+                    continue
+                available = any(
+                    c.address == member and c.address not in grandparent.hidden_concepts
+                    for grandparent in parent.parents
+                    for c in grandparent.output_concepts
+                )
+                if available:
+                    concept = self.environment.concepts.get(member)
+                    if concept is not None:
+                        parent.add_output_concept(concept, rebuild=False)
+                        changed = True
+            if changed:
+                parent.rebuild_cache()
+
     def _resolve(self) -> QueryDatasource:
+        self._inject_scoped_join_key_exposure()
         parent_sources: List[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
@@ -583,8 +638,15 @@ class MergeNode(StrategyNode):
             ),
             joins=qd_joins,
             grain=grain,
+            # union the join-analysis nullables (null-extended outer sides,
+            # nullable source columns) with node-level nullables — the latter
+            # carry inferred nullability for concepts COMPUTED at this node
+            # (e.g. a derived join key over a nullable column)
             nullable_concepts=[
-                x for x in final_output_concepts if x.address in nullable_concepts
+                x
+                for x in final_output_concepts
+                if x.address in nullable_concepts
+                or any(x.address == n.address for n in self.nullable_concepts)
             ],
             partial_concepts=self.partial_concepts,
             rollup_concepts=rollup_concepts,

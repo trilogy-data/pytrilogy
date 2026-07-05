@@ -23,6 +23,7 @@ class WindowNode(StrategyNode):
         depth: int = 0,
         ordering: BuildOrderBy | None = None,
         preexisting_conditions: BoolExpr | None = None,
+        nullable_concepts: List[BuildConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -33,6 +34,7 @@ class WindowNode(StrategyNode):
             depth=depth,
             ordering=ordering,
             preexisting_conditions=preexisting_conditions,
+            nullable_concepts=nullable_concepts,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -49,4 +51,5 @@ class WindowNode(StrategyNode):
             depth=self.depth,
             ordering=self.ordering,
             preexisting_conditions=self.preexisting_conditions,
+            nullable_concepts=list(self.nullable_concepts),
         )

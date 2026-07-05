@@ -15,7 +15,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildFunction,
-    BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -28,6 +27,10 @@ from trilogy.core.processing.node_generators.common import (
     reinject_common_join_keys_v2,
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
+from trilogy.core.processing.rowset_islanding import (
+    extract_address,
+    island_rowsets_for_weak_merge,
+)
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
 
@@ -51,10 +54,6 @@ def filter_pseudonyms_for_source(
             to_remove.add(max(lengths, key=lambda x: lengths.get(x, 0)))
     for node in to_remove:
         ds_graph.remove_node(node)
-
-
-def extract_address(node: str):
-    return node.split("~")[1].split("@")[0]
 
 
 def extract_concept(node: str, env: BuildEnvironment):
@@ -90,9 +89,7 @@ def extract_ds_components(
         ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=EGO_RADIUS).copy()
         graphs.append(
             sorted(
-                extract_address(x)
-                for x in ds_graph.nodes
-                if not str(x).startswith("ds~")
+                extract_address(x) for x in ds_graph.nodes if str(x).startswith("c~")
             )
         )
     # if we had no ego graphs, return all concepts
@@ -104,24 +101,6 @@ def extract_ds_components(
         if not any(parsed in x for x in graphs):
             graphs.append([parsed])
     return graphs
-
-
-def prune_rowset_lineage_edges_for_weak_merge(
-    g: ReferenceGraph, requested_concepts: list[BuildConcept]
-) -> None:
-    if all(c.derivation == Derivation.ROWSET for c in requested_concepts):
-        return
-    to_remove: list[tuple[str, str]] = []
-    for node, concept in g.concepts.items():
-        if not isinstance(concept.lineage, BuildRowsetItem):
-            continue
-        content_node = concept_to_node(concept.lineage.content.with_default_grain())
-        if (content_node, node) in g.edges:
-            to_remove.append((content_node, node))
-        if (node, content_node) in g.edges:
-            to_remove.append((node, content_node))
-    if to_remove:
-        g.remove_edges_from(to_remove)
 
 
 def determine_induced_minimal_nodes(
@@ -181,10 +160,12 @@ def determine_induced_minimal_nodes(
         # keep BASIC concepts that are also directly bound to a datasource
         # column. Their binding is a valid source path on par with ROOT
         # (decomposing into the lineage parents may strand them when the
-        # parents can't be co-sourced with other required dimensions).
+        # parents can't be co-sourced with other required dimensions). ROWSET
+        # outputs are also exempt: a rowset is sourced as one opaque unit (its
+        # internals are not navigable parents), so it anchors a join like ROOT.
         elif (
             filter_downstream
-            and lookup.derivation != Derivation.ROOT
+            and lookup.derivation not in (Derivation.ROOT, Derivation.ROWSET)
             and lookup.canonical_address
             not in environment.materialized_canonical_concepts
         ):
@@ -341,8 +322,16 @@ def inject_property_key_terminals(
     their own) sit directly on the anchor, so forcing them only perturbs the plan;
     only materialized keys can anchor a join."""
     existing = {c.address for c in all_concepts}
+    grain_keys = environment.domain_graph.sole_grain_keys()
     additions: List[BuildConcept] = []
     for c in all_concepts:
+        # A concept that is itself a 1:1 dimension grain key is directly
+        # sourceable at its own grain; its declared `keys` are an FK-path
+        # artifact. Promoting them routes through the coarser entity that
+        # carries it (customer for customer.address.id) and fans the
+        # enrichment out by that entity's population. Leave it (q64).
+        if c.address in grain_keys:
+            continue
         for key_addr in c.keys or set():
             if key_addr in existing:
                 continue
@@ -382,7 +371,7 @@ def resolve_weak_components(
         ),
         conditions=search_conditions,
     )
-    prune_rowset_lineage_edges_for_weak_merge(search_graph, all_concepts)
+    island_rowsets_for_weak_merge(search_graph, all_concepts)
     reduced_concept_sets: list[set[str]] = []
 
     count = 0

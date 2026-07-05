@@ -12,7 +12,7 @@ from trilogy.authoring import (
     TraitDataType,
     arg_to_datatype,
 )
-from trilogy.core.enums import ComparisonOperator, Modifier
+from trilogy.core.enums import ComparisonOperator, Modifier, Purpose
 from trilogy.core.exceptions import (
     DatasourceColumnBindingData,
     DatasourceColumnBindingError,
@@ -22,6 +22,7 @@ from trilogy.core.exceptions import (
 from trilogy.core.models.build import (
     BuildComparison,
     BuildDatasource,
+    BuildGrain,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import CONCRETE_TYPES, EnumType
@@ -31,6 +32,73 @@ from trilogy.utility import unique
 
 def row_to_dict(row):
     return {key: val for key, val in row._mapping.items()}
+
+
+def validate_unique_properties(
+    datasource: BuildDatasource,
+    env: Environment,
+    build_env: BuildEnvironment,
+    exec: Executor | None,
+) -> list[ValidationTest]:
+    results: list[ValidationTest] = []
+    output_addresses = {concept.address for concept in datasource.concepts}
+    unique_properties = [
+        concept
+        for concept in datasource.concepts
+        if concept.purpose is Purpose.UNIQUE_PROPERTY and concept.keys
+    ]
+    for concept in unique_properties:
+        for key_address in sorted(concept.keys or ()):
+            if key_address not in output_addresses:
+                continue
+            key = build_env.concepts[key_address]
+            count_address = f"grain_check_{key.safe_address}"
+            key_count = build_env.concepts.get(count_address)
+            if key_count is None:
+                continue
+            query = easy_query(
+                concepts=[concept, key_count],
+                datasource=datasource,
+                env=env,
+                condition=BuildComparison(
+                    left=key_count,
+                    right=1,
+                    operator=ComparisonOperator.GT,
+                ),
+                grain=BuildGrain(components={concept.address}),
+                limit=10,
+            )
+            if exec is None:
+                results.append(
+                    ValidationTest(
+                        raw_query=query,
+                        check_type=ExpectationType.ROWCOUNT,
+                        expected="0",
+                        result=None,
+                        ran=False,
+                    )
+                )
+                continue
+            sql = exec.generate_sql(query)[-1]
+            rows = exec.execute_raw_sql(sql).fetchmany(10)
+            error = None
+            if rows:
+                error = DatasourceModelValidationError(
+                    f"Datasource {datasource.name} failed validation. Unique "
+                    f"property {concept.address} maps to multiple "
+                    f"{key.address} values: {[row_to_dict(row) for row in rows]}"
+                )
+            results.append(
+                ValidationTest(
+                    raw_query=query,
+                    generated_query=sql,
+                    check_type=ExpectationType.ROWCOUNT,
+                    expected="0",
+                    result=error,
+                    ran=True,
+                )
+            )
+    return results
 
 
 def type_check(
@@ -268,6 +336,12 @@ def validate_datasource(
                 ),
             )
         )
+    results += validate_unique_properties(
+        validation_datasource,
+        env,
+        build_env,
+        exec,
+    )
     if not datasource.grain.components:
         return results
 

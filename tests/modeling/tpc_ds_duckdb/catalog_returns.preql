@@ -35,12 +35,12 @@ datasource catalog_returns (
     CR_ITEM_SK: item.id, # FK to the returned item.
     CR_ORDER_NUMBER: sales.order_number, # FK to the originating catalog sales order.
     CR_ORDER_NUMBER: order_number,
-    CR_RETURNING_CUSTOMER_SK: billing_customer.id, # FK to the customer returning the item.
-    CR_REFUNDED_CUSTOMER_SK: refunded_customer.id, # FK to the customer receiving the refund (may differ from returning customer).
-    CR_RETURNING_ADDR_SK: return_address.id, # FK to the address the return originated from.
-    CR_REFUNDED_ADDR_SK: refunded_address.id, # FK to the address the refund was issued to.
-    CR_CALL_CENTER_SK: call_center.id, # FK to the call center that handled the return.
-    CR_REASON_SK: reason.id, # FK to the return-reason code.
+    CR_RETURNING_CUSTOMER_SK: ?billing_customer.id, # FK to the customer returning the item.
+    CR_REFUNDED_CUSTOMER_SK: ?refunded_customer.id, # FK to the customer receiving the refund (may differ from returning customer).
+    CR_RETURNING_ADDR_SK: ?return_address.id, # FK to the address the return originated from.
+    CR_REFUNDED_ADDR_SK: ?refunded_address.id, # FK to the address the refund was issued to.
+    CR_CALL_CENTER_SK: ?call_center.id, # FK to the call center that handled the return.
+    CR_REASON_SK: ?reason.id, # FK to the return-reason code.
     CR_NET_LOSS: net_loss,
     CR_REFUNDED_CASH: refunded_cash,
     CR_REVERSED_CHARGE: reversed_charge,

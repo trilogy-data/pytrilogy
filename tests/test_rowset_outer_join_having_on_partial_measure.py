@@ -11,10 +11,9 @@ Minimal trigger (single join key is enough):
     left join agg_a.it = agg_b.it
     having coalesce(agg_b.qb, 0) > 0          -- <-- filtering the partial side here breaks it
 
-Controls that DO work (so the trigger is specifically HAVING-on-the-partial-measure
+Control that DOES work (so the trigger is specifically HAVING-on-the-partial-measure
 under an outer join):
-- the same LEFT join WITHOUT the having clause renders fine;
-- the same query with INNER join + having renders fine.
+- the same LEFT join WITHOUT the having clause renders fine.
 
 Surfaced on enriched TPC-DS q78 ("keep store rows where combined other-channel
 quantity > 0"): the natural decomposition is per-channel aggregate rowsets,
@@ -81,20 +80,6 @@ def test_outer_rowset_left_join_no_having(models: Path):
         _HEAD + """
 select agg_a.it, agg_a.qa, coalesce(agg_b.qb, 0) as qb
 left join agg_a.it = agg_b.it
-limit 10;
-""",
-    )
-    assert sql and "INVALID_REFERENCE_BUG" not in sql
-
-
-def test_outer_rowset_inner_join_with_having(models: Path):
-    # Control: HAVING on the joined measure is fine under an INNER join.
-    sql = _gen(
-        models,
-        _HEAD + """
-select agg_a.it, agg_a.qa, agg_b.qb
-inner join agg_a.it = agg_b.it
-having agg_b.qb > 0
 limit 10;
 """,
     )

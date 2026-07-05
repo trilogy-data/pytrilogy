@@ -43,7 +43,7 @@ _EXAMPLES: list[SyntaxExample] = [
 #   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation)
 #   select  <col>, <agg> as name,  # 2. the projection — grouping is AUTOMATIC by the
 #                                  #      non-aggregated columns (never write GROUP BY)
-#   <inner|left|full join a = b (=c)?>*  # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
+#   <left|full join a = b (=c)?>*  # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
 #                                  #      select list — the SQL-like spot)
 #   having  <result condition>     # 4. filter on an AGGREGATED / joined RESULT
 #   order by <col> asc|desc        # 5. sort
@@ -70,7 +70,7 @@ select                                      # 2. SELECT: grouped automatically b
     students.major,
     count(enroll.id) as enrollments,
     --completed_credits,                    #    a leading `--` HIDES a column from the output
-inner join students.id = enroll.student_id  # 3. JOIN: blend students onto enrollments (after the select list)
+left join students.id = enroll.student_id  # 3. JOIN: blend students onto enrollments (after the select list)
 having completed_credits > 0                # 4. HAVING: condition on an aggregated RESULT
 order by enrollments desc nulls first       # 5. ORDER BY
 limit 100;                                  # 6. LIMIT
@@ -339,30 +339,33 @@ limit 100;
     ),
     SyntaxExample(
         name="scoped-join",
-        title="Blend two models in one query with a scoped inner/left join",
+        title="Blend two models in one query with a scoped subset/union join",
         summary=(
-            "`select <cols> inner|left|full join anchor.key = brought_in.key (= other.key ...)?` (right after "
+            "`select <cols> subset|union join a.key = b.key (= other.key ...)?` (right after "
             "the select list) blends a second model into ONE query — the PREFERRED "
             "alternative to `merge`. JOIN ON THE FULL GRAIN: one clause per key in "
             "the shared `@<k1, k2>` grain"
         ),
         body="""\
 # A query-scoped `join` blends a second model into ONE select without editing the
-# model files (the query-local equivalent of `merge`).
-# Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot). 
-# The LEFT key is the BASE concept; the RIGHT key is the brought in, just like SQL
-#   inner join  -> strict equality; unmatched rows DROPPED
-#   left  join  -> brought-in side optional/nullable (unmatched anchor rows kept)
-#   full  join  -> BOTH sides optional (unmatched rows from EITHER side kept)
+# model files (the query-local equivalent of `merge`). A join DECLARES how the
+# two keys' value domains relate — it never drops rows (rendering is always
+# row-preserving; restrict rows with explicit `is not null` filters):
+#   subset join a = b  -> declares a's values are contained in b's (a is the
+#                         narrow side, b authoritative; a rows all match)
+#   union  join a = b  -> neither domain contains the other; the key coalesces
+#                         and unmatched rows from EITHER side are kept
+# Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot).
 import enrollments as enroll;
 import students as students;
 
-# (1) SINGLE-KEY blend: bring students onto enrollments by the shared student key
-# (students.id is the brought-in LEFT key, enroll.student_id the anchor).
+# (1) SINGLE-KEY blend: bring students onto enrollments by the shared student
+# key. Enrollment student ids are a SUBSET of all student ids, so declare that;
+# majors with no enrollments are preserved with a NULL count.
 select
     students.major,
     count(enroll.id) as enrollments,
-inner join students.id = enroll.student_id
+subset join enroll.student_id = students.id
 order by enrollments desc nulls first
 limit 100;
 
@@ -385,8 +388,8 @@ select
     completed_by.completed_cnt,
     incomplete_by.incomplete_cnt,
     null_completed.null_completed_cnt,
-inner join completed_by.dept = incomplete_by.dept = null_completed.dept
-inner join completed_by.course = incomplete_by.course = null_completed.course
+union join completed_by.dept = incomplete_by.dept = null_completed.dept
+union join completed_by.course = incomplete_by.course = null_completed.course
 order by completed_by.dept asc nulls first
 limit 100;
 
@@ -402,7 +405,7 @@ select
     y2020.cnt as cnt_2020,
     y2021.cnt as cnt_2021,
     y2021.cnt - y2020.cnt as yoy_diff,
-inner join y2020.dept = y2021.dept
+union join y2020.dept = y2021.dept
 order by yoy_diff desc nulls first
 limit 100;
 
@@ -419,28 +422,29 @@ select
     cur_year.yr,
     cur_year.cnt as this_year,
     prev_year.cnt as prior_year,
-inner join cur_year.yr = prev_year.yr + 1
+union join cur_year.yr = prev_year.yr + 1
 order by cur_year.yr asc
 limit 100;
 
 # NOTES:
 #  - JOIN ON THE FULL GRAIN: one `join` clause per key in the two facts' shared
-#    `@<...>` grain. Under-joining (one key of a multi-key grain) is a top cause of
-#    wrong, inflated results. Chain `= c` to also pull a base key into the join
-#    group so its properties stay reachable (`inner join a.k = b.k = base.k`).
+#    `@<...>` grain. Under-joining (one key of a multi-key grain) can cause
+#    duplication. Chain `= c` to also pull a base key into the join
+#    group so its properties stay reachable (`full join a.k = b.k = base.k`).
 #  - Stacked clauses of the SAME type can share one prefix via `and`:
-#    `inner join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `inner join` clauses.
+#    `union join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `union join` clauses.
 #    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
-#    ONE group — both compose: `inner join a.k = b.k = base.k and a.k2 = b.k2`.
+#    ONE group — both compose: `union join a.k = b.k = base.k and a.k2 = b.k2`.
 #  - A join key may be ANY expression (a computed/offset key, an aggregate, a
 #    window), not only a bare field — see (4). Only `=` equality is supported.
-#  - `inner`, `left`, and `full` are supported (NOT `right` — swap the operands
-#    for a right join). `inner` requires the key in BOTH sides (drops one-sided
-#    rows); `left` keeps unmatched anchor rows; `full` keeps unmatched rows from
-#    BOTH sides. A `full` key-group must be ALL full (can't mix `full` with
-#    `inner`/`left` on the SAME key; `full join a = b = c` chains one full group);
-#    `inner` and `left` mix freely. Do NOT `coalesce(x, 0)` a missing side just to
-#    force an inner-style pairing to run.
+#  - Joins NEVER drop rows: for an intersection (rows present in BOTH sides),
+#    add explicit conditions — `where <side_a attr> is not null and <side_b
+#    attr> is not null`. A one-sided `is not null` keeps the other side's
+#    exclusive rows.
+#  - `left join a = b` / `full join a = b` are legacy aliases for
+#    `subset join b = a` / `union join a = b` (NOT `right` — swap operands).
+#    A union key-group must be ALL union (can't mix with subset on the SAME
+#    key; `union join a = b = c` chains one union group);
 """,
     ),
     SyntaxExample(

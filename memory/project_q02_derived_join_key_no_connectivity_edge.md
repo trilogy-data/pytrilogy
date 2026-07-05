@@ -1,0 +1,14 @@
+---
+name: project_q02_derived_join_key_no_connectivity_edge
+description: q02 self-join CTEs disconnect — derived-expression cross-rowset join key (week_seq+53) contributes NO connectivity edge in rowset islanding; only direct-equality keys make a pseudonym bridge
+metadata:
+  type: project
+---
+
+q02 agent thrash (1.4M–2M tokens). Agent reaches for the SQL idiom: two grouped CTEs `curr`/`future` self-joined with `inner join curr.week_seq + 53 = future.week_seq and curr.day_of_week = future.day_of_week`, filtered aggregates `sum(curr.sales_amt ? curr.day_of_week=dow)/sum(future.sales_amt ? future.day_of_week=dow)`. Fails: `DisconnectedConceptsException ... Sourced individually but not joinable: {curr.s.date.week_seq, future.sales_amt}`.
+
+**Root cause** (`_island_rowsets` in discovery_utility.py): rowset islanding SEVERS all cross-rowset edges, reconnects across rowsets ONLY via pseudonyms (step 3, lines 658-666), which come from DIRECT-EQUALITY join/merge keys. A derived-expression key like `week_seq + 53` lowers to a `_virt_func_add` concept and produces NO pseudonym → no cross-rowset edge. So the ONLY surviving bridge is the `day_of_week` direct equality. But when `day_of_week` is consumed solely INSIDE the filtered aggregate (`? future.day_of_week=dow`), it isn't a live standalone bridging node, so `future.sales_amt`'s component never reconnects to `curr`.
+
+**Trigger matrix** (against raw.all_sales): plain `week_seq=future.week_seq` equality → OK (real pseudonym bridge); `+53` + day_of_week equality + UNfiltered aggs → OK (day_of_week live); `+53` + day_of_week equality + filtered aggs on BOTH sides → FAIL; filter on curr-only → OK (future side stays plainly connected); projecting `future.day_of_week` as an output → OK (forces a live bridge node). So failure needs ALL of: derived-only week key, filtered agg on the FUTURE/non-anchor side, day_of_week buried in the filter.
+
+**Resolution (2026-06-30)**: ENGINE FIX (spike) — new `_enrich_via_derived_join_key` in `node_generators/rowset_node.py` materializes the derived key locally and merges the other rowset by pseudonym; INNER case now resolves (repro `evals/tpcds_agent/repro_derived_rowset_join.py` R1/R5 green). The LEFT case of this same construct instead RECURSES — separate open bug [[project_left_derived_rowset_join_recursion]]. (Originally considered guidance-only via the window form; the team chose to keep the language non-opinionated and fix the engine.) Background: Canonical q02 (`tests/modeling/tpc_ds_duckdb/query02.preql`) uses the window idiom `lead(amt, 53) over (order by week_seq)` + `def weekday_sum(wd) -> sum(price ? day_of_week=wd) by week_seq` — no self-join, resolves cleanly (verified). Potential engine fix if revisited: have a derived-expression cross-rowset equality join key contribute a connectivity edge (or a clean targeted error) in `_island_rowsets`. See [[project_q02_island_rowsets_severs_downstream_consumer]].

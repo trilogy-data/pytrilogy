@@ -1,6 +1,6 @@
 query_id = "05"
 generator = "v3"
-gen_length = 10211
+gen_length = 10239
 preql_size = 1422
 comp_size = 4238
 generated_sql = """
@@ -157,7 +157,7 @@ FROM
     \"sweltering\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"s_date_date\" on \"sweltering\".\"s_date_id\" = \"s_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"abundant\" on \"sweltering\".\"s_channel\" = \"abundant\".\"s_channel\" AND \"sweltering\".\"s_channel_dim_id\" = \"abundant\".\"s_channel_dim_id\"
-    LEFT OUTER JOIN \"young\" on \"sweltering\".\"s_channel\" = \"young\".\"s_channel\" AND \"sweltering\".\"s_item_id\" = \"young\".\"s_item_id\" AND \"sweltering\".\"s_order_id\" = \"young\".\"s_order_id\"
+    FULL JOIN \"young\" on \"sweltering\".\"s_item_id\" = \"young\".\"s_item_id\" AND \"sweltering\".\"s_order_id\" = \"young\".\"s_order_id\" AND coalesce(\"sweltering\".\"s_channel\", \"abundant\".\"s_channel\") = \"young\".\"s_channel\"
     FULL JOIN \"vacuous\" on \"young\".\"s_item_id\" = \"vacuous\".\"s_item_id\" AND \"young\".\"s_order_id\" = \"vacuous\".\"s_order_id\" AND coalesce(\"young\".\"s_channel\", \"abundant\".\"s_channel\") = \"vacuous\".\"s_channel\"
     FULL JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"vacuous\".\"s_return_date_id\" = \"s_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"young\".\"s_return_channel_dim_id\" = \"cheerful\".\"s_return_channel_dim_id\" AND coalesce(\"young\".\"s_channel\", \"sweltering\".\"s_channel\") = \"cheerful\".\"s_channel\"

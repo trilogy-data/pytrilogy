@@ -8,10 +8,21 @@ a tautology — pure noise that only pins the concept into the CTE.
 This deliberately runs on the built query tree rather than pre-resolution. Before
 join planning the only signal is model nullability, which forces a global,
 over-conservative guess (a column non-null in its own table can still be padded by
-an outer join two hops away). Here the join path is known, so the decision is
-exact — never dropping a guard that a real outer join makes meaningful.
+an outer join two hops away). Here the join path is known.
 
-To stay sound the concept must be a tracked, non-derived output of the CTE:
+Absence from ``nullable_concepts`` is NOT sufficient proof on its own: build-time
+refinement (``StrategyNode._refine_nullable_for_conditions`` and the
+``proven_non_null`` gates in the scan/group layers) removes a concept from the
+nullable set when the node's own WHERE null-rejects it, so downstream join
+planning sees post-filter truth. Trusting that refined set to judge the very
+condition that did the proving is circular — it strips the only thing keeping the
+column non-null (q78: an authored ``customer IS NOT NULL`` on a source-nullable
+FK silently vanished). So a drop additionally requires the concept to be
+non-nullable at ground truth — never bound nullable at a base table and never
+outer-join padded anywhere in the CTE's source tree
+(``_unfiltered_nullable_addresses``).
+
+To stay sound the concept must also be a tracked, non-derived output of the CTE:
 
 - ``Derivation.ROOT``: a derived concept (FILTER/BASIC ``CASE`` …) can be NULL via
   its own expression, which ``nullable_concepts`` does not record.
@@ -24,7 +35,8 @@ To stay sound the concept must be a tracked, non-derived output of the CTE:
 from __future__ import annotations
 
 from trilogy.core.enums import Derivation
-from trilogy.core.models.execute import CTE, UnionCTE
+from trilogy.core.models.build import BuildDatasource
+from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     _not_null_concept,
@@ -32,12 +44,46 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
     is_scalar_condition,
 )
+from trilogy.core.processing.utility import find_nullable_concepts
 
 
 def _equivalent_addresses(concepts: list) -> set[str]:
     out: set[str] = set()
     for c in concepts:
         out |= c.equivalent_addresses
+    return out
+
+
+def _unfiltered_nullable_addresses(source: QueryDatasource) -> set[str]:
+    """Addresses that could be NULL anywhere in ``source``'s tree absent all
+    WHERE filtering: intrinsic nullability at base-table bindings plus
+    outer-join padding at every level.
+
+    Intermediate ``nullable_concepts`` lists are condition-refined, so they
+    cannot distinguish "never nullable" from "nullable but currently filtered";
+    walking to the ``BuildDatasource`` leaves recovers the unrefined truth.
+    Over-approximate on purpose: a false positive only keeps a redundant guard.
+    """
+    out: set[str] = set()
+    stack: list[QueryDatasource] = [source]
+    seen: set[int] = set()
+    while stack:
+        qds = stack.pop()
+        if id(qds) in seen:
+            continue
+        seen.add(id(qds))
+        out.update(find_nullable_concepts(qds.source_map, qds.datasources, qds.joins))
+        for c in qds.output_concepts:
+            if c.is_nullable:
+                out.add(c.address)
+                out.update(c.pseudonyms)
+        for ds in qds.datasources:
+            if isinstance(ds, QueryDatasource):
+                stack.append(ds)
+            elif isinstance(ds, BuildDatasource):
+                for c in ds.nullable_concepts:
+                    out.add(c.address)
+                    out.update(c.pseudonyms)
     return out
 
 
@@ -52,6 +98,7 @@ class StripRedundantNotNull(OptimizationRule):
         atoms = decompose_condition(cte.condition)
         survivors: list = []
         dropped = False
+        unfiltered_nullable: set[str] | None = None
         for atom in atoms:
             concept = _not_null_concept(atom)
             if (
@@ -61,11 +108,14 @@ class StripRedundantNotNull(OptimizationRule):
                 and not concept.equivalent_addresses.isdisjoint(output)
                 and concept.equivalent_addresses.isdisjoint(nullable)
             ):
-                dropped = True
-                self.log(
-                    f"{cte.name}: dropping tautological {concept.address} IS NOT NULL"
-                )
-                continue
+                if unfiltered_nullable is None:
+                    unfiltered_nullable = _unfiltered_nullable_addresses(cte.source)
+                if concept.equivalent_addresses.isdisjoint(unfiltered_nullable):
+                    dropped = True
+                    self.log(
+                        f"{cte.name}: dropping tautological {concept.address} IS NOT NULL"
+                    )
+                    continue
             survivors.append(atom)
         if not dropped:
             return False, None

@@ -36,7 +36,7 @@ properties <ticket_number, item.id> (
     net_profit numeric::usd, # Reported net profit for the line. Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
     is_returned bool, # True if at least part of this ticket line was later returned (derived from store_returns).
     net_paid numeric::usd, # Net amount paid by the customer for the line, excluding tax.
-    ext_tax numeric::usd, # Extended sales tax on the line.
+    ext_tax numeric::usd?, # Extended sales tax on the line.
     wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost.
     return_amount numeric::usd?, # Refund amount if the item on this line was returned.
     return_quantity int?, # Number of units returned for this line.

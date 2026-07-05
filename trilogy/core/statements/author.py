@@ -145,11 +145,17 @@ class FromClause:
 class SelectJoin:
     """A query-scoped join: a local merge of `source` (the brought-in key) into
     `target` (the anchor key kept in this select). Applied only to the per-query
-    environment, never the global one."""
+    environment, never the global one.
+
+    `join_type` is always one of the two relation mechanisms (LEFT_OUTER /
+    FULL); `authored` keeps the surface declaration (SUBSET / UNION / LEFT /
+    FULL) for round-trip rendering and optimizer metadata — a SUBSET is stored
+    with its operands swapped onto the superset anchor."""
 
     join_type: JoinType
     source_address: str
     target_address: str
+    authored: JoinType | None = None
 
     @property
     def modifiers(self) -> List[Modifier]:
@@ -348,7 +354,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                 self.where_clause = self.where_clause.with_reference_replacement(
                     replacements
                 )
-        if self.where_clause:
+        # Only a SCALAR select (no grouping key) restricts a WHERE aggregate that is
+        # also derived in the select; a grouped select computes it at the select
+        # grain over the WHERE-unfiltered universe as a valid pre-aggregation gate.
+        if self.where_clause and not self.grain.components:
             for cref in self.where_clause.concept_arguments:
                 concept = environment.concepts[cref.address]
                 if isinstance(concept, UndefinedConcept):

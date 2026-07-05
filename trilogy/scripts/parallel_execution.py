@@ -575,10 +575,12 @@ def run_single_script_execution(
 
     try:
         if execution_mode == ExecutionMode.RUN:
-            queries = exec.parse_text(
+            queries, definitions = exec.parse_text_with_definitions(
                 text, root=base if isinstance(base, Path) else None
             )
-            execute_run_mode(exec, queries, row_limit=row_limit)
+            execute_run_mode(
+                exec, queries, row_limit=row_limit, definitions=definitions
+            )
         elif execution_mode == ExecutionMode.INTEGRATION:
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
             execute_integration_mode(exec)

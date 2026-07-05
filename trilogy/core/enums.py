@@ -142,13 +142,21 @@ class JoinType(Enum):
     FULL = "full"
     RIGHT_OUTER = "right outer"
     CROSS = "cross"
+    # Relation DECLARATIONS (docs/subset_union_join_design.md): domain knowledge,
+    # not row intent. Parse-level only — the join-clause hydrator normalizes
+    # SUBSET(a ⊆ b) to the superset-anchored LEFT_OUTER relation (`merge a into
+    # ~b`) and UNION (disjoint-capable domains) to FULL; neither may reach SQL
+    # rendering.
+    SUBSET = "subset"
+    UNION = "union"
 
     @property
     def merge_modifiers(self) -> list[Modifier]:
         # As a query-scoped join: left outer -> the joined key is partial against
-        # the anchor; inner -> full merge, both keys required. FULL is NOT partial
-        # — its key is complete (coalesced); the FULL JOIN is driven by
-        # BuildEnvironment.scoped_full_join_keys at join-resolution time.
+        # the anchor. FULL is NOT partial — its key is complete (coalesced); the
+        # FULL JOIN is driven by the domain graph's EQUAL/∦ endpoints
+        # (outer_relation_keys) at join-resolution time. (Query-scoped INNER is
+        # not supported.)
         return [Modifier.PARTIAL] if self is JoinType.LEFT_OUTER else []
 
 
@@ -232,6 +240,7 @@ class FunctionType(Enum):
     GREATEST = "greatest"
     LEAST = "least"
     IS_NULL = "isnull"
+    IS_NOT_DISTINCT = "is_not_distinct"
     NULLIF = "nullif"
     BOOL = "bool"
 

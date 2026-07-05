@@ -1,6 +1,6 @@
 query_id = "85"
 generator = "v3"
-gen_length = 3828
+gen_length = 3833
 preql_size = 2217
 comp_size = 2166
 generated_sql = """
@@ -11,12 +11,12 @@ SELECT
     avg(\"wr_web_returns\".\"WR_FEE\") as \"avg3\"
 FROM
     \"memory\".\"web_returns\" as \"wr_web_returns\"
-    INNER JOIN \"memory\".\"reason\" as \"wr_reason_reason\" on \"wr_web_returns\".\"WR_REASON_SK\" = \"wr_reason_reason\".\"R_REASON_SK\"
     INNER JOIN \"memory\".\"web_sales\" as \"wr_web_sales_web_sales\" on \"wr_web_returns\".\"WR_ITEM_SK\" = \"wr_web_sales_web_sales\".\"WS_ITEM_SK\" AND \"wr_web_returns\".\"WR_ORDER_NUMBER\" = \"wr_web_sales_web_sales\".\"WS_ORDER_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"wr_web_sales_date_date\" on \"wr_web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"wr_web_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"wr_refunded_address_customer_address\" on \"wr_web_returns\".\"WR_REFUNDED_ADDR_SK\" = \"wr_refunded_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"wr_refunded_demographic_customer_demographics\" on \"wr_web_returns\".\"WR_REFUNDED_CDEMO_SK\" = \"wr_refunded_demographic_customer_demographics\".\"CD_DEMO_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"wr_returning_demographic_customer_demographics\" on \"wr_web_returns\".\"WR_RETURNING_CDEMO_SK\" = \"wr_returning_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    LEFT OUTER JOIN \"memory\".\"reason\" as \"wr_reason_reason\" on \"wr_web_returns\".\"WR_REASON_SK\" = \"wr_reason_reason\".\"R_REASON_SK\"
 WHERE
     \"wr_web_sales_date_date\".\"D_YEAR\" = 2000 and ( ( \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" BETWEEN 100.0 AND 150.0 ) or ( \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" BETWEEN 50.0 AND 100.0 ) or ( \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = '2 yr Degree' and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" BETWEEN 150.0 AND 200.0 ) ) and ( ( \"wr_refunded_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"wr_refunded_address_customer_address\".\"CA_STATE\" in ('IN','OH','NJ') and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" BETWEEN 100 AND 200 ) or ( \"wr_refunded_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"wr_refunded_address_customer_address\".\"CA_STATE\" in ('WI','CT','KY') and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" BETWEEN 150 AND 300 ) or ( \"wr_refunded_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"wr_refunded_address_customer_address\".\"CA_STATE\" in ('LA','IA','AR') and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" BETWEEN 50 AND 250 ) )
 

@@ -1,6 +1,6 @@
 query_id = "09"
 generator = "v3"
-gen_length = 1101
+gen_length = 1111
 preql_size = 254
 comp_size = 677
 generated_sql = """
@@ -13,8 +13,8 @@ FROM
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
     INNER JOIN \"memory\".\"partsupp\" as \"part_partsupp\" on \"lineitem\".\"l_partkey\" = \"part_partsupp\".\"ps_partkey\" AND \"lineitem\".\"l_suppkey\" = \"part_partsupp\".\"ps_suppkey\"
     INNER JOIN \"memory\".\"part\" as \"part_part\" on \"part_partsupp\".\"ps_partkey\" = \"part_part\".\"p_partkey\"
-    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_partsupp\".\"ps_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
-    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
+    LEFT OUTER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_partsupp\".\"ps_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
+    LEFT OUTER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
 WHERE
     \"part_part\".\"p_name\" like '%green%'
 

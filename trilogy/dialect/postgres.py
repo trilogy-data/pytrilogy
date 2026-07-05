@@ -1,7 +1,7 @@
 from jinja2 import Template
 
 from trilogy.core.enums import DatePart, FunctionType
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect
 
 
 def date_diff(first: str, second: str, grain: DatePart) -> str:
@@ -33,10 +33,7 @@ FUNCTION_MAP = {
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args, types: f"{args[0]}",
-    FunctionType.AVG: lambda args, types: f"{args[0]}",
+    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 PG_SQL_TEMPLATE = Template("""{%- if output %}

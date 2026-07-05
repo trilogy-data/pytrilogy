@@ -41,6 +41,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import (
     FrozenEnvironmentException,
+    InvalidSyntaxException,
     UndefinedConceptException,
 )
 from trilogy.core.models.author import (
@@ -143,6 +144,13 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # leaf-shorthand that IS such a direct output must resolve to itself, not
         # expand into its deeper source path. Populated at COLLECT_SYMBOLS.
         self.rowset_alias_outputs: set[str] = set()
+        # Rowset output addresses (`rs.src.col`) that leak ONLY from a scoped-join
+        # condition (e.g. the other side of `cur.dow = nxt.dow`) and are never a
+        # projected SELECT output. Tracked so leaf-shorthand resolution can drop
+        # them as phantom candidates even before the genuine output commits (q02
+        # self-relation referenced from inside a `def` body). Populated at
+        # COLLECT_SYMBOLS.
+        self.rowset_join_key_leaks: set[str] = set()
         self._resolving: set[str] = set()
         self._overlay_stack: list[Mapping[str, Concept]] = []
         self.populate_default_concepts()
@@ -156,6 +164,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         new.hidden = set(self.hidden)
         new.rowset_namespaces = set(self.rowset_namespaces)
         new.rowset_alias_outputs = set(self.rowset_alias_outputs)
+        new.rowset_join_key_leaks = set(self.rowset_join_key_leaks)
         return new
 
     def populate_default_concepts(self):
@@ -565,7 +574,11 @@ class Environment:
             return None
         if Modifier.PARTIAL in modifiers:
             return (target.address, source.address, JoinType.LEFT_OUTER)
-        return (source.address, target.address, JoinType.INNER)
+        # A non-partial `merge` asserts the two keys are one identity present on
+        # BOTH sides -> a FULL join over the coalesced canonical key (the language
+        # has no INNER; a filtering condition downstream may still let the optimizer
+        # narrow the emitted SQL join to INNER).
+        return (source.address, target.address, JoinType.FULL)
 
     def add_merge_join(
         self,
@@ -578,8 +591,40 @@ class Environment:
         pair = self.merge_to_join(source, target, modifiers)
         if pair is None or pair in self.merges:
             return False
+        self._lint_merge_declaration(pair, source, target)
         self.merges.append(pair)
         return True
+
+    def _lint_merge_declaration(
+        self,
+        pair: tuple[str, str, JoinType],
+        source: Concept,
+        target: Concept,
+    ) -> None:
+        """Author-time contradiction lint: check the new declared domain edge
+        against prior merge declarations plus the two endpoints' own
+        structural derivation edges. Deliberately shallow — the full graph is
+        a build-time artifact; this only needs the facts already in hand."""
+        from trilogy.core.domain_graph import (
+            DomainGraph,
+            EdgeScope,
+            declared_edge_from_join,
+            structural_domain_edge,
+        )
+
+        edge = declared_edge_from_join(*pair, scope=EdgeScope.GLOBAL)
+        if edge is None:
+            return
+        graph = DomainGraph.from_scoped_joins(
+            [(merge, EdgeScope.GLOBAL) for merge in self.merges]
+        )
+        for concept in (source, target):
+            structural = structural_domain_edge(concept)
+            if structural is not None:
+                graph.add_edge(structural)
+        reason = graph.contradicts(edge)
+        if reason:
+            raise InvalidSyntaxException(f"Invalid merge declaration: {reason}")
 
     def duplicate(self):
         return Environment(

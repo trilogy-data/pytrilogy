@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 
 from trilogy.core.enums import (
     BooleanOperator,
+    Derivation,
     JoinType,
     Modifier,
 )
@@ -67,6 +68,11 @@ from trilogy.core.processing.condition_utility import (
 # WHERE. INNER joins already drop both unmatched sides, so they're never
 # eligible to be downgraded further.
 _OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
+
+# A rejected consumer row proves nothing about the producer when the consumer
+# computes windows (a rejected output row still shaped surviving rows' window
+# values), so those consumers are opaque to cross-CTE proof transfer.
+_SENSITIVE_DERIVATIONS = (Derivation.WINDOW, Derivation.UNNEST, Derivation.RECURSIVE)
 
 
 def _base_datasource(
@@ -229,15 +235,22 @@ def _blocked_partials(
     operand_ds: set[str],
 ) -> set[str]:
     """Partial concepts that can't force ``operand`` present: a partial value
-    only blocks promotion when it renders from OUTSIDE the operand (a complete
-    copy lives elsewhere, and that's the column the predicate touches — q22's
-    customer key, q95's web_sales order number). A partial concept that renders
-    from the operand itself still forces it (the operand is genuinely where the
-    filtered value comes from)."""
+    only blocks promotion when it can render from OUTSIDE the operand (a
+    complete copy lives elsewhere, and the predicate can be satisfied by that
+    column — q22's customer key, q95's web_sales order number). A partial
+    concept that renders EXCLUSIVELY from the operand still forces it (the
+    operand is genuinely where the filtered value comes from).
+
+    Exclusivity, not mere overlap, is load-bearing: a shared join key
+    registered on both sides renders as ``COALESCE(operand, other)``, which
+    stays non-null on the operand's NULL-padded (unmatched) rows via the other
+    side — so a non-null proof on it can't reject those rows (q94: a semijoin
+    membership on ``order_number`` must not upgrade the padded ``web_returns``
+    join whose own ON-key it is)."""
     blocked: set[str] = set()
     for addr in partial:
         binds = set(cte.source_map.get(addr, ()))
-        if binds and not (binds & operand_ds):
+        if binds and not (binds <= operand_ds):
             blocked.add(addr)
     return blocked
 
@@ -332,50 +345,24 @@ def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
     return {c.address for c in cte.output_columns}
 
 
-def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
-    """Addresses available from the CTE's FROM clause — the LEFT side of the
-    chain's first join.
-
-    The "left" of an in-rendered join can come from any of:
-      - ``joins[0].left_cte`` (explicit).
-      - A ``parent_cte`` that isn't consumed as any join's right side.
-      - A ``joinkey_pair.cte`` attached to a join — set when an upstream CTE
-        was inlined into this one. Without this branch a chain whose left
-        side is an inlined CTE (e.g. gcat ``vehicle_lv_info``) shows up with
-        no ``parent_cte`` and no explicit ``left_cte``, so the rule would
-        otherwise see an empty left and (wrongly) treat shared join-key
-        columns as right-only proofs.
-      - A direct base datasource (raw table FROM).
-
-    Each non-seed parent gets consumed as some join's ``right_cte``; the
-    FROM-clause table is the leftover."""
-    if not isinstance(cte, CTE) or not cte.joins:
-        return set()
-    first = cte.joins[0]
-    if not isinstance(first, Join):
-        return set()
-    if first.left_cte is not None:
-        return _cte_addresses(first.left_cte)
-    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
-    for parent in cte.dependency_nodes(include_inlined=True):
-        if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
-            return _cte_addresses(parent)
-    # Inlined-left case: a join carries its own left CTE on the joinkey_pairs.
-    for j in cte.joins:
-        if not isinstance(j, Join):
-            continue
-        for pair in j.joinkey_pairs or []:
-            if not isinstance(pair, CTEConceptPair):
-                continue
-            if pair.cte.name not in right_names:
-                return _cte_addresses(pair.cte)
-    base = cte.source.base_datasource
-    if base is not None:
-        return {c.address for c in base.output_concepts}
-    return set()
-
-
 def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
+    """The CTE supplying the FROM clause — the LEFT side of the chain's first
+    join.
+
+    The "left" of an in-rendered join is resolved in priority order:
+      - ``joins[0].left_cte`` (explicit).
+      - The ``joinkey_pair.cte``\\s of the FIRST join — by construction those
+        supply the left values of the chain's first join, so they name the
+        FROM directly. This must beat the parent scan: a parent consumed only
+        through an existence subselect (a WHERE membership) never reaches the
+        join chain, and picking it as the seed makes the real FROM table's
+        columns look right-only, so a WHERE proof on a shared join key would
+        falsely promote the join (q94/q95's ``order_number in ...`` semijoin).
+      - A ``parent_cte`` that isn't consumed as any join's right side, skipping
+        existence-only parents where the existence map records them.
+      - A ``joinkey_pair.cte`` on any later join — covers a chain whose left
+        was an inlined CTE (e.g. gcat ``vehicle_lv_info``) with no
+        ``parent_cte`` and no explicit ``left_cte``."""
     if not isinstance(cte, CTE) or not cte.joins:
         return []
     first = cte.joins[0]
@@ -384,8 +371,25 @@ def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     if first.left_cte is not None:
         return [first.left_cte]
     right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
+    first_pair_seeds: list[CTE | UnionCTE] = []
+    seen_pair_names: set[str] = set()
+    for pair in first.joinkey_pairs or []:
+        if (
+            isinstance(pair, CTEConceptPair)
+            and pair.cte.name not in right_names
+            and pair.cte.name not in seen_pair_names
+        ):
+            seen_pair_names.add(pair.cte.name)
+            first_pair_seeds.append(pair.cte)
+    if first_pair_seeds:
+        return first_pair_seeds
+    existence = {s for vals in cte.existence_source_map.values() for s in vals}
     for parent in cte.dependency_nodes(include_inlined=True):
-        if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
+        if (
+            isinstance(parent, (CTE, UnionCTE))
+            and parent.name not in right_names
+            and not (_cte_source_keys(parent) & existence)
+        ):
             return [parent]
     for j in cte.joins:
         if not isinstance(j, Join):
@@ -394,6 +398,22 @@ def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
             if isinstance(pair, CTEConceptPair) and pair.cte.name not in right_names:
                 return [pair.cte]
     return []
+
+
+def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
+    """Addresses available from the CTE's FROM clause (see ``_seed_ctes``),
+    falling back to a direct base datasource (raw table FROM)."""
+    seeds = _seed_ctes(cte)
+    if seeds:
+        return {a for seed in seeds for a in _cte_addresses(seed)}
+    if not isinstance(cte, CTE) or not cte.joins:
+        return set()
+    if not isinstance(cte.joins[0], Join):
+        return set()
+    base = cte.source.base_datasource
+    if base is not None:
+        return {c.address for c in base.output_concepts}
+    return set()
 
 
 def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
@@ -681,6 +701,150 @@ def _add_inner_base_join_key_proofs(
     return changed
 
 
+def _cte_source_keys(cte: CTE | UnionCTE) -> set[str]:
+    return {cte.name, cte.safe_identifier}
+
+
+def _sensitive_outputs(cte: CTE) -> bool:
+    return any(
+        c.derivation in _SENSITIVE_DERIVATIONS for c in cte.source.output_concepts
+    )
+
+
+def _renders_exclusively_from(
+    consumer: CTE, address: str, producer_keys: set[str]
+) -> bool:
+    """The consumer renders ``address`` as a plain reference to one producer
+    column. A multi-source entry renders as COALESCE, which masks a one-sided
+    NULL, so it never carries a rejection back to either producer."""
+    sources = set(consumer.source_map.get(address, ()))
+    return bool(sources) and len(sources) == 1 and sources <= producer_keys
+
+
+def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
+    """Producer output addresses a rendered INNER equality in the consumer
+    forces non-null: a NULL key never matches plain ``=``, so the producer row
+    contributes nothing to the consumer. Null-safe pairs match NULLs and prove
+    nothing; a multi-left-source group renders COALESCE on the left, which
+    still rejects a NULL right key but no individual left key."""
+    out: set[str] = set()
+    for join in consumer.joins or []:
+        if not isinstance(join, Join) or join.jointype != JoinType.INNER:
+            continue
+        groups: dict[tuple[str, str], list[CTEConceptPair]] = {}
+        for pair in join.joinkey_pairs or []:
+            groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
+        for pairs in groups.values():
+            if any(_pair_can_match_nulls(p, join.modifiers) for p in pairs):
+                continue
+            first = pairs[0]
+            if _cte_source_keys(join.right_cte) & producer_keys:
+                out.add(first.right.address)
+            left_ctes = {p.cte.name for p in pairs}
+            if len(left_ctes) == 1 and _cte_source_keys(first.cte) & producer_keys:
+                out.add(first.left.address)
+    return out
+
+
+def _external_forced_map(
+    ctes: list[CTE | UnionCTE],
+    inverse_map: dict[str, list[CTE | UnionCTE]],
+) -> dict[str, set[str]]:
+    """Per producer CTE, output addresses EVERY consumer forces non-null in
+    any row it lets contribute to its own output — the cross-CTE extension of
+    the same-CTE WHERE proofs (q64: the final ``WHERE cnt_00 <= cnt_99`` lives
+    two CTEs downstream of the outer join that pads ``cnt_99``).
+
+    Sound to treat as join-reduction proofs at the producer because a producer
+    row NULL there is, at every consumption site, either dropped by the
+    consumer's WHERE/INNER equality or never matched at all — emitting it is
+    output-invisible. Channels per consumer:
+
+    * its condition's non-null proofs, when the address renders as a plain
+      single-source reference to this producer (a COALESCE masks the NULL);
+    * rendered INNER-join equalities on the producer's columns;
+    * transitively, its OWN forced set for plain pass-through projections —
+      gated to group keys when the consumer aggregates (a NULL group key
+      isolates exactly the padded rows; an aggregate output does not).
+
+    A consumer that reads the producer existentially (EXISTS subselect), a
+    UnionCTE, or a window-computing consumer is opaque and kills the
+    producer's set — every consumer must reject, or none may."""
+    forced: dict[str, set[str]] = {c.name: set() for c in ctes}
+    static: dict[tuple[str, str], set[str] | None] = {}
+    consumer_proofs: dict[str, set[str]] = {}
+    for producer in ctes:
+        if not isinstance(producer, CTE):
+            continue
+        producer_keys = _cte_source_keys(producer)
+        outputs = {c.address for c in producer.output_columns}
+        for consumer in inverse_map.get(producer.name, []):
+            key = (consumer.name, producer.name)
+            if not isinstance(consumer, CTE):
+                static[key] = None
+                continue
+            existential = {
+                s for vals in consumer.existence_source_map.values() for s in vals
+            }
+            if existential & producer_keys:
+                static[key] = None
+                continue
+            contribution: set[str] = set()
+            if consumer.condition is not None and not _sensitive_outputs(consumer):
+                if consumer.name not in consumer_proofs:
+                    consumer_proofs[consumer.name] = _gather_proofs(consumer.condition)
+                contribution |= {
+                    a
+                    for a in consumer_proofs[consumer.name]
+                    if _renders_exclusively_from(consumer, a, producer_keys)
+                }
+            contribution |= _inner_pair_rejections(consumer, producer_keys)
+            static[key] = contribution & outputs
+    while True:
+        changed = False
+        for producer in ctes:
+            if not isinstance(producer, CTE):
+                continue
+            consumers = inverse_map.get(producer.name, [])
+            if not consumers:
+                continue
+            producer_keys = _cte_source_keys(producer)
+            outputs = {c.address for c in producer.output_columns}
+            new: set[str] | None = None
+            for consumer in consumers:
+                entry = static.get((consumer.name, producer.name))
+                if entry is None or not isinstance(consumer, CTE):
+                    new = set()
+                    break
+                transferred: set[str] = set()
+                upstream = forced.get(consumer.name, set())
+                if upstream and not _sensitive_outputs(consumer):
+                    group_keys = (
+                        set(consumer.grain.components)
+                        if consumer.group_to_grain and consumer.grain
+                        else None
+                    )
+                    transferred = {
+                        a
+                        for a in upstream
+                        if (
+                            not consumer.group_to_grain
+                            or (group_keys is not None and a in group_keys)
+                        )
+                        and _renders_exclusively_from(consumer, a, producer_keys)
+                    }
+                contribution = (entry | transferred) & outputs
+                new = contribution if new is None else (new & contribution)
+                if not new:
+                    break
+            new = new or set()
+            if new != forced[producer.name]:
+                forced[producer.name] = new
+                changed = True
+        if not changed:
+            return forced
+
+
 class UpgradeJoinOnGuards(OptimizationRule):
     """Upgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
     enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
@@ -695,11 +859,47 @@ class UpgradeJoinOnGuards(OptimizationRule):
     def __init__(self, base_join_only: bool = False) -> None:
         super().__init__()
         self.base_join_only = base_join_only
+        self._forced_key: int | None = None
+        self._forced: dict[str, set[str]] = {}
+
+    def _external_proofs(
+        self, cte: CTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> set[str]:
+        """Consumer-forced non-null addresses for this CTE, gated to addresses
+        whose rejection maps back onto raw join columns here: a plain
+        single-source projection (a COALESCE output is NULL only when every
+        side is), and a group key when this CTE aggregates (the NULL-keyed
+        group holds exactly the padded rows; an aggregate output does not
+        partition its inputs). Computed once per optimizer sweep — the sweep
+        loops to fixpoint, so upgrades this pass enables feed the next."""
+        if self.base_join_only:
+            return set()
+        # A consumer's rejection applies POST-limit; using it to drop rows
+        # inside a row-limited CTE changes which rows fill the limit. The
+        # CTE's OWN condition (pre-limit) remains a valid proof source.
+        if cte.limit is not None:
+            return set()
+        if self._forced_key != id(inverse_map):
+            nodes: dict[str, CTE | UnionCTE] = {cte.name: cte}
+            for consumers in inverse_map.values():
+                for consumer in consumers:
+                    nodes[consumer.name] = consumer
+                    for parent in consumer.dependency_nodes():
+                        nodes.setdefault(parent.name, parent)
+            self._forced = _external_forced_map(list(nodes.values()), inverse_map)
+            self._forced_key = id(inverse_map)
+        external = self._forced.get(cte.name, set())
+        if not external:
+            return set()
+        if cte.group_to_grain:
+            group_keys = set(cte.grain.components) if cte.grain else set()
+            external = external & group_keys
+        return {a for a in external if len(set(cte.source_map.get(a, ()))) == 1}
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
-        if not isinstance(cte, CTE) or not cte.condition:
+        if not isinstance(cte, CTE):
             return False, None
         has_outer_cte_join = not self.base_join_only and any(
             isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES
@@ -712,8 +912,9 @@ class UpgradeJoinOnGuards(OptimizationRule):
         if not has_outer_cte_join and not has_outer_base_join:
             return False, None
 
-        direct_proofs = _gather_proofs(cte.condition)
-        or_groups = _gather_or_groups(cte.condition)
+        direct_proofs = _gather_proofs(cte.condition) if cte.condition else set()
+        direct_proofs = direct_proofs | self._external_proofs(cte, inverse_map)
+        or_groups = _gather_or_groups(cte.condition) if cte.condition else []
         if not direct_proofs and not or_groups:
             return False, None
         proofs = _ProofState(direct=direct_proofs, or_groups=or_groups)

@@ -19,6 +19,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildDatasource,
     BuildFunction,
+    BuildGrain,
     BuildOrderBy,
     BuildOrderItem,
 )
@@ -83,6 +84,7 @@ def easy_query(
     env: Environment,
     condition: BuildConditional | BuildComparison | None = None,
     limit: int = 100,
+    grain: BuildGrain | None = None,
 ):
     """
     Build basic datasource specific queries.
@@ -104,6 +106,7 @@ def easy_query(
         grain=datasource.grain,
         base_datasource=datasource,
     )
+    query_grain = grain or datasource.grain
     cte = CTE(
         name=f"datasource_{datasource.name}_base",
         source=root_qds,
@@ -116,7 +119,7 @@ def easy_query(
             )
             for concept in first_qds_concepts
         },
-        grain=datasource.grain,
+        grain=query_grain,
         group_to_grain=True,
         base_alias_override=datasource.safe_identifier,
     )

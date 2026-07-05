@@ -92,6 +92,43 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
     return report, events
 
 
+def load_run_spliced(run_dir: Path) -> tuple[dict, list[dict]]:
+    """Like :func:`load_run`, but also pulls in the event logs of queries spliced
+    from prior run(s) by walking the ``spliced_from`` chain — so per-query and
+    per-tool chart panels reflect the full benchmark, not just the freshly-run
+    subset. Each query id's events come from the nearest dir that ran it fresh;
+    already-seen ids are not reloaded from further back in the chain."""
+    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    events: list[dict] = []
+    seen: set[int] = set()
+    cur_dir: Path | None = run_dir
+    cur_report = report
+    first = True
+    while cur_dir is not None:
+        _, cur_events = load_run_events(cur_dir)
+        for e in cur_events:
+            qid = e.get("_query_id")
+            if qid is None:
+                if first:  # legacy unattributed logs only from the top dir
+                    events.append(e)
+                continue
+            if int(qid) not in seen:
+                events.append(e)
+        seen.update(
+            int(e["_query_id"]) for e in cur_events if e.get("_query_id") is not None
+        )
+        sf = cur_report.get("spliced_from")
+        if not sf:
+            break
+        prior = Path(sf["run_dir"])
+        if not (prior / "report.json").exists():
+            break
+        cur_report = json.loads((prior / "report.json").read_text(encoding="utf-8"))
+        cur_dir = prior
+        first = False
+    return report, events
+
+
 def _tool_label(name: str, arguments: dict | None) -> str:
     """Bar/table bucket for a tool call. ``trilogy`` is split by subcommand
     (``trilogy <args[0]>``) — half the iteration budget on exhausted runs goes
@@ -105,6 +142,16 @@ def _tool_label(name: str, arguments: dict | None) -> str:
         # single `trilogy file` bucket would hide the distinction.
         if sub == "file" and isinstance(args, list) and len(args) > 1:
             return f"trilogy file {str(args[1]).strip()}"
+        # `agent-info` splits the always-on DEFAULT (no subcommand, the full
+        # guide re-sent every turn) from on-demand DRILLDOWNS (`agent-info
+        # report`, `agent-info syntax example X`, ...). Opposite cost profiles —
+        # the default is the fixed per-turn tax, drilldowns are the
+        # progressive-disclosure fetches — so one bucket would hide whether
+        # moving sections behind disclosure actually shrinks the default.
+        if sub == "agent-info":
+            if isinstance(args, list) and len(args) > 1:
+                return f"trilogy agent-info {str(args[1]).strip()}"
+            return "trilogy agent-info (default)"
         return f"trilogy {sub}" if sub else "trilogy"
     return str(name)
 
@@ -250,6 +297,13 @@ FAILURE_RULES: list[tuple[str, list[str]]] = [
     (
         "join-resolution",
         ["could not resolve connections", "no datasource", "unresolvable"],
+    ),
+    # A planner RecursionError — a framework bug, distinct from a genuine
+    # join-resolution gap. Match both the clean CLI label ("could not be planned;
+    # this is a bug") and a bare RecursionError that escaped uncaught.
+    (
+        "planner-recursion",
+        ["could not be planned", "maximum recursion depth", "recursion depth exceeded"],
     ),
     ("type-error", ["invalid argument type", "not compatible", "incompatible type"]),
     # Syntax — the query failed to parse.
@@ -641,29 +695,43 @@ def _per_query_metric_vectors(report: dict, events: list[dict]) -> dict:
     toks: Counter[int] = Counter()
     first_ts: dict[int, str] = {}
     last_ts: dict[int, str] = {}
-    for e in events:
-        raw_qid = e.get("_query_id")
-        if raw_qid is None:
-            continue
-        qid = int(raw_qid)
-        ts = e.get("ts")
-        if isinstance(ts, str):  # ISO-8601 UTC — lexical compare gives min/max
-            if qid not in first_ts or ts < first_ts[qid]:
-                first_ts[qid] = ts
-            if qid not in last_ts or ts > last_ts[qid]:
-                last_ts[qid] = ts
-        etype = e.get("type")
-        if etype == "llm_response":
-            iters[qid] += 1
-            toks[qid] += (e.get("usage") or {}).get("total_tokens") or 0
-        elif etype == "tool_call":
-            calls[qid] += 1
-        elif etype == "tool_result":
-            results[qid] += 1
-            if scoring._is_error_result(
-                str(e.get("name", "?")), str(e.get("result") or "")
-            ):
-                errors[qid] += 1
+    # Prefer the report's stored per-query metrics — they cover the full
+    # benchmark including queries spliced from a prior run (whose event logs are
+    # absent from this run dir). Fall back to events for reports predating the
+    # per_query_metrics field.
+    pqm = report.get("per_query_metrics")
+    if pqm:
+        for m in pqm:
+            qid = int(m["id"])
+            iters[qid] = m.get("iterations", 0)
+            calls[qid] = m.get("tool_calls_total", 0)
+            results[qid] = m.get("tool_results_total", 0)
+            errors[qid] = m.get("tool_errors", 0)
+            toks[qid] = m.get("total_tokens", 0)
+    else:
+        for e in events:
+            raw_qid = e.get("_query_id")
+            if raw_qid is None:
+                continue
+            qid = int(raw_qid)
+            ts = e.get("ts")
+            if isinstance(ts, str):  # ISO-8601 UTC — lexical compare gives min/max
+                if qid not in first_ts or ts < first_ts[qid]:
+                    first_ts[qid] = ts
+                if qid not in last_ts or ts > last_ts[qid]:
+                    last_ts[qid] = ts
+            etype = e.get("type")
+            if etype == "llm_response":
+                iters[qid] += 1
+                toks[qid] += (e.get("usage") or {}).get("total_tokens") or 0
+            elif etype == "tool_call":
+                calls[qid] += 1
+            elif etype == "tool_result":
+                results[qid] += 1
+                if scoring._is_error_result(
+                    str(e.get("name", "?")), str(e.get("result") or "")
+                ):
+                    errors[qid] += 1
 
     durations: dict[int, float] = {}
     for pq in report.get("per_query") or []:

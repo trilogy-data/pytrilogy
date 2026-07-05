@@ -6,7 +6,7 @@ from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedQueryPersist,
 )
-from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
 from trilogy.utility import string_to_hash
 
 FUNCTION_MAP = {
@@ -23,10 +23,7 @@ FUNCTION_MAP = {
 # we may return a static value
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args, types: f"{args[0]}",
-    FunctionType.AVG: lambda args, types: f"{args[0]}",
+    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 TSQL_TEMPLATE = Template("""{%- if ctes %}

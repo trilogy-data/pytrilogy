@@ -184,7 +184,7 @@ def test_nested_rowset_self_join_shorthand(tmp_path):
         "with base as select s.week_seq, sum(s.ext_sales_price) as m;\n"
         "with y1999 as where base.week_seq = 5 select base.week_seq, base.m;\n"
         "with y2000 as where base.week_seq = 6 select base.week_seq, base.m;\n"
-        "INNER JOIN y1999.week_seq = y2000.week_seq "
+        "LEFT JOIN y1999.week_seq = y2000.week_seq "
         "SELECT y1999.week_seq, y1999.m, y2000.m;"
     )
 
@@ -205,10 +205,64 @@ def test_self_join_rowset_phantom_join_key_not_ambiguous(tmp_path):
         "sum(s.ext_sales_price) as amt;\n"
         "with joined as "
         "select cur.wk, cur.dw, cur.amt as cur_amt, nxt.amt as nxt_amt "
-        "inner join cur.wk = nxt.wk "
-        "inner join cur.dw = nxt.dw;\n"
+        "left join cur.wk = nxt.wk "
+        "left join cur.dw = nxt.dw;\n"
         "select joined.wk;"
     )
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "def pv(d) -> sum(joined.amt ? joined.dw = d) by joined.wk;\n"
+        "select joined.wk, @pv(0) as v;",
+        "def pE() -> sum(joined.amt ? joined.dw = 0) by joined.wk;\n"
+        "select joined.wk, @pE() as v;",
+        "def pF(d) -> joined.dw + d;\nselect joined.wk, @pF(0) as v;",
+        "def pG(d) -> sum(joined.amt) by joined.dw;\nselect joined.dw, @pG(0) as v;",
+    ],
+)
+def test_self_join_phantom_join_key_not_ambiguous_inside_def(tmp_path, tail):
+    # q02 recurrence: the phantom join-key leak (`joined.nxt.dw`) only resolves
+    # cleanly for direct refs because by then the genuine `joined.cur.dw` is a
+    # real/pending concept. A `def` body hydrates in the concept phase, BEFORE
+    # the rowset stages any output, so BOTH candidates are bare forward refs and
+    # the prior real/pending-based collapse gave up -> false ambiguity. The
+    # join-key-leak registry drops the phantom even when nothing has committed.
+    env = _env(tmp_path)
+    src = (
+        "with cur as select s.week_seq as wk, s.day_name as dw, "
+        "sum(s.ext_sales_price) as amt;\n"
+        "with nxt as select s.week_seq as wk, s.day_name as dw, "
+        "sum(s.ext_sales_price) as amt;\n"
+        "with joined as "
+        "select cur.wk, cur.dw, round(cur.amt / nxt.amt, 2) as amt "
+        "left join cur.wk + 53 = nxt.wk "
+        "left join cur.dw = nxt.dw;\n"
+    )
+    env.parse(src + tail)
+    assert "joined" in env.concepts.rowset_namespaces
+
+
+def test_self_join_join_key_leak_registry_isolates_other_side(tmp_path):
+    # Only the join-condition-exclusive columns are leaks; the projected ones
+    # (referenced in both the SELECT list and the join) must NOT be flagged.
+    env = _env(tmp_path)
+    env.parse(
+        "with cur as select s.week_seq as wk, s.day_name as dw, "
+        "sum(s.ext_sales_price) as amt;\n"
+        "with nxt as select s.week_seq as wk, s.day_name as dw, "
+        "sum(s.ext_sales_price) as amt;\n"
+        "with joined as "
+        "select cur.wk, cur.dw, round(cur.amt / nxt.amt, 2) as amt "
+        "left join cur.wk + 53 = nxt.wk "
+        "left join cur.dw = nxt.dw;\n"
+    )
+    leaks = env.concepts.rowset_join_key_leaks
+    assert "joined.nxt.wk" in leaks
+    assert "joined.nxt.dw" in leaks
+    assert "joined.cur.wk" not in leaks
+    assert "joined.cur.dw" not in leaks
 
 
 def test_nested_rowset_genuine_ambiguity_still_raises(tmp_path):

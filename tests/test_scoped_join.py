@@ -75,31 +75,11 @@ ORDER BY customers.region asc;
 """
 
 
-def test_inner_join_parses_to_select_join(models: Path):
-    _, parsed = parse_text(_select("INNER"), root=models)
-    stmt = parsed[-1]
-    assert isinstance(stmt, SelectStatement)
-    assert len(stmt.join_clauses) == 1
-    join = stmt.join_clauses[0]
-    assert join.join_type is JoinType.INNER
-    # source is the joined-in model's key; target is the anchor key
-    assert join.source_address == "orders.customer_id"
-    assert join.target_address == "customers.customer_id"
-    assert join.modifiers == []
-
-
 def test_left_join_marks_partial(models: Path):
     _, parsed = parse_text(_select("LEFT"), root=models)
     join = parsed[-1].join_clauses[0]
     assert join.join_type is JoinType.LEFT_OUTER
     assert join.modifiers == [Modifier.PARTIAL]
-
-
-def test_inner_join_blends_both_models(models: Path):
-    env, parsed = parse_text(_select("INNER"), root=models)
-    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
-    assert "INNER JOIN" in sql
-    assert "orders_tbl" in sql and "customers_tbl" in sql
 
 
 def test_left_join_renders_left_outer(models: Path):
@@ -109,7 +89,7 @@ def test_left_join_renders_left_outer(models: Path):
 
 
 def test_scoped_join_does_not_mutate_global_environment(models: Path):
-    env, parsed = parse_text(_select("INNER"), root=models)
+    env, parsed = parse_text(_select("LEFT"), root=models)
     src = env.concepts["orders.customer_id"]
     before = set(src.pseudonyms)
     process_query(env, parsed[-1])
@@ -122,7 +102,7 @@ def test_scoped_join_does_not_mutate_global_environment(models: Path):
 def test_scoped_join_leaves_global_objects_untouched(models: Path):
     # the build-level merge never replaces or adds concept/datasource objects on
     # the author env, and registers no scoped alias.
-    env, parsed = parse_text(_select("INNER"), root=models)
+    env, parsed = parse_text(_select("LEFT"), root=models)
     concepts_before = {k: id(v) for k, v in env.concepts.items()}
     datasources_before = {k: id(v) for k, v in env.datasources.items()}
     alias_before = set(env.alias_origin_lookup)
@@ -135,7 +115,7 @@ def test_scoped_join_leaves_global_objects_untouched(models: Path):
 def test_scoped_join_not_visible_in_global_pseudonyms(models: Path):
     from trilogy.core.models.build import get_canonical_pseudonyms
 
-    env, parsed = parse_text(_select("INNER"), root=models)
+    env, parsed = parse_text(_select("LEFT"), root=models)
     process_query(env, parsed[-1])
     pseudonyms = get_canonical_pseudonyms(env)
     assert "customers.customer_id" not in pseudonyms.get("orders.customer_id", set())
@@ -161,13 +141,13 @@ import customers as customers;
 
 @pytest.mark.parametrize("jointype", ["RIGHT", "CROSS"])
 def test_unsupported_join_types_rejected(models: Path, jointype: str):
-    with pytest.raises(ParseError, match="not yet supported"):
+    with pytest.raises(ParseError, match="not supported in query-scoped joins"):
         parse_text(_select(jointype), root=models)
 
 
 def test_full_join_key_is_not_partial(models: Path):
     # FULL no longer hijacks the partial flag — the key stays complete and the
-    # FULL JOIN is driven by the scoped_full_join_keys registry instead.
+    # FULL JOIN is driven by the domain graph's EQUAL/∦ endpoints instead.
     _, parsed = parse_text(_select("FULL"), root=models)
     join = parsed[-1].join_clauses[0]
     assert join.join_type is JoinType.FULL
@@ -175,13 +155,13 @@ def test_full_join_key_is_not_partial(models: Path):
 
 
 def test_full_join_registers_canonical_key(models: Path):
-    # the build advertises the FULL join's canonical key in the registry that
-    # join resolution consults to emit a FULL JOIN.
+    # the build advertises the FULL join's canonical key on the domain graph,
+    # which join resolution consults to emit a FULL JOIN.
     env = _env_for(models, "import orders as orders;\nimport customers as customers;")
     be = env.materialize_for_select(
         scoped_joins=[("orders.customer_id", "customers.customer_id", JoinType.FULL)]
     )
-    assert be.scoped_full_join_keys == {"customers.customer_id"}
+    assert be.domain_graph.outer_relation_keys() == {"customers.customer_id"}
     # and the key is bound complete (NOT partial) on both datasources
     for ds_name in ("orders.orders", "customers.customers"):
         binding = next(
@@ -218,7 +198,7 @@ def test_literal_self_join_rejected(models: Path):
 import orders as orders;
 import customers as customers;
 
-INNER JOIN orders.customer_id = orders.customer_id
+LEFT JOIN orders.customer_id = orders.customer_id
 SELECT sum(orders.order_amount) -> total;
 """
     with pytest.raises(ParseError, match="itself"):
@@ -285,7 +265,7 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-INNER JOIN orders.customer_id = customers.customer_id = shipments.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id = shipments.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt;
 """
     _, parsed = parse_text(text, root=multi_models)
@@ -296,25 +276,52 @@ SELECT customers.region, sum(orders.order_amount) -> amt;
     }
 
 
-def test_build_scoped_merge_index():
-    from trilogy.core.models.build import _build_scoped_merge_index
+def test_scoped_join_column_binding_origin_stamp():
+    """A scoped join folding one binding onto another's canonical address must
+    thread the authored ORIGIN forward on the column (the same-address
+    narrowing arbitration reads it; physical datasource identity does not
+    discriminate when one table binds several relation endpoints)."""
+    from trilogy.parser import parse
 
-    merge_map, partial = _build_scoped_merge_index([("a", "b", JoinType.INNER)])
-    assert merge_map == {"a": "b"} and partial == set()
-    # chained joins collapse transitively onto the final target
-    merge_map, _ = _build_scoped_merge_index(
-        [("a", "b", JoinType.INNER), ("b", "c", JoinType.INNER)]
+    env, _ = parse("""key aid int;
+key bid int;
+property aid.av float;
+datasource a_src (x: aid, v: av) grain (aid) address a_tbl;
+datasource b_src (y: bid) grain (bid) address b_tbl;
+""")
+    build_env = env.materialize_for_select(
+        scoped_joins=[("local.aid", "local.bid", JoinType.LEFT_OUTER)]
     )
-    assert merge_map == {"a": "c", "b": "c"}
+    b_cols = {
+        (c.origin_address, c.concept.address)
+        for c in build_env.datasources["local.b_src"].columns
+    }
+    assert ("local.bid", "local.aid") in b_cols, b_cols
+    a_cols = {
+        (c.origin_address, c.concept.address)
+        for c in build_env.datasources["local.a_src"].columns
+    }
+    assert all(origin is None for origin, _ in a_cols), a_cols
+
+
+def test_scoped_join_canonical_collapse():
+    from trilogy.core.domain_graph import DomainGraph, EdgeScope
+
+    def graph(*joins):
+        return DomainGraph.from_scoped_joins([(j, EdgeScope.STATEMENT) for j in joins])
+
+    # chained FULL joins collapse transitively onto the final target
+    g = graph(("a", "b", JoinType.FULL), ("b", "c", JoinType.FULL))
+    assert g.canonical_map() == {"a": "c", "b": "c"}
     # LEFT (SQL `a LEFT JOIN b`): preserve the source `a`, so `b` collapses onto
-    # `a` (a is canonical) and `b` is the partial/optional side.
-    merge_map, partial = _build_scoped_merge_index([("a", "b", JoinType.LEFT_OUTER)])
-    assert merge_map == {"b": "a"} and partial == {"b"}
+    # `a` (a is canonical) and `b` is the partial/subset side.
+    g = graph(("a", "b", JoinType.LEFT_OUTER))
+    assert g.canonical_map() == {"b": "a"} and g.subset_sources() == {"b"}
     # FULL marks NEITHER partial — its canonical key is complete and the FULL JOIN
     # is driven by the scoped_full_join_keys registry, not the partial flag. The
     # source still collapses onto the canonical target (union-find).
-    merge_map, partial = _build_scoped_merge_index([("a", "b", JoinType.FULL)])
-    assert merge_map == {"a": "b"} and partial == set()
+    g = graph(("a", "b", JoinType.FULL))
+    assert g.canonical_map() == {"a": "b"} and g.subset_sources() == set()
 
 
 DIM_ITEM = """key item_id int;
@@ -360,7 +367,7 @@ def test_join_resolves_nested_namespace_key(nested_models: Path):
 import sales as sales;
 import catalog as catalog;
 
-INNER JOIN catalog.item.item_id = sales.item.item_id
+LEFT JOIN catalog.item.item_id = sales.item.item_id
 SELECT sales.item.item_id, sum(sales.amt) -> total;
 """
     _, parsed = parse_text(text, root=nested_models)
@@ -376,7 +383,7 @@ def test_join_key_must_exist(models: Path):
 import orders as orders;
 import customers as customers;
 
-INNER JOIN orders.nonexistent = customers.customer_id
+LEFT JOIN orders.nonexistent = customers.customer_id
 SELECT customers.region;
 """
     with pytest.raises(UndefinedConceptException, match="orders.nonexistent"):
@@ -386,8 +393,8 @@ SELECT customers.region;
 @pytest.mark.parametrize(
     "tail",
     [
-        "inner join orders.customer_id = customers.customer_id\nand orders.order_amount > 0\nselect customers.region;",
-        "inner join orders.customer_id = customers.customer_id\nwhere orders.order_amount > 0\nselect customers.region;",
+        "left join orders.customer_id = customers.customer_id\nand orders.order_amount > 0\nselect customers.region;",
+        "left join orders.customer_id = customers.customer_id\nwhere orders.order_amount > 0\nselect customers.region;",
     ],
 )
 def test_filter_after_join_gives_helpful_error(models: Path, tail: str):
@@ -406,7 +413,7 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-INNER JOIN orders.customer_id = customers.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id
 LEFT JOIN shipments.customer_id = customers.customer_id
 SELECT
     customers.region,
@@ -434,7 +441,7 @@ def test_projected_join_source_renders(models: Path):
 import orders as orders;
 import customers as customers;
 
-INNER JOIN orders.customer_id = customers.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id
 SELECT
     orders.customer_id,
     sum(orders.order_amount) -> amt;
@@ -452,7 +459,7 @@ def test_projected_join_target_renders(models: Path):
 import orders as orders;
 import customers as customers;
 
-INNER JOIN orders.customer_id = customers.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id
 SELECT
     customers.customer_id,
     sum(orders.order_amount) -> amt;
@@ -473,7 +480,7 @@ def test_aggregate_grouped_by_merged_key(models: Path):
 import orders as orders;
 import customers as customers;
 
-INNER JOIN orders.customer_id = customers.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id
 SELECT
     customers.customer_id,
     sum(orders.order_amount) -> amt;
@@ -538,8 +545,8 @@ import f1 as f1;
 import f2 as f2;
 import f3 as f3;
 
-inner join f1.d.dim_id = f2.d.dim_id
-inner join f1.d.dim_id = f3.d.dim_id
+left join f1.d.dim_id = f2.d.dim_id
+left join f1.d.dim_id = f3.d.dim_id
 select f1.d.attr as attr, sum(f1.m1) as total;
 """
     env, parsed = parse_text(join_text, root=three_fact_models)
@@ -560,40 +567,6 @@ def _env_for(root: Path, imports: str):
     # parse a trivial select so the env is populated with the imported concepts
     env, _ = parse_text(imports + "\nSELECT 1 -> one;", root=root)
     return env
-
-
-def test_buildenv_collapses_source_concept_to_target(models: Path):
-    env = _env_for(models, "import orders as orders;\nimport customers as customers;")
-    be = env.materialize_for_select(
-        scoped_joins=[("orders.customer_id", "customers.customer_id", JoinType.INNER)]
-    )
-    # source resolves to the target concept; target is unchanged
-    assert be.concepts["orders.customer_id"].address == "customers.customer_id"
-    assert be.concepts["customers.customer_id"].address == "customers.customer_id"
-    # the global author env is untouched
-    assert env.concepts["orders.customer_id"].address == "orders.customer_id"
-
-
-def test_buildenv_multiway_collapses_all_sources_to_one_canonical(
-    three_fact_models: Path,
-):
-    env = _env_for(
-        three_fact_models,
-        "import f1 as f1;\nimport f2 as f2;\nimport f3 as f3;",
-    )
-    be = env.materialize_for_select(
-        scoped_joins=[
-            ("f1.d.dim_id", "f2.d.dim_id", JoinType.INNER),
-            ("f1.d.dim_id", "f3.d.dim_id", JoinType.INNER),
-        ]
-    )
-    # union-find: both sources collapse to the final target (f3), one canonical key
-    assert be.concepts["f1.d.dim_id"].address == "f3.d.dim_id"
-    assert be.concepts["f2.d.dim_id"].address == "f3.d.dim_id"
-    # a dependent's grain collapses too (the whole point — no N distinct keys)
-    attr_grain = be.concepts["f1.d.attr"].grain.components
-    assert "f3.d.dim_id" in attr_grain
-    assert "f1.d.dim_id" not in attr_grain and "f2.d.dim_id" not in attr_grain
 
 
 def test_buildenv_left_join_marks_datasource_binding_partial(models: Path):
@@ -622,16 +595,74 @@ def test_buildenv_left_join_marks_datasource_binding_partial(models: Path):
     assert Modifier.PARTIAL not in orders_binding.modifiers
 
 
-def test_buildenv_inner_join_binding_not_partial(models: Path):
-    env = _env_for(models, "import orders as orders;\nimport customers as customers;")
+# --- coalescing group-mates map: a query union/full join key member must not
+# be satisfied through its group-mate pseudonym (each side materializes its own
+# column — q59), but a GLOBAL merge declares EQUAL domains and the pseudonym IS
+# how a datasource-less canonical key resolves (funnel remap regression). -----
+
+# rowset output merged into a key with no datasource binding of its own; the
+# key's property derives from it. Resolution MUST route through the pseudonym.
+GLOBAL_MERGE_REMAP = """key step int;
+property step.name <- CASE WHEN step = 1 THEN 'one' WHEN step = 2 THEN 'two' END;
+key actor int;
+key event_id int;
+property event_id.event_name string;
+
+datasource events (id: event_id, name: event_name)
+grain (event_id) address events_tbl;
+
+with stages as
+WHERE event_name in ('a', 'b')
+SELECT
+    CASE WHEN event_name = 'a' THEN 1 ELSE 2 END -> stage,
+    event_id
+;
+merge stages.stage into step;
+merge stages.event_id into actor;
+"""
+
+TWO_ROWSETS = """key rid int;
+property rid.week int;
+property rid.year int;
+property rid.sales int;
+datasource fact (r: rid, w: week, y: year, v: sales) grain (rid)
+address fact_tbl;
+auto total <- sum(sales) by week, year;
+with this_year as
+where year = 2001
+select week as wk, total;
+with next_year as
+where year = 2002
+select week as wk, total;
+"""
+
+
+def test_buildenv_global_merge_creates_no_group_mates():
+    env, _ = parse_text(GLOBAL_MERGE_REMAP + "SELECT 1 -> one;")
+    be = env.materialize_for_select()
+    assert "local.step" in be.scoped_join_key_groups
+    assert be.distinct_scoped_join_group_mates() == {}
+
+
+def test_buildenv_union_join_rowset_keys_are_group_mates():
+    env, _ = parse_text(TWO_ROWSETS + "SELECT 1 -> one;")
     be = env.materialize_for_select(
-        scoped_joins=[("orders.customer_id", "customers.customer_id", JoinType.INNER)]
+        scoped_joins=[("this_year.wk", "next_year.wk", JoinType.FULL)]
     )
-    orders_ds = be.datasources["orders.orders"]
-    binding = next(
-        c for c in orders_ds.columns if c.concept.address == "customers.customer_id"
-    )
-    assert Modifier.PARTIAL not in binding.modifiers
+    mates = be.distinct_scoped_join_group_mates()
+    assert mates.get("this_year.wk") == {"next_year.wk"}
+    assert mates.get("next_year.wk") == {"this_year.wk"}
+
+
+def test_global_merge_rowset_output_into_unbound_key_resolves():
+    env, parsed = parse_text(GLOBAL_MERGE_REMAP + """SELECT
+    --step,
+    name,
+    count(actor) -> event_count
+ORDER BY step asc;
+""")
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    assert "name" in sql
 
 
 # --- end-to-end FULL JOIN execution: row-level correctness + datasource
@@ -902,11 +933,12 @@ select sales.brand as brand, sum(sales.amt) as amt_02;
 @pytest.mark.parametrize(
     "jointype,expected",
     [
-        # INNER: only brand 1 appears in both years.
-        ("INNER", [(1, 15.0, 15.0)]),
-        # LEFT (SQL `y01 LEFT JOIN y02`): left operand y01 preserved -> brand 1 +
-        # brand 2 (2001-only); brand 3 (2002-only) drops.
-        ("LEFT", [(1, 15.0, 15.0), (2, 20.0, None)]),
+        # LEFT declares y02.brand ⊆ y01.brand; both rowsets are filtered, so
+        # the subset can't be proven against the filtered 2001 side and the
+        # preserving render stands — brand 3 (2002-only) survives NULL-padded.
+        # Row restriction is an explicit filter (`where y01.amt_01 is not
+        # null`), never a silent join drop.
+        ("LEFT", [(1, 15.0, 15.0), (2, 20.0, None), (3, None, 30.0)]),
         # FULL: every brand from either year, padded NULL on the missing side.
         ("FULL", [(1, 15.0, 15.0), (2, 20.0, None), (3, None, 30.0)]),
     ],
@@ -1120,7 +1152,7 @@ def _parse_with_backend(text: str, root: Path, backend):
         clear_parse_cache()
 
 
-@pytest.mark.parametrize("jointype", ["INNER", "LEFT", "FULL"])
+@pytest.mark.parametrize("jointype", ["LEFT", "FULL"])
 def test_and_sugar_matches_stacked_clauses(multi_models: Path, jointype: str):
     sugar = f"""
 import orders as orders;
@@ -1185,12 +1217,12 @@ def test_and_sugar_combines_with_chained_group(tmp_path: Path):
         )
     imports = "".join(f"import {nm} as {nm};\n" for nm in ["a", "b", "c", "p", "q"])
     sugar = (
-        imports + "INNER JOIN a.a_id = b.b_id = c.c_id and p.p_id = q.q_id\n"
+        imports + "LEFT JOIN a.a_id = b.b_id = c.c_id and p.p_id = q.q_id\n"
         "SELECT a.a_id, sum(a.m_a) -> sm;"
     )
     stacked = (
-        imports + "INNER JOIN a.a_id = b.b_id = c.c_id\n"
-        "INNER JOIN p.p_id = q.q_id\n"
+        imports + "LEFT JOIN a.a_id = b.b_id = c.c_id\n"
+        "LEFT JOIN p.p_id = q.q_id\n"
         "SELECT a.a_id, sum(a.m_a) -> sm;"
     )
     _, sugar_parsed = parse_text(sugar, root=tmp_path)
@@ -1207,7 +1239,7 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
 """
     _, lark_parsed = _parse_with_backend(text, multi_models, ParserBackend.LARK)
@@ -1223,14 +1255,14 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt;
 """
     _, parsed = parse_text(text, root=multi_models)
     rendered = render_query(parsed[-1])
-    # canonical form is split: one `inner join` line per group, no `and`.
-    assert "inner join orders.customer_id = customers.customer_id" in rendered
-    assert "inner join shipments.customer_id = customers.customer_id" in rendered
+    # canonical form is split: one `left join` line per group, no `and`.
+    assert "left join orders.customer_id = customers.customer_id" in rendered
+    assert "left join shipments.customer_id = customers.customer_id" in rendered
     assert " and " not in rendered.split("select")[0]
     reimport = (
         "import orders as orders;\nimport customers as customers;\n"
@@ -1255,15 +1287,105 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships
 ORDER BY customers.region asc;
 """
     stacked = sugar.replace(
-        "INNER JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id",
-        "INNER JOIN orders.customer_id = customers.customer_id\n"
-        "INNER JOIN shipments.customer_id = customers.customer_id",
+        "LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id",
+        "LEFT JOIN orders.customer_id = customers.customer_id\n"
+        "LEFT JOIN shipments.customer_id = customers.customer_id",
     )
     assert _exec_rows(eng, multi_models, sugar) == _exec_rows(
         eng, multi_models, stacked
     )
+
+
+_EMP = """key eid int;
+key mid int;
+property eid.name string;
+
+datasource emp (e: eid, m: mid, n: name)
+grain (eid)
+query '''
+select 1 e, 3 m, 'alice' n union all
+select 2 e, 3 m, 'bob' n union all
+select 3 e, 4 m, 'carol' n union all
+select 4 e, cast(null as int) m, 'dan' n
+''';
+"""
+
+
+@pytest.mark.parametrize("join_kw", ["full", "union"])
+def test_same_table_union_relation_rejected(tmp_path: Path, join_kw: str):
+    """Both endpoints of a FULL/UNION relation bound ONLY in one table: the
+    unified key coalesces across the two endpoints' populations, which a single
+    scan cannot represent — the plan silently rendered one endpoint's own
+    column as the unified axis. Fail clean, pointing at the double-import idiom
+    (endpoint-identity seam, docs/domain_graph_design.md)."""
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    env = Environment()
+    env.parse(_EMP)
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    with pytest.raises(InvalidSyntaxException, match=r"bound\s+only in the same"):
+        eng.generate_sql(f"{join_kw} join eid = mid select name, mid;")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "left join eid = mid select name, mid;",
+        "subset join mid = eid select name, mid;",
+    ],
+)
+def test_same_table_subset_relation_unified_axis(query: str):
+    """A LEFT/SUBSET relation between two keys of ONE table resolves: the
+    anchor's own column IS the unified axis, exactly the two-table semantics
+    (the folded `mid` renders the eid axis). Previously masked by the
+    datasource-level partial smear: the folded endpoint's PARTIAL binding hid
+    the complete binding of the same address."""
+    env = Environment()
+    env.parse(_EMP)
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = eng.generate_sql(query)[-1]
+    rows = {tuple(r) for r in eng.execute_raw_sql(sql).fetchall()}
+    assert rows == {("alice", 1), ("bob", 2), ("carol", 3), ("dan", 4)}, rows
+
+
+def test_same_table_endpoint_with_outside_binding_allowed(tmp_path: Path):
+    # a second table binding one endpoint keeps the relation resolvable — the
+    # guard must not fire when resolution can route through it.
+    env = Environment()
+    env.parse(_EMP + """
+datasource managers (m: mid) grain (mid)
+query '''select 3 m union all select 4 m''';
+""")
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = eng.generate_sql("left join eid = mid select name, mid;")[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+
+
+def test_same_table_double_import_self_relation(tmp_path: Path):
+    # the guard's suggested idiom: two imports of the model give the endpoints
+    # distinct concepts/datasources, so the relation renders a real self-join
+    # reading each endpoint's own column.
+    (tmp_path / "emp.preql").write_text(_EMP)
+    eng = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    sql = eng.generate_sql("""
+import emp as e1;
+import emp as e2;
+
+left join e2.eid = e1.mid
+select e1.name, e2.name -> manager_name;
+""")[-1]
+    rows = {tuple(r) for r in eng.execute_raw_sql(sql).fetchall()}
+    assert rows == {
+        (None, "alice"),
+        (None, "bob"),
+        ("alice", "carol"),
+        ("bob", "carol"),
+        ("carol", "dan"),
+    }, rows

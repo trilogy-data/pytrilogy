@@ -1,10 +1,6 @@
-"""Both grammar backends (Lark, Pest) should surface a friendly Syntax [102]
-when a SQL-style subquery (`(select ...)` / `(with ...)`) appears in scope.
-
-Real failure mode: the agent reaches for `IN (SELECT ...)` to filter on a
-related dimension. Trilogy auto-resolves dimension joins via dot-paths, so
-the subselect is unnecessary — but the bare Lark/Pest error just complained
-about an unexpected token, which doesn't tell the agent what to do."""
+"""Inline `(select ...)` subqueries are supported (desugared to an anonymous
+rowset). Parenthesized `(with ... as ...)` CTEs are not, and must still surface
+a friendly Syntax [102] pointing at the named-rowset alternative."""
 
 from __future__ import annotations
 
@@ -19,27 +15,23 @@ _IMPORTS = "import x as x;\n"
 
 
 @pytest.mark.parametrize("backend", [parse_lark, parse_pest])
-def test_subselect_in_in_clause_friendly_error(backend):
+def test_membership_subquery_parses(backend):
+    """`x in (select ...)` is now a first-class inline subquery, not an error."""
     src = _IMPORTS + (
         "where x.id in (select x.id where x.state = 'TN')\n" "select x.id;"
     )
-    with pytest.raises(InvalidSyntaxException) as exc:
-        backend(src)
-    msg = str(exc.value)
-    assert "Syntax [102]" in msg, msg
-    assert "dot-path" in msg or "dotted path" in msg, msg
+    backend(src)
 
 
 @pytest.mark.parametrize("backend", [parse_lark, parse_pest])
-def test_scalar_subselect_friendly_error(backend):
-    src = _IMPORTS + "where x.val > (select max(x.val))\nselect x.id;"
-    with pytest.raises(InvalidSyntaxException) as exc:
-        backend(src)
-    assert "Syntax [102]" in str(exc.value)
+def test_scalar_subquery_parses(backend):
+    src = _IMPORTS + "where x.val > (select max(x.val) -> m)\nselect x.id;"
+    backend(src)
 
 
 @pytest.mark.parametrize("backend", [parse_lark, parse_pest])
-def test_with_subquery_friendly_error(backend):
+def test_with_cte_subquery_friendly_error(backend):
+    """A parenthesized `with` CTE is still unsupported -> Syntax [102]."""
     src = _IMPORTS + (
         "where x.id in (with foo as (select 1) select x.id from foo)\n" "select x.id;"
     )
@@ -55,15 +47,21 @@ def test_top_level_select_does_not_fire_102(backend):
 
 
 def test_detector_ignores_closed_parens():
-    """If the `(select ...)` is fully closed before pos, the detector should
+    """If the `(with ...)` is fully closed before pos, the detector should
     not surface it — the open-paren counter handles that case."""
-    text = "where (select 1) and "
+    text = "where (with a as (select 1) select 1) and "
     assert detect_subselect(text, len(text)) is None
 
 
 def test_detector_reports_open_paren_position():
-    text = "where x in (select x.id where "
+    text = "where x in (with foo as (select "
     pos = len(text)
     found = detect_subselect(text, pos)
     assert found is not None
     assert text[found] == "("
+
+
+def test_detector_ignores_plain_select_subquery():
+    """`(select ...)` is supported now — the detector must not flag it."""
+    text = "where x > (select max(y) -> m "
+    assert detect_subselect(text, len(text)) is None

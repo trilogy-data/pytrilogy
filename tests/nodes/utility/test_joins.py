@@ -266,25 +266,142 @@ address baz;
     )  # Should keep both since they're different concepts
 
 
+def _fd_test_sources():
+    env, _ = parse("""
+key a int;
+key b int;
+key x int;
+
+datasource dim (a, b) grain (a)
+address dim_tbl;
+
+datasource f1 (a, b, x) grain (x)
+address f1_tbl;
+        """)
+    build_env = env.materialize_for_select()
+    a = build_env.concepts["a"]
+    b = build_env.concepts["b"]
+    x = build_env.concepts["x"]
+    dim = build_env.datasources["dim"]
+    f1 = build_env.datasources["f1"]
+    left_qds = QueryDatasource(
+        input_concepts=[a, b],
+        output_concepts=[a, b],
+        datasources=[dim],
+        grain=BuildGrain(components={a.address}),
+        joins=[],
+        source_map={a.address: {dim}, b.address: {dim}},
+    )
+    # right grain {a, x} is NOT a subset of the join keys, so the existing
+    # grain restriction stays out of the way and the FD prune is what decides
+    right_qds = QueryDatasource(
+        input_concepts=[a, b, x],
+        output_concepts=[a, b, x],
+        datasources=[f1],
+        grain=BuildGrain(components={a.address, x.address}),
+        joins=[],
+        source_map={a.address: {f1}, b.address: {f1}, x.address: {f1}},
+    )
+    return build_env, a, b, left_qds, right_qds
+
+
+def test_reduce_concept_pairs_fd_through_binding():
+    """`dim` binds a and b completely at grain (a), so a → b holds globally
+    (the domain graph's complete-binding rule) — the b pair is redundant once
+    a is joined. Without the graph the reduction cannot see through the
+    binding and keeps both (the pre-graph behavior, pinned here too)."""
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=b, right=b, existing_datasource=left_qds),
+    ]
+    without_graph = reduce_concept_pairs(list(pairs), right_qds)
+    assert len(without_graph) == 2
+    with_graph = reduce_concept_pairs(
+        list(pairs), right_qds, domain_graph=build_env.domain_graph
+    )
+    assert len(with_graph) == 1, with_graph
+    assert with_graph[0].left == a
+
+
+def test_reduce_concept_pairs_fd_never_prunes_grain_pair():
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    x = build_env.concepts["x"]
+    right_qds.grain = BuildGrain(components={b.address, x.address})
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=b, right=b, existing_datasource=left_qds),
+    ]
+    reduced = reduce_concept_pairs(
+        list(pairs), right_qds, domain_graph=build_env.domain_graph
+    )
+    assert any(p.right == b for p in reduced), reduced
+
+
+def test_reduce_concept_pairs_fd_transitive():
+    """Pure transitive closure: A → B, B → C prunes the c pair when a is
+    joined, even though no single declaration relates a to c."""
+    from trilogy.core.domain_graph import DomainGraph, FDEdge
+
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    c = build_env.concepts["x"]
+    graph = DomainGraph(
+        fd_edges=[
+            FDEdge(determinants=frozenset({a.address}), dependent=b.address),
+            FDEdge(determinants=frozenset({b.address}), dependent=c.address),
+        ]
+    )
+    right_qds.grain = BuildGrain(components={a.address})
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=c, right=c, existing_datasource=left_qds),
+    ]
+    reduced = reduce_concept_pairs(list(pairs), right_qds, domain_graph=graph)
+    assert len(reduced) == 1
+    assert reduced[0].left == a
+
+
+def test_reduce_concept_pairs_fd_mutual_keeps_one():
+    """Mutually-dependent keys (a → b and b → a) keep exactly one pair —
+    greedy over the surviving determinant set, never both pruned."""
+    from trilogy.core.domain_graph import DomainGraph, FDEdge
+
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    graph = DomainGraph(
+        fd_edges=[
+            FDEdge(determinants=frozenset({a.address}), dependent=b.address),
+            FDEdge(determinants=frozenset({b.address}), dependent=a.address),
+        ]
+    )
+    pairs = [
+        ConceptPair(left=a, right=a, existing_datasource=left_qds),
+        ConceptPair(left=b, right=b, existing_datasource=left_qds),
+    ]
+    reduced = reduce_concept_pairs(list(pairs), right_qds, domain_graph=graph)
+    assert len(reduced) == 1, reduced
+
+
 @pytest.mark.parametrize(
     "left_partial,left_nullable,right_partial,right_nullable,expected",
     [
+        # Rendering is preserving-by-default (docs/subset_union_join_design.md):
+        # a partial side declares a SUBSET domain and renders FULL — the
+        # narrowing pass (UpgradeOuterFromKeySetEquivalence) restores direction
+        # only when the superset side provably carries the key's full domain.
         (False, False, False, False, JoinType.INNER),
-        (True, False, False, False, JoinType.RIGHT_OUTER),
-        # left is nullable, not partial — preserve left's NULL-key rows; RIGHT_OUTER
-        # would drop them. LEFT_OUTER is the mirror of the (False,False,True,False)
-        # partial-right case above.
+        (True, False, False, False, JoinType.FULL),
+        # left is nullable, not partial — preserve left's NULL-key rows;
+        # the non-nullable right has nothing to null-safely match them.
         (False, True, False, False, JoinType.LEFT_OUTER),
-        (False, False, True, False, JoinType.LEFT_OUTER),
-        # right is nullable, left is not — LEFT_OUTER would drop right's NULL
-        # rows since the non-nullable left has nothing to match them. Upgrade
-        # to FULL.
-        (False, False, False, True, JoinType.FULL),
+        (False, False, True, False, JoinType.FULL),
+        # right is nullable, left is not — mirror of the case above.
+        (False, False, False, True, JoinType.RIGHT_OUTER),
         (True, False, True, False, JoinType.FULL),
-        (False, True, False, True, JoinType.FULL),
-        # left is BOTH partial and nullable — partial wants RIGHT_OUTER (preserve
-        # the complete right), nullable wants LEFT_OUTER (preserve NULL-key rows).
-        # FULL satisfies both.
+        # both nullable: the null-safe equality (get_modifiers) pairs the NULL
+        # groups, so INNER is the narrowed EQUAL form.
+        (False, True, False, True, JoinType.INNER),
+        # any partial side renders preserving, nullable or not — subset speaks
+        # to VALUES, NULL is not a value, and the two never interact here.
         (True, True, False, False, JoinType.FULL),
         (False, False, True, True, JoinType.FULL),
         (True, True, True, True, JoinType.FULL),
@@ -338,7 +455,8 @@ def test_get_join_type_empty_connecting_keys():
 
 
 def test_get_join_type_multiple_connecting_keys():
-    """Test that ANY partial/nullable key among multiple connecting keys triggers incomplete"""
+    """ANY partial key among multiple connecting keys makes the relation a
+    declared subset — rendered preserving."""
     left = "table_a"
     right = "table_b"
     partials = {"table_b": ["key1"]}  # Only one of three keys is partial
@@ -346,7 +464,7 @@ def test_get_join_type_multiple_connecting_keys():
     all_connecting_keys = {"key1", "key2", "key3"}
 
     result = get_join_type(left, right, partials, nullables, all_connecting_keys)
-    assert result == JoinType.LEFT_OUTER
+    assert result == JoinType.FULL
 
 
 def test_render_join_coalesce():

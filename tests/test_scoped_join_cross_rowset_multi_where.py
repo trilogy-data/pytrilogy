@@ -60,10 +60,17 @@ with web_2002 as where channel='WEB' and yr=2002 select cust as cust_id, sum(val
 """
 
 JOINS = """
-inner join store_2001.cust_id = store_2002.cust_id
-inner join store_2001.cust_id = web_2001.cust_id
-inner join store_2001.cust_id = web_2002.cust_id
+left join store_2001.cust_id = store_2002.cust_id
+left join store_2001.cust_id = web_2001.cust_id
+left join store_2001.cust_id = web_2002.cust_id
 """
+
+# left-anchor the store_2001 rowset, then require every optional side to be present
+# (its .rev non-null) -- this is the INNER intersection expressed via LEFT + WHERE.
+GUARD = (
+    "store_2002.rev is not null and web_2001.rev is not null "
+    "and web_2002.rev is not null and "
+)
 
 SINGLE = (
     MODEL
@@ -71,7 +78,9 @@ SINGLE = (
     + (
         "select store_2001.cust_id"
         + JOINS
-        + "where web_2002.rev > store_2002.rev order by store_2001.cust_id;"
+        + "where "
+        + GUARD
+        + "web_2002.rev > store_2002.rev order by store_2001.cust_id;"
     )
 )
 
@@ -81,7 +90,9 @@ MULTI = (
     + (
         "select store_2001.cust_id"
         + JOINS
-        + "where web_2002.rev > store_2002.rev and web_2001.rev > store_2001.rev "
+        + "where "
+        + GUARD
+        + "web_2002.rev > store_2002.rev and web_2001.rev > store_2001.rev "
         "order by store_2001.cust_id;"
     )
 )

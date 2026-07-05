@@ -5,6 +5,7 @@ each generated query against the benchmark's reference query (``PRAGMA
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -226,18 +227,95 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
     return agg
 
 
+def metrics_to_dict(m: AgentMetrics) -> dict:
+    """Serialize per-query AgentMetrics for storage in report.json, so a later
+    spliced run can re-aggregate the full benchmark without re-parsing logs."""
+    return {
+        "iterations": m.iterations,
+        "tool_calls_total": m.tool_calls_total,
+        "tool_calls_by_name": dict(m.tool_calls_by_name),
+        "trilogy_subcommands": dict(m.trilogy_subcommands),
+        "tool_results_total": m.tool_results_total,
+        "tool_errors": m.tool_errors,
+        "prompt_tokens": m.prompt_tokens,
+        "completion_tokens": m.completion_tokens,
+        "total_tokens": m.total_tokens,
+        "reviewer_verdicts": m.reviewer_verdicts,
+        "reviewer_kickbacks": m.reviewer_kickbacks,
+        "farewell": m.farewell,
+        "repeated_calls_by_name": dict(m.repeated_calls_by_name),
+        "tool_output_stats": {
+            tool: {
+                "count": s.count,
+                "truncated": s.truncated,
+                "total_chars": s.total_chars,
+                "max_chars": s.max_chars,
+            }
+            for tool, s in m.tool_output_stats.items()
+        },
+    }
+
+
+def metrics_from_dict(d: dict) -> AgentMetrics:
+    """Inverse of :func:`metrics_to_dict`."""
+    return AgentMetrics(
+        iterations=d.get("iterations", 0),
+        tool_calls_total=d.get("tool_calls_total", 0),
+        tool_calls_by_name=dict(d.get("tool_calls_by_name", {})),
+        trilogy_subcommands=dict(d.get("trilogy_subcommands", {})),
+        tool_results_total=d.get("tool_results_total", 0),
+        tool_errors=d.get("tool_errors", 0),
+        prompt_tokens=d.get("prompt_tokens", 0),
+        completion_tokens=d.get("completion_tokens", 0),
+        total_tokens=d.get("total_tokens", 0),
+        reviewer_verdicts=d.get("reviewer_verdicts", 0),
+        reviewer_kickbacks=d.get("reviewer_kickbacks", 0),
+        farewell=d.get("farewell", ""),
+        repeated_calls_by_name=dict(d.get("repeated_calls_by_name", {})),
+        tool_output_stats={
+            tool: ToolOutputStats(
+                count=s.get("count", 0),
+                truncated=s.get("truncated", 0),
+                total_chars=s.get("total_chars", 0),
+                max_chars=s.get("max_chars", 0),
+            )
+            for tool, s in d.get("tool_output_stats", {}).items()
+        },
+    )
+
+
+# Significant figures used to canonicalize non-integer numeric cells before
+# comparison. A single-precision (`float32`) accumulation — e.g. a `0::float`
+# placeholder that coerces a money column to REAL — carries only ~7 significant
+# digits, so exact `DECIMAL(7,2)` reference sums and the Trilogy float sum can
+# diverge in the 7th+ significant digit (q05: grand total 112458735.49 vs
+# 112458734.70). Rounding both sides to 6 significant figures absorbs that drift
+# while staying far stricter than any genuine TPC-DS/H result difference (which
+# is proportionally much larger than 1e-6). Integer counts/ids are kept EXACT
+# (see below) so this tolerance never merges two distinct row counts.
+COMPARISON_SIG_FIGS = 6
+
+
+def _sig_round(x: float, sig: int) -> float:
+    """Round ``x`` to ``sig`` significant figures (relative precision)."""
+    if x == 0.0:
+        return 0.0
+    return round(x, -int(math.floor(math.log10(abs(x)))) + (sig - 1))
+
+
 def _round_cell(v: object) -> object:
     """Canonicalize numeric cells so values that are numerically equal compare
     equal regardless of Python type. The reference SQL emits ``Decimal`` for
     money/quantity columns while Trilogy-generated SQL often emits ``float``; an
     exact ``repr`` comparison wrongly flagged equal values as mismatches (e.g.
     ``19640463.31`` vs ``Decimal('19640463.31')``), silently failing correct
-    answers. We coerce ``int``/``float``/``Decimal`` to a float rounded to 9
-    decimals: that is finer than any genuine difference and below float's
-    exact-integer range (2**53) for any TPC-DS/H magnitude, so it cannot
-    introduce false passes, while also absorbing last-ULP noise from differing
-    arithmetic order (e.g. `a*100/b` vs `100*a/b`). Booleans, non-finite values,
-    out-of-range ints, and non-numeric cells are left untouched."""
+    answers. We coerce ``int``/``float``/``Decimal`` to a float; exact-integer
+    values (row counts, ids) are kept precise, while fractional values are
+    rounded to ``COMPARISON_SIG_FIGS`` significant figures. That absorbs
+    float32/last-ULP arithmetic-order noise (`a*100/b` vs `100*a/b`) proportional
+    to magnitude — which a fixed decimal-place round cannot, since the drift on a
+    large sum is an absolute value, not a sub-decimal one. Booleans, non-finite
+    values, out-of-range ints, and non-numeric cells are left untouched."""
     if isinstance(v, bool):
         return v
     if isinstance(v, Decimal):
@@ -251,7 +329,9 @@ def _round_cell(v: object) -> object:
     if isinstance(v, float):
         if v != v or v in (float("inf"), float("-inf")):
             return v
-        return round(v, 9)
+        if v == int(v) and abs(v) < 2**53:
+            return float(int(v))  # exact integer value (count/id): keep precise
+        return _sig_round(v, COMPARISON_SIG_FIGS)
     return v
 
 

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, ItemsView, Never, ValuesView
 
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.exceptions import (
     UndefinedConceptException,
 )
@@ -101,26 +102,79 @@ class BuildEnvironment:
     materialized_canonical_concepts: set[str] = field(default_factory=set)
     non_partial_materialized_canonical_concepts: set[str] = field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = field(default_factory=dict)
-    # Source addresses of LEFT (partial) build-scoped joins — the rowset node
-    # uses this to mark the advertised target join key partial (drives
-    # LEFT-OUTER).
-    scoped_partial_sources: set[str] = field(default_factory=set)
-    # The subset of scoped_partial_sources whose key is a *derived* concept (no
-    # datasource column binding) and is therefore resolved via the merge
-    # mechanism. It survives as a distinct output only on the partial side, so
-    # join resolution marks it partial there (a root/rowset partial key collapses
-    # away and is handled by the column-partial / rowset machinery instead).
+    # The subset of the graph's declared-subset sources whose key is a *derived*
+    # concept (no datasource column binding) and is therefore resolved via the
+    # merge mechanism. It survives as a distinct output only on the partial side,
+    # so join resolution marks it partial there (a root/rowset partial key
+    # collapses away and is handled by the column-partial / rowset machinery
+    # instead). Composite of graph facts and author derivations; dissolves once
+    # join typing consults per-side origin nodes directly.
     scoped_partial_derived: set[str] = field(default_factory=set)
-    # Registry of canonical keys of build-scoped FULL joins. The key is complete
-    # (both sides bind it; the FULL JOIN coalesces it). join resolution consults
-    # this to emit a FULL JOIN for the key, instead of inferring it from a
-    # (falsely-)partial binding — so the gate and rowset enrichment are unaffected.
-    scoped_full_join_keys: set[str] = field(default_factory=set)
-    # Canonical keys of query-scoped LEFT joins (the preserved-anchor side). Join
-    # resolution anchors the join tree on the complete source providing these so
-    # multiple optional sources stay directional LEFT_OUTER instead of collapsing
-    # to a symmetric FULL (TPC-DS q78). Excludes environment `merge ~` joins.
-    scoped_left_anchor_keys: set[str] = field(default_factory=set)
+    # Members of each build-scoped join key equivalence group, keyed by the
+    # group's canonical address: exactly the authored relation endpoints (union
+    # of the scoped merge map's source->canonical entries), NOT the transitive
+    # pseudonym closure — a rowset key's body/parent pseudonyms are not join
+    # operands. Consumed via `distinct_scoped_join_group_members`.
+    scoped_join_key_groups: Dict[str, set[str]] = field(default_factory=dict)
+    # The full concept domain graph for this build: declared edges (global
+    # merges + this build's scoped-join overlay) plus structural, binding and
+    # FD edges minted from the author model (docs/domain_graph_design.md).
+    # The scoped_* registries above are derivable from it; they remain as
+    # compat shims until consumers migrate to graph queries.
+    domain_graph: DomainGraph = field(default_factory=DomainGraph)
+
+    def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
+        """Per scoped-join key group, its canonical plus the members that keep
+        their own physical identity (a substituted member resolves to the group
+        canonical, not itself), for groups with two or more such members."""
+        out: list[tuple[str, list[str]]] = []
+        for canonical, members in self.scoped_join_key_groups.items():
+            distinct = [
+                member
+                for member in members
+                if (concept := self.concepts.get(member)) is not None
+                and concept.address == member
+            ]
+            if len(distinct) >= 2:
+                out.append((canonical, distinct))
+        return out
+
+    def distinct_scoped_join_group_members(self) -> set[str]:
+        """Addresses of scoped-join key-group members that keep their own
+        physical identity, for groups with two or more such members.
+
+        Only these carry an exposure obligation: a root-keyed merge member is
+        substituted onto the group canonical (one physical column — nothing to
+        expose separately), while rowset and derived-expression keys stay
+        distinct columns that each joined side must materialize. A member of
+        such a group is never satisfied through a group-mate pseudonym: the
+        join between the sides needs each side's own column (TPC-DS q59)."""
+        out: set[str] = set()
+        for _, distinct in self._distinct_scoped_join_groups():
+            out.update(distinct)
+        return out
+
+    def distinct_scoped_join_group_mates(self) -> dict[str, set[str]]:
+        """Map each distinct-identity group member to its distinct group-mates,
+        restricted to COALESCING (INCOMPARABLE — query `full`/`union` join) key
+        groups: there both sides keep identity and each must materialize its
+        own column. SUBSET (`left`/`subset`) groups are excluded — they resolve
+        by substituting the optional side onto the anchor, so satisfying a
+        member through its group-mate pseudonym is the mechanism, not a leak.
+        EQUAL (global `merge`) groups are likewise excluded: the merged domains
+        are declared identical and the canonical key may have no binding of its
+        own, so the pseudonym IS how it resolves."""
+        coalescing = {
+            self.domain_graph.canonical(addr)
+            for addr in self.domain_graph.coalescing_relation_members()
+        }
+        out: dict[str, set[str]] = {}
+        for canonical, distinct in self._distinct_scoped_join_groups():
+            if canonical not in coalescing:
+                continue
+            for member in distinct:
+                out.setdefault(member, set()).update(m for m in distinct if m != member)
+        return out
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []

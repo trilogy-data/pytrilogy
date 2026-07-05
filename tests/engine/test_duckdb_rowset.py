@@ -3,7 +3,7 @@ from logging import INFO
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import DisconnectedConceptsException
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.hooks.query_debugger import DebuggingHook
 
 _CONFLICTING_FILTER_FIXTURE = """
@@ -32,7 +32,8 @@ select 9 as line_id, 40 as item_id, 1999 as yr
 
 
 def test_rowset_query_scoped_join_conflicting_filter():
-    # A query-scoped inner join to a rowset, where the rowset and the outer
+    # A query-scoped LEFT join to a rowset (with a `having <partial> is not null`
+    # expressing the intersection), where the rowset and the outer
     # query filter the SAME dimension to DIFFERENT values (year 2000 vs 1999).
     # This used to crash the planner with `Have {...} need ...` because the
     # validator demanded every node carry the outer condition, but the rowset
@@ -49,15 +50,18 @@ rowset yr2000 <-
         count(line_id) as cnt_2000;
 
 where yr = 1999
-inner join yr2000.r_item_id = item_id
+left join item_id = yr2000.r_item_id
 select
     item_id,
     count(line_id) as cnt_1999,
     yr2000.cnt_2000 as cnt_2000
+having cnt_1999 > 0 and yr2000.cnt_2000 is not null
 order by item_id asc;
 """)[0].fetchall()
-    # Inner join keeps only items present in BOTH years (10, 20); item 30
-    # (2000 only) and item 40 (1999 only) drop out. Each count reflects its
+    # joins are row-preserving, so a 2000-only item survives with a 0 count on
+    # the 1999 side (count over no rows is 0, not NULL) — the intersection is
+    # the explicit both-sides filter: `cnt_1999 > 0` drops item 30 (2000 only)
+    # and the `is not null` drops item 40 (1999 only). Each count reflects its
     # own year scope independently.
     assert [tuple(r) for r in results] == [(10, 2, 3), (20, 1, 1)]
 
@@ -158,7 +162,7 @@ def test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion():
     # surfaces as a clean, catchable error rather than a stack overflow.
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_SELF_WELD_FIXTURE)
-    with pytest.raises(DisconnectedConceptsException):
+    with pytest.raises(UnresolvableQueryException):
         executor.generate_sql("""
 rowset weeks <- select wk as ws, wk + 53 as nxt where yr = 2001;
 rowset cur_sums <-
@@ -169,7 +173,7 @@ rowset nxt_sums <-
     select wk as nxt_ws, sum(amt) as nxt;
 select cur_sums.src_ws, cur_sums.cur, nxt_sums.nxt
 left join cur_sums.src_ws = weeks.ws
-inner join weeks.nxt = nxt_sums.nxt_ws
+left join weeks.nxt = nxt_sums.nxt_ws
 order by cur_sums.src_ws asc;
 """)
 
@@ -1277,3 +1281,196 @@ order by top_states.state_total desc, top_states.state asc;
         ("D", 30.0),
         ("E", 20.0),
     ]
+
+
+_AGG_RATIO_FIXTURE = """
+key line_id int;
+property line_id.wh_name string;
+property line_id.wh_sqft int;
+property line_id.yr int;
+property line_id.amt float;
+
+datasource lines (
+    line_id: line_id,
+    wh_name: wh_name,
+    wh_sqft: wh_sqft,
+    yr: yr,
+    amt: amt,
+)
+grain (line_id)
+query '''
+select 1 as line_id, 'A' as wh_name, 100 as wh_sqft, 2001 as yr, 10.0 as amt union all
+select 2 as line_id, 'A' as wh_name, 100 as wh_sqft, 2001 as yr, 20.0 as amt union all
+select 3 as line_id, 'B' as wh_name, 50 as wh_sqft, 2001 as yr, 5.0 as amt union all
+select 4 as line_id, 'B' as wh_name, 50 as wh_sqft, 2000 as yr, 99.0 as amt
+''';
+"""
+
+
+def test_rowset_aggregate_over_dimension_ratio_not_grouped():
+    # Regression (TPC-DS q66): an outer select that divides a rowset's aggregate
+    # output by a rowset *dimension* output (`agg.sales / nullif(agg.sqft, 0)`)
+    # collapses into a single grouping SELECT. The ratio is aggregate-bearing, but
+    # has_local_aggregate lacked a Derivation.ROWSET arm (its sibling
+    # check_is_not_in_group has one), so the ratio was misclassified as a group
+    # key and emitted in GROUP BY -> DuckDB "GROUP BY cannot contain aggregates".
+    executor = Dialects.DUCK_DB.default_executor()
+    query = _AGG_RATIO_FIXTURE + """
+rowset agg <-
+where yr = 2001
+select
+    wh_name as warehouse_name,
+    wh_sqft as warehouse_square_feet,
+    sum(amt) as monthly_sales;
+select
+    agg.warehouse_name,
+    agg.warehouse_square_feet,
+    agg.monthly_sales,
+    agg.monthly_sales / nullif(agg.warehouse_square_feet, 0) as sales_per_sqft
+order by agg.warehouse_name asc;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert "GROUP BY" in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [
+        ("A", 100, 30.0, 0.3),
+        ("B", 50, 5.0, 0.1),
+    ]
+
+
+# store_sales keyed on the composite (item, ticket) grain, mirroring real
+# TPC-DS store_sales (one quantity per item-on-ticket).
+_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE = """
+key item int;
+key ticket int;
+property <item,ticket>.store_id int;
+property <item,ticket>.date_id int;
+property <item,ticket>.quantity int;
+key store_id int;
+property store_id.state string;
+key date_id int;
+property date_id.year int;
+
+datasource store_sales (
+    i: item,
+    t: ticket,
+    s: store_id,
+    d: date_id,
+    q: quantity,
+)
+grain (item, ticket)
+query '''
+select 1 as i, 100 as t, 1 as s, 1 as d, 5 as q union all
+select 2 as i, 100 as t, 1 as s, 1 as d, 7 as q union all
+select 1 as i, 101 as t, 2 as s, 1 as d, 11 as q union all
+select 3 as i, 102 as t, 2 as s, 2 as d, 13 as q
+''';
+
+datasource stores (s: store_id, st: state) grain (store_id)
+query ''' select 1 as s, 'CA' as st union all select 2 as s, 'NY' as st ''';
+
+datasource dates (d: date_id, y: year) grain (date_id)
+query ''' select 1 as d, 2001 as y union all select 2 as d, 2000 as y ''';
+
+key r_item int;
+key r_ticket int;
+property <r_item,r_ticket>.r_date_id int;
+property <r_item,r_ticket>.return_quantity int;
+key r_date_id int;
+property r_date_id.r_year int;
+
+datasource store_returns (
+    ri: r_item,
+    rt: r_ticket,
+    rd: r_date_id,
+    rq: return_quantity,
+)
+grain (r_item, r_ticket)
+query '''
+select 1 as ri, 100 as rt, 1 as rd, 2 as rq union all
+select 1 as ri, 101 as rt, 2 as rd, 3 as rq
+''';
+
+datasource return_dates (rd: r_date_id, ry: r_year) grain (r_date_id)
+query ''' select 1 as rd, 2001 as ry union all select 2 as rd, 2002 as ry ''';
+
+with r_filtered as
+where r_year in (2001, 2002)
+select r_ticket, r_item as ritem, return_quantity;
+"""
+
+
+def _composite_union_join_query(agg: str, keys: int) -> str:
+    join_keys = ["union join ticket = r_filtered.r_ticket"]
+    if keys >= 2:
+        join_keys.append("union join item = r_filtered.ritem")
+    if keys >= 3:
+        join_keys.append("union join quantity = r_filtered.return_quantity")
+    joins = "\n    ".join(join_keys)
+    return f"""
+where year = 2001
+select
+    state as st,
+    {agg}(quantity) as m,
+    count(r_filtered.return_quantity) as c
+    {joins}
+order by st asc, c asc;
+"""
+
+
+# Expected rows per (aggregate, key-count). The two-pass aggregate on the union
+# anchor is isolated into its own CTE and joined back on the carried composite
+# keys. Single-key: the CTE groups by (state, ticket) — a real multi-item group
+# (CA ticket 100 holds items 1&2, q=5,7) yields a genuine stddev/variance.
+# Composite key: (item, ticket) is unique, so the aggregate sits at its own
+# grain and collapses to NULL (stddev/variance of one value) — the grain-match
+# formula, not a bare ungrouped aggregate (which was the q17 binder error).
+_COMPOSITE_UNION_JOIN_EXPECTED = {
+    ("stddev", 1): [("CA", 1.4142135623730951, 1), ("NY", None, 1)],
+    ("stddev", 2): [("CA", None, 0), ("CA", None, 1), ("NY", None, 1)],
+    ("stddev", 3): [
+        ("CA", None, 0),
+        ("CA", None, 1),
+        ("NY", None, 1),
+        (None, None, None),
+    ],
+    ("variance", 1): [("CA", 2.0, 1), ("NY", None, 1)],
+    ("variance", 2): [("CA", None, 0), ("CA", None, 1), ("NY", None, 1)],
+    ("variance", 3): [
+        ("CA", None, 0),
+        ("CA", None, 1),
+        ("NY", None, 1),
+        (None, None, None),
+    ],
+}
+
+
+@pytest.mark.parametrize("keys", [1, 2, 3])
+@pytest.mark.parametrize("agg", ["stddev", "variance"])
+def test_composite_union_join_rowset_two_pass_aggregate_groups(agg, keys):
+    # q17: a two-pass aggregate (stddev/variance) on the anchor of a union join
+    # to a rowset is isolated into its own CTE joined back on the carried keys.
+    # When that CTE sits at its own grain (composite unique key) the renderer
+    # used to fall through to the real aggregate with no GROUP BY -> DuckDB
+    # binder error. stddev/variance now have a grain-match formula (NULL for a
+    # single-row group), so the CTE renders valid SQL without grouping.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
+    query = _composite_union_join_query(agg, keys)
+    sql = executor.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == _COMPOSITE_UNION_JOIN_EXPECTED[(agg, keys)]
+
+
+@pytest.mark.parametrize("agg", ["avg", "sum", "count"])
+def test_composite_union_join_rowset_simple_aggregate_still_groups(agg):
+    # Guard the grain-match formulas for the single-pass aggregates still elide
+    # to identity at grain (never a spurious GROUP BY that would collapse rows).
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
+    query = _composite_union_join_query(agg, keys=2)
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert [r[0] for r in results] == ["CA", "CA", "NY"]
+    if agg == "count":
+        assert [r[2] for r in results] == [0, 1, 1]

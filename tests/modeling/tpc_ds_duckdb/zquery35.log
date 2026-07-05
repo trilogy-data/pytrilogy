@@ -1,6 +1,6 @@
 query_id = "35"
 generator = "v3"
-gen_length = 10067
+gen_length = 9520
 preql_size = 2175
 comp_size = 1745
 generated_sql = """
@@ -13,7 +13,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -24,7 +24,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -35,7 +35,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -148,21 +148,21 @@ GROUP BY
     5,
     6)
 SELECT
-    coalesce(\"late\".\"customer_address_state\",\"scrawny\".\"customer_address_state\") as \"customer_address_state\",
-    coalesce(\"late\".\"customer_demographics_gender\",\"scrawny\".\"customer_demographics_gender\") as \"customer_demographics_gender\",
-    coalesce(\"late\".\"customer_demographics_marital_status\",\"scrawny\".\"customer_demographics_marital_status\") as \"customer_demographics_marital_status\",
-    coalesce(\"late\".\"customer_demographics_dependent_count\",\"scrawny\".\"customer_demographics_dependent_count\") as \"customer_demographics_dependent_count\",
-    coalesce(\"scrawny\".\"cnt1\",0) as \"cnt1\",
+    \"late\".\"customer_address_state\" as \"customer_address_state\",
+    \"late\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
+    \"late\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
+    \"late\".\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
+    \"scrawny\".\"cnt1\" as \"cnt1\",
     \"late\".\"min1\" as \"min1\",
     \"late\".\"max1\" as \"max1\",
     \"late\".\"avg1\" as \"avg1\",
-    coalesce(\"late\".\"customer_demographics_employed_dependent_count\",\"scrawny\".\"customer_demographics_employed_dependent_count\") as \"customer_demographics_employed_dependent_count\",
-    coalesce(\"scrawny\".\"cnt2\",0) as \"cnt2\",
+    \"late\".\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
+    \"scrawny\".\"cnt2\" as \"cnt2\",
     \"late\".\"min2\" as \"min2\",
     \"late\".\"max2\" as \"max2\",
     \"late\".\"avg2\" as \"avg2\",
-    coalesce(\"late\".\"customer_demographics_college_dependent_count\",\"scrawny\".\"customer_demographics_college_dependent_count\") as \"customer_demographics_college_dependent_count\",
-    coalesce(\"scrawny\".\"cnt3\",0) as \"cnt3\",
+    \"late\".\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
+    \"scrawny\".\"cnt3\" as \"cnt3\",
     \"late\".\"min3\" as \"min3\",
     \"late\".\"max3\" as \"max3\",
     \"late\".\"avg3\" as \"avg3\"
@@ -170,10 +170,10 @@ FROM
     \"scrawny\"
     INNER JOIN \"late\" on \"scrawny\".\"customer_address_state\" is not distinct from \"late\".\"customer_address_state\" AND \"scrawny\".\"customer_demographics_college_dependent_count\" is not distinct from \"late\".\"customer_demographics_college_dependent_count\" AND \"scrawny\".\"customer_demographics_dependent_count\" is not distinct from \"late\".\"customer_demographics_dependent_count\" AND \"scrawny\".\"customer_demographics_employed_dependent_count\" is not distinct from \"late\".\"customer_demographics_employed_dependent_count\" AND \"scrawny\".\"customer_demographics_gender\" is not distinct from \"late\".\"customer_demographics_gender\" AND \"scrawny\".\"customer_demographics_marital_status\" is not distinct from \"late\".\"customer_demographics_marital_status\"
 ORDER BY 
-    coalesce(\"late\".\"customer_address_state\",\"scrawny\".\"customer_address_state\") asc nulls first,
-    coalesce(\"late\".\"customer_demographics_gender\",\"scrawny\".\"customer_demographics_gender\") asc nulls first,
-    coalesce(\"late\".\"customer_demographics_marital_status\",\"scrawny\".\"customer_demographics_marital_status\") asc nulls first,
-    coalesce(\"late\".\"customer_demographics_dependent_count\",\"scrawny\".\"customer_demographics_dependent_count\") asc nulls first,
-    coalesce(\"late\".\"customer_demographics_employed_dependent_count\",\"scrawny\".\"customer_demographics_employed_dependent_count\") asc nulls first,
-    coalesce(\"late\".\"customer_demographics_college_dependent_count\",\"scrawny\".\"customer_demographics_college_dependent_count\") asc nulls first
+    \"late\".\"customer_address_state\" asc nulls first,
+    \"late\".\"customer_demographics_gender\" asc nulls first,
+    \"late\".\"customer_demographics_marital_status\" asc nulls first,
+    \"late\".\"customer_demographics_dependent_count\" asc nulls first,
+    \"late\".\"customer_demographics_employed_dependent_count\" asc nulls first,
+    \"late\".\"customer_demographics_college_dependent_count\" asc nulls first
 LIMIT (100)"""

@@ -858,7 +858,7 @@ def gen_select_merge_node(
                 force_merge_group = True
 
         candidate = MergeNode(
-            output_concepts=all_concepts,
+            output_concepts=list(all_concepts),
             input_concepts=unique(
                 normals
                 + abstract_props
@@ -876,13 +876,14 @@ def gen_select_merge_node(
         )
 
     if conditions:
+        validate_targets = list(all_concepts)
         completion_mandatory = unique(
-            all_concepts + list(conditions.row_arguments), "address"
+            validate_targets + list(conditions.row_arguments), "address"
         )
         complete, _, _, _, _ = validate_stack(
             environment,
             [candidate],
-            all_concepts,
+            validate_targets,
             completion_mandatory,
             conditions=conditions,
             accept_partial=accept_partial,

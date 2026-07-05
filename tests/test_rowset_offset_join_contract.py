@@ -31,14 +31,29 @@ datasource orders (oid: oid, st: status, amt: amt)
 grain (oid) address orders_tbl;
 """
 
+# joins are row-preserving (docs/subset_union_join_design.md): both rowsets are
+# filtered, so the declared subset cannot be proven and unmatched rows from
+# EITHER side survive — the intersection is the explicit both-sides
+# `is not null` idiom.
 QUERY = """import orders as orders;
 
 with a as select orders.oid as oid, orders.amt as amt where orders.status = 1;
 with b as select orders.oid as oid, orders.amt as amt where orders.status = 2;
 
+where a.amt is not null and b.amt is not null
 select a.oid, a.amt, b.oid, b.amt
-inner join a.oid = b.oid + 1
+left join a.oid = b.oid + 1
 order by a.oid asc;
+"""
+
+PRESERVING_QUERY = """import orders as orders;
+
+with a as select orders.oid as oid, orders.amt as amt where orders.status = 1;
+with b as select orders.oid as oid, orders.amt as amt where orders.status = 2;
+
+select a.oid, a.amt, b.oid, b.amt
+left join a.oid = b.oid + 1
+order by a.oid asc nulls last;
 """
 
 BACKENDS = [ParserBackend.PEST, ParserBackend.LARK]
@@ -100,3 +115,16 @@ def test_offset_join_execution(models: Path, backend: ParserBackend) -> None:
         rows = [tuple(r) for r in res.fetchall()]
     # a base-key join would return [] (disjoint sets); the offset returns one row
     assert rows == [(3, 30.0, 2, 200.0)]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_offset_join_execution_preserving(models: Path, backend: ParserBackend) -> None:
+    """Without explicit filters the join preserves: unmatched rows from both
+    filtered rowsets survive NULL-padded alongside the offset match."""
+    with _using_backend(backend):
+        res = _seeded_executor(models).execute_text(PRESERVING_QUERY)[-1]
+        rows = [tuple(r) for r in res.fetchall()]
+    assert (3, 30.0, 2, 200.0) in rows
+    assert (7, 70.0, None, None) in rows
+    # the b-only row's a.oid coalesces with the derived key (b.oid + 1 = 2)
+    assert (2, None, 1, 100.0) in rows

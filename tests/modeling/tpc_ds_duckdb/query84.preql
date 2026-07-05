@@ -8,7 +8,8 @@ where
     and customer.household_demographic.id is not null
     and customer.household_demographic.income_band.lower_bound >= 38128
     and customer.household_demographic.income_band.upper_bound <= 38128 + 50000
-inner join customer.demographics.id = returns.customer_demographic.id
+    and returns.ticket_number is not null
+left join customer.demographics.id = returns.customer_demographic.id
 select
     customer.text_id,
     concat(coalesce(customer.last_name, ''), ', ', coalesce(customer.first_name, '')) as customername,

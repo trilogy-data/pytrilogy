@@ -171,8 +171,10 @@ select_statement = {
 }
 
 // query-scoped join: blends two otherwise-disjoint concepts on a shared key for
-// this select only (a query-local merge). The left key is the brought-in
-// (source) concept, the right key is the anchor. left -> partial, inner -> full.
+// this select only (a query-local merge). LEFT anchors its first key (others
+// partial); FULL coalesces. SUBSET/UNION are the domain-declaration spellings
+// (subset join a = b: a's values ⊆ b's, b anchors; union join: neither side
+// contains the other) — normalized onto the same two relations at hydration.
 // `a = b = c` chains all keys into ONE equivalence group with this join type.
 // `a = b and c = d` is sugar for two separate join clauses of this type (two
 // DISTINCT equivalence groups), saving a repeated `JOIN_TYPE join` prefix.
@@ -403,6 +405,7 @@ attr_access_paren = { ^"getattr" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
 // alternatives like literal/parenthetical that would otherwise consume X alone.
 _atom = _{
       filter_item
+    | scalar_subquery
     | parenthetical
     | expr_tuple
     | literal
@@ -428,6 +431,12 @@ ATTR_NAME = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 parenthetical = { "(" ~ expr ~ ")" }
 expr_tuple    = { "(" ~ expr ~ ("," ~ expr)+ ~ ","? ~ ")" | "(" ~ expr ~ "," ~ ")" }
+
+// An inline `(select …)` scalar/membership subquery. Desugared at hydration
+// into an anonymous rowset whose single output is referenced here. Ordered
+// before `parenthetical` in _atom: `expr` can never start with select/where/
+// from, so a non-select paren cleanly backtracks to `parenthetical`.
+scalar_subquery = { "(" ~ select_statement ~ ")" }
 
 COMPARISON_OPERATOR = @{
       (^"is" ~ WHITESPACE+ ~ ^"not" ~ WHITESPACE+)
@@ -459,6 +468,7 @@ subselect_comparison = {
         | unnest
         | fgroup
         | expr_tuple
+        | scalar_subquery
         | parenthetical
     )
 }
@@ -851,7 +861,7 @@ FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT 
 F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
 
 SHORTHAND_MODIFIER = @{ "~" | "?" }
-JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" }
+JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" | ^"subset" | ^"union" }
 
 // =============================================================================
 // PURPOSE / KEYWORDS (order matters: priority-like)

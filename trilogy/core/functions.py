@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from trilogy.parsing.helpers import Meta
 from trilogy.core.enums import (
     DatePart,
+    Derivation,
     FunctionClass,
     FunctionType,
     Granularity,
@@ -33,6 +34,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     UndefinedConcept,
 )
+from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
     ArrayType,
@@ -1043,6 +1045,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.BOOL,
         arg_count=1,
     ),
+    FunctionType.IS_NOT_DISTINCT: FunctionConfig(
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.BOOL,
+        arg_count=2,
+    ),
     FunctionType.STRUCT: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
@@ -1189,6 +1196,159 @@ for k in FunctionType.__members__.values():
         raise InvalidSyntaxException(
             f"Function enum value {k} not in creation registry"
         )
+
+# scalar functions that can return non-null from nullable inputs; a BASIC
+# derivation through anything else propagates its arguments' nullability
+NULL_SUPPRESSING_FUNCTIONS = {
+    FunctionType.COALESCE,
+    FunctionType.CASE,
+    FunctionType.SIMPLE_CASE,
+}
+
+
+def propagates_argument_nulls(concept: "BuildConcept") -> bool:
+    if concept.derivation != Derivation.BASIC:
+        return False
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildFunction):
+        return False
+    return lineage.operator not in NULL_SUPPRESSING_FUNCTIONS
+
+
+# Coarse semantic families for presenting the function surface grouped by
+# subject (docs, agent reference). A function belongs to the first family that
+# lists it; anything unlisted lands in "other".
+FUNCTION_FAMILIES: list[tuple[str, frozenset[FunctionType]]] = [
+    ("aggregate", frozenset(FunctionClass.AGGREGATE_FUNCTIONS.value)),
+    (
+        "string",
+        frozenset(
+            {
+                FunctionType.LOWER,
+                FunctionType.UPPER,
+                FunctionType.LTRIM,
+                FunctionType.RTRIM,
+                FunctionType.TRIM,
+                FunctionType.HEX,
+                FunctionType.CONCAT,
+                FunctionType.SPLIT,
+                FunctionType.STRPOS,
+                FunctionType.CONTAINS,
+                FunctionType.LENGTH,
+                FunctionType.SUBSTRING,
+                FunctionType.REPLACE,
+                FunctionType.REGEXP_CONTAINS,
+                FunctionType.REGEXP_EXTRACT,
+                FunctionType.REGEXP_REPLACE,
+                FunctionType.FORMAT_TIME,
+                FunctionType.PARSE_TIME,
+            }
+        ),
+    ),
+    (
+        "date/time",
+        frozenset(
+            {
+                FunctionType.DATE,
+                FunctionType.DATETIME,
+                FunctionType.TIMESTAMP,
+                FunctionType.SECOND,
+                FunctionType.MINUTE,
+                FunctionType.HOUR,
+                FunctionType.DAY,
+                FunctionType.DAY_OF_WEEK,
+                FunctionType.WEEK,
+                FunctionType.MONTH,
+                FunctionType.QUARTER,
+                FunctionType.YEAR,
+                FunctionType.MONTH_NAME,
+                FunctionType.DAY_NAME,
+                FunctionType.UNIX_TO_TIMESTAMP,
+                FunctionType.DATE_PART,
+                FunctionType.DATE_TRUNCATE,
+                FunctionType.DATE_ADD,
+                FunctionType.DATE_SUB,
+                FunctionType.DATE_DIFF,
+                FunctionType.DATE_SPINE,
+                FunctionType.CURRENT_DATE,
+                FunctionType.CURRENT_DATETIME,
+                FunctionType.CURRENT_TIMESTAMP,
+            }
+        ),
+    ),
+    (
+        "array/map/struct",
+        frozenset(
+            {
+                FunctionType.UNNEST,
+                FunctionType.ARRAY,
+                FunctionType.ARRAY_DISTINCT,
+                FunctionType.ARRAY_SUM,
+                FunctionType.ARRAY_SORT,
+                FunctionType.ARRAY_TO_STRING,
+                FunctionType.ARRAY_TRANSFORM,
+                FunctionType.ARRAY_FILTER,
+                FunctionType.GENERATE_ARRAY,
+                FunctionType.MAP_KEYS,
+                FunctionType.MAP_VALUES,
+                FunctionType.STRUCT,
+            }
+        ),
+    ),
+    (
+        "math",
+        frozenset(
+            {
+                FunctionType.ABS,
+                FunctionType.SQRT,
+                FunctionType.RANDOM,
+                FunctionType.FLOOR,
+                FunctionType.CEIL,
+                FunctionType.ROUND,
+                FunctionType.MOD,
+                FunctionType.LOG,
+                FunctionType.POWER,
+                FunctionType.HASH,
+            }
+        ),
+    ),
+    (
+        "conditional/cast",
+        frozenset(
+            {
+                FunctionType.CASE,
+                FunctionType.SIMPLE_CASE,
+                FunctionType.COALESCE,
+                FunctionType.NULLIF,
+                FunctionType.IS_NULL,
+                FunctionType.GREATEST,
+                FunctionType.LEAST,
+                FunctionType.CAST,
+            }
+        ),
+    ),
+    (
+        "geo",
+        frozenset(
+            {
+                FunctionType.GEO_FROM_TEXT,
+                FunctionType.GEO_X,
+                FunctionType.GEO_Y,
+                FunctionType.GEO_CENTROID,
+                FunctionType.GEO_POINT,
+                FunctionType.GEO_DISTANCE,
+                FunctionType.GEO_TRANSFORM,
+            }
+        ),
+    ),
+]
+
+
+def function_family(operator: FunctionType) -> str:
+    for label, members in FUNCTION_FAMILIES:
+        if operator in members:
+            return label
+    return "other"
 
 
 class FunctionFactory:

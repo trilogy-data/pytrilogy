@@ -25,17 +25,23 @@ from trilogy.core.statements.author import (
     STATEMENT_TYPES,
     ChartStatement,
     ConceptDeclarationStatement,
+    ConceptDerivationStatement,
     CopyStatement,
     CreateStatement,
+    FunctionDeclaration,
     ImportStatement,
+    KeyMergeStatement,
     MergeStatementV2,
     MockStatement,
     MultiSelectStatement,
     PersistStatement,
+    PropertiesDeclarationStatement,
     PublishStatement,
     RawSQLStatement,
+    RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
+    TypeDeclaration,
     ValidateStatement,
 )
 from trilogy.core.statements.execute import (
@@ -78,6 +84,46 @@ from trilogy.staging import StagingConfig
 from trilogy.utility import safe_open
 
 ValidationDatasourceT = TypeVar("ValidationDatasourceT", Datasource, BuildDatasource)
+
+# Statement types that produce output (and so are "executable"). Everything else
+# parsed from a file (rowset/concept/import/datasource definitions) registers into
+# the environment but yields nothing on its own.
+GENERATABLE_STATEMENT_TYPES = (
+    SelectStatement,
+    PersistStatement,
+    MultiSelectStatement,
+    ShowStatement,
+    RawSQLStatement,
+    CopyStatement,
+    ValidateStatement,
+    CreateStatement,
+    PublishStatement,
+    MockStatement,
+    ChartStatement,
+)
+
+# Human labels for the non-executable (definition) statement kinds, used by CLI
+# summaries of files that parse but produce nothing to run.
+DEFINITION_STATEMENT_LABELS: tuple[tuple[type, str], ...] = (
+    (RowsetDerivationStatement, "rowset"),
+    (ConceptDeclarationStatement, "concept"),
+    (ConceptDerivationStatement, "concept"),
+    (PropertiesDeclarationStatement, "property"),
+    (ImportStatement, "import"),
+    (Datasource, "datasource"),
+    (MergeStatementV2, "merge"),
+    (KeyMergeStatement, "merge"),
+    (FunctionDeclaration, "function"),
+    (TypeDeclaration, "type"),
+)
+
+
+def label_definition_statement(statement: object) -> str:
+    for cls, label in DEFINITION_STATEMENT_LABELS:
+        if isinstance(statement, cls):
+            return label
+    return "definition"
+
 
 _CHART_COPY_SIZE_KEYS = {"width", "height"}
 _CHART_COPY_SAVE_KEYS = {"scale": "scale_factor", "ppi": "ppi"}
@@ -699,6 +745,32 @@ class Executor(object):
     ) -> List[PROCESSED_STATEMENT_TYPES]:
         return list(self.parse_text_generator(command, persist=persist, root=root))
 
+    def parse_text_with_definitions(
+        self, command: str, persist: bool = False, root: Path | None = None
+    ) -> tuple[List[PROCESSED_STATEMENT_TYPES], List[Any]]:
+        """Parse, returning both the executable queries and the non-executable
+        definition statements (rowsets, concepts, imports, datasources, ...).
+        Lets callers warn when a file parses cleanly but has no statement that
+        produces output (a definitions-only file does nothing on its own)."""
+        _, parsed = parse_text(command, self.environment, root=root)
+        definitions = [
+            x
+            for x in parsed
+            if not isinstance(x, GENERATABLE_STATEMENT_TYPES)
+            and not isinstance(x, Comment)
+        ]
+        queries: List[PROCESSED_STATEMENT_TYPES] = []
+        for t in parsed:
+            if not isinstance(t, GENERATABLE_STATEMENT_TYPES):
+                continue
+            x = self.generator.generate_queries(
+                self.environment, [t], hooks=self.hooks
+            )[0]
+            if persist and isinstance(x, ProcessedQueryPersist):
+                self.environment.add_datasource(x.datasource)
+            queries.append(x)
+        return queries, definitions
+
     def parse_text_generator(
         self, command: str, persist: bool = False, root: Path | None = None
     ) -> Generator[
@@ -708,26 +780,7 @@ class Executor(object):
     ]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment, root=root)
-        generatable = [
-            x
-            for x in parsed
-            if isinstance(
-                x,
-                (
-                    SelectStatement,
-                    PersistStatement,
-                    MultiSelectStatement,
-                    ShowStatement,
-                    RawSQLStatement,
-                    CopyStatement,
-                    ValidateStatement,
-                    CreateStatement,
-                    PublishStatement,
-                    MockStatement,
-                    ChartStatement,
-                ),
-            )
-        ]
+        generatable = [x for x in parsed if isinstance(x, GENERATABLE_STATEMENT_TYPES)]
         while generatable:
             t = generatable.pop(0)
             x = self.generator.generate_queries(

@@ -11,6 +11,8 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildRowsetItem,
+    BuildUnionSelectLineage,
     BuildWhereClause,
     LooseBuildConceptList,
     concept_is_relevant,
@@ -23,7 +25,13 @@ from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,
 )
-from trilogy.core.processing.nodes import GroupNode, History, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    History,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
 from trilogy.core.processing.utility import create_log_lambda, padding
 from trilogy.utility import unique
 
@@ -115,6 +123,31 @@ def get_aggregate_grain(
     return BuildGrain.from_concepts(parent_concepts)
 
 
+def _union_bag_siblings(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> List[BuildConcept]:
+    """The full set of outputs of the `union(...)` bag `concept` is one output of.
+
+    A `union(...)` (SQL UNION ALL) is a bag: its outputs are all bare KEY grain
+    components with no reducible sub-grain (the row identity is the whole tuple,
+    and two stacked rows may share every other column). An aggregate over one
+    union output — e.g. ``sum(combined.value)`` grouped by ``combined.gid`` — must
+    sum every stacked row, so the group parent must source the *whole* union grain
+    (all sibling outputs). Sourcing only the referenced subset lets the discovery
+    loop de-duplicate to that subset before the aggregate, silently dropping rows.
+
+    Empty unless `concept` is a union output (inline TVF or rowset-wrapped)."""
+    lineage = concept.lineage
+    addresses: set[str] = set()
+    if isinstance(lineage, BuildUnionSelectLineage):
+        addresses = {item.aligned_concept for item in lineage.align.items}
+    elif isinstance(lineage, BuildRowsetItem):
+        content = lineage.content
+        if content is not None and content.derivation == Derivation.TVF_UNION:
+            addresses = set(lineage.rowset.derived_concepts)
+    return [environment.concepts[a] for a in addresses if a in environment.concepts]
+
+
 def get_group_parent_inputs(
     parent_concepts: List[BuildConcept], environment: BuildEnvironment
 ) -> List[BuildConcept]:
@@ -127,7 +160,10 @@ def get_group_parent_inputs(
             for c in parent.grain.components
             if c in environment.concepts
         ]
-    return unique(parent_concepts + preserved, "address")
+    bag_siblings: List[BuildConcept] = []
+    for parent in parent_concepts:
+        bag_siblings += _union_bag_siblings(parent, environment)
+    return unique(parent_concepts + preserved + bag_siblings, "address")
 
 
 def _can_include_optional_aggregate(
@@ -209,6 +245,112 @@ def _add_optional_aggregate_outputs(
     return unique(parent_concepts, "address"), unique(output_concepts, "address")
 
 
+def _nonstandard_grouping_by_addresses(concept: BuildConcept) -> set[str]:
+    lineage = concept.lineage
+    if (
+        isinstance(lineage, BuildAggregateWrapper)
+        and lineage.grouping != AggregateGroupingMode.STANDARD
+    ):
+        return {c.address for c in lineage.by}
+    return set()
+
+
+def _pseudonym_linked(concept: BuildConcept, outputs: List[BuildConcept]) -> bool:
+    return any(
+        concept.address in out.pseudonyms or out.address in concept.pseudonyms
+        for out in outputs
+    )
+
+
+def _wrap_grouping_passthrough(
+    group_node: GroupNode,
+    extra: List[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+) -> SelectNode:
+    """Surface pseudonym twins of a non-standard grouping node's outputs on a
+    passthrough select above it.
+
+    A ROLLUP/CUBE/GROUPING SETS node emits mixed-grain rows: subtotal rows
+    carry NULL dims, so enriching a pseudonym twin of a dim (e.g. the other
+    side of a coalescing scoped join) through a join back on those dims
+    silently drops the subtotal rows. The twin holds the same values as the
+    dim by construction, so a plain re-projection is both legal and exact.
+    The twins cannot live on the grouped node itself — a bare non-``by``
+    column inside the grouped CTE is illegal SQL."""
+    passthrough = [
+        x
+        for x in group_node.output_concepts
+        if x.address not in group_node.hidden_concepts
+    ]
+    return SelectNode(
+        input_concepts=passthrough,
+        output_concepts=unique(passthrough + extra, "address"),
+        environment=environment,
+        parents=[group_node],
+        depth=depth,
+        partial_concepts=list(group_node.partial_concepts),
+        nullable_concepts=list(group_node.nullable_concepts),
+        preexisting_conditions=group_node.preexisting_conditions,
+    )
+
+
+def _matching_by_concept(
+    address: str,
+    by_concepts: List[BuildConcept],
+    environment: BuildEnvironment,
+) -> BuildConcept | None:
+    for by_concept in by_concepts:
+        if address == by_concept.address or address in by_concept.pseudonyms:
+            return by_concept
+    env_concept = environment.concepts.get(address)
+    if env_concept is not None:
+        for by_concept in by_concepts:
+            if by_concept.address in env_concept.pseudonyms:
+                return by_concept
+    return None
+
+
+def _resolve_grain_components(
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
+) -> List[BuildConcept]:
+    """Resolve the aggregate's grain components, preferring local_optional
+    equivalents so downstream consumers get the addresses they asked for.
+
+    A non-standard grouping mode (ROLLUP/CUBE/GROUPING SETS) renders its
+    GROUP BY from the wrapper's ``by`` addresses verbatim, so any grain dim
+    emitted under a different (join-group canonical or equivalent-swapped)
+    address becomes a bare, ungrouped column in the grouped CTE — illegal
+    SQL. Pin each grain dim that matches a ``by`` member (by address or
+    pseudonym) to that member's authored address; downstream consumers reach
+    the other addresses through pseudonyms."""
+    lineage = concept.lineage
+    by_concepts: List[BuildConcept] = (
+        list(lineage.by)
+        if isinstance(lineage, BuildAggregateWrapper)
+        and lineage.grouping != AggregateGroupingMode.STANDARD
+        else []
+    )
+    resolved: List[BuildConcept] = []
+    for address in concept.grain.components:
+        by_match = (
+            _matching_by_concept(address, by_concepts, environment)
+            if by_concepts
+            else None
+        )
+        if by_match is not None:
+            resolved.append(by_match)
+        else:
+            resolved.append(
+                resolve_concepts_with_equivalents(
+                    [address], environment, local_optional
+                )[0]
+            )
+    return resolved
+
+
 def _plan_group_outputs(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -222,11 +364,7 @@ def _plan_group_outputs(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts for {concept} {concept.lineage} are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
     output_concepts = [concept]
-    grain_components = resolve_concepts_with_equivalents(
-        concept.grain.components,
-        environment,
-        local_optional,
-    )
+    grain_components = _resolve_grain_components(concept, local_optional, environment)
     target_parent_grain = get_aggregate_grain(concept, environment)
     if _has_concrete_grain(concept):
         parent_concepts = unique(parent_concepts + grain_components, "address")
@@ -526,7 +664,7 @@ def _build_group_node(
 
 def _reuse_wide_parent_for_enrichment(
     concept: BuildConcept,
-    group_node: GroupNode,
+    group_node: StrategyNode,
     output_concepts: List[BuildConcept],
     missing_optional: List[BuildConcept],
     grain_components: List[BuildConcept],
@@ -671,7 +809,19 @@ def gen_group_node(
             f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning group node"
         )
         return group_node
-    grouped_output_addr = _concept_addresses(group_node.usable_outputs)
+    result_node: StrategyNode = group_node
+    if _nonstandard_grouping_by_addresses(concept):
+        pseudonym_optional = [
+            x
+            for x in local_optional
+            if x.address not in _concept_addresses(group_node.usable_outputs)
+            and _pseudonym_linked(x, group_node.usable_outputs)
+        ]
+        if pseudonym_optional:
+            result_node = _wrap_grouping_passthrough(
+                group_node, pseudonym_optional, environment, depth
+            )
+    grouped_output_addr = _concept_addresses(result_node.usable_outputs)
     missing_optional = [
         x for x in local_optional if x.address not in grouped_output_addr
     ]
@@ -679,10 +829,10 @@ def gen_group_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for group node, has all of {[x.address for x in local_optional]}"
         )
-        return group_node
+        return result_node
     enrichment = _reuse_wide_parent_for_enrichment(
         concept=concept,
-        group_node=group_node,
+        group_node=result_node,
         output_concepts=output_concepts,
         missing_optional=missing_optional,
         grain_components=grain_components,
@@ -697,7 +847,7 @@ def gen_group_node(
         f"{padding(depth)}{LOGGER_PREFIX} group node for {concept.address} requires enrichment, missing {[x.address for x in missing_optional]}"
     )
     return gen_enrichment_node(
-        group_node,
+        result_node,
         join_keys=grain_components,
         local_optional=local_optional,
         environment=environment,

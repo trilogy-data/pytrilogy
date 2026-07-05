@@ -1,12 +1,12 @@
-"""Repro: an OUTER (LEFT/FULL) query-scoped join between two aggregate rowsets
-that each contribute a measure to the output fails, while the IDENTICAL INNER
-join resolves and compiles.
+"""An OUTER (LEFT/FULL) query-scoped join between two aggregate rowsets that each
+contribute a measure to the output must resolve and compile, and the intersection
+idiom (LEFT join + a not-null filter on the optional side) must select matched
+rows only.
 
 Surfaced on TPC-DS q05: the agent built two aggregate rowsets off the unified
 `all_sales` model (a sale-side sum keyed by channel/dim_id and a return-side sum
 keyed by channel/return_dim_id) and tried to `full join` them to lay sales and
-returns side by side. INNER works; LEFT raises DisconnectedConcepts; FULL emits
-invalid SQL.
+returns side by side.
 
 Minimal shape (two single-key models, two aggregate rowsets, join on the key):
 
@@ -14,11 +14,12 @@ Minimal shape (two single-key models, two aggregate rowsets, join on the key):
     with b as select returns.region as reg, sum(returns.return_amt) as amt_b;
     select a.reg, a.amt_a, b.amt_b  <JT> join a.reg = b.reg
 
-FIXED 2026-06-22: a rowset OUTER join now mirrors INNER for sourceability. The
-collapsed-away key keeps its own identity + a pseudonym back to the canonical
-(LEFT) / a MUTUAL pseudonym (FULL) so discovery connects the two rowset
-subgraphs. The merge node owns OUTER key rendering: LEFT/RIGHT preserve the
-complete side for either authored key, and FULL coalesces both physical keys.
+A rowset OUTER join is sourceable both ways: the collapsed-away key keeps its own
+identity + a pseudonym back to the canonical (LEFT) / a MUTUAL pseudonym (FULL)
+so discovery connects the two rowset subgraphs. The merge node owns OUTER key
+rendering: LEFT/RIGHT preserve the complete side for either authored key, and
+FULL coalesces both physical keys. (Query-scoped `inner join` was removed; the
+intersection is now a LEFT join + `where <optional measure> is not null`.)
 
 Handoff: evals/tpcds_agent/handoff_q05_q80_rollup_label_via_join.md (q05 context).
 """
@@ -81,12 +82,19 @@ def _blend_rows(models: Path, join_type: str) -> list[tuple]:
     return [tuple(r) for r in res.fetchall()]
 
 
-def test_inner_join_blends_two_rowset_measures(models: Path):
-    # Baseline: INNER co-sources a measure from each aggregate rowset.
-    sql = _blend_sql(models, "inner")
+def test_left_where_notnull_intersects_two_rowset_measures(models: Path):
+    # Intersection idiom (replaces the removed scoped `inner join`): LEFT join
+    # plus a not-null filter on the optional side's measure keeps matched rows only.
+    # The not-null guard lets the optimizer upgrade the join to a SQL INNER JOIN --
+    # exactly the "inner implicit from a condition" behavior -- so we assert on the
+    # resulting rows, not the (optimizer-chosen) join keyword.
+    text = _BLEND.replace(
+        "order by a.reg asc", "where b.amt_b is not null\norder by a.reg asc"
+    )
+    sql = _executor(models).generate_sql(text.format(join_type="left"))[-1]
     assert sql and "INVALID_REFERENCE_BUG" not in sql
-    assert "INNER JOIN" in sql
-    assert _blend_rows(models, "inner") == [("east", 10.0, 1.0)]
+    res = _executor(models).execute_text(text.format(join_type="left"))[0]
+    assert [tuple(r) for r in res.fetchall()] == [("east", 10.0, 1.0)]
 
 
 def test_left_join_blends_two_rowset_measures(models: Path):

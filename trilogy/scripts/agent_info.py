@@ -180,6 +180,15 @@ as a file.
 
 ---
 
+### trilogy ingest
+
+Bootstrap a Trilogy model from existing warehouse tables, files, or cloud
+objects. Run `trilogy agent-info ingest` for the full command reference
+(args, options, and warehouse/file/cloud examples). Use this when a user
+asks you to reverse-engineer a model from data that already exists.
+
+---
+
 ### trilogy file <subcommand>
 
 CRUD+ operations over filesystems. Local filesystem only.
@@ -234,16 +243,6 @@ that directly.
 trilogy database list
 trilogy database describe my_fact
 ```
-
----
-
-### trilogy ingest
-
-Bootstrap Trilogy datasource files from warehouse tables or data files (CSV /
-Parquet, local or cloud URL). Creates datasource files, sniffs values
-for enums/FKs. Always use this when creating a new model from scratch
-off existing data to get a baseline. Run `trilogy agent-info ingest` for the full
-reference when needed.
 
 ---
 

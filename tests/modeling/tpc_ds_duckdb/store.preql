@@ -9,9 +9,9 @@ import std.date;
 import date as date;
 
 key id int; # Surrogate key (internal row key). Report the "store code" with text_id unless the question explicitly asks for the surrogate id.
-unique property id.text_id string; # The store's business "store code" (s_store_id, 16-char). Report/group by this for "store code".
 
 properties id (
+    text_id string, # The store's business "store code" (s_store_id, 16-char). Report/group by this for "store code".
     name string, # Store display name.
     employees int, # Number of employees working at the store.
     --floor_space int, # Total floor space of the store in square feet.

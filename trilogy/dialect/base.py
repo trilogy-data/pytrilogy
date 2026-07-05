@@ -477,6 +477,7 @@ FUNCTION_MAP = {
     FunctionType.SIMPLE_CASE: lambda x, types: render_simple_case(x),
     FunctionType.SPLIT: lambda x, types: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} is null",
+    FunctionType.IS_NOT_DISTINCT: lambda x, types: f"{x[0]} is not distinct from {x[1]}",
     FunctionType.BOOL: lambda x, types: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
     FunctionType.PARENTHETICAL: lambda x, types: f"({x[0]})",
     # Complex
@@ -599,15 +600,36 @@ FUNCTION_MAP = {
     FunctionType.CURRENT_TIMESTAMP: lambda x, types: "current_timestamp()",
 }
 
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+# How each aggregate collapses over a single-row group (i.e. when the node is
+# already at the aggregate's grain, so no GROUP BY is emitted). Every aggregate
+# in FunctionClass.AGGREGATE_FUNCTIONS MUST have an entry here — otherwise it
+# falls through to its real FUNCTION_MAP rendering and emits an invalid
+# ungrouped aggregate (see test_all_aggregates_have_grain_match_formula).
+# `sum/avg/max/min/any/bool_*` reduce to the value itself; `count` to a 0/1
+# presence flag; two-pass `stddev/variance` (sample) of one value are NULL;
+# `array_agg` is a singleton array; `grouping`/`grouping_id` off a rollup are 0.
+# The formulas are portable SQL, so dialects share this map (layered after their
+# own FUNCTION_MAP so it is never shadowed by a dialect aggregate override).
+AGGREGATE_GRAIN_MATCH_MAP = {
+    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.SUM: lambda args, types: f"{args[0]}",
     FunctionType.AVG: lambda args, types: f"{args[0]}",
     FunctionType.MAX: lambda args, types: f"{args[0]}",
     FunctionType.MIN: lambda args, types: f"{args[0]}",
     FunctionType.ANY: lambda args, types: f"{args[0]}",
+    FunctionType.STDDEV: lambda args, types: "NULL",
+    FunctionType.VARIANCE: lambda args, types: "NULL",
+    FunctionType.ARRAY_AGG: lambda args, types: f"[{args[0]}]",
+    FunctionType.BOOL_OR: lambda args, types: f"{args[0]}",
+    FunctionType.BOOL_AND: lambda args, types: f"{args[0]}",
+    FunctionType.GROUPING: lambda args, types: "0",
+    FunctionType.GROUPING_ID: lambda args, types: "0",
+}
+
+FUNCTION_GRAIN_MATCH_MAP = {
+    **FUNCTION_MAP,
+    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 
@@ -674,6 +696,25 @@ def safe_get_cte_value(
         # a normal CTE, the raw-table alias for an inlined DatasourceCTE.
         alias = cte.source_key_for(source) if isinstance(cte, CTE) else source
         return f"{quote_char}{alias}{quote_char}.{safe_quote(rendered, quote_char)}"
+
+    if isinstance(cte, CTE):
+        key_class = cte.outer_join_key_class(address)
+        if len(key_class) > 1:
+            renders: list[str] = []
+            for member in key_class:
+                for source in cte.source_map.get(member.address, []):
+                    rendered = cte.get_alias(member, source)
+                    if isinstance(rendered, str) and rendered.startswith(
+                        "INVALID_ALIAS:"
+                    ):
+                        continue
+                    use_map[source].add(member.address)
+                    renders.append(_format(source, rendered))
+            unique_renders = sorted(set(renders))
+            if len(unique_renders) > 1:
+                return coalesce(unique_renders, [])
+            if unique_renders:
+                return unique_renders[0]
 
     if not raw:
         # No explicit source, but an inlined datasource may still expose this
@@ -2198,6 +2239,10 @@ class BaseDialect:
             render_columns = sorted(select_columns.values(), key=lambda x: x)
         else:
             render_columns = list(select_columns.values())
+        if not render_columns:
+            # a sourceless constant grouping node (e.g. `count(1) by *`) has no
+            # output columns; emit a placeholder so the CTE is valid SQL.
+            render_columns = ["1 as __constant"]
         lookups = {v: i for i, v in enumerate(render_columns)}
         select_concept_index = {k: lookups[v] + 1 for k, v in select_columns.items()}
         source: str | None = cte.base_name

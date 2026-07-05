@@ -13,6 +13,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import BaseJoin, UnnestJoin
 from trilogy.core.processing.grain_utility import (
@@ -94,7 +95,9 @@ def test_concept_covers_grain_multiselect_keys_branch():
 
 def test_join_right_preserves_cardinality_unnest_join_returns_false():
     """Type-narrowing guard: UnnestJoin can't preserve right cardinality."""
-    assert _join_right_preserves_cardinality(_unnest_join()) is False
+    assert (
+        _join_right_preserves_cardinality(_unnest_join(), BuildEnvironment()) is False
+    )
 
 
 def test_join_right_preserves_cardinality_abstract_right_grain():
@@ -109,7 +112,52 @@ def test_join_right_preserves_cardinality_abstract_right_grain():
         join_type=JoinType.LEFT_OUTER,
         concepts=[k],
     )
-    assert _join_right_preserves_cardinality(join) is True
+    assert _join_right_preserves_cardinality(join, BuildEnvironment()) is True
+
+
+def test_join_right_preserves_cardinality_fd_determined_grain():
+    """The join key functionally determines the right grain component (FD
+    edge in the domain graph) — at most one right row per key tuple, so
+    cardinality is preserved even though the grain key is not a join key."""
+    from trilogy.core.domain_graph import FDEdge
+
+    # `a` is a non-key attribute on the right side, so it neither enters the
+    # effective grain nor overlaps it — only the FD can prove preservation
+    a = _concept("a", purpose=Purpose.PROPERTY)
+    b = _concept("b")
+    right = _datasource("r", [a, b], grain=BuildGrain(components={b.address}))
+    join = BaseJoin(
+        right_datasource=right,
+        join_type=JoinType.LEFT_OUTER,
+        concepts=[a],
+    )
+    env = BuildEnvironment()
+    assert _join_right_preserves_cardinality(join, env) is False
+    env.domain_graph.add_fd(
+        FDEdge(determinants=frozenset({a.address}), dependent=b.address)
+    )
+    assert _join_right_preserves_cardinality(join, env) is True
+
+
+def test_grain_satisfied_by_pregrain_fd_reduces_group():
+    """A pregrain component the grain functionally determines is constant
+    within each group — {a, b} with a → b reduces to {a}, satisfied without
+    a regroup."""
+    from trilogy.core.domain_graph import FDEdge
+    from trilogy.core.processing.grain_utility import grain_satisfied_by_pregrain
+
+    a = _concept("a")
+    b = _concept("b")
+    env = BuildEnvironment()
+    env.concepts[a.address] = a
+    env.concepts[b.address] = b
+    pregrain = BuildGrain(components={a.address, b.address})
+    grain = BuildGrain(components={a.address})
+    assert grain_satisfied_by_pregrain(pregrain, grain, env) is False
+    env.domain_graph.add_fd(
+        FDEdge(determinants=frozenset({a.address}), dependent=b.address)
+    )
+    assert grain_satisfied_by_pregrain(pregrain, grain, env) is True
 
 
 def test_join_left_keys_covered_by_grain_unnest_join_returns_false():

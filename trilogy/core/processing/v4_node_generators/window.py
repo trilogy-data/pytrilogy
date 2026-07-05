@@ -1,6 +1,7 @@
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import StrategyNode, WindowNode
+from trilogy.utility import unique
 
 from .common import parent_outputs_needed, passthrough_if_materialized
 
@@ -24,10 +25,21 @@ def gen_window(
     new = conditions.conditional if conditions else None
     pre = preexisting_conditions.conditional if preexisting_conditions else None
     combined = new if pre is None else (pre if new is None else (new + pre))
+    output_addresses = {concept.address for concept in outputs}
+    nullable_concepts = unique(
+        [
+            concept
+            for parent in parents
+            for concept in parent.resolve().nullable_concepts
+            if concept.address in output_addresses
+        ],
+        "address",
+    )
     return WindowNode(
         input_concepts=parent_outputs_needed(outputs, parents, conditions),
         output_concepts=outputs,
         environment=environment,
         parents=parents,
         preexisting_conditions=combined,
+        nullable_concepts=nullable_concepts,
     )

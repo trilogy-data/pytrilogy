@@ -66,8 +66,8 @@ select 3 id, 4 it, 4 q, 2000 y
 ''';
 """
 
-# A second model with two facts that DON'T share a base key, so an inner join
-# between two rowsets over them is a genuine (collapse-unexpressible) intersect.
+# A second model with two facts that DON'T share a base key, so relating two
+# rowsets over them is a genuine cross-base intersect (expressed via membership).
 INTERSECT_MODEL = """
 key store_sale_id int;
 property store_sale_id.s_last_name string;
@@ -98,7 +98,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "single_enrich_via_explicit_join",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq;"
-        + "select item_name, rs.sq,\ninner join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
         [("apple", 15), ("banana", 10), ("cherry", 9)],
     ),
     # --- HAVING (post-aggregate filtering inside the rowset body) ---
@@ -131,22 +131,35 @@ _MATRIX: list[tuple[str, str, object]] = [
     ),
     (
         # HAVING inside the rowset, then enrich a base-keyed property via join.
-        # HAVING sum>9 keeps items 1,2 -> apple, banana.
+        # HAVING sum>9 keeps items 1,2 -> apple, banana. Joins are
+        # row-preserving: items outside the rowset survive NULL-padded, so the
+        # restriction to rowset rows is the explicit `rs.sq is not null`.
         "having_then_enrich_property",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "select item_name, rs.sq,\ninner join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
         [("apple", 15), ("banana", 10)],
     ),
     (
-        # HAVING (inside rowset) AND outer WHERE (on enriched dim) must BOTH apply.
-        # HAVING sum>9 keeps {1,2}; WHERE name!='banana' keeps {1,3}; AND -> {1}.
-        # item3 passes the WHERE but fails HAVING, proving HAVING isn't dropped;
-        # item2 passes HAVING but fails WHERE, proving WHERE isn't dropped.
-        "having_and_outer_where_compose",
+        # ... and without the explicit filter the enrichment preserves:
+        # cherry (item 3, fails HAVING) survives with a NULL measure.
+        "having_then_enrich_property_preserving",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name != 'banana' select rs.k, rs.sq,\ninner join rs.k = item_id\norder by rs.k;",
+        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        [("apple", 15), ("banana", 10), ("cherry", None)],
+    ),
+    (
+        # HAVING (inside rowset) AND an outer membership filter (over a name-derived
+        # keyset) must BOTH apply. HAVING sum>9 keeps {1,2}; keepers (name!='banana')
+        # = {1,3}; AND -> {1}. item3 passes the membership but fails HAVING, proving
+        # HAVING isn't dropped; item2 passes HAVING but fails membership, proving the
+        # membership isn't dropped.
+        "having_and_outer_membership_compose",
+        SALES_MODEL
+        + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
+        + "rowset keepers <- where item_name != 'banana' select item_id as ni;"
+        + "where rs.k in keepers.ni select rs.k, rs.sq order by rs.k;",
         [(1, 15)],
     ),
     (
@@ -159,14 +172,14 @@ _MATRIX: list[tuple[str, str, object]] = [
         [(1, 2), (2, 2)],
     ),
     (
-        # Outer WHERE on a dimension reachable only via the declared join must
-        # filter the result -- regression: the enrich path returned the bare
-        # rowset (no join, no filter) when every SELECT optional was already in
-        # the rowset, silently dropping the WHERE. Only item 1 is 'apple'.
-        "outer_where_on_enriched_dim_filters",
+        # Outer membership filter over a name-derived keyset must filter the rowset
+        # even though its own key/measure are the only SELECT outputs. Only item 1
+        # is 'apple', so rs is filtered to {1}.
+        "outer_membership_on_derived_keyset_filters",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq;"
-        + "where item_name = 'apple' select rs.k, rs.sq,\ninner join rs.k = item_id\norder by rs.k;",
+        + "rowset ap <- where item_name = 'apple' select item_id as ai;"
+        + "where rs.k in ap.ai select rs.k, rs.sq order by rs.k;",
         [(1, 15)],
     ),
     # --- membership: outer keys filtered against a rowset's key set ---
@@ -178,13 +191,35 @@ _MATRIX: list[tuple[str, str, object]] = [
         [(1, 15), (2, 10)],
     ),
     # --- cross-rowset WHERE/JOIN comparison (year-over-year) ---
+    # joins are row-preserving; the intersection is the explicit both-sides
+    # `is not null` idiom (one-sided not-null keeps the other side's
+    # exclusive rows).
     (
         "cross_rowset_yoy_join",
         SALES_MODEL
         + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
         + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
-        + "inner join y99.k = y00.k2\nselect y99.k, y99.s99, y00.s00 order by y99.k;",
+        + "where y99.s99 is not null and y00.s00 is not null select y99.k, y99.s99, y00.s00\nleft join y99.k = y00.k2 order by y99.k;",
         [(1, 10, 5), (2, 7, 3)],
+    ),
+    (
+        # q02 shape: a third rowset scoped-joins two sibling rowsets, then a
+        # FILTERED aggregate over its measure is grouped by one of its dims. The
+        # filter mints a `_virt_filter` over a rowset measure; islanding must not
+        # orphan that consumer from the rowset's component (it is a legitimate
+        # downstream use of a declared output, not navigation into the rowset's
+        # base concepts). diff = y99 - y00: item1 10-5=5, item2 7-3=4 (item3 has no
+        # 1999 row, so its y00 side is null and the where-not-null drops it). The
+        # agg passes each diff through.
+        "filtered_aggregate_over_scoped_join_rowset",
+        SALES_MODEL
+        + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
+        + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
+        + "rowset diff <- where y00.s00 is not null select y99.k as k, y99.s99 - y00.s00 as d"
+        + " left join y99.k = y00.k2;"
+        + "def only(x) -> sum(diff.d ? diff.k = x);"
+        + "select @only(1) as d1, @only(2) as d2;",
+        [(5, 4)],
     ),
     # --- nested rowset (rowset aggregates another rowset's output) ---
     (
@@ -206,18 +241,20 @@ _MATRIX: list[tuple[str, str, object]] = [
         + "select combined.k, sum(combined.v) as total order by combined.k;",
         [(1, 17), (2, 11), (3, 9), (4, 4)],
     ),
-    # --- clean-error contracts ---
+    # --- cross-rowset intersection over non-shared bases (membership idiom) ---
     (
-        # q38: inner join of two rowsets over non-shared bases is an intersect
-        # the collapse model can't express -> clean error pointing at union().
-        "cross_rowset_inner_intersect_clean_error",
+        # q38 shape: intersect two rowsets whose bases don't share a key. The pure
+        # key-domain intersection is expressed with a membership filter (the idiom
+        # that replaces the removed scoped `inner join`). store 2000 last names =
+        # {Smith, Jones}; catalog 2000 = {Smith, Brown}; intersection = {Smith} -> 1.
+        "cross_rowset_intersect_via_membership",
         INTERSECT_MODEL
         + "rowset store_combos <- where s_yr = 2000 select s_last_name as last_name;"
         + "rowset catalog_combos <- where c_yr = 2000 select c_last_name as last_name;"
-        + "rowset sc <- select store_combos.last_name as last_name"
-        + " inner join store_combos.last_name = catalog_combos.last_name;"
+        + "rowset sc <- where store_combos.last_name in catalog_combos.last_name"
+        + " select store_combos.last_name as last_name;"
         + "select count(sc.last_name) as c;",
-        UnresolvableQueryException,
+        [(1,)],
     ),
     (
         # Single rowset with no join: a base-keyed property (item_name) must NOT

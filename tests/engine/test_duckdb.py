@@ -29,6 +29,60 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
     assert results[0].total_count == expected_results["total_count"]
 
 
+@mark.parametrize(
+    "agg",
+    ["count(1)", "sum(1)", "count(1) by *"],
+)
+def test_global_literal_aggregate(agg):
+    """A global aggregate over a pure literal with no grain key (`count(1)`,
+    `sum(1)`, `count(1) by *` -- the documented global-scalar idiom) must build
+    and execute to a single constant row, not crash with an unguarded IndexError
+    (sourceless QueryDatasource has an empty `datasources` list) nor render an
+    empty-SELECT CTE (`by *` groups over a sourceless constant node)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = f"""
+key id int;
+datasource t (id) grain (id)
+  query '''select 1 as id union all select 2''';
+
+select {agg} as c;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert results == [(1,)]
+
+
+@mark.parametrize(
+    "src,expected",
+    [
+        ("const c <- 10; select c as x where c > 50;", []),
+        ("const c <- 10; select c as x where c < 50;", [(10,)]),
+        ("parameter p int default 10; select p as x where p > 50;", []),
+        ("parameter p int default 10; select p as x where p < 50;", [(10,)]),
+    ],
+)
+def test_where_on_constant_concept_filters(src, expected):
+    """A WHERE that references only constant/param concepts folds to a pure
+    literal predicate (`c > 50` -> `1 = 0`). That predicate has no row
+    arguments, so the scalar-only / independent-scope exemptions used to treat
+    it as belonging to another scope and drop it -- the filter silently did
+    nothing. It must be applied (empty result when the constant fails it)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    results = engine.execute_text(src)[-1].fetchall()
+    assert [tuple(r) for r in results] == expected
+
+
+@mark.parametrize("decl", ["numeric", "numeric(15,2)"])
+def test_numeric_parameter(decl):
+    """`parameter p numeric default 4305.50` must build and execute to a Decimal
+    (NUMERIC is first-class elsewhere); previously raised HydrationError with no
+    NUMERIC branch in hydrate_parameter."""
+    engine = Dialects.DUCK_DB.default_executor()
+    results = engine.execute_text(
+        f"parameter p {decl} default 4305.50; select p as x;"
+    )[-1].fetchall()
+    assert results == [(Decimal("4305.50"),)]
+
+
 def test_where_on_aggregate_with_ratio_of_aggregates():
     """Filtering on a derived aggregate AND selecting a ratio of aggregates at
     the same grain must not leak the ratio expression into GROUP BY (DuckDB:
@@ -194,6 +248,50 @@ select case when grouping(brand) = 1 then 'tot' else brand end as ct,
         engine.execute_text(_ROLLUP_GROUPING_MODEL)
         with raises(InvalidSyntaxException, match="grouping"):
             engine.generate_sql(select)
+
+
+def test_grouping_over_rowset_output_no_rollup_raises_clean_error():
+    """q67 Bug #2: `grouping()` applied to a rowset output in a DOWNSTREAM select
+    with no rollup renders a groupless `SELECT grouping(...)` (all outputs are
+    materialized rowset columns, so no GROUP BY) -> raw DuckDB "GROUPING statement
+    cannot be used without groups". The stray-grouping guard missed it because the
+    grouping is reached through a named `auto` concept behind a rename, invisible to
+    the shallow scan. Must be a clean author-time error, whether named or inline."""
+    for select in (
+        # named `auto` concept wrapping grouping() over a rowset output, renamed.
+        """
+rowset rd <- select brand, class, sum(amount) as summed by rollup (brand, class);
+auto g_cat <- grouping(rd.brand);
+select rd.brand, rd.class, rd.summed, g_cat as gc;
+""",
+        # inline grouping() over a rowset output.
+        """
+rowset rd <- select brand, class, sum(amount) as summed by rollup (brand, class);
+select rd.brand, rd.class, rd.summed, grouping(rd.brand) as gc;
+""",
+    ):
+        engine = Dialects.DUCK_DB.default_executor()
+        engine.execute_text(_ROLLUP_GROUPING_MODEL)
+        with raises(InvalidSyntaxException, match="grouping"):
+            engine.generate_sql(select)
+
+
+def test_grouping_computed_inside_rowset_rollup_downstream_select_executes():
+    """The valid sibling of the above: a rowset computes `grouping()` inside its
+    OWN `by rollup` pass and materializes it as a column; a downstream select just
+    projects that column (a flat read, no new groupless GROUPING()). Must NOT be
+    rejected — the stray-grouping guard stops at the rowset boundary."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+rowset rd <- select brand, class, sum(amount) as summed, grouping(brand) as gc
+    by rollup (brand, class);
+select rd.brand, rd.class, rd.summed, rd.gc
+order by rd.gc asc, rd.brand asc nulls last, rd.class asc nulls last;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    # gc=0 for every real/subtotal brand row; gc=1 only on the grand-total row.
+    assert [r[3] for r in results] == [0, 0, 0, 0, 0, 0, 1]
 
 
 def test_grouping_in_where_raises_clean_error():
@@ -484,6 +582,188 @@ order by label asc nulls last, entity_fmt asc nulls last;
         ("web", None, 5.0),
         (None, None, 45.0),
     ]
+
+
+_ROLLUP_HAVING_CROSSROWSET_MODEL = """
+key sid int;
+property sid.sbrand int;
+property sid.samt float;
+datasource store_sales (sid: sid, sbrand: sbrand, samt: samt)
+grain (sid)
+query '''select 1 as sid, 10 as sbrand, 100.0 as samt union all
+         select 2, 11, 30.0''';
+
+key wid int;
+property wid.wbrand int;
+property wid.wamt float;
+datasource web_sales (wid: wid, wbrand: wbrand, wamt: wamt)
+grain (wid)
+query '''select 1 as wid, 10 as wbrand, 5.0 as wamt union all
+         select 2, 11, 200.0''';
+"""
+
+
+def test_rollup_having_crossrowset_preserves_subtotals():
+    """`by rollup` + `having <agg> > <cross-rowset scalar>` where the rollup keys
+    are union/rowset outputs must keep subtotal/grand-total rows and apply the
+    HAVING to every group (leaf and super-aggregate). The predicate is routed
+    through the finer-dim → grain-key CASE-nulling semijoin
+    (`_rewrite_having_finer_dims_to_membership`), whose `is not null` guard on the
+    CASE-nulled rollup keys collides with rollup's legitimate NULL subtotal keys —
+    silently dropping every subtotal row. The driver of the q14 token sink."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_HAVING_CROSSROWSET_MODEL)
+    text = """
+auto overall_total <- sum(samt) + sum(wamt);
+auto overall_count <- count(sid) + count(wid);
+rowset overall_avg <- select overall_total / overall_count as avg_val;
+with by_channel as union(
+  (select 'STORE' as channel, sbrand as brand, sum(samt) as total_sales),
+  (select 'WEB' as channel, wbrand as brand, sum(wamt) as total_sales)
+) -> (channel, brand, total_sales);
+select
+    by_channel.channel,
+    by_channel.brand,
+    sum(by_channel.total_sales) as total_sales
+having sum(by_channel.total_sales) > overall_avg.avg_val
+by rollup (by_channel.channel, by_channel.brand)
+order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    # avg_val = 335/4 = 83.75; HAVING sum(total_sales) > 83.75 applied to every
+    # group, subtotals included.
+    assert [(r[0], r[1], float(r[2])) for r in results] == [
+        (None, None, 335.0),
+        ("STORE", None, 130.0),
+        ("STORE", 10, 100.0),
+        ("WEB", None, 205.0),
+        ("WEB", 11, 200.0),
+    ]
+
+
+def test_rollup_having_auto_wrapped_crossrowset_scalar_preserves_subtotals():
+    """Same as above, but the cross-rowset scalar is referenced through an `auto`
+    indirection (`auto avg_val <- ...; having sum(x) > avg_val`) — the natural
+    HAVING form, and exactly what TPC-DS q14 writes. The single-row-scalar detector
+    only matched a direct `RowsetItem` ref, so an `auto`/BASIC wrapper (incl. a
+    ratio of two rowset outputs) fell through to the finer-dim grain-key semijoin
+    and silently dropped every rollup subtotal. Must recurse through BASIC args."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_HAVING_CROSSROWSET_MODEL)
+    text = """
+rowset overall <- select sum(samt) + sum(wamt) as total_value, count(sid) + count(wid) as total_count;
+auto avg_val <- overall.total_value / overall.total_count;
+with by_channel as union(
+  (select 'STORE' as channel, sbrand as brand, sum(samt) as total_sales),
+  (select 'WEB' as channel, wbrand as brand, sum(wamt) as total_sales)
+) -> (channel, brand, total_sales);
+select
+    by_channel.channel,
+    by_channel.brand,
+    sum(by_channel.total_sales) as total_sales
+having sum(by_channel.total_sales) > avg_val
+by rollup (by_channel.channel, by_channel.brand)
+order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r[0], r[1], float(r[2])) for r in results] == [
+        (None, None, 335.0),
+        ("STORE", None, 130.0),
+        ("STORE", 10, 100.0),
+        ("WEB", None, 205.0),
+        ("WEB", 11, 200.0),
+    ]
+
+
+def test_union_subset_aggregate_preserves_row_multiplicity():
+    """A `union(...) -> (...)` that stacks per-row values feeds a grouped rowset
+    consumer. Two distinct rows can share the same (non-selected-key) column
+    values; summing a subset of the union outputs must sum every stacked row, not
+    a de-duplicated set. Regression: the union outputs were all bare KEY grain
+    components, so sourcing a strict subset (gid, value) inserted a spurious
+    GROUP BY (gid, value) that collapsed the duplicate rows before the SUM."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text("""
+key event_id int;
+property event_id.event_amount int;
+property event_id.gid int;
+property event_id.active bool;
+datasource events (eid: event_id, gid: gid, amount: event_amount, active: active)
+grain (event_id)
+query '''select 1 as eid, 1 as gid, 0 as amount, false as active
+union all select 2 as eid, 1 as gid, -2 as amount, true as active
+union all select 3 as eid, 2 as gid, 6 as amount, true as active
+union all select 4 as eid, 2 as gid, 6 as amount, true as active
+union all select 5 as eid, 3 as gid, 9 as amount, false as active
+union all select 6 as eid, 3 as gid, 1 as amount, true as active
+union all select 7 as eid, 4 as gid, 12 as amount, false as active''';
+""")
+    text = """
+with combined as union(
+    (where active select event_id as eid, gid as gid, event_amount as value),
+    (where not active select event_id as eid, gid as gid, event_amount as value)
+) -> (eid, gid, value);
+rowset rolled <- select combined.gid as gid, sum(combined.value) as total;
+select rolled.gid, rolled.total order by rolled.gid asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r[0], r[1]) for r in results] == [(1, -2), (2, 12), (3, 10), (4, 12)]
+
+
+_ROLLUP_WHERE_CROSSROWSET_MODEL = """
+key sid int;
+property sid.schannel string;
+property sid.samt float;
+property sid.scnt int;
+datasource all_sales (sid: sid, schannel: schannel, samt: samt, scnt: scnt)
+grain (sid)
+query '''select 1 as sid, 'STORE' as schannel, 100.0 as samt, 1 as scnt union all
+         select 2, 'STORE', 30.0, 1 union all
+         select 3, 'WEB', 5.0, 1 union all
+         select 4, 'WEB', 200.0, 1 union all
+         select 5, 'CATALOG', 7.0, 1''';
+"""
+
+
+def test_rollup_where_crossrowset_preserves_grand_total():
+    """`by rollup` + a WHERE filtering a rowset field against a cross-rowset scalar
+    must keep the subtotal/grand-total rows. The scalar-vs-rowset filter was
+    force-evaluated at the rollup output level (a filter-only ROWSET row-arg forces
+    condition eval), dragging the finer input into the rollup output → an
+    enrichment join back over the NULL-keyed subtotal grain + a re-applied filter
+    that dropped every subtotal. The filter must instead push *below* the rollup.
+    Covers both the aggregated field (`sum(ch.total_sales)` filtered on
+    `ch.total_sales`) and a sibling field (filter on `ch.total_sales`, project only
+    `sum(ch.sale_count)`). The form the q14 agent actually used (HAVING after `by
+    rollup` won't parse) — the highest-impact q14 blocker."""
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_ROLLUP_WHERE_CROSSROWSET_MODEL)
+    prefix = """
+auto overall_avg_sale <- sum(samt) by * / count(scnt) by *;
+with ch as
+select schannel as channel, sum(samt) as total_sales, count(scnt) as sale_count;
+"""
+    # avg = 342/5 = 68.4; channels kept: STORE(130), WEB(205); CATALOG(7) dropped.
+    # Rollup over the kept channels keeps the grand-total row.
+    aggregated = engine.execute_text(prefix + """
+select ch.channel, sum(ch.total_sales) as total_sales, sum(ch.sale_count) as total_count
+where ch.total_sales > overall_avg_sale
+by rollup (ch.channel)
+order by ch.channel asc nulls first;
+""")[-1].fetchall()
+    assert [(r[0], float(r[1]), r[2]) for r in aggregated] == [
+        (None, 335.0, 4),
+        ("STORE", 130.0, 2),
+        ("WEB", 205.0, 2),
+    ]
+    # Sibling field: filtered field is not the aggregated one; still must push below.
+    sibling = engine.execute_text(prefix + """
+select ch.channel, sum(ch.sale_count) as total_count
+where ch.total_sales > overall_avg_sale
+by rollup (ch.channel)
+order by ch.channel asc nulls first;
+""")[-1].fetchall()
+    assert [(r[0], r[1]) for r in sibling] == [(None, 4), ("STORE", 2), ("WEB", 2)]
 
 
 def test_predicate_not_pushed_past_window_order_key():
@@ -1552,7 +1832,7 @@ merge first_parent into parent.id;
     assert (
         "local.first_parent",
         "parent.id",
-        JoinType.INNER,
+        JoinType.FULL,
     ) in executor.environment.merges
     build_env = executor.environment.materialize_for_select()
     recursive = build_env.alias_origin_lookup["local.first_parent"]

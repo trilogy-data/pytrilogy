@@ -77,6 +77,18 @@ def test_handle_execution_exception_labels_resolution_errors(capsys):
         assert "Unexpected error:" not in combined, combined
 
 
+def test_handle_execution_exception_labels_recursion_errors(capsys):
+    """A planner RecursionError is always a framework bug, not an opaque crash —
+    labelled `Resolution error:` and stated plainly as a bug, not `Unexpected
+    error: maximum recursion depth exceeded`."""
+    with raises(Exit):
+        handle_execution_exception(RecursionError("maximum recursion depth exceeded"))
+    combined = "".join(capsys.readouterr())
+    assert "Resolution error:" in combined, combined
+    assert "Unexpected error:" not in combined, combined
+    assert "this is a bug" in combined, combined
+
+
 def test_config_bootstrap():
     path = Path(__file__).parent / "config_directory"
     runner = CliRunner()
@@ -187,16 +199,21 @@ def test_cli_merge_config():
         config_content = """
 [engine]
 dialect = "duckdb"
+
+[engine.config]
+db_location = "configured.db"
 """
         config_file = tmppath / "trilogy.toml"
         config_file.write_text(config_content)
 
         test_script = tmppath / "test.preql"
         test_script.write_text("select 1 as value;")
+        configured_db_path = tmppath / "configured.db"
+        db_path = tmppath / "override.db"
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["run", str(test_script), "duckdb", "path=/tmp/override.db"]
+            cli, ["run", str(test_script), "duckdb", f"path={db_path.as_posix()}"]
         )
 
         if result.exception:
@@ -204,6 +221,8 @@ dialect = "duckdb"
                 f"Command failed:\nstdout:\n{result.stdout}\nexc:\n{result.exception}"
             )
         assert result.exit_code == 0
+        assert db_path.exists()
+        assert not configured_db_path.exists()
 
 
 def test_config_staging_default():

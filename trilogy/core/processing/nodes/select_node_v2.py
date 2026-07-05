@@ -134,7 +134,14 @@ class SelectNode(StrategyNode):
                 c.concept for c in datasource.columns if not c.is_complete
             ],
             rollup_concepts=self.rollup_concepts,
-            nullable_concepts=[c.concept for c in datasource.columns if c.is_nullable],
+            # union the node-level stamps: a BASIC computed at this scan over a
+            # nullable column (`l_key + 1`) is nullable here but is not a
+            # datasource column, so the column scan alone under-reports
+            nullable_concepts=unique(
+                [c.concept for c in datasource.columns if c.is_nullable]
+                + list(self.nullable_concepts),
+                "address",
+            ),
             source_type=SourceType.DIRECT_SELECT,
             # we can skip rendering conditions
             condition=self.conditions,
@@ -217,7 +224,7 @@ class SelectNode(StrategyNode):
         return resolution
 
     def copy(self) -> "SelectNode":
-        return SelectNode(
+        node = SelectNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -237,6 +244,8 @@ class SelectNode(StrategyNode):
             ordering=self.ordering,
             existence_concepts=list(self.existence_concepts),
         )
+        node.limit = self.limit
+        return node
 
 
 class RowsetNode(SelectNode):
@@ -250,7 +259,7 @@ class RowsetNode(SelectNode):
     """
 
     def copy(self) -> "RowsetNode":
-        return RowsetNode(
+        node = RowsetNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -270,6 +279,8 @@ class RowsetNode(SelectNode):
             ordering=self.ordering,
             existence_concepts=list(self.existence_concepts),
         )
+        node.limit = self.limit
+        return node
 
 
 class ConstantNode(SelectNode):

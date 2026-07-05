@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
+from decimal import Decimal
 from functools import cached_property, reduce, singledispatchmethod
 from typing import (
     TYPE_CHECKING,
@@ -19,8 +20,14 @@ from typing import (
     Union,
 )
 
-from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
+from trilogy.constants import (
+    DEFAULT_NAMESPACE,
+    PRESENCE_PROBE_PREFIX,
+    VIRTUAL_CONCEPT_PREFIX,
+    MagicConstants,
+)
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
     NUMBERING_WINDOW_TYPES,
@@ -71,6 +78,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     RowsetLineage,
     SelectLineage,
+    SubqueryItem,
     SubselectComparison,
     SubselectItem,
     UndefinedConcept,
@@ -1956,6 +1964,13 @@ class BuildColumnAssignment:
     alias: str | RawColumnExpr | BuildFunction | BuildAggregateWrapper
     concept: BuildConcept
     modifiers: set[Modifier] = field(default_factory=set)
+    # The author-declared concept address this column bound BEFORE a scoped
+    # join/merge substituted it onto the relation's canonical address — the
+    # column's ORIGIN DOMAIN NODE (docs/domain_graph_design.md), threaded
+    # FORWARD so plan-level rulings on a same-address join pair can resolve
+    # which relation endpoint each side physically carries. None = no
+    # substitution; the concept's own address is its origin.
+    origin_address: str | None = None
 
     @property
     def is_complete(self) -> bool:
@@ -2064,7 +2079,16 @@ class BuildDatasource:
 
     @property
     def partial_concepts(self) -> List[BuildConcept]:
-        return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
+        # Partiality is a fact about a BINDING, not the datasource: an address
+        # also bound complete here (a second endpoint of a relation folded onto
+        # it) is still fully providable — only addresses with NO complete
+        # binding are partial for the source.
+        full = self.full_concepts
+        return [
+            c.concept
+            for c in self.columns
+            if Modifier.PARTIAL in c.modifiers and c.concept.address not in full
+        ]
 
     @property
     def column_level_partial_concepts(self) -> List[BuildConcept]:
@@ -2087,21 +2111,35 @@ class BuildDatasource:
         # this logic needs to be refined.
         # if concept.lineage:
         # #     return None
+        # Several columns can bind one address when a relation folded a second
+        # endpoint onto it; the concept AS ITSELF renders from its native
+        # (unsubstituted, non-partial) binding, never a folded endpoint's
+        # column. Tiers: first native exact match > first exact/pseudonym
+        # match > canonical-address match.
+        native_match = None
         exact_match = None
         canonical_match = None
         for x in self.columns:
-            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
-                exact_match = x
-                break
-            if (
+            is_exact = (
+                x.concept == concept or x.concept.with_grain(concept.grain) == concept
+            )
+            if is_exact or (
                 concept.address in x.concept.pseudonyms
                 or x.concept.address in concept.pseudonyms
             ):
-                exact_match = x
-                break
+                if exact_match is None:
+                    exact_match = x
+                if (
+                    is_exact
+                    and x.origin_address is None
+                    and Modifier.PARTIAL not in x.modifiers
+                ):
+                    native_match = x
+                    break
+                continue
             if x.concept.canonical_address == concept.canonical_address:
                 canonical_match = x
-        match = exact_match or canonical_match
+        match = native_match or exact_match or canonical_match
         if match is not None:
             if use_raw_name:
                 return match.alias
@@ -2221,46 +2259,22 @@ def materialize_constant(x):
     return x
 
 
-def _build_scoped_merge_index(
+def scope_tagged_joins(
     joins: list[tuple[str, str, JoinType]],
-) -> tuple[dict[str, str], set[str]]:
-    """Collapse build-scoped joins into a union-find map (source address ->
-    canonical target address) plus the set of partial source addresses.
-    Non-partial `merge a into b` is represented as an INNER join pair and makes
-    b the root, so an N-way blend collapses every member to one canonical
-    concept.
-
-    Partiality drives the eventual datasource-join type. Direction matches SQL
-    `A LEFT JOIN B`: in `LEFT JOIN a = b` the LEFT operand `a` is preserved and the
-    RIGHT operand `b` is optional. So for LEFT the TARGET (`b`) collapses onto the
-    SOURCE (`a`) — making `a` the complete canonical anchor — and `b` is marked
-    partial. The partial side is therefore always the collapsed-away side, which is
-    what the rowset partiality propagation expects. INNER collapses source->target
-    and marks neither. FULL collapses source->target, marks neither, and is driven
-    by the scoped_full_join_keys registry at join-resolution time instead."""
-    parent: dict[str, str] = {}
-
-    def find(x: str) -> str:
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    partial: set[str] = set()
-    for source, target, join_type in joins:
-        rs, rt = find(source), find(target)
-        if rs != rt:
-            # LEFT preserves the source (left operand) -> source is the canonical
-            # root; every other join type roots on the target.
-            if join_type is JoinType.LEFT_OUTER:
-                parent[rt] = rs
-            else:
-                parent[rs] = rt
-        if join_type is JoinType.LEFT_OUTER:
-            partial.add(target)
-    merge_map = {a: find(a) for a in parent if find(a) != a}
-    return merge_map, partial
+    environment: Environment,
+) -> list[tuple[tuple[str, str, JoinType], EdgeScope]]:
+    """Tag each build-scoped join tuple with its declaration scope: a tuple
+    persisted on the environment is a global `merge`, anything else arrived
+    from a statement. The scope decides what a FULL tuple DECLARES — a global
+    merge asserts EQUAL domains, a query `union join` asserts INCOMPARABLE."""
+    global_merges = set(environment.merges)
+    return [
+        (
+            join,
+            EdgeScope.GLOBAL if join in global_merges else EdgeScope.STATEMENT,
+        )
+        for join in joins
+    ]
 
 
 class Factory:
@@ -2287,16 +2301,17 @@ class Factory:
         self.aggregate_grain = aggregate_grain
         self.environment = environment
         # Build-scoped joins (query JOIN clauses plus environment MERGE
-        # statements) relate two key concepts. TWO mechanisms do this, split by
+        # statements — the same relation declared at different scopes, resolved
+        # identically) relate two key concepts. TWO mechanisms do this, split by
         # JOIN SEMANTICS (not by key kind — a root-keyed FULL still needs
-        # coalesce, a derived-keyed INNER still substitutes):
+        # coalesce):
         #
         #   * SUBSTITUTION (scoped_merge_map -> `_build_concept` swap): the
         #     source address is replaced by its canonical target everywhere
         #     (refs, grain components, datasource column bindings). Correct ONLY
         #     when the key equality holds on EVERY output row, so one logical key
-        #     can render from one physical column: INNER, global `merge`, the
-        #     FULL canonical-key registry, and dependent-grain collapse.
+        #     can render from one physical column: the FULL canonical-key
+        #     registry and dependent-grain collapse.
         #
         #   * IDENTITY + pseudonym + coalesce (scoped_merge_sources +
         #     scoped_outer_identity_sources, coalesced at the merge node): the
@@ -2307,65 +2322,41 @@ class Factory:
         #     a row-by-row `coalesce` of both columns and substitution — having
         #     destroyed one column — could not represent it.
         #
-        # KNOWN INCOMPLETENESS: for a ROOT OUTER key both run — the output
-        # concept stays projectable via identity (alias_origin_lookup) but its
-        # DATASOURCE BINDING is still substituted to the canonical. So the FULL
-        # coalesce attaches only to the canonical side; projecting the authored
-        # source key renders its raw (NULL-on-unmatched) column. Rowset keys
-        # keep distinct bindings and coalesce on either side. See the strict
-        # xfail in tests/test_scoped_join_permutations.py. scoped_partial_sources
-        # marks the LEFT-join side whose datasource binding must be partial.
+        # ROOT OUTER keys stay on the identity path end-to-end: a
+        # binding-keyed OUTER source (scoped_outer_identity_sources, below)
+        # keeps its own binding instead of substituting to the canonical, so
+        # the FULL coalesce spans both members regardless of which side is
+        # projected (pinned in tests/test_scoped_join_permutations.py).
+        # scoped_partial_sources marks the LEFT-join side whose datasource
+        # binding must be partial.
         self.scoped_joins: list[tuple[str, str, JoinType]] = scoped_joins or []
-        self.scoped_merge_map, self.scoped_partial_sources = _build_scoped_merge_index(
-            self.scoped_joins
+        # The declared-edge domain graph for this build: every scoped join is
+        # a domain DECLARATION (subset / equal / incomparable) and the legacy
+        # registries below are graph queries (docs/domain_graph_design.md).
+        self.domain_graph = DomainGraph.from_scoped_joins(
+            scope_tagged_joins(self.scoped_joins, environment)
         )
+        self.scoped_merge_map = dict(self.domain_graph.canonical_map())
+        self.scoped_partial_sources = self.domain_graph.subset_sources()
         self._source_identity_addresses: set[str] = set()
+        # A global `merge` IS a scoped join persisted on the environment (FULL
+        # non-partial / LEFT partial). It resolves identically to the equivalent
+        # query-scoped join; the only difference is scope (merges are re-injected
+        # at sub-build boundaries, query joins are not).
         full_join_sources = {
             source
-            for source, _, join_type in self.scoped_joins
+            for source, target, join_type in self.scoped_joins
             if join_type is JoinType.FULL
         }
         self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
         for source, target in self.scoped_merge_map.items():
             self.scoped_merge_sources_by_target[target].add(source)
-        # Canonical keys of FULL joins: partial against every side pre-resolution,
-        # but complete (coalesced) in the resolved FULL JOIN output.
-        # Registry of FULL-join canonical keys. The key stays complete; this set
-        # is what drives join resolution to emit a FULL JOIN for it (see
-        # get_join_type). Both join sides collapse onto the canonical address, so
-        # both binding datasources advertise it and the FULL JOIN coalesces them.
-        self.scoped_full_join_keys: set[str] = {
-            self.scoped_merge_map.get(addr, addr)
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.FULL
-            for addr in (s, t)
-        }
+        # FULL-join canonical keys (graph EQUAL/∦ endpoints) and LEFT anchor keys
+        # (declared-subset anchors) are no longer materialized here — join
+        # resolution queries them from BuildEnvironment.domain_graph directly
+        # (outer_relation_keys / left_anchor_keys).
+        self._validate_scoped_join_endpoint_identity(environment)
 
-        # Canonical keys of *query-scoped* LEFT joins (the preserved-anchor side).
-        # A LEFT join's source `s` is the anchor and becomes the canonical root, so
-        # its key address marks the anchor. Join resolution uses this to base the
-        # join tree on the complete anchor so EACH optional source becomes a
-        # directional LEFT_OUTER rather than two co-anchored partials collapsing to
-        # FULL (TPC-DS q78). Environment `merge ~` LEFT joins are EXCLUDED: their
-        # consolidation is a symmetric multi-fact FULL by design, not a directional
-        # anchor preservation.
-        merge_tuples = set(environment.merges)
-        self.scoped_left_anchor_keys: set[str] = {
-            self.scoped_merge_map.get(s, s)
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.LEFT_OUTER and (s, t, jt) not in merge_tuples
-        }
-
-        # Collapsed-away sources that get the merge-style source-identity +
-        # pseudonym handling below (so a *derived* join key stays sourceable from
-        # the collapsed side). INNER asserts source == target — a symmetric
-        # equality exactly like a global `merge` — so every INNER source
-        # qualifies. LEFT additionally needs it for a derived key that has no
-        # datasource binding (root/rowset LEFT keys already resolve via the
-        # column-partial / rowset machinery and must not be double-handled).
-        # FULL on a derived key behaves like INNER for sourcing; its both-sides
-        # coalesce of the canonical key is wired at the merge node. Root/rowset
-        # FULL keeps the canonical-column full-join-key machinery instead.
         def _is_binding_keyed(addr: str) -> bool:
             c = environment.concepts.get(addr)
             return c is None or c.derivation in (Derivation.ROOT, Derivation.ROWSET)
@@ -2374,46 +2365,56 @@ class Factory:
             c = environment.concepts.get(addr)
             return c is not None and c.derivation == Derivation.ROWSET
 
+        def _is_derived_keyed(addr: str) -> bool:
+            c = environment.concepts.get(addr)
+            return c is not None and c.derivation == Derivation.BASIC
+
+        # A FULL relation is symmetric, so the rowset-outer identity handling
+        # must engage whichever side the rowset key was authored on — keying on
+        # the source alone let `full join <derived expr> = <rowset key>` fall
+        # through to the substitution path, which destroys the derived key's
+        # column (the rowset key becomes the group canonical and the derived
+        # side has no binding for it). LEFT stays source-keyed: its operand
+        # order is directional by definition. A COALESCING (∦ — query
+        # `full`/`union` join) pair whose endpoints are BOTH derived
+        # expressions (`cast(a.k) = cast(b.k)`, q97) has the same problem with
+        # no rowset key to catch it: substituting one virt key onto the other
+        # destroys its side's compute expression, and with only one distinct
+        # group member left the exposure machinery disengages — sourcing the
+        # surviving key then re-enters its own rowset (infinite recursion).
+        # Both endpoints keep identity; each side materializes its own key
+        # column and the merge coalesces them. Gated to ∦ declarations: an
+        # EQUAL (global `merge`) pair of derived concepts declares identical
+        # domains, where substitution is the correct single-column plan.
+        coalescing_endpoints = self.domain_graph.coalescing_relation_members()
+
+        def _rowset_outer_pair(s: str, t: str, jt: JoinType) -> bool:
+            if jt is JoinType.LEFT_OUTER:
+                return _is_rowset_keyed(s)
+            if jt is JoinType.FULL:
+                return (
+                    _is_rowset_keyed(s)
+                    or _is_rowset_keyed(t)
+                    or (
+                        s in coalescing_endpoints
+                        and t in coalescing_endpoints
+                        and _is_derived_keyed(s)
+                        and _is_derived_keyed(t)
+                    )
+                )
+            return False
+
         self.scoped_rowset_outer_sources: set[str] = {
-            s
-            for s, _, jt in self.scoped_joins
-            if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
+            s for s, t, jt in self.scoped_joins if _rowset_outer_pair(s, t, jt)
         }
         self.scoped_rowset_outer_targets: set[str] = {
-            t
-            for s, t, jt in self.scoped_joins
-            if jt in (JoinType.LEFT_OUTER, JoinType.FULL) and _is_rowset_keyed(s)
-        }
-        # INNER join onto a rowset: the collapsed-away source must NOT be
-        # substituted onto the rowset canonical. Substitution would attach the
-        # source's datasource binding to the rowset concept, letting discovery
-        # source the rowset key from that raw column and silently SKIP the
-        # rowset's own lineage (its WHERE filter) entirely — wrong results for
-        # one key, invalid SQL for several (the keys source inconsistently). The
-        # rowset must materialize from its lineage and INNER-join as a
-        # restriction, exactly like the OUTER-rowset identity path. So these
-        # sources keep their own identity + a pseudonym to the canonical instead
-        # of being swapped. Regular fact/dim INNER joins stay on substitution
-        # (multi-way parity + dependent-grain collapse rely on it).
-        # INNER equality is symmetric, so union-find may pick EITHER endpoint as
-        # the group canonical and may collapse the other one transitively (a
-        # repeated-left-anchor star join `a=b, a=c` roots a,c onto b even though
-        # c was never an authored source). Every collapsed endpoint — not just
-        # the authored source — must keep its identity, or a rowset spoke gets
-        # substituted onto the canonical and loses its own WHERE filter.
-        self.scoped_rowset_inner_sources: set[str] = {
-            addr
-            for s, t, jt in self.scoped_joins
-            if jt is JoinType.INNER and (_is_rowset_keyed(s) or _is_rowset_keyed(t))
-            for addr in (s, t)
-            if addr in self.scoped_merge_map
+            t for s, t, jt in self.scoped_joins if _rowset_outer_pair(s, t, jt)
         }
         self.scoped_key_merge_map = {
             source: target
             for source, target in self.scoped_merge_map.items()
             if source not in full_join_sources
             and source not in self.scoped_rowset_outer_targets
-            and source not in self.scoped_rowset_inner_sources
         }
         self.scoped_merge_sources: set[str] = set()
         # OUTER-join keys with a datasource/rowset binding (ROOT/ROWSET) keep
@@ -2425,41 +2426,23 @@ class Factory:
         # partiality, so it stays in scoped_partial_derived and out of this set.)
         self.scoped_outer_identity_sources: set[str] = set()
         scoped_pseudonym_sources: set[str] = set()
+        # EVERY collapsed-away endpoint of a FULL/LEFT relation (any endpoint the
+        # union-find mapped to a canonical other than itself — a LEFT's target, a
+        # FULL's source, or either endpoint displaced by a chained relation) keeps
+        # its own identity plus a mutual pseudonym to its canonical, so the
+        # relation stays sourceable from both sides even when one side has no
+        # independent source (e.g. `merge derived_metric into unbound_property`,
+        # where the canonical is only reachable through the source's derivation).
         for s, t, jt in self.scoped_joins:
-            if jt is JoinType.INNER:
-                # Symmetric equality: wire every collapsed endpoint (see the
-                # scoped_rowset_inner_sources note above), not just the authored
-                # source, so a transitively-collapsed spoke stays sourceable via
-                # its pseudonym back to the group canonical.
-                for addr in (s, t):
-                    if addr in self.scoped_merge_map:
-                        self.scoped_merge_sources.add(addr)
-                        scoped_pseudonym_sources.add(addr)
-            elif jt is JoinType.LEFT_OUTER and not _is_binding_keyed(t):
-                # LEFT collapses target->source; the target is the partial side.
-                # A derived target lacks a binding to carry partiality, so it
-                # needs the merge mechanism and stays in scoped_partial_derived.
-                self.scoped_merge_sources.add(t)
-                scoped_pseudonym_sources.add(t)
-            elif jt is JoinType.LEFT_OUTER:
-                # Binding-keyed (root/rowset) target: same identity/pseudonym
-                # wiring so it stays sourceable, but its partiality is owned by
-                # the binding / rowset machinery (excluded from partial_derived).
-                self.scoped_merge_sources.add(t)
-                self.scoped_outer_identity_sources.add(t)
-                scoped_pseudonym_sources.add(t)
-            elif jt is JoinType.FULL and not _is_binding_keyed(s):
-                # FULL collapses source->target exactly like INNER, so a derived
-                # collapsed-away source needs the merge mechanism to stay
-                # sourceable from its own derivation (no datasource binding). The
-                # both-sides coalesce of the FULL key is wired at the merge node.
-                self.scoped_merge_sources.add(s)
-            elif jt is JoinType.FULL:
-                # Binding-keyed source: keep its own identity + a mutual pseudonym
-                # so either authored side renders from the merge-node coalesce.
-                self.scoped_merge_sources.add(s)
-                self.scoped_outer_identity_sources.add(s)
-                scoped_pseudonym_sources.add(s)
+            if jt not in (JoinType.LEFT_OUTER, JoinType.FULL):
+                continue
+            for addr in (s, t):
+                if addr not in self.scoped_merge_map:
+                    continue
+                self.scoped_merge_sources.add(addr)
+                scoped_pseudonym_sources.add(addr)
+                if _is_binding_keyed(addr):
+                    self.scoped_outer_identity_sources.add(addr)
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
@@ -2478,13 +2461,6 @@ class Factory:
             # when the links are present.
             pending: list[tuple[str, str]] = []
             for source in scoped_pseudonym_sources:
-                # A binding-keyed FULL source keeps its identity/pseudonym wiring;
-                # a derived FULL source keeps the canonical-column machinery.
-                if source not in self.scoped_merge_map or (
-                    source in full_join_sources
-                    and source not in self.scoped_outer_identity_sources
-                ):
-                    continue
                 canonical_addr = self.scoped_merge_map[source]
                 if source not in self.pseudonym_map.get(canonical_addr, ()):
                     pending.append((source, canonical_addr))
@@ -2523,6 +2499,54 @@ class Factory:
         # self-referential metric out of an abstract aggregate's resolution
         # grain (see `_abstract_resolution_grain`).
         self._building: list[str] = []
+
+    def _scoped_join_key_groups(self) -> dict[str, set[str]]:
+        """Authored join-key equivalence groups, canonical -> all members."""
+        return self.domain_graph.join_key_groups()
+
+    def _validate_scoped_join_endpoint_identity(self, environment: Environment) -> None:
+        """Reject a FULL/UNION relation between two ROOT keys bound only in the
+        same table(s): the unified key is a coalesce ACROSS the two endpoints'
+        populations, which a single scan cannot represent — the plan silently
+        renders one endpoint's own column as the unified axis instead (wrong
+        whenever either domain has values the other lacks). No two-instance
+        plan exists yet (docs/domain_graph_design.md, endpoint-identity seam);
+        fail clean and point at the working idiom. LEFT/SUBSET relations
+        resolve fine one-table: the anchor column IS the unified axis. Endpoints
+        with a binding OUTSIDE the shared tables can still resolve and pass."""
+        pairs = [(s, t) for s, t, jt in self.scoped_joins if jt is JoinType.FULL]
+        if not pairs:
+            return
+        binding_map: dict[str, set[str]] | None = None
+        for source, target in pairs:
+            source_concept = environment.concepts.get(source)
+            target_concept = environment.concepts.get(target)
+            if source_concept is None or target_concept is None:
+                continue
+            if not (
+                source_concept.derivation is Derivation.ROOT
+                and target_concept.derivation is Derivation.ROOT
+            ):
+                continue
+            if binding_map is None:
+                binding_map = defaultdict(set)
+                for datasource in environment.datasources.values():
+                    if datasource.status != DatasourceState.PUBLISHED:
+                        continue
+                    for column in datasource.columns:
+                        binding_map[column.concept.address].add(datasource.identifier)
+            source_bindings = binding_map.get(source, set())
+            target_bindings = binding_map.get(target, set())
+            if source_bindings and source_bindings == target_bindings:
+                shared = ", ".join(sorted(source_bindings))
+                raise InvalidSyntaxException(
+                    f"Cannot union '{source}' with '{target}': both keys are bound "
+                    f"only in the same datasource(s) ({shared}), and the unified "
+                    "key must coalesce across two separate reads of it. Import the "
+                    "model twice under different namespaces and relate the two "
+                    "imports' keys instead (e.g. `import emp as e1; import emp as "
+                    "e2; ... join e1.key = e2.other_key`)."
+                )
 
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
@@ -2589,6 +2613,7 @@ class Factory:
             int
             | str
             | float
+            | Decimal
             | list
             | date
             | TupleWrapper
@@ -2603,6 +2628,7 @@ class Factory:
         int
         | str
         | float
+        | Decimal
         | list
         | date
         | TupleWrapper
@@ -2820,7 +2846,6 @@ class Factory:
             and base.address not in self._source_identity_addresses
             and base.address not in self.scoped_rowset_outer_sources
             and base.address not in self.scoped_rowset_outer_targets
-            and base.address not in self.scoped_rowset_inner_sources
         ):
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
@@ -3074,6 +3099,14 @@ class Factory:
             ),
             concept=fetched,
             modifiers=modifiers,
+            # a scoped join/merge substituted this binding onto the relation's
+            # canonical address — thread the authored origin forward so
+            # same-address join-pair rulings can tell the sides apart.
+            origin_address=(
+                address
+                if address in self.scoped_merge_map and fetched.address != address
+                else None
+            ),
         )
 
     @_build_dispatch.register
@@ -3299,7 +3332,58 @@ class Factory:
     def _(self, base: Comparison) -> BuildComparison | bool:
         return self._build_comparison(base)
 
+    def _coalescing_presence_probe(self, ref: ConceptRef) -> Concept | None:
+        """Per-side probe for a null test on a coalescing join key-group member.
+
+        A `full`/`union` join key group renders as the mandatory coalesce of
+        every member, so `member is [not] null` would read the fused column and
+        never observe the member's own side being absent — presence counts over
+        the join silently collapse to (0, 0, N) (TPC-DS q97). The null test asks
+        a per-ROW question ("did this side match?"), not a domain question, so
+        rewrite its operand to a virt passthrough of the member. The probe is
+        materialized on the member's own rowset BEFORE the coalescing merge
+        (gen_rowset_node), rides through the FULL join un-fused, and is NULL
+        exactly where the member's side is absent. Projecting the member is
+        untouched: that remains the coalesced group axis."""
+        address = ref.address
+        if address not in self.domain_graph.coalescing_relation_members():
+            return None
+        member = self.environment.concepts.get(address)
+        if member is None or member.derivation != Derivation.ROWSET:
+            return None
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        name = f"{PRESENCE_PROBE_PREFIX}{string_to_hash(address)}"
+        if name in self.local_non_build_concepts:
+            return self.local_non_build_concepts[name]
+        # single-arg COALESCE: value-identity but structurally opaque — an
+        # ALIAS would mint a structural ≡ edge and collapse the probe back
+        # onto the member (defeating it)
+        probe_fn = Function(
+            operator=FunctionType.COALESCE,
+            output_datatype=member.datatype,
+            output_purpose=Purpose.PROPERTY,
+            arguments=[ref],
+        )
+        new = arbitrary_to_concept(probe_fn, environment=self.environment, name=name)
+        built = self._build_concept(new)
+        self.local_concepts[name] = built
+        self.local_non_build_concepts[name] = new
+        return new
+
     def _build_comparison(self, base: Comparison) -> BuildComparison | bool:
+        if base.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+            probe: Concept | None = None
+            if base.right == MagicConstants.NULL and isinstance(base.left, ConceptRef):
+                probe = self._coalescing_presence_probe(base.left)
+                if probe is not None:
+                    base = dc_replace(base, left=probe.reference)
+            elif base.left == MagicConstants.NULL and isinstance(
+                base.right, ConceptRef
+            ):
+                probe = self._coalescing_presence_probe(base.right)
+                if probe is not None:
+                    base = dc_replace(base, right=probe.reference)
         left = base.left
         validation = requires_concept_nesting(base.left)
         if validation:
@@ -3399,6 +3483,12 @@ class Factory:
         )
 
     @_build_dispatch.register
+    def _(self, base: SubqueryItem) -> BuildConcept:
+        # A scalar subquery IS its single rowset output; drop the authoring
+        # `select` payload and build the bare concept (grain-less → cross-join).
+        return self.build(base.content)
+
+    @_build_dispatch.register
     def _(self, base: SubselectItem) -> BuildSubselectItem:
         return self._build_subselect_item(base)
 
@@ -3493,10 +3583,36 @@ class Factory:
             base.content, (Function, AggregateWrapper, WindowItem, FilterItem)
         ):
             _, built = self.instantiate_concept(base.content)
-            return BuildFilterItem(content=built, where=self.build(base.where))
+        else:
+            built = self.build(base.content)
         return BuildFilterItem(
-            content=self.build(base.content), where=self.build(base.where)
+            content=built, where=self._build_filter_where(base.where, built)
         )
+
+    def _build_filter_where(
+        self, where: WhereClause, content: "BuildExpr"
+    ) -> BuildWhereClause:
+        """Build a filter's `? <condition>` so a bare (no `by`) aggregate in it
+        co-grains to the FILTERED CONTENT's grain — the rows being filtered —
+        rather than inheriting the outer consuming grain. Mirrors how a SELECT's
+        WHERE co-grains its aggregates to the select grain (HAVING semantics).
+
+        Without this, `auto f <- p ? (count(x) > 4)` consumed in another model
+        groups the count by the consumer's key (e.g. a foreign `catalog.item.id`
+        for a `store`-derived count), producing a disconnected/unresolvable query;
+        consumed at its own grain it groups by `f` itself, recursing."""
+        # A non-concept content (e.g. a literal) has no grain to co-grain to.
+        if not isinstance(content, BuildConcept):
+            return self.build(where)
+        content_grain = Grain(components=set(content.grain.components))
+        if self.aggregate_grain == content_grain:
+            return self.build(where)
+        saved = self.aggregate_grain
+        self.aggregate_grain = content_grain
+        try:
+            return self.build(where)
+        finally:
+            self.aggregate_grain = saved
 
     @_build_dispatch.register
     def _(self, base: Parenthetical) -> BuildParenthetical:
@@ -3718,13 +3834,12 @@ class Factory:
         new = BuildEnvironment(
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,
-            scoped_partial_sources=set(self.scoped_partial_sources),
             scoped_partial_derived=(
                 (self.scoped_merge_sources & self.scoped_partial_sources)
                 - self.scoped_outer_identity_sources
             ),
-            scoped_full_join_keys=set(self.scoped_full_join_keys),
-            scoped_left_anchor_keys=set(self.scoped_left_anchor_keys),
+            scoped_join_key_groups=self._scoped_join_key_groups(),
+            domain_graph=assemble_full_graph(base, self.domain_graph),
         )
 
         for k, v in base.concepts.all_items():
@@ -3756,15 +3871,12 @@ class Factory:
             )
             if src is None:
                 continue
-            # For a merge-style source (INNER, or a LEFT derived key), build the
-            # source as its OWN identity (its lineage + address), not the
-            # collapsed target, so the merged key can be sourced from the
-            # collapsed side (mirroring global merge). The main build loop
-            # already cached source_addr -> the collapsed target in
-            # local_concepts and __build_concept would early-exit on it; evict it
-            # across this build and restore the collapse mapping after. Other
-            # sources (root/rowset LEFT, FULL) keep the prior behavior (the
-            # partial / full-join machinery owns their resolution).
+            # Build the collapsed-away source as its OWN identity (its lineage +
+            # address), not the collapsed target, so the joined key stays
+            # sourceable from the collapsed side. The main build loop already
+            # cached source_addr -> the collapsed target in local_concepts and
+            # __build_concept would early-exit on it; evict it across this build
+            # and restore the collapse mapping after.
             if source_addr in self.scoped_merge_sources:
                 collapsed = self.local_concepts.pop(source_addr, None)
                 previous_identity_addresses = self._source_identity_addresses

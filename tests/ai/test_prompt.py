@@ -145,17 +145,16 @@ def test_aggregate_functions_renders_known_aggregates():
     """The agent prompt's `Aggregate Functions:` section must list the actual
     aggregate signatures. The previous filter used the enum name instead of
     the member, leaving the list empty and rendering as ``[]`` — useless to
-    the model. Regression test for that exact bug."""
+    the model. Regression test for that exact bug. Same-arity aggregates are
+    now consolidated onto one signature group (``sum|max|...(<arg1>)``)."""
     from trilogy.ai.constants import AGGREGATE_FUNCTIONS
 
     assert isinstance(AGGREGATE_FUNCTIONS, str)
     assert AGGREGATE_FUNCTIONS  # not empty
-    # Canonical aggregates must appear with their rendered signatures.
-    assert "sum(<arg1>)" in AGGREGATE_FUNCTIONS
-    assert "count(<arg1>)" in AGGREGATE_FUNCTIONS
-    assert "avg(<arg1>)" in AGGREGATE_FUNCTIONS
-    assert "max(<arg1>)" in AGGREGATE_FUNCTIONS
-    assert "min(<arg1>)" in AGGREGATE_FUNCTIONS
+    # Canonical aggregates must appear, consolidated under their `(<arg1>)` signature.
+    assert "(<arg1>)" in AGGREGATE_FUNCTIONS
+    for name in ("sum", "count", "avg", "max", "min"):
+        assert name in AGGREGATE_FUNCTIONS
 
 
 def test_trilogy_syntax_reference_embeds_aggregate_functions():
@@ -167,5 +166,5 @@ def test_trilogy_syntax_reference_embeds_aggregate_functions():
     ref = get_trilogy_syntax_reference()
     assert "Aggregate Functions:" in ref
     aggregates_block = ref.split("Aggregate Functions:", 1)[1].split("Functions:", 1)[0]
-    assert "sum(<arg1>)" in aggregates_block
+    assert "sum" in aggregates_block and "(<arg1>)" in aggregates_block
     assert aggregates_block.strip() != "[]"

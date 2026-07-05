@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from trilogy.core.enums import (
     AggregateGroupingMode,
@@ -20,6 +21,9 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import is_sole_consumer, repoint_consumers
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+
+if TYPE_CHECKING:
+    from trilogy.core.domain_graph import DomainGraph
 
 UNSAFE_DERIVATIONS = {
     Derivation.WINDOW,
@@ -46,6 +50,27 @@ def has_unsafe_derivations(cte: CTE) -> bool:
 
 def has_basic_derivation(cte: CTE) -> bool:
     return any(concept.derivation == Derivation.BASIC for concept in cte.output_columns)
+
+
+def produces_unbound_rowset(cte: CTE, domain_graph: "DomainGraph | None") -> bool:
+    """True if `cte` is a rowset node whose rename output backs an UNBOUND
+    merge/scoped canonical key — a key with no datasource binding, renderable
+    only through this rename (`stages.stage` -> `local.step`). Collapsing folds
+    the rename away and strands the key (INVALID_REFERENCE_BUG), so keep the
+    boundary intact.
+
+    A rowset output that is unaliased (no pseudonyms) or backs a BOUND key
+    (`agg.item_sk` -> `ss.item.id`, resolvable from its own datasource columns)
+    is safe to fold — the reference survives via the bound column. When no
+    domain graph is available (direct construction), fall back to treating any
+    aliased rowset output as unbound (conservative: correctness over size)."""
+    for column in cte.output_columns:
+        if not isinstance(column.lineage, BuildRowsetItem):
+            continue
+        for pseudonym in column.pseudonyms:
+            if domain_graph is None or not domain_graph.binding_sources(pseudonym):
+                return True
+    return False
 
 
 def get_merge_mode(cte: CTE) -> MergeMode | None:
@@ -187,6 +212,14 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             else cte.condition
         )
 
+    # The child's row limit (and the ORDER BY it selects under) applies to the
+    # merged CTE's output — LIMIT is the last logical operation of a SELECT,
+    # so absorbing the parent's shape below it is row-identical. (The caller
+    # rejects limited PARENTS, the direction that would cross the boundary.)
+    if cte.limit is not None:
+        parent.limit = cte.limit
+        parent.order_by = cte.order_by
+
     if merge_mode == MergeMode.AGGREGATE:
         # Aggregate merge: keep only columns the child exposes (grouping keys +
         # aggregate outputs). Everything else is rolled up.
@@ -220,9 +253,10 @@ class CollapseSingleParent(OptimizationRule):
     child, eliminating an unnecessary subquery.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, domain_graph: "DomainGraph | None" = None) -> None:
         super().__init__()
         self.completed: set[str] = set()
+        self.domain_graph = domain_graph
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -262,6 +296,13 @@ class CollapseSingleParent(OptimizationRule):
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
             return False, None
+        # A row LIMIT on the PARENT is an opaque boundary: folding the child's
+        # shape into it moves work below the limit (pre-limit rows change).
+        # A limited CHILD is fine — LIMIT evaluates last in the merged SELECT
+        # and `apply_child_merge` carries it (with its ORDER BY) across.
+        if parent.limit is not None:
+            self.debug(f"Parent {parent.name} carries a row limit, skipping")
+            return False, None
         if parent_is_ineligible(parent, merge_mode):
             self.debug(
                 f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping"
@@ -286,6 +327,34 @@ class CollapseSingleParent(OptimizationRule):
         if has_unsafe_derivations(parent):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
+
+        # Never fold away a rowset node whose rename backs an unbound merge/
+        # scoped key: collapsing strands the key (INVALID_REFERENCE_BUG). A
+        # rowset over bound keys (or unaliased outputs) folds normally.
+        if produces_unbound_rowset(cte, self.domain_graph) or produces_unbound_rowset(
+            parent, self.domain_graph
+        ):
+            self.debug(
+                f"CTE {cte.name} or parent {parent.name} is a rowset node backing "
+                "an unbound key, skipping"
+            )
+            return False, None
+
+        # A source_map entry pointing at the parent under an address the parent
+        # does not itself output is a pseudonym rename — e.g. a merge node
+        # exposing a canonical key (`local.step`) from a side that materializes
+        # its merged pseudonym (`stages.stage`). That mapping exists ONLY in
+        # this CTE's source_map; `apply_child_merge` does not carry it, and a
+        # lineage-less key has no local derivation to fall back on, so the
+        # collapsed CTE could never render the address (INVALID_REFERENCE_BUG).
+        parent_outputs = parent.output_lcl
+        for address, sources in cte.source_map.items():
+            if parent.name in sources and address not in parent_outputs:
+                self.log(
+                    f"CTE {cte.name} sources {address} from parent {parent.name} "
+                    "under a pseudonym rename the merge cannot carry, skipping"
+                )
+                return False, None
         if merge_mode == MergeMode.AGGREGATE:
             # An AGGREGATE merge wraps the parent's exposed columns in the child's
             # aggregates. A parent column that is rendered inline (no source_map

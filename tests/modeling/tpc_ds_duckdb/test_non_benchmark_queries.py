@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from trilogy import Dialects, Executor
+from trilogy import Dialects
 from trilogy.constants import CONFIG
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
@@ -55,7 +55,7 @@ limit 10
 def test_q64_rowset_join_with_second_fact_join_hoist(engine_sf001):
     """Regression for the q64 stale-CTE-alias BinderException.
 
-    A scoped INNER join onto a filtering rowset (`catalog_item_agg`) carries the
+    A scoped LEFT join onto a filtering rowset (`catalog_item_agg`) carries the
     rowset's key forward as a pass-through CTE's own output. When a SECOND
     composite fact join (`ss<->pr`) and the broad dimension-join graph let
     JoinHoist lift the rowset join up to the shared grouped parent, the hoist
@@ -79,12 +79,12 @@ select
 left join cs.order_number = cr.order_number and cs.item.id = cr.item.id
 ;
 
-where ss.item.text_id in catalog_item_agg.item_id
-  and catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
+where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
   and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
   and ss.item.current_price between 65 and 74
   and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
   and ss.date.year in (1999, 2000)
+  and pr.return_amount is not null
 select
   ss.item.product_name, ss.item.text_id as item_id,
   ss.store.name as store_name, ss.store.zip as store_zip,
@@ -99,8 +99,8 @@ select
   sum(ss.ext_wholesale_cost) as wholesale_cost_sum,
   sum(ss.ext_list_price) as list_price_sum,
   sum(ss.coupon_amt) as coupon_amt_sum
-inner join ss.ticket_number = pr.ticket_number and ss.item.id = pr.item.id
-inner join ss.item.text_id = catalog_item_agg.item_id
+left join ss.ticket_number = pr.ticket_number and ss.item.id = pr.item.id
+left join ss.item.text_id = catalog_item_agg.item_id
 order by ss.item.product_name, ss.store.name
 limit 100;
 """
@@ -303,6 +303,33 @@ order by total_sum desc limit 5;
     assert "INVALID_REFERENCE_BUG" not in engine.generate_sql(query)[-1]
     rows = engine.execute_text(query)[-1].fetchall()
     assert rows
+
+
+def test_q67_named_grouping_partition_window_aliased_no_recursion(engine):
+    """q67 'top-100 by category rank': authoring the pieces as named `auto`
+    concepts — a window `rnk` partitioned by a NAMED grouping()-derived concept
+    `part`, consumed through an alias `rnk as r`, under a `by rollup(...)` select —
+    used to blow the build recursion limit. The ALIAS grain branch appended the
+    window concept itself instead of routing it through the window-key/grouping
+    substitution, so `rnk` (and its grouping-derived partition) re-entered the
+    select grain that grouping() resolves *to* — a cyclic grain. The aliased
+    window must contribute its keys, matching direct (unaliased) consumption."""
+    query = """
+import store_sales as ss;
+auto part <- case when grouping(ss.item.category) = 1 then '~GT~'
+             else ss.item.category end;
+auto rnk <- rank(ss.item.class) over (partition by part order by sum(ss.quantity) desc);
+where ss.date.year = 2000
+select ss.item.category, ss.item.class, sum(ss.quantity) as q, rnk as r
+by rollup (ss.item.category, ss.item.class)
+order by r asc limit 15;
+"""
+    # No RecursionError at build, no sentinel, and the SQL executes.
+    assert "INVALID_REFERENCE_BUG" not in engine.generate_sql(query)[-1]
+    rows = engine.execute_text(query)[-1].fetchall()
+    assert rows
+    # Ranks are 1-based dense within each partition; the top row is rank 1.
+    assert rows[0][3] == 1
 
 
 def test_copy_perf():
@@ -631,10 +658,12 @@ limit 5;
     engine.execute_query(query).fetchall()
 
 
-def test_merge_grain_discovery(engine: Executor):
-
-    engine.parse_text("""import store_sales as store_sales;""")
-    environment = engine.environment
+def test_merge_grain_discovery():
+    # pure-discovery test: use a FRESH environment, not the shared session
+    # engine's — earlier tests in this module run `merge` statements that
+    # persist on the shared env and would change this grain
+    environment = Environment(working_path=working_path)
+    parse_text("""import store_sales as store_sales;""", environment)
     build_environment = environment.materialize_for_select()
     graph = generate_graph(build_environment)
 

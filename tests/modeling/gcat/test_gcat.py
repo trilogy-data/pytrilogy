@@ -561,6 +561,10 @@ LIMIT 1
 ;
 """)
     sql = base.generate_sql(queries[-1])
+    # the launch side's vehicle keys are `~` bindings (⊑ the vehicle domain),
+    # but the launch CTE is null-extended by the earlier LEFT join in the same
+    # chain (orgs without launches carry NULL vehicle keys) — the FULL is
+    # load-bearing for those rows and must not narrow
     pattern = (
         r'FULL JOIN "lv_info" as "vehicle_lv_info" on '
         r'"(\w+)"\."vehicle_name" = "vehicle_lv_info"\."LV_Name" AND '

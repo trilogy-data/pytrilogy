@@ -13,6 +13,12 @@ RECURSIVE_GATING_CONCEPT = "_terminal"
 
 VIRTUAL_CONCEPT_PREFIX = "_virt"
 
+# Per-side presence probes for coalescing (`full`/`union`) join key-group
+# members: a null test on a member reads the member's OWN side, not the
+# group's mandatory coalesce. Minted in Factory._coalescing_presence_probe;
+# materialized pre-merge by gen_rowset_node.
+PRESENCE_PROBE_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_presence_"
+
 # Magic rowset name for an inline `from union(...) -> (...)` TVF; its outputs are
 # exposed as bare select-local bindings, so the name never collides.
 MAGIC_TVF_UNION_NAME = "_tvf_union"
@@ -50,6 +56,14 @@ class Optimizations:
     merge_irrelevant_group_by: bool = True
     upgrade_condition_joins: bool = True
     upgrade_outer_key_set_equivalence: bool = True
+    # Trust EQUAL domain declarations (non-partial `merge a into b`) when
+    # narrowing outer joins: the merged key's FULL join may upgrade to INNER
+    # once both sides pass the completeness tests. Default ON since the
+    # always-preserving render flip (docs/subset_union_join_design.md) — a
+    # lying declaration is an author error, and the narrowed join dropping
+    # the violating rows is the ruled semantics. Query-scoped `full join` /
+    # `union join` keys never narrow regardless.
+    narrow_equal_domain_joins: bool = True
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
     join_hoist: bool = True

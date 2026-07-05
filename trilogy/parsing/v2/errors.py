@@ -7,12 +7,12 @@ from trilogy.core.exceptions import InvalidSyntaxException
 ERROR_CODES: dict[int, str] = {
     101: "Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).",
     102: (
-        "Using a SQL-style subquery (SELECT/WITH inside parens)? Trilogy does "
-        "not support subqueries - joins are auto-resolved from dotted paths. "
-        "To filter on a value that lives on a related dimension, reference its "
-        "dot-path directly. Example: instead of "
-        "`where ss.store_id in (select store_id where store.state = 'TN')`, "
-        "write `where ss.store.state = 'TN'`."
+        "Using a SQL-style CTE (`(with ... as ...)`) inside a query? Trilogy "
+        "supports inline `(select ...)` subqueries (single aliased column), but "
+        "not parenthesized `with` CTEs. Define a named `rowset <name> <- ...;` "
+        "(or `with <name> as ...;`) as a top-level statement above the query and "
+        "reference its output, or - to filter on a related dimension - use its "
+        "dot-path directly (e.g. `where ss.store.state = 'TN'`)."
     ),
     103: (
         "Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping "
@@ -93,13 +93,33 @@ ERROR_CODES: dict[int, str] = {
 }
 
 
-_SUBSELECT_RE = re.compile(r"\(\s*(select|with)\b", re.IGNORECASE)
+# A HAVING placed *after* the `by rollup/cube/grouping sets` clause is a parse
+# error — Trilogy orders HAVING *before* the grouping clause, the reverse of
+# SQL's `GROUP BY ... HAVING`. Agents reach for the SQL order and hit an opaque
+# "expected order_by or limit"; detect the shape to add a targeted hint. Matches
+# a grouping clause followed by `having` within the same statement (no `;`
+# between). Advisory only — gated behind an actual syntax error.
+_HAVING_AFTER_GROUPING = re.compile(
+    r"\bby\s+(?:rollup|cube|grouping\s+sets)\b(?:(?!;).)*?\bhaving\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def detect_having_after_grouping(content: str) -> bool:
+    return bool(_HAVING_AFTER_GROUPING.search(content))
+
+
+_SUBSELECT_RE = re.compile(r"\(\s*(with)\b", re.IGNORECASE)
 
 
 def detect_subselect(text: str, pos: int) -> int | None:
-    """Locate a SQL-style subselect — `(select ...` or `(with ...` — that is
-    still open at ``pos``. Returns the position of the opening paren, or None
-    if no such pattern is in scope. Shared by both grammar backends.
+    """Locate a parenthesized SQL-style CTE — `(with ...` — that is still open
+    at ``pos``. Returns the position of the opening paren, or None if no such
+    pattern is in scope. Shared by both grammar backends.
+
+    Inline `(select ...)` subqueries are supported now (desugared to an
+    anonymous rowset), so only the unsupported `(with ... as ...)` CTE form is
+    flagged here; a malformed `(select ...)` surfaces its own parse error.
 
     The pest backend reports the error position right at the offending
     keyword (e.g. on the `s` of `select`), so we scan a small window past

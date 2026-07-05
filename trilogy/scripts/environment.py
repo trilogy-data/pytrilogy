@@ -2,11 +2,6 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-def pairwise(t: Iterable[Any]) -> Iterable[tuple[Any, Any]]:
-    it = iter(t)
-    return zip(it, it)
-
-
 def smart_convert(value: str):
     """Convert string to appropriate Python type."""
     if not value:
@@ -26,11 +21,24 @@ def smart_convert(value: str):
 
 
 def extra_to_kwargs(arg_list: Iterable[str]) -> dict[str, Any]:
-    pairs = pairwise(arg_list)
-    final = {}
-    for k, v in pairs:
-        k = k.lstrip("--")
-        final[k] = smart_convert(v)
+    """Parse connection args given as ``key value`` pairs or ``key=value`` tokens."""
+    args = list(arg_list)
+    final: dict[str, Any] = {}
+    i = 0
+    while i < len(args):
+        key = args[i].lstrip("-")
+        if "=" in key:
+            key, value = key.split("=", 1)
+            i += 1
+        elif i + 1 < len(args):
+            value = args[i + 1]
+            i += 2
+        else:
+            raise ValueError(
+                f"Connection argument '{args[i]}' has no value; pass connection "
+                "arguments as 'key value' pairs or 'key=value'"
+            )
+        final[key] = smart_convert(value)
     return final
 
 

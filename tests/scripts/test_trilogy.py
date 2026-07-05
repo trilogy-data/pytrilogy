@@ -565,6 +565,31 @@ def test_validation_failure():
     assert "INTEGER(NULLABLE)" in results.stdout
 
 
+def test_integration_rejects_duplicate_unique_property(tmp_path: Path):
+    path = tmp_path / "duplicate_unique_property.preql"
+    path.write_text("""
+key id int;
+unique property id.code string;
+
+datasource items (id: id, code: code)
+grain (id)
+query '''
+SELECT 1 AS id, 'shared' AS code UNION ALL
+SELECT 2, 'shared'
+''';
+""")
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        ["--format", "json", "integration", str(path), "duckdb"],
+    )
+
+    assert result.exit_code == 1
+    assert "Unique property" in result.output
+    assert "local.code maps to multiple local.id values" in result.output
+
+
 def test_unit():
     path = Path(__file__).parent / "directory"
     runner = CliRunner()

@@ -1,4 +1,11 @@
 from trilogy.constants import MagicConstants
+from trilogy.core.domain_graph import (
+    DomainEdge,
+    DomainGraph,
+    DomainRelation,
+    EdgeProvenance,
+    EdgeScope,
+)
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -28,6 +35,36 @@ from trilogy.core.optimizations.value_set_join_upgrade import (
     _filters_equivalent,
     _pair_key_sets_equivalent,
 )
+
+
+def _union_declared_graph(address: str) -> DomainGraph:
+    """A query-scoped `union join <other> = <address>` declaration: the two
+    domains are incomparable and the canonical collapses onto ``address``."""
+    return DomainGraph(
+        edges=[
+            DomainEdge(
+                source="test.other_member",
+                target=address,
+                relation=DomainRelation.INCOMPARABLE,
+                scope=EdgeScope.STATEMENT,
+            )
+        ]
+    )
+
+
+def _equal_declared_graph(address: str) -> DomainGraph:
+    """A global non-partial `merge <other> into <address>` declaration: equal
+    domains, canonical collapsing onto ``address``."""
+    return DomainGraph(
+        edges=[
+            DomainEdge(
+                source="test.other_member",
+                target=address,
+                relation=DomainRelation.EQUAL,
+                scope=EdgeScope.GLOBAL,
+            )
+        ]
+    )
 
 
 def _concept(name: str):
@@ -330,6 +367,322 @@ def test_partial_concept_blocks_upgrade():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
     assert not changed
     assert root.joins[0].jointype == JoinType.FULL
+
+
+def test_full_join_key_veto_blocks_upgrade():
+    """A key registered as a query-scoped FULL/UNION join key never upgrades,
+    even when the completeness tests would pass — the canonical collapse hides
+    that the two sides are independent populations."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _grouped_child("right", source, cls)
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(
+        domain_graph=_union_declared_graph(cls.address)
+    ).optimize(root, {})
+
+    assert not changed
+    assert root.joins[0].jointype == JoinType.FULL
+
+
+def _two_concept_outer_join(
+    parent_holder: CTE, jointype: JoinType, left: CTE, right: CTE, left_key, right_key
+):
+    parent_holder.parent_ctes = [left, right]
+    parent_holder.joins = [
+        Join(
+            jointype=jointype,
+            right_cte=right,
+            modifiers=[Modifier.NULLABLE],
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=left_key,
+                    right=right_key,
+                    existing_datasource=left.source,
+                    cte=left,
+                    modifiers=[Modifier.NULLABLE],
+                )
+            ],
+        )
+    ]
+
+
+def test_rule_b_structural_proof_narrows_vetoed_full():
+    """Rule B: an authored ∦ vetoes the equivalence upgrade, but a structural
+    ⊑ path (rowset/filter lineage) against a complete, filter-free superset
+    side proves every sub-side row finds a partner — FULL narrows to the
+    directional join preserving the superset side, never to INNER."""
+    cls = _concept("CLASS")
+    sub = _concept("SUB")
+    graph = DomainGraph(
+        edges=[
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.SUBSET,
+                provenance=EdgeProvenance.STRUCTURAL,
+                condition="year = 1999",
+            ),
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.INCOMPARABLE,
+                scope=EdgeScope.STATEMENT,
+            ),
+        ]
+    )
+    source_left = _datasource_cte("dim_src", [cls])
+    source_right = _datasource_cte("agg_src", [sub])
+    left = _grouped_child("left", source_left, cls)
+    right = _grouped_child("right", source_right, sub)
+    root = _datasource_cte("root", [cls])
+    _two_concept_outer_join(root, JoinType.FULL, left, right, cls, sub)
+
+    rule = UpgradeOuterFromKeySetEquivalence(domain_graph=graph)
+    assert rule.full_join_keys, "the ∦ declaration must land in the veto set"
+    changed, _ = rule.optimize(root, {})
+    assert changed
+    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+    # re-running must not narrow further: no ⊑ proof exists for the other
+    # direction, so the superset side's preservation stays
+    changed, _ = rule.optimize(root, {})
+    assert not changed
+    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+
+
+def test_rule_b_filtered_superset_keeps_veto():
+    """A filtered superset side never proves subset-match — a WHERE on another
+    column drops domain values asymmetrically, so the vetoed FULL stays."""
+    cls = _concept("CLASS")
+    sub = _concept("SUB")
+    graph = DomainGraph(
+        edges=[
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.SUBSET,
+                provenance=EdgeProvenance.STRUCTURAL,
+            ),
+            DomainEdge(
+                source=sub.address,
+                target=cls.address,
+                relation=DomainRelation.INCOMPARABLE,
+                scope=EdgeScope.STATEMENT,
+            ),
+        ]
+    )
+    source_left = _datasource_cte("dim_src", [cls])
+    source_right = _datasource_cte("agg_src", [sub])
+    left = _grouped_child("left", source_left, cls)
+    left.condition = BuildComparison(
+        left=cls, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
+    )
+    right = _grouped_child("right", source_right, sub)
+    root = _datasource_cte("root", [cls])
+    _two_concept_outer_join(root, JoinType.FULL, left, right, cls, sub)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(domain_graph=graph).optimize(
+        root, {}
+    )
+    assert not changed
+    assert root.joins[0].jointype == JoinType.FULL
+
+
+def test_null_extended_chain_member_keeps_preservation():
+    """A chain member null-extended by an EARLIER outer join carries rows
+    where its key is absent; a later join on that key must keep its
+    preservation even when the member's own rows fully match (the
+    stores→orders→products shape: store3's row has NULL product_id and only
+    survives via the FULL)."""
+    store = _concept("STORE_ID")
+    product = _concept("PRODUCT_ID")
+    stores = _datasource_cte("stores", [store])
+    orders = _datasource_cte("orders", [store, product])
+    orders.partial_concepts = [store, product]
+    products = _grouped_child("products", _datasource_cte("p_src", [product]), product)
+    root = _datasource_cte("root", [store, product])
+    root.parent_ctes = [stores, orders, products]
+    root.joins = [
+        Join(
+            jointype=JoinType.LEFT_OUTER,
+            right_cte=orders,
+            modifiers=[Modifier.NULLABLE],
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=store,
+                    right=store,
+                    existing_datasource=stores.source,
+                    cte=stores,
+                    modifiers=[Modifier.NULLABLE],
+                )
+            ],
+        ),
+        Join(
+            jointype=JoinType.FULL,
+            right_cte=products,
+            modifiers=[Modifier.NULLABLE],
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=product,
+                    right=product,
+                    existing_datasource=orders.source,
+                    cte=orders,
+                    modifiers=[Modifier.NULLABLE],
+                )
+            ],
+        ),
+    ]
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
+    assert not changed
+    assert root.joins[1].jointype == JoinType.FULL
+
+
+def test_genuine_partial_stamp_narrows_same_address_full():
+    """A same-address pair where one side carries a genuine coverage stamp (a
+    `~` binding — no declared relation involved) and the other side is
+    complete narrows FULL to the join preserving the complete side (the
+    vehicle→launch enrichment shape)."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("dim_src", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _datasource_cte("launchish", [cls])
+    right.partial_concepts = [cls]
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
+    assert changed
+    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+
+
+def test_equal_join_key_releases_full_veto():
+    """The same key declared EQUAL (non-partial `merge a into b`) releases the
+    veto: the canonical genuinely names one value space, so the standard
+    completeness tests arbitrate and the join narrows."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _grouped_child("right", source, cls)
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(
+        domain_graph=_equal_declared_graph(cls.address)
+    ).optimize(root, {})
+
+    assert changed
+    assert root.joins[0].jointype == JoinType.INNER
+
+
+def test_equal_join_key_still_requires_completeness():
+    """EQUAL only releases the veto — the completeness tests still gate the
+    narrowing (a non-grouped side keeps the OUTER join)."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    left = _grouped_child("left", source, cls)
+    right = _datasource_cte("right_plain", [cls])
+    right.parent_ctes = [source]
+    root = _datasource_cte("root", [cls])
+    _outer_join(root, JoinType.FULL, left, right, cls)
+
+    changed, _ = UpgradeOuterFromKeySetEquivalence(
+        domain_graph=_equal_declared_graph(cls.address)
+    ).optimize(root, {})
+
+    assert not changed
+    assert root.joins[0].jointype == JoinType.FULL
+
+
+def test_narrow_equal_domain_joins_config_gates_plan():
+    """`narrow_equal_domain_joins` (default ON) controls whether the rule plan
+    honors EQUAL declarations — off, an EQUAL-declared key keeps the FULL
+    veto."""
+    from trilogy.constants import CONFIG
+    from trilogy.core.optimization import build_optimization_rule_plan
+
+    graph = _equal_declared_graph("test.CLASS")
+
+    def _rule(plan):
+        return next(
+            p for p in plan if p.name == "upgrade_outer_key_set_equivalence"
+        ).rule_factory()
+
+    assert CONFIG.optimizations.narrow_equal_domain_joins is True
+    on = _rule(build_optimization_rule_plan(domain_graph=graph))
+    assert on.full_join_keys == set()
+    CONFIG.optimizations.narrow_equal_domain_joins = False
+    try:
+        off = _rule(build_optimization_rule_plan(domain_graph=graph))
+        assert off.full_join_keys == {"test.CLASS"}
+    finally:
+        CONFIG.optimizations.narrow_equal_domain_joins = True
+
+
+_TWO_SOURCE_MODEL = """
+key ka int;
+key kb int;
+property ka.va int;
+property kb.vb int;
+
+datasource dsa (a: ka, v: va) grain (ka) address dsa;
+datasource dsb (b: kb, v: vb) grain (kb) address dsb;
+"""
+
+
+def _generated_sql(model: str, query: str) -> str:
+    from trilogy import Dialects
+    from trilogy.parsing.parse_engine_v2 import clear_parse_cache
+
+    clear_parse_cache()
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(model)
+    return executor.generate_sql(query)[-1]
+
+
+def _with_narrowing(model: str, query: str) -> str:
+    return _generated_sql(model, query)
+
+
+def _without_narrowing(model: str, query: str) -> str:
+    from trilogy.constants import CONFIG
+
+    CONFIG.optimizations.narrow_equal_domain_joins = False
+    try:
+        return _generated_sql(model, query)
+    finally:
+        CONFIG.optimizations.narrow_equal_domain_joins = True
+
+
+def test_equal_merge_narrows_full_to_inner_end_to_end():
+    """A non-partial `merge` declares EQUAL domains: by default the merged
+    key's FULL join between two authoritative scans renders INNER; opting out
+    of `narrow_equal_domain_joins` keeps the preserving FULL."""
+    model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
+    query = "select ka, sum(va) -> ta, sum(vb) -> tb;"
+    assert "FULL JOIN" in _without_narrowing(model, query)
+    narrowed = _with_narrowing(model, query)
+    assert "FULL JOIN" not in narrowed
+    assert "INNER JOIN" in narrowed
+
+
+def test_union_join_never_narrows_end_to_end():
+    """A query-scoped `union join` declares that NEITHER domain contains the
+    other — the FULL join must survive narrowing even under the flag."""
+    query = "select ka, va, vb union join ka = kb;"
+    assert "FULL JOIN" in _generated_sql(_TWO_SOURCE_MODEL, query)
+    assert "FULL JOIN" in _with_narrowing(_TWO_SOURCE_MODEL, query)
+
+
+def test_union_join_veto_beats_equal_merge_on_same_key():
+    """A key both merged (EQUAL) and authored as a query-scoped UNION keeps
+    the preservation veto — the stronger in-query declaration wins."""
+    model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
+    query = "select ka, va, vb union join ka = kb;"
+    assert "FULL JOIN" in _with_narrowing(model, query)
 
 
 def test_pair_helper_resolves_canonical_concept_aliases():

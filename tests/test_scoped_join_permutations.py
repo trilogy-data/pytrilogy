@@ -4,25 +4,25 @@ substitution-vs-identity boundary.
 Two mechanisms relate scoped-join keys (see ``Factory.__init__`` in build.py):
 
 * **substitution** — used when the key equality holds on EVERY output row
-  (INNER, global ``merge``, the FULL canonical-key registry, dependent-grain
-  collapse). One logical key renders from one physical column.
+  (global ``merge``, the FULL canonical-key registry, dependent-grain collapse).
+  One logical key renders from one physical column.
 * **identity + pseudonym + coalesce** — used when the correspondence MAY be
   absent on some rows (LEFT / FULL across distinct physical columns). The output
   key is a row-by-row ``coalesce`` of both columns, so both must survive.
 
 The chosen mechanism is a function of JOIN TYPE, not key kind: a root-keyed FULL
-still needs coalesce, a derived-keyed INNER still substitutes. These tests pin
-that for ROOT keys across populations.
+still needs coalesce, a derived-keyed merge still substitutes. These tests pin
+that for ROOT keys across populations. (Query-scoped ``inner join`` is no longer
+supported — express an intersection as a LEFT/FULL join plus a filter.)
 
 Coverage elsewhere (not duplicated here):
 * derived/BASIC keys, N-way, chained, mixed, disjoint groups — test_join_merge_parity.py
 * rowset keys (distinct + shared base) — test_scoped_join_rowset_outer_blend.py, test_scoped_join.py
 * build-env contracts + FULL registry — test_scoped_join.py
 
-KNOWN GAP captured below as a strict xfail: projecting the *source* side of a
-FULL scoped join on a ROOT key drops the coalesce (the datasource binding is
-substituted to the canonical, so only the canonical side carries the FULL
-coalesce). Projecting the canonical/target side is correct. See
+Projecting the *source* side of a FULL scoped join on a ROOT key coalesces
+correctly (FULL binding-keyed sources stay on the identity path, so both members
+coalesce regardless of which is projected). See
 ``test_full_source_side_projection_coalesces``.
 """
 
@@ -83,23 +83,19 @@ POPULATIONS: dict[str, tuple[list[tuple], list[tuple]]] = {
 }
 
 # Expected rows of `SELECT b.kid, a.m_a, b.m_b {JT} JOIN a.kid = b.kid`, ordered
-# by the (coalesced) key. INNER = intersection; LEFT preserves the `a` (left
-# operand) side; FULL is the union with the canonical key coalescing both sides.
+# by the (coalesced) key. LEFT preserves the `a` (left operand) side; FULL is the
+# union with the canonical key coalescing both sides.
 MATRIX: dict[tuple[str, str], list[tuple]] = {
-    ("partial_overlap", "INNER"): [(2, 20.0, 200.0)],
     ("partial_overlap", "LEFT"): [(1, 10.0, None), (2, 20.0, 200.0)],
     ("partial_overlap", "FULL"): [
         (1, 10.0, None),
         (2, 20.0, 200.0),
         (3, None, 300.0),
     ],
-    ("disjoint", "INNER"): [],
     ("disjoint", "LEFT"): [(1, 10.0, None)],
     ("disjoint", "FULL"): [(1, 10.0, None), (2, None, 200.0)],
-    ("empty_right", "INNER"): [],
     ("empty_right", "LEFT"): [(1, 10.0, None), (2, 20.0, None)],
     ("empty_right", "FULL"): [(1, 10.0, None), (2, 20.0, None)],
-    ("empty_left", "INNER"): [],
     ("empty_left", "LEFT"): [],
     ("empty_left", "FULL"): [(2, None, 200.0), (3, None, 300.0)],
 }
@@ -118,24 +114,17 @@ def test_root_key_two_way_matrix(tmp_path: Path, population: str, jt: str):
     assert _rows(eng, tmp_path, text) == MATRIX[(population, jt)]
 
 
-@pytest.mark.parametrize(
-    "jt,expected",
-    [
-        ("INNER", [(2, 20.0, 200.0)]),
-        ("LEFT", [(1, 10.0, None), (2, 20.0, 200.0)]),
-    ],
-)
-def test_source_side_key_projection_inner_left(tmp_path: Path, jt: str, expected: list):
-    # projecting the authored SOURCE side (a.kid) is correct for INNER (trivial)
-    # and LEFT (a is the preserved operand, so a.kid is present on every row).
+def test_source_side_key_projection_left(tmp_path: Path):
+    # projecting the authored SOURCE side (a.kid) is correct for LEFT (a is the
+    # preserved operand, so a.kid is present on every row).
     eng = _engine(tmp_path, B_MODEL)
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0), (2, 20.0)])
     _load(eng, "create table b_tbl (k int, m float)", [(2, 200.0), (3, 300.0)])
     text = (
-        _IMPORTS + f"{jt} JOIN a.kid = b.kid\n"
+        _IMPORTS + "LEFT JOIN a.kid = b.kid\n"
         "SELECT a.kid, a.m_a, b.m_b ORDER BY a.kid asc;\n"
     )
-    assert _rows(eng, tmp_path, text) == expected
+    assert _rows(eng, tmp_path, text) == [(1, 10.0, None), (2, 20.0, 200.0)]
 
 
 def test_full_source_side_projection_coalesces(tmp_path: Path):
@@ -193,11 +182,8 @@ def test_join_keyword_tracks_authored_type(tmp_path: Path):
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0)])
     _load(eng, "create table b_tbl (k int, m float)", [(1, 100.0)])
     base = _IMPORTS + "{jt} JOIN a.kid = b.kid\nSELECT b.kid, a.m_a, b.m_b;\n"
-    inner = eng.generate_sql(base.format(jt="INNER"))[-1]
-    eng.environment = Environment(working_path=tmp_path)
     left = eng.generate_sql(base.format(jt="LEFT"))[-1]
     eng.environment = Environment(working_path=tmp_path)
     full = eng.generate_sql(base.format(jt="FULL"))[-1]
-    assert "INNER JOIN" in inner and "OUTER" not in inner.upper()
     assert "LEFT OUTER JOIN" in left
     assert "FULL JOIN" in full.upper() and "coalesce" in full.lower()

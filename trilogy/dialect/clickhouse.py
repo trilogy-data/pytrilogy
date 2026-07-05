@@ -4,7 +4,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType, MapWrapper
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect
 
 if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
@@ -117,13 +117,7 @@ FUNCTION_MAP = {
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args, types: f"{args[0]}",
-    FunctionType.AVG: lambda args, types: f"{args[0]}",
-    FunctionType.MAX: lambda args, types: f"{args[0]}",
-    FunctionType.MIN: lambda args, types: f"{args[0]}",
-    FunctionType.ANY: lambda args, types: f"{args[0]}",
+    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 

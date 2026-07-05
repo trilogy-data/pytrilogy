@@ -1,14 +1,14 @@
-"""A query-scoped LEFT join that preserves ONE anchor rowset against TWO optional
-rowsets must stay anchored on that source — each optional source joins as
-LEFT_OUTER, never collapsing to FULL.
+"""A query-scoped LEFT join declares SUBSET domains; rendering is always
+row-preserving (docs/subset_union_join_design.md, phase 2).
 
-Regression for TPC-DS q78. The construct is `left join store.k = web.k = catalog.k`
-(store is the explicit LEFT anchor; web and catalog are optional). Both web and
-catalog are marked partial against the shared store keys, so join resolution picked
-a *partial* source as the join base and `reduce_join_types` saw both a left- and a
-right-preserving need across the two co-anchored partials and collapsed the whole
-plan to FULL. The query ran but silently returned web-only / catalog-only rows with
-NULL store columns (store can never be null-extended under a real LEFT anchor).
+TPC-DS q78 family: `left join store.k = web.k = catalog.k`. The anchor rowset
+is FILTERED (channel='STORE'), and a filtered superset side never proves
+subset-match, so the narrowing pass leaves the preserving join in place: web-
+and catalog-only customers survive with NULL store columns. Row restriction is
+an explicit author predicate — the `is not null` idiom — never a silent join
+drop. (Pre-flip this file pinned the directional-anchor machinery; the old
+defect of web-only rows appearing under a supposed hard LEFT anchor is moot
+now that preservation is the declared contract.)
 """
 
 from pathlib import Path
@@ -20,7 +20,6 @@ from trilogy.core.models.environment import Environment
 from trilogy.executor import Executor
 
 # store: custs 1,2 ; web: custs 2,3 ; catalog: custs 2,4.
-# Anchored on store, only custs 1 and 2 may appear, never 3 or 4.
 MODEL = """
 key sale_id int;
 property sale_id.channel string;
@@ -42,14 +41,22 @@ rowset web_nr <- where channel='WEB' select cust as cust_id, sum(val) as web_qty
 rowset catalog_nr <- where channel='CATALOG' select cust as cust_id, sum(val) as catalog_qty;
 """
 
-QUERY = MODEL + ROWSETS + """
+SELECT = """
 select
     store_nr.cust_id,
     store_nr.store_qty,
     coalesce(web_nr.web_qty, 0) + coalesce(catalog_nr.catalog_qty, 0) as other_qty
 left join store_nr.cust_id = web_nr.cust_id = catalog_nr.cust_id
-order by store_nr.cust_id;
 """
+
+PRESERVING_QUERY = MODEL + ROWSETS + SELECT + "order by store_nr.cust_id;"
+RESTRICTED_QUERY = (
+    MODEL
+    + ROWSETS
+    + "where store_nr.store_qty is not null"
+    + SELECT
+    + "order by store_nr.cust_id;"
+)
 
 
 @pytest.fixture
@@ -57,12 +64,16 @@ def executor(tmp_path: Path) -> Executor:
     return Dialects.DUCK_DB.default_executor(environment=Environment())
 
 
-def test_left_anchor_not_collapsed_to_full(executor: Executor):
-    sql = executor.generate_sql(QUERY)[-1]
-    assert "FULL JOIN" not in sql, f"LEFT anchor collapsed to FULL:\n{sql}"
+def test_left_join_preserves_all_sides(executor: Executor):
+    rows = [tuple(r) for r in executor.execute_text(PRESERVING_QUERY)[0].fetchall()]
+    assert rows == [
+        (1, 100.0, 0.0),
+        (2, 200.0, 25.0),
+        (3, None, 30.0),
+        (4, None, 40.0),
+    ]
 
 
-def test_left_anchor_preserves_only_store_rows(executor: Executor):
-    rows = [tuple(r) for r in executor.execute_text(QUERY)[0].fetchall()]
-    # only store custs 1,2 survive; store_qty is never NULL.
+def test_explicit_filter_restricts_to_store_rows(executor: Executor):
+    rows = [tuple(r) for r in executor.execute_text(RESTRICTED_QUERY)[0].fetchall()]
     assert rows == [(1, 100.0, 0.0), (2, 200.0, 25.0)]

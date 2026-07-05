@@ -19,7 +19,7 @@ select
     sum(store_sales.ext_list_price) as list_price,
 ;
 
-inner join bought.store_sales.customer.id = customer.id
+left join bought.store_sales.customer.id = customer.id
 select
     customer.last_name,
     customer.first_name,

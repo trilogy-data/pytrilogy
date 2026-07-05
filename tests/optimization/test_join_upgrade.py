@@ -146,6 +146,142 @@ def test_full_kept_when_only_coalesced_key_proven():
     assert _rows(executor, text) == {("NA", 10), ("EU", 20), ("AS", None)}
 
 
+def _returns_setup(executor):
+    """A fact with a partial (`~`) NULL-padded returns source — the q94 shape.
+    `is_returned` is derived from the padded column, so "not returned" rows
+    exist only while the padding join stays OUTER."""
+    executor.execute_raw_sql("""
+        CREATE TABLE lines AS
+        SELECT 1 AS o, 10 AS i, 5 AS q UNION ALL
+        SELECT 1, 11, 3 UNION ALL
+        SELECT 2, 10, 7 UNION ALL
+        SELECT 3, 12, 2;
+        CREATE TABLE returns AS
+        SELECT 1 AS o, 10 AS i, 1 AS ro;
+        """)
+    executor.execute_text("""
+        key order_id int;
+        key item_id int;
+
+        properties <order_id, item_id> (
+            qty int,
+            _ret_order int?,
+        );
+        auto is_returned <- _ret_order is not null;
+
+        datasource lines (
+            o: order_id,
+            i: item_id,
+            q: qty,
+        )
+        grain (order_id, item_id)
+        address lines;
+
+        datasource returns (
+            o: ~order_id,
+            i: ~item_id,
+            ro: _ret_order,
+        )
+        grain (order_id, item_id)
+        address returns;
+    """)
+
+
+def test_semijoin_on_shared_key_keeps_padded_returns_rows():
+    """q94: a semijoin membership on the shared join key (`order_id in
+    big_orders.order_id`) proves the key non-null, but the key renders as
+    COALESCE across both sides — non-null on the padded (non-returned) rows
+    too — so it must NOT upgrade the padding join to INNER. The rows with
+    `is_returned = false` have to stay reachable at order grain."""
+    executor = Dialects.DUCK_DB.default_executor()
+    _returns_setup(executor)
+
+    text = """
+        with big_orders as
+        where qty > 2
+        select order_id;
+
+        where order_id in big_orders.order_id
+        select order_id, bool_or(is_returned) as has_return;
+    """
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
+    for line in sql.splitlines():
+        assert not ("INNER JOIN" in line and "returns" in line), sql
+    # Order 2 has no return row: it exists only via the padded side.
+    assert _rows(executor, text) == {(1, True), (2, False)}
+
+
+def test_plain_filter_keeps_padded_returns_rows():
+    """Sibling guard (q94 P1): an ordinary filter on a fact attribute leaves
+    the padding join OUTER and `is_returned = false` reachable."""
+    executor = Dialects.DUCK_DB.default_executor()
+    _returns_setup(executor)
+
+    text = "where qty > 2 select order_id, bool_or(is_returned) as has_return;"
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
+    for line in sql.splitlines():
+        assert not ("INNER JOIN" in line and "returns" in line), sql
+    assert _rows(executor, text) == {(1, True), (2, False)}
+
+
+def test_flag_is_true_with_semijoin_upgrades_padding_join():
+    """q95: alongside the semijoin, `is_returned is True` forces the padded
+    column non-null THROUGH the flag's lineage — a sound licence to tighten
+    the padding join even though the semijoin key proof alone is not."""
+    executor = Dialects.DUCK_DB.default_executor()
+    _returns_setup(executor)
+
+    text = """
+        with big_orders as
+        where qty > 2
+        select order_id;
+
+        where order_id in big_orders.order_id and is_returned is True
+        select order_id, count(item_id) as items;
+    """
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
+    assert "FULL JOIN" not in sql, sql
+    assert _rows(executor, text) == {(1, 1)}
+
+
+def test_flag_is_true_lineage_proofs():
+    """`flag IS/= True` where flag's lineage is a null-check proves the
+    underlying column non-null; `IS False` must not."""
+    env = Environment()
+    env.parse("key x int; property x.ret int; auto flag <- ret is not null;")
+    build_env = env.materialize_for_select()
+    flag = build_env.concepts["local.flag"]
+    ret = build_env.concepts["local.ret"]
+
+    assert ret.address in _proves_non_null(
+        BuildComparison(left=flag, right=True, operator=ComparisonOperator.IS)
+    )
+    assert ret.address in _proves_non_null(
+        BuildComparison(left=True, right=flag, operator=ComparisonOperator.EQ)
+    )
+    assert ret.address not in _proves_non_null(
+        BuildComparison(left=flag, right=False, operator=ComparisonOperator.IS)
+    )
+    assert ret.address not in _proves_non_null(
+        BuildComparison(left=flag, right=False, operator=ComparisonOperator.EQ)
+    )
+
+
+def test_right_only_padded_column_proof_still_upgrades():
+    """Regression guard: a WHERE proof on a column that renders ONLY from the
+    padded side (the raw padded key itself, not the shared COALESCE key) still
+    legitimately rejects the padded rows → the join may go INNER."""
+    executor = Dialects.DUCK_DB.default_executor()
+    _returns_setup(executor)
+
+    text = "where _ret_order = 1 select order_id, count(item_id) as items;"
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
+    assert not any(
+        j in sql for j in ("FULL JOIN", "LEFT OUTER JOIN", "RIGHT OUTER JOIN")
+    ), sql
+    assert _rows(executor, text) == {(1, 1)}
+
+
 def test_proves_non_null_helpers():
     """Direct unit coverage of the proof extractor."""
 
@@ -895,21 +1031,23 @@ def test_source_datasources_cte_returns_source_map_tokens():
 
 
 def test_blocked_partials_intersects_operand_tokens():
-    """A partial whose binding token IS the operand renders from it (not
-    blocked); one bound only elsewhere is blocked; an unbound one is skipped.
-    This is the decision the safe_identifier normalization makes reachable."""
+    """A partial bound exclusively to the operand renders from it (not
+    blocked); one bound only elsewhere is blocked; one bound to BOTH sides
+    renders as COALESCE — non-null on the operand's padded rows via the other
+    side — so it is blocked too (q94); an unbound one is skipped."""
     cte = _build_cte("root", [_build_concept("X")])
     cte.source_map = {
         "test.from_operand": ["test_returns"],
         "test.from_elsewhere": ["test_fact"],
+        "test.from_both": ["test_fact", "test_returns"],
         "test.unbound": [],
     }
     blocked = _blocked_partials(
         cte,
-        {"test.from_operand", "test.from_elsewhere", "test.unbound"},
+        {"test.from_operand", "test.from_elsewhere", "test.from_both", "test.unbound"},
         {"test_returns"},
     )
-    assert blocked == {"test.from_elsewhere"}
+    assert blocked == {"test.from_elsewhere", "test.from_both"}
 
 
 def test_partial_addresses_per_source_type():
@@ -940,3 +1078,139 @@ def test_partial_addresses_per_source_type():
         partial_concepts=[key],
     )
     assert _partial_addresses(qds) == {key.address}
+
+
+def _join_producer(base, agg, key, measure):
+    """A CTE that LEFT-joins ``agg`` onto ``base`` and passes the agg measure
+    through as a plain single-source projection."""
+    producer = _build_cte("producer", [key, measure])
+    producer.parent_ctes = [base, agg]
+    producer.source_map = {
+        key.address: [base.name],
+        measure.address: [agg.name],
+    }
+    producer.joins = [
+        Join(
+            jointype=JoinType.LEFT_OUTER,
+            right_cte=agg,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=base.source,
+                    cte=base,
+                )
+            ],
+        )
+    ]
+    return producer
+
+
+def _passthrough_consumer(name, producer, concepts, condition=None):
+    consumer = _build_cte(name, concepts)
+    consumer.parent_ctes = [producer]
+    consumer.source_map = {c.address: [producer.name] for c in concepts}
+    consumer.condition = condition
+    return consumer
+
+
+def test_cross_cte_null_rejection_upgrades_producer_join():
+    """A consumer's WHERE that rejects NULLs on a column padded by the
+    producer's LEFT join upgrades that join to INNER (the q64 shape: the
+    null-rejecting filter lives CTEs downstream of the outer join)."""
+    key = _build_concept("KEY")
+    measure = _build_concept("MEASURE")
+    base = _build_cte("base_source", [key])
+    agg = _build_cte("agg_source", [key, measure])
+    producer = _join_producer(base, agg, key, measure)
+    consumer = _passthrough_consumer(
+        "consumer", producer, [key, measure], _condition_for(measure)
+    )
+
+    rule = UpgradeJoinOnGuards()
+    inverse_map = {producer.name: [consumer]}
+    changed, _ = rule.optimize(producer, inverse_map)
+    assert changed, "expected cross-CTE proof to upgrade the join"
+    assert producer.joins[0].jointype == JoinType.INNER
+
+
+def test_cross_cte_null_rejection_propagates_through_passthrough():
+    """The rejection carries through an intermediate plain-passthrough CTE:
+    grandparent joins, parent projects, child filters."""
+    key = _build_concept("KEY")
+    measure = _build_concept("MEASURE")
+    base = _build_cte("base_source", [key])
+    agg = _build_cte("agg_source", [key, measure])
+    producer = _join_producer(base, agg, key, measure)
+    middle = _passthrough_consumer("middle", producer, [key, measure])
+    final = _passthrough_consumer(
+        "final", middle, [key, measure], _condition_for(measure)
+    )
+
+    rule = UpgradeJoinOnGuards()
+    inverse_map = {producer.name: [middle], middle.name: [final]}
+    changed, _ = rule.optimize(producer, inverse_map)
+    assert changed, "expected transitive cross-CTE proof to upgrade the join"
+    assert producer.joins[0].jointype == JoinType.INNER
+
+
+def test_cross_cte_null_rejection_requires_every_consumer():
+    """A second consumer with no rejecting condition reads the padded rows —
+    the producer's join must stay preserving."""
+    key = _build_concept("KEY")
+    measure = _build_concept("MEASURE")
+    base = _build_cte("base_source", [key])
+    agg = _build_cte("agg_source", [key, measure])
+    producer = _join_producer(base, agg, key, measure)
+    filtering = _passthrough_consumer(
+        "filtering", producer, [key, measure], _condition_for(measure)
+    )
+    reading = _passthrough_consumer("reading", producer, [key, measure])
+
+    rule = UpgradeJoinOnGuards()
+    inverse_map = {producer.name: [filtering, reading]}
+    changed, _ = rule.optimize(producer, inverse_map)
+    assert not changed
+    assert producer.joins[0].jointype == JoinType.LEFT_OUTER
+
+
+def test_cross_cte_null_rejection_blocked_by_existence_read():
+    """A consumer reading the producer existentially (EXISTS subselect) is
+    satisfied by ANY row — dropping padded rows could flip it, so no upgrade."""
+    key = _build_concept("KEY")
+    measure = _build_concept("MEASURE")
+    base = _build_cte("base_source", [key])
+    agg = _build_cte("agg_source", [key, measure])
+    producer = _join_producer(base, agg, key, measure)
+    consumer = _passthrough_consumer(
+        "consumer", producer, [key, measure], _condition_for(measure)
+    )
+    consumer.existence_source_map = {key.address: [producer.name]}
+
+    rule = UpgradeJoinOnGuards()
+    inverse_map = {producer.name: [consumer]}
+    changed, _ = rule.optimize(producer, inverse_map)
+    assert not changed
+    assert producer.joins[0].jointype == JoinType.LEFT_OUTER
+
+
+def test_cross_cte_null_rejection_blocked_by_coalesced_projection():
+    """A consumer that renders the address from several sources (COALESCE)
+    masks a one-sided NULL — no rejection carries back to the producer."""
+    key = _build_concept("KEY")
+    measure = _build_concept("MEASURE")
+    base = _build_cte("base_source", [key])
+    agg = _build_cte("agg_source", [key, measure])
+    other = _build_cte("other_source", [measure])
+    producer = _join_producer(base, agg, key, measure)
+    consumer = _passthrough_consumer(
+        "consumer", producer, [key, measure], _condition_for(measure)
+    )
+    consumer.parent_ctes = [producer, other]
+    consumer.source_map[measure.address] = [producer.name, other.name]
+
+    rule = UpgradeJoinOnGuards()
+    inverse_map = {producer.name: [consumer]}
+    changed, _ = rule.optimize(producer, inverse_map)
+    assert not changed
+    assert producer.joins[0].jointype == JoinType.LEFT_OUTER

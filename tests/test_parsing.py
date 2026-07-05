@@ -539,7 +539,7 @@ select composite_id;
     assert (
         "local.composite_id_alt",
         "local.composite_id",
-        JoinType.INNER,
+        JoinType.FULL,
     ) in executor.environment.merges
     assert executor.environment.alias_origin_lookup == {}
     results = executor.execute_text(test_case)[0].fetchall()
@@ -973,6 +973,23 @@ def test_params():
 
     select count(unnest(numbers)) as cnt;
     """)
+
+
+def test_numeric_param():
+    from decimal import Decimal
+
+    from trilogy.core.models.core import DataType, NumericType
+
+    for decl in ("numeric", "numeric(15,2)"):
+        env, _ = parse_text(f"""
+        parameter p {decl} default 4305.50;
+        select p as x;
+        """)
+        concept = env.concepts["p"]
+        assert concept.datatype == DataType.NUMERIC or isinstance(
+            concept.datatype, NumericType
+        )
+        assert concept.lineage.arguments[0] == Decimal("4305.50")
 
 
 def test_param_address_interpolation():

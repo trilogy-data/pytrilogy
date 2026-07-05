@@ -1,6 +1,6 @@
 query_id = "18"
 generator = "v3"
-gen_length = 6743
+gen_length = 6745
 preql_size = 1377
 comp_size = 1593
 generated_sql = """
@@ -54,21 +54,21 @@ FROM
     \"cooperative\"),
 yummy as (
 SELECT
+    \"questionable\".\"cs_item_id\" as \"cs_item_id\",
+    \"questionable\".\"cs_order_number\" as \"cs_order_number\",
     \"questionable\".\"row_dep_count\" as \"row_dep_count\",
     \"uneven\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
     \"uneven\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
     \"uneven\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
     \"uneven\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
-    \"uneven\".\"cs_item_id\" as \"cs_item_id\",
     \"uneven\".\"cs_item_text_id\" as \"cs_item_text_id\",
     \"uneven\".\"cs_list_price\" as \"cs_list_price\",
     \"uneven\".\"cs_net_profit\" as \"cs_net_profit\",
-    \"uneven\".\"cs_order_number\" as \"cs_order_number\",
     \"uneven\".\"cs_quantity\" as \"cs_quantity\",
     \"uneven\".\"cs_sales_price\" as \"cs_sales_price\"
 FROM
     \"uneven\"
-    LEFT OUTER JOIN \"questionable\" on \"uneven\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"),
+    INNER JOIN \"questionable\" on \"uneven\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"),
 juicy as (
 SELECT
     \"questionable\".\"row_birth_year\" as \"row_birth_year\",
@@ -84,7 +84,7 @@ SELECT
     \"yummy\".\"row_dep_count\" as \"row_dep_count\"
 FROM
     \"yummy\"
-    LEFT OUTER JOIN \"questionable\" on \"yummy\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
+    INNER JOIN \"questionable\" on \"yummy\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
 SELECT
     \"juicy\".\"cs_item_text_id\" as \"cs_item_text_id\",
     \"juicy\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",

@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
+from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import JoinType, Modifier, SourceType
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -114,34 +116,42 @@ def get_join_type(
     all_connecting_keys: set[str],
     full_join_keys: set[str] | None = None,
 ) -> JoinType:
-    # A query-scoped FULL join registers its canonical key here. Both sides bind
-    # it completely (it is NOT partial) — the FULL JOIN itself spans the rows
-    # absent from either side and `_build_joinkeys` coalesces the key. Driving
-    # FULL from this registry (rather than the partial flag) keeps the key
-    # complete, so the unresolvable-source gate and rowset enrichment never fire.
+    # Rendering is row-preserving by default: a relation declares DOMAIN
+    # knowledge, never row intent, and no join silently drops a row
+    # (docs/subset_union_join_design.md). The narrowing pass
+    # (UpgradeOuterFromKeySetEquivalence) restores a directional/INNER form
+    # only when provably row-identical.
+    #
+    # UNION-declared keys (query-scoped `full join` / `union join`, non-partial
+    # merges): neither domain contains the other — FULL, key coalesced by
+    # `_build_joinkeys`, and the registry also vetoes narrowing. Driving FULL
+    # from this registry (rather than the partial flag) keeps the key complete,
+    # so the unresolvable-source gate and rowset enrichment never fire.
     if full_join_keys and all_connecting_keys & full_join_keys:
         return JoinType.FULL
     left_is_partial = _has_any(all_connecting_keys, left, partials)
-    left_is_nullable = _has_any(all_connecting_keys, left, nullables)
     right_is_partial = _has_any(all_connecting_keys, right, partials)
+    left_is_nullable = _has_any(all_connecting_keys, left, nullables)
     right_is_nullable = _has_any(all_connecting_keys, right, nullables)
 
-    left_complete = not left_is_partial and not left_is_nullable
-    right_complete = not right_is_partial and not right_is_nullable
-
-    if not left_complete and not right_complete:
+    # A partial side declares a SUBSET domain. Subset speaks to VALUES and
+    # NULL is not a value, so partiality and nullability never interact here:
+    # render preserving, and the narrowing pass restores direction exactly
+    # when the superset side provably carries the key's full domain and the
+    # subset side's NULLs have a null-safe partner.
+    if left_is_partial or right_is_partial:
         return JoinType.FULL
-    elif not left_complete and right_complete:
-        # Partial means missing rows; nullable means complete rows with NULL keys.
-        if left_is_nullable and left_is_partial:
-            return JoinType.FULL
-        if left_is_nullable:
-            return JoinType.LEFT_OUTER
-        return JoinType.RIGHT_OUTER
-    elif not right_complete and left_complete:
-        if right_is_nullable:
-            return JoinType.FULL
+    # Neither side partial: each binding declares the key's full domain
+    # (EQUAL — mutual subset), whose narrowed form is INNER. NULL-key rows
+    # must still never drop: when both sides are nullable the null-safe
+    # equality (get_modifiers) pairs the NULL groups, and a nullable side
+    # with no null-safe partner keeps the join preserving toward it.
+    if left_is_nullable and right_is_nullable:
+        return JoinType.INNER
+    if left_is_nullable:
         return JoinType.LEFT_OUTER
+    if right_is_nullable:
+        return JoinType.RIGHT_OUTER
     return JoinType.INNER
 
 
@@ -253,16 +263,26 @@ def resolve_join_order_v2(
     datasources = sorted(x for x in g.nodes if x.startswith("ds~"))
     concepts = sorted(x for x in g.nodes if x.startswith("c~"))
 
-    # A source is an anchor when it provides a query-scoped LEFT anchor key as a
+    # A source is an anchor when it provides a scoped-LEFT anchor key as a
     # COMPLETE (non-partial) concept. Optional sources reference the same key but
-    # are partial against it, so they are excluded.
+    # are partial against it, so they are excluded. An anchor key is only ACTIVE
+    # when some present source is partial against it — the boost exists to keep
+    # optional sources directional (LEFT, not FULL); if this particular plan has
+    # no optional side (e.g. a global `merge ~` whose partial counterpart isn't
+    # in the query), seeding the tree on it would just perturb unrelated joins.
     anchor_sources: frozenset[str] = frozenset()
+    active_anchor_keys: set[str] = set()
     if anchor_key_nodes:
+        active_anchor_keys = {
+            key
+            for key in anchor_key_nodes
+            if any(key in partials.get(ds, []) for ds in datasources)
+        }
         anchor_sources = frozenset(
             ds
             for ds in datasources
-            if (set(g.neighbors(ds)) & anchor_key_nodes)
-            and not (anchor_key_nodes & set(partials.get(ds, [])))
+            if (set(g.neighbors(ds)) & active_anchor_keys)
+            and not (active_anchor_keys & set(partials.get(ds, [])))
         )
 
     all_connections: dict[tuple[str, str], set[str]] = {}
@@ -422,11 +442,24 @@ def resolve_join_order_v2(
     return output
 
 
-def _side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
+def side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
     if side is None:
         return False
     equivalent = concept.equivalent_addresses
-    return any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts)
+    if any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts):
+        return True
+    # a side that COMPUTES the join key from nullable inputs yields NULL keys
+    # too (`l_key + 1` is NULL wherever `l_key` is) even when the derived key
+    # itself never got flagged
+    if not propagates_argument_nulls(concept):
+        return False
+    args = {a.address for a in concept.concept_arguments}
+    if not args:
+        return False
+    nullable_addrs: set[str] = set()
+    for nc in side.nullable_concepts:
+        nullable_addrs |= nc.equivalent_addresses
+    return bool(args & nullable_addrs)
 
 
 def get_modifiers(
@@ -436,7 +469,7 @@ def get_modifiers(
     right: DataSource | None,
 ) -> list[Modifier]:
     """Use null-safe equality only when both exposed join keys can be NULL."""
-    if _side_nullable(left_concept, left) and _side_nullable(right_concept, right):
+    if side_nullable(left_concept, left) and side_nullable(right_concept, right):
         return [Modifier.NULLABLE]
     return []
 
@@ -470,10 +503,15 @@ def _collect_intrinsic_partial_addresses(
     return set()
 
 
+def _is_authored_coalescing_pair(pair: ConceptPair, members: set[str]) -> bool:
+    return pair.left.address in members or pair.right.address in members
+
+
 def reduce_concept_pairs(
     pairs: list[ConceptPair],
     right_source: DataSource,
     join_type: JoinType = JoinType.INNER,
+    domain_graph: "DomainGraph | None" = None,
 ) -> list[ConceptPair]:
     from trilogy.core.enums import Purpose
 
@@ -483,11 +521,47 @@ def reduce_concept_pairs(
     right_keys = {
         pair.right.address for pair in pairs if pair.right.purpose == Purpose.KEY
     }
+    grain_components = set(right_source.grain.components)
+    # An authored coalescing-join (`full`/`union`) key member pairs by its own
+    # physical column as part of the join's semantics. FD/grain implication
+    # holds within one entity, not across independently-authored sides —
+    # inferring such a pair away silently changes which rows match (q59).
+    coalescing_members: set[str] = (
+        domain_graph.coalescing_relation_members() if domain_graph else set()
+    )
+    # FD-closure pruning (docs/domain_graph_design.md step 4): a pair both of
+    # whose sides are functionally determined by the SURVIVING joined keys is
+    # redundant — equality on the determinants implies equality here. The
+    # closure sees what the local property check below cannot: transitive
+    # dependencies and grain FDs carried through complete bindings. Greedy over
+    # a working determinant set so mutually-dependent keys keep exactly one
+    # pair; grain pairs are never pruned (the grain restriction below relies
+    # on them).
+    fd_pruned: set[int] = set()
+    if domain_graph is not None and domain_graph.fd_edges:
+        working_left = set(left_keys)
+        working_right = set(right_keys)
+        for index, pair in enumerate(pairs):
+            left_addr, right_addr = pair.left.address, pair.right.address
+            if right_addr in grain_components:
+                continue
+            if _is_authored_coalescing_pair(pair, coalescing_members):
+                continue
+            determinant_left = working_left - {left_addr}
+            determinant_right = working_right - {right_addr}
+            if not (determinant_left and determinant_right):
+                continue
+            if domain_graph.determines(
+                determinant_left, left_addr
+            ) and domain_graph.determines(determinant_right, right_addr):
+                fd_pruned.add(index)
+                working_left.discard(left_addr)
+                working_right.discard(right_addr)
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
     is_outer = join_type in OUTER_JOIN_TYPES
     right_left_seen: dict[tuple[str, str], bool] = {}
-    for pair in pairs:
+    for index, pair in enumerate(pairs):
         dedup_key = (pair.right.address, pair.existing_datasource.identifier)
         if dedup_key in seen:
             continue
@@ -502,13 +576,17 @@ def reduce_concept_pairs(
             pair.left.purpose == Purpose.PROPERTY
             and pair.left.keys
             and pair.left.keys.issubset(left_keys)
+            and not _is_authored_coalescing_pair(pair, coalescing_members)
         ):
             continue
         if (
             pair.right.purpose == Purpose.PROPERTY
             and pair.right.keys
             and pair.right.keys.issubset(right_keys)
+            and not _is_authored_coalescing_pair(pair, coalescing_members)
         ):
+            continue
+        if index in fd_pruned:
             continue
 
         seen.add(dedup_key)
@@ -518,7 +596,12 @@ def reduce_concept_pairs(
     if right_source.grain.components and right_source.grain.components.issubset(
         all_keys
     ):
-        return [x for x in final if x.right.address in right_source.grain.components]
+        return [
+            x
+            for x in final
+            if x.right.address in right_source.grain.components
+            or _is_authored_coalescing_pair(x, coalescing_members)
+        ]
 
     return final
 
@@ -613,11 +696,17 @@ def get_node_joins(
         partials[ds_node] = p_list
         nullables[ds_node] = n_list
 
-    # Canonical keys of query-scoped FULL joins, mapped into graph concept nodes.
-    full_join_keys = {canon_node(a) for a in environment.scoped_full_join_keys}
-    # Anchor-key nodes of query-scoped LEFT joins: the join tree bases on the
-    # complete source providing one so co-anchored optional sources stay LEFT.
-    anchor_key_nodes = {canon_node(a) for a in environment.scoped_left_anchor_keys}
+    # Canonical keys of query-scoped FULL joins (EQUAL/∦ declared edges),
+    # mapped into graph concept nodes.
+    full_join_keys = {
+        canon_node(a) for a in environment.domain_graph.outer_relation_keys()
+    }
+    # Anchor-key nodes of query-scoped LEFT joins (declared-subset anchors): the
+    # join tree bases on the complete source providing one so co-anchored
+    # optional sources stay LEFT.
+    anchor_key_nodes = {
+        canon_node(a) for a in environment.domain_graph.left_anchor_keys()
+    }
     joins = resolve_join_order_v2(
         graph,
         partials=partials,
@@ -653,6 +742,7 @@ def get_node_joins(
                 ],
                 ds_node_map[j.right],
                 j.type,
+                domain_graph=environment.domain_graph,
             ),
         )
         for j in joins

@@ -11,12 +11,12 @@ properties id (
     street_name string?, # Street name portion of the address (excludes house number).
     street_type string?, # Street type suffix (e.g. 'Ave', 'St', 'Rd').
     suite_number string?, # Suite/apartment number, if any.
-    city string, # City name.
+    city string?, # City name.
     state string::us_state_short?, # Two-letter US state code (e.g. 'CA', 'NY').
-    zip string, # Postal/ZIP code as a string to preserve leading zeros.
-    county string, # County name within the state.
-    country string::country, # Country name (free-form string, typically 'United States').
-    gmt_offset float, # GMT offset for the address timezone (hours, e.g. -5.0 for EST).
+    zip string?, # Postal/ZIP code as a string to preserve leading zeros.
+    county string?, # County name within the state.
+    country string::country?, # Country name (free-form string, typically 'United States').
+    gmt_offset float?, # GMT offset for the address timezone (hours, e.g. -5.0 for EST).
     location_type string?, # Categorical location type: 'apartment', 'condo', or 'single family'.
 );
 

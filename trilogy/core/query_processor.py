@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
+from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
@@ -26,6 +27,7 @@ from trilogy.core.models.author import (
     Conditional,
     Function,
     MultiSelectLineage,
+    RowsetItem,
     SelectLineage,
     WhereClause,
 )
@@ -41,7 +43,6 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
-    _build_scoped_merge_index,
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -468,6 +469,7 @@ def datasource_to_cte(
         base_name_override=base_name,
         base_alias_override=base_alias,
         order_by=query_datasource.ordering,
+        limit=query_datasource.limit,
         **extra_kwargs,
     )
     if cte.grain != query_datasource.grain:
@@ -1150,6 +1152,33 @@ def process_chart(
     )
 
 
+def _collect_rowset_scoped_joins(
+    environment: Environment,
+    statement: SelectStatement | MultiSelectStatement,
+) -> list[tuple[str, str, JoinType]]:
+    """Scoped joins authored inside rowset bodies (`with rs as left join ...`).
+
+    They ride the rowset's select lineage, not the outer statement's
+    ``join_clauses``, but their declarations must still reach the CTE-level
+    narrowing registries."""
+    out: list[tuple[str, str, JoinType]] = []
+    seen_rowsets: set[str] = set()
+    pools: list[dict] = [dict(environment.concepts.items())]
+    local = getattr(statement, "local_concepts", None)
+    if local:
+        pools.append(dict(local))
+    for pool in pools:
+        for concept in pool.values():
+            lineage = getattr(concept, "lineage", None)
+            if not isinstance(lineage, RowsetItem):
+                continue
+            if lineage.rowset.name in seen_rowsets:
+                continue
+            seen_rowsets.add(lineage.rowset.name)
+            out.extend(getattr(lineage.rowset.select, "scoped_joins", []) or [])
+    return out
+
+
 def process_query(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
@@ -1190,32 +1219,48 @@ def process_query(
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
     )
-    build_scoped_joins = [
-        (j.source_address, j.target_address, j.join_type) for j in join_clauses
+    # Every scoped join is a domain DECLARATION; collect them scope-tagged, in
+    # declaration-priority order (statement, then global merges, then
+    # rowset-BODY joins — `with rs as left join ...`, which ride the rowset's
+    # select lineage, not the outer statement's join_clauses). The resulting
+    # graph (docs/domain_graph_design.md) feeds CTE-level join narrowing: the
+    # subset side of every LEFT/subset relation drives directional narrowing;
+    # EQUAL/INCOMPARABLE endpoints veto the outer-join upgrade (an EQUAL key
+    # may still narrow to INNER once completeness tests pass — a query-scoped
+    # FULL/UNION key never does).
+    scoped_pairs: list[tuple[tuple[str, str, JoinType], EdgeScope]] = []
+    seen_joins: set[tuple[str, str, JoinType]] = set()
+    tagged: list[tuple[tuple[str, str, JoinType], EdgeScope]] = [
+        (
+            (j.source_address, j.target_address, j.join_type),
+            EdgeScope.STATEMENT,
+        )
+        for j in join_clauses
     ]
-    build_scoped_joins.extend(
-        merge for merge in environment.merges if merge not in build_scoped_joins
+    tagged.extend((merge, EdgeScope.GLOBAL) for merge in environment.merges)
+    tagged.extend(
+        (t, EdgeScope.ROWSET)
+        for t in _collect_rowset_scoped_joins(environment, statement)
     )
-    scoped_merge_map, _ = _build_scoped_merge_index(build_scoped_joins)
-    # Canonical keys of explicit OUTER joins: flagged so the outer-join upgrade
-    # optimization never collapses author-requested preservation back to INNER.
-    # LEFT/merge join typing is carried by the partial flag (set on the optional
-    # side at resolution) and needs no veto. FULL deliberately keeps its key
-    # complete (registry-driven, not partial), so the outer-join upgrade can't
-    # see it's preserving disjoint populations — protect FULL keys explicitly.
-    full_join_keys = {
-        scoped_merge_map.get(addr, addr)
-        for source, target, join_type in build_scoped_joins
-        if join_type is JoinType.FULL
-        for addr in (source, target)
-    }
+    for join, scope in tagged:
+        if join not in seen_joins:
+            seen_joins.add(join)
+            scoped_pairs.append((join, scope))
+    # The optimizer needs the FULL graph — structural ⊑ edges (rowset/filter
+    # lineage) and binding facts drive proof-based narrowing (rule B), not just
+    # the declared overlay. Registry shims filter on DECLARED provenance, so
+    # the canonical map and veto sets are unchanged by the extra edges.
+    domain_graph = assemble_full_graph(
+        environment, DomainGraph.from_scoped_joins(scoped_pairs)
+    )
+    scoped_merge_map = dict(domain_graph.canonical_map())
 
     final_ctes = optimize_ctes(
         deduped_ctes,
         root_cte,
         statement,
         having_alias=having_alias,
-        full_join_keys=full_join_keys,
+        domain_graph=domain_graph,
     )
     _expose_downstream_referenced_columns(final_ctes, root_cte)
     return ProcessedQuery(

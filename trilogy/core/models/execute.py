@@ -307,6 +307,9 @@ class CTE:
             **self.existence_source_map,
             **other.existence_source_map,
         }
+        # copies of one logical CTE carry the same limit; keep it
+        if self.limit is None:
+            self.limit = other.limit
 
         return self
 
@@ -388,6 +391,42 @@ class CTE:
             return match_list.pop()
         return None
 
+    def outer_join_key_class(self, address: str) -> list[BuildConcept]:
+        """Transitive equivalence class of ``address`` under this CTE's
+        outer-join keys (LEFT/RIGHT/FULL). More than one member means no
+        single side is guaranteed non-null, so the key must render null-safely
+        (coalesced across members)."""
+        adjacent: dict[str, set[str]] = defaultdict(set)
+        for join in self.joins:
+            if not isinstance(join, Join) or join.jointype not in (
+                JoinType.LEFT_OUTER,
+                JoinType.RIGHT_OUTER,
+                JoinType.FULL,
+            ):
+                continue
+            for pair in join.joinkey_pairs or []:
+                left = pair.left.address
+                right = pair.right.address
+                if left == right:
+                    continue
+                adjacent[left].add(right)
+                adjacent[right].add(left)
+        if address not in adjacent:
+            return []
+        pending = [address]
+        seen: set[str] = set()
+        concepts: list[BuildConcept] = []
+        while pending:
+            current = pending.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            concept = self.get_concept(current)
+            if concept is not None:
+                concepts.append(concept)
+            pending.extend(adjacent[current] - seen)
+        return concepts
+
     def get_alias(
         self, concept: BuildConcept, source: str | None = None
     ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:
@@ -460,6 +499,13 @@ class CTE:
                 return False
             if c.derivation == Derivation.AGGREGATE:
                 return True
+            # a rowset output renders as its underlying content here; mirror
+            # check_is_not_in_group and recurse so a rowset aggregate is still
+            # recognized as aggregate-bearing (e.g. inside a `agg / dim` ratio).
+            if c.derivation == Derivation.ROWSET and isinstance(
+                c.lineage, BuildRowsetItem
+            ):
+                return has_local_aggregate(c.lineage.content)
             if (
                 c.purpose == Purpose.METRIC
                 and isinstance(c.lineage, BuildFunction)
@@ -1195,6 +1241,8 @@ class QueryDatasource:
             force_group=self.force_group,
             hidden_concepts=hidden,
             ordering=self.ordering,
+            # only same-identifier QDSs merge, so limits agree; keep it
+            limit=self.limit if self.limit is not None else other.limit,
             base_datasource=merged_base,
         )
         logger.debug(

@@ -35,13 +35,14 @@ properties <order_number, item.id> (
     discount_amount numeric::usd, # Extended (line-level) discount amount applied to the order line.
     ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity (USD), the extended line amount. The per-unit price is sales_price (the "unit price").
     ext_list_price numeric::usd, # Line-extended list price (USD).
-    ext_ship_cost numeric::usd, # Line-extended shipping cost (USD).
+    ext_ship_cost numeric::usd?, # Line-extended shipping cost (USD).
     ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
     net_profit numeric::usd, # Reported net profit for the line. Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
     --net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping.
     --net_paid_inc_tax numeric::usd, # Net amount paid including sales tax.
     coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
     return_amount numeric::usd?, # Refund amount if the line was returned.
+    return_net_loss numeric::usd?, # Net financial loss on the return for this line.
     --return_quantity int?, # Units returned for this line.
     row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.id combination).
 );
@@ -90,6 +91,7 @@ datasource catalog_returns_inline (
     CR_ORDER_NUMBER: ~order_number,
     CR_ITEM_SK: ~item.id,
     CR_RETURN_AMOUNT: return_amount,
+    CR_NET_LOSS: return_net_loss,
     CR_RETURN_QUANTITY: return_quantity,
 )
 grain (item.id, order_number)

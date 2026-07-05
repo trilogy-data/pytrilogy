@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
@@ -13,6 +13,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
 )
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildConcept,
     BuildWhereClause,
 )
@@ -30,6 +31,7 @@ from trilogy.core.processing.discovery_utility import (
     disconnected_components,
     format_disconnected_subgraphs_error,
     get_loop_iteration_targets,
+    get_upstream_concepts,
     group_if_required_v2,
     raise_if_filter_disconnected,
 )
@@ -183,6 +185,57 @@ def initialize_loop_context(
             )
             and x.address in conditions.row_arguments
         ]
+        # A filter-only rowset output (referenced in the WHERE but not selected, so
+        # absent from mandatory_list) materializes as its own subquery: its
+        # predicate can't be pushed below that materialization, and the comparison's
+        # other operand (a scalar/named concept) is never co-sourced unless we force
+        # every condition input into this level. Without this the planner sources
+        # the RowsetNode alone and the WHERE is structurally unsatisfiable, crashing
+        # INCOMPLETE_CONDITION (`Have {RowsetNode<...>} and need ... > threshold`).
+        mandatory_addresses = {x.address for x in mandatory_list}
+        # ...UNLESS the rowset input is UPSTREAM of a ROLLUP/CUBE/GROUPING SETS
+        # aggregate at this level (`sum(ch.total_sales) by rollup (...)`): it feeds
+        # that aggregation, so its filter must apply BELOW the group, at the input's
+        # own grain. Such grouping adds NULL-key subtotal rows; forcing the filter
+        # here drags the finer input into the rollup output, enriches it back over
+        # the NULL-keyed subtotal grain, and re-applies the filter — silently
+        # dropping every subtotal row. Push those inputs down instead. The upstream
+        # check keys off lineage (its rowset expansion also covers a *sibling* field
+        # of the aggregated one); a filter-only rowset output that is NOT upstream of
+        # the grouping (an independent membership operand, q23) still forces here.
+        # Pseudonym twins count as upstream: a coalescing scoped join (`subset join
+        # a.k = b.k`) collapses the sides to one same-valued column, so a filter on
+        # the far side's address is a filter on the rollup's own input dim.
+        nonstandard_grouping_upstream: set[str] = set()
+        for m in mandatory_list:
+            if (
+                isinstance(m.lineage, BuildAggregateWrapper)
+                and m.lineage.grouping != AggregateGroupingMode.STANDARD
+            ):
+                nonstandard_grouping_upstream |= get_upstream_concepts(m, nested=True)
+        pushed_below_grouping: set[str] = set()
+        candidate_filters = []
+        for x in conditions.row_arguments:
+            if (
+                x.address in mandatory_addresses
+                or x.derivation != Derivation.ROWSET
+                or x.granularity == Granularity.SINGLE_ROW
+            ):
+                continue
+            if {x.address, *x.pseudonyms} & nonstandard_grouping_upstream:
+                pushed_below_grouping.add(x.address)
+            else:
+                candidate_filters.append(x)
+        required_filters += candidate_filters
+        if pushed_below_grouping:
+            # the filter on these inputs is enforced below the grouping, at the
+            # input's own grain; requiring them here would drag the finer input
+            # back into the rollup output over the NULL-keyed subtotal rows
+            completion_mandatory = [
+                c
+                for c in completion_mandatory
+                if c.address not in pushed_below_grouping
+            ]
         if any(required_filters):
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row inputs {[x.address for x in required_filters]} present in mandatory list, forcing condition evaluation at this level. "
@@ -257,6 +310,20 @@ def check_for_early_exit(
     priority_concept: BuildConcept,
 ) -> bool:
     if complete == ValidationResult.INCOMPLETE_CONDITION:
+        # The outputs are all sourced but the WHERE/HAVING can't be applied yet.
+        # If a condition input simply isn't in the stack (e.g. it lives in a
+        # disconnected subgraph and hasn't been sourced), this is NOT a terminal
+        # invalid state: keep searching like a plain INCOMPLETE. The loop either
+        # sources it (-> COMPLETE/DISCONNECTED) or exhausts and fails cleanly,
+        # yielding the same DisconnectedConceptsException a SELECT of those
+        # concepts would. Only when every condition input is already sourced and
+        # the condition is *still* unsatisfiable is the planner in a genuinely
+        # invalid state worth the loud sentinel below.
+        condition_inputs_sourced = not context.conditions or all(
+            c.address in found for c in context.conditions.row_arguments
+        )
+        if not condition_inputs_sourced:
+            return False
         cond_dict = {str(node): node.preexisting_conditions for node in context.stack}
         for node in context.stack:
             logger.info(
@@ -331,7 +398,7 @@ def _restrict_completion_conditions(
         a
         for a in atoms
         if not all(
-            _is_scalar_only(n)
+            _is_scalar_only(n, a)
             or _is_independent_scope(n, a)
             or _node_condition_implies(n, a)
             for n in stack
@@ -374,7 +441,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                     x.preexisting_conditions, context.conditions.conditional
                 )
             )
-            or _is_scalar_only(x)
+            or _is_scalar_only(x, context.conditions.conditional)
             or _is_independent_scope(x, context.conditions.conditional)
             for x in context.stack
         ]

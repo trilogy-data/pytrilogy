@@ -1,6 +1,34 @@
+"""Rowset node generation.
+
+A rowset is a SCOPE: its outputs are new addresses wrapping a closed body
+subplan, while the scoped-join machinery (canonical collapse, pseudonyms, the
+domain graph) operates on one flat address space. Anything derived from a
+rowset's outputs — a cast join key, a per-side presence probe — therefore has
+a well-defined value but no discovery-addressable place: discovery's only
+primitive is "source this address set", and "compute X on THIS side, before
+the merge" is not an address set. Two rules keep that seam sound; every
+join-expression special case in this file is an instance of one of them:
+
+1. OBLIGATION — a rowset node materializes, from its own outputs, every
+   concept the outer plan needs from ITS side of a declared relation: its
+   member of a derived join-key group, and any presence probe over its
+   outputs (`_local_exposure_obligations`, discharged unconditionally in
+   `gen_rowset_node`). The completion merge then relates sides by pseudonym
+   with no re-sourcing.
+2. EXCLUSION — no concept whose only computation path lies inside this node
+   may be requested from discovery during its enrichment
+   (`_externally_unsourceable`): asking can only re-enter this rowset
+   (the q02/q59/q97 recursion family).
+
+The two paths that RELATE this scope to others — enrichment across a derived
+join key (`_enrich_via_derived_join_key`) and cross-rowset WHERE handling
+(`_apply_cross_rowset_where`) — source the OTHER side, never back through
+this one.
+"""
+
 from typing import List
 
-from trilogy.constants import logger
+from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
 from trilogy.core.enums import Derivation, JoinType
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
@@ -16,6 +44,7 @@ from trilogy.core.processing.nodes import (
     History,
     MergeNode,
     RowsetNode,
+    SelectNode,
     StrategyNode,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -104,46 +133,134 @@ def _pseudonym_bridge_keys(
     return pairs
 
 
-def _validate_cross_rowset_inner_joins(
-    select: SelectLineage | MultiSelectLineage,
-    base_node: StrategyNode,
-    environment: BuildEnvironment,
-) -> None:
-    """A scoped INNER join between two *rowset* outputs is a genuine intersection
-    of two independent populations. The scoped-join machinery collapses both
-    operands onto one canonical column; when an operand contributes nothing else
-    its scan is pruned, leaving it only as a pseudonym of the survivor -- so the
-    intersection is silently lost. A projected/filtered reference to the pruned
-    side then has no source and renders a bare ``INVALID_REFERENCE_BUG`` sentinel
-    (or, with no WHERE, silently wrong results). The collapse model cannot express
-    this; raise a clean, actionable error pointing at the ``union(...)`` rewrite.
+def _producible_derived_join_keys(
+    node: StrategyNode, environment: BuildEnvironment
+) -> list[tuple[BuildConcept, str]]:
+    """Derived-expression scoped-join keys this rowset node can MATERIALIZE off
+    its own outputs, paired with the other side's key address.
 
-    Only INNER joins between two ROWSET operands are flagged: a fact/dimension key
-    collapse (same entity) is legitimate, and a LEFT/FULL operand is genuinely
-    optional so pruning it is correct."""
-    if not isinstance(select, SelectLineage):
-        return
-    materialized = _producible_addresses(base_node, deep=True, include_pseudonyms=False)
-    for source_addr, target_addr, jointype in select.scoped_joins:
-        if jointype != JoinType.INNER:
+    A scoped `join a.grp + 1 = b.grp` lowers the left key to an anonymous BASIC
+    concept (`a.grp + 1`) whose pseudonym is the other side's key (`b.grp`). That
+    bridge is not a rowset output, so `_pseudonym_bridge_keys` can't see it; and
+    sourcing it through discovery would re-enter this same rowset (its parent is
+    the rowset's own output) and recurse. But the rowset already produces the
+    key's inputs, so it can compute the key locally — exposing a join column the
+    merge relates to the other rowset by pseudonym, with no re-sourcing. Returns
+    ``(derived key, other-side key address)`` for each such key.
+
+    The enrichment sources the OTHER-side key to pull the other rowset, so that
+    key must resolve to a DIFFERENT rowset. An INNER/global merge collapses the
+    derived key onto the other side, leaving the other side's own identity intact.
+    A LEFT scoped join is the opposite: it collapses the optional side's key ONTO
+    this anchor's derived key (substitution), so the "other side" now derives from
+    THIS rowset's own output — sourcing it re-enters this rowset and recurses with
+    no real relation to the other one. Skip any pairing whose other side is
+    producible here; it falls through to the standard path / a clean disconnect."""
+    producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
+    scoped_keys = (
+        environment.domain_graph.outer_relation_keys()
+        | environment.domain_graph.left_anchor_keys()
+    )
+    seen: set[str] = set()
+    result: list[tuple[BuildConcept, str]] = []
+    for key_addr in scoped_keys:
+        key_concept = environment.concepts.get(key_addr)
+        if key_concept is None:
             continue
-        operands = [source_addr, target_addr]
-        if not all(
-            getattr(environment.concepts.get(a), "derivation", None)
-            == Derivation.ROWSET
-            for a in operands
+        other_inputs = {a.address for a in key_concept.concept_arguments}
+        if other_inputs and other_inputs <= producible:
+            # The other side derives from this rowset (LEFT-anchor substitution);
+            # sourcing it would re-enter this rowset. Decline.
+            continue
+        for pseudo in key_concept.pseudonyms:
+            derived = environment.concepts.get(pseudo)
+            if (
+                derived is None
+                or derived.derivation != Derivation.BASIC
+                or derived.address in seen
+            ):
+                continue
+            inputs = {a.address for a in derived.concept_arguments}
+            if inputs and inputs <= producible:
+                seen.add(derived.address)
+                result.append((derived, key_addr))
+    return result
+
+
+def _is_presence_probe(address: str) -> bool:
+    """Per-side presence probe minted by `Factory._coalescing_presence_probe`
+    (the null-test rewrite for coalescing join key-group members). The single
+    place the probe naming convention is interpreted."""
+    return PRESENCE_PROBE_PREFIX in address
+
+
+def _local_exposure_obligations(
+    node: StrategyNode, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """OBLIGATION rule: every concept this rowset node must materialize from
+    its OWN outputs for the outer plan to relate or filter its side of a
+    declared relation. Purely local computations (BASICs over this node's own
+    outputs) — nothing is sourced. Two kinds:
+
+    - Derived-expression join-key members (`next_year.wk - 52`, `cast(k)`) of
+      declared outer relations. Coalescing (`full`/`union`) sides meet only at
+      the completion merge, which infers joins from the sides' outputs alone —
+      an unmaterialized member makes the authored pairing invisible and the
+      join silently drops it. (`left`/`subset` resolve via the enrichment
+      machinery — `_producible_derived_join_keys` — instead.)
+    - Presence probes whose member is an own output. A probe must compute
+      BEFORE the coalescing merge (post-merge the member's source is the fused
+      group coalesce, never NULL) and matches by exact address, never a
+      pseudonym — the group-mate's node carries the member as a pseudonym, and
+      computing the probe there would read the wrong side."""
+    producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
+    own = {c.address for c in node.output_concepts}
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+
+    def consider(candidate: BuildConcept | None, within: set[str]) -> None:
+        if (
+            candidate is None
+            or candidate.derivation != Derivation.BASIC
+            or candidate.address in seen
+            or candidate.address in own
         ):
+            return
+        inputs = {a.address for a in candidate.concept_arguments}
+        if inputs and inputs <= within:
+            seen.add(candidate.address)
+            out.append(candidate)
+
+    for key_addr in environment.domain_graph.outer_relation_keys():
+        key_concept = environment.concepts.get(key_addr)
+        if key_concept is None:
             continue
-        pruned = [a for a in operands if a not in materialized]
-        if pruned:
-            raise UnresolvableQueryException(
-                f"Cannot resolve cross-rowset INNER join {source_addr} = "
-                f"{target_addr}: it intersects two independent rowsets but the "
-                f"collapse dropped {pruned[0]}, silently losing the intersection. "
-                "Rewrite the intersection as a `union(...)` of the arms with a "
-                "channel marker, then keep tuples whose `count_distinct(channel)` "
-                "equals the number of arms."
-            )
+        for candidate_addr in {key_addr, *key_concept.pseudonyms}:
+            consider(environment.concepts.get(candidate_addr), producible)
+    for concept in environment.concepts.values():
+        if _is_presence_probe(concept.address):
+            consider(concept, own)
+    return out
+
+
+def _externally_unsourceable(
+    x: BuildConcept, coalescing_members: dict[str, set[str]], producible: set[str]
+) -> bool:
+    """EXCLUSION rule: a concept discovery must never be asked to source on
+    behalf of this node. Two tests for one recursion family:
+
+    - registry: a materialized coalescing-join key member (`next_year.wk -
+      52`) is a cross-rowset merge key, not an enrichment bridge — each side
+      materializes its OWN member and the merge pairs them.
+    - structure: any BASIC computed purely from this node's own producible
+      addresses (materialized join keys, presence probes) has no external
+      source, so sourcing it can only route back through this same rowset."""
+    if x.address in coalescing_members:
+        return True
+    if x.derivation != Derivation.BASIC:
+        return False
+    inputs = {a.address for a in x.concept_arguments}
+    return bool(inputs) and inputs <= producible
 
 
 def _build_rowset_body_node(
@@ -234,7 +351,7 @@ def _collect_advertised_outputs(
             if collapsed.address not in present_map:
                 rowset_relevant.append(collapsed)
                 present_map[collapsed.address] = collapsed
-        if derived_address in environment.scoped_partial_sources:
+        if derived_address in environment.domain_graph.subset_sources():
             scoped_partial.append(advertised)
 
     additional_relevant = [
@@ -268,6 +385,94 @@ def _unhide_referenced_body_locals(
         base_node.rebuild_cache()
 
 
+def _expose_coalesced_key_contents(
+    node: RowsetNode,
+    base_node: StrategyNode,
+    advertised: list[BuildConcept],
+) -> None:
+    """Expose the authored source address of a coalesced join key downstream.
+
+    A coalescing scoped join (`full`/`subset`/`union`) collapses a join-key group
+    (`a.aid = b.bid`) onto ONE canonical body concept (`b.bid`), leaving each
+    authored side (`a.aid`) only as a *pseudonym* of that canonical. A rowset
+    output projecting `a.aid` carries `a.aid` as its `BuildRowsetItem.content`,
+    but the body materializes it solely under the canonical address — so a
+    downstream reference to `rs.a.aid` renders its content `a.aid`, finds no
+    source-map entry for it, and the renderer emits a Missing-source sentinel.
+
+    Add each such content address as a HIDDEN output so `resolve_concept_map`
+    sources it off the body's canonical column via that pseudonym (mirroring the
+    single-statement path, where the authored side is itself the projected
+    output). `left` joins don't collapse, so their content is a direct body
+    output and this is a no-op."""
+    base_available: set[str] = set()
+    base_pseudonyms: set[str] = set()
+    for c in base_node.output_concepts:
+        if c.address in base_node.hidden_concepts:
+            continue
+        base_available.add(c.address)
+        base_pseudonyms.update(c.pseudonyms)
+    extra: list[BuildConcept] = []
+    seen: set[str] = set()
+    for item in advertised:
+        if not isinstance(item.lineage, BuildRowsetItem):
+            continue
+        content = item.lineage.content
+        if (
+            content.address not in base_available
+            and content.address in base_pseudonyms
+            and content.address not in seen
+        ):
+            extra.append(content)
+            seen.add(content.address)
+    if extra:
+        node.add_output_concepts(extra, rebuild=False, unhide=False)
+        node.hide_output_concepts(extra, rebuild=False)
+
+
+def _interpose_limit_node(
+    base_node: StrategyNode,
+    select: SelectLineage | MultiSelectLineage,
+    environment: BuildEnvironment,
+    depth: int,
+) -> StrategyNode:
+    """Materialize the body's `limit` (with its ORDER BY) as a dedicated
+    passthrough node BETWEEN the body and the translation wrapper.
+
+    The limit must not live on the translation node itself: discovery applies
+    outer WHEREs onto that node (they would render pre-limit, changing which
+    rows fill the limit), and when the outer statement reuses it as the query
+    root its ordering is overwritten by the statement's and the root renders
+    without a CTE-level limit. A dedicated node keeps LIMIT+ORDER BY in their
+    own CTE; everything downstream is post-limit by construction, and the
+    optimizer treats the limited CTE as an opaque boundary."""
+    if select.limit is None:
+        return base_node
+    passthrough = [
+        x
+        for x in base_node.output_concepts
+        if x.address not in base_node.hidden_concepts
+    ]
+    limit_node = SelectNode(
+        input_concepts=passthrough,
+        output_concepts=passthrough,
+        environment=environment,
+        parents=[base_node],
+        depth=depth,
+        partial_concepts=list(base_node.partial_concepts),
+        nullable_concepts=list(base_node.nullable_concepts),
+    )
+    limit_node.limit = select.limit
+    # the ORDER BY the limit selects under was built onto the body root by
+    # get_query_node; hoist it here so both render in one SELECT (an inner
+    # ORDER BY without a limit carries no semantics and just costs a sort)
+    limit_node.ordering = base_node.ordering
+    base_node.ordering = None
+    base_node.rebuild_cache()
+    limit_node.rebuild_cache()
+    return limit_node
+
+
 def _build_translation_node(
     base_node: StrategyNode,
     rowset_relevant: list[BuildConcept],
@@ -284,6 +489,30 @@ def _build_translation_node(
     resolves across the query boundary — in particular a collapsed join key whose
     authored source (e.g. `a.aid`) only exists inside the body as the join
     canonical (`b.bid`)."""
+    # nullability propagates by ADDRESS between nodes, but a rowset output is a
+    # new address wrapping its body content — map through the BuildRowsetItem
+    # content (and pseudonyms) so a `?` column's nullability survives the
+    # rowset boundary (else a NULL rowset join key stops matching null-safely)
+    base_nullable: set[str] = set()
+    for c in base_node.nullable_concepts:
+        base_nullable.add(c.address)
+        base_nullable.update(c.pseudonyms)
+    nullable = [
+        x
+        for x in rowset_relevant + additional_relevant
+        if x.address in base_nullable
+        or (set(x.pseudonyms) & base_nullable)
+        or (
+            isinstance(x.lineage, BuildRowsetItem)
+            and (
+                x.lineage.content.address in base_nullable
+                # the content is typically a body-local alias whose pseudonyms
+                # carry the authored source address (`local._ra_k` ~ `a.l_key`)
+                or (set(x.lineage.content.pseudonyms) & base_nullable)
+            )
+        )
+    ]
+    source_node = _interpose_limit_node(base_node, select, environment, depth)
     node = RowsetNode(
         input_concepts=[
             x
@@ -292,9 +521,10 @@ def _build_translation_node(
         ],
         output_concepts=rowset_relevant + additional_relevant,
         environment=environment,
-        parents=[base_node],
+        parents=[source_node],
         depth=depth,
         partial_concepts=list(base_node.partial_concepts),
+        nullable_concepts=nullable,
     )
     if select.where_clause:
         for item in additional_relevant:
@@ -308,6 +538,10 @@ def _build_translation_node(
         if item.address not in existing_partial:
             node.partial_concepts.append(item)
             existing_partial.add(item.address)
+
+    _expose_coalesced_key_contents(
+        node, base_node, rowset_relevant + additional_relevant
+    )
 
     node.rebuild_cache()
     logger.info(
@@ -347,8 +581,14 @@ def _apply_cross_rowset_where(
     # an outer `yr=1999` filter feeding an outer aggregate) must instead flow
     # through the normal enrich path so the condition is pushed down into the
     # scan — applying it here would compute the aggregate unfiltered and filter
-    # too late.
-    if not any(t.derivation == Derivation.ROWSET for t in condition_targets):
+    # too late. A presence probe is a cross-rowset operand by construction: it
+    # wraps another rowset's coalescing join key member and must be evaluated
+    # on that side pre-merge, filtered post-merge — the generic path would
+    # silently drop it (its rowset node has no joinable non-key output).
+    if not any(
+        t.derivation == Derivation.ROWSET or _is_presence_probe(t.address)
+        for t in condition_targets
+    ):
         return None
     # Source the merge against EVERY concept the predicate references, not just
     # the operands missing from this rowset (`condition_targets`). An operand
@@ -388,6 +628,111 @@ def _apply_cross_rowset_where(
     return merged
 
 
+def _enrich_via_derived_join_key(
+    derived_keys: List[tuple[BuildConcept, str]],
+    enrich_remaining: List[BuildConcept],
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
+    g,
+    depth: int,
+    source_concepts,
+    history: History,
+    conditions: BuildWhereClause | None,
+    node: RowsetNode,
+) -> StrategyNode | None:
+    """Enrich a rowset across a derived-expression scoped join.
+
+    Materializes each derived join key (`a.grp + 1`) onto this rowset node from
+    its own outputs, then sources the still-missing optionals — plus the other
+    side's key, so the merge has a real column to join — which pulls the OTHER
+    scoped-joined rowset, and merges. The merge relates the two over the key's
+    pseudonym (`a.grp + 1` ~ `b.grp`); the other rowset is never re-sourced
+    through this one (which would recurse).
+
+    Returns None (fall through to the standard path / clean disconnect) when the
+    other side cannot EXPOSE the pseudonym key — e.g. the optional is a filtered
+    aggregate grouped by THIS rowset's key, which collapses the other side's join
+    column away. Merging then would silently cross-join (`1=1`), so decline and
+    let the query fail cleanly rather than return wrong rows."""
+    other_keys = [
+        environment.concepts[other]
+        for _, other in derived_keys
+        if other in environment.concepts
+    ]
+    # Plain-equality co-keys authored in the SAME cross-rowset join (`a.store =
+    # b.store and a.period + 10 = b.period`). The merge relates the two rowsets
+    # by the derived key's pseudonym only; without also materializing the
+    # equality co-keys on the other side, get_node_joins infers a join on the
+    # derived key alone and the equality key silently drops -> cross-key fan-out.
+    # Source them so both sides expose the co-key (shared canonical address) and
+    # the inferred join carries every authored key.
+    scoped_keys = (
+        environment.domain_graph.outer_relation_keys()
+        | environment.domain_graph.left_anchor_keys()
+    )
+    derived_related = (
+        {other for _, other in derived_keys}
+        | {key.address for key, _ in derived_keys}
+        | {p for key, _ in derived_keys for p in key.pseudonyms}
+    )
+    co_keys = [
+        environment.concepts[a]
+        for a in scoped_keys - derived_related
+        if a in environment.concepts
+    ]
+    co_key_addresses = {c.address for c in co_keys} | {
+        p for c in co_keys for p in c.pseudonyms
+    }
+    enrich_node = source_concepts(
+        mandatory_list=unique(enrich_remaining + other_keys + co_keys, "address"),
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+        conditions=conditions,
+        history=history,
+    )
+    if not enrich_node:
+        return None
+    # Keep the anchor-side co-key column visible so the inferred join can pair it
+    # against the other side (its address shares a canonical with the other side's
+    # co-key via the scoped-join pseudonym).
+    for x in list(node.output_concepts):
+        if x.address in node.hidden_concepts and (
+            x.address in co_key_addresses or (set(x.pseudonyms) & co_key_addresses)
+        ):
+            node.unhide_output_concepts([x])
+    exposed: set[str] = set()
+    for x in enrich_node.output_concepts:
+        if x.address in enrich_node.hidden_concepts:
+            continue
+        exposed.add(x.address)
+        exposed |= set(x.pseudonyms)
+    bindable = {other for _, other in derived_keys} | {
+        p for key, _ in derived_keys for p in key.pseudonyms
+    }
+    if not (exposed & bindable):
+        return None
+    for key, _ in derived_keys:
+        node.add_output_concept(key)
+    node.rebuild_cache()
+    non_hidden = [
+        x for x in node.output_concepts if x.address not in node.hidden_concepts
+    ]
+    non_hidden_enrich = [
+        x
+        for x in enrich_node.output_concepts
+        if x.address not in enrich_node.hidden_concepts
+    ]
+    return MergeNode(
+        input_concepts=unique(non_hidden + non_hidden_enrich, "address"),
+        output_concepts=unique(non_hidden + local_optional, "address"),
+        environment=environment,
+        depth=depth,
+        parents=[node, enrich_node],
+        preexisting_conditions=conditions.conditional if conditions else None,
+    )
+
+
 def _enrich_rowset_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -405,6 +750,26 @@ def _enrich_rowset_node(
     optionals and merges them back onto the rowset. Returns the bare rowset node
     when no enrichment is possible/required."""
     remaining = unsatisfied_optionals(local_optional, node)
+    # A scoped-join key-group member is NOT satisfied through its group-mate
+    # pseudonym: the merge between this rowset and the enrichment side joins the
+    # two physical columns, so the other side must materialize its OWN member.
+    # `unsatisfied_optionals` would drop it here (this node's group-mate output
+    # pseudonym-matches it), the enrichment request would omit it, and the
+    # inferred join would silently lose that key — cross-producting the rows on
+    # whatever keys remain (TPC-DS q59). Re-add it unless this node exposes the
+    # member itself.
+    group_members = environment.distinct_scoped_join_group_members()
+    if group_members:
+        node_outputs = {x.address for x in node.output_concepts}
+        remaining_addresses = {x.address for x in remaining}
+        for optional in local_optional:
+            if (
+                optional.address in group_members
+                and optional.address not in node_outputs
+                and optional.address not in remaining_addresses
+            ):
+                remaining.append(optional)
+                remaining_addresses.add(optional.address)
     # An outer WHERE can reference a concept the rowset doesn't produce (e.g. a
     # dimension property reachable only via the declared `join rs.k = dim.key`).
     # That arg must be sourced and the predicate applied even when every SELECT
@@ -431,9 +796,37 @@ def _enrich_rowset_node(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
         return node
+    # A scoped join on a DERIVED key (`a.grp + 1 = b.grp`) leaves no rowset-output
+    # pseudonym for `_pseudonym_bridge_keys` to find, and sourcing the key via
+    # discovery would re-enter this rowset and recurse. Materialize it locally and
+    # merge with the other side over its pseudonym. Gated on the shape so the
+    # cheaper standard enrichment below is unperturbed for every other rowset.
+    derived_keys = _producible_derived_join_keys(node, environment)
+    if derived_keys and remaining:
+        merged = _enrich_via_derived_join_key(
+            derived_keys,
+            unique(remaining + cond_remaining, "address"),
+            local_optional,
+            environment,
+            g,
+            depth,
+            source_concepts,
+            history,
+            conditions,
+            node,
+        )
+        if merged is not None:
+            return merged
     bridge_keys = _pseudonym_bridge_keys(node.output_concepts, environment)
+    coalescing_members = environment.distinct_scoped_join_group_mates()
+    producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
     possible_joins = concept_to_relevant_joins(
-        [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]
+        [
+            x
+            for x in node.output_concepts
+            if x.derivation != Derivation.ROWSET
+            and not _externally_unsourceable(x, coalescing_members, producible)
+        ]
         + [canonical for _, canonical in bridge_keys]
     )
     if not possible_joins:
@@ -513,7 +906,6 @@ def gen_rowset_node(
         f"{padding(depth)}{LOGGER_PREFIX} rowset derived concepts are {lineage.rowset.derived_concepts}"
     )
     base_node = _build_rowset_body_node(concept, lineage, select, history, depth)
-    _validate_cross_rowset_inner_joins(select, base_node, environment)
 
     rowset_relevant, additional_relevant, scoped_partial = _collect_advertised_outputs(
         lineage, select, environment, base_node, local_optional
@@ -528,6 +920,16 @@ def gen_rowset_node(
         environment,
         depth,
     )
+
+    # Discharge this scope's exposure obligations (module docstring rule 1):
+    # derived join-key members and presence probes computable off the node's
+    # own outputs, materialized here so the completion merge can relate this
+    # side without re-sourcing anything through it.
+    obligations = _local_exposure_obligations(node, environment)
+    if obligations:
+        for obligation in obligations:
+            node.add_output_concept(obligation, rebuild=False)
+        node.rebuild_cache()
 
     if conditions:
         merged = _apply_cross_rowset_where(

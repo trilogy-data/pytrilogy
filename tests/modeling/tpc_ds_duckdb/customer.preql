@@ -14,17 +14,17 @@ key id int; # Surrogate key uniquely identifying a customer.
 unique property id.text_id string; # Stable natural/business customer ID (16-char alphanumeric).
 
 properties id (
-    last_name string, # Customer last (family) name. Not guaranteed unique; weak for identity.
-    first_name string, # Customer first (given) name. Display only; low analytical value alone.
-    preferred_cust_flag enum<string>['Y', 'N'], # 'Y' if the customer is flagged as a preferred/loyalty customer, else 'N'.
-    birth_day int::day, # Day-of-month of birth (1-31; combine with month/year for full DOB).
-    birth_month int::month, # Month of birth (1-12).
-    birth_year int::year, # Four-digit year of birth (1924-1992 in this dataset).
-    birth_country string::country, # Country of birth (free-form name, e.g. 'UNITED STATES').
-    salutation enum<string>['Dr.', 'Miss', 'Mr.', 'Mrs.', 'Ms.', 'Sir'], # Title/salutation prefix.
-    email_address string, # Customer email address (quasi-unique but not a key; can change over time).
-    login string, # Account username/login (more stable than email).
-    last_review_date string, # FK to date for customer's last review (stored as string; should be cast to date).
+    last_name string?, # Customer last (family) name. Nullable in source data. Not guaranteed unique; weak for identity.
+    first_name string?, # Customer first (given) name. Nullable in source data. Display only; low analytical value alone.
+    preferred_cust_flag enum<string>['Y', 'N']?, # 'Y' if the customer is flagged as a preferred/loyalty customer, else 'N'.
+    birth_day int::day?, # Day-of-month of birth (1-31; combine with month/year for full DOB).
+    birth_month int::month?, # Month of birth (1-12).
+    birth_year int::year?, # Four-digit year of birth (1924-1992 in this dataset).
+    birth_country string::country?, # Country of birth (free-form name, e.g. 'UNITED STATES').
+    salutation enum<string>['Dr.', 'Miss', 'Mr.', 'Mrs.', 'Ms.', 'Sir']?, # Title/salutation prefix.
+    email_address string?, # Customer email address (quasi-unique but not a key; can change over time).
+    login string?, # Account username/login (more stable than email).
+    last_review_date string?, # FK to date for customer's last review (stored as string; should be cast to date).
 );
 
 auto full_name <- concat(salutation, ' ', first_name, ' ', last_name); # Derived display name: 'Salutation First Last'.

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from trilogy.constants import logger
 from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.graph_models import (
     ReferenceGraph,
     datasource_has_filter_sensitive_aggregate,
@@ -306,10 +307,17 @@ def create_datasource_node(
         or (c.is_aggregate and c.address in datasource_output_addresses)
     ]
     output_addresses = {c.address for c in output_concepts}
+    # Partiality is a binding-level fact: an address also bound complete here
+    # (a relation folded a second endpoint onto it) is still fully providable.
+    complete_addresses = {
+        c.concept.address for c in datasource.columns if c.is_complete
+    }
     partial_concepts = [
         c.concept
         for c in datasource.columns
-        if not c.is_complete and c.concept.address in output_addresses
+        if not c.is_complete
+        and c.concept.address in output_addresses
+        and c.concept.address not in complete_addresses
     ]
 
     partial_lcl = CanonicalBuildConceptList(concepts=partial_concepts)
@@ -337,6 +345,8 @@ def create_datasource_node(
     # must not carry NULLABLE downstream — otherwise the join scorer picks an
     # OUTER join rendered as ``is not distinct from`` (defeats hash joins).
     # Gate on routed_conditions: only filters actually pushed into this scan.
+    # Consumers that judge the condition itself must not trust the resulting
+    # absence — see StrategyNode._refine_nullable_for_conditions.
     proven_non_null = (
         condition_proves_non_null(routed_conditions) if routed_conditions else set()
     )
@@ -371,10 +381,19 @@ def create_datasource_node(
             [] if partial_is_full else [c for c in output_concepts if c in partial_lcl]
         ),
         rollup_concepts=rollup_concepts,
+        # a BASIC derivation computed at this scan (`l_key + 1`) is NULL
+        # wherever its nullable argument is — stamp it here or downstream
+        # non-null proofs walk through this node and strip null-safety
         nullable_concepts=[
             c
             for c in output_concepts
-            if c in nullable_lcl
+            if (
+                c in nullable_lcl
+                or (
+                    propagates_argument_nulls(c)
+                    and any(arg in nullable_lcl for arg in c.concept_arguments)
+                )
+            )
             and not proven_non_null.intersection(
                 {c.address, c.canonical_address, *c.pseudonyms}
             )

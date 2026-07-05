@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     Modifier,
     SourceType,
 )
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -154,6 +155,18 @@ def get_all_parent_nullable(
             c
             for c in all_concepts
             if any(c.address in addrs for addrs in nullable_addrs)
+            # a scalar derivation of a nullable input is itself nullable
+            # (`l_key + 1` is NULL wherever `l_key` is): infer it at the node
+            # that computes the derivation so address-based propagation carries
+            # it upward from here
+            or (
+                propagates_argument_nulls(c)
+                and any(
+                    arg.address in addrs
+                    for addrs in nullable_addrs
+                    for arg in c.concept_arguments
+                )
+            )
         ],
         "address",
     )
@@ -198,6 +211,10 @@ class StrategyNode:
             self.output_concepts, self.parents
         )
         self.ordering = ordering
+        # Row limit applied at this node's output (rowset body `limit N`).
+        # Attribute rather than an init param: only the rowset translation
+        # wrapper sets it, and copy()/_resolve() thread it through.
+        self.limit: Optional[int] = None
         self.depth = depth
         self.conditions = conditions
         self._refine_nullable_for_conditions()
@@ -301,6 +318,13 @@ class StrategyNode:
         reflects the truth on its own rows, and downstream nodes inherit the
         improved view via ``get_all_parent_nullable`` without ever looking
         downstream themselves.
+
+        Caveat for consumers: after this refinement, absence from
+        ``nullable_concepts`` conflates "never nullable" with "nullable but
+        proven non-null by this node's own condition". Anything that reasons
+        about the condition itself (e.g. ``StripRedundantNotNull``) must not
+        treat absence as ground truth — the q78 bug stripped the very
+        ``IS NOT NULL`` whose presence caused the refinement.
         """
         if not self.conditions or not self.nullable_concepts:
             return
@@ -333,9 +357,28 @@ class StrategyNode:
     def add_output_concepts(
         self, concepts: List[BuildConcept], rebuild: bool = True, unhide: bool = True
     ):
+        # nullability was computed at construction; keep it current for
+        # post-construction outputs (a derived concept computed over a nullable
+        # input is nullable wherever the input is)
+        upstream_nullable = {x.address for x in self.nullable_concepts}
+        for p in self.parents:
+            upstream_nullable |= {x.address for x in p.nullable_concepts}
+        nullable_addresses = {x.address for x in self.nullable_concepts}
         for concept in concepts:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
+                if concept.address not in nullable_addresses and (
+                    concept.address in upstream_nullable
+                    or (
+                        propagates_argument_nulls(concept)
+                        and any(
+                            a.address in upstream_nullable
+                            for a in concept.concept_arguments
+                        )
+                    )
+                ):
+                    self.nullable_concepts.append(concept)
+                    nullable_addresses.add(concept.address)
             if unhide and concept.address in self.hidden_concepts:
                 self.hidden_concepts.remove(concept.address)
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
@@ -471,6 +514,7 @@ class StrategyNode:
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
+            limit=self.limit,
             base_datasource=parent_sources[0] if len(parent_sources) == 1 else None,
         )
 
@@ -490,7 +534,7 @@ class StrategyNode:
         return qds
 
     def copy(self) -> "StrategyNode":
-        return self.__class__(
+        node = self.__class__(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -509,6 +553,8 @@ class StrategyNode:
             virtual_output_concepts=list(self.virtual_output_concepts),
             ordering=self.ordering,
         )
+        node.limit = self.limit
+        return node
 
 
 @dataclass

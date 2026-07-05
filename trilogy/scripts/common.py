@@ -26,7 +26,6 @@ from trilogy.scripts.display import (
     print_error,
     print_info,
     print_success,
-    print_warning,
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
 from trilogy.utility import safe_open
@@ -297,12 +296,12 @@ def validate_required_connection_params(
             f"Missing required {dialect_name} connection parameters: {', '.join(missing)}"
         )
     if extra:
-        print_warning(
-            f"Extra {dialect_name} connection parameters provided: {', '.join(extra)}"
+        valid = ", ".join(required_keys + optional_keys) or "none"
+        raise ConfigurationException(
+            f"Unknown {dialect_name} connection parameters: {', '.join(extra)}. "
+            f"Valid parameters: {valid}"
         )
-    return {
-        k: v for k, v in conn_dict.items() if k in required_keys or k in optional_keys
-    }
+    return conn_dict
 
 
 def get_dialect_config(
@@ -317,7 +316,13 @@ def get_dialect_config(
         conn_dict = validate_required_connection_params(
             conn_dict,
             [],
-            ["path", "enable_python_datasources", "enable_gcs", "enable_spatial"],
+            [
+                "path",
+                "enable_python_datasources",
+                "enable_gcs",
+                "enable_spatial",
+                "gcs_cache_bust",
+            ],
             "DuckDB",
         )
         conf = DuckDBConfig(**conn_dict)
@@ -335,7 +340,10 @@ def get_dialect_config(
         from trilogy.dialect.config import SnowflakeConfig
 
         conn_dict = validate_required_connection_params(
-            conn_dict, ["username", "password", "account"], [], "Snowflake"
+            conn_dict,
+            ["username", "password", "account"],
+            ["database", "schema"],
+            "Snowflake",
         )
         conf = SnowflakeConfig(**conn_dict)
     elif edialect == Dialects.SQL_SERVER:
@@ -371,10 +379,44 @@ def get_dialect_config(
         conn_dict = validate_required_connection_params(
             conn_dict,
             ["host", "port", "username", "password", "catalog"],
-            [],
+            ["schema"],
             "Presto",
         )
         conf = PrestoConfig(**conn_dict)
+    elif edialect == Dialects.TRINO and conn_dict:
+        from trilogy.dialect.config import TrinoConfig
+
+        conn_dict = validate_required_connection_params(
+            conn_dict,
+            ["host", "port", "username", "password", "catalog"],
+            ["schema"],
+            "Trino",
+        )
+        conf = TrinoConfig(**conn_dict)
+    elif edialect == Dialects.CLICKHOUSE and conn_dict:
+        from trilogy.dialect.config import ClickhouseConfig
+
+        conn_dict = validate_required_connection_params(
+            conn_dict,
+            [],
+            [
+                "host",
+                "port",
+                "username",
+                "password",
+                "database",
+                "secure",
+                "mode",
+                "chdb_path",
+            ],
+            "ClickHouse",
+        )
+        conf = ClickhouseConfig(**conn_dict)
+    elif conn_dict:
+        raise ConfigurationException(
+            f"Dialect {edialect.value} does not accept connection parameters "
+            f"via the CLI; got: {', '.join(conn_dict)}"
+        )
     if conf and runtime_config.engine_config:
         conf = runtime_config.engine_config.merge_config(conf)
     return conf
@@ -401,7 +443,11 @@ def create_executor(
         raise Exit(1) from e
 
     # Parse connection arguments from remaining args
-    conn_dict = extra_to_kwargs(conn_args)
+    try:
+        conn_dict = extra_to_kwargs(conn_args)
+    except ValueError as e:
+        print_error(str(e))
+        raise Exit(1) from e
 
     # Configure dialect
     try:
@@ -644,6 +690,18 @@ def handle_execution_exception(
         # A function called on the wrong argument type is a fixable author
         # mistake (e.g. `year()` on an integer key), not an internal crash.
         print_error(f"Type error{location}: {e}")
+    elif isinstance(e, ConfigurationException):
+        # A bad connection/config parameter is a fixable invocation mistake.
+        print_error(f"Configuration error{location}: {e}")
+    elif isinstance(e, RecursionError):
+        # A planner RecursionError is ALWAYS a framework bug (an unguarded cycle
+        # in resolution), not a user mistake — and not reliably worked around by
+        # reformulating. Say so plainly rather than emitting the opaque
+        # "Unexpected error: maximum recursion depth exceeded", which reads as a
+        # crash to retry verbatim.
+        print_error(
+            f"Resolution error{location}: query could not be planned; this is a bug."
+        )
     else:
         print_error(f"Unexpected error{location}: {e}")
     if debug:

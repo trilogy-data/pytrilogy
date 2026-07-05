@@ -1,0 +1,19 @@
+import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+rowset store_combos <- where ss.date.year >= 1999 and ss.date.year <= 2001 select ss.item.brand_id as brand_id, ss.item.class_id as class_id, ss.item.category_id as category_id;
+rowset catalog_combos <- where cs.sold_date.year >= 1999 and cs.sold_date.year <= 2001 select cs.item.brand_id as brand_id, cs.item.class_id as class_id, cs.item.category_id as category_id;
+rowset web_combos <- where ws.date.year >= 1999 and ws.date.year <= 2001 select ws.item.brand_id as brand_id, ws.item.class_id as class_id, ws.item.category_id as category_id;
+rowset qualifying_combos <- where store_combos.brand_id in catalog_combos.brand_id and store_combos.brand_id in web_combos.brand_id and store_combos.class_id in catalog_combos.class_id and store_combos.class_id in web_combos.class_id and store_combos.category_id in catalog_combos.category_id and store_combos.category_id in web_combos.category_id select store_combos.brand_id as brand_id, store_combos.class_id as class_id, store_combos.category_id as category_id;
+auto overall_total_value <- sum(ss.quantity * ss.list_price ? ss.date.year >= 1999 and ss.date.year <= 2001) + sum(cs.quantity * cs.list_price ? cs.sold_date.year >= 1999 and cs.sold_date.year <= 2001) + sum(ws.quantity * ws.list_price ? ws.date.year >= 1999 and ws.date.year <= 2001);
+auto overall_total_count <- sum(ss.row_counter ? ss.date.year >= 1999 and ss.date.year <= 2001) + sum(cs.row_counter ? cs.sold_date.year >= 1999 and cs.sold_date.year <= 2001) + sum(ws.row_counter ? ws.date.year >= 1999 and ws.date.year <= 2001);
+rowset overall_avg <- select overall_total_value / overall_total_count as avg_sale_value;
+with nov2001_by_channel as union(
+  (where ss.date.year = 2001 and ss.date.month_of_year = 11 and ss.item.brand_id in qualifying_combos.brand_id and ss.item.class_id in qualifying_combos.class_id and ss.item.category_id in qualifying_combos.category_id select 'STORE' as channel, ss.item.brand_id as brand_id, ss.item.class_id as class_id, ss.item.category_id as category_id, sum(ss.quantity * ss.list_price) as total_sales, count(ss.line_item) as num_sales),
+  (where cs.sold_date.year = 2001 and cs.sold_date.month_of_year = 11 and cs.item.brand_id in qualifying_combos.brand_id and cs.item.class_id in qualifying_combos.class_id and cs.item.category_id in qualifying_combos.category_id select 'CATALOG' as channel, cs.item.brand_id as brand_id, cs.item.class_id as class_id, cs.item.category_id as category_id, sum(cs.quantity * cs.list_price) as total_sales, count(cs.line_item) as num_sales),
+  (where ws.date.year = 2001 and ws.date.month_of_year = 11 and ws.item.brand_id in qualifying_combos.brand_id and ws.item.class_id in qualifying_combos.class_id and ws.item.category_id in qualifying_combos.category_id select 'WEB' as channel, ws.item.brand_id as brand_id, ws.item.class_id as class_id, ws.item.category_id as category_id, sum(ws.quantity * ws.list_price) as total_sales, count(ws.line_item) as num_sales)
+) -> (channel, brand_id, class_id, category_id, total_sales, num_sales);
+select nov2001_by_channel.channel, nov2001_by_channel.brand_id, nov2001_by_channel.class_id, nov2001_by_channel.category_id, sum(nov2001_by_channel.total_sales) as total_sales, sum(nov2001_by_channel.num_sales) as num_sales
+by rollup (nov2001_by_channel.channel, nov2001_by_channel.brand_id, nov2001_by_channel.class_id, nov2001_by_channel.category_id)
+order by nov2001_by_channel.channel asc nulls first, nov2001_by_channel.brand_id asc nulls first, nov2001_by_channel.class_id asc nulls first, nov2001_by_channel.category_id asc nulls first
+limit 100;

@@ -10,12 +10,13 @@ from typing import Any
 from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
-from trilogy.core.constants import WORKING_PATH_CONCEPT
+from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX, WORKING_PATH_CONCEPT
 from trilogy.core.enums import (
     ConceptSource,
     DatasourceState,
     DatePart,
     FunctionType,
+    JoinType,
     Modifier,
     PersistMode,
     Purpose,
@@ -50,6 +51,7 @@ from trilogy.core.models.author import (
     OrderItem,
     Parenthetical,
     RowsetItem,
+    SubqueryItem,
     SubselectComparison,
     SubselectItem,
     WhereClause,
@@ -193,6 +195,18 @@ class Renderer:
             if name.startswith(prefix):
                 return name[len(prefix) :]
         return name
+
+    @staticmethod
+    def _is_hidden_subquery_output(item) -> bool:
+        """A hidden select column auto-promoted from an inline subquery in the
+        WHERE/HAVING. It re-derives from the inline `(select …)` on reparse, so
+        rendering the bare synthetic ref would break the round-trip — skip it."""
+        if Modifier.HIDDEN not in getattr(item, "modifiers", []):
+            return False
+        address = getattr(getattr(item, "content", None), "address", "")
+        return any(
+            part.startswith(SUBQUERY_NAMESPACE_PREFIX) for part in address.split(".")
+        )
 
     @contextmanager
     def indented(self, levels: int = 1):
@@ -948,7 +962,9 @@ class Renderer:
     def _(self, arg: SelectStatement):
         with self.indented():
             select_columns = [
-                self.indent_lines(self.to_string(c)) for c in arg.selection
+                self.indent_lines(self.to_string(c))
+                for c in arg.selection
+                if not self._is_hidden_subquery_output(c)
             ]
             where_clause = None
             if arg.where_clause:
@@ -961,12 +977,24 @@ class Renderer:
                 order_by = [
                     self.indent_lines(self.to_string(c)) for c in arg.order_by.items
                 ]
-        join_keyword = {"INNER": "inner", "LEFT_OUTER": "left", "FULL": "full"}
-        joins = [
-            f"{join_keyword[j.join_type.name]} join"
-            f" {j.source_address} = {j.target_address}"
-            for j in arg.join_clauses
-        ]
+        join_keyword = {
+            JoinType.LEFT_OUTER: "left",
+            JoinType.FULL: "full",
+            JoinType.SUBSET: "subset",
+            JoinType.UNION: "union",
+        }
+        joins = []
+        for j in arg.join_clauses:
+            authored = j.authored or j.join_type
+            # A SUBSET declaration is stored superset-anchored (source = the
+            # superset); render back in authored `subset join <subset> = <superset>`
+            # order.
+            left, right = (
+                (j.target_address, j.source_address)
+                if authored is JoinType.SUBSET
+                else (j.source_address, j.target_address)
+            )
+            joins.append(f"{join_keyword[authored]} join {left} = {right}")
 
         grouping = self._render_select_grouping(arg.grouping) if arg.grouping else None
         return QUERY_TEMPLATE.render(
@@ -1121,6 +1149,17 @@ class Renderer:
         return self._pretty(
             [content, Break(priority=8, indent=1, flat=" "), f"? {where}"]
         )
+
+    @to_string.register
+    def _(self, arg: "SubqueryItem"):
+        # Reproduce the inline `(select …)` form from the authoring payload; the
+        # synthetic rowset the hydrator minted is never surfaced as a statement.
+        # Render inside the rowset scope so the body's mangled `_<name>_alias`
+        # unmangles back to the user's alias, and drop the statement terminator.
+        with self._rowset_scope(arg.name):
+            inner = self.to_string(arg.select)
+        inner = inner.strip().rstrip(";").strip()
+        return f"({inner})"
 
     @to_string.register
     def _(self, arg: "SubselectItem"):

@@ -165,8 +165,8 @@ merge p2.lastname  into p1.lastname;
 """)
 
     assert base.concepts["p1.firstname"].pseudonyms == set()
-    assert ("p2.firstname", "p1.firstname", JoinType.INNER) in base.merges
-    assert ("p2.lastname", "p1.lastname", JoinType.INNER) in base.merges
+    assert ("p2.firstname", "p1.firstname", JoinType.FULL) in base.merges
+    assert ("p2.lastname", "p1.lastname", JoinType.FULL) in base.merges
     base_size = base.to_dict()
 
     for x in range(0, 10):
@@ -190,11 +190,11 @@ key a int;
 key b int;
 merge a into b;
 """)
-    assert ("local.a", "local.b", JoinType.INNER) in base.merges
+    assert ("local.a", "local.b", JoinType.FULL) in base.merges
     assert base.alias_origin_lookup == {}
 
     exec = Dialects.DUCK_DB.default_executor(environment=base)
     exec.execute_query(statements[-1])
 
-    assert ("local.a", "local.b", JoinType.INNER) in base.merges
+    assert ("local.a", "local.b", JoinType.FULL) in base.merges
     assert base.alias_origin_lookup == {}

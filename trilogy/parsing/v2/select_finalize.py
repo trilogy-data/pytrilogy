@@ -69,6 +69,7 @@ from trilogy.core.models.author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    RowsetItem,
     SubselectComparison,
     SubselectItem,
     UndefinedConcept,
@@ -83,11 +84,12 @@ from trilogy.core.statements.author import (
     PersistStatement,
     RowsetDerivationStatement,
     SelectItem,
+    SelectLineage,
     SelectStatement,
 )
 from trilogy.parsing.common import arbitrary_to_concept, row_tuple_function
 from trilogy.parsing.v2.rules_context import RuleContext
-from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
+from trilogy.parsing.v2.semantic_state import ConceptLookup, ConceptUpdateKind
 
 
 def _merged_local_concepts(
@@ -867,6 +869,35 @@ def _child_exprs(node: Any) -> Iterator[Any]:
         yield from node.values()
 
 
+def _expression_contains_window(node: Any) -> bool:
+    if isinstance(node, (NavigationWindowItem, NumberingWindowItem)):
+        return True
+    return any(_expression_contains_window(child) for child in _child_exprs(node))
+
+
+def _window_key_addresses(node: Any) -> set[str]:
+    if isinstance(node, (NavigationWindowItem, NumberingWindowItem)):
+        refs = {
+            expr.address
+            for expr in [
+                *node.over,
+                *(item.expr for item in node.order_by),
+            ]
+            if isinstance(expr, ConceptRef)
+        }
+        if isinstance(node, NavigationWindowItem):
+            refs |= _window_key_addresses(node.content)
+        else:
+            for argument in node.arguments:
+                refs |= _window_key_addresses(argument)
+        return refs
+    return {
+        address
+        for child in _child_exprs(node)
+        for address in _window_key_addresses(child)
+    }
+
+
 def _collect_aggregate_wrappers(
     node: Any, predicate: Callable[[Any], bool]
 ) -> list[AggregateWrapper]:
@@ -912,9 +943,13 @@ def _select_rollup_spec(
 
 def _is_standard_grouping_aggregate(node: Any) -> bool:
     return (
-        isinstance(node, AggregateWrapper)
-        and node.grouping == AggregateGroupingMode.STANDARD
-        and node.function.operator in _GROUPING_FNS
+        _is_grouping_aggregate(node) and node.grouping == AggregateGroupingMode.STANDARD
+    )
+
+
+def _is_grouping_aggregate(node: Any) -> bool:
+    return (
+        isinstance(node, AggregateWrapper) and node.function.operator in _GROUPING_FNS
     )
 
 
@@ -922,6 +957,37 @@ def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
     """All STANDARD-mode ``grouping()``/``grouping_id()`` wrappers anywhere in an
     expression tree (e.g. nested inside a ``case`` that derives a rollup level)."""
     return _collect_aggregate_wrappers(node, _is_standard_grouping_aggregate)
+
+
+def _is_window_item(node: Any) -> bool:
+    return isinstance(node, (NavigationWindowItem, NumberingWindowItem))
+
+
+def _lineage_reaches(
+    lineage: Any, context: RuleContext, predicate: Callable[[Any], bool], seen: set[str]
+) -> bool:
+    """True when a node matching ``predicate`` is reachable from ``lineage``,
+    descending through by-name ``ConceptRef``s into their concept lineages so a
+    named ``auto`` concept is inspected too. A rowset output is a materialized
+    boundary (its aggregates ran inside the rowset's own pass), so descent stops
+    at a ``RowsetItem`` lineage — not an ``Expr`` node, so ``_child_exprs`` yields
+    nothing. ``seen`` guards against cyclic lineage."""
+    if predicate(lineage):
+        return True
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in seen:
+            return False
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if concept is None or isinstance(
+            concept, (UndefinedConcept, UndefinedConceptFull)
+        ):
+            return False
+        return _lineage_reaches(concept.lineage, context, predicate, seen)
+    return any(
+        _lineage_reaches(child, context, predicate, seen)
+        for child in _child_exprs(lineage)
+    )
 
 
 def _is_ungrouped_aggregate(node: Any) -> bool:
@@ -941,8 +1007,10 @@ def _collect_ungrouped_aggregates_deep(
     """Un-grouped aggregate wrappers reachable from a lineage, descending through
     by-name ``ConceptRef``s into their concept lineages — so a named
     ``auto t <- sum(x)`` (or a ``grouping()`` buried inside a derived level
-    concept) referenced in the SELECT still inherits the grouping spec. The
-    ``seen`` set guards against cyclic lineage."""
+    concept) referenced in the SELECT still inherits the grouping spec. Window
+    partition and ordering expressions are included because their aggregates
+    execute over the enclosing SELECT's grouped rows. The ``seen`` set guards
+    against cyclic lineage."""
     found: list[AggregateWrapper] = []
     if isinstance(lineage, ConceptRef):
         if lineage.address in seen:
@@ -958,6 +1026,12 @@ def _collect_ungrouped_aggregates_deep(
         found.append(cast(AggregateWrapper, lineage))
     for child in _child_exprs(lineage):
         found.extend(_collect_ungrouped_aggregates_deep(child, context, seen))
+    if isinstance(lineage, (NavigationWindowItem, NumberingWindowItem)):
+        for child in [
+            *lineage.over,
+            *(item.expr for item in lineage.order_by),
+        ]:
+            found.extend(_collect_ungrouped_aggregates_deep(child, context, seen))
     return found
 
 
@@ -1020,19 +1094,31 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
         )
     spec = select.grouping
     if spec is None:
-        # No grouping to propagate: just reject a stray projected grouping().
+        # No grouping to propagate: reject a stray projected grouping(), whether
+        # inline or reached through a named `auto g <- grouping(x)` concept — both
+        # render a groupless GROUPING() CTE -> DuckDB "GROUPING statement cannot be
+        # used without groups". A grouping() sharing a lineage with a window is the
+        # valid q70 post-aggregation label (the grain guard keeps it out of the
+        # grain and it renders against the window's aggregate GROUP BY), so a window
+        # anywhere in the item's reachable lineage exempts it.
         for item in select.selection:
             lineage = _item_lineage(item, context)
-            if lineage is not None and _collect_standard_grouping_wrappers(lineage):
-                raise InvalidSyntaxException(
-                    "grouping()/grouping_id() requires a `by rollup (…)`/"
-                    "`by cube (…)`/`by grouping sets (…)` clause on the enclosing "
-                    "select; it has no meaning without a grouping set."
-                )
+            if lineage is None or not _lineage_reaches(
+                lineage, context, _is_standard_grouping_aggregate, set()
+            ):
+                continue
+            if _lineage_reaches(lineage, context, _is_window_item, set()):
+                continue
+            raise InvalidSyntaxException(
+                "grouping()/grouping_id() requires a `by rollup (…)`/"
+                "`by cube (…)`/`by grouping sets (…)` clause on the enclosing "
+                "select; it has no meaning without a grouping set."
+            )
         return
     _validate_grouping_args_are_concepts(select, context)
     _normalize_grouping_args_to_rollup_keys(select, context)
     seen: set[str] = set()
+    stamped = False
     for item in select.selection:
         lineage = _item_lineage(item, context)
         if lineage is None:
@@ -1041,6 +1127,199 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
             wrapper.by = list(spec.by)
             wrapper.grouping = spec.mode
             wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
+            stamped = True
+    # Stamping only reaches aggregate wrappers; a passthrough of a
+    # pre-aggregated (rowset) measure has none, so without this the spec
+    # would silently drop when nothing was stamped (q05) — and a passthrough
+    # next to a fresh aggregate would emit as a bare, ungrouped column in the
+    # ROLLUP CTE. Re-aggregate the passthroughs, or raise.
+    _apply_grouping_to_passthroughs(select, context, spec, stamped)
+
+
+_REAGGREGABLE_OPERATORS = {FunctionType.SUM, FunctionType.COUNT}
+
+
+def _underlying_aggregate_operators(
+    lineage: Any, context: RuleContext, seen: set[str]
+) -> set[FunctionType]:
+    """The aggregate operators a passthrough projection is materialized from,
+    descending through by-name ``ConceptRef``s (``auto`` concepts) and rowset
+    outputs (``RowsetItem`` content). Unlike ``_lineage_reaches`` this
+    deliberately crosses the rowset boundary: the question is not where the
+    aggregate runs but whether the materialized value can be re-aggregated."""
+    if isinstance(lineage, AggregateWrapper):
+        return {lineage.function.operator}
+    if isinstance(lineage, RowsetItem):
+        return _underlying_aggregate_operators(lineage.content, context, seen)
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in seen:
+            return set()
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if concept is None or isinstance(
+            concept, (UndefinedConcept, UndefinedConceptFull)
+        ):
+            return set()
+        return _underlying_aggregate_operators(concept.lineage, context, seen)
+    ops: set[FunctionType] = set()
+    for child in _child_exprs(lineage):
+        ops |= _underlying_aggregate_operators(child, context, seen)
+    return ops
+
+
+def _grouping_spec_key_addresses(spec: Any) -> set[str]:
+    keys = {_concept_address(k) for k in spec.by}
+    for grouping_set in spec.grouping_sets:
+        keys |= {_concept_address(k) for k in grouping_set}
+    return keys
+
+
+def _leaf_concept_addresses(
+    lineage: Any, context: RuleContext, key_addresses: set[str], seen: set[str]
+) -> set[str]:
+    """The leaf concept addresses a projection reads, descending by-name refs
+    into their lineages. Descent stops at grouping-key refs (their derivation
+    is irrelevant — they ARE the keys) and at rowset boundaries (a rowset
+    output is a materialized value, not a function of the outer keys)."""
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in key_addresses or lineage.address in seen:
+            return {lineage.address}
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if (
+            concept is None
+            or isinstance(concept, (UndefinedConcept, UndefinedConceptFull))
+            or concept.lineage is None
+            or isinstance(concept.lineage, RowsetItem)
+        ):
+            return {lineage.address}
+        return _leaf_concept_addresses(concept.lineage, context, key_addresses, seen)
+    addresses: set[str] = set()
+    for child in _child_exprs(lineage):
+        addresses |= _leaf_concept_addresses(child, context, key_addresses, seen)
+    return addresses
+
+
+def _is_key_or_broadcast_projection(
+    lineage: Any, context: RuleContext, key_addresses: set[str]
+) -> bool:
+    """True when every concept the projection reads is a grouping key or a
+    single-row scalar — a key-derived dim (``case when chan = 1 …`` under
+    ``rollup (chan, …)``, the q80 fold family), a broadcast scalar, or a
+    constant. These need no aggregate carrier: the planner folds key functions
+    into the grouped node and cross-joins single-row scalars."""
+    for address in _leaf_concept_addresses(lineage, context, key_addresses, set()):
+        if address in key_addresses:
+            continue
+        concept = context.concepts.get(address)
+        if concept is not None and concept.granularity == Granularity.SINGLE_ROW:
+            continue
+        return False
+    return True
+
+
+def _has_aggregate_or_window(lineage: Any, context: RuleContext) -> bool:
+    """True when the item already participates in the grouping pass (any
+    aggregate wrapper — stamped, explicitly ``by``-grained, or a grouping()
+    indicator) or is a window computed over it. ``_lineage_reaches`` stops at
+    rowset boundaries, so a rowset passthrough does NOT count."""
+    return _lineage_reaches(
+        lineage,
+        context,
+        lambda n: isinstance(n, AggregateWrapper) or _is_window_item(n),
+        set(),
+    )
+
+
+def _apply_grouping_to_passthroughs(
+    select: SelectStatement, context: RuleContext, spec: Any, stamped: bool
+) -> None:
+    """Carry a ``by rollup/cube/grouping sets`` spec on projections that are
+    passthroughs of pre-aggregated (rowset) measures.
+
+    The spec travels on aggregate wrappers, so a passthrough has no carrier:
+    with no fresh aggregate in the SELECT the spec used to vanish silently —
+    the query ran as a plain GROUP BY with zero subtotal rows (q05) — and next
+    to a fresh aggregate the passthrough emitted as a bare, ungrouped column
+    inside the ROLLUP CTE (BinderException). A SUM/COUNT-derived passthrough
+    re-aggregates exactly with an implicit ``sum(...)``, matching the explicit
+    fresh-aggregate form (leaf rows are single-group identities, subtotal rows
+    sum them).
+
+    Left alone: grouping keys and key-derived dims (the planner folds them
+    into the grouped node), single-row scalars (broadcast cross join), and
+    plain other-grain dims (join-back at leaf grain — NULL on subtotal rows is
+    their defined semantics). When nothing was stamped, a measure that cannot
+    be re-aggregated soundly (non-additive, or bare and un-aliased) would mean
+    silently dropping the clause — raise with the explicit-form fix instead."""
+    key_addresses = _grouping_spec_key_addresses(spec)
+    clause = f"by {spec.mode.value.replace('_', ' ')}"
+    wrapped = False
+    for item in select.selection:
+        content = item.content
+        if not isinstance(content, ConceptTransform):
+            address = getattr(content, "address", None)
+            if (
+                address is None
+                or address in key_addresses
+                or _has_aggregate_or_window(content, context)
+                or _is_key_or_broadcast_projection(content, context, key_addresses)
+            ):
+                continue
+            if not stamped and _underlying_aggregate_operators(content, context, set()):
+                raise InvalidSyntaxException(
+                    f"`{clause} (…)` cannot re-aggregate the bare measure "
+                    f"reference `{address}`. Alias it with an explicit aggregate "
+                    f"(e.g. `sum({address}) as {str(address).split('.')[-1]}_total`)."
+                )
+            continue
+        source: Any = content.function
+        if (
+            isinstance(source, Function)
+            and source.operator == FunctionType.ALIAS
+            and len(source.arguments) == 1
+        ):
+            source = source.arguments[0]
+        if isinstance(source, ConceptRef) and source.address in key_addresses:
+            continue
+        if content.output.address in key_addresses:
+            continue
+        if _has_aggregate_or_window(content.function, context):
+            continue
+        if _is_key_or_broadcast_projection(content.function, context, key_addresses):
+            continue
+        operators = _underlying_aggregate_operators(content.function, context, set())
+        if not operators:
+            # a plain dim at finer/other grain: the planner fetches it through
+            # a join-back at the leaf grain (NULL on subtotal rows), which is
+            # its defined semantics — leave it alone
+            continue
+        if not operators.issubset(_REAGGREGABLE_OPERATORS):
+            if stamped:
+                continue
+            raise InvalidSyntaxException(
+                f"`{clause} (…)` cannot re-aggregate passthrough projection "
+                f"`{content.output.address}`: it is not derived exclusively from "
+                f"sum/count measures, so its subtotal rows have no well-defined "
+                f"value. Aggregate it explicitly in the select instead (e.g. "
+                f"`sum(x) as {content.output.name}`)."
+            )
+        aggregate = AggregateWrapper(
+            function=context.function_factory.create_function(
+                [source], FunctionType.SUM
+            ),
+            by=list(spec.by),
+            grouping=spec.mode,
+            grouping_sets=[list(g) for g in spec.grouping_sets],
+        )
+        content.function = aggregate
+        content.output.lineage = aggregate
+        wrapped = True
+    if not stamped and not wrapped:
+        raise InvalidSyntaxException(
+            f"`{clause} (…)` requires at least one aggregate (or re-aggregable "
+            f"pre-aggregated measure) in the select to group; found none."
+        )
 
 
 def _normalize_grouping_args_to_rollup_keys(
@@ -1097,9 +1376,32 @@ def _existing_grouping_outputs(
         if not isinstance(item.content, ConceptTransform):
             continue
         fn = item.content.function
-        if isinstance(fn, AggregateWrapper) and _is_standard_grouping_aggregate(fn):
+        if isinstance(fn, AggregateWrapper) and _is_grouping_aggregate(fn):
             results.setdefault(_grouping_arg_key(fn), item.content.output.reference)
     return results
+
+
+def _substitute_window_grouping_outputs(select: SelectStatement) -> None:
+    outputs = _existing_grouping_outputs(select)
+    if not outputs:
+        return
+
+    def match(node: Any) -> ConceptRef | None:
+        if not _is_grouping_aggregate(node):
+            return None
+        return outputs.get(_grouping_arg_key(node))
+
+    for item in select.selection:
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        function = item.content.function
+        if not isinstance(function, (NavigationWindowItem, NumberingWindowItem)):
+            continue
+        rewritten = _substitute_condition_tree(function, match)
+        if rewritten is function:
+            continue
+        item.content.function = rewritten
+        item.content.output.lineage = rewritten
 
 
 def _promote_having_grouping_to_outputs(
@@ -1186,6 +1488,49 @@ def _promotion_grows_grain(
     return bool(combined.components - base_components)
 
 
+def _is_single_row_rowset_scalar(
+    named: Concept,
+    concepts: ConceptLookup | Mapping[str, Concept] | None = None,
+    _seen: set[str] | None = None,
+) -> bool:
+    """True for a rowset output whose source select is grainless — it produces
+    exactly one row and so broadcasts like a scalar (``rowset r <- select
+    sum(x)/sum(y) as v``). Such an output is mis-tagged ``MULTI_ROW`` granularity
+    (and ``ROWSET`` derivation, not ``AGGREGATE``), so the plain scalar-promotion
+    gate misses it and the HAVING predicate gets misrouted into the finer-dim
+    grain-key semijoin — which silently drops rollup subtotal rows (NULL-key
+    collision) and doesn't even filter correctly on a plain grouped select.
+    Restricted to a single (non-union) ``SelectLineage``: a union of grainless
+    arms yields one row *per arm*, not a single broadcast row.
+
+    Also true for a BASIC concept derived only from single-row rowset scalars
+    (plus literals) — e.g. ``auto avg <- ov.total / ov.count``. Combining scalars
+    stays a single broadcast row, but the wrapper is ``derivation=BASIC`` (not a
+    ``RowsetItem``), so without recursing the wrapper the HAVING predicate is
+    again misrouted into the semijoin and rollup subtotals vanish. This is the
+    natural HAVING form (`having sum(x) > my_scalar`), so it must be covered.
+    Requires ``concepts`` to resolve the BASIC args (they arrive as ``ConceptRef``)."""
+    lineage = named.lineage
+    if isinstance(lineage, RowsetItem):
+        select = lineage.rowset.select
+        return isinstance(select, SelectLineage) and not select.grain.components
+    if concepts is not None and named.derivation == Derivation.BASIC:
+        args = named.concept_arguments
+        if not args:
+            return False
+        if _seen is None:
+            _seen = set()
+        if named.address in _seen:
+            return False
+        _seen.add(named.address)
+        resolved = [concepts.get(a.address) for a in args]
+        return all(
+            r is not None and _is_single_row_rowset_scalar(r, concepts, _seen)
+            for r in resolved
+        )
+    return False
+
+
 def _promote_having_aggregates_to_outputs(
     select: SelectStatement, context: RuleContext
 ) -> None:
@@ -1210,7 +1555,26 @@ def _promote_having_aggregates_to_outputs(
     if not select.having_clause:
         return
     rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
-    existing = {sig for sig, _ in _select_aggregate_outputs(select, rename)}
+    select_aggs = _select_aggregate_outputs(select, rename)
+    existing = {sig for sig, _ in select_aggs}
+    # Under a `by rollup/cube/grouping sets` spec, `_propagate_select_grouping`
+    # stamps the grouping keys onto every projection aggregate's `by`. A bare
+    # HAVING aggregate (`sum(x)`, no `by`) is the *same* measure at the select
+    # grain — i.e. the projected `sum(x) by <grouping keys>` — so point the HAVING
+    # at that projected alias instead of minting a fresh bare aggregate. A minted
+    # bare aggregate plans as a distinct plain-GROUP-BY node with no rollup NULL-key
+    # subtotal rows; the post-filter join back then drops every subtotal.
+    rollup_alias_by_bare_sig: dict[
+        tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef
+    ] = {}
+    spec = select.grouping
+    if spec is not None:
+        group_by = tuple(sorted(_concept_address(k, rename) for k in spec.by))
+        for (op, args, by), addr in select_aggs:
+            if by == group_by:
+                alias = context.concepts.get(addr)
+                if alias is not None:
+                    rollup_alias_by_bare_sig[(op, args, ())] = alias.reference
     # Grain of the explicit (pre-promotion) outputs. Promoting an aggregate is
     # grain-safe only if its value is one-per-grain-row (a bare aggregate, or an
     # off-grain `agg(x) by k` whose `by` is coarser than / equal to this grain).
@@ -1234,6 +1598,13 @@ def _promote_having_aggregates_to_outputs(
             continue
         sig = _aggregate_full_signature(node, rename)
         if sig is None or sig in existing or sig in sig_to_ref:
+            continue
+        # A bare HAVING aggregate that is the projected rollup measure at the
+        # select grain: redirect it to the projection's alias, keeping it in the
+        # single rollup grouping pass instead of splitting off a plain-grain node.
+        rollup_alias = rollup_alias_by_bare_sig.get(sig)
+        if rollup_alias is not None:
+            sig_to_ref[sig] = rollup_alias
             continue
         concept = arbitrary_to_concept(node, context.environment)
         if _promotion_grows_grain(concept, base_targets, base_components, context):
@@ -1276,6 +1647,7 @@ def _promote_having_aggregates_to_outputs(
             named.is_aggregate
             or named.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
             or named.granularity == Granularity.SINGLE_ROW
+            or _is_single_row_rowset_scalar(named, context.concepts)
         )
         if not grain_determined:
             continue
@@ -1364,6 +1736,21 @@ def _rewrite_having_finer_dims_to_membership(
     if not select.having_clause:
         return
     grain_keys = sorted(select.grain.components)
+    stable_grain_keys = []
+    window_keys: set[str] = set()
+    for address in grain_keys:
+        concept = select.local_concepts.get(address) or context.concepts.get(address)
+        lineage = getattr(concept, "lineage", None)
+        if isinstance(lineage, (NavigationWindowItem, NumberingWindowItem)):
+            window_keys |= _window_key_addresses(lineage)
+            continue
+        if lineage is not None and _expression_contains_window(lineage):
+            window_keys |= _window_key_addresses(lineage)
+            continue
+        stable_grain_keys.append(address)
+    stable_grain_keys.extend(sorted(window_keys - set(stable_grain_keys)))
+    if stable_grain_keys:
+        grain_keys = stable_grain_keys
 
     def needs_membership(leaf: Any) -> bool:
         # SubselectComparison subclasses Comparison: an existing `x in <set>`
@@ -1547,7 +1934,13 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     locally_derived = select.locally_derived
     alias_sources = select.alias_source_addresses
     allowed_addresses = all_in_output | alias_sources
-    if select.where_clause:
+    # A WHERE-clause aggregate that equals a SELECT output is only restricted for a
+    # SCALAR select (no grouping key). With a concrete grain the WHERE aggregate
+    # computes at the select grain over the WHERE-unfiltered universe (its own CTE),
+    # a valid pre-aggregation gate distinct from the post-filter SELECT/HAVING
+    # aggregate. A scalar select has no grain to anchor that gate and the planner
+    # drops sibling row filters, so keep redirecting it to HAVING.
+    if select.where_clause and not select.grain.components:
         for cref in select.where_clause.concept_arguments:
             concept = context.concepts.get(cref.address)
             if concept is None or isinstance(concept, UndefinedConcept):
@@ -1592,7 +1985,11 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
         # row_arguments, not concept_arguments: an `x in <set>` membership's
         # existence RHS is sourced as a subselect at plan time and need not be
         # projected — only the row side must resolve.
-        allowed_for_having = allowed_addresses | set(select.grain.components)
+        allowed_for_having = (
+            allowed_addresses
+            | set(select.grain.components)
+            | {x.address for x in select.output_components}
+        )
         undefined_refs: list[str] = []
         unhandled_refs: list[str] = []
         for cref in select.having_clause.row_arguments:
@@ -1653,6 +2050,7 @@ def finalize_select_statement(
     # aggregate before grain calc, so the select grain reflects the grouping keys
     # and all measures share one grouping pass.
     _propagate_select_grouping(select, context)
+    _substitute_window_grouping_outputs(select)
     # Promote any HAVING grouping() to a hidden output before the SELECT loop so
     # it materializes in the ROLLUP CTE instead of stranding downstream.
     _promote_having_grouping_to_outputs(select, context)

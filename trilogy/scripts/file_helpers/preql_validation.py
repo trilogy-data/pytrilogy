@@ -7,6 +7,8 @@ operators) before it lands on disk.
 
 from __future__ import annotations
 
+from trilogy.parsing.v2.errors import detect_having_after_grouping
+
 # HTML entities seen written into .preql files by some models that escape their
 # own tool output. We catch the comparison-operator ones explicitly because
 # they're the failure mode we've observed; other entities are flagged generically.
@@ -84,9 +86,19 @@ def validate_preql_content(path: str, content: str) -> str | None:
         )
     syntax_error = validate_preql_syntax(content)
     if syntax_error:
+        hint = ""
+        if detect_having_after_grouping(content):
+            hint = (
+                "\nHint: HAVING must come *before* the `by rollup/cube/grouping "
+                "sets` clause in Trilogy (the reverse of SQL's `GROUP BY ... "
+                "HAVING`). Reorder to:\n"
+                "    select <cols> having <cond> by rollup (<keys>) "
+                "order by <cols> limit <n>;\n"
+            )
         return (
             f"refused to write '{path}': not syntactically valid Trilogy.\n"
             f"\nParse error:\n{syntax_error}\n"
+            f"{hint}"
             f"\nWrite stats: {_size_hint(content)}."
         )
     return None

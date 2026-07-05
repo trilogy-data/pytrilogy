@@ -1,45 +1,54 @@
 from trilogy.core.enums import FunctionClass, FunctionType
-from trilogy.core.functions import FUNCTION_REGISTRY
+from trilogy.core.functions import FUNCTION_FAMILIES, FUNCTION_REGISTRY, function_family
 
 RULE_PROMPT = r"""# Trilogy Syntax Guide
 
-Trilogy statements define either a semantic model or a query. If a user asks for data, they want a SELECT.
+Trilogy statements define a semantic model or a query. Only selects return data.
 
-Semantic model statements
+import <model> as <alias>; — makes a model's fields available. When an imported model imports others (a fact table with imported dimensions); those are exposed as dot paths. `import enrollments as enroll;` enables accessing `enroll.student.name` if enroll imports students as studen. 
+Typical usage only imports facts; dimensions will then be accessed through the nested import. Nested dimensions have all values; order.customers returns all customers, even those without orders. 
 
-import <model> as <alias>; — makes a model's fields available. Imports chain: when an imported model imports others (e.g. a fact table foreign-key-linked to its dimensions), reach those by path — after import enrollments as enroll;, write enroll.student.name. Import only the model(s) you take measures from; never separately import a model already reachable by chaining (a separate import is a disconnected copy that will not join). A field belongs to exactly one model — never invent intermediate nesting: enroll.credits, never enroll.student.credits.
+key | property | auto | metric — define new concepts in your script. These concepts (auto x <- ...) are definitions, NOT precomputed values: each reference expands in a query and re-evaluates in the referencing query's scope. 
 
-key | property | auto | metric — define fields locally; outputs appear in the available fields, so editing these is rarely needed unless requested. Predefined concepts (auto x <- ...) are definitions, NOT precomputed values: each reference expands inline (like a macro) and re-evaluates in the referencing query's scope — so the query's WHERE filters the rows feeding a referenced aggregate.
-
-parameter NAME TYPE [default <literal>]; — declares a runtime value supplied via trilogy run <file>.preql --param NAME=VALUE (repeat --param for several). Reference it like any field. Without default, --param is required at run time.
-
-datasource — maps fields to a SQL table; left side is the SQL column, right side the field name.
-
-Models include facts + dimensions. Nullability and fanout are handled automatically, defaulting to preserving data: order.customers returns all customers, even those without orders. Add not null conditions to filter.
+parameter NAME TYPE [default <literal>]; — declares a runtime value supplied via trilogy run <file>.preql --param NAME=VALUE (repeat --param for several). Reference it like any field. Without default, required at run time.
 
 ## Combining models
-
 
 | Goal | Use |
 |---|---|
 | Typical query | no select, no merge, all fields accessed through dot-paths |
-| Blend two models on shared keys inside one query | scoped `inner\|left\|full join` (the default) |
+| Blend two models on shared keys inside one query | scoped `subset\|union join` (the default) |
 | Make a connection universal to all queries in a file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
 
 ### Query-scoped join (the default)
 
-inner|left|full join <a> = <b> [= <c>] blends two models inside one SELECT. Place it right after the select list (the SQL-like spot); Semantics match SQL: inner asserts strict equivalence (drops unmatched rows); left makes the right side optional/nullable; full keeps unmatched rows from both sides. Right unsupported; just flip to a left. A full key-group must be entirely full (no mixing with inner/left on the same key; full join a = b = c chains one all-full group); inner and left mix freely. Chain = c to pull additional concepts into a join. Each key may be any expression, not just a field — join on a computed/offset key (`inner join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+subset|union join <a> = <b> [= <c>] blends concepts or expressions (from any source - models, rowsets etc) inside one SELECT by DECLARING how their value domains relate. A join declares DOMAIN knowledge, never row intent:
 
-joins indicate that concepts are *the same*; it is a conceptual operation not a field operation. inner join a=b means that a is null and b is not null is tautologically always false.
+- `subset join a = b` declares a's values are contained in b's (a ⊆ b). b is authoritative for the key; a's rows all find a partner.
+- `union join a = b` declares neither domain contains the other; the key is the coalesce of both sides and unmatched rows from both sides are kept.
 
-Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain. trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH inner join a.order_number = b.order_number AND inner join a.item.id = b.item.id. Matching only one key of a multi-key grain fans out and double-counts — a top cause of wrong results.
+Rendering is always row-preserving: no join ever silently drops a row. The optimizer narrows to directional/INNER joins only when provably row-identical (an unfiltered authoritative side). Row restriction is ALWAYS an explicit predicate: to get an intersection (customers who have orders, items in both years), add explicit conditions — `where <optional side attr> is not null` on each side you require. A one-sided `is not null` keeps the other side's exclusive rows.
+
+There is no 'inner' join. Is explicit conditions (is not null, etc) to restrict results.
+
+Place it right after the select list (the SQL-like spot).
+
+A union key-group must be entirely union (no mixing with subset on the same key; union join a = b = c chains one group); subset joins mix freely.
+
+Chain = c to pull additional concepts into a join. Joins can be on expressions: a computed/offset key (`union join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+
+Joins do NOT drop nulls. NULL is not a value: nullability never affects the declared domain relation, and NULL keys match null-safely. To filter out nulls, explicitly use not-null conditions.
+
+Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain.
+trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH union join a.order_number = b.order_number AND union join a.item.id = b.item.id.
+Matching only one key of a multi-key grain may cause duplication.
 
 Full example: trilogy agent-info syntax example scoped-join.
 
 merge (model-level)
 
-merge <a> into <b> is the persistent equivalent of a join (whole query/file). Prefer a scoped join; use merge only when the connection is universal. merge a into ~b marks b the superset, so a is a partial subset (brought-in side nullable, like left join); plain merge a into b asserts strict equivalence (like inner join). One merge per shared concept.
+merge <a> into <b> is the persistent equivalent of a join (whole query/file). Prefer a scoped join; use merge only when the connection is universal. merge a into ~b declares a SUBSET domain (a ⊆ b, like subset join a = b); plain merge a into b declares EQUAL domains — the strongest claim, letting the planner treat either side as authoritative and narrow joins to INNER. A lying declaration (data outside the declared domain) is an author error: the narrowed join drops the violating rows. One merge per shared concept.
 
 union (row stacking)
 
@@ -51,14 +60,17 @@ Full example: trilogy agent-info syntax example union-stack-channels.
 
 ```
 <WITH NAME>?      # name the select to use later
-WHERE?            # filter rows BEFORE aggregation
-SELECT
+WHERE?            # filters data BEFORE it reaches aggregates or windows
+SELECT            # Defines the output grain for aggregates
   <EXPR> [AS <ALIAS>], ...
-  INNER|LEFT|FULL JOIN <a> = <b> [= <c>] ...   # one or more join concepts beyond model defaults
-HAVING?           # filter AFTER aggregation
+  SUBSET|UNION JOIN <a> = <b> [= <c>] ...   # one or more join concepts beyond model defaults (LEFT/FULL legacy aliases)
+HAVING?           # filters final projection
 ORDER BY?
 LIMIT?
 ```
+
+If unspecified (no BY) aggregates always group to the grain of dimensions in the select, no matter where they appear in the query.
+
 
 A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
 
@@ -78,64 +90,41 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 ### Not SQL — what to never write
 
 - **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
-- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate to a global scalar.
+- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate across all data (a single row output).
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
 - **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
-- Since there are no underlying tables, `sum(1)`/`count(1)` is only meaningful grouped by a grain field (e.g. `sum(1) by x as count`).
+- **Since there are no underlying tables, `sum(1)`/`count(1)` is only meaningful grouped by a grain field (e.g. `sum(1) by x as count`).
 
 ### Fields and aliases
-
 - Always use the full path (`enroll.student.id`) for a field; namespacing matters.
 - Every new expression in the select output must be aliased with `as` (e.g. `sum(births) as all_births`).
 - Aliases cannot appear inside calculations or in WHERE/HAVING/ORDER clauses: `sum(credits) as total_credits` is valid; `(sum(credits) as total_credits) + 1 as credits_plus_one` is not. Never alias a field to an existing name.
 - Use a context dependent reasonable `LIMIT` on final queries if unspecified (data for charts typically must be complete)
-## Filtering
 
-WHERE filters rows BEFORE aggregates and window functions; HAVING after. The inline filter x ? cond filters one expression's input (e.g. sum(x ? x > 0)).
+## Filtering Data
+```
+WHERE <filter> 
+SELECT
+...
+HAVING # filters data AFTER it has been aggregated or windowed
+```
+INLINE filter x ? cond <- filters one expression's input (e.g. sum(x ? x > 0)).
 
-WHERE conditions push into aggregates/windows in the select, NOT into aggregates/windows written in WHERE itself. where x = 3 and sum(x.y) > 10 sums over ALL x. Either inline-filter (where x = 3 and sum(x.y ? x = 3) > 10) or filter in HAVING:
-```
-where thing.key = 3
-select 
-    thing.prop,
-    --sum(thing.val) as total_val
-having 
-    total_val > 10
-```
-HAVING filters after any where conditions are output, making it useful for window functions and other cases. You can hide concepts in the output projection to make them reusable in HAVING.
-```
-select 
-    student.state, 
-    --sum(enroll.credits) as total_credits, 
-having 
-    total_credits > 1000 
-    and enroll.year = 2020
-```
+Note that aggregates/windows in WHERE do not filter the inputs to each other. You must use inline filters if you want a where clause aggregate/window to be filtered.
 
-HAVING/WHERE aggregates inherit the output grain; a bare sum(x)/avg(x) there is the CURRENT group's value, not a global total.
- Pin a different grain explicitly: by * is global (one value over all rows); by <dims> fixes a coarser grain. E.g. "a student's credits exceed 0.0001 of the global total":
-```
-auto grand_total <- sum(enroll.credits) by *;
-
+where student.state = 'TN' #  filters ALL Data to the state
 select 
     student.id, 
-    --sum(enroll.credits) as student_total
+    --sum(enroll.credits ? student.enrolled = True) as student_total # filters JUST the input to the sum
 having 
-    student_total > 0.0001 * grand_total
+    student_total > 0.0001 * grand_total # filters the final output rows
 ```
 
-Aggregates in WHERE are not filtered by other items in the where clause, and inherit the select grain.
-To filter a aggregate in the where pre-aggregation, use inline condition (? ) inside the aggregate. 
-Use an explicit grain (such as `*` for a global total) to avoid the default select grain. 
-```
-where enroll.year = 2020
-  and course.credits > 1.2 * avg(course.credits ? explicit_other_condition) by course.department
-  and course.creds > 1.5 * avg(course.credits) by *
-select course.name, course.credits
-```
+IMPORTANT: BE CAREFUL with window functions and the where clause - you must have all the rows required for the window range reach the window. Filtering in the HAVING
+is often useful here. 
 
 ## SemiJoins
 
@@ -241,21 +230,6 @@ order by
 limit 5;
 ```
 
-**Aggregate-in-WHERE plus HAVING.** For students with significant enrollments between 2000 and 2002, find those with average daily enrollments > 10 between 2002 and January 31, 2010:
-
-```
-where enroll.date between '2002-01-01'::datetime and '2010-01-31'::datetime
-  and count(enroll.id ? year(enroll.date::datetime) between 2000 and 2002) by student.name > 1000
-select
-    student.name,
-    count(enroll.id) as total_enrollments,
-    total_enrollments / date_diff(min(enroll.date.date), max(enroll.date.date), DAY) as average_daily_enrollments
-having
-    average_daily_enrollments > 10
-order by
-    total_enrollments desc;
-```
-
 """
 
 
@@ -312,20 +286,52 @@ _AGENT_HIDDEN_FUNCTIONS = {
     FunctionType.DIVIDE,
 }
 
-FUNCTIONS = "\n".join(
-    [
-        render_function(v, example=FUNCTION_EXAMPLES.get(v))
-        for x, v in FunctionType.__members__.items()
-        if v in FUNCTION_REGISTRY and v not in _AGENT_HIDDEN_FUNCTIONS
-    ]
+
+_FAMILY_ORDER = [label for label, _ in FUNCTION_FAMILIES] + ["other"]
+
+
+def _render_function_list(types) -> str:
+    """Render the function reference as one labelled line per semantic family.
+    Within a family, functions sharing an argument signature are consolidated
+    (``sum|avg|min|max(<arg1>)``); families with mixed arities join their
+    signature groups with `` ; ``. Functions carrying a worked example (the date
+    functions) get their own line under their family so the example isn't lost.
+    Family-level grouping keeps it compact without scrambling unrelated
+    functions onto one line."""
+    fam_sigs: dict[str, dict[str, list[str]]] = {}
+    fam_examples: dict[str, list[str]] = {}
+    seen: list[str] = []
+    for v in types:
+        fam = function_family(v)
+        if fam not in fam_sigs:
+            fam_sigs[fam], fam_examples[fam] = {}, []
+            seen.append(fam)
+        example = FUNCTION_EXAMPLES.get(v)
+        if example:
+            fam_examples[fam].append(f"  {render_function(v, example=example)}")
+            continue
+        sig = render_function(v)[len(v.value) :]  # the "(<arg1>, ...)" / "()" tail
+        fam_sigs[fam].setdefault(sig, []).append(v.value)
+
+    lines: list[str] = []
+    for fam in sorted(seen, key=_FAMILY_ORDER.index):
+        segs = [f"{'|'.join(names)}{sig}" for sig, names in fam_sigs[fam].items()]
+        if segs:
+            lines.append(f"{fam}: {' ; '.join(segs)}")
+        lines.extend(fam_examples[fam])
+    return "\n".join(lines)
+
+
+FUNCTIONS = _render_function_list(
+    v
+    for _, v in FunctionType.__members__.items()
+    if v in FUNCTION_REGISTRY and v not in _AGENT_HIDDEN_FUNCTIONS
 )
 
-AGGREGATE_FUNCTIONS = "\n".join(
-    [
-        render_function(v, example=FUNCTION_EXAMPLES.get(v))
-        for _, v in FunctionType.__members__.items()
-        if v in FunctionClass.AGGREGATE_FUNCTIONS.value
-        and v in FUNCTION_REGISTRY
-        and v not in _AGENT_HIDDEN_FUNCTIONS
-    ]
+AGGREGATE_FUNCTIONS = _render_function_list(
+    v
+    for _, v in FunctionType.__members__.items()
+    if v in FunctionClass.AGGREGATE_FUNCTIONS.value
+    and v in FUNCTION_REGISTRY
+    and v not in _AGENT_HIDDEN_FUNCTIONS
 )
