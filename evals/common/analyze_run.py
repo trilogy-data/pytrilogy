@@ -658,29 +658,43 @@ def _per_query_metric_vectors(report: dict, events: list[dict]) -> dict:
     toks: Counter[int] = Counter()
     first_ts: dict[int, str] = {}
     last_ts: dict[int, str] = {}
-    for e in events:
-        raw_qid = e.get("_query_id")
-        if raw_qid is None:
-            continue
-        qid = int(raw_qid)
-        ts = e.get("ts")
-        if isinstance(ts, str):  # ISO-8601 UTC — lexical compare gives min/max
-            if qid not in first_ts or ts < first_ts[qid]:
-                first_ts[qid] = ts
-            if qid not in last_ts or ts > last_ts[qid]:
-                last_ts[qid] = ts
-        etype = e.get("type")
-        if etype == "llm_response":
-            iters[qid] += 1
-            toks[qid] += (e.get("usage") or {}).get("total_tokens") or 0
-        elif etype == "tool_call":
-            calls[qid] += 1
-        elif etype == "tool_result":
-            results[qid] += 1
-            if scoring._is_error_result(
-                str(e.get("name", "?")), str(e.get("result") or "")
-            ):
-                errors[qid] += 1
+    # Prefer the report's stored per-query metrics — they cover the full
+    # benchmark including queries spliced from a prior run (whose event logs are
+    # absent from this run dir). Fall back to events for reports predating the
+    # per_query_metrics field.
+    pqm = report.get("per_query_metrics")
+    if pqm:
+        for m in pqm:
+            qid = int(m["id"])
+            iters[qid] = m.get("iterations", 0)
+            calls[qid] = m.get("tool_calls_total", 0)
+            results[qid] = m.get("tool_results_total", 0)
+            errors[qid] = m.get("tool_errors", 0)
+            toks[qid] = m.get("total_tokens", 0)
+    else:
+        for e in events:
+            raw_qid = e.get("_query_id")
+            if raw_qid is None:
+                continue
+            qid = int(raw_qid)
+            ts = e.get("ts")
+            if isinstance(ts, str):  # ISO-8601 UTC — lexical compare gives min/max
+                if qid not in first_ts or ts < first_ts[qid]:
+                    first_ts[qid] = ts
+                if qid not in last_ts or ts > last_ts[qid]:
+                    last_ts[qid] = ts
+            etype = e.get("type")
+            if etype == "llm_response":
+                iters[qid] += 1
+                toks[qid] += (e.get("usage") or {}).get("total_tokens") or 0
+            elif etype == "tool_call":
+                calls[qid] += 1
+            elif etype == "tool_result":
+                results[qid] += 1
+                if scoring._is_error_result(
+                    str(e.get("name", "?")), str(e.get("result") or "")
+                ):
+                    errors[qid] += 1
 
     durations: dict[int, float] = {}
     for pq in report.get("per_query") or []:
