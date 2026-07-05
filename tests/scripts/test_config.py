@@ -205,10 +205,11 @@ dialect = "duckdb"
 
         test_script = tmppath / "test.preql"
         test_script.write_text("select 1 as value;")
+        db_path = tmppath / "override.db"
 
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["run", str(test_script), "duckdb", "path=/tmp/override.db"]
+            cli, ["run", str(test_script), "duckdb", f"path={db_path.as_posix()}"]
         )
 
         if result.exception:
@@ -216,6 +217,7 @@ dialect = "duckdb"
                 f"Command failed:\nstdout:\n{result.stdout}\nexc:\n{result.exception}"
             )
         assert result.exit_code == 0
+        assert db_path.exists()
 
 
 def test_config_staging_default():
