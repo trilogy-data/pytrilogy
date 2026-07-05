@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import agent_runner, analyze_run, db, prompts, scoring
 from .categories import CATEGORIES, FUNNEL_ORDER, get_category
-from .report import build_report, load_env, render_markdown
+from .report import agent_metric_fields, build_report, load_env, render_markdown
 from .spec import BenchmarkSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -206,12 +206,39 @@ def _find_latest_prior_run(spec: BenchmarkSpec, exclude: Path) -> Path | None:
     return None
 
 
+def _spliced_query_metrics(
+    prior_report: dict, prior_dir: Path, spliced_ids: list[int]
+) -> list[dict]:
+    """Per-query metric dicts for the spliced ids. Prefer the prior report's
+    stored ``per_query_metrics`` (present since the lossless-splice change, and
+    already full-benchmark for a prior that itself spliced); fall back to
+    re-parsing that run's ``agent_log`` for reports that predate the field."""
+    want = set(spliced_ids)
+    stored = {
+        m["id"]: m for m in prior_report.get("per_query_metrics", []) if m["id"] in want
+    }
+    out: list[dict] = []
+    for qid in spliced_ids:
+        if qid in stored:
+            out.append(stored[qid])
+            continue
+        log = prior_dir / f"agent_log.q{qid:02d}.jsonl"
+        parsed = (
+            scoring.parse_agent_log(log) if log.exists() else scoring.AgentMetrics()
+        )
+        out.append({"id": qid, **scoring.metrics_to_dict(parsed)})
+    return out
+
+
 def _splice_prior_results(
     report: dict, prior_report: dict, fresh_ids: set[int], prior_dir: Path
 ) -> dict:
     """Merge missing-id entries from ``prior_report`` into ``report`` so the
     headline reflects the full benchmark. Fresh entries are tagged source=this;
-    spliced entries are tagged source=<prior_dir.name>. summary is recomputed."""
+    spliced entries are tagged source=<prior_dir.name>. Summary AND the aggregate
+    ``agent`` harness metrics (tokens/iterations/tool stats that feed the charts)
+    are recomputed over the full merged set — not left reflecting only the freshly
+    rerun subset."""
     src_tag = prior_dir.name
 
     fresh_queries = list(report.get("queries", []))
@@ -240,9 +267,25 @@ def _splice_prior_results(
     pass_count = statuses.get("pass", 0)
     total = len(merged_queries)
 
+    spliced_ids = sorted(q["id"] for q in spliced_queries)
+    fresh_metrics = list(report.get("per_query_metrics", []))
+    spliced_metrics = _spliced_query_metrics(prior_report, prior_dir, spliced_ids)
+    merged_metrics = sorted(fresh_metrics + spliced_metrics, key=lambda m: m["id"])
+    agg = scoring.aggregate_metrics(
+        [scoring.metrics_from_dict(m) for m in merged_metrics]
+    )
+    merged_duration = sum(r.get("duration_seconds", 0) for r in merged_per_query)
+
     report = dict(report)
     report["queries"] = merged_queries
     report["per_query"] = merged_per_query
+    report["per_query_metrics"] = merged_metrics
+    report["agent"] = {
+        **report["agent"],
+        **agent_metric_fields(agg),
+        "duration_seconds": round(merged_duration, 1),
+        "avg_query_seconds": (round(merged_duration / total, 1) if total else 0.0),
+    }
     report["summary"] = {
         "pass_count": pass_count,
         "pass_rate": round(pass_count / total, 3) if total else 0.0,
@@ -252,7 +295,7 @@ def _splice_prior_results(
     report["spliced_from"] = {
         "run_dir": str(prior_dir),
         "fresh_ids": sorted(fresh_ids),
-        "spliced_ids": sorted(q["id"] for q in spliced_queries),
+        "spliced_ids": spliced_ids,
     }
     return report
 
@@ -812,6 +855,12 @@ def run(spec: BenchmarkSpec) -> int:
             "duration_seconds": round(r["duration"], 1),
         }
         for r in per_query_runs
+    ]
+    # Per-query harness metrics keyed by id, so a later --query-ids rerun can
+    # splice + re-aggregate the full-benchmark `agent` block losslessly.
+    report["per_query_metrics"] = [
+        {"id": r["id"], **scoring.metrics_to_dict(m)}
+        for r, m in zip(per_query_runs, per_query_metrics)
     ]
     report["ingest"] = {
         "exit_code": ingest["exit_code"],

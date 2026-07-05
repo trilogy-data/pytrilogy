@@ -1707,6 +1707,147 @@ order by coalesce(l.k, r.k) asc nulls last, coalesce(r.k, l.k) asc nulls last
     return cases
 
 
+def _coalescing_presence_cases(seed: SeedData) -> list[FuzzCase]:
+    rowsets = """
+rowset store_set <- where left_key is not null and left_value <= 8
+select
+    left_key as customer_id,
+    left_id % 2 as item_id;
+rowset catalog_set <- where union_key is not null and union_value <= 80
+select
+    union_key as customer_id,
+    union_id % 2 as item_id;
+"""
+    sql_rowsets = """
+from (
+    select k as customer_id, id % 2 as item_id
+    from left_facts
+    where k is not null and value <= 8
+) s
+full join (
+    select k as customer_id, id % 2 as item_id
+    from union_facts
+    where k is not null and value <= 80
+) c
+"""
+    presence_projection = """
+select
+    sum(case
+        when store_set.customer_id is not null
+            and catalog_set.customer_id is null
+        then 1 else 0
+    end) as store_only,
+    sum(case
+        when store_set.customer_id is null
+            and catalog_set.customer_id is not null
+        then 1 else 0
+    end) as catalog_only,
+    sum(case
+        when store_set.customer_id is not null
+            and catalog_set.customer_id is not null
+        then 1 else 0
+    end) as both
+"""
+    sql_presence_projection = """
+select
+    sum(case
+        when s.customer_id is not null and c.customer_id is null
+        then 1 else 0
+    end),
+    sum(case
+        when s.customer_id is null and c.customer_id is not null
+        then 1 else 0
+    end),
+    sum(case
+        when s.customer_id is not null and c.customer_id is not null
+        then 1 else 0
+    end)
+"""
+    key_variants = (
+        (
+            "plain_single",
+            "store_set.customer_id = catalog_set.customer_id",
+            "on s.customer_id is not distinct from c.customer_id",
+            ("plain", "single_key"),
+        ),
+        (
+            "plain_composite",
+            (
+                "store_set.customer_id = catalog_set.customer_id "
+                "and store_set.item_id = catalog_set.item_id"
+            ),
+            (
+                "on s.customer_id is not distinct from c.customer_id "
+                "and s.item_id = c.item_id"
+            ),
+            ("plain", "composite"),
+        ),
+        (
+            "cast_single",
+            "store_set.customer_id::string = catalog_set.customer_id::string",
+            ("on cast(s.customer_id as varchar) " "= cast(c.customer_id as varchar)"),
+            ("derived", "cast", "single_key"),
+        ),
+        (
+            "concat_composite",
+            (
+                "concat("
+                "store_set.customer_id::string, '-', "
+                "store_set.item_id::string"
+                ") = concat("
+                "catalog_set.customer_id::string, '-', "
+                "catalog_set.item_id::string"
+                ")"
+            ),
+            (
+                "on concat(cast(s.customer_id as varchar), '-', "
+                "cast(s.item_id as varchar)) = "
+                "concat(cast(c.customer_id as varchar), '-', "
+                "cast(c.item_id as varchar))"
+            ),
+            ("derived", "concat", "composite"),
+        ),
+    )
+    cases = []
+    for join_type in ("union", "full"):
+        for name, trilogy_keys, sql_keys, variant_tags in key_variants:
+            body = f"""
+{rowsets}
+
+{presence_projection}
+{join_type} join {trilogy_keys};
+"""
+            oracle = f"""
+{sql_presence_projection}
+{sql_rowsets}
+{sql_keys}
+"""
+            cases.append(
+                _case(
+                    seed,
+                    "coalescing_presence",
+                    f"{join_type}_{name}",
+                    (
+                        "Presence aggregates retain each side's NULL marker "
+                        f"across a {join_type} join on {name.replace('_', ' ')} keys."
+                    ),
+                    (
+                        "join",
+                        join_type,
+                        "rowset",
+                        "independent_sources",
+                        "presence",
+                        "nullable",
+                        "aggregate",
+                        *variant_tags,
+                    ),
+                    body,
+                    oracle,
+                )
+            )
+    return cases
+
+
 def _rowset_boundary_cases(seed: SeedData) -> list[FuzzCase]:
     cases = []
     variants = (
@@ -2201,6 +2342,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _multiway_join_cases,
         _composite_join_cases,
         _independent_rowset_join_cases,
+        _coalescing_presence_cases,
         _rowset_boundary_cases,
         _named_grouping_window_cases,
         _derived_join_cases,

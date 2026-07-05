@@ -24,6 +24,41 @@ def _trilogy_version() -> str:
         return "unknown"
 
 
+def agent_metric_fields(metrics: scoring.AgentMetrics) -> dict:
+    """The metric-derived portion of the report's ``agent`` block — everything
+    computed from an ``AgentMetrics``. Split out so a spliced run can rebuild it
+    from the re-aggregated full-benchmark metrics (the run-level duration/exit
+    fields are merged separately)."""
+    return {
+        "iterations": metrics.iterations,
+        "tool_calls_total": metrics.tool_calls_total,
+        "tool_calls_by_name": metrics.tool_calls_by_name,
+        "trilogy_subcommands": metrics.trilogy_subcommands,
+        "tool_results_total": metrics.tool_results_total,
+        "tool_errors": metrics.tool_errors,
+        "tool_success_rate": round(metrics.tool_success_rate, 3),
+        "repeated_calls_by_name": metrics.repeated_calls_by_name,
+        "tool_output_stats": {
+            tool: {
+                "count": s.count,
+                "truncated": s.truncated,
+                "truncation_rate": round(s.truncation_rate, 3),
+                "avg_chars": round(s.avg_chars, 1),
+                "max_chars": s.max_chars,
+            }
+            for tool, s in metrics.tool_output_stats.items()
+        },
+        "reviewer_verdicts": metrics.reviewer_verdicts,
+        "reviewer_kickbacks": metrics.reviewer_kickbacks,
+        "tokens": {
+            "prompt": metrics.prompt_tokens,
+            "completion": metrics.completion_tokens,
+            "total": metrics.total_tokens,
+        },
+        "farewell": metrics.farewell,
+    }
+
+
 def build_report(
     spec: BenchmarkSpec,
     args: Any,
@@ -74,32 +109,7 @@ def build_report(
                 if query_results
                 else 0.0
             ),
-            "iterations": metrics.iterations,
-            "tool_calls_total": metrics.tool_calls_total,
-            "tool_calls_by_name": metrics.tool_calls_by_name,
-            "trilogy_subcommands": metrics.trilogy_subcommands,
-            "tool_results_total": metrics.tool_results_total,
-            "tool_errors": metrics.tool_errors,
-            "tool_success_rate": round(metrics.tool_success_rate, 3),
-            "repeated_calls_by_name": metrics.repeated_calls_by_name,
-            "tool_output_stats": {
-                tool: {
-                    "count": s.count,
-                    "truncated": s.truncated,
-                    "truncation_rate": round(s.truncation_rate, 3),
-                    "avg_chars": round(s.avg_chars, 1),
-                    "max_chars": s.max_chars,
-                }
-                for tool, s in metrics.tool_output_stats.items()
-            },
-            "reviewer_verdicts": metrics.reviewer_verdicts,
-            "reviewer_kickbacks": metrics.reviewer_kickbacks,
-            "tokens": {
-                "prompt": metrics.prompt_tokens,
-                "completion": metrics.completion_tokens,
-                "total": metrics.total_tokens,
-            },
-            "farewell": metrics.farewell,
+            **agent_metric_fields(metrics),
         },
         "queries": [dataclasses.asdict(q) for q in query_results],
         "summary": {

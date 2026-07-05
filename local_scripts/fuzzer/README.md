@@ -22,6 +22,8 @@ window partitions under ROLLUP/CUBE. Independent filtered rowset joins include
 single-key fanout and plain/derived composite keys. Complex WHERE predicates
 cover nested boolean trees, three-valued null logic, derived expressions,
 membership, and filters crossing join, window, and chasm boundaries.
+Coalescing-join presence cases assert per-side NULL markers under plain,
+cast, and concat keys for both UNION and FULL relations.
 
 Run everything from the repository root:
 

@@ -226,6 +226,63 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
     return agg
 
 
+def metrics_to_dict(m: AgentMetrics) -> dict:
+    """Serialize per-query AgentMetrics for storage in report.json, so a later
+    spliced run can re-aggregate the full benchmark without re-parsing logs."""
+    return {
+        "iterations": m.iterations,
+        "tool_calls_total": m.tool_calls_total,
+        "tool_calls_by_name": dict(m.tool_calls_by_name),
+        "trilogy_subcommands": dict(m.trilogy_subcommands),
+        "tool_results_total": m.tool_results_total,
+        "tool_errors": m.tool_errors,
+        "prompt_tokens": m.prompt_tokens,
+        "completion_tokens": m.completion_tokens,
+        "total_tokens": m.total_tokens,
+        "reviewer_verdicts": m.reviewer_verdicts,
+        "reviewer_kickbacks": m.reviewer_kickbacks,
+        "farewell": m.farewell,
+        "repeated_calls_by_name": dict(m.repeated_calls_by_name),
+        "tool_output_stats": {
+            tool: {
+                "count": s.count,
+                "truncated": s.truncated,
+                "total_chars": s.total_chars,
+                "max_chars": s.max_chars,
+            }
+            for tool, s in m.tool_output_stats.items()
+        },
+    }
+
+
+def metrics_from_dict(d: dict) -> AgentMetrics:
+    """Inverse of :func:`metrics_to_dict`."""
+    return AgentMetrics(
+        iterations=d.get("iterations", 0),
+        tool_calls_total=d.get("tool_calls_total", 0),
+        tool_calls_by_name=dict(d.get("tool_calls_by_name", {})),
+        trilogy_subcommands=dict(d.get("trilogy_subcommands", {})),
+        tool_results_total=d.get("tool_results_total", 0),
+        tool_errors=d.get("tool_errors", 0),
+        prompt_tokens=d.get("prompt_tokens", 0),
+        completion_tokens=d.get("completion_tokens", 0),
+        total_tokens=d.get("total_tokens", 0),
+        reviewer_verdicts=d.get("reviewer_verdicts", 0),
+        reviewer_kickbacks=d.get("reviewer_kickbacks", 0),
+        farewell=d.get("farewell", ""),
+        repeated_calls_by_name=dict(d.get("repeated_calls_by_name", {})),
+        tool_output_stats={
+            tool: ToolOutputStats(
+                count=s.get("count", 0),
+                truncated=s.get("truncated", 0),
+                total_chars=s.get("total_chars", 0),
+                max_chars=s.get("max_chars", 0),
+            )
+            for tool, s in d.get("tool_output_stats", {}).items()
+        },
+    )
+
+
 def _round_cell(v: object) -> object:
     """Canonicalize numeric cells so values that are numerically equal compare
     equal regardless of Python type. The reference SQL emits ``Decimal`` for
