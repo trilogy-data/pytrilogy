@@ -1184,9 +1184,7 @@ def get_loop_iteration_targets(
         and isinstance(priority_concept.lineage, BuildRowsetItem)
     ):
         rowset_outputs = set(priority_concept.lineage.rowset.derived_concepts)
-        if not any(
-            arg.address in rowset_outputs for arg in conditions.row_arguments
-        ):
+        if not any(arg.address in rowset_outputs for arg in conditions.row_arguments):
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
                 f"is an independent single-row rowset scalar; not routing the condition into its build"

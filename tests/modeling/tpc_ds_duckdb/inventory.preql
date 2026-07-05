@@ -5,7 +5,7 @@ import warehouse as warehouse;
 import item as item;
 import date as date;
 
-property <date.id, item.id, warehouse.id>.quantity_on_hand int; # Number of units of the item physically on hand in the warehouse at the snapshot date.
+property <date.id, item.id, warehouse.id>.quantity_on_hand int?; # Number of units of the item physically on hand in the warehouse at the snapshot date.
 
 datasource warehouse_inventory (
     inv_warehouse_sk: ?warehouse.id, # FK to warehouse the snapshot was taken for.

@@ -1,6 +1,6 @@
 query_id = "81"
 generator = "v3"
-gen_length = 7455
+gen_length = 7519
 preql_size = 1976
 comp_size = 1459
 generated_sql = """
@@ -74,7 +74,10 @@ SELECT
     \"wakeful\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\"
 FROM
     \"questionable\"
-    INNER JOIN \"wakeful\" on \"questionable\".\"cr_billing_customer_id\" = \"wakeful\".\"cr_billing_customer_id\")
+    INNER JOIN \"wakeful\" on \"questionable\".\"cr_billing_customer_id\" = \"wakeful\".\"cr_billing_customer_id\"
+WHERE
+    \"wakeful\".\"cr_billing_customer_address_state\" = 'GA'
+)
 SELECT
     \"yummy\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\",
     \"yummy\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",

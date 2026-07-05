@@ -8,10 +8,10 @@ key id int; # Surrogate key (one row per SCD version of an item; SEVERAL ids sha
 
 properties id (
     text_id string, # The item's business "item code" (i_item_id, 16-char). This is THE per-item identifier: GROUP BY and report this for per-item results, not the surrogate id.
-    product_name string, # Marketing product name shown to customers.
-    brand_id int, # Numeric brand identifier (composite of category + class + brand digits).
-    brand_name string, # Brand display name.
-    manufacturer_id int, # Numeric manufacturer identifier (1-1000).
+    product_name string?, # Marketing product name shown to customers.
+    brand_id int?, # Numeric brand identifier (composite of category + class + brand digits).
+    brand_name string?, # Brand display name.
+    manufacturer_id int?, # Numeric manufacturer identifier (1-1000).
     manufact string?, # Manufacturer display name.
     category enum<string>['Books', 'Children', 'Electronics', 'Home', 'Jewelry', 'Men', 'Music', 'Shoes', 'Sports', 'Women']?, # Top-level product category.
     category_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]?, # Numeric category identifier paired with category.
@@ -20,9 +20,9 @@ properties id (
     class string?, # Product class (sub-category within a category).
     class_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]?, # Numeric class identifier within the category.
     desc string?, # Free-form item description.
-    color string, # Primary color of the item.
+    color string?, # Primary color of the item.
     manager_id int?, # Identifier of the merchandise manager responsible for the item (1-100).
-    size enum<string>['N/A', 'economy', 'extra large', 'large', 'medium', 'petite', 'small'], # Size descriptor.
+    size enum<string>['N/A', 'economy', 'extra large', 'large', 'medium', 'petite', 'small']?, # Size descriptor.
     units string?, # Unit-of-measure descriptor (e.g. 'Each', 'Ounce', 'Pound', 'Box').
 );
 

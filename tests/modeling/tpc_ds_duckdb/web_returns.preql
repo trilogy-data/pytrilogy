@@ -19,22 +19,22 @@ import web_page as web_page;
 
 property <web_sales.item.id, web_sales.order_number>.return_amount numeric::usd; # Total amount refunded to the customer for the return (USD).
 property <web_sales.item.id, web_sales.order_number>.return_quantity int; # Number of units returned on this line.
-property <web_sales.item.id, web_sales.order_number>.refunded_cash numeric::usd; # Cash portion of the refund (USD).
-property <web_sales.item.id, web_sales.order_number>.fee numeric::usd; # Restocking or handling fee withheld from the refund (USD).
+property <web_sales.item.id, web_sales.order_number>.refunded_cash numeric::usd?; # Cash portion of the refund (USD).
+property <web_sales.item.id, web_sales.order_number>.fee numeric::usd?; # Restocking or handling fee withheld from the refund (USD).
 property <web_sales.item.id, web_sales.order_number>.net_loss numeric::usd; # Net financial loss on the return (USD).
 
 datasource web_returns (
     WR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
-    WR_RETURN_TIME_SK: time.id, # FK to the time-of-day the return was processed.
+    WR_RETURN_TIME_SK: ?time.id, # FK to the time-of-day the return was processed.
     WR_ITEM_SK: web_sales.item.id, # FK to the returned item.
-    WR_RETURNING_CUSTOMER_SK: billing_customer.id, # FK to the customer returning the item.
-    WR_REFUNDED_CUSTOMER_SK: refunded_customer.id, # FK to the customer receiving the refund (may differ).
-    WR_RETURNING_CDEMO_SK: returning_demographic.id, # FK to the returning customer's demographic profile.
-    WR_REFUNDED_CDEMO_SK: refunded_demographic.id, # FK to the refunded customer's demographic profile.
-    WR_RETURNING_ADDR_SK: return_address.id, # FK to the address the return originated from.
-    WR_REFUNDED_ADDR_SK: refunded_address.id, # FK to the address the refund was issued to.
-    WR_REASON_SK: reason.id, # FK to the return-reason code.
-    WR_WEB_PAGE_SK: web_page.id, # FK to the web page the return was filed through.
+    WR_RETURNING_CUSTOMER_SK: ?billing_customer.id, # FK to the customer returning the item.
+    WR_REFUNDED_CUSTOMER_SK: ?refunded_customer.id, # FK to the customer receiving the refund (may differ).
+    WR_RETURNING_CDEMO_SK: ?returning_demographic.id, # FK to the returning customer's demographic profile.
+    WR_REFUNDED_CDEMO_SK: ?refunded_demographic.id, # FK to the refunded customer's demographic profile.
+    WR_RETURNING_ADDR_SK: ?return_address.id, # FK to the address the return originated from.
+    WR_REFUNDED_ADDR_SK: ?refunded_address.id, # FK to the address the refund was issued to.
+    WR_REASON_SK: ?reason.id, # FK to the return-reason code.
+    WR_WEB_PAGE_SK: ?web_page.id, # FK to the web page the return was filed through.
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
     WR_REFUNDED_CASH: refunded_cash,

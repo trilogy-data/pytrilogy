@@ -1118,6 +1118,7 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
     _validate_grouping_args_are_concepts(select, context)
     _normalize_grouping_args_to_rollup_keys(select, context)
     seen: set[str] = set()
+    stamped = False
     for item in select.selection:
         lineage = _item_lineage(item, context)
         if lineage is None:
@@ -1126,6 +1127,199 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
             wrapper.by = list(spec.by)
             wrapper.grouping = spec.mode
             wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
+            stamped = True
+    # Stamping only reaches aggregate wrappers; a passthrough of a
+    # pre-aggregated (rowset) measure has none, so without this the spec
+    # would silently drop when nothing was stamped (q05) — and a passthrough
+    # next to a fresh aggregate would emit as a bare, ungrouped column in the
+    # ROLLUP CTE. Re-aggregate the passthroughs, or raise.
+    _apply_grouping_to_passthroughs(select, context, spec, stamped)
+
+
+_REAGGREGABLE_OPERATORS = {FunctionType.SUM, FunctionType.COUNT}
+
+
+def _underlying_aggregate_operators(
+    lineage: Any, context: RuleContext, seen: set[str]
+) -> set[FunctionType]:
+    """The aggregate operators a passthrough projection is materialized from,
+    descending through by-name ``ConceptRef``s (``auto`` concepts) and rowset
+    outputs (``RowsetItem`` content). Unlike ``_lineage_reaches`` this
+    deliberately crosses the rowset boundary: the question is not where the
+    aggregate runs but whether the materialized value can be re-aggregated."""
+    if isinstance(lineage, AggregateWrapper):
+        return {lineage.function.operator}
+    if isinstance(lineage, RowsetItem):
+        return _underlying_aggregate_operators(lineage.content, context, seen)
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in seen:
+            return set()
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if concept is None or isinstance(
+            concept, (UndefinedConcept, UndefinedConceptFull)
+        ):
+            return set()
+        return _underlying_aggregate_operators(concept.lineage, context, seen)
+    ops: set[FunctionType] = set()
+    for child in _child_exprs(lineage):
+        ops |= _underlying_aggregate_operators(child, context, seen)
+    return ops
+
+
+def _grouping_spec_key_addresses(spec: Any) -> set[str]:
+    keys = {_concept_address(k) for k in spec.by}
+    for grouping_set in spec.grouping_sets:
+        keys |= {_concept_address(k) for k in grouping_set}
+    return keys
+
+
+def _leaf_concept_addresses(
+    lineage: Any, context: RuleContext, key_addresses: set[str], seen: set[str]
+) -> set[str]:
+    """The leaf concept addresses a projection reads, descending by-name refs
+    into their lineages. Descent stops at grouping-key refs (their derivation
+    is irrelevant — they ARE the keys) and at rowset boundaries (a rowset
+    output is a materialized value, not a function of the outer keys)."""
+    if isinstance(lineage, ConceptRef):
+        if lineage.address in key_addresses or lineage.address in seen:
+            return {lineage.address}
+        seen.add(lineage.address)
+        concept = context.concepts.get(lineage.address)
+        if (
+            concept is None
+            or isinstance(concept, (UndefinedConcept, UndefinedConceptFull))
+            or concept.lineage is None
+            or isinstance(concept.lineage, RowsetItem)
+        ):
+            return {lineage.address}
+        return _leaf_concept_addresses(concept.lineage, context, key_addresses, seen)
+    addresses: set[str] = set()
+    for child in _child_exprs(lineage):
+        addresses |= _leaf_concept_addresses(child, context, key_addresses, seen)
+    return addresses
+
+
+def _is_key_or_broadcast_projection(
+    lineage: Any, context: RuleContext, key_addresses: set[str]
+) -> bool:
+    """True when every concept the projection reads is a grouping key or a
+    single-row scalar — a key-derived dim (``case when chan = 1 …`` under
+    ``rollup (chan, …)``, the q80 fold family), a broadcast scalar, or a
+    constant. These need no aggregate carrier: the planner folds key functions
+    into the grouped node and cross-joins single-row scalars."""
+    for address in _leaf_concept_addresses(lineage, context, key_addresses, set()):
+        if address in key_addresses:
+            continue
+        concept = context.concepts.get(address)
+        if concept is not None and concept.granularity == Granularity.SINGLE_ROW:
+            continue
+        return False
+    return True
+
+
+def _has_aggregate_or_window(lineage: Any, context: RuleContext) -> bool:
+    """True when the item already participates in the grouping pass (any
+    aggregate wrapper — stamped, explicitly ``by``-grained, or a grouping()
+    indicator) or is a window computed over it. ``_lineage_reaches`` stops at
+    rowset boundaries, so a rowset passthrough does NOT count."""
+    return _lineage_reaches(
+        lineage,
+        context,
+        lambda n: isinstance(n, AggregateWrapper) or _is_window_item(n),
+        set(),
+    )
+
+
+def _apply_grouping_to_passthroughs(
+    select: SelectStatement, context: RuleContext, spec: Any, stamped: bool
+) -> None:
+    """Carry a ``by rollup/cube/grouping sets`` spec on projections that are
+    passthroughs of pre-aggregated (rowset) measures.
+
+    The spec travels on aggregate wrappers, so a passthrough has no carrier:
+    with no fresh aggregate in the SELECT the spec used to vanish silently —
+    the query ran as a plain GROUP BY with zero subtotal rows (q05) — and next
+    to a fresh aggregate the passthrough emitted as a bare, ungrouped column
+    inside the ROLLUP CTE (BinderException). A SUM/COUNT-derived passthrough
+    re-aggregates exactly with an implicit ``sum(...)``, matching the explicit
+    fresh-aggregate form (leaf rows are single-group identities, subtotal rows
+    sum them).
+
+    Left alone: grouping keys and key-derived dims (the planner folds them
+    into the grouped node), single-row scalars (broadcast cross join), and
+    plain other-grain dims (join-back at leaf grain — NULL on subtotal rows is
+    their defined semantics). When nothing was stamped, a measure that cannot
+    be re-aggregated soundly (non-additive, or bare and un-aliased) would mean
+    silently dropping the clause — raise with the explicit-form fix instead."""
+    key_addresses = _grouping_spec_key_addresses(spec)
+    clause = f"by {spec.mode.value.replace('_', ' ')}"
+    wrapped = False
+    for item in select.selection:
+        content = item.content
+        if not isinstance(content, ConceptTransform):
+            address = getattr(content, "address", None)
+            if (
+                address is None
+                or address in key_addresses
+                or _has_aggregate_or_window(content, context)
+                or _is_key_or_broadcast_projection(content, context, key_addresses)
+            ):
+                continue
+            if not stamped and _underlying_aggregate_operators(content, context, set()):
+                raise InvalidSyntaxException(
+                    f"`{clause} (…)` cannot re-aggregate the bare measure "
+                    f"reference `{address}`. Alias it with an explicit aggregate "
+                    f"(e.g. `sum({address}) as {str(address).split('.')[-1]}_total`)."
+                )
+            continue
+        source: Any = content.function
+        if (
+            isinstance(source, Function)
+            and source.operator == FunctionType.ALIAS
+            and len(source.arguments) == 1
+        ):
+            source = source.arguments[0]
+        if isinstance(source, ConceptRef) and source.address in key_addresses:
+            continue
+        if content.output.address in key_addresses:
+            continue
+        if _has_aggregate_or_window(content.function, context):
+            continue
+        if _is_key_or_broadcast_projection(content.function, context, key_addresses):
+            continue
+        operators = _underlying_aggregate_operators(content.function, context, set())
+        if not operators:
+            # a plain dim at finer/other grain: the planner fetches it through
+            # a join-back at the leaf grain (NULL on subtotal rows), which is
+            # its defined semantics — leave it alone
+            continue
+        if not operators.issubset(_REAGGREGABLE_OPERATORS):
+            if stamped:
+                continue
+            raise InvalidSyntaxException(
+                f"`{clause} (…)` cannot re-aggregate passthrough projection "
+                f"`{content.output.address}`: it is not derived exclusively from "
+                f"sum/count measures, so its subtotal rows have no well-defined "
+                f"value. Aggregate it explicitly in the select instead (e.g. "
+                f"`sum(x) as {content.output.name}`)."
+            )
+        aggregate = AggregateWrapper(
+            function=context.function_factory.create_function(
+                [source], FunctionType.SUM
+            ),
+            by=list(spec.by),
+            grouping=spec.mode,
+            grouping_sets=[list(g) for g in spec.grouping_sets],
+        )
+        content.function = aggregate
+        content.output.lineage = aggregate
+        wrapped = True
+    if not stamped and not wrapped:
+        raise InvalidSyntaxException(
+            f"`{clause} (…)` requires at least one aggregate (or re-aggregable "
+            f"pre-aggregated measure) in the select to group; found none."
+        )
 
 
 def _normalize_grouping_args_to_rollup_keys(

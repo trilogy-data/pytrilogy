@@ -35,7 +35,7 @@ properties <order_number, item.id> (
     discount_amount numeric::usd, # Extended (line-level) discount amount applied to the order line.
     ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity (USD), the extended line amount. The per-unit price is sales_price (the "unit price").
     ext_list_price numeric::usd, # Line-extended list price (USD).
-    ext_ship_cost numeric::usd, # Line-extended shipping cost (USD).
+    ext_ship_cost numeric::usd?, # Line-extended shipping cost (USD).
     ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
     net_profit numeric::usd, # Reported net profit for the line. Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
     --net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping.

@@ -24,6 +24,8 @@ cover nested boolean trees, three-valued null logic, derived expressions,
 membership, and filters crossing join, window, and chasm boundaries.
 Coalescing-join presence cases assert per-side NULL markers under plain,
 cast, and concat keys for both UNION and FULL relations.
+Derived-rowset controls distinguish base-model WHERE enrichment from equivalent
+no-WHERE and rowset-output-WHERE forms.
 
 Run everything from the repository root:
 

@@ -255,9 +255,7 @@ def _nonstandard_grouping_by_addresses(concept: BuildConcept) -> set[str]:
     return set()
 
 
-def _pseudonym_linked(
-    concept: BuildConcept, outputs: List[BuildConcept]
-) -> bool:
+def _pseudonym_linked(concept: BuildConcept, outputs: List[BuildConcept]) -> bool:
     return any(
         concept.address in out.pseudonyms or out.address in concept.pseudonyms
         for out in outputs

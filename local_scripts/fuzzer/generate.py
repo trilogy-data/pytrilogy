@@ -1848,6 +1848,123 @@ select
     return cases
 
 
+def _derived_rowset_base_where_cases(seed: SeedData) -> list[FuzzCase]:
+    rowsets = """
+rowset current_period <- where event_id % 2 = 0
+select
+    group_id as gid,
+    active as flag,
+    sum(event_amount) as current_total;
+rowset future_period <- where event_id % 2 = 1
+select
+    group_id as gid,
+    active as flag,
+    sum(event_amount) as future_total;
+"""
+    sql_rowsets = """
+from (
+    select gid, active, sum(amount) as total
+    from events
+    where eid % 2 = 0
+    group by gid, active
+) c
+full join (
+    select gid, active, sum(amount) as total
+    from events
+    where eid % 2 = 1
+    group by gid, active
+) f
+"""
+    variants = (
+        (
+            "derived_single_no_where",
+            "",
+            "union join current_period.gid + 1 = future_period.gid",
+            "on c.gid + 1 is not distinct from f.gid",
+            "",
+            ("control", "no_where", "single_key"),
+        ),
+        (
+            "derived_single_rowset_where",
+            "where current_period.gid is not null\n",
+            "union join current_period.gid + 1 = future_period.gid",
+            "on c.gid + 1 is not distinct from f.gid",
+            "where c.gid is not null",
+            ("control", "rowset_where", "single_key"),
+        ),
+        (
+            "derived_single_base_where",
+            ("where required_name is null " "or required_name is not null\n"),
+            "union join current_period.gid + 1 = future_period.gid",
+            "on c.gid + 1 is not distinct from f.gid",
+            "",
+            ("base_where", "single_key"),
+        ),
+        (
+            "derived_composite_base_where",
+            ("where required_name is null " "or required_name is not null\n"),
+            (
+                "union join current_period.gid + 1 = future_period.gid "
+                "and current_period.flag = future_period.flag"
+            ),
+            (
+                "on c.gid + 1 is not distinct from f.gid "
+                "and c.active is not distinct from f.active"
+            ),
+            "",
+            ("base_where", "composite"),
+        ),
+    )
+    cases = []
+    for (
+        name,
+        trilogy_where,
+        trilogy_join,
+        sql_join,
+        sql_where,
+        variant_tags,
+    ) in variants:
+        body = f"""
+{rowsets}
+
+{trilogy_where}select
+    current_period.gid,
+    current_period.current_total,
+    future_period.future_total
+{trilogy_join}
+order by current_period.gid asc nulls last;
+"""
+        oracle = f"""
+select c.gid, c.total, f.total
+{sql_rowsets}
+{sql_join}
+{sql_where}
+order by c.gid asc nulls last
+"""
+        cases.append(
+            _case(
+                seed,
+                "derived_rowset_base_where",
+                name,
+                (
+                    "A derived UNION key between filtered rowsets is consumed "
+                    f"with {name.replace('_', ' ')}."
+                ),
+                (
+                    "join",
+                    "union",
+                    "rowset",
+                    "derived",
+                    "independent_sources",
+                    *variant_tags,
+                ),
+                body,
+                oracle,
+            )
+        )
+    return cases
+
+
 def _rowset_boundary_cases(seed: SeedData) -> list[FuzzCase]:
     cases = []
     variants = (
@@ -2343,6 +2460,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _composite_join_cases,
         _independent_rowset_join_cases,
         _coalescing_presence_cases,
+        _derived_rowset_base_where_cases,
         _rowset_boundary_cases,
         _named_grouping_window_cases,
         _derived_join_cases,

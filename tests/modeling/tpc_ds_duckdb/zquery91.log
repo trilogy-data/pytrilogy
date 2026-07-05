@@ -1,6 +1,6 @@
 query_id = "91"
 generator = "v3"
-gen_length = 2369
+gen_length = 2374
 preql_size = 981
 comp_size = 982
 generated_sql = """
@@ -12,11 +12,11 @@ SELECT
 FROM
     \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"call_center\" as \"cr_call_center_call_center\" on \"cr_catalog_returns\".\"CR_CALL_CENTER_SK\" = \"cr_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cr_billing_customer_customers\" on \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" = \"cr_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cr_billing_customer_address_customer_address\" on \"cr_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cr_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cr_billing_customer_demographics_customer_demographics\" on \"cr_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"cr_billing_customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"cr_billing_customer_household_demographic_household_demographics\" on \"cr_billing_customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"cr_billing_customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
+    LEFT OUTER JOIN \"memory\".\"call_center\" as \"cr_call_center_call_center\" on \"cr_catalog_returns\".\"CR_CALL_CENTER_SK\" = \"cr_call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
     \"cr_date_date\".\"D_YEAR\" = 1998 and \"cr_date_date\".\"D_MOY\" = 11 and ( ( \"cr_billing_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"cr_billing_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' ) or ( \"cr_billing_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"cr_billing_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' ) ) and \"cr_billing_customer_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" like 'Unknown%' and \"cr_billing_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -7
 

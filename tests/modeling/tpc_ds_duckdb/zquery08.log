@@ -1,6 +1,6 @@
 query_id = "08"
 generator = "v3"
-gen_length = 2810
+gen_length = 2829
 preql_size = 7469
 comp_size = 19155
 generated_sql = """
@@ -25,7 +25,7 @@ SELECT
     \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"),
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" is not distinct from \"customer_address_customer_address\".\"CA_ZIP\"),
 abundant as (
 SELECT
     CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"questionable\".\"customer_address_zip\" ELSE NULL END as \"p_cust_zip\"

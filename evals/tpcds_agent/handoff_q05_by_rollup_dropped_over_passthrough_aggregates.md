@@ -1,8 +1,16 @@
 # HANDOFF — q05: `by rollup (…)` silently discarded when the SELECT has no fresh aggregate (passthrough of pre-aggregated columns)
 
-**RECONFIRMED 2026-07-05:** reproduces on the current engine — a `by rollup` select that projects
-pre-aggregated (rowset/`auto`) columns with no fresh aggregate generates SQL with **no ROLLUP /
-GROUPING SETS** (`'ROLLUP' in sql == False`). Confirmed OPEN.
+**Status:** ✅ FIXED 2026-07-05 (option #1 + #2 floor). `_propagate_select_grouping` now calls
+`_apply_grouping_to_passthroughs` (`trilogy/parsing/v2/select_finalize.py`): a SUM/COUNT-derived
+rowset passthrough measure is re-aggregated with an implicit `sum(...)` carrying the spec —
+passthrough and fresh-aggregate forms produce identical rows (parity asserted) — and this also
+fixes the mixed shape (passthrough next to a fresh aggregate emitted a bare ungrouped column).
+Exempt: grouping keys, key-derived dims (q80 fold family), single-row scalars (broadcast),
+plain other-grain dims (join-back). Never silent: a non-additive (avg/…) passthrough or a
+keys-only select with no carrier raises `InvalidSyntaxException` with the explicit-form fix.
+Guards: `tests/engine/test_duckdb_rollup_passthrough.py`.
+
+Original report below for context.
 **Full diagnosis:** `evals/tpcds_agent/bug_q05_by_rollup_silently_dropped_over_passthrough_aggregates.md`
 **Classification:** REAL framework bug, **SILENT** (wrong rows — subtotal/grand-total rows missing,
 no error). Not the same as the (now-fixed) q05 float32 issue; this is the still-latent codegen hole

@@ -1,6 +1,6 @@
 query_id = "75"
 generator = "v3"
-gen_length = 10727
+gen_length = 10841
 preql_size = 1811
 comp_size = 2939
 generated_sql = """
@@ -184,7 +184,7 @@ SELECT
     \"macho\".\"_curr_curr_cnt\" as \"_curr_curr_cnt\"
 FROM
     \"late\"
-    INNER JOIN \"macho\" on \"late\".\"deduped_sales_item_brand_id\" = \"macho\".\"deduped_sales_item_brand_id\" AND \"late\".\"deduped_sales_item_category_id\" is not distinct from \"macho\".\"deduped_sales_item_category_id\" AND \"late\".\"deduped_sales_item_class_id\" is not distinct from \"macho\".\"deduped_sales_item_class_id\" AND \"late\".\"deduped_sales_item_manufacturer_id\" = \"macho\".\"deduped_sales_item_manufacturer_id\"
+    INNER JOIN \"macho\" on \"late\".\"deduped_sales_item_brand_id\" is not distinct from \"macho\".\"deduped_sales_item_brand_id\" AND \"late\".\"deduped_sales_item_category_id\" is not distinct from \"macho\".\"deduped_sales_item_category_id\" AND \"late\".\"deduped_sales_item_class_id\" is not distinct from \"macho\".\"deduped_sales_item_class_id\" AND \"late\".\"deduped_sales_item_manufacturer_id\" is not distinct from \"macho\".\"deduped_sales_item_manufacturer_id\"
 GROUP BY
     1,
     2,
@@ -202,7 +202,7 @@ SELECT
     \"young\".\"_prev_prev_cnt\" as \"_prev_prev_cnt\"
 FROM
     \"concerned\"
-    INNER JOIN \"young\" on \"concerned\".\"deduped_sales_item_brand_id\" = \"young\".\"deduped_sales_item_brand_id\" AND \"concerned\".\"deduped_sales_item_category_id\" is not distinct from \"young\".\"deduped_sales_item_category_id\" AND \"concerned\".\"deduped_sales_item_class_id\" is not distinct from \"young\".\"deduped_sales_item_class_id\" AND \"concerned\".\"deduped_sales_item_manufacturer_id\" = \"young\".\"deduped_sales_item_manufacturer_id\"
+    INNER JOIN \"young\" on \"concerned\".\"deduped_sales_item_brand_id\" is not distinct from \"young\".\"deduped_sales_item_brand_id\" AND \"concerned\".\"deduped_sales_item_category_id\" is not distinct from \"young\".\"deduped_sales_item_category_id\" AND \"concerned\".\"deduped_sales_item_class_id\" is not distinct from \"young\".\"deduped_sales_item_class_id\" AND \"concerned\".\"deduped_sales_item_manufacturer_id\" is not distinct from \"young\".\"deduped_sales_item_manufacturer_id\"
 GROUP BY
     1,
     2,
@@ -243,7 +243,7 @@ SELECT
     \"friendly\".\"curr_curr_amt\" - \"abhorrent\".\"prev_prev_amt\" as \"sales_amt_diff\"
 FROM
     \"friendly\"
-    FULL JOIN \"abhorrent\" on \"friendly\".\"curr_i_brand_id\" = \"abhorrent\".\"prev_i_brand_id\" AND \"friendly\".\"curr_i_category_id\" is not distinct from \"abhorrent\".\"prev_i_category_id\" AND \"friendly\".\"curr_i_class_id\" is not distinct from \"abhorrent\".\"prev_i_class_id\" AND \"friendly\".\"curr_i_manufact_id\" = \"abhorrent\".\"prev_i_manufact_id\"
+    FULL JOIN \"abhorrent\" on \"friendly\".\"curr_i_brand_id\" is not distinct from \"abhorrent\".\"prev_i_brand_id\" AND \"friendly\".\"curr_i_category_id\" is not distinct from \"abhorrent\".\"prev_i_category_id\" AND \"friendly\".\"curr_i_class_id\" is not distinct from \"abhorrent\".\"prev_i_class_id\" AND \"friendly\".\"curr_i_manufact_id\" is not distinct from \"abhorrent\".\"prev_i_manufact_id\"
 WHERE
     cast(\"friendly\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"abhorrent\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
 

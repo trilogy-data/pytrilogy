@@ -14,7 +14,7 @@ properties id (
     channel_tv enum<string>['Y', 'N']?, # 'Y' if the promotion ran on TV, else 'N'.
     --channel_radio enum<string>['Y', 'N']?, # 'Y' if the promotion ran on radio, else 'N'.
     --channel_press enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the press channel, else 'N'.
-    --cost numeric::usd, # Total cost of running the promotion in USD.
+    --cost numeric::usd?, # Total cost of running the promotion in USD.
 );
 
 datasource promotion (

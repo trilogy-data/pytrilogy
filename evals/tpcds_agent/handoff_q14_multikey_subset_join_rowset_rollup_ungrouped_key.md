@@ -1,6 +1,30 @@
 # HANDOFF — q14: multi-key `subset join` onto a rowset leaks an ungrouped key into a ROLLUP CTE (BinderException); some shapes wrongly DisconnectedConcepts
 
-**Status:** OPEN, ready to implement. Root-caused, minimal repro + trigger matrix on today's engine.
+**Status:** ✅ FIXED 2026-07-05. The full 3-key subset-join + rollup + grouping() + where + having
+shape now builds, executes, and returns the exact canonical row set (19,779 rows on the run
+workspace, leaves + all subtotal/grand-total rows, byte-identical to the concat-tuple-key form).
+The 2-key DisconnectedConcepts shapes build and run. Guards:
+`tests/engine/test_duckdb_rollup_scoped_join.py` + `tests/core/processing/test_group_node_grouping_grain.py`.
+
+**Root causes found (the handoff's `_inject_scoped_join_key_exposure` attribution was WRONG —
+disabling it changed nothing). Four fixes:**
+1. `group_node.py::_resolve_grain_components` — a non-standard-grouping aggregate's grain arrives
+   canonicalized to the join-mate's addresses while the wrapper's `by` keeps the authored ones;
+   ROLLUP renders GROUP BY from `by` verbatim, so the swapped grain dims emitted as bare ungrouped
+   columns (the BinderException). Grain dims matching a `by` member (by address or pseudonym) are
+   now pinned to the `by` address.
+2. `group_node.py::_wrap_grouping_passthrough` — pseudonym twins of rollup outputs were treated as
+   "missing optional" and enriched via a join back on the rollup dims (NULL at subtotal rows →
+   subtotals dropped). They are now surfaced on a passthrough SELECT above the grouped node.
+3. `concept_strategies_v3.py::initialize_loop_context` — the rollup-upstream WHERE-row-arg
+   pushdown carve-out is now pseudonym-aware, and exempt row args are dropped from
+   completion_mandatory (they're enforced below the group; requiring them at the root forced the
+   post-rollup dim-join merges).
+4. `discovery_utility.py::get_loop_iteration_targets` — an outer WHERE unrelated to an independent
+   single-row rowset scalar is no longer routed into the scalar's build (it welded the WHERE's row
+   args onto the broadcast node → disconnect / dim-join instead of a 1=1 cross join).
+
+Original report below for context.
 **Full diagnosis:** `evals/tpcds_agent/bug_q14_recheck_20260705.md`
 
 **RECONFIRMED 2026-07-05:** the BinderException below **reproduces** on the current engine
