@@ -1,5 +1,26 @@
 # q97 — FRAMEWORK bug(s): two-rowset presence join is impossible (hard crash + silent wrong result)
 
+> **RESOLVED 2026-07-05.** Both bugs fixed forward:
+>
+> - **Bug 1** (`trilogy/core/models/build.py`): a coalescing (∦ — query
+>   `full`/`union` join, NOT an EQUAL `merge`) pair whose endpoints are BOTH
+>   derived BASIC keys (`cast(a)=cast(b)`) now takes the identity path
+>   (`_rowset_outer_pair`), so each side keeps and materializes its own key
+>   column instead of one side's expression being destroyed by substitution.
+>   Plus a structural backstop in `_enrich_rowset_node` (rowset_node.py): any
+>   BASIC computed purely from a rowset node's own producible addresses is
+>   excluded from enrichment sourcing (it could only re-enter the rowset).
+> - **Bug 2** (`Factory._coalescing_presence_probe`, build.py): `member is
+>   [not] null` on a coalescing key-group member now binds to a per-side
+>   presence probe materialized on the member's own rowset BEFORE the merge, so
+>   presence tests see each side's real NULLs. Projecting a member is unchanged
+>   (coalesced group axis).
+>
+> Trigger matrix rows A–E all pass; the literal two-rowset translation of q97
+> (rows B/D) now returns the canonical `(540709, 286686, 171)`. Guards:
+> `tests/join_matrix/test_coalescing_presence_matrix.py` + the fuzzer family
+> `coalescing_presence` (16/16).
+
 TPC-DS q97 = "customers present in store-only / catalog-only / both channels" over
 (customer, item) pairs in a date window. Canonical SQL = two grouped subqueries
 `FULL OUTER JOIN`-ed on (customer_sk, item_sk), then `SUM(CASE WHEN a IS NOT NULL AND

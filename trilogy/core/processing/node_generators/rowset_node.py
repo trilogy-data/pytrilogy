@@ -1,6 +1,6 @@
 from typing import List
 
-from trilogy.constants import logger
+from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
 from trilogy.core.enums import Derivation, JoinType
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
@@ -194,6 +194,45 @@ def _materializable_derived_join_keys(
             if inputs and inputs <= producible:
                 seen.add(candidate.address)
                 out.append(candidate)
+    return out
+
+
+def _self_derived_basic(x: BuildConcept, producible: set[str]) -> bool:
+    """A BASIC whose every input this node can already produce: it has no
+    external source, so asking discovery for it can only route back through
+    this same rowset (recursion)."""
+    if x.derivation != Derivation.BASIC:
+        return False
+    inputs = {a.address for a in x.concept_arguments}
+    return bool(inputs) and inputs <= producible
+
+
+def _materializable_presence_probes(
+    node: StrategyNode, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """Presence probes (`Factory._coalescing_presence_probe`) whose member is
+    an OWN output of this rowset node.
+
+    A probe must compute BEFORE the coalescing merge — post-merge the member's
+    source is the fused group coalesce and the probe would never be NULL.
+    Matching is by exact address (never a pseudonym): the group-mate's node
+    also carries the member as a pseudonym, and computing the probe there
+    would read the wrong side."""
+    own = {c.address for c in node.output_concepts}
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+    for concept in environment.concepts.values():
+        if (
+            PRESENCE_PROBE_PREFIX not in concept.address
+            or concept.derivation != Derivation.BASIC
+            or concept.address in seen
+            or concept.address in own
+        ):
+            continue
+        inputs = {a.address for a in concept.concept_arguments}
+        if inputs and inputs <= own:
+            seen.add(concept.address)
+            out.append(concept)
     return out
 
 
@@ -515,8 +554,14 @@ def _apply_cross_rowset_where(
     # an outer `yr=1999` filter feeding an outer aggregate) must instead flow
     # through the normal enrich path so the condition is pushed down into the
     # scan — applying it here would compute the aggregate unfiltered and filter
-    # too late.
-    if not any(t.derivation == Derivation.ROWSET for t in condition_targets):
+    # too late. A presence probe is a cross-rowset operand by construction: it
+    # wraps another rowset's coalescing join key member and must be evaluated
+    # on that side pre-merge, filtered post-merge — the generic path would
+    # silently drop it (its rowset node has no joinable non-key output).
+    if not any(
+        t.derivation == Derivation.ROWSET or PRESENCE_PROBE_PREFIX in t.address
+        for t in condition_targets
+    ):
         return None
     # Source the merge against EVERY concept the predicate references, not just
     # the operands missing from this rowset (`condition_targets`). An operand
@@ -750,11 +795,18 @@ def _enrich_rowset_node(
     # cross-rowset merge key, not an enrichment bridge: sourcing it through
     # discovery re-enters this rowset and recurses.
     coalescing_members = environment.distinct_scoped_join_group_mates()
+    # Same recursion by shape, not registry: a self-derived BASIC output
+    # (materialized join key, presence probe) has no external source, so it
+    # must never be handed to discovery as a join target. The registry check
+    # above stays as the semantic rule; this is the structural backstop.
+    producible = _producible_addresses(node, deep=False, include_pseudonyms=True)
     possible_joins = concept_to_relevant_joins(
         [
             x
             for x in node.output_concepts
-            if x.derivation != Derivation.ROWSET and x.address not in coalescing_members
+            if x.derivation != Derivation.ROWSET
+            and x.address not in coalescing_members
+            and not _self_derived_basic(x, producible)
         ]
         + [canonical for _, canonical in bridge_keys]
     )
@@ -860,6 +912,15 @@ def gen_rowset_node(
     if derived_join_keys:
         for derived_key in derived_join_keys:
             node.add_output_concept(derived_key, rebuild=False)
+        node.rebuild_cache()
+
+    # Per-side presence probes over this rowset's outputs must likewise be
+    # computed here, pre-merge — sourced downstream they'd read the coalesced
+    # group column (never NULL) or re-enter this rowset (recursion).
+    presence_probes = _materializable_presence_probes(node, environment)
+    if presence_probes:
+        for probe in presence_probes:
+            node.add_output_concept(probe, rebuild=False)
         node.rebuild_cache()
 
     if conditions:

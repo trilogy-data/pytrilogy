@@ -13,6 +13,12 @@ RECURSIVE_GATING_CONCEPT = "_terminal"
 
 VIRTUAL_CONCEPT_PREFIX = "_virt"
 
+# Per-side presence probes for coalescing (`full`/`union`) join key-group
+# members: a null test on a member reads the member's OWN side, not the
+# group's mandatory coalesce. Minted in Factory._coalescing_presence_probe;
+# materialized pre-merge by gen_rowset_node.
+PRESENCE_PROBE_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_presence_"
+
 # Magic rowset name for an inline `from union(...) -> (...)` TVF; its outputs are
 # exposed as bare select-local bindings, so the name never collides.
 MAGIC_TVF_UNION_NAME = "_tvf_union"

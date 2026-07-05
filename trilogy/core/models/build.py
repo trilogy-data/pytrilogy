@@ -20,7 +20,12 @@ from typing import (
     Union,
 )
 
-from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
+from trilogy.constants import (
+    DEFAULT_NAMESPACE,
+    PRESENCE_PROBE_PREFIX,
+    VIRTUAL_CONCEPT_PREFIX,
+    MagicConstants,
+)
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
@@ -2360,18 +2365,43 @@ class Factory:
             c = environment.concepts.get(addr)
             return c is not None and c.derivation == Derivation.ROWSET
 
+        def _is_derived_keyed(addr: str) -> bool:
+            c = environment.concepts.get(addr)
+            return c is not None and c.derivation == Derivation.BASIC
+
         # A FULL relation is symmetric, so the rowset-outer identity handling
         # must engage whichever side the rowset key was authored on — keying on
         # the source alone let `full join <derived expr> = <rowset key>` fall
         # through to the substitution path, which destroys the derived key's
         # column (the rowset key becomes the group canonical and the derived
         # side has no binding for it). LEFT stays source-keyed: its operand
-        # order is directional by definition.
+        # order is directional by definition. A COALESCING (∦ — query
+        # `full`/`union` join) pair whose endpoints are BOTH derived
+        # expressions (`cast(a.k) = cast(b.k)`, q97) has the same problem with
+        # no rowset key to catch it: substituting one virt key onto the other
+        # destroys its side's compute expression, and with only one distinct
+        # group member left the exposure machinery disengages — sourcing the
+        # surviving key then re-enters its own rowset (infinite recursion).
+        # Both endpoints keep identity; each side materializes its own key
+        # column and the merge coalesces them. Gated to ∦ declarations: an
+        # EQUAL (global `merge`) pair of derived concepts declares identical
+        # domains, where substitution is the correct single-column plan.
+        coalescing_endpoints = self.domain_graph.coalescing_relation_members()
+
         def _rowset_outer_pair(s: str, t: str, jt: JoinType) -> bool:
             if jt is JoinType.LEFT_OUTER:
                 return _is_rowset_keyed(s)
             if jt is JoinType.FULL:
-                return _is_rowset_keyed(s) or _is_rowset_keyed(t)
+                return (
+                    _is_rowset_keyed(s)
+                    or _is_rowset_keyed(t)
+                    or (
+                        s in coalescing_endpoints
+                        and t in coalescing_endpoints
+                        and _is_derived_keyed(s)
+                        and _is_derived_keyed(t)
+                    )
+                )
             return False
 
         self.scoped_rowset_outer_sources: set[str] = {
@@ -3302,7 +3332,58 @@ class Factory:
     def _(self, base: Comparison) -> BuildComparison | bool:
         return self._build_comparison(base)
 
+    def _coalescing_presence_probe(self, ref: ConceptRef) -> Concept | None:
+        """Per-side probe for a null test on a coalescing join key-group member.
+
+        A `full`/`union` join key group renders as the mandatory coalesce of
+        every member, so `member is [not] null` would read the fused column and
+        never observe the member's own side being absent — presence counts over
+        the join silently collapse to (0, 0, N) (TPC-DS q97). The null test asks
+        a per-ROW question ("did this side match?"), not a domain question, so
+        rewrite its operand to a virt passthrough of the member. The probe is
+        materialized on the member's own rowset BEFORE the coalescing merge
+        (gen_rowset_node), rides through the FULL join un-fused, and is NULL
+        exactly where the member's side is absent. Projecting the member is
+        untouched: that remains the coalesced group axis."""
+        address = ref.address
+        if address not in self.domain_graph.coalescing_relation_members():
+            return None
+        member = self.environment.concepts.get(address)
+        if member is None or member.derivation != Derivation.ROWSET:
+            return None
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        name = f"{PRESENCE_PROBE_PREFIX}{string_to_hash(address)}"
+        if name in self.local_non_build_concepts:
+            return self.local_non_build_concepts[name]
+        # single-arg COALESCE: value-identity but structurally opaque — an
+        # ALIAS would mint a structural ≡ edge and collapse the probe back
+        # onto the member (defeating it)
+        probe_fn = Function(
+            operator=FunctionType.COALESCE,
+            output_datatype=member.datatype,
+            output_purpose=Purpose.PROPERTY,
+            arguments=[ref],
+        )
+        new = arbitrary_to_concept(probe_fn, environment=self.environment, name=name)
+        built = self._build_concept(new)
+        self.local_concepts[name] = built
+        self.local_non_build_concepts[name] = new
+        return new
+
     def _build_comparison(self, base: Comparison) -> BuildComparison | bool:
+        if base.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+            probe: Concept | None = None
+            if base.right == MagicConstants.NULL and isinstance(base.left, ConceptRef):
+                probe = self._coalescing_presence_probe(base.left)
+                if probe is not None:
+                    base = dc_replace(base, left=probe.reference)
+            elif base.left == MagicConstants.NULL and isinstance(
+                base.right, ConceptRef
+            ):
+                probe = self._coalescing_presence_probe(base.right)
+                if probe is not None:
+                    base = dc_replace(base, right=probe.reference)
         left = base.left
         validation = requires_concept_nesting(base.left)
         if validation:
