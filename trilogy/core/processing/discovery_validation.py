@@ -87,6 +87,21 @@ def _node_condition_implies(
     )
 
 
+def _stack_applies_condition(stack: List[StrategyNode], condition: BoolExpr) -> bool:
+    """A condition counts as already applied only when at least one node's own
+    conditions imply it and every other node either implies it or is exempt
+    (scalar-only / independent scope). Exemptions let a node opt OUT of
+    carrying a condition another node applies; they never satisfy it — an
+    all-exempt stack with no applier (e.g. a bare rowset node under a
+    base-model WHERE) must not pass, or the filter is silently dropped."""
+    return all(
+        _is_scalar_only(node, condition)
+        or _is_independent_scope(node, condition)
+        or _node_condition_implies(node, condition)
+        for node in stack
+    ) and any(_node_condition_implies(node, condition) for node in stack)
+
+
 def _condition_atom_met(
     stack: List[StrategyNode],
     found_addresses: set[str],
@@ -94,12 +109,7 @@ def _condition_atom_met(
 ) -> bool:
     if all(c.address in found_addresses for c in condition.row_arguments):
         return True
-    return all(
-        _is_scalar_only(node, condition)
-        or _is_independent_scope(node, condition)
-        or _node_condition_implies(node, condition)
-        for node in stack
-    )
+    return _stack_applies_condition(stack, condition)
 
 
 def _conditions_met(
@@ -111,12 +121,7 @@ def _conditions_met(
     if not conditions:
         return True
     conditional = conditions.conditional
-    if all(
-        _is_scalar_only(node, conditional)
-        or _is_independent_scope(node, conditional)
-        or _node_condition_implies(node, conditional)
-        for node in stack
-    ):
+    if _stack_applies_condition(stack, conditional):
         return True
     if all(c.address in found_addresses for c in mandatory_with_filter):
         return True

@@ -204,6 +204,10 @@ class Executor(object):
         from trilogy.dialect.config import DuckDBConfig
         from trilogy.dialect.duckdb import get_python_datasource_setup_sql
 
+        # A read-only handle can't CREATE the guard macro — and python
+        # datasources (which need write access) are unusable anyway, so skip it.
+        if isinstance(self.config, DuckDBConfig) and self.config.read_only:
+            return
         enabled = (
             isinstance(self.config, DuckDBConfig)
             and self.config.enable_python_datasources

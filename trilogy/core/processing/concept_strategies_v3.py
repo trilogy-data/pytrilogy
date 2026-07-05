@@ -40,6 +40,7 @@ from trilogy.core.processing.discovery_validation import (
     _is_independent_scope,
     _is_scalar_only,
     _node_condition_implies,
+    _stack_applies_condition,
     validate_stack,
 )
 from trilogy.core.processing.nodes import (
@@ -394,16 +395,7 @@ def _restrict_completion_conditions(
     row args that belonged only to dropped (already-applied) atoms.
     """
     atoms = decompose_condition(conditions.conditional)
-    kept = [
-        a
-        for a in atoms
-        if not all(
-            _is_scalar_only(n, a)
-            or _is_independent_scope(n, a)
-            or _node_condition_implies(n, a)
-            for n in stack
-        )
-    ]
+    kept = [a for a in atoms if not _stack_applies_condition(stack, a)]
     if len(kept) == len(atoms):
         return conditions, non_virtual
     residual = combine_condition_atoms(kept)
@@ -432,20 +424,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 
-    elif all(
-        [
-            x.preexisting_conditions == context.conditions.conditional
-            or (
-                x.preexisting_conditions is not None
-                and condition_implies(
-                    x.preexisting_conditions, context.conditions.conditional
-                )
-            )
-            or _is_scalar_only(x, context.conditions.conditional)
-            or _is_independent_scope(x, context.conditions.conditional)
-            for x in context.stack
-        ]
-    ):
+    elif _stack_applies_condition(context.stack, context.conditions.conditional):
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 

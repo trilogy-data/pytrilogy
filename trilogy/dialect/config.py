@@ -99,6 +99,7 @@ class DuckDBConfig(DialectConfig):
         enable_spatial: bool | None = None,
         gcs_cache_bust: bool | None = None,
         retry_config: RetryConfig | None = None,
+        read_only: bool | None = None,
     ):
         super().__init__(retry_config=retry_config)
         self.path = path
@@ -106,6 +107,7 @@ class DuckDBConfig(DialectConfig):
         self._enable_gcs = enable_gcs
         self._enable_spatial = enable_spatial
         self._gcs_cache_bust = gcs_cache_bust
+        self.read_only = read_only
         self.guid = id(self)
 
     @property
@@ -128,6 +130,14 @@ class DuckDBConfig(DialectConfig):
         if not self.path:
             return "duckdb:///:memory:"
         return f"duckdb:///{self.path}"
+
+    def create_connect_args(self) -> dict:
+        # read_only lets many processes share one on-disk db (DuckDB allows
+        # concurrent readers but only a single writer). Only meaningful for a
+        # file-backed db; an in-memory db has nothing to open read-only.
+        if self.read_only and self.path:
+            return {"read_only": True}
+        return {}
 
 
 class SQLiteConfig(DialectConfig):

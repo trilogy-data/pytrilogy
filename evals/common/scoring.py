@@ -375,14 +375,18 @@ def _last_sql_statement(text: str) -> str:
 def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
     """Build a Trilogy executor on the workspace's duckdb, with the benchmark's
     extension loaded. Reusable across per-query scoring calls so we don't pay
-    engine setup + extension load on every query."""
+    engine setup + extension load on every query.
+
+    Opened read-only: scoring only runs SELECTs, and a read-only DuckDB handle
+    is shareable, so concurrent scorers (and ad-hoc probes against a live run's
+    workspace db) coexist instead of fighting over the single-writer file lock."""
     from trilogy import Dialects
     from trilogy.core.models.environment import Environment
     from trilogy.dialect.config import DuckDBConfig
 
     engine = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=workspace),
-        conf=DuckDBConfig(path=str(db_path)),
+        conf=DuckDBConfig(path=str(db_path), read_only=True),
     )
     engine.execute_raw_sql(f"INSTALL {extension}; LOAD {extension};")
     return engine

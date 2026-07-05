@@ -1,5 +1,23 @@
 # q23 — grainless `auto` scalar `max(rowset.col)` silently fused into source rowset's grain (filter degenerates to `x > 0.5x`)
 
+> **FIXED 2026-07-05.** Root cause was upstream of node sourcing: `_build_select_lineage`'s
+> `where_factory` co-grains every bare (no `by`) WHERE aggregate to the select grain
+> (`Factory.aggregate_grain`, HAVING-like, documented). When the aggregate's input is a rowset
+> column already AT that grain, the co-grain is degenerate — one row per group — so the render-time
+> grain-match collapse turns `max(x)` into `x` (the "fusion" observed). Fix:
+> `Factory._degenerate_aggregate_cograin` (trilogy/core/models/build.py) — in WHERE/filter
+> co-grain contexts only, a bare aggregate whose inputs are all rowset-derived (recursing through
+> BASIC wraps) and functionally determined by the co-grain resolves at empty grain instead, i.e. a
+> global SINGLE_ROW scalar, broadcast via the existing single-row cross-join path. Cases A/A2 and
+> the inline form now produce the rowset-wrapped (B) plan. Non-rowset degenerate WHERE aggregates
+> keep documented co-grain semantics (guarded by
+> `tests/test_derived_concepts.py::test_where_aggregate_on_grouped_select_executes`).
+> Guards: `tests/test_where_scalar_aggregate_degenerate_cograin.py`.
+> NEW DISTINCT BUG found while guarding: a NON-degenerate bare WHERE aggregate over a rowset column
+> (rowset finer than select grain) is silently dropped entirely (no WHERE/HAVING emitted) —
+> pre-existing, strict-xfail'd in the same test file; see
+> `bug_nondegenerate_rowset_where_aggregate_silently_dropped.md`.
+
 **Target:** q23, run `evals/tpcds_agent/results/20260705-200535`. 655,137 tokens / 21 calls / SCORE=FAIL.
 **Class:** FRAMEWORK bug, SILENT wrong results (query runs exit 0, returns 100 rows / 1505 full; correct = 4).
 **Regression/residual/new:** NEW distinct bug. Same broad family as the OPEN cross-rowset grainless-scalar
