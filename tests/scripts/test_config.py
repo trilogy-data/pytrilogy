@@ -199,12 +199,16 @@ def test_cli_merge_config():
         config_content = """
 [engine]
 dialect = "duckdb"
+
+[engine.config]
+db_location = "configured.db"
 """
         config_file = tmppath / "trilogy.toml"
         config_file.write_text(config_content)
 
         test_script = tmppath / "test.preql"
         test_script.write_text("select 1 as value;")
+        configured_db_path = tmppath / "configured.db"
         db_path = tmppath / "override.db"
 
         runner = CliRunner()
@@ -218,6 +222,7 @@ dialect = "duckdb"
             )
         assert result.exit_code == 0
         assert db_path.exists()
+        assert not configured_db_path.exists()
 
 
 def test_config_staging_default():
