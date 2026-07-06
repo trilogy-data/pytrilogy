@@ -1293,6 +1293,8 @@ class Renderer:
             return " / ".join(args)
         if arg.operator == FunctionType.MOD:
             return f"{args[0]} % {args[1]}"
+        if arg.operator == FunctionType.CONCAT_STRICT:
+            return " || ".join(args)
         if arg.operator == FunctionType.PARENTHETICAL:
             return f"({args[0]})"
         if arg.operator == FunctionType.GROUP:

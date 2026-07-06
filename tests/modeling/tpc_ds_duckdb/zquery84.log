@@ -1,6 +1,6 @@
 query_id = "84"
 generator = "v3"
-gen_length = 2463
+gen_length = 2465
 preql_size = 717
 comp_size = 606
 generated_sql = """
@@ -28,7 +28,7 @@ GROUP BY
     6)
 SELECT
     \"highfalutin\".\"customer_text_id\" as \"customer_text_id\",
-    (coalesce(\"highfalutin\".\"customer_last_name\",'') || ', ' || coalesce(\"highfalutin\".\"customer_first_name\",'')) as \"customername\"
+    CONCAT(coalesce(\"highfalutin\".\"customer_last_name\",''), ', ', coalesce(\"highfalutin\".\"customer_first_name\",'')) as \"customername\"
 FROM
     \"highfalutin\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"highfalutin\".\"customer_address_id\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"

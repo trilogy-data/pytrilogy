@@ -459,7 +459,8 @@
     _fcast_primary: "cast"i "(" expr "as"i (data_type | IDENTIFIER) ")"
     _fcast_alt: atom "::" (data_type | IDENTIFIER)
     fcast: _fcast_primary | _fcast_alt
-    concat: ("concat"i "(" (expr ",")* expr ")") 
+    concat: ("concat"i "(" (expr ",")* expr ")")
+    concat_ws: ("concat_ws"i "(" expr "," (expr ",")* expr ")")
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fgreatest: "greatest"i "(" (expr ",")* expr ")"
     fleast: "least"i "(" (expr ",")* expr ")"
@@ -476,7 +477,7 @@
     _FRECURSE_EDGE.1: "recurse_edge("i
     frecurse_edge: _FRECURSE_EDGE expr "," expr ")"
 
-    _generic_functions: fcast |  concat  | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
+    _generic_functions: fcast | concat_ws | concat  | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/

@@ -63,6 +63,16 @@ FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x, types: f"splitByString({x[1]}, {x[0]})",
     FunctionType.HASH: lambda x, types: _ch_hash(x[0], x[1]),
     FunctionType.HEX: lambda x, types: f"hex({x[0]})",
+    # native concat propagates NULL; wrap to match the null-skipping semantics.
+    # concat_ws must drop NULL elements (not render them as '') so the
+    # separator is skipped too — filter then assumeNotNull for Array(String).
+    FunctionType.CONCAT: lambda x, types: (
+        "concat(" + ", ".join([f"coalesce({a}, '')" for a in x]) + ")"
+    ),
+    FunctionType.CONCAT_WS: lambda x, types: (
+        "arrayStringConcat(arrayMap(v -> assumeNotNull(v), "
+        f"arrayFilter(v -> isNotNull(v), [{', '.join(x[1:])}])), {x[0]})"
+    ),
     # aggregates with no direct CH equivalent
     FunctionType.BOOL_OR: lambda x, types: f"max(toUInt8({x[0]})) = 1",
     FunctionType.BOOL_AND: lambda x, types: f"min(toUInt8({x[0]})) = 1",

@@ -28,7 +28,7 @@ properties id (
 );
 
 auto full_name <- concat(salutation, ' ', first_name, ' ', last_name); # Derived display name: 'Salutation First Last'.
-auto birth_date <- concat(birth_year::string, '/', birth_month::string, '/', birth_day::string)::date; # Derived calendar birth date assembled from year/month/day components.
+auto birth_date <- (birth_year::string || '/' || birth_month::string || '/' || birth_day::string)::date; # Derived calendar birth date; || so any NULL component yields a NULL date (concat() skips NULLs and would produce an uncastable string).
 
 datasource customers (
     C_CUSTOMER_SK: id,

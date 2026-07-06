@@ -558,8 +558,9 @@ select enroll.student_id, count(enroll.id) as enrollments;
 # EXCEPT of several columns), group by the full key tuple and build a presence
 # flag per set with `sum(case when <set> then 1 else 0 end)`. Grouping keeps
 # NULL key parts as their own group (correct INTERSECT/EXCEPT semantics).
-# (Be careful concatenating nullable fields into a single key - concat over a
-# NULL yields NULL, so coalesce nullable parts first.)
+# (Avoid concatenating nullable fields into a single key: `||` over a NULL
+# yields NULL, and `concat()`/`concat_ws()` skip NULLs, which conflates
+# distinct tuples - tuple grouping handles NULL parts correctly.)
 import enrollments as enroll;
 
 # Presence of each (student_id, course) tuple among completed vs open enrollments.

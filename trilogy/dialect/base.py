@@ -621,7 +621,10 @@ FUNCTION_MAP = {
     FunctionType.GEO_CENTROID: lambda x, types: f"ST_Centroid({x[0]})",
     FunctionType.GEO_TRANSFORM: lambda x, types: f"ST_Transform({x[0]}, {x[1]}, {x[2]})",
     # string types
+    # concat()/concat_ws() skip NULL arguments; CONCAT_STRICT (`||`) propagates
     FunctionType.CONCAT: lambda x, types: f"concat({','.join(x)})",
+    FunctionType.CONCAT_STRICT: lambda x, types: f"({' || '.join(x)})",
+    FunctionType.CONCAT_WS: lambda x, types: f"concat_ws({', '.join(x)})",
     # constant types
     FunctionType.CURRENT_DATE: lambda x, types: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x, types: "current_datetime()",

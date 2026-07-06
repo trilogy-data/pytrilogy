@@ -132,9 +132,6 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda args, types: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
     FunctionType.LOG: lambda args, types: render_log(args),
-    FunctionType.CONCAT: lambda args, types: (
-        f"CONCAT({','.join([f''' {str(a)} ''' for a in args])})"
-    ),
     FunctionType.SPLIT: lambda args, types: (
         f"STRING_SPLIT({','.join([f''' {str(a)} ''' for a in args])})"
     ),
@@ -158,7 +155,12 @@ FUNCTION_MAP = {
     FunctionType.DATE_SUB: lambda x, types: f"date_add({x[0]}, -{x[2]} * INTERVAL 1 {x[1]})",
     FunctionType.DATE_PART: lambda x, types: date_part(x, types),
     FunctionType.DATE_DIFF: lambda x, types: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
-    FunctionType.CONCAT: lambda x, types: f"({' || '.join(x)})",
+    # concat() skips NULLs, || (CONCAT_STRICT) propagates, concat_ws(sep, ...)
+    # joins with a separator skipping NULLs — the reference semantics for all
+    # dialects
+    FunctionType.CONCAT: lambda x, types: f"CONCAT({', '.join(x)})",
+    FunctionType.CONCAT_STRICT: lambda x, types: f"({' || '.join(x)})",
+    FunctionType.CONCAT_WS: lambda x, types: f"CONCAT_WS({', '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
     FunctionType.DAY_OF_WEEK: lambda x, types: f"dayofweek({x[0]})+1",

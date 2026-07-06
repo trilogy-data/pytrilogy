@@ -286,6 +286,13 @@ _CONTENT_FROM_STDIN = "\x00__content_from_stdin__\x00"
 @click.option(
     "--quiet", "-q", is_flag=True, default=False, help="Suppress success output."
 )
+@click.option(
+    "--show-sql",
+    is_flag=True,
+    default=False,
+    help="For .preql targets, compile and emit the last statement's generated "
+    "SQL alongside the write confirmation.",
+)
 def write_cmd(
     path: str,
     content: str | None,
@@ -295,6 +302,7 @@ def write_cmd(
     no_create: bool,
     force: bool,
     quiet: bool,
+    show_sql: bool,
 ) -> None:
     """Write/overwrite the file at PATH.
 
@@ -371,10 +379,13 @@ def write_cmd(
 
     if quiet:
         return
-    # Feed the just-written query's codegen back to the caller so an agent can
-    # inspect the generated SQL (e.g. spot a degenerate GROUP BY) before running.
+    # Optionally feed the just-written query's codegen back to the caller so an
+    # agent can inspect the generated SQL (e.g. spot a degenerate GROUP BY)
+    # before running. Off by default — compiling adds latency and tokens.
     last_sql = (
-        _last_statement_sql(path) if not force and path.endswith(".preql") else None
+        _last_statement_sql(path)
+        if show_sql and not force and path.endswith(".preql")
+        else None
     )
     if is_json_mode():
         emit_event("write", path=path, bytes=len(data), last_statement_sql=last_sql)

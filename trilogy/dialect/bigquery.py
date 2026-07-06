@@ -88,6 +88,14 @@ FUNCTION_MAP = {
     # aggregate
     FunctionType.BOOL_AND: lambda x, types: f"LOGICAL_AND({x[0]})",
     FunctionType.BOOL_OR: lambda x, types: f"LOGICAL_OR({x[0]})",
+    # native CONCAT propagates NULL; wrap to match the null-skipping semantics.
+    # ARRAY_TO_STRING omits NULL elements when no null_text is given.
+    FunctionType.CONCAT: lambda x, types: (
+        "CONCAT(" + ", ".join([f"COALESCE({a}, '')" for a in x]) + ")"
+    ),
+    FunctionType.CONCAT_WS: lambda x, types: (
+        f"ARRAY_TO_STRING([{', '.join(x[1:])}], {x[0]})"
+    ),
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

@@ -195,6 +195,7 @@ Default to windows for **self-referential queries**; relating a row to other row
   3. Multiplicative: `*`, `/`, `%`.
   4. Additive / string concat: `+`, `-`, `||`.
   5. Comparison: `=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `not like`, `not ilike`, `between ... and ...`, `in (...)`, `not in (...)`, `is null`.
+- String concatenation NULL semantics (all backends): `a || b` is NULL if either side is NULL; `concat(a, b, ...)` skips NULL arguments (all-NULL gives `''`); `concat_ws(sep, a, b, ...)` joins with `sep`, skipping NULL arguments and their separators (empty strings are kept).
   6. Logical `and`.
   7. Logical `or`.
 - Cast with `::type`, e.g. `"2020-01-01"::date`.

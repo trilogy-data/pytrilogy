@@ -36,6 +36,14 @@ FUNCTION_MAP = {
     FunctionType.DATE_ADD: lambda x, types: f"DATEADD({x[1]}, {x[2]}, {x[0]})",
     FunctionType.DATE_SUB: lambda x, types: f"DATEADD({x[1]}, -{x[2]}, {x[0]})",
     FunctionType.DATE_DIFF: lambda x, types: f"DATEDIFF({x[2]}, {x[0]}, {x[1]})",
+    # native CONCAT/CONCAT_WS propagate NULL; wrap to match the null-skipping
+    # semantics (ARRAY_CONSTRUCT_COMPACT drops NULL elements)
+    FunctionType.CONCAT: lambda x, types: (
+        "CONCAT(" + ", ".join([f"COALESCE({a}, '')" for a in x]) + ")"
+    ),
+    FunctionType.CONCAT_WS: lambda x, types: (
+        f"ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT({', '.join(x[1:])}), {x[0]})"
+    ),
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

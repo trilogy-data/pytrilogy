@@ -245,7 +245,11 @@ class FunctionType(Enum):
     CASE = "case"
     SIMPLE_CASE = "simple_case"
     CAST = "cast"
+    # concat() skips NULL arguments (DuckDB CONCAT); CONCAT_STRICT is the `||`
+    # operator, which propagates NULL (SQL-strict)
     CONCAT = "concat"
+    CONCAT_STRICT = "concat_strict"
+    CONCAT_WS = "concat_ws"
     CONSTANT = "constant"
     TYPED_CONSTANT = "typed_constant"
     COALESCE = "coalesce"

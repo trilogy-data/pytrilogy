@@ -5,7 +5,9 @@ import catalog_sales as catalog_sales;
 import customer as customer;
 import item as item;
 
-auto customer_item <- concat(concat(customer.id::string, '-'), item.id::string);
+# || so a NULL customer id yields a NULL key (concat() skips NULLs and would
+# mint a '-item' key, counting customerless rows as real overlap members)
+auto customer_item <- customer.id::string || '-' || item.id::string;
 auto catalog_sales <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
 auto store_sales <- customer_item ? store_sales.date.month_seq between 1200 and 1200 + 11;
 

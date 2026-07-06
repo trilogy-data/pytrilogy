@@ -506,7 +506,7 @@ def test_composite_rollup_aggregate_keeps_group_by():
     appear in the GROUP BY').
 
     The fix has three parts: a ROLLUP marks its grouping-key dims (and dims
-    derived from them, e.g. `concat('x', txt)`) nullable so the assembly join is
+    derived from them, e.g. `'x' || txt`) nullable so the assembly join is
     null-safe/OUTER and the rollup rows survive; the null-safe join keys aren't
     downgraded to `=` past the rollup; and the rollup group node renders its
     GROUP BY even when a sibling rollup is a passthrough.
@@ -520,7 +520,7 @@ def test_composite_rollup_aggregate_keeps_group_by():
     text = """
 select
   case when chan = 1 then 'aa' else 'bb' end as channel,
-  concat('x', txt) as outlet,
+  'x' || txt as outlet,
   sum(amt) as sales,
   sum(prof) - sum(coalesce(loss, 0)) as profit
 by rollup (chan, txt)
@@ -567,8 +567,8 @@ def test_rollup_sibling_column_join_preserves_subtotals():
     text = """
 select
     case when chan = 1 then 'store' when chan = 2 then 'web' end as label,
-    case when chan = 1 then concat('store', etxt)
-         when chan = 2 then concat('web', etxt) end as entity_fmt,
+    case when chan = 1 then 'store' || etxt
+         when chan = 2 then 'web' || etxt end as entity_fmt,
     sum(amt) as total
 by rollup (chan, ent)
 order by label asc nulls last, entity_fmt asc nulls last;

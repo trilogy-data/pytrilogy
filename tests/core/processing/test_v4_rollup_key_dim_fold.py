@@ -2,7 +2,7 @@
 (`_fold_rollup_key_dims` in `v4_helper/group_graph.py`, the q80 family).
 
 A BASIC dim that is purely a function of a ROLLUP group's grouping keys
-(`channel <- case chan`, `outlet <- concat('x', txt)`) must be folded into the
+(`channel <- case chan`, `outlet <- 'x' || txt`) must be folded into the
 GROUP BY ROLLUP node so it is emitted as a column there and carries the
 rolled-up key values on the subtotal/grand-total rows. Otherwise it buckets
 into its own leaf-grain BASIC group and is joined back on the raw keys; at a
@@ -33,7 +33,7 @@ query '''select 1 as chan, 1 as oid, 'p' as txt, 10.0 as amt
 _QUERY = """
 select
   case when chan = 1 then 'aa' else 'bb' end as channel,
-  concat('x', txt) as outlet,
+  'x' || txt as outlet,
   sum(amt) as sales,
 by rollup (chan, txt)
 order by channel asc, sales asc, outlet asc nulls first;

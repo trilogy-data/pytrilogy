@@ -59,10 +59,11 @@ exercising different planner paths — they share an SQL reference.)
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
-- `customer.preql` adds `birth_date` via `cast(concat(year/'/'/month/'/'/day) as
-  date)`. With sf=1, some customers have `birth_year=NULL` or month/day
-  combinations that produce invalid dates (e.g. Feb 30) — DuckDB will throw on
-  cast. Currently safe because no test actually selects `birth_date`.
+- `customer.preql` adds `birth_date` via `(year || '/' || month || '/' || day)::date`
+  (`||` so a NULL component yields a NULL date — `concat()` skips NULLs and would
+  produce an uncastable string). With sf=1, some month/day combinations still
+  produce invalid dates (e.g. Feb 30) — DuckDB will throw on cast. Currently safe
+  because no test actually selects `birth_date`.
 
 
 ## Framework Notes Worth Recording

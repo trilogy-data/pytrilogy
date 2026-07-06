@@ -647,6 +647,7 @@ fcast = { ^"cast" ~ "(" ~ expr ~ ^"as" ~ (data_type | IDENTIFIER) ~ ")" }
 // GENERIC FUNCTIONS
 // =============================================================================
 concat      = { ^"concat" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+concat_ws   = { ^"concat_ws" ~ "(" ~ expr ~ "," ~ expr ~ ("," ~ expr)* ~ ")" }
 fcoalesce   = { ^"coalesce" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fgreatest   = { ^"greatest" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fleast      = { ^"least" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
@@ -662,7 +663,7 @@ fnullif      = { ^"nullif" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 frecurse_edge = { ^"recurse_edge" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 
 _generic_functions = _{
-    fcast | fcase_simple | fcase | concat | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
+    fcast | fcase_simple | fcase | concat_ws | concat | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
 }
 
 // =============================================================================
