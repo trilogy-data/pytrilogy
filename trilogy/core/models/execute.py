@@ -22,7 +22,10 @@ from trilogy.core.enums import (
     Purpose,
     SourceType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import (
+    InvalidSyntaxException,
+    UnionOutputResolutionError,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
@@ -564,7 +567,7 @@ class CTE:
                     return True
                 try:
                     return check_is_not_in_group(c.lineage.find_source(c, self))
-                except SyntaxError:
+                except UnionOutputResolutionError:
                     return False
 
             if c.derivation == Derivation.CONSTANT:

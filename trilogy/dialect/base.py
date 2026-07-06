@@ -1146,7 +1146,9 @@ class BaseDialect:
                 )
             return self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
 
-        # check if it's not inherited AND no pseudonyms are inherited
+        # not sourced directly -> render from lineage. A pseudonym twin that IS
+        # sourced is not consulted here: render_concept_sql probes it as a
+        # fallback candidate when this render raises ValueError.
         if c.lineage and cte.source_map.get(c.address, []) == []:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"

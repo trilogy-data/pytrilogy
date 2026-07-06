@@ -46,7 +46,10 @@ from trilogy.core.enums import (
     Purpose,
     WindowType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import (
+    InvalidSyntaxException,
+    UnionOutputResolutionError,
+)
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
@@ -1921,12 +1924,13 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                     if c.address in cte.output_lcl:
                         return c
 
-        # Reaching here is an internal planner error, not user syntax: the
-        # renderer asked to map a union/multiselect output column against a CTE
-        # that doesn't expose it (typically an outer aggregate grouped the column
-        # away before an ORDER BY / projection re-referenced it). Raise a plain
-        # RuntimeError — surfacing it as a "Syntax error" wrongly blames the query.
-        raise RuntimeError(
+        # Reaching here means this CTE can't source the column directly
+        # (typically an outer aggregate grouped it away before a projection
+        # re-referenced it, or a collapsed join kept it only as a pseudonym).
+        # The dedicated ValueError subclass lets the renderer's candidate
+        # probing recover via a pseudonym twin; unrecovered, it surfaces as an
+        # internal planner error, not a "Syntax error" blaming the query.
+        raise UnionOutputResolutionError(
             f"Internal planner error: could not resolve union/multiselect output "
             f"'{concept.address}' against CTE '{cte.name}' (it is not in that CTE's "
             f"outputs {sorted(cte.output_lcl.addresses)}). If this came from an "

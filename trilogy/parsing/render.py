@@ -102,11 +102,11 @@ QUERY_TEMPLATE = Template("""{% if where %}where
 {{ where }}
 {% endif %}{% for join in joins %}{{ join }}
 {% endfor %}select{%- for select in select_columns %}
-{{ select }},{% endfor %}{% if having %}
+{{ select }},{% endfor %}{%- if grouping %}
+{{ grouping }}
+{% endif %}{% if having %}
 having
 {{ having }}
-{% endif %}{%- if grouping %}
-{{ grouping }}
 {% endif %}{%- if order_by %}
 order by{% for order in order_by %}
 {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}

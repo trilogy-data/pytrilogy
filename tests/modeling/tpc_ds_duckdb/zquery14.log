@@ -1,7 +1,7 @@
 query_id = "14"
 generator = "v3"
-gen_length = 6520
-preql_size = 1623
+gen_length = 7118
+preql_size = 1750
 comp_size = 4229
 generated_sql = """
 
@@ -51,7 +51,9 @@ WHERE
 questionable as (
 SELECT
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
-    (cast(\"sales_item_items\".\"I_BRAND_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CLASS_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CATEGORY_ID\" as string)) as \"tuple_key\"
+    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\"
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -61,7 +63,9 @@ WHERE
 
 GROUP BY
     1,
-    2),
+    2,
+    3,
+    4),
 sparkling as (
 SELECT
     \"concerned\".\"_avg_sales_average_sales\" as \"avg_sales_average_sales\"
@@ -69,22 +73,30 @@ FROM
     \"concerned\"),
 abundant as (
 SELECT
-    \"questionable\".\"tuple_key\" as \"_cross_tuples_ci_tuple_key\"
+    \"questionable\".\"sales_item_brand_id\" as \"_cross_tuples_ci_brand_id\",
+    \"questionable\".\"sales_item_category_id\" as \"_cross_tuples_ci_category_id\",
+    \"questionable\".\"sales_item_class_id\" as \"_cross_tuples_ci_class_id\"
 FROM
     \"questionable\"
 GROUP BY
-    1
+    1,
+    2,
+    3
 HAVING
     count(distinct \"questionable\".\"sales_channel\") = 3
 ),
 uneven as (
 SELECT
-    \"abundant\".\"_cross_tuples_ci_tuple_key\" as \"_cross_tuples_ci_tuple_key\"
+    \"abundant\".\"_cross_tuples_ci_brand_id\" as \"_cross_tuples_ci_brand_id\",
+    \"abundant\".\"_cross_tuples_ci_category_id\" as \"_cross_tuples_ci_category_id\",
+    \"abundant\".\"_cross_tuples_ci_class_id\" as \"_cross_tuples_ci_class_id\"
 FROM
     \"abundant\"),
 yummy as (
 SELECT
-    \"uneven\".\"_cross_tuples_ci_tuple_key\" as \"cross_tuples_ci_tuple_key\"
+    \"uneven\".\"_cross_tuples_ci_brand_id\" as \"cross_tuples_ci_brand_id\",
+    \"uneven\".\"_cross_tuples_ci_category_id\" as \"cross_tuples_ci_category_id\",
+    \"uneven\".\"_cross_tuples_ci_class_id\" as \"cross_tuples_ci_class_id\"
 FROM
     \"uneven\"),
 juicy as (
@@ -106,7 +118,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and (cast(\"sales_item_items\".\"I_BRAND_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CLASS_ID\" as string) || '|' || cast(\"sales_item_items\".\"I_CATEGORY_ID\" as string)) in (select yummy.\"cross_tuples_ci_tuple_key\" from yummy where yummy.\"cross_tuples_ci_tuple_key\" is not null)
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and (\"sales_item_items\".\"I_BRAND_ID\", \"sales_item_items\".\"I_CLASS_ID\", \"sales_item_items\".\"I_CATEGORY_ID\") in (select yummy.\"cross_tuples_ci_brand_id\", yummy.\"cross_tuples_ci_class_id\", yummy.\"cross_tuples_ci_category_id\" from yummy where yummy.\"cross_tuples_ci_brand_id\" is not null and yummy.\"cross_tuples_ci_class_id\" is not null and yummy.\"cross_tuples_ci_category_id\" is not null)
 
 GROUP BY
     1,

@@ -167,7 +167,7 @@ from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 // join_clause may appear before "select" (legacy) OR right after the select
 // list (preferred, SQL-like); both positions collect into the same join set.
 select_statement = {
-    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ having? ~ select_grouping? ~ order_by? ~ limit?
+    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ select_grouping? ~ having? ~ order_by? ~ limit?
 }
 
 // query-scoped join: blends two otherwise-disjoint concepts on a shared key for
@@ -191,7 +191,7 @@ multi_select_statement = {
     ~ (^"merge" ~ select_statement)+
     ~ ^"align" ~ align_clause
     ~ (^"derive" ~ derive_clause)?
-    ~ having? ~ select_grouping? ~ order_by? ~ limit?
+    ~ select_grouping? ~ having? ~ order_by? ~ limit?
 }
 
 align_item   = { select_hide_modifier? ~ IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }

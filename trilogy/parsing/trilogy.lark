@@ -127,7 +127,7 @@
 
     // join_clause may appear before "select" (legacy) OR right after the select
     // list (preferred, SQL-like); both positions collect into the same join set.
-    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  having?  select_grouping? order_by?  limit?
+    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  select_grouping?  having? order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
     // for this select only (a query-local merge). LEFT anchors its first key
@@ -148,7 +148,7 @@
     join_group: sum_chain (COMPARISON_OPERATOR sum_chain)+
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? select_grouping? order_by?  limit?
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  select_grouping? having? order_by?  limit?
 
     align_item: select_hide_modifier? IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 

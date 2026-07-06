@@ -13,10 +13,9 @@ select
     ss.store.text_id,
     sum(coalesce(ss.sales_price * ss.quantity, 0)) as sumsales,
     rank() over (partition by ss.item.category order by sumsales desc) as rk,
+by rollup ()
 having
     rk <= 100
-
-by rollup ()
 order by
     ss.item.category asc nulls first,
     ss.item.class asc nulls first,

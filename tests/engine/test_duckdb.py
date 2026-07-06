@@ -132,8 +132,8 @@ def test_inline_aggregate_in_order_by_raises():
     text = """
 rowset overall <- select avg(amount) as overall_avg;
 select brand, class, sum(amount) as total, --overall.overall_avg
-having total > overall.overall_avg
 by rollup (brand, class)
+having total > overall.overall_avg
 order by grouping(brand) desc, grouping(class) desc, brand nulls first;
 """
     with raises(Exception, match="ORDER BY contains aggregate"):
@@ -157,8 +157,8 @@ select
     --overall.overall_avg,
     --grouping(brand) as gb,
     --grouping(class) as gc
-having total > overall.overall_avg
 by rollup (brand, class)
+having total > overall.overall_avg
 order by gb desc, gc desc, brand nulls first, class nulls first;
 """
     sql = engine.generate_sql(text)[-1]
@@ -192,8 +192,8 @@ select
     --overall.overall_avg,
     --grouping(brand) as gb,
     --grouping(class) as gc
-having total > overall.overall_avg
 by rollup (brand, class)
+having total > overall.overall_avg
 order by
     grouping(brand) asc, brand asc nulls last,
     grouping(class) asc, class asc nulls last;
@@ -358,8 +358,8 @@ select
     brand,
     coalesce(sum(amount), 0) as m,
     grouping(brand) as g
-having m > 0
 by rollup (brand)
+having m > 0
 order by g, brand;
 """
     sql = engine.generate_sql(text)[-1]
@@ -388,8 +388,8 @@ select
     brand,
     coalesce(@rollup_agg(amount), 0) as m,
     grouping(brand) as g
-having m > 0
 by rollup (brand)
+having m > 0
 order by g, brand;
 """
     sql = engine.generate_sql(text)[-1]
@@ -625,8 +625,8 @@ select
     by_channel.channel,
     by_channel.brand,
     sum(by_channel.total_sales) as total_sales
-having sum(by_channel.total_sales) > overall_avg.avg_val
 by rollup (by_channel.channel, by_channel.brand)
+having sum(by_channel.total_sales) > overall_avg.avg_val
 order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
@@ -661,8 +661,8 @@ select
     by_channel.channel,
     by_channel.brand,
     sum(by_channel.total_sales) as total_sales
-having sum(by_channel.total_sales) > avg_val
 by rollup (by_channel.channel, by_channel.brand)
+having sum(by_channel.total_sales) > avg_val
 order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
@@ -2946,9 +2946,9 @@ select
     total,
     --overall_avg
 where a in qualifying.a
+by rollup (a, b, c)
 having total > overall_avg
   and (grouping(a) + grouping(b) + grouping(c)) in (0, 1, 4)
-by rollup (a, b, c)
 order by a asc, b asc nulls last, c asc nulls last;
 """
 
@@ -2986,8 +2986,8 @@ def test_grouping_membership_in_having_routes_to_having_not_where():
     query = """
 auto total <- sum(x);
 select a, b, total
-having (grouping(a) + grouping(b)) in (0, 1)
 by rollup (a, b)
+having (grouping(a) + grouping(b)) in (0, 1)
 order by a asc, b asc nulls last;
 """
     sql = executor.generate_sql(query)[-1]
@@ -3046,8 +3046,8 @@ auto overall_avg <- avg(x) by *;
 select a, b,
     sum(x) as total,
     --overall_avg
-having total > overall_avg
 by rollup (a, b)
+having total > overall_avg
 order by a asc nulls first, b asc nulls first;
 """
     sql = executor.generate_sql(query)[-1]

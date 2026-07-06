@@ -66,6 +66,18 @@ class DisconnectedConceptsException(ValueError):
         self.subgraphs = [list(s) for s in subgraphs]
 
 
+class UnionOutputResolutionError(ValueError):
+    """A union/multiselect output column could not be mapped to a per-arm
+    source column within a given CTE (``BuildMultiSelectLineage.find_source``).
+
+    Subclasses ValueError so the renderer's pseudonym-candidate probing (which
+    treats ValueError as "this candidate can't render here, try the next")
+    can recover when the CTE exposes the same value under a pseudonym twin —
+    e.g. a collapsed composite subset join keeps the RHS union-derived keys as
+    pseudonym-only outputs. When no candidate recovers, it propagates as an
+    internal planner error."""
+
+
 class ModelValidationError(Exception):
     def __init__(
         self,

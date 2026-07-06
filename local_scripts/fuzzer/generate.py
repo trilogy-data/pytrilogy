@@ -1245,8 +1245,8 @@ order by gid asc nulls last, active asc nulls last
 """
     rollup_having_body = """
 select group_id, sum(event_amount) as total
-having sum(event_amount) > 0
 by rollup (group_id)
+having sum(event_amount) > 0
 order by group_id asc nulls last;
 """
     rollup_having_oracle = """

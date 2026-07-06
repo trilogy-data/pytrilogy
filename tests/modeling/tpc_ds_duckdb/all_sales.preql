@@ -50,7 +50,7 @@ properties <order_id, channel, item.id> (
     # --- return measures: sourced from the *returns* datasources below, not the sales ones ---
     return_amount float?, # Amount refunded for the line, if returned.
     return_quantity int?, # Units returned on the line. GOTCHA: NULL even when a return exists (is_returned=true) for some TPC-DS rows. Presence is independent of this measure — don't coalesce to 0 unless asked (the reference keeps the NULL through its derived percentages/averages).
-    return_net_loss float?, # Net financial loss on the return for the line.
+    return_net_loss float?, # Net financial loss on the return for the line at order time; does not include return net loss.
     is_returned bool?, # Marks a returned line. Sourced only as raw true from the returns datasources, so it is true-or-NULL here (no explicit false): test "not returned" as `is_returned is null`, not `= false`.
     sale_line_item_counter int?, # counter of sales rows (NOT return-only rows). Use is_returned for return presence; `sale_line_item_counter ? is_returned` counts lines with BOTH a sale and a return.
 );
