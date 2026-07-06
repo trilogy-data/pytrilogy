@@ -548,6 +548,12 @@ def _build_translation_node(
         partial_concepts=list(base_node.partial_concepts),
         nullable_concepts=nullable,
     )
+    # The body WHERE already constrains this scope's rows; advertise it so an
+    # outer condition the body implies (q44's redundant `where store.id = 1`
+    # over rowsets filtered to store 1) counts as applied instead of demanding
+    # an impossible re-application. The independent-scope exemption for
+    # UNRELATED outer conditions is untouched.
+    node.preexisting_conditions = base_node.preexisting_conditions
     if select.where_clause:
         for item in additional_relevant:
             logger.info(

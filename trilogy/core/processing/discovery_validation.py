@@ -87,29 +87,42 @@ def _node_condition_implies(
     )
 
 
-def _stack_applies_condition(stack: List[StrategyNode], condition: BoolExpr) -> bool:
-    """A condition counts as already applied only when at least one node's own
-    conditions imply it and every other node either implies it or is exempt
-    (scalar-only / independent scope). Exemptions let a node opt OUT of
-    carrying a condition another node applies; they never satisfy it — an
-    all-exempt stack with no applier (e.g. a bare rowset node under a
-    base-model WHERE) must not pass, or the filter is silently dropped."""
+def _stack_exempt_or_implies(stack: List[StrategyNode], condition: BoolExpr) -> bool:
+    """Every node either implies the condition or is exempt from carrying it
+    (scalar-only / independent scope). Sufficient for a FRAGMENT search: the
+    consuming level re-validates with its full sibling stack, where an actual
+    applier must appear."""
     return all(
         _is_scalar_only(node, condition)
         or _is_independent_scope(node, condition)
         or _node_condition_implies(node, condition)
         for node in stack
-    ) and any(_node_condition_implies(node, condition) for node in stack)
+    )
+
+
+def _stack_applies_condition(stack: List[StrategyNode], condition: BoolExpr) -> bool:
+    """A condition counts as already applied only when at least one node's own
+    conditions imply it and every other node either implies it or is exempt.
+    Exemptions let a node opt OUT of carrying a condition another node
+    applies; they never satisfy it — at a final (depth-0) scope an all-exempt
+    stack with no applier (e.g. a bare rowset node under a base-model WHERE)
+    must not pass, or the filter is silently dropped."""
+    return _stack_exempt_or_implies(stack, condition) and any(
+        _node_condition_implies(node, condition) for node in stack
+    )
 
 
 def _condition_atom_met(
     stack: List[StrategyNode],
     found_addresses: set[str],
     condition: BoolExpr,
+    require_applier: bool,
 ) -> bool:
     if all(c.address in found_addresses for c in condition.row_arguments):
         return True
-    return _stack_applies_condition(stack, condition)
+    if require_applier:
+        return _stack_applies_condition(stack, condition)
+    return _stack_exempt_or_implies(stack, condition)
 
 
 def _conditions_met(
@@ -117,16 +130,20 @@ def _conditions_met(
     found_addresses: set[str],
     mandatory_with_filter: List[BuildConcept],
     conditions: BuildWhereClause | None,
+    require_applier: bool,
 ) -> bool:
     if not conditions:
         return True
     conditional = conditions.conditional
-    if _stack_applies_condition(stack, conditional):
+    if require_applier:
+        if _stack_applies_condition(stack, conditional):
+            return True
+    elif _stack_exempt_or_implies(stack, conditional):
         return True
     if all(c.address in found_addresses for c in mandatory_with_filter):
         return True
     return all(
-        _condition_atom_met(stack, found_addresses, atom)
+        _condition_atom_met(stack, found_addresses, atom, require_applier)
         for atom in decompose_condition(conditional)
     )
 
@@ -246,6 +263,7 @@ def validate_stack(
     mandatory_with_filter: List[BuildConcept],
     conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
+    require_condition_applier: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
     found_map: dict[str, set[BuildConcept]] = defaultdict(set)
     found_addresses: set[str] = set()
@@ -287,6 +305,7 @@ def validate_stack(
         found_addresses,
         mandatory_with_filter,
         conditions,
+        require_condition_applier,
     )
     # zip in those we know we found
     if not all([c.address in found_addresses for c in concepts]) or not conditions_met:

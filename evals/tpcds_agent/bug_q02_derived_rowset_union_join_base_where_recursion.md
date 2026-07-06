@@ -1,5 +1,25 @@
 # q02 — derived-key union-join between rowsets + base-model WHERE → unbounded recursion
 
+> **FIXED 2026-07-05.** Two root causes, neither a recursion guard:
+> 1. `_enrich_rowset_node` now PARTITIONS the unsatisfied set (`_rowset_scope_routed`):
+>    the derived-key enrichment only bundles concepts the cross-rowset relation can
+>    resolve; base-model WHERE args are never delegated to the other rowset (the
+>    mutual-delegation cycle), and conditions containing base residue are withheld
+>    from that call so the merge makes no false preexisting claim.
+> 2. Condition validation no longer treats the scalar/rowset EXEMPTIONS as
+>    SATISFACTION: at a final (depth-0) scope at least one node must actually apply
+>    the condition (`_stack_applies_condition`), and loop completion only advertises
+>    `preexisting_conditions` when some parent applied it. This also fixed an
+>    adjacent SILENT WRONG-RESULTS bug: `where <base concept>` over a pure-rowset
+>    select (any join type, even a single bare rowset) silently dropped the filter.
+>    Translation RowsetNodes now advertise their body WHERE so an outer condition
+>    the body implies (q44's redundant `where store.id = 1`) counts as applied.
+>
+> D2/D4 now raise a clean `DisconnectedConceptsException` with join/merge guidance
+> (matching the pre-existing LEFT behavior); D/D3 unchanged. Guards:
+> `tests/test_rowset_join_base_where_matrix.py` (join × key × where sweep + filter-
+> effectiveness cells) and `tests/core/processing/test_discovery_validation.py`.
+
 Run: `evals/tpcds_agent/results/20260705-200535` (q02 burned 989,990 tok / 30 calls, eventually PASS via a window-`lead` rewrite).
 
 ## Symptom

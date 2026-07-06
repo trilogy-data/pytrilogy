@@ -20,7 +20,6 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
-    condition_implies,
     decompose_condition,
 )
 from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
@@ -37,10 +36,8 @@ from trilogy.core.processing.discovery_utility import (
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
-    _is_independent_scope,
-    _is_scalar_only,
-    _node_condition_implies,
     _stack_applies_condition,
+    _stack_exempt_or_implies,
     validate_stack,
 )
 from trilogy.core.processing.nodes import (
@@ -424,7 +421,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 
-    elif _stack_applies_condition(context.stack, context.conditions.conditional):
+    elif _stack_exempt_or_implies(context.stack, context.conditions.conditional):
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 
@@ -490,7 +487,14 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         # missing those atoms and re-filters or fails as incomplete.
         if reapply_conditions is not context.conditions and context.conditions:
             output.set_preexisting_conditions(context.conditions.conditional)
-    elif context.conditions:
+    elif context.conditions and _stack_applies_condition(
+        context.stack, context.conditions.conditional
+    ):
+        # Advertise the condition as pre-applied only when some parent actually
+        # applied it. An all-exempt stack (scalar / rowset scopes) may be
+        # returned unfiltered as a fragment, but claiming the condition here
+        # would make every consumer treat this node as the applier and the
+        # filter would silently drop end to end.
         output.preexisting_conditions = context.conditions.conditional
     logger.info(
         f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts or []]} with {context.conditions}"
@@ -621,6 +625,12 @@ def _search_concepts(
             context.completion_mandatory,
             conditions=context.conditions,
             accept_partial=accept_partial,
+            # depth 0 is a final scope (statement root, union arm, rowset
+            # body): its conditions render here or nowhere, so exemption
+            # without an actual applier would silently drop the filter. A
+            # deeper search is a fragment whose consumer re-validates with
+            # the full sibling stack.
+            require_condition_applier=depth == 0,
         )
         # assign
         context.found = found_c
