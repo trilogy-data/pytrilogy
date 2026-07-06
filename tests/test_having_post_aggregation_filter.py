@@ -235,6 +235,45 @@ def test_mixed_dim_and_aggregate_having():
     assert rows == [(20, 200)]
 
 
+# --- BASIC-wrapped grainless scalar comparison (q44) --------------------------
+#
+# `having <select-grain agg> > <grainless scalar * literal>` combined with an
+# off-grain WHERE dimension. The BASIC wrapper (`base * 0.5`) left the scalar
+# tagged MULTI_ROW, so instead of hidden scalar promotion the predicate was
+# misrouted into the finer-dim grain-key semijoin, whose filter CTE grouped by
+# the WHERE dimension and emitted the ungrouped grain key (DuckDB binder error).
+
+
+def test_having_vs_basic_wrapped_grainless_scalar_with_offgrain_where():
+    # E-region item averages: 1 -> 100, 2 -> 50, 4 -> 40; every threshold form
+    # (half of filtered avg 63.33 or unfiltered avg 79.4) keeps all three.
+    rows = _rows(
+        "auto base <- avg(quantity) by *;\n"
+        "auto threshold <- base * 0.5;\n"
+        "where region = 'E' "
+        "select item_id, avg(quantity) as avg_qty "
+        "having avg_qty > threshold;"
+    )
+    assert sorted(rows) == [(1, 100.0), (2, 50.0), (4, 40.0)]
+
+
+def test_having_basic_identity_wrapper_matches_bare_scalar():
+    bare = _rows(
+        "auto threshold <- avg(quantity) by *;\n"
+        "where region = 'E' "
+        "select item_id, avg(quantity) as avg_qty "
+        "having avg_qty > threshold;"
+    )
+    wrapped = _rows(
+        "auto base <- avg(quantity) by *;\n"
+        "auto threshold <- base * 1.0;\n"
+        "where region = 'E' "
+        "select item_id, avg(quantity) as avg_qty "
+        "having avg_qty > threshold;"
+    )
+    assert sorted(wrapped) == sorted(bare)
+
+
 # --- clean errors ------------------------------------------------------------
 
 

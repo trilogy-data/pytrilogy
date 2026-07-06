@@ -236,6 +236,10 @@ class JoinHoist(OptimizationRule):
             and j.right_cte.name != parent_cte.name
             and j.right_cte.source is not parent_cte.source
         ]
+        # A dim the parent already reads FROM (one of its own parent CTEs /
+        # sources) can't be hoisted: the parent would render as
+        # `FROM dim <join> dim` — an unaliased self-join (DuckDB binder error).
+        parent_source_names = {p.name for p in parent_cte.dependency_nodes()}
         plan: list[tuple[Join, list, list, JoinType]] = []
         for j in child_joins:
             if j.jointype not in HOISTABLE_JOIN_TYPES:
@@ -243,6 +247,11 @@ class JoinHoist(OptimizationRule):
             if (
                 j.right_cte.name == parent_cte.name
                 or j.right_cte.source is parent_cte.source
+            ):
+                continue
+            if j.right_cte.name in parent_source_names or any(
+                _datasource_matches(d, j.right_cte.source)
+                for d in parent_cte.source.datasources
             ):
                 continue
             if not j.joinkey_pairs:

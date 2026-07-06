@@ -1040,7 +1040,14 @@ def function_to_concept(
         granularity = Granularity.SINGLE_ROW
     else:
         derivation = Derivation.BASIC
-        granularity = Granularity.MULTI_ROW
+        # single-row inputs (e.g. grainless aggregates) combine to a single row;
+        # mirrors Concept.calculate_granularity for built concepts.
+        if concrete_args and all(
+            x.granularity == Granularity.SINGLE_ROW for x in concrete_args
+        ):
+            granularity = Granularity.SINGLE_ROW
+        else:
+            granularity = Granularity.MULTI_ROW
     if grain is not None:
         r = Concept(
             name=name,

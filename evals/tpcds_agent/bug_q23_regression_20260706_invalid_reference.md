@@ -127,3 +127,26 @@ Do NOT attribute to the 20260706 changes. File as pre-existing cross-rowset cond
 of re-expanding its base lineage; (2) suppress / alias the degenerate self-join when both comparison
 operands source from one parent CTE. Both should also raise a clean planner error rather than emitting the
 INVALID_REFERENCE sentinel / invalid SQL, to stop agent token blow-ups.
+
+## RESOLUTION (2026-07-05) — both FIXED
+
+Both reproduced synthetically (no TPC-DS model needed); guards in
+`tests/engine/test_duckdb_rowset_condition_binding.py`.
+
+**Bug 1** — `get_query_node` (query_processor.py): HAVING args never went through
+discovery (only outputs + WHERE feed `source_query_concepts`), so a raw reference
+to another rowset's aggregate-measure landed on a node with no source for it and
+re-rendered from base lineage → sentinel. Fix: re-plan with missing HAVING row-args
+as extra hidden outputs, gated to `Derivation.ROWSET` args (never re-derivable)
+whose grain ⊆ the select grain (plan grain cannot change; mirrors the q21
+HAVING-promotion guard). Condition now binds to the rowset output column.
+
+**Bug 2** — corrected root cause: NOT `get_node_joins` — the plan-time join was
+valid (`FROM abundant INNER JOIN questionable`). The `JoinHoist` optimization
+pass hoisted the child's dim join into a parent CTE that already reads FROM that
+same dim (the parent is a same-grain regroup/alias wrapper of it) → the parent
+rendered `FROM dim INNER JOIN dim` unaliased. Trigger required the final select
+to RE-ALIAS the rowset output (`select best_filter.cid as out_id`) — that alias
+regroup wrapper is what makes the hoist target's base the dim itself. Fix:
+`_join_hoist_plan` (join_hoist.py) skips any join whose right CTE is among the
+parent's own dependency nodes / source datasources.
