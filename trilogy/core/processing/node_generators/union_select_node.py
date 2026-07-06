@@ -34,12 +34,14 @@ def gen_union_select_node(
     history: History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    """Build a relational `union(...)` TVF: a column-positional row stack.
+    """Build a relational `union(...)`/`except(...)`/`intersect(...)` TVF: a
+    column-positional row stack.
 
-    Sources each arm independently (like the multiselect generator) but stacks
-    them with a `UnionNode` (SQL UNION ALL) instead of FULL-joining on align
-    keys. Each arm projects its i-th column onto the shared union output so the
-    stacked SELECTs line up by column."""
+    Sources each arm independently (like the multiselect generator) but
+    combines them with a `UnionNode` carrying the lineage's set operator
+    (UNION ALL / EXCEPT / INTERSECT) instead of FULL-joining on align keys.
+    Each arm projects its i-th column onto the shared output so the stacked
+    SELECTs line up by column; arm order is preserved (semantic for EXCEPT)."""
     from trilogy.core.query_processor import get_query_node
 
     if not isinstance(concept.lineage, BuildUnionSelectLineage):
@@ -109,6 +111,7 @@ def gen_union_select_node(
         parents=arm_nodes,
         preexisting_conditions=conditions.conditional if conditions else None,
         grain=union_grain,
+        set_operator=lineage.operator,
     )
 
     # Wrap in a pass-through projection so a consumer (e.g. gen_rowset_node) can

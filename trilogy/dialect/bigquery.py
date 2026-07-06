@@ -233,6 +233,12 @@ class BigqueryDialect(BaseDialect):
     DATATYPE_MAP = DATATYPE_MAP
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_QUALIFY = True
+    # BigQuery requires an explicit DISTINCT on set operators.
+    SET_OPERATOR_MAP: dict[str, str] = {
+        **BaseDialect.SET_OPERATOR_MAP,
+        "EXCEPT": "EXCEPT DISTINCT",
+        "INTERSECT": "INTERSECT DISTINCT",
+    }
 
     def hash_column_value(self, column_name: str) -> str:
         return f"FARM_FINGERPRINT(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS STRING))"

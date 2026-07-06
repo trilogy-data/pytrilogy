@@ -44,6 +44,7 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
+    SetOperator,
     WindowType,
 )
 from trilogy.core.exceptions import (
@@ -1939,12 +1940,16 @@ class BuildMultiSelectLineage(BuildConceptArgs):
         )
 
 
+@dataclass(slots=True)
 class BuildUnionSelectLineage(BuildMultiSelectLineage):
-    """Build form of a relational `union(...)` TVF: a positional column-stack
-    (SQL UNION) of arm selects. Same arm/align machinery as the multiselect
-    build lineage; the distinct type routes the planner to the union combiner
-    (`UnionNode`) instead of the FULL-JOIN merge. `build_output_components` holds
-    only the bound union columns."""
+    """Build form of a relational `union(...)`/`except(...)`/`intersect(...)`
+    TVF: a positional column-stack (SQL set operation) of arm selects. Same
+    arm/align machinery as the multiselect build lineage; the distinct type
+    routes the planner to the union combiner (`UnionNode`) instead of the
+    FULL-JOIN merge. `build_output_components` holds only the bound columns.
+    For EXCEPT the arm order is semantic (left-fold)."""
+
+    operator: SetOperator = SetOperator.UNION_ALL
 
 
 @dataclass(slots=True)
@@ -3718,6 +3723,7 @@ class Factory:
             build_cls=BuildUnionSelectLineage,
             derivation=Derivation.TVF_UNION,
             outputs_only=True,
+            extra_lineage_kwargs={"operator": base.operator},
         )
 
     def _build_multi_select_lineage(
@@ -3726,6 +3732,7 @@ class Factory:
         build_cls: type[BuildMultiSelectLineage] = BuildMultiSelectLineage,
         derivation: Derivation = Derivation.MULTISELECT,
         outputs_only: bool = False,
+        extra_lineage_kwargs: dict[str, Any] | None = None,
     ) -> BuildMultiSelectLineage:
         local_build_cache: dict[str, BuildConcept] = {}
 
@@ -3823,6 +3830,7 @@ class Factory:
             local_concepts=base_local,
             build_output_components=final,
             build_concept_arguments=all_input,
+            **(extra_lineage_kwargs or {}),
         )
         for k in base.derived_concepts:
             local_build_cache[k].lineage = lineage

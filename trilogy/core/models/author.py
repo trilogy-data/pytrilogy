@@ -41,6 +41,7 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
+    SetOperator,
     WindowOrder,
     WindowType,
 )
@@ -695,6 +696,16 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                         raise SyntaxError(
                             f"Cannot compare composite-membership elements {le} ({lt}) "
                             f"and {re} ({rt}) of different types in {str(self)}"
+                        )
+            elif isinstance(self.right, TupleWrapper):
+                # value-list membership: each element must be comparable to the
+                # left scalar (elements need not be comparable to each other)
+                for elem in self.right.val:
+                    et = arg_to_datatype(elem)
+                    if not is_compatible_datatype(left_type, et):
+                        raise SyntaxError(
+                            f"Cannot compare {left_name} and value-list element "
+                            f"{elem} ({et}) with operator {self.operator} in {str(self)}"
                         )
             elif isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 left_type, right_type.value_data_type
@@ -2842,14 +2853,24 @@ class MultiSelectLineage(ReferenceReplaceable, ConceptArgs, Namespaced):
 
 @dataclass
 class UnionSelectLineage(MultiSelectLineage):
-    """Positional column-stack (SQL UNION) of arm selects.
+    """Positional column-stack (SQL UNION ALL / EXCEPT / INTERSECT) of arm
+    selects.
 
     Shares the multiselect arm structure, but `align` items carry positional
     output bindings (output *i* <- each arm's *i*-th column) and the build
     combiner is a `UnionNode`, not the FULL-JOIN of a multiselect. The visible
     output is exactly the bound union columns — the arms' internal (per-arm
-    mangled) columns are never exposed.
+    mangled) columns are never exposed. For EXCEPT the arm order is semantic
+    (left-fold), so it must be preserved end-to-end.
     """
+
+    operator: SetOperator = SetOperator.UNION_ALL
+
+    def with_namespace(self, namespace: str) -> "UnionSelectLineage":
+        base = super().with_namespace(namespace)
+        assert isinstance(base, UnionSelectLineage)
+        base.operator = self.operator
+        return base
 
     @property
     def output_components(self) -> list[ConceptRef]:

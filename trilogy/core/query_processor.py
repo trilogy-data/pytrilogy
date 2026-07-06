@@ -370,6 +370,7 @@ def datasource_to_cte(
                 for c in query_datasource.output_concepts
             ],
             grain=direct_parents[0].grain,
+            operator=query_datasource.set_operator.value,
             order_by=query_datasource.ordering,
             rollup_concepts=query_datasource.rollup_concepts,
         )

@@ -338,6 +338,59 @@ limit 100;
 """,
     ),
     SyntaxExample(
+        name="except-intersect-setops",
+        title="Set difference / co-occurrence across sources with except(...) / intersect(...)",
+        summary=(
+            "`with only_a as except((armA), (armB)) -> (o1, o2)` keeps the distinct "
+            "rows of the FIRST arm that appear in NO later arm (SQL EXCEPT); "
+            "`intersect(...)` keeps rows present in EVERY arm. PREFERRED over "
+            "multi-column `not in` for 'in A but not B' questions: whole ROWS are "
+            "compared (any column mix), output is deduplicated, and NULL matches "
+            "NULL - rows with missing values are matched, not dropped"
+        ),
+        body="""\
+# `except(...)` and `intersect(...)` are relational table-valued functions with the
+# SAME shape as `union(...)`: TWO OR MORE inline self-contained select arms, matched
+# by COLUMN POSITION to the trailing `-> (...)` output list. They are SQL SET
+# operators, which differ from the union stack in three ways:
+#   - the output is DEDUPLICATED (distinct rows);
+#   - whole rows are compared with NULL-SAFE equality (NULL matches NULL - unlike
+#     `not in`, rows containing missing values participate instead of vanishing);
+#   - for `except(...)` ARM ORDER MATTERS: the FIRST arm is the base population and
+#     every later arm is subtracted from it, left to right.
+# Use `except` for "combinations in A that never appear in B (or C)" and
+# `intersect` for "combinations present in every source".
+import enrollments as enroll;
+
+# Distinct (course, year) combinations Biology offered that Chemistry did not.
+with bio_only as except(
+    (where enroll.department = 'Biology'
+     select enroll.course as course, enroll.year as year),
+    (where enroll.department = 'Chemistry'
+     select enroll.course as course, enroll.year as year)
+) -> (course, year);
+
+select
+    bio_only.course,
+    bio_only.year,
+order by bio_only.course asc nulls first, bio_only.year asc nulls first
+limit 100;
+
+# Counting the surviving combinations is the idiomatic anti-membership count
+# (e.g. "customers who bought in store but never online"):
+#     from except((...store combos...), (...web combos...)) -> (last, first, day)
+#     select count(day) as combos;
+# ---------------------------------------------------------------------------
+# NOTES:
+#  - Same arm rules as `union(...)`: inline arms only, positional binding, equal
+#    column count/order/types per arm; reference outputs as `<rowset>.<output>`.
+#  - `except((a), (b), (c))` means (a EXCEPT b) EXCEPT c - subtract left to right.
+#    `intersect(...)` keeps rows present in EVERY arm (order does not matter).
+#  - Outputs are DISTINCT rows: aggregate them directly (`count(x)`) for "how many
+#    unique combinations" - no extra dedup step needed.
+""",
+    ),
+    SyntaxExample(
         name="scoped-join",
         title="Blend two models in one query with a scoped subset/union join",
         summary=(

@@ -1,6 +1,7 @@
 from trilogy.core.enums import (
     BooleanOperator,
     JoinType,
+    SetOperator,
     SourceType,
 )
 from trilogy.core.models.build import (
@@ -239,6 +240,11 @@ class PredicatePushdown(OptimizationRule):
             return False
         if parent_cte.source.source_type == SourceType.FILTER:
             return False
+        # EXCEPT/INTERSECT arms participate in whole-row set comparison;
+        # conservatively leave them untouched (pushing a filter on the compared
+        # outputs is provably sound, but branch source_map extras are not).
+        if parent_cte.operator != SetOperator.UNION_ALL.value:
+            return False
 
         # Concepts the union can expose. ``output_columns`` lists what the
         # union QDS chose to project, but each branch's ``source_map`` often
@@ -384,6 +390,11 @@ class PredicatePushdown(OptimizationRule):
         inverse_map: dict[str, list[CTE | UnionCTE]],
     ) -> bool:
         if not isinstance(candidate, BuildConceptArgs):
+            return False
+        # Dropping an arm of EXCEPT/INTERSECT changes the set result (for
+        # EXCEPT even a provably-empty-under-filter subtracted arm is only
+        # droppable if actually empty). Prune UNION ALL stacks only.
+        if parent_cte.operator != SetOperator.UNION_ALL.value:
             return False
         children = inverse_map.get(parent_cte.name, [])
         if not children:

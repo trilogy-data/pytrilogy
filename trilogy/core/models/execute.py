@@ -20,6 +20,7 @@ from trilogy.core.enums import (
     JoinType,
     Modifier,
     Purpose,
+    SetOperator,
     SourceType,
 )
 from trilogy.core.exceptions import (
@@ -987,6 +988,10 @@ class QueryDatasource:
     limit: Optional[int] = None
     condition: BoolExpr | None = None
     source_type: SourceType = field(default=SourceType.SELECT)
+    # Row combinator when source_type == UNION. EXCEPT/INTERSECT are
+    # non-commutative set operators: their arm order is semantic, so
+    # __post_init__ must not re-sort datasources for them.
+    set_operator: SetOperator = field(default=SetOperator.UNION_ALL)
     partial_concepts: List[BuildConcept] = field(default_factory=list)
     rollup_concepts: List[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
@@ -1004,7 +1009,8 @@ class QueryDatasource:
     base_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
 
     def __post_init__(self) -> None:
-        self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
+        if self.set_operator is SetOperator.UNION_ALL:
+            self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
         unique_pairs: set[str] = set()
         for join in self.joins:
             if not isinstance(join, BaseJoin):
@@ -1271,8 +1277,16 @@ class QueryDatasource:
             # outer grain (which reflects the projected column subset) into the
             # identifier. UnionCTE.condition is always None at render time
             # (consumers wrap row-level filters as CASE), so the QDS-level
-            # condition is also irrelevant to identity.
-            return "_union_".join([d.identifier for d in self.datasources]) + "_unioned"
+            # condition is also irrelevant to identity. The operator IS
+            # identity: an except() over the same arms must not merge with a
+            # union() (and for EXCEPT the preserved arm order distinguishes
+            # a-except-b from b-except-a).
+            suffix = (
+                "_unioned"
+                if self.set_operator is SetOperator.UNION_ALL
+                else f"_{self.set_operator.name.lower()}ed"
+            )
+            return "_union_".join([d.identifier for d in self.datasources]) + suffix
         filters = string_to_hash(str(self.condition)) if self.condition else ""
         grain = "_".join(
             [str(c).replace(".", "_") for c in sorted(self.grain.components)]

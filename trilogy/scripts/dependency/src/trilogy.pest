@@ -266,8 +266,8 @@ type_declaration = { ^"type" ~ IDENTIFIER ~ data_type ~ ("|" ~ data_type)* ~ typ
 // ROWSET
 // =============================================================================
 rowset_derivation_statement = {
-      (^"rowset" ~ IDENTIFIER ~ "<-" ~ (tvf_union_invocation | multi_select_statement | select_statement))
-    | (^"with" ~ IDENTIFIER ~ ^"as" ~ (tvf_union_invocation | multi_select_statement | select_statement))
+      (^"rowset" ~ IDENTIFIER ~ "<-" ~ (_tvf_invocation | multi_select_statement | select_statement))
+    | (^"with" ~ IDENTIFIER ~ ^"as" ~ (_tvf_invocation | multi_select_statement | select_statement))
 }
 
 // =============================================================================
@@ -485,14 +485,22 @@ subselect       = { _SUBSELECT ~ expr ~ subselect_where? ~ subselect_order? ~ su
 _UNION = _{ ^"union(" }
 union  = { _UNION ~ (expr ~ ",")* ~ expr ~ ")" }
 
-// table-valued function: relational union(...). Reuses _UNION at statement
-// positions (rowset-RHS / inline-FROM), disjoint from the atom-level `union`.
+// table-valued functions: relational union(...)/except(...)/intersect(...).
+// union reuses _UNION at statement positions (rowset-RHS / inline-FROM),
+// disjoint from the atom-level `union`; except/intersect exist only at these
+// statement positions. except/intersect are SQL set operators (deduplicated,
+// NULL-safe row comparison); except left-folds over 3+ arms.
+_EXCEPT_TVF     = _{ ^"except(" }
+_INTERSECT_TVF  = _{ ^"intersect(" }
 tvf_output_item      = { select_hide_modifier? ~ IDENTIFIER ~ (PURPOSE? ~ data_type ~ concept_nullable_modifier?)? ~ metadata? }
 tvf_output           = { "->" ~ "(" ~ tvf_output_item ~ ("," ~ tvf_output_item)* ~ ","? ~ ")" }
 tvf_rel_arg          = { "(" ~ select_statement ~ ")" }
 _tvf_arg             = _{ tvf_rel_arg }
-tvf_union_invocation = { _UNION ~ (_tvf_arg ~ ("," ~ _tvf_arg)* ~ ","?)? ~ ")" ~ tvf_output }
-tvf_select_statement = { ^"from" ~ tvf_union_invocation ~ select_statement }
+tvf_union_invocation     = { _UNION ~ (_tvf_arg ~ ("," ~ _tvf_arg)* ~ ","?)? ~ ")" ~ tvf_output }
+tvf_except_invocation    = { _EXCEPT_TVF ~ (_tvf_arg ~ ("," ~ _tvf_arg)* ~ ","?)? ~ ")" ~ tvf_output }
+tvf_intersect_invocation = { _INTERSECT_TVF ~ (_tvf_arg ~ ("," ~ _tvf_arg)* ~ ","?)? ~ ")" ~ tvf_output }
+_tvf_invocation = _{ tvf_union_invocation | tvf_except_invocation | tvf_intersect_invocation }
+tvf_select_statement = { ^"from" ~ _tvf_invocation ~ select_statement }
 
 // =============================================================================
 // AGGREGATES

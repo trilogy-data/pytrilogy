@@ -49,4 +49,7 @@ def test_tuple_literal_incompatible_types_clean_error(backend):
         exec_ = Dialects.DUCK_DB.default_executor(environment=Environment())
         with pytest.raises(Exception) as excinfo:
             exec_.generate_sql("const x <- 1; where x in (1, 'a') select x;")
-        assert "incompatible" in str(excinfo.value).lower()
+        # LARK rejects at tuple hydration ("incompatible types"); PEST defers to
+        # the per-element value-list check ("cannot compare ... element")
+        msg = str(excinfo.value).lower()
+        assert "incompatible" in msg or "cannot compare" in msg

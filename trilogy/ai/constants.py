@@ -20,6 +20,8 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 | Blend two models on shared keys inside one query | scoped `subset\|union join` (the default) |
 | Make a connection universal to all queries in a file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
+| Rows in A but never in B (set difference) | `except(...)` |
+| Rows present in every source (set intersection) | `intersect(...)` |
 
 ### Query-scoped join (the default)
 
@@ -56,6 +58,12 @@ union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select
 
 Full example: trilogy agent-info syntax example union-stack-channels.
 
+except / intersect (set operations)
+
+except((armA), (armB), ...) -> (...) and intersect(...) share union's arm shape but are SQL SET operators: output rows are DISTINCT, whole rows compare null-safely (NULL matches NULL — rows with missing values match instead of vanishing, unlike `not in`), and except subtracts later arms from the FIRST, left to right (arm order matters). Prefer except over multi-column `not in` for "combinations in A that never appear in B"; aggregate the outputs directly for a distinct-combination count.
+
+Full example: trilogy agent-info syntax example except-intersect-setops.
+
 ## SELECT statements
 
 ```
@@ -90,7 +98,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 
 ### Not SQL — what to never write
 
-- **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
+- **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators between selects.** To stack rows use `union(...)`; for set difference/intersection use `except(...)`/`intersect(...)`; to blend fact models use a scoped join.
 - **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. 
    Use explicit grain agg(x) by <dims> as needed to override the default. 
    Use `by *` to aggregate across all data (a single row output).
