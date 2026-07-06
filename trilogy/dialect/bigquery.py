@@ -99,6 +99,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "STRING",
     DataType.INTEGER: "INT64",
     DataType.FLOAT: "FLOAT64",
+    DataType.DOUBLE: "FLOAT64",
     DataType.BOOL: "BOOL",
     DataType.NUMERIC: "NUMERIC",
     DataType.MAP: "MAP",

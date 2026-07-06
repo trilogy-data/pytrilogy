@@ -216,6 +216,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "TEXT",
     DataType.INTEGER: "INTEGER",
     DataType.FLOAT: "REAL",
+    DataType.DOUBLE: "REAL",
     DataType.BOOL: "INTEGER",
     DataType.NUMERIC: "NUMERIC",
     DataType.DATE: "TEXT",

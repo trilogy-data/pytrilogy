@@ -874,7 +874,7 @@ AUTO     = @{ ^"auto" }
 // =============================================================================
 // TYPES
 // =============================================================================
-numeric_type = { ^"numeric" ~ "(" ~ int_lit ~ "," ~ int_lit ~ ")" }
+numeric_type = { (^"numeric" | ^"decimal") ~ "(" ~ int_lit ~ "," ~ int_lit ~ ")" }
 map_type     = { ^"map" ~ "<" ~ (data_type | IDENTIFIER) ~ "," ~ (data_type | IDENTIFIER) ~ ">" }
 struct_component = { IDENTIFIER ~ ":" ~ data_type ~ concept_nullable_modifier? ~ metadata? }
 struct_type  = { ^"struct" ~ "<" ~ (struct_component | IDENTIFIER) ~ ("," ~ (struct_component | IDENTIFIER))* ~ ","? ~ ">" }
@@ -889,7 +889,7 @@ data_type = {
     ) ~ ("::" ~ IDENTIFIER)?
 }
 DATA_TYPE_SIMPLE = @{
-      ^"string" | ^"bytes" | ^"geography" | ^"numeric" | ^"number" | ^"int" | ^"bigint"
-    | ^"datetime" | ^"timestamp" | ^"date" | ^"float" | ^"bool"
+      ^"string" | ^"bytes" | ^"geography" | ^"numeric" | ^"decimal" | ^"number" | ^"int" | ^"bigint"
+    | ^"datetime" | ^"timestamp" | ^"date" | ^"double" | ^"float" | ^"bool"
     | ^"map" | ^"list" | ^"array" | ^"any"
 }

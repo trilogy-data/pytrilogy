@@ -44,12 +44,14 @@ properties <order_number, item.id> (
     return_amount numeric::usd?, # Refund amount if the line was returned.
     return_net_loss numeric::usd?, # Net financial loss on the return for this line.
     --return_quantity int?, # Units returned for this line.
+    _returned_order_number int?, # The catalog_returns order number matched to this line.
     row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.id combination).
 );
 
 auto line_item <- concat(order_number::string, '-', item.id::string); # Unique line-item identifier (one catalog order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
 auto line_item_count <- sum(row_counter); # Number of catalog-sale line items (= count(line_item)); kept for queries that reference it.
 auto profit <- ext_list_price - ext_wholesale_cost - discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
+auto is_returned <- _returned_order_number is not null; # True if this line was later returned, else False.
 
 datasource catalog_sales (
     raw('''1'''): row_counter,
@@ -93,6 +95,7 @@ datasource catalog_returns_inline (
     CR_RETURN_AMOUNT: return_amount,
     CR_NET_LOSS: return_net_loss,
     CR_RETURN_QUANTITY: return_quantity,
+    CR_ORDER_NUMBER: _returned_order_number,
 )
 grain (item.id, order_number)
 address memory.catalog_returns;

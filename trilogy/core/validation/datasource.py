@@ -127,7 +127,9 @@ def type_check(
         return isinstance(input, int)
     if target_type == DataType.BIGINT:
         return isinstance(input, int)  # or check for larger int if needed
-    if target_type == DataType.FLOAT or isinstance(target_type, NumericType):
+    if target_type in (DataType.FLOAT, DataType.DOUBLE) or isinstance(
+        target_type, NumericType
+    ):
         return (
             isinstance(input, float)
             or isinstance(input, int)

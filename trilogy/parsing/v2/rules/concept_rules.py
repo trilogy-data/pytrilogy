@@ -451,6 +451,10 @@ def concept_lit(
     )
 
 
+# Spelling aliases resolved to a canonical DataType value before enum lookup.
+_DATATYPE_SPELLING_ALIASES = {"decimal": "numeric"}
+
+
 def data_type(
     node: SyntaxNode,
     context: RuleContext,
@@ -472,7 +476,9 @@ def data_type(
     ):
         base = resolved
     else:
-        base = DataType(str(resolved).lower())
+        # `decimal` is a spelling alias for `numeric` (identical semantics).
+        name = str(resolved).lower()
+        base = DataType(_DATATYPE_SPELLING_ALIASES.get(name, name))
     if traits:
         line = node.meta.line if node.meta else None
         for trait in traits:

@@ -71,6 +71,7 @@ class DataType(Enum):
     MAP = "map"
     NUMBER = "number"
     FLOAT = "float"
+    DOUBLE = "double"
     NUMERIC = "numeric"
     INTEGER = "int"
     BIGINT = "bigint"
@@ -438,11 +439,19 @@ def merge_datatypes(
 
     if base_set == {DataType.INTEGER, DataType.FLOAT}:
         return _prefer_trait(DataType.FLOAT)
+    # double is the wider float — it wins over int and 4-byte float.
+    if DataType.DOUBLE in base_set and base_set <= {
+        DataType.INTEGER,
+        DataType.FLOAT,
+        DataType.DOUBLE,
+    }:
+        return _prefer_trait(DataType.DOUBLE)
     if base_set == {DataType.INTEGER, DataType.NUMERIC}:
         return _prefer_trait(DataType.NUMERIC)
     if any(isinstance(x, NumericType) for x in inputs) and all(
         isinstance(x, NumericType)
-        or _base(x) in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
+        or _base(x)
+        in (DataType.INTEGER, DataType.FLOAT, DataType.DOUBLE, DataType.NUMERIC)
         for x in inputs
     ):
         candidate = next(x for x in inputs if isinstance(x, NumericType))
@@ -481,6 +490,7 @@ def is_compatible_datatype(left, right):
             DataType.INTEGER,
             DataType.BIGINT,
             DataType.FLOAT,
+            DataType.DOUBLE,
             DataType.NUMERIC,
             DataType.NUMBER,
         )

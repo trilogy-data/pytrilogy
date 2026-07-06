@@ -91,6 +91,19 @@ where sum(per_txn.amt) > 250.0
 order by per_txn.tcust;
 """
 
+# base-model row-arg alongside a rowset aggregate: condition-input injection
+# only handles all-rowset-sourced row-args, so this shape cannot plan today.
+# The invariant is it must NEVER silently drop the filter: correct rows or a
+# loud error are both acceptable.
+MIXED_BASE_AND_ROWSET_ARG = MODEL + """
+with per_txn as
+select txn_id as tid, txn_cust as tcust, amount as amt;
+
+select per_txn.tcust
+where txn_cust > 0 and sum(per_txn.amt) > 250.0
+order by per_txn.tcust;
+"""
+
 
 @pytest.fixture
 def executor(tmp_path: Path) -> Executor:
@@ -122,16 +135,21 @@ def test_non_degenerate_where_aggregate_keeps_select_grain(executor: Executor):
     assert rows == [(2,)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="pre-existing distinct bug: a non-degenerate bare WHERE aggregate over"
-    " a rowset column is silently dropped (no WHERE/HAVING emitted at all);"
-    " unrelated to the degenerate-co-grain fix this file guards",
-)
 def test_non_degenerate_rowset_where_aggregate_keeps_select_grain(
     executor: Executor,
 ):
     rows = [
         tuple(r) for r in executor.execute_text(NON_DEGENERATE_ROWSET)[0].fetchall()
     ]
+    assert rows == [(2,)]
+
+
+def test_mixed_base_and_rowset_arg_never_silently_drops(executor: Executor):
+    try:
+        rows = [
+            tuple(r)
+            for r in executor.execute_text(MIXED_BASE_AND_ROWSET_ARG)[0].fetchall()
+        ]
+    except Exception:
+        return
     assert rows == [(2,)]

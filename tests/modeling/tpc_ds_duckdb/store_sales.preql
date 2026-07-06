@@ -34,7 +34,7 @@ properties <ticket_number, item.id> (
     ext_discount_amount numeric::usd, # Extended discount applied to the line.
     coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
     net_profit numeric::usd, # Reported net profit for the line. Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
-    is_returned bool, # True if at least part of this ticket line was later returned (derived from store_returns).
+    _returned_ticket int?, # The store_returns ticket number matched to this line.
     net_paid numeric::usd, # Net amount paid by the customer for the line, excluding tax.
     ext_tax numeric::usd?, # Extended sales tax on the line.
     wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost.
@@ -48,6 +48,7 @@ auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_s
 
 auto line_item <- concat(ticket_number::string, '-', item.id::string); # Unique line-item identifier (one ticket + item). Count line items with count(line_item); do NOT use count(ticket_number), a receipt key that dedups and undercounts multi-item tickets.
 auto line_item_count<- sum(row_counter); # Number of line items (= count(line_item)); kept for queries that reference it.
+auto is_returned <- _returned_ticket is not null; # True if this ticket line was later returned, else False.
 
 datasource store_sales (
     raw('''1'''): row_counter,
@@ -88,7 +89,7 @@ datasource store_returns (
     SR_STORE_SK: return_store.id, # FK to the store the return was processed at.
     SR_REASON_SK: return_reason.id, # FK to the return-reason code.
     SR_NET_LOSS: return_net_loss,
-    raw('''SR_RETURN_TIME_SK IS NOT NULL'''): is_returned, # Derived: true when a return row exists.
+    SR_TICKET_NUMBER: _returned_ticket,
 )
 grain (item.id, ticket_number)
 address memory.store_returns;
