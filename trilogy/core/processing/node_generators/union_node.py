@@ -25,7 +25,9 @@ def build_layers(
     root = concepts[0]
 
     built_layers = []
-    layers = root.lineage.concept_arguments if root.lineage else []
+    # copy: concept_arguments is a shared cached list, and the pop() drain
+    # below would otherwise empty it for every later consumer of this lineage
+    layers = list(root.lineage.concept_arguments) if root.lineage else []
     sourced = set()
     while layers:
         layer = []

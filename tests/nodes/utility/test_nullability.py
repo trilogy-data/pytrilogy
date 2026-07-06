@@ -120,6 +120,61 @@ select 1 as customer_id
     assert nullable == [product_id.address], nullable
 
 
+def test_find_nullable_concepts_missing_right_datasource_no_crash():
+    # A join on a nullable condition whose right_datasource is a synthetic
+    # self-join-key pseudonym absent from datasource_map must not KeyError
+    # (regression: utility.py used a hard subscript instead of guarded .get).
+    env, _ = parse("""
+key order_id int;
+key product_id int;
+datasource orders (
+    order_id:order_id,
+    product_id:?product_id,)
+grain (order_id)
+query '''select 1 as order_id, null as product_id''';
+""")
+    env = env.materialize_for_select()
+    order_id = env.concepts["order_id"]
+    product_id = env.concepts["product_id"]
+    order_ds = env.datasources["orders"]
+    order_qds = QueryDatasource(
+        input_concepts=[order_id, product_id],
+        output_concepts=[order_id, product_id],
+        datasources=[order_ds],
+        grain=BuildGrain(components={order_id.address}),
+        joins=[],
+        source_map={order_id.address: {order_ds}, product_id.address: {order_ds}},
+        nullable_concepts=[product_id],
+    )
+    synthetic_qds = QueryDatasource(
+        input_concepts=[product_id],
+        output_concepts=[product_id],
+        datasources=[order_ds],
+        grain=BuildGrain(components={product_id.address}),
+        joins=[],
+        source_map={product_id.address: {order_ds}},
+    )
+    join = BaseJoin(
+        left_datasource=order_qds,
+        right_datasource=synthetic_qds,
+        join_type=JoinType.INNER,
+        concepts=[],
+        concept_pairs=[
+            ConceptPair(
+                left=product_id, right=product_id, existing_datasource=order_qds
+            )
+        ],
+    )
+    # `datasources` deliberately omits synthetic_qds → its identifier is absent
+    # from datasource_map; the nullable product_id condition reaches the lookup.
+    nullable = find_nullable_concepts(
+        source_map={order_id.address: {order_qds}, product_id.address: {order_qds}},
+        datasources=[order_qds],
+        joins=[join],
+    )
+    assert product_id.address in nullable
+
+
 def test_nullable_inheritance():
     env, _ = parse("""
 key order_id int?;

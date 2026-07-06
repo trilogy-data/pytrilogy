@@ -354,6 +354,32 @@ COMPLEX_DATATYPE_MAP = {
     DataType.ARRAY: lambda x: f"{x}[]",
 }
 
+UNION_CASTABLE_TYPES = {
+    DataType.INTEGER,
+    DataType.BIGINT,
+    DataType.FLOAT,
+    DataType.DOUBLE,
+    DataType.NUMERIC,
+}
+
+
+def union_arm_cast_target(
+    arm_type: CONCRETE_TYPES, output_type: CONCRETE_TYPES
+) -> DataType | NumericType | None:
+    """A union arm bound to a narrower physical type than the union's derived
+    output (e.g. a float placeholder beside a numeric measure) lets the engine
+    downgrade the whole column; return the type the arm must be cast to."""
+    arm = arm_type.type if isinstance(arm_type, TraitDataType) else arm_type
+    out = output_type.type if isinstance(output_type, TraitDataType) else output_type
+    if arm == out or not isinstance(out, (DataType, NumericType)):
+        return None
+    if (isinstance(arm, NumericType) or arm in UNION_CASTABLE_TYPES) and (
+        isinstance(out, NumericType) or out in UNION_CASTABLE_TYPES
+    ):
+        return out
+    return None
+
+
 # Maps lowercased DB type names (as returned by information_schema, SQLite's
 # PRAGMA table_info, or DuckDB's DESCRIBE) to DataType. `normalize_db_type`
 # strips any "(...)" precision suffix before lookup. These are the cross-dialect
@@ -1227,6 +1253,17 @@ class BaseDialect:
                     rval = c.safe_address
                 else:
                     rval = self.render_expr(local_matched[0], cte)
+                    # coerce the arm to the union's derived type so the engine
+                    # cannot downgrade the column to the narrowest arm (e.g. a
+                    # float placeholder beside a numeric measure)
+                    cast_target = union_arm_cast_target(
+                        local_matched[0].datatype, c.datatype
+                    )
+                    if cast_target is not None:
+                        rval = self.FUNCTION_MAP[FunctionType.CAST](
+                            [rval, self.render_expr(cast_target, cte=cte)],
+                            [local_matched[0].datatype, cast_target],
+                        )
             elif (
                 isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.CONSTANT

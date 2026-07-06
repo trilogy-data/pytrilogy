@@ -117,10 +117,23 @@ are Trilogy-specific and do not apply to `sql_bare`/`sql_schema`.
 - **The "noisy, never conclude from one run" caveat is about per-query PASS/FAIL deltas — not
   about churn-as-detector.** When you need a real before/after PASS-RATE for a specific fix,
   validate with `repeat_query.py --query-id N --repeats 10 --scale-factor 1` and compare
-  `pass_rate`. Per-query single-run token deltas are too noisy for before/after churn *claims*
-  (control queries you never touched can swing ±500% run to run) — but that noise does NOT
-  weaken the ">500k ⇒ framework bug" prior above; ranking sinks and hunting bugs is exactly
-  what a single pass is for.
+  `pass_rate`.
+- **A big token SWING is signal, NOT variance — never dismiss it, especially over 500k.** The
+  only "noise" band is queries that stay LOW in both runs (small absolute counts jittering).
+  Any of the following is a framework-bug lead to investigate, not "deepseek variance":
+  (a) a query that swings INTO >500k, (b) a large swing (say >50%) on a query already >500k,
+  (c) a query that jumps by hundreds of k tokens. A 500%/2x swing on a >500k query is the
+  opposite of noise — it is the detector firing. If a swing lines up with a change you just
+  landed (model edit, engine change), treat it as a probable REGRESSION and reproduce it
+  deterministically (grep the run's `agent_log` for error signatures — `Unexpected error`,
+  `Binder`, sentinels — that are absent in the prior run's log). Do NOT attribute large
+  high-token swings to model non-determinism.
+- **A `BinderException` / `Catalog Error` / any unhandled "Unexpected error" from
+  Trilogy-GENERATED SQL is ALWAYS a framework bug** (the engine emitted invalid or
+  self-inconsistent SQL), even when the agent's own query was awkward. The agent writing
+  unusual Trilogy is not an excuse — the framework must either compile it or reject it with a
+  clear authored-error, never emit SQL the database rejects. Only a clear *parse/authoring*
+  error with an actionable message (e.g. "move to HAVING", "join or merge") is non-framework.
 - **Diagnose from artifacts, not theory.** Read the agent's generated query
   (`results/<run>/workspace/queryNN.preql`, or `.sql` for the `sql_bare`/`sql_schema`
   legs), its run output, and the reference

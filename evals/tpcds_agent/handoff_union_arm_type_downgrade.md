@@ -1,5 +1,14 @@
 # Handoff — `union(...)` silently downgrades a DECIMAL column when one arm's placeholder is `float`
 
+**STATUS: FIXED 2026-07-05 (coercing direction, narrow).** `union_arm_cast_target`
+(`trilogy/dialect/base.py`) compares each arm's trait-stripped type to the union's derived
+output type at render time; when both are in the numeric family (int/bigint/float/double/
+numeric/NumericType) and differ, only that arm's expression is wrapped in
+`CAST(<expr> AS <derived type>)`. Matching arms render verbatim; non-numeric mismatches are
+left untouched (no behavior change). Works across dialects (dialect CAST/type maps).
+Guards: `tests/engine/test_duckdb_union_arm_cast.py`. The strict-rejection direction was
+not taken.
+
 **Origin:** q05 float32-drift token sink (`bug_q05_current_engine_float32_union_placeholder.md`).
 The immediate cause there was agent-authored (`cast(0 as float)` money placeholder), now partly
 mitigated by adding `double`/`decimal` cast targets. But there is a **framework codegen gap**

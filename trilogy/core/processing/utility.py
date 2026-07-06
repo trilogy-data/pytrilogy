@@ -198,7 +198,11 @@ def find_nullable_concepts(
                 is_on_nullable_condition = True
                 break
         if is_on_nullable_condition:
-            nullable_datasources.add(datasource_map[right_id])
+            # right_id can be a synthetic self-join-key pseudonym datasource
+            # absent from datasource_map — guard like the outer-join cases above.
+            right_ds = datasource_map.get(right_id)
+            if right_ds is not None:
+                nullable_datasources.add(right_ds)
     final_nullable = set()
 
     for k, v in source_map.items():
