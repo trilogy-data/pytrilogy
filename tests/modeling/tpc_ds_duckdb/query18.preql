@@ -2,23 +2,23 @@ import catalog_sales as cs;
 
 # Group dim-property values by the row grain (order_number, item.id) so they
 # aren't dedup'd by their source key before averaging.
-auto row_birth_year <- group(cs.bill_customer.birth_year) by cs.order_number, cs.item.id;
-auto row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
+auto row_birth_year <- group(cs.billing_customer.birth_year) by cs.order_number, cs.item.id;
+auto row_dep_count <- group(cs.billing_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
 
 def rollup_avg(metric) -> avg(metric::numeric(12,2));
 
 where
-    cs.bill_customer_demographic.gender = 'F'
-    and cs.bill_customer_demographic.education_status = 'Unknown'
-    and cs.bill_customer.demographics.id is not null
-    and cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
+    cs.billing_customer_demographic.gender = 'F'
+    and cs.billing_customer_demographic.education_status = 'Unknown'
+    and cs.billing_customer.demographics.id is not null
+    and cs.billing_customer.birth_month in (1, 6, 8, 9, 12, 2)
     and cs.date.year = 1998
-    and cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
+    and cs.billing_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
 select
     cs.item.text_id,
-    cs.bill_customer.address.country,
-    cs.bill_customer.address.state,
-    cs.bill_customer.address.county,
+    cs.billing_customer.address.country,
+    cs.billing_customer.address.state,
+    cs.billing_customer.address.county,
     @rollup_avg(cs.quantity) as agg1,
     @rollup_avg(cs.list_price) as agg2,
     @rollup_avg(cs.coupon_amt) as agg3,
@@ -26,11 +26,11 @@ select
     @rollup_avg(cs.net_profit) as agg5,
     @rollup_avg(row_birth_year) as agg6,
     @rollup_avg(row_dep_count) as agg7,
-by rollup (cs.item.text_id, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county)
+by rollup (cs.item.text_id, cs.billing_customer.address.country, cs.billing_customer.address.state, cs.billing_customer.address.county)
 order by
-    cs.bill_customer.address.country asc nulls first,
-    cs.bill_customer.address.state asc nulls first,
-    cs.bill_customer.address.county asc nulls first,
+    cs.billing_customer.address.country asc nulls first,
+    cs.billing_customer.address.state asc nulls first,
+    cs.billing_customer.address.county asc nulls first,
     cs.item.text_id asc nulls first
 limit 100
 ;

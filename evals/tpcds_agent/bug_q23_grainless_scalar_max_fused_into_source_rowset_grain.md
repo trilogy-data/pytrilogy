@@ -1,6 +1,13 @@
 # q23 — grainless `auto` scalar `max(rowset.col)` silently fused into source rowset's grain (filter degenerates to `x > 0.5x`)
 
-> **FIXED 2026-07-05.** Root cause was upstream of node sourcing: `_build_select_lineage`'s
+> **SUPERSEDED 2026-07-06 — the fix below was REVERTED.** The `_degenerate_aggregate_cograin`
+> carveout was a language misunderstanding: per owner-stated intent, a bare (no `by`) aggregate is
+> grain-polymorphic and co-grains to the consuming grain, so the degenerate `x > 0.5*max(x)`
+> tautology is the *correct* application of the rule — a global reduction must be authored as
+> `max(x) by *` or a grained select output. The carveout made WHERE deviate from HAVING. See
+> `bug_q23_bare_max_sibling_rowset_having_tautology.md` for the consistent-principles resolution.
+
+> **FIXED 2026-07-05 (reverted, see above).** Root cause was upstream of node sourcing: `_build_select_lineage`'s
 > `where_factory` co-grains every bare (no `by`) WHERE aggregate to the select grain
 > (`Factory.aggregate_grain`, HAVING-like, documented). When the aggregate's input is a rowset
 > column already AT that grain, the co-grain is degenerate — one row per group — so the render-time

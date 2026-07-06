@@ -152,6 +152,26 @@ def test_find_similar_partial_path_subsequence_ranks_first():
     assert sugg[0] == "y1999.agg.item_id"
 
 
+def test_find_similar_same_namespace_nearmiss_beats_leaf_flood():
+    """A namespaced typo on a middle segment (`cs.billing_customer.id` for the real
+    `cs.bill_customer.id`) must surface the same-namespace near-miss FIRST — not be
+    buried under the flood of unrelated concepts sharing the common leaf `id`, nor
+    outranked by an identical name in a different namespace (`ws.billing_customer.id`).
+    """
+    d = _dict_with(
+        "cs.bill_customer.id",
+        "ws.billing_customer.id",
+        "cs.item.id",
+        "cs.date.id",
+        "all_sales.item.id",
+        "all_sales.date.id",
+    )
+    sugg = d._find_similar_concepts("cs.billing_customer.id")
+    assert sugg[0] == "cs.bill_customer.id"
+    # the same-namespace near-miss outranks the different-namespace exact-name match
+    assert sugg.index("cs.bill_customer.id") < sugg.index("ws.billing_customer.id")
+
+
 def test_find_similar_partial_path_via_extra_keys():
     """The real path is often only STAGED (a rowset/CTE output not yet committed);
     the partial-path match must still find it through `extra_keys`."""

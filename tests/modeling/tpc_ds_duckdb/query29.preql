@@ -25,7 +25,7 @@ select
     catalog_sales.quantity,
 ;
 
-left join store_sales.return_customer.id = catalog_sales.bill_customer.id
+left join store_sales.return_customer.id = catalog_sales.billing_customer.id
 left join store_sales.item.id = catalog_sales.item.id
 select
     correlated.store_sales.item.text_id as store_sales_item_name,

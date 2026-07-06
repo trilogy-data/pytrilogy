@@ -38,6 +38,7 @@ class CaseResult:
     actual_rows: int
     error_stage: str | None = None
     error: str | None = None
+    error_type: str | None = None
     repro: str | None = None
 
 
@@ -106,6 +107,7 @@ def run_case(case: FuzzCase) -> CaseOutcome:
                 generated_sql = statements[-1]
             except Exception as exc:
                 error_stage = "compile"
+                error_type = type(exc).__name__
                 error = format_exception(exc)
             compile_ms = elapsed_ms(started)
 
@@ -122,7 +124,13 @@ def run_case(case: FuzzCase) -> CaseOutcome:
 
     expected = normalize_rows(expected)
     actual = normalize_rows(actual)
-    if error_stage:
+    if (
+        error_stage == "compile"
+        and error_type is not None
+        and error_type in case.accepted_compile_errors
+    ):
+        status = "pass"
+    elif error_stage:
         status = "harness_error" if error_stage == "oracle" else "error"
     elif expected != actual:
         status = "mismatch"
@@ -196,6 +204,7 @@ def render_repro_readme(case: FuzzCase, outcome: CaseOutcome) -> str:
 - Tags: `{", ".join(case.tags)}`
 - Error stage: `{result.error_stage or "none"}`
 - Error: `{result.error or "none"}`
+- Accepted compile errors: `{", ".join(case.accepted_compile_errors) or "none"}`
 - Generated SQL: {result.sql_chars} characters / {result.sql_bytes} bytes
 - Timing: oracle {result.oracle_ms:.3f} ms, compile {result.compile_ms:.3f} ms, execute {result.execute_ms:.3f} ms
 

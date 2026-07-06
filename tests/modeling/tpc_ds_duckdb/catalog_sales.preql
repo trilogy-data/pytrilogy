@@ -11,11 +11,11 @@ import date as ship_date;
 import date as sold_date;
 import time as time;
 import customer as ship_customer; # the ship-to customer's latest/current records
-import customer as bill_customer; # the bill-to customer's latest/current records
+import customer as billing_customer; # the bill-to customer's latest/current records
 import call_center as call_center;
 import catalog_page as catalog_page;
 import warehouse as warehouse;
-import customer_demographic as bill_customer_demographic; # customer demographics recorded at the time of the sale 
+import customer_demographic as billing_customer_demographic; # customer demographics recorded at the time of the sale 
 import household_demographic as bill_household_demographic; # household demographics recorded at the time of the sale
 import promotion as promotion;
 import ship_mode as ship_mode;
@@ -61,8 +61,8 @@ datasource catalog_sales (
     CS_SHIP_DATE_SK: ?ship_date.id, 
     CS_SHIP_CUSTOMER_SK: ?ship_customer.id,
     CS_SHIP_ADDR_SK: ?customer_address.id, 
-    CS_BILL_CUSTOMER_SK: ?bill_customer.id,
-    CS_BILL_CDEMO_SK: ?bill_customer_demographic.id,
+    CS_BILL_CUSTOMER_SK: ?billing_customer.id,
+    CS_BILL_CDEMO_SK: ?billing_customer_demographic.id,
     CS_BILL_HDEMO_SK: ?bill_household_demographic.id,
     CS_BILL_ADDR_SK: ?bill_address.id,
     CS_ITEM_SK: item.id,

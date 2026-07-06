@@ -36,6 +36,8 @@ union all
 select 3, 20, 1, 1.0, 1999
 union all
 select 4, 30, 4, 10.0, 2000
+union all
+select 5, 40, 1, -8.0, 2001
 ''';
 """
 
@@ -50,8 +52,10 @@ select best_cust.cid order by best_cust.cid asc;
     exec = Dialects.DUCK_DB.default_executor()
     sql = exec.generate_sql(query)
     assert "INVALID_REFERENCE" not in sql[-1]
-    # max co-grained to the select grain is identity, so the HAVING is a
-    # tautology over positive totals: every customer survives
+    # the bare max inherits the body select's grain {cid}, so overall_max is
+    # per-customer identity: `t > 0.5*t` holds for positive totals and fails
+    # for negative ones — cust 40 (-8.0) must drop, proving the HAVING binds
+    # to the rowset column and is genuinely applied
     rows = exec.execute_query(query).fetchall()
     assert [r.best_cust_cid for r in rows] == [10, 20, 30]
 

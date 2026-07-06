@@ -90,7 +90,11 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 ### Not SQL — what to never write
 
 - **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
-- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate across all data (a single row output).
+- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. 
+   Use explicit grain agg(x) by <dims> as needed to override the default. 
+   Use `by *` to aggregate across all data (a single row output).
+   auto x_resp <- sum(y); # responsive to query grain if you select x_resp
+   auto x_fixed <- sum(y) by *; # always a single row output, regardless of query grain
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
@@ -144,7 +148,8 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 
 ## Aggregation and grouping
 
-- Aggregates group at the query's automatic grain by default; override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
+- Aggregates group at the query's automatic grain by default; 
+- override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens — function calls, casts, arithmetic: `avg(price) by (substring(phone, 1, 2))`.
 - **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) is a property of the WHOLE select — a clause after the select list (before `order by`/`limit`) that computes the query at multiple grain levels in one pass. It applies to EVERY aggregate in the select that has no explicit `by` grain, so there is exactly one consistent grouping:
   - `select d1, d2, agg(<expr>) as a by rollup (d1, d2)` → grouping sets `(d1, d2)`, `(d1)`, `()` — standard SQL ROLLUP, useful for subtotals + grand total.

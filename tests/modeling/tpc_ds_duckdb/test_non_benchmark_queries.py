@@ -613,7 +613,7 @@ def test_where_clause_inputs(engine):
     y = """import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 
-merge catalog_sales.bill_customer.id into store_sales.customer.id;
+merge catalog_sales.billing_customer.id into store_sales.customer.id;
 merge catalog_sales.item.id into store_sales.item.id;
 
 SELECT 

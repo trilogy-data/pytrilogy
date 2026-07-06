@@ -435,12 +435,29 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             if k != concept_name and k.rsplit(".", 1)[-1] == leaf
         ]
 
-        fuzzy = difflib.get_close_matches(
-            strip_local(concept_name), [strip_local(x) for x in keys]
+        stripped_q = strip_local(concept_name)
+        stripped_keys = [strip_local(x) for x in keys]
+        fuzzy = difflib.get_close_matches(stripped_q, stripped_keys)
+
+        # Same-namespace fuzzy: when the reference is namespaced (`cs.x`), a fuzzy
+        # match sharing that leading segment (`cs.bill_customer.id` for the typo
+        # `cs.billing_customer.id`) is a far stronger signal than the generic
+        # same-leaf flood or an identical name in a *different* namespace
+        # (`ws.billing_customer.id`). Without this, a common leaf like `id` fills
+        # every slot with unrelated `*.id` concepts and buries the near-miss.
+        ns = stripped_q.split(".", 1)[0] if "." in stripped_q else None
+        same_ns_fuzzy = (
+            difflib.get_close_matches(
+                stripped_q, [k for k in stripped_keys if k.split(".", 1)[0] == ns]
+            )
+            if ns
+            else []
         )
-        # Prefer partial-path, then exact-leaf, then fuzzy, de-duplicated, capped.
+
+        # Prefer partial-path, then same-namespace near-miss, then general fuzzy,
+        # then the same-leaf flood — de-duplicated, capped.
         out: list[str] = []
-        for m in path_matches + leaf_matches + fuzzy:
+        for m in path_matches + same_ns_fuzzy + fuzzy + leaf_matches:
             if m not in out:
                 out.append(m)
         return out[:6]

@@ -13,6 +13,7 @@ def _case(
     tags: Iterable[str],
     body: str,
     oracle_body: str,
+    accepted_compile_errors: tuple[str, ...] = (),
 ) -> FuzzCase:
     case_id = f"{seed.name}__{family}__{name}"
     oracle = f"with {seed.oracle_ctes()}\n{oracle_body.strip()}"
@@ -27,6 +28,7 @@ def _case(
         tags=normalized_tags,
         trilogy=seed.trilogy_model() + body.strip() + "\n",
         oracle_sql=oracle,
+        accepted_compile_errors=accepted_compile_errors,
     )
 
 
@@ -1960,6 +1962,11 @@ order by c.gid asc nulls last
                 ),
                 body,
                 oracle,
+                (
+                    ("DisconnectedConceptsException",)
+                    if "base_where" in variant_tags
+                    else ()
+                ),
             )
         )
     return cases

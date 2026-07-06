@@ -29,6 +29,43 @@ from trilogy.scripts.file_helpers.preql_validation import validate_preql_content
 _FETCH_SCHEMES = {"http", "https", "file"}
 
 
+def _last_statement_sql(path: str) -> str | None:
+    """Best-effort compile of a just-written ``.preql`` to the SQL of its last
+    generatable statement, surfaced to agents so they can inspect the codegen
+    before running. Returns None (never raises) when no engine is configured,
+    the file has no output statement, or compilation fails — the write itself
+    has already succeeded and been syntax-validated."""
+    import contextlib
+    import io
+
+    try:
+        from trilogy.scripts.common import create_executor, get_runtime_config
+
+        resolved = Path(path).resolve()
+        directory = resolved.parent
+        config = get_runtime_config(directory)
+        if not config.engine_dialect:
+            return None
+        # Swallow executor build/startup chatter (JSON events, startup prints);
+        # only the caller's own event should carry the SQL.
+        with contextlib.redirect_stdout(io.StringIO()):
+            executor = create_executor(
+                param=(),
+                directory=directory,
+                conn_args=(),
+                edialect=config.engine_dialect,
+                debug=False,
+                config=config,
+            )
+            statements = executor.parse_file(resolved)
+            if not statements:
+                return None
+            sql = executor.generate_sql(statements[-1])
+        return sql[-1] if sql else None
+    except Exception:
+        return None
+
+
 def _fetch_url(url: str, timeout: float = 30.0) -> bytes:
     scheme = urlparse(url).scheme
     if scheme not in _FETCH_SCHEMES:
@@ -334,10 +371,17 @@ def write_cmd(
 
     if quiet:
         return
+    # Feed the just-written query's codegen back to the caller so an agent can
+    # inspect the generated SQL (e.g. spot a degenerate GROUP BY) before running.
+    last_sql = (
+        _last_statement_sql(path) if not force and path.endswith(".preql") else None
+    )
     if is_json_mode():
-        emit_event("write", path=path, bytes=len(data))
+        emit_event("write", path=path, bytes=len(data), last_statement_sql=last_sql)
     else:
         print_success(f"Wrote {len(data)} byte(s) to {path}")
+        if last_sql:
+            print_info(f"Generated SQL (last statement):\n{last_sql}")
 
 
 @file.command("delete")

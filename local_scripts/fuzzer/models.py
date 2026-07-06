@@ -132,6 +132,7 @@ class FuzzCase:
     tags: tuple[str, ...]
     trilogy: str
     oracle_sql: str
+    accepted_compile_errors: tuple[str, ...] = ()
 
 
 def sql_literal(value: Scalar) -> str:

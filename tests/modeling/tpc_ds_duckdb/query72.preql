@@ -4,7 +4,7 @@ import inventory as inv;
 where
     cs.sold_date.year = 1999
     and cs.bill_household_demographic.buy_potential = '>10000'
-    and cs.bill_customer_demographic.marital_status = 'D'
+    and cs.billing_customer_demographic.marital_status = 'D'
     and inv.date.week_seq = cs.sold_date.week_seq
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity

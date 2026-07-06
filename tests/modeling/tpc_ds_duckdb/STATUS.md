@@ -150,9 +150,9 @@ exercising different planner paths — they share an SQL reference.)
   `align` (see `query64.preql`).
 
 - **`group <prop> by <keys>` re-grains a dim property (q18).** When you need
-  `avg(dim.prop) row-weighted by fact rows`, the naive `avg(catalog_sales.bill_customer.birth_year)`
+  `avg(dim.prop) row-weighted by fact rows`, the naive `avg(catalog_sales.billing_customer.birth_year)`
   computes at customer.id grain (each distinct customer counted once). Use
-  `auto row_birth_year <- group catalog_sales.bill_customer.birth_year by
+  `auto row_birth_year <- group catalog_sales.billing_customer.birth_year by
   catalog_sales.order_number, catalog_sales.item.id;` to broadcast the
   property to the row grain, then `avg(row_birth_year)` weights correctly.
   Prefer this over declaring `property <key1, key2>.x <- prop` which can
@@ -215,7 +215,7 @@ rowset shape with per-(brand,class,cat,manufact) curr/prev aggregates.)
 
 Blocked by missing `unified_sales` features:
 
-- **q10, q35** — reference SQL is asymmetric: `ws_bill_customer_sk` for web but
+- **q10, q35** — reference SQL is asymmetric: `ws_billing_customer_sk` for web but
   `cs_ship_customer_sk` for catalog. unified_sales currently maps both web and
   catalog to bill-side customer. Would need a `ship_customer` concept added to
   unified_sales (mapped from WS_SHIP_CUSTOMER_SK / CS_SHIP_CUSTOMER_SK; falls back

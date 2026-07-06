@@ -18,6 +18,14 @@ from pathlib import Path
 
 _RUN_RE = re.compile(r"\.r(\d+)\.jsonl$")
 _QID_RE = re.compile(r"\.q(\d+)\.jsonl$")
+_QID_ANY = re.compile(r"\.q(\d+)\b")  # query id in either eval or repeat log names
+# Which candidate/canonical extension each eval leg authors.
+_CATEGORY_EXT = {
+    "enriched": "preql",
+    "ingest": "preql",
+    "sql_bare": "sql",
+    "sql_schema": "sql",
+}
 
 
 def _call_label(name: str, args: list[str]) -> str:
@@ -167,13 +175,130 @@ def _load_eval_report(results_dir: Path) -> dict[int, dict]:
     return by_id
 
 
+def _find_ref_dir(results_dir: Path) -> Path | None:
+    """Locate the hand-authored canonical query dir by walking up to the repo root."""
+    for anc in results_dir.parents:
+        cand = anc / "tests" / "modeling" / "tpc_ds_duckdb"
+        if cand.is_dir():
+            return cand
+    return None
+
+
+def _read_query(base: Path | None, qid: int, ext: str) -> dict | None:
+    if base is None:
+        return None
+    for name in (f"query{qid:02d}.{ext}", f"query{qid}.{ext}"):
+        p = base / name
+        if p.exists():
+            return {
+                "name": name,
+                "lang": ext,
+                "src": p.read_text(encoding="utf-8"),
+                "_path": p,
+                "_base": base,
+            }
+    return None
+
+
+# --- preql → SQL transpilation (best-effort; the viewer stays usable without it) ---
+_TRANSPILE_ENGINE: object | None = None
+_ENGINE_FAILED = False
+_SQL_CACHE: dict[tuple, tuple] = {}  # (path, mtime, working_path) -> (sql, is_error)
+_PARAMS: dict[int, dict] | None = None
+
+
+def _transpile_engine():
+    """A DB-less in-memory DuckDB executor reused across renders — generate_sql is
+    pure transpilation, so we never open the (large) workspace database."""
+    global _TRANSPILE_ENGINE, _ENGINE_FAILED
+    if _TRANSPILE_ENGINE is None and not _ENGINE_FAILED:
+        try:
+            from trilogy import Dialects
+            from trilogy.core.models.environment import Environment
+            from trilogy.dialect.config import DuckDBConfig
+
+            _TRANSPILE_ENGINE = Dialects.DUCK_DB.default_executor(
+                environment=Environment(), conf=DuckDBConfig()
+            )
+        except Exception:
+            _ENGINE_FAILED = True
+    return _TRANSPILE_ENGINE
+
+
+def _load_params() -> dict[int, dict]:
+    global _PARAMS
+    if _PARAMS is None:
+        _PARAMS = {}
+        pf = Path(__file__).parent / "query_prompts.json"
+        if pf.exists():
+            data = json.loads(pf.read_text(encoding="utf-8"))
+            qs = data.get("queries", []) if isinstance(data, dict) else data
+            _PARAMS = {q["id"]: q["params"] for q in qs if q.get("params")}
+    return _PARAMS
+
+
+def _render_sql(text: str, working_path: Path, params: dict | None) -> tuple[str, bool]:
+    engine = _transpile_engine()
+    if engine is None:
+        return "", True
+    from trilogy.core.models.environment import Environment
+
+    try:
+        engine.environment = Environment(working_path=working_path)
+        if params:
+            engine.environment.set_parameters(
+                **{name: spec.get("value") for name, spec in params.items()}
+            )
+        statements = engine.generate_sql(text)
+        return (statements[-1] if statements else "-- (no statement)"), False
+    except Exception as exc:
+        return f"{type(exc).__name__}: {exc}", True
+
+
+def _augment_sql(q: dict | None, params: dict | None) -> dict | None:
+    """Attach rendered SQL (cached by file mtime) and strip internal path fields."""
+    if q is None:
+        return None
+    base, path = q.pop("_base"), q.pop("_path")
+    if q["lang"] != "preql":
+        q["sql"], q["sqlError"] = q["src"], False  # SQL legs: candidate is already SQL
+        return q
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    key = (str(path), mtime, str(base))
+    if key not in _SQL_CACHE:
+        _SQL_CACHE[key] = _render_sql(q["src"], base, params)
+    q["sql"], q["sqlError"] = _SQL_CACHE[key]
+    return q
+
+
+def _run_category(results_dir: Path) -> str | None:
+    """The eval leg (enriched/ingest/sql_bare/sql_schema) — picks the query language."""
+    rp = results_dir / "repeat_report.json"
+    if rp.exists():
+        return json.loads(rp.read_text(encoding="utf-8")).get("meta", {}).get("mode")
+    ep = results_dir / "report.json"
+    if ep.exists():
+        return (
+            json.loads(ep.read_text(encoding="utf-8")).get("meta", {}).get("category")
+        )
+    return None
+
+
 def collect(results_dir: Path) -> list[dict]:
     report = {}
+    repeat_qid = None
     rp = results_dir / "repeat_report.json"
     if rp.exists():
         data = json.loads(rp.read_text(encoding="utf-8"))
         report = {r["rep"]: r for r in data.get("runs", [])}
+        repeat_qid = data.get("meta", {}).get("query_id")
     eval_report = _load_eval_report(results_dir)
+    ext = _CATEGORY_EXT.get(_run_category(results_dir) or "", "preql")
+    ref_dir = _find_ref_dir(results_dir)
+    workspace = results_dir / "workspace"
     runs: list[dict] = []
     for path in sorted(results_dir.glob("agent_log.*.jsonl")):
         m = _RUN_RE.search(path.name)
@@ -185,6 +310,19 @@ def collect(results_dir: Path) -> list[dict]:
         parsed = parse_log(path)
         # Derived per-run metrics fill gaps; authoritative report values win.
         metrics = {**parsed["derived"], **reported}
+        qany = _QID_ANY.search(path.name)
+        qid = int(qany.group(1)) if qany else repeat_qid
+        queries = {}
+        if qid is not None:
+            # Candidate at workspace root (single-leg runs), else the rep's worker dir.
+            candidate = _read_query(workspace, qid, ext) or _read_query(
+                workspace / f"_worker_{rep}", qid, ext
+            )
+            params = _load_params().get(qid)
+            queries = {
+                "candidate": _augment_sql(candidate, params),
+                "canonical": _augment_sql(_read_query(ref_dir, qid, ext), params),
+            }
         runs.append(
             {
                 "name": path.name.replace("agent_log.", "").replace(".jsonl", ""),
@@ -192,6 +330,7 @@ def collect(results_dir: Path) -> list[dict]:
                 "meta": parsed["meta"],
                 "timeline": parsed["timeline"],
                 "metrics": metrics,
+                "queries": queries,
             }
         )
     return runs
@@ -248,6 +387,23 @@ _HTML = r"""<!doctype html>
   #runbar label { font-size:11px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
   #runsel { width:100%; margin-top:5px; background:var(--panel2); color:var(--txt);
             border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; }
+  .cmpbar { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .cmpbtn { background:var(--panel2); color:var(--txt); border:1px solid var(--border);
+            border-radius:6px; padding:5px 12px; font-size:12px; cursor:pointer; }
+  .cmpbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .cmpsel { background:var(--panel2); color:var(--txt); border:1px solid var(--border);
+            border-radius:6px; padding:5px 8px; font-size:12px; cursor:pointer; }
+  .cmp { display:flex; gap:12px; margin-bottom:20px; }
+  .cmp-col { flex:1; min-width:0; }
+  .cmp-h { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:4px; }
+  .cmp-col pre { margin:0; max-height:70vh; }
+  .code.err { color:var(--err); white-space:pre-wrap; }
+  .hl-kw { color:#ff7ab6; font-weight:600; }
+  .hl-st { color:#7ee787; }
+  .hl-id { color:#79c0ff; }
+  .hl-cm { color:#8b93a7; font-style:italic; }
+  .hl-nu { color:#f0a45d; }
+  .hl-op { color:#ff7ab6; }
 </style>
 </head>
 <body>
@@ -265,8 +421,51 @@ let selectedName = RUNS.length ? RUNS[0].name : null;
 let lastPayload = null;
 let expanded = new Set();   // keys of tool-result blocks the user expanded (current run)
 let currentRun = null;   // which results dir we're viewing (null until runs.json loads)
+let compareOpen = false;   // side-by-side canonical vs agent query panel (per run)
+let compareView = 'src';   // 'src' (preql/sql source) or 'sql' (rendered SQL)
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
+
+const SQL_KW = new Set(('select from where group by order having limit offset join left right '
+  + 'full inner outer cross on using as and or not in is null case when then else end with union '
+  + 'all distinct asc desc between like ilike over partition rows range unbounded preceding '
+  + 'following current row cast exists interval coalesce nulls first last').split(' '));
+const PREQL_KW = new Set(('import as auto def rowset merge property key datasource grain address '
+  + 'where select order by having limit filter into with union all and or not is null case when '
+  + 'then else end between like over partition asc desc true false raw const type persist show '
+  + 'rollup by where').split(' '));
+function sp(c,t){ return `<span class="hl-${c}">${esc(t)}</span>`; }
+function hl(code, lang){
+  const kw = lang==='preql' ? PREQL_KW : SQL_KW;
+  const re = /(--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(<-|->|::|\?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+  let out='', last=0, m;
+  while((m=re.exec(code))){
+    out += esc(code.slice(last, m.index));
+    last = re.lastIndex;
+    if(m[1]) out += sp('cm', m[1]);
+    else if(m[2]) out += sp('st', m[2]);
+    else if(m[3]) out += sp('id', m[3]);
+    else if(m[4]) out += sp('op', m[4]);
+    else if(m[5]) out += sp('nu', m[5]);
+    else out += SQL_KW.has(m[6].toLowerCase()) || kw.has(m[6].toLowerCase()) ? sp('kw', m[6]) : esc(m[6]);
+  }
+  return out + esc(code.slice(last));
+}
+function hasPreql(q){ return ['candidate','canonical'].some(k=>q[k] && q[k].lang==='preql'); }
+function compareHtml(run){
+  const q = run.queries||{};
+  if(!q.candidate && !q.canonical) return '';
+  const sql = compareView==='sql';
+  const body = o => {
+    if(!o) return `<pre class="code">(not found)</pre>`;
+    const txt = sql ? o.sql : o.src, lang = sql ? 'sql' : o.lang;
+    if(sql && o.sqlError) return `<pre class="code err">${esc(txt)}</pre>`;
+    return `<pre class="code">${hl(txt, lang)}</pre>`;
+  };
+  const label = o => !o ? 'n/a' : o.name + (sql && o.lang==='preql' ? ' → SQL' : '');
+  const col = (who,o) => `<div class="cmp-col"><div class="cmp-h">${esc(who)} · ${esc(label(o))}</div>${body(o)}</div>`;
+  return `<div class="cmp">`+col('canonical', q.canonical)+col('agent', q.candidate)+`</div>`;
+}
 
 function renderRun(run, keepScroll){
   const m = run.metrics||{}, meta = run.meta||{};
@@ -278,6 +477,19 @@ function renderRun(run, keepScroll){
         + `${meta.provider||''} ${meta.model||''} ${m.duration_seconds?('· '+m.duration_seconds+'s'):''}</div>`;
   if(m.detail) h += `<div class="meta" style="color:var(--err)">${esc(m.detail)}</div>`;
   h += `<div id="task">${esc(meta.task)}</div>`;
+  const q = run.queries||{};
+  if(q.candidate || q.canonical){
+    h += `<div class="cmpbar"><button class="cmpbtn" onclick="toggleCompare()">`
+       + `${compareOpen?'Hide':'Compare'} canonical vs agent query</button>`;
+    if(compareOpen && hasPreql(q)){
+      h += `<select class="cmpsel" onchange="setCompareView(this.value)">`
+         + `<option value="src"${compareView==='src'?' selected':''}>Trilogy (preql)</option>`
+         + `<option value="sql"${compareView==='sql'?' selected':''}>Rendered SQL</option></select>`;
+    }
+    if(compareOpen) h += `<button class="cmpbtn" onclick="copyBoth(this)">Copy both</button>`;
+    h += `</div>`;
+    if(compareOpen) h += compareHtml(run);
+  }
   for(let i=0;i<run.timeline.length;i++){
     const ev = run.timeline[i];
     if(ev.role==='assistant'){
@@ -322,6 +534,39 @@ function toggleOut(head){
   const pre = head.nextElementSibling, k = head.dataset.key;
   if(pre.classList.toggle('show')) expanded.add(k); else expanded.delete(k);
 }
+function toggleCompare(){
+  compareOpen = !compareOpen;
+  const sel = RUNS.find(r=>r.name===selectedName);
+  if(sel) renderRun(sel, true);
+}
+function setCompareView(v){
+  compareView = v;
+  const sel = RUNS.find(r=>r.name===selectedName);
+  if(sel) renderRun(sel, true);
+}
+function writeClip(text){
+  if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+  return new Promise((res,rej)=>{
+    const ta=document.createElement('textarea'); ta.value=text;
+    ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); res(); }catch(e){ rej(e); } finally{ document.body.removeChild(ta); }
+  });
+}
+function copyBoth(btn){
+  const run = RUNS.find(r=>r.name===selectedName);
+  if(!run) return;
+  const q = run.queries||{}, sql = compareView==='sql';
+  const suffix = o => sql && o.lang==='preql' ? ' → SQL' : '';
+  const block = (who,o) => {
+    if(!o) return `-- ===== ${who} (n/a) =====\n(not found)`;
+    const err = sql && o.sqlError ? '-- (render error)\n' : '';
+    return `-- ===== ${who} (${o.name}${suffix(o)}) =====\n` + err + (sql ? o.sql : o.src);
+  };
+  const text = block('CANONICAL', q.canonical) + '\n\n' + block('AGENT', q.candidate) + '\n';
+  const old = btn.textContent;
+  writeClip(text).then(()=>{ btn.textContent='Copied ✓'; }).catch(()=>{ btn.textContent='Copy failed'; });
+  setTimeout(()=>{ btn.textContent=old; }, 1200);
+}
 
 function markActive(){
   document.querySelectorAll('.run').forEach(n=>
@@ -336,7 +581,7 @@ function renderSide(){
   }).join('');
   el.querySelectorAll('.run').forEach(node=>{
     node.onclick = ()=>{ selectedName = RUNS[+node.dataset.i].name; expanded = new Set();
-      markActive(); renderRun(RUNS[+node.dataset.i], false); };
+      compareOpen = false; markActive(); renderRun(RUNS[+node.dataset.i], false); };
   });
   markActive();
 }
@@ -383,7 +628,7 @@ async function loadRuns(){
 }
 function onRunChange(){
   currentRun = document.getElementById('runsel').value;
-  selectedName = null; lastPayload = null; expanded = new Set();   // reset for the new run
+  selectedName = null; lastPayload = null; expanded = new Set(); compareOpen = false;   // reset for the new run
   loadData();
 }
 applyData(RUNS, false);

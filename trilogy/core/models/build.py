@@ -2836,68 +2836,6 @@ class Factory:
             expand(component)
         return Grain(components=set(out), component_order=out)
 
-    def _rowset_derived(self, address: str, seen: set[str] | None = None) -> bool:
-        seen = seen if seen is not None else set()
-        if address in seen or address not in self.environment.concepts:
-            return False
-        seen.add(address)
-        concept = self.environment.concepts[address]
-        if concept.derivation == Derivation.ROWSET:
-            return True
-        if concept.derivation == Derivation.BASIC and concept.lineage:
-            return any(
-                self._rowset_derived(ref.address, seen)
-                for ref in concept.lineage.concept_arguments
-            )
-        return False
-
-    def _degenerate_aggregate_cograin(self, base: Concept, grain: Grain) -> bool:
-        """True when co-graining the bare aggregate `base` to `grain` would be
-        degenerate: every aggregate input is a rowset column (or a BASIC wrap
-        of one) functionally determined by the grain, so each group holds one
-        distinct value and the aggregation silently renders as identity
-        (`max(rs.x)` grouped by rs's own grain == `rs.x`; a gate like
-        `rs.x > 0.5 * max(rs.x)` then collapses to `x > 0.5*x`). Only consulted
-        for WHERE/filter co-graining (`aggregate_grain` factories): a rowset
-        output defines its own row identity, so re-aggregating one back onto
-        its own grain is never the author's intent — resolve the aggregate as
-        a global single-row scalar instead. Non-rowset inputs keep the
-        documented select-grain co-grain even when degenerate."""
-        if self.aggregate_grain is None or not grain.components:
-            return False
-        lineage = (
-            base.lineage.content
-            if isinstance(base.lineage, FunctionCallWrapper)
-            else base.lineage
-        )
-        if isinstance(lineage, AggregateWrapper):
-            if lineage.by:
-                return False
-            args = lineage.function.concept_arguments
-        elif isinstance(lineage, Function):
-            args = lineage.concept_arguments
-        else:
-            return False
-        if not args:
-            return False
-        if not any(self._rowset_derived(ref.address) for ref in args):
-            return False
-        components = set(grain.components)
-        for ref in args:
-            if ref.address in components:
-                continue
-            if ref.address not in self.environment.concepts:
-                return False
-            arg = self.environment.concepts[ref.address]
-            arg_components = set(arg.grain.components)
-            if (
-                arg.grain.abstract
-                or not arg_components
-                or not arg_components.issubset(components)
-            ):
-                return False
-        return True
-
     def _build_concept(self, base: Concept) -> BuildConcept:
         # Build-scoped merge collapse: build the canonical target instead of a
         # merged-away source. Every concept lookup (refs, grain components,
@@ -2985,10 +2923,6 @@ class Factory:
         resolution_grain = (
             self._abstract_resolution_grain() if base.is_aggregate else self.grain
         )
-        if base.is_aggregate and self._degenerate_aggregate_cograin(
-            base, resolution_grain
-        ):
-            resolution_grain = Grain()
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             resolution_grain, self.environment
         )

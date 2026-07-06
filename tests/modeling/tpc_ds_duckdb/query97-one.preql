@@ -11,7 +11,7 @@ auto store_sales <- customer_item ? store_sales.date.month_seq between 1200 and 
 
 left join customer.id = store_sales.customer.id
 left join item.id = store_sales.item.id
-left join customer.id = catalog_sales.bill_customer.id
+left join customer.id = catalog_sales.billing_customer.id
 left join item.id = catalog_sales.item.id
 select
     sum(

@@ -43,7 +43,9 @@ ERROR_CODES: dict[int, str] = {
     ),
     213: (
         "A `by <grain>` clause must follow an aggregate, but the expression "
-        "before it has none. To take each distinct value once per grain, wrap it "
+        "before it has none. If the `by` sits inside an aggregate's "
+        "parentheses (`max(x by *)`), move it outside the call: `max(x) by *`. "
+        "To take each distinct value once per grain, wrap it "
         "in `group(...)` - e.g. `group(item.current_price) by item.id, "
         "item.category`. For a reduction, use an aggregate: `sum(x) by ...`, "
         "`avg(x) by ...`, `max(x) by ...`."
