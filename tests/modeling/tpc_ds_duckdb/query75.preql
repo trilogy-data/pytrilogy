@@ -1,48 +1,33 @@
 import all_sales as sales;
 
-# q75: year-over-year book sales count comparison, as a query-scoped `join`.
-# UNION DISTINCT semantics in the reference's `sales_detail` subquery dedups rows
-# with identical (year, brand, class, cat, manufact, cnt_per_row, amt_per_row)
-# tuples — including across cs/ss/ws — before the outer SUM. The `deduped` rowset
-# materializes that 7-tuple via implicit GROUP BY at SELECT grain; the per-year
-# `curr`/`prev` rowsets each roll the deduped rows up to item-attribute grain, and
-# the left join on the 4 item-attribute keys reproduces the reference's
-# `from all_sales curr_yr, all_sales prev_yr where curr_yr.<key> = prev_yr.<key>`
-# (the `curr_yr_cnt / prev_yr_cnt < 0.9` HAVING requires prev present, so left ==
-# inner here).
+# q75: year-over-year Books sales-count comparison across store, catalog and web.
+# Per-line net = sale minus its matched return (returns are unified onto the same
+# (item, order, channel) line grain, so a missing return is simply absent - no
+# join or dedup step needed). Aggregate each year to the item-attribute grain,
+# then join 2002 vs 2001 on the 4 keys. (This uses UNION ALL semantics - every
+# line contributes; see query75.sql, which deviates from the official q75's
+# artificial UNION-DISTINCT on purpose.)
 auto cnt_per_row <- sales.quantity - coalesce(sales.return_quantity, 0);
 auto amt_per_row <- sales.ext_sales_price - coalesce(sales.return_amount, 0.0);
 
-rowset deduped <- where
-    sales.item.category = 'Books' and sales.date.year in (2001, 2002)
+rowset curr <- where sales.item.category = 'Books' and sales.date.year = 2002
 select
-    sales.date.year,
-    sales.item.brand_id,
-    sales.item.class_id,
-    sales.item.category_id,
-    sales.item.manufacturer_id,
-    cnt_per_row,
-    amt_per_row,
+    sales.item.brand_id as i_brand_id,
+    sales.item.class_id as i_class_id,
+    sales.item.category_id as i_category_id,
+    sales.item.manufacturer_id as i_manufact_id,
+    sum(cnt_per_row) as curr_cnt,
+    sum(amt_per_row) as curr_amt,
 ;
 
-rowset curr <- where deduped.sales.date.year = 2002
+rowset prev <- where sales.item.category = 'Books' and sales.date.year = 2001
 select
-    deduped.sales.item.brand_id as i_brand_id,
-    deduped.sales.item.class_id as i_class_id,
-    deduped.sales.item.category_id as i_category_id,
-    deduped.sales.item.manufacturer_id as i_manufact_id,
-    sum(deduped.cnt_per_row) as curr_cnt,
-    sum(deduped.amt_per_row) as curr_amt,
-;
-
-rowset prev <- where deduped.sales.date.year = 2001
-select
-    deduped.sales.item.brand_id as i_brand_id,
-    deduped.sales.item.class_id as i_class_id,
-    deduped.sales.item.category_id as i_category_id,
-    deduped.sales.item.manufacturer_id as i_manufact_id,
-    sum(deduped.cnt_per_row) as prev_cnt,
-    sum(deduped.amt_per_row) as prev_amt,
+    sales.item.brand_id as i_brand_id,
+    sales.item.class_id as i_class_id,
+    sales.item.category_id as i_category_id,
+    sales.item.manufacturer_id as i_manufact_id,
+    sum(cnt_per_row) as prev_cnt,
+    sum(amt_per_row) as prev_amt,
 ;
 
 left join curr.i_brand_id = prev.i_brand_id

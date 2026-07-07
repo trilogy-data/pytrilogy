@@ -4,7 +4,7 @@
 
 import std.money;
 
-key id int; # Surrogate key (one row per SCD version of an item; SEVERAL ids share one text_id). Do NOT group/report per-item by this — it splits an item across versions. Use text_id.
+key id int; # Surrogate key (one row per SCD version of an item; SEVERAL ids share one text_id).
 
 properties id (
     text_id string, # The item's business "item code" (i_item_id, 16-char). The typical per-item identifier: use this for per-item results, not the surrogate id. Not unique - this table is an SCD.
