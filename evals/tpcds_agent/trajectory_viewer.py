@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """Bundle agent trajectory logs into one self-contained HTML viewer.
 
-    python trajectory_viewer.py <results_dir> [--serve PORT]
+    python trajectory_viewer.py [results_dir] [--serve PORT]
+
+``results_dir`` defaults to the run dir with the most recently modified log.
 
 Reads every ``agent_log.*.jsonl`` in the directory (plus ``repeat_report.json``
 for per-run status/metrics when present) and writes ``<results_dir>/viewer.html``
@@ -641,6 +643,16 @@ setInterval(loadRuns, 10000);
 """
 
 
+def _latest_results_dir() -> Path:
+    """The dir holding the most recently modified ``agent_log.*.jsonl`` — the
+    default when no dir is passed, so `python trajectory_viewer.py` just works."""
+    search_root = Path(__file__).parent
+    logs = list(search_root.glob("**/agent_log.*.jsonl"))
+    if not logs:
+        raise SystemExit(f"no agent_log.*.jsonl found under {search_root}")
+    return max(logs, key=lambda p: p.stat().st_mtime).parent
+
+
 def build_html(results_dir: Path) -> Path:
     runs = collect(results_dir)
     if not runs:
@@ -655,17 +667,22 @@ def build_html(results_dir: Path) -> Path:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("results_dir", type=Path)
+    p.add_argument(
+        "results_dir",
+        type=Path,
+        nargs="?",
+        help="run dir to view (default: the most recently updated one)",
+    )
     p.add_argument("--serve", type=int, default=None, help="serve the dir on this port")
     args = p.parse_args()
-    build_html(args.results_dir)
+    results_dir = args.results_dir or _latest_results_dir()
+    build_html(results_dir)
     if args.serve is not None:
         import functools
         import http.server
         import socketserver
         import urllib.parse
 
-        results_dir = args.results_dir
         root = results_dir.parent  # sibling run dirs live alongside us
 
         def list_run_dirs() -> list[str]:

@@ -1,5 +1,30 @@
 # Handoff — q54: `subset join` with a ROWSET superset anchor renders FULL+coalesce (non-members leak)
 
+## ⛔ REFUTED 2026-07-07 — NOT A FRAMEWORK BUG (documented row-preserving semantics)
+
+The "leak" is the **documented, deliberate** semantics of a subset/left/partial-merge
+relation onto a **FILTERED** superset anchor: narrowing to a directional (member-dropping)
+join fires ONLY when the superset side is provably value-complete. A filtered rowset
+superside **cannot prove containment**, so the preserving render stands and unmatched
+subset-side rows survive NULL-padded. This is the SAME rule already pinned by
+`tests/test_join_merge_parity.py::partial_merge_left_anchor` and
+`tests/test_scoped_join.py::test_rowset_outer_join_shared_base_no_fanout` — both explicitly
+comment "both rowsets are FILTERED, so the subset can't be proven … the preserving render
+stands." The subagent misidentified the flipping variable as **rowset-vs-plain anchor**; it
+is actually **filtered-vs-unfiltered superset**. Confirmed by repro: an *unfiltered* rowset
+anchor narrows identically to a plain datasource (drops the non-member). q54's agent was
+correct to use `in` (semijoin) for membership; `is not null` is the other documented idiom.
+
+Guard (executable refutation, pins all four behaviors):
+`tests/join_matrix/test_filtered_rowset_anchor.py`. Engine unchanged.
+
+**A candidate narrowing "fix" (trust the rowset body WHERE as a domain DEFINITION at its
+rename boundary) was prototyped and REJECTED** — it regressed both tests above by dropping
+the legitimately-preserved rows. Do not reopen without changing that documented contract.
+
+---
+_Original (refuted) report below._
+
 **Verification:** ⚠️ SUBAGENT-REPORTED — CONFIRM the repro before fixing. Detail report:
 `bug_q54_resolve_connections_sink_20260706.md`.
 

@@ -4,7 +4,22 @@ Date: 2026-07-06
 Run: `evals/tpcds_agent/results/20260706-222300` (q54 PASSES, ref 1 row / cand 1 row)
 Prior: `20260706-135542_enriched` (713k) → new 1.39M (+681k). No prior report.
 
-## Verdict
+## ⛔ REFUTED 2026-07-07 — verdict below was WRONG; NOT a framework bug
+
+The row-preserving render is the **documented** behavior of a subset/left/partial-merge
+relation onto a **FILTERED** superset anchor: directional (member-dropping) narrowing fires
+only when the superset is provably value-complete, and a filtered rowset cannot prove it.
+Already pinned by `partial_merge_left_anchor` and `test_rowset_outer_join_shared_base_no_fanout`.
+The "rowset-vs-plain anchor" isolation was a false lead — the real variable is
+**filtered-vs-unfiltered**: an *unfiltered* rowset anchor narrows exactly like a plain
+datasource (drops the non-member). Membership = `in` (semijoin, what the agent shipped) or
+explicit `is not null`. Guard: `tests/join_matrix/test_filtered_rowset_anchor.py`. See
+`handoffs/handoff_q54_subset_join_rowset_anchor_full_leak.md` for the full writeup and the
+rejected prototype fix.
+
+---
+
+## Verdict (SUPERSEDED — see refutation above)
 
 **REAL FRAMEWORK BUG (silent wrong rows), not agent error, not a guidance defect.**
 A query-scoped `subset join a = b` whose **superset anchor `b` is a ROWSET-derived key**

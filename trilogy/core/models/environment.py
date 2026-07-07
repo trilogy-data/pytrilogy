@@ -130,6 +130,20 @@ def _is_subsequence(needle: list[str], haystack: list[str]) -> bool:
     return all(seg in it for seg in needle)
 
 
+def _subsequence_gaps(needle: list[str], haystack: list[str]) -> int:
+    """Haystack segments skipped between the matched `needle` segments (greedy
+    earliest match); 0 == a contiguous run. Assumes `needle` is a subsequence of
+    `haystack`. Used to rank a partial-path match's tightness."""
+    positions: list[int] = []
+    i = 0
+    for seg in needle:
+        while haystack[i] != seg:
+            i += 1
+        positions.append(i)
+        i += 1
+    return positions[-1] - positions[0] - (len(positions) - 1)
+
+
 class EnvironmentConceptDict(UserDict[str, Concept]):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -413,7 +427,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # leaf doesn't match deep inside an unrelated path; ranked first because a
         # shared namespace prefix is a strong relevance signal.
         q_segs = strip_local(concept_name).split(".")
-        path_matches = (
+        path_candidates = (
             [
                 strip_local(k)
                 for k in keys
@@ -422,6 +436,19 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             ]
             if len(q_segs) >= 2
             else []
+        )
+        # Rank by closeness before the cap: fewest extra segments beyond the query,
+        # then the tightest (fewest-gap) match. So a bare-alias reference
+        # (`ns.alias` -> `ns.alias.id`, extra 1, contiguous) outranks a deep
+        # near-miss (`ns.other.alias.deep.id`, extra 3) even when the deep key was
+        # inserted first. Without the sort, dict-insertion order lets deep matches
+        # consume the 6-cap and bury the obvious shallow child.
+        path_matches = sorted(
+            path_candidates,
+            key=lambda m: (
+                len(m.split(".")) - len(q_segs),
+                _subsequence_gaps(q_segs, m.split(".")),
+            ),
         )
 
         # Leaf-name match: a bare reference like `first_name` (e.g. in ORDER BY,

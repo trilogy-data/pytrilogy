@@ -1,17 +1,18 @@
-# Trilogy failure analysis — 20260706-222300
+# Trilogy failure analysis — 20260707-033936
 
-- Run `20260706-222300` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 723 | failed: 87 (12%)
+- Run `20260707-033936` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 652 | failed: 69 (11%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 52 | 60% |
-| `syntax-parse` | 30 | 34% |
-| `cli-misuse` | 2 | 2% |
-| `syntax-missing-alias` | 2 | 2% |
-| `join-resolution` | 1 | 1% |
+| `other` | 42 | 61% |
+| `syntax-parse` | 20 | 29% |
+| `syntax-missing-alias` | 3 | 4% |
+| `planner-recursion` | 2 | 3% |
+| `cli-misuse` | 1 | 1% |
+| `undefined-concept` | 1 | 1% |
 
 ## Detail
 
@@ -20,7 +21,7 @@
 - `trilogy run query02.preql`
 
   ```text
-  Syntax error in query02.preql: Aggregate concept local.sun_ratio cannot reference itself. If defining a new concept in a select, use a new name.
+  Syntax error in query02.preql: Undefined concept: local.nxt_ws. Suggestions: ['nxt_sales']
   ```
 - `trilogy file read query02.preql`
 
@@ -32,40 +33,265 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query05.preql`
+- `trilogy run --import raw.all_sales:s select s.channel, count(s.row_counter) as cnt where s.date.date between '2000-08-23'::date and '2000-09-06'::date and s.channel_dim_id is not null;`
 
   ```text
-  Syntax error in query05.preql: SELECT output 'local.channel_label' is defined by an expression that references 'local.channel_label' itself (line 26). This is a recursive self-reference: an alias cannot redefine a name its own calculation reads. Rename the output to a distinct name (e.g. `... as channel_label_out`).
+  Syntax error in stdin: Undefined concept: s.row_counter (line 2, in SELECT).
   ```
-- `trilogy run query05.preql`
+- `trilogy run query11.preql`
 
   ```text
-  Syntax error in query05.preql: SELECT output 'local.channel_label' is defined by an expression that references 'local.channel_label' itself (line 26). This is a recursive self-reference: an alias cannot redefine a name its own calculation reads. Rename the output to a distinct name (e.g. `... as channel_label_out`).
+  Syntax error in query11.preql: 3 undefined concept references; fix all before re-running:
+    - first_name (line 59, col 5, in ORDER BY); did you mean: all.billing_customer.first_name, all.ship_customer.first_name, all.purchasing_customer.first_name, store_2001.all.billing_customer.first_name?
+    - last_name (line 60, col 5, in ORDER BY); did you mean: all.billing_customer.last_name, all.ship_customer.last_name, all.purchasing_customer.last_name, store_2001.all.billing_customer.last_name?
+    - preferred_cust_flag (line 61, col 5, in ORDER BY); did you mean: all.ship_customer.preferred_cust_flag, all.billing_customer.preferred_cust_flag, all.purchasing_customer.preferred_cust_flag, store_2002.all.billing_customer.preferred_cust_flag?
+  ```
+- `trilogy run query11.preql`
+
+  ```text
+  Syntax error in query11.preql: 13 undefined concept references; fix all before re-running:
+    - store_2001.all.billing_customer.revenue (line 40, col 5, in WHERE); did you mean: store_2001.all.billing_customer.id, store_2001.all.billing_customer.first_name, store_2001.all.billing_customer.last_name, store_2002.all.billing_customer.revenue, web_2001.all.billing_customer.revenue, web_2002.all.billing_customer.revenue?
+    - store_2002.all.billing_customer.revenue (line 41, col 9, in WHERE); did you mean: store_2002.all.billing_customer.id, store_2002.all.billing_customer.preferred_cust_flag, store_2002.revenue, store_2001.all.billing_customer.revenue, web_2002.all.billing_customer.revenue, web_2001.all.billing_customer.revenue?
+    - web_2001.all.billing_customer.revenue (line 42, col 9, in WHERE); did you mean: web_2001.all.billing_customer.id, web_2001.revenue, web_2002.all.billing_customer.revenue, store_2001.all.billing_customer.revenue, store_2002.all.billing_customer.revenue, store_2001.revenue?
+    - web_2002.all.billing_customer.revenue (line 43, col 9, in WHERE); did you mean: web_2002.all.billing_customer.id, web_2002.revenue, web_2001.all.billing_customer.revenue, store_2002.all.billing_customer.revenue, store_2001.all.billing_customer.revenue, store_2001.revenue?
+    - store_2001.all.billing_customer.revenue (line 45, col 9, in WHERE); did you mean: store_2001.all.billing_customer.id, store_2001.all.billing_customer.first_name, store_2001.all.billing_customer.last_name, store_2002.all.billing_customer.revenue, web_2001.all.billing_customer.revenue, web_2002.all.billing_customer.revenue?
+    - web_2001.all.billing_customer.revenue (line 46, col 9, in WHERE); did you mean: web_2001.all.billing_customer.id, web_2001.revenue, web_2002.all.billing_customer.revenue, store_2001.all.billing_customer.revenue, store_2002.all.billing_customer.revenue, store_2001.revenue?
+    - web_2002.all.billing_customer.revenue (line 38, in WHERE); did you mean: web_2002.all.billing_customer.id, web_2002.revenue, web_2001.all.billing_customer.revenue, store_2002.all.billing_customer.revenue, store_2001.all.billing_customer.revenue, store_2001.revenue?
+    - web_2001.all.billing_customer.revenue (line 38, in WHERE); did you mean: web_2001.all.billing_customer.id, web_2001.revenue, web_2002.all.billing_customer.revenue, store_2001.all.billing_customer.revenue, store_2002.all.billing_customer.revenue, store_2001.revenue?
+    - store_2002.all.billing_customer.revenue (line 38, in WHERE); did you mean: store_2002.all.billing_customer.id, store_2002.all.billing_customer.preferred_cust_flag, store_2002.revenue, store_2001.all.billing_customer.revenue, web_2002.all.billing_customer.revenue, web_2001.all.billing_customer.revenue?
+    - store_2001.all.billing_customer.revenue (line 38, in WHERE); did you mean: store_2001.all.billing_customer.id, store_2001.all.billing_customer.first_name, store_2001.all.billing_customer.last_name, store_2002.all.billing_customer.revenue, web_2001.all.billing_customer.revenue, web_2002.all.billing_customer.revenue?
+    - first_name (line 59, col 5, in ORDER BY); did you mean: all.billing_customer.first_name, all.ship_customer.first_name, all.purchasing_customer.first_name, store_2001.all.billing_customer.first_name?
+    - last_name (line 60, col 5, in ORDER BY); did you mean: all.billing_customer.last_name, all.ship_customer.last_name, all.purchasing_customer.last_name, store_2001.all.billing_customer.last_name?
+    - preferred_cust_flag (line 61, col 5, in ORDER BY); did you mean: all.ship_customer.preferred_cust_flag, all.billing_customer.preferred_cust_flag, all.purchasing_customer.preferred_cust_flag, store_2002.all.billing_customer.preferred_cust_flag?
+  ```
+- `trilogy file read raw/all_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run --import raw.store_sales:store --import raw.catalog_sales:catalog where store.date.year >= 2000 and store.date.year <= 2003 and store.date.date i…date.month_of_year = 2 select store.item.text_id, count(store.line_item) as cnt, sum(count(store.line_item)) over () as total having cnt > 4 limit 5;`
+
+  ```text
+  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 3). The requested concepts split into 2 disconnected subgraphs: {catalog.sold_date.month_of_year, catalog.sold_date.year}; {cnt, total, store.date.date, store.date.year, store.item.text_id}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run --import raw.store_sales:store --import raw.catalog_sales:catalog where store.date.year >= 2000 and store.date.year <= 2003 and store.customer.id…re.quantity * store.sales_price) as store_total having store_total > 118133.26 and store.customer.id in (select catalog.billing_customer.id) limit 5;`
+
+  ```text
+  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 3). The requested concepts split into 2 disconnected subgraphs: {catalog.sold_date.month_of_year, catalog.sold_date.year}; {store_total, store.customer.id, store.date.year}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run query23.preql`
+
+  ```text
+  Resolution error in query23.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 33). The requested concepts split into 2 disconnected subgraphs: {catalog.billing_customer.id, catalog.item.text_id, catalog.sold_date.month_of_year, catalog.sold_date.year, ___tvf_arm_0_first_name, ___tvf_arm_0_last_name, ___tvf_arm_0_total_sales}; {customer_store_totals.store_total}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file read query23.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 2016 (char 2015). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Syntax error in query54.preql: Undefined concept: date.year. Suggestions: ['cs.date.year', 'ws.date.year', 'ss.date.year', 'ss.store.date.year', 'ss.return_store.date.year', 'cs.ship_date.year']
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Unexpected error in query54.preql: (_duckdb.BinderException) Binder Error: Table "ss_store_store" does not have a column named "S_CLOSED_DATE"
+
+  Candidate bindings: : "s_closed_date_sk"
+
+  LINE 74:     INNER JOIN "date_dim" as "ss_store_date_date" on "ss_store_store"."S_CLOSED_DATE" = "ss_store_date_date"...
+                                                                ^
+  [SQL:
+  WITH
+  cheerful as (
+  SELECT
+      "cs_catalog_sales"."CS_BILL_CUSTOMER_SK" as "___tvf_arm_0_cust_id"
+  FROM
+      "catalog_sales" as "cs_catalog_sales"
+      INNER JOIN "item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
+      INNER JOIN "date_dim" as "cs_sold_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sold_date_date"."D_DATE_SK"
+  WHERE
+      "cs_sold_date_date"."D_YEAR" = 1998 and "cs_sold_date_date"."D_MOY" = 12 and "cs_item_items"."I_CATEGORY" = 'Women' and "cs_item_items"."I_CLASS" = 'maternity' and "cs_catalog_sales"."CS_BILL_CUSTOMER_SK" is not null
+
+  GROUP BY
+      1),
+  uneven as (
+  SELECT
+      "ws_web_sales"."WS_BILL_CUSTOMER_SK" as "___tvf_arm_1_cust_id"
+  FROM
+      "web_sales" as "ws_web_sales"
+      INNER JOIN "date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
+      INNER JOIN "item" as "ws_item_items" on "ws_web_sales"."WS_ITEM_SK" = "ws_item_items"."I_ITEM_SK"
+  WHERE
+      "ws_date_date"."D_YEAR" = 1998 and "ws_date_date"."D_MOY" = 12 and "ws_item_items"."I_CATEGORY" = 'Women' and "ws_item_items"."I_CLASS" = 'maternity' and "ws_web_sales"."WS_BILL_CUSTOMER_SK" is not null
+
+  GROUP BY
+      1),
+  young as (
+  SELECT
+      min(CASE WHEN "cs_date_date"."D_YEAR" = 1998 and "cs_date_date"."D_MOY" = 12 THEN "cs_date_date"."D_MONTH_SEQ" ELSE NULL END) as "dec1998_month_seq"
+  FROM
+      "date_dim" as "cs_date_date"),
+  juicy as (
+  SELECT
+      "cheerful"."___tvf_arm_0_cust_id" as "_all_qualifying_cust_id"
+  FROM
+      "cheerful"
+  UNION ALL
+  SELECT
+      "uneven"."___tvf_arm_1_cust_id" as "_all_qualifying_cust_id"
+  FROM
+      "uneven"),
+  vacuous as (
+  SELECT
+      "juicy"."_all_qualifying_cust_id" as "_all_qualifying_cust_id"
+  FROM
+      "juicy"),
+  concerned as (
+  SELECT
+      "vacuous"."_all_qualifying_cust_id" as "all_qualifying_cust_id"
+  FROM
+      "vacuous"),
+  charming as (
+  SELECT
+      "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_id",
+      "ss_store_sales"."SS_STORE_SK" as "ss_store_id"
+  FROM
+      "store_sales" as "ss_store_sales"
+  WHERE
+      "ss_store_sales"."SS_CUSTOMER_SK" in (select concerned."all_qualifying_cust_id" from concerned where concerned."all_qualifying_cust_id" is not null) and "ss_store_sales"."SS_CUSTOMER_SK" is not null
+
+  GROUP BY
+      1,
+      2),
+  kaput as (
+  SELECT
+      "ss_store_date_date"."D_MONTH_SEQ" as "ss_store_date_month_seq",
+      "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
+      "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
+      "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
+  FROM
+      "store_sales" as "ss_store_sales"
+      INNER JOIN "store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+      INNER JOIN "customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+      INNER JOIN "date_dim" as "ss_store_date_date" on "ss_store_store"."S_CLOSED_DATE" = "ss_store_date_date"."D_DATE_SK"
+      INNER JOIN "customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+  WHERE
+      "ss_store_sales"."SS_CUSTOMER_SK" in (select concerned."all_qualifying_cust_id" from concerned where concerned."all_qualifying_cust_id" is not null) and "ss_store_store"."S_COUNTY" = "ss_customer_address_customer_address"."CA_COUNTY" and "ss_store_store"."S_STATE" = "ss_customer_address_customer_address"."CA_STATE" and "ss_store_sales"."SS_CUSTOMER_SK" is not null
+  ),
+  protective as (
+  SELECT
+      "charming"."ss_customer_id" as "ss_customer_id",
+      "ss_store_date_date"."D_MONTH_SEQ" as "ss_store_date_month_seq"
+  FROM
+      "charming"
+      INNER JOIN "store" as "ss_store_store" on "charming"."ss_store_id" = "ss_store_store"."S_STORE_SK"
+      INNER JOIN "customer" as "ss_customer_customers" on "charming"."ss_customer_id" = "ss_customer_customers"."C_CUSTOMER_SK"
+      INNER JOIN "date_dim" as "ss_store_date_date" on "ss_store_store"."S_CLOSED_DATE" = "ss_store_date_date"."D_DATE_SK"
+      INNER JOIN "customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+  WHERE
+      "ss_store_store"."S_COUNTY" = "ss_customer_address_customer_address"."CA_COUNTY" and "ss_store_store"."S_STATE" = "ss_customer_address_customer_address"."CA_STATE"
+  ),
+  divergent as (
+  SELECT
+      "kaput"."ss_ext_sales_price" as "ss_ext_sales_price"
+  FROM
+      "young"
+      INNER JOIN "kaput" on 1=1
+  WHERE
+      "kaput"."ss_store_date_month_seq" BETWEEN "young"."dec1998_month_seq" + 1 AND "young"."dec1998_month_seq" + 3
+
+  GROUP BY
+      1,
+      "kaput"."ss_item_id",
+      "kaput"."ss_ticket_number"),
+  premium as (
+  SELECT
+      "protective"."ss_customer_id" as "ss_customer_id"
+  FROM
+      "young"
+      INNER JOIN "protective" on 1=1
+  WHERE
+      "protective"."ss_store_date_month_seq" BETWEEN "young"."dec1998_month_seq" + 1 AND "young"."dec1998_month_seq" + 3
+
+  GROUP BY
+      1),
+  busy as (
+  SELECT
+      round(sum("divergent"."ss_ext_sales_price") / 50,0) * 50 as "segment_times_50",
+      round(sum("divergent"."ss_ext_sales_price") / 50,0) as "segment"
+  FROM
+      "divergent"),
+  puzzled as (
+  SELECT
+      count("premium"."ss_customer_id") as "customer_count"
+  FROM
+      "premium")
+  SELECT
+      "busy"."segment" as "segment",
+      coalesce("puzzled"."customer_count",0) as "customer_count",
+      "busy"."segment_times_50" as "segment_times_50"
+  FROM
+      "busy"
+      FULL JOIN "puzzled" on 1=1
+  ORDER BY
+      "busy"."segment" asc nulls first,
+      coalesce("puzzled"."customer_count",0) asc nulls first,
+      "busy"."segment_times_50" asc
+  LIMIT (100)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy run query64.preql`
+
+  ```text
+  Syntax error in query64.preql: Nothing was executed: parsed 11 definition statement(s) (8 rowsets, 3 imports) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
+  ```
+- `trilogy run query75.preql`
+
+  ```text
+  Resolution error in query75.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {yr2001.all_sales.item.brand_id, yr2001.all_sales.item.category_id, yr2001.all_sales.item.class_id, yr2001.all_sales.item.manufacturer_id, yr2001.amt_01, yr2001.qty_01, yr2002.all_sales.item.brand_id, yr2002.all_sales.item.category_id, yr2002.all_sales.item.class_id, yr2002.all_sales.item.manufacturer_id, yr2002.amt_02, yr2002.qty_02}
+  ```
+- `trilogy file read query80.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run query83.preql duckdb`
+
+  ```text
+  Syntax error in query83.preql: Undefined concept: wr.item.text_id. Suggestions: ['wr.web_sales.item.text_id', 'wr.time.text_id', 'wr.store.text_id', 'sr.item.text_id', 'cr.item.text_id', 'sr.store.date.text_id']
+  ```
+- `trilogy file read query83.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read query06.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  Syntax error in query11.preql: Undefined concept: date.year. Suggestions: ['ss.date.year', 'ss.store.date.year', 'ss.return_store.date.year', 'ws.date.year', 'ws.ship_date.year', 'ss.return_date.year']
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  Resolution error in query11.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 28). The requested concepts split into 2 disconnected subgraphs: {store_rev_2001, store_rev_2002}; {web_rev_2001, web_rev_2002, ws.billing_customer.id}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  Resolution error in query11.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 22). The requested concepts split into 2 disconnected subgraphs: {ss_rev_01, ss_rev_02}; {ws_rev_01, ws_rev_02, ws.billing_customer.id}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  Syntax error in query14.preql: ORDER BY contains aggregate `grouping(sales.channel)` (line 17), which is not a SELECT output. Aggregates cannot be computed in the ordering scope; add it to SELECT — prefix with `--` to keep it out of the output rows — and order by the alias, e.g. `select ..., --grouping(sales.channel) as g order by g desc`.
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
@@ -142,21 +368,6 @@
   LIMIT (100)]
   (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run query23.preql`
-
-  ```text
-  Syntax error in query23.preql: Nothing was executed: parsed 5 definition statement(s) (2 concepts, 2 imports, 1 rowset) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
-  ```
-- `trilogy run query23.preql --import raw.all_sales:sales --import raw.store_sales:ss select sales.item.id limit 5;`
-
-  ```text
-  --import only applies to inline queries, not file/directory inputs.
-  ```
-- `trilogy file read query23.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
 - `trilogy run query24.preql`
 
   ```text
@@ -167,83 +378,10 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run query30.preql`
-
-  ```text
-  Syntax error in query30.preql: Undefined concept: web_returns.billing_customer. Suggestions: ['web_returns.web_sales.billing_customer.demographics.id', 'web_returns.web_sales.billing_customer.demographics.gender', 'web_returns.web_sales.billing_customer.demographics.marital_status', 'web_returns.web_sales.billing_customer.demographics.education_status', 'web_returns.web_sales.billing_customer.demographics.purchase_estimate', 'web_returns.web_sales.billing_customer.demographics.credit_rating']
-  ```
-- `trilogy run --import raw.web_returns:web_returns select billing_customer.id limit 3;`
-
-  ```text
-  Syntax error in stdin: Undefined concept: billing_customer.id (line 2, col 8, in SELECT). Suggestions: ['web_returns.web_sales.billing_customer.demographics.id', 'web_returns.web_sales.billing_customer.household_demographic.income_band.id', 'web_returns.web_sales.billing_customer.household_demographic.id', 'web_returns.web_sales.billing_customer.address.id', 'web_returns.web_sales.billing_customer.first_sales_date.id', 'web_returns.web_sales.billing_customer.first_shipto_date.id']
-  ```
-- `trilogy file read raw/web_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.web_returns:web_returns select web_returns.web_sales.return_address.state limit 3;`
-
-  ```text
-  Syntax error in stdin: Undefined concept: web_returns.web_sales.return_address.state (line 2, col 8, in SELECT). Suggestions: ['web_returns.web_sales.return_customer.address.state', 'web_returns.web_sales.ship_address.state', 'web_returns.web_sales.bill_address.state', 'web_returns.store.state', 'web_returns.web_sales.billing_customer.address.state', 'web_returns.web_sales.ship_customer.address.state']
-  ```
-- `trilogy run query30.preql`
-
-  ```text
-  Syntax error in query30.preql: Undefined concept: web_returns.web_sales.billing_customer. Suggestions: ['web_returns.web_sales.billing_customer.demographics.id', 'web_returns.web_sales.billing_customer.demographics.gender', 'web_returns.web_sales.billing_customer.demographics.marital_status', 'web_returns.web_sales.billing_customer.demographics.education_status', 'web_returns.web_sales.billing_customer.demographics.purchase_estimate', 'web_returns.web_sales.billing_customer.demographics.credit_rating']
-  ```
-- `trilogy run query30.preql`
-
-  ```text
-  Syntax error in query30.preql: 11 undefined concept references; fix all before re-running:
-    - salutation (line 25, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.salutation, web_returns.web_sales.ship_customer.salutation, web_returns.web_sales.return_customer.salutation, web_returns.web_sales.return_refund_customer.salutation, web_returns.billing_customer.salutation, web_returns.refunded_customer.salutation?
-    - first_name (line 26, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.first_name, web_returns.web_sales.ship_customer.first_name, web_returns.web_sales.return_customer.first_name, web_returns.web_sales.return_refund_customer.first_name, web_returns.billing_customer.first_name, web_returns.refunded_customer.first_name?
-    - last_name (line 27, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.last_name, web_returns.web_sales.ship_customer.last_name, web_returns.web_sales.return_customer.last_name, web_returns.web_sales.return_refund_customer.last_name, web_returns.billing_customer.last_name, web_returns.refunded_customer.last_name?
-    - preferred_cust_flag (line 28, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.preferred_cust_flag, web_returns.web_sales.ship_customer.preferred_cust_flag, web_returns.web_sales.return_customer.preferred_cust_flag, web_returns.web_sales.return_refund_customer.preferred_cust_flag, web_returns.billing_customer.preferred_cust_flag, web_returns.refunded_customer.preferred_cust_flag?
-    - birth_day (line 29, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.birth_day, web_returns.web_sales.ship_customer.birth_day, web_returns.web_sales.return_customer.birth_day, web_returns.web_sales.return_refund_customer.birth_day, web_returns.billing_customer.birth_day, web_returns.refunded_customer.birth_day?
-    - birth_month (line 30, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.birth_month, web_returns.web_sales.ship_customer.birth_month, web_returns.web_sales.return_customer.birth_month, web_returns.web_sales.return_refund_customer.birth_month, web_returns.billing_customer.birth_month, web_returns.refunded_customer.birth_month?
-    - birth_year (line 31, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.birth_year, web_returns.web_sales.ship_customer.birth_year, web_returns.web_sales.return_customer.birth_year, web_returns.web_sales.return_refund_customer.birth_year, web_returns.billing_customer.birth_year, web_returns.refunded_customer.birth_year?
-    - birth_country (line 32, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.birth_country, web_returns.web_sales.ship_customer.birth_country, web_returns.web_sales.return_customer.birth_country, web_returns.web_sales.return_refund_customer.birth_country, web_returns.billing_customer.birth_country, web_returns.refunded_customer.birth_country?
-    - login (line 33, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.login, web_returns.web_sales.ship_customer.login, web_returns.web_sales.return_customer.login, web_returns.web_sales.return_refund_customer.login, web_returns.billing_customer.login, web_returns.refunded_customer.login?
-    - email_address (line 34, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.email_address, web_returns.web_sales.ship_customer.email_address, web_returns.web_sales.return_customer.email_address, web_returns.web_sales.return_refund_customer.email_address, web_returns.billing_customer.email_address, web_returns.refunded_customer.email_address?
-    - last_review_date (line 35, col 10, in ORDER BY); did you mean: web_returns.web_sales.billing_customer.last_review_date, web_returns.web_sales.ship_customer.last_review_date, web_returns.web_sales.return_customer.last_review_date, web_returns.web_sales.return_refund_customer.last_review_date, web_returns.billing_customer.last_review_date, web_returns.refunded_customer.last_review_date?
-  ```
-- `trilogy file read query30.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query54.preql`
-
-  ```text
-  Syntax error in query54.preql: 2 undefined concept references; fix all before re-running:
-    - store_totals.store_total (line 53, in SELECT); did you mean: store_totals.cust_id, store_total?
-    - store_totals.cust_id (line 53, in SELECT); did you mean: store_totals.store_total, store_total, cust_id?
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 3088 (char 3087). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query59.preql`
-
-  ```text
-  Resolution error in query59.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 16). The requested concepts split into 2 disconnected subgraphs: {_weekly_friday_price, _weekly_monday_price, _weekly_saturday_price, _weekly_store_code, _weekly_store_name, _weekly_sunday_price, _weekly_thursday_price, _weekly_tuesday_price, _weekly_wednesday_price}; {_weekly_week_seq, _weekly_year}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run query64.preql duckdb`
-
-  ```text
-  Syntax error in query64.preql: Undefined concept: y1999.agg_sales.sale_year. Suggestions: ['agg_sales.sale_line_count', 'agg_sales.wholesale_sum', 'store_lines.sale_year', 'matched_lines.store_lines.sale_year', 'agg_sales.matched_lines.store_lines.sale_year']
-  ```
-- `trilogy run query64.preql duckdb`
-
-  ```text
-  Syntax error in query64.preql: Undefined concept: y1999.agg_sales.sale_year. Suggestions: ['agg_sales.sale_line_count', 'agg_sales.wholesale_sum', 'store_lines.sale_year', 'matched_lines.store_lines.sale_year', 'agg_sales.matched_lines.store_lines.sale_year']
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
@@ -270,16 +408,6 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/all_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run raw/all_sales.preql duckdb --param limit=5`
-
-  ```text
-  Syntax error in raw\all_sales.preql: Nothing was executed: parsed 31 definition statement(s) (12 datasources, 11 imports, 5 concepts, 3 propertys) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
-  ```
 - `trilogy file read raw/catalog_sales.preql`
 
   ```text
@@ -300,63 +428,6 @@
   ```text
   trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy file read raw/all_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run query80.preql`
-
-  ```text
-  Syntax error in query80.preql: `by rollup (…)` requires at least one aggregate (or re-aggregable pre-aggregated measure) in the select to group; found none.
-  ```
-- `trilogy run --import raw/store_returns:sr --import raw/catalog_returns:cr --import raw/web_returns:wr select count(sr.item.id) as sr_count, count(cr.item.id)…e sr.return_date.week_seq in (5244, 5257, 5264) and cr.date.week_seq in (5244, 5257, 5264) and wr.return_date.week_seq in (5244, 5257, 5264) limit 5;`
-
-  ```text
-  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 3 disconnected subgraphs: {cr.date.week_seq}; {sr.return_date.week_seq}; {wr.return_date.week_seq}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run --import raw/all_sales:s 
-# Store returns
-with store_ret as
-where s.return_date.week_seq in (5244, 5257, 5264) and s.is_returned = true and s.cha… store_ret.store_rows > 0
-  and catalog_ret.catalog_rows > 0
-  and web_ret.web_rows > 0
-order by store_ret.item_code, store_ret.store_qty
-limit 100;
-`
-
-  ```text
-  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 33). The requested concepts split into 3 disconnected subgraphs: {catalog_ret.catalog_qty, catalog_ret.catalog_rows}; {store_ret.item_code, store_ret.store_qty, store_ret.store_rows}; {web_ret.web_qty, web_ret.web_rows}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run query84.preql`
-
-  ```text
-  Traceback (most recent call last):
-    File "<frozen runpy>", line 189, in _run_module_as_main
-    File "<frozen runpy>", line 112, in _get_module_details
-    File "C:\Users\ethan\coding_projects\pytrilogy_two\trilogy\__init__.py", line 4, in <module>
-      from trilogy.executor import Executor
-    File "C:\Users\ethan\coding_projects\pytrilogy_two\trilogy\executor.py", line 61, in <module>
-      from trilogy.core.validation.common import (
-          ValidationTest,
-      )
-    File "C:\Users\ethan\coding_projects\pytrilogy_two\trilogy\core\validation\common.py", line 5, in <module>
-      from trilogy.authoring import (
-      ...<4 lines>...
-      )
-    File "C:\Users\ethan\coding_projects\pytrilogy_two\trilogy\authoring\__init__.py", line 11, in <module>
-      from trilogy.core.functions import FunctionFactory
-    File "C:\Users\ethan\coding_projects\pytrilogy_two\trilogy\core\functions.py", line 1196, in <module>
-      raise InvalidSyntaxException(
-          f"Function enum value {k} not in creation registry"
-      )
-  trilogy.core.exceptions.InvalidSyntaxException: Function enum value FunctionType.CONCAT_STRICT not in creation registry
-  ```
-- `trilogy file read query87.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
 - `trilogy file read raw/time.preql`
 
   ```text
@@ -370,53 +441,275 @@ limit 100;
 
 ### `syntax-parse`
 
-- `trilogy run --import raw.all_sales:s select s.date.week_seq, s.date.year, min(s.date.day_of_week) as min_dow group by 1,2 having s.date.week_seq in (5323, 5324) order by s.date.week_seq;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ....date.day_of_week) as min_dow ??? group by 1,2 having s.date.wee...
-  ```
-- `trilogy file write query02.preql --content import raw.all_sales as s;
-
-# Rowset: daily sales for web and catalog only, across ALL years
-rowset daily_sales_da…   sum(ratio ? daily_sales_data.dow = 5) as fri_ratio,
-       sum(ratio ? daily_sales_data.dow = 6) as sat_ratio
-order by daily_sales_data.week_seq;
-`
-
-  ```text
-  refused to write 'query02.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 20:1
-     |
-  20 | daily_sales_data.dow = daily_sales_data.dow
-     | ^---
-     |
-     = expected EOI, block, or show_statement
-  Location:
-  ...: filter to 2001 weeks, pivot ??? daily_sales_data.dow = daily_s...
-
-  Write stats: received 1215 chars / 1215 bytes; tail: …'a.dow = 6) as sat_ratio\\norder by daily_sales_data.week_seq;\\n'.
-  ```
 - `trilogy file write query05.preql --content import raw.all_sales as s;
 
-# Combine sales and return entities via union arms, then rollup
-with combined as union…s), 0) as net_profit
-by rollup (combined.channel, combined.entity_id)
-order by channel_label asc nulls first, entity_label asc nulls first
-limit 100;`
+# Sales side: sales in the date range with non-null entity
+with sales_data as
+where s.…tal_sales) is not null or sum(combined.total_returns) is not null
+order by channel_label asc nulls first, entity_id_label asc nulls first
+limit 100;
+`
 
   ```text
   refused to write 'query05.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
   Location:
-  ...rn_amt, sale_profit, ret_loss) ???  select     case         when...
+          0 as return_loss      ??? from sales_data),     (select
 
-  Write stats: received 2000 chars / 2000 bytes; tail: …'bel asc nulls first, entity_label asc nulls first\\nlimit 100;'.
+  Write stats: received 2199 chars / 2199 bytes; tail: …'asc nulls first, entity_id_label asc nulls first\\nlimit 100;\\n'.
+  ```
+- `trilogy run --import raw/all_sales:all_sales select distinct all_sales.channel;`
+
+  ```text
+  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Location:
+  ...ll_sales as all_sales; select ??? distinct all_sales.channel;
+  ```
+- `trilogy file write query14.preql --content import raw.all_sales as all_sales;
+
+# (brand, class, category) combos appearing in ALL 3 channels during 1999-2001… nulls first,
+    all_sales.item.brand_id nulls first,
+    all_sales.item.class_id nulls first,
+    all_sales.item.category_id nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query14.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 16:5
+     |
+  16 |     where all_sales.date.year >= 1999 and all_sales.date.year <= 2001;
+     |     ^---
+     |
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, aggregate_over, or window_sql_over
+  Location:
+  ...y * all_sales.list_price)     ??? where all_sales.date.year >= 1...
+
+  Hint: the `by rollup/cube/grouping sets` clause must come *before* HAVING in Trilogy (same order as SQL's `GROUP BY ... HAVING`). Reorder to:
+      select <cols> by rollup (<keys>) having <cond> order by <cols> limit <n>;
+
+  Write stats: received 1472 chars / 1472 bytes; tail: …'first,\\n    all_sales.item.category_id nulls first\\nlimit 100;'.
+  ```
+- `trilogy run --import raw.store_sales:store select store.date.year, count(store.line_item) as cnt, sum(store.quantity * store.sales_price) as total where store.date.year = 2000 and store.customer.id is not null group by store.date.year order by store.date.year limit 5;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...store.customer.id is not null ??? group by store.date.year order...
+  ```
+- `trilogy run --import raw.store_sales:store where store.date.year >= 2000 and store.date.year <= 2003 select count(store.item.text_id) as cnt, store.item.text…) as d, store.date.date as sd group by store.item.text_id, substring(store.item.desc,1,30), store.date.date having cnt > 4 order by cnt desc limit 5;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...) as d, store.date.date as sd ??? group by store.item.text_id, s...
+  ```
+- `trilogy run --import raw.store_sales:store --import raw.catalog_sales:catalog where catalog.sold_date.year = 2000 and catalog.sold_date.month_of_year = 2 sel…(store.line_item) > 4
+)
+having total_sales > 0
+order by last_name asc nulls first, first_name asc nulls first, total_sales asc nulls first
+limit 100;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...d store.date.year <= 2003     ??? group by store.item.text_id, s...
+  ```
+- `trilogy run --import raw.store_sales:store --import raw.catalog_sales:catalog where catalog.sold_date.year = 2000 and catalog.sold_date.month_of_year = 2
+  a…t_price) as total_sales
+having total_sales > 0
+order by last_name asc nulls first, first_name asc nulls first, total_sales asc nulls first
+limit 100;`
+
+  ```text
+  Syntax error in stdin:   --> 13:5
+     |
+  13 |     select store.item.text_id, substring(store.item.desc, 1, 30) as dp, store.date.date as sd
+     |     ^---
+     |
+     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ...d store.date.year <= 2003     ??? select store.item.text_id, sub...
+  ```
+- `trilogy file write query54.preql --content import raw/catalog_sales as cs;
+import raw/web_sales as ws;
+import raw/store_sales as ss;
+
+# Find month_seq for De…_price) / 50) * 50 as segment_times_50
+order by
+    segment asc nulls first,
+    customer_count asc nulls first,
+    segment_times_50 asc
+limit 100;
+`
+
+  ```text
+  refused to write 'query54.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 1:8
+    |
+  1 | import raw/catalog_sales as cs;
+    |        ^---
+    |
+    = expected IMPORT_DOT
+  Location:
+  import ??? raw/catalog_sales as cs; impor...
+
+  Write stats: received 1796 chars / 1796 bytes; tail: …'_count asc nulls first,\\n    segment_times_50 asc\\nlimit 100;\\n'.
+  ```
+- `trilogy file write query54.preql --content import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+import raw.store_sales as ss;
+
+# Find month_seq for De…_price) / 50) * 50 as segment_times_50
+order by
+    segment asc nulls first,
+    customer_count asc nulls first,
+    segment_times_50 asc
+limit 100;
+`
+
+  ```text
+  refused to write 'query54.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 29:31
+     |
+  29 | with all_qualifying as union((qualifying_customers), (qualifying_customers_web)) -> (cust_id);
+     |                               ^---
+     |
+     = expected select_statement
+  Location:
+  ...with all_qualifying as union(( ??? qualifying_customers), (qualif...
+
+  Write stats: received 1892 chars / 1892 bytes; tail: …'_count asc nulls first,\\n    segment_times_50 asc\\nlimit 100;\\n'.
+  ```
+- `trilogy file write query59.preql --content import raw.store_sales as ss;
+
+# This year (2001) weekly sales by day of week - sum of unit price
+def week_day_sum…k_seq - 52
+order by this_year.store_name asc nulls first,
+    this_year.store_code asc nulls first,
+    this_year.week_seq asc nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query59.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 6:1
+    |
+  6 | rowset this_year as
+    | ^---
+    |
+    = expected EOI, block, or show_statement
+  Location:
+   ss.date.day_of_week = dow);  ??? rowset this_year as where ss.d...
+
+  Write stats: received 2826 chars / 2826 bytes; tail: …'lls first,\\n    this_year.week_seq asc nulls first\\nlimit 100;'.
+  ```
+- `trilogy file write query84.preql --content import raw.store_returns as sr;
+import raw.customer as c;
+
+where
+  c.address.city = 'Edgewood'
+  and c.household_d…ame,
+  sr.ticket_number --,
+  sr.item.id --
+
+union join sr.customer_demographic.id = c.demographics.id
+
+order by customer_code nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query84.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 12:21
+     |
+  12 |   sr.ticket_number --,
+     |                     ^---
+     |
+     = expected access_chain
+  Location:
+  ...ull_name,   sr.ticket_number - ??? -,   sr.item.id --  union join...
+
+  Write stats: received 459 chars / 459 bytes; tail: …'mographics.id\\n\\norder by customer_code nulls first\\nlimit 100;'.
+  ```
+- `trilogy file write query84.preql --content import raw.store_returns as sr;
+import raw.customer as c;
+
+where
+  c.address.city = 'Edgewood'
+  and c.household_d…name,
+  sr.ticket_number --
+  sr.item.id --
+
+union join sr.customer_demographic.id = c.demographics.id
+
+order by customer_code nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query84.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 12:21
+     |
+  12 |   sr.ticket_number --
+     |                     ^---
+     |
+     = expected access_chain
+  Location:
+  ...ull_name,   sr.ticket_number - ??? -   sr.item.id --  union join
+
+  Write stats: received 458 chars / 458 bytes; tail: …'mographics.id\\n\\norder by customer_code nulls first\\nlimit 100;'.
+  ```
+- `trilogy file write query84.preql --content import raw.store_returns as sr;
+import raw.customer as c;
+
+where
+  c.address.city = 'Edgewood'
+  and c.household_d…ame,
+  sr.ticket_number --,
+  sr.item.id --
+
+union join sr.customer_demographic.id = c.demographics.id
+
+order by customer_code nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query84.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 12:21
+     |
+  12 |   sr.ticket_number --,
+     |                     ^---
+     |
+     = expected access_chain
+  Location:
+  ...ull_name,   sr.ticket_number - ??? -,   sr.item.id --  union join...
+
+  Write stats: received 459 chars / 459 bytes; tail: …'mographics.id\\n\\norder by customer_code nulls first\\nlimit 100;'.
+  ```
+- `trilogy run --import raw.store_sales:ss select ss.customer.last_name as last, ss.customer.first_name as first, ss.date.date as sale_date, ss.date.year as yr limit 5 where ss.date.year = 2000 and ss.customer.id is not null;`
+
+  ```text
+  Syntax error in stdin:  --> 2:118
+    |
+  2 | select ss.customer.last_name as last, ss.customer.first_name as first, ss.date.date as sale_date, ss.date.year as yr limit 5 where ss.date.year = 2000 and ss.customer.id is not null;
+    |                                                                                                                      ^---
+    |
+    = expected metadata, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ...sale_date, ss.date.year as yr ??? limit 5 where ss.date.year = 2...
   ```
 - `trilogy file write query06.preql --content import raw.store_sales as ss;
 
@@ -436,84 +729,6 @@ limit 100;`
   ..._cat <- ss.item.current_price ??? by ss.item.id, ss.item.categor...
 
   Write stats: received 698 chars / 698 bytes; tail: …' first, ss.customer.address.state asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write query14.preql --content import raw.all_sales as sales;
-
-# Find (brand_id, class_id, category_id) combos appearing in all 3 channels during… nulls first,
-    sales.item.brand_id asc nulls first,
-    sales.item.class_id asc nulls first,
-    sales.item.category_id asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'query14.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 4:1
-    |
-  4 | rowset qualifying_combos as intersect(
-    | ^---
-    |
-    = expected EOI, block, or show_statement
-  Location:
-  ...l 3 channels during 1999-2001 ??? rowset qualifying_combos as in...
-
-  Hint: the `by rollup/cube/grouping sets` clause must come *before* HAVING in Trilogy (same order as SQL's `GROUP BY ... HAVING`). Reorder to:
-      select <cols> by rollup (<keys>) having <cond> order by <cols> limit <n>;
-
-  Write stats: received 1804 chars / 1804 bytes; tail: …'first,\\n    sales.item.category_id asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write query14.preql --content import raw.all_sales as sales;
-
-# Find (brand_id, class_id, category_id) combos appearing in all 3 channels during… nulls first,
-    sales.item.brand_id asc nulls first,
-    sales.item.class_id asc nulls first,
-    sales.item.category_id asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'query14.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 28:1
-     |
-  28 | by rollup (sales.channel, sales.item.brand_id, sales.item.class_id, sales.item.category_id)
-     | ^---
-     |
-     = expected limit, order_by, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-  ...ing total_sales > overall_avg ??? by rollup (sales.channel, sale...
-
-  Hint: the `by rollup/cube/grouping sets` clause must come *before* HAVING in Trilogy (same order as SQL's `GROUP BY ... HAVING`). Reorder to:
-      select <cols> by rollup (<keys>) having <cond> order by <cols> limit <n>;
-
-  Write stats: received 1802 chars / 1802 bytes; tail: …'first,\\n    sales.item.category_id asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write query14.preql --content import raw.all_sales as sales;
-
-# Find (brand_id, class_id, category_id) combos appearing in all 3 channels during… nulls first,
-    sales.item.brand_id asc nulls first,
-    sales.item.class_id asc nulls first,
-    sales.item.category_id asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'query14.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 33:1
-     |
-  33 | by rollup (sales.channel, sales.item.brand_id, sales.item.class_id, sales.item.category_id)
-     | ^---
-     |
-     = expected limit, order_by, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-  ...verall_avg_rowset.overall_avg ??? by rollup (sales.channel, sale...
-
-  Hint: the `by rollup/cube/grouping sets` clause must come *before* HAVING in Trilogy (same order as SQL's `GROUP BY ... HAVING`). Reorder to:
-      select <cols> by rollup (<keys>) having <cond> order by <cols> limit <n>;
-
-  Write stats: received 1879 chars / 1879 bytes; tail: …'first,\\n    sales.item.category_id asc nulls first\\nlimit 100;'.
   ```
 - `trilogy file write query16.preql --content import raw/catalog_sales as cs;
 
@@ -539,97 +754,6 @@ limit 100;`
   import ??? raw/catalog_sales as cs;  # Or...
 
   Write stats: received 772 chars / 772 bytes; tail: …'otal_net_profit\\norder by\\n    cs.order_number desc\\nlimit 100;'.
-  ```
-- `trilogy file write query23.preql --content import raw.all_sales as sales;
-import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales …roup by sales.item.id, first30_desc, sales.date.date
-  having count(sales.sale_line_item_counter) > 4
-);
-
-# Hmm, let me rethink and write more simply`
-
-  ```text
-  refused to write 'query23.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 14:3
-     |
-  14 |   select sales.item.id
-     |   ^---
-     |
-     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
-  Location:
-  ...in (2000, 2001, 2002, 2003)   ??? select sales.item.id   group b...
-
-  Write stats: received 699 chars / 699 bytes; tail: …'counter) > 4\\n);\\n\\n# Hmm, let me rethink and write more simply'.
-  ```
-- `trilogy file write query23.preql -e -c import raw.all_sales as sales;
-
-# Frequent items: items where count of (item.id, first30(desc), sold date) > 4
-with fr… 1, 30) as desc_prefix,
-    sales.date.date as sold_date,
-    count(*) as cnt
-having count(*) > 4
-;
-
-select frequent_items_triples.item_id
-limit 10;
-`
-
-  ```text
-  refused to write 'query23.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
-  Location:
-  ...s.date.date as sold_date,     ??? count(*) as cnt having count(*...
-
-  Write stats: received 408 chars / 408 bytes; tail: …'t(*) > 4\\n;\\n\\nselect frequent_items_triples.item_id\\nlimit 10;\\n'.
-  ```
-- `trilogy file write query23.preql -e -c import raw.all_sales as sales;
-import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as w…ct
-    sales.item.id as item_id,
-    sales.item.desc as item_desc,
-    sales.date.date as sold_date,
-    triple_count as cnt
-where is_freq
-limit 20;
-`
-
-  ```text
-  refused to write 'query23.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [211]: Expression in `by` clause must be wrapped in parens - write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.
-  Location:
-  ...sales.sale_line_item_counter) ??? by sales.item.id, substring(sa...
-
-  Write stats: received 667 chars / 667 bytes; tail: …' sold_date,\\n    triple_count as cnt\\nwhere is_freq\\nlimit 20;\\n'.
-  ```
-- `trilogy file write query23.preql -e -c import raw.all_sales as sales;
-import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as w…ct
-    sales.item.id as item_id,
-    sales.item.desc as item_desc,
-    sales.date.date as sold_date,
-    triple_count as cnt
-where is_freq
-limit 20;
-`
-
-  ```text
-  refused to write 'query23.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [211]: Expression in `by` clause must be wrapped in parens - write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.
-  Location:
-  ...sales.sale_line_item_counter) ??? by sales.item.id, (substring(s...
-
-  Write stats: received 669 chars / 669 bytes; tail: …' sold_date,\\n    triple_count as cnt\\nwhere is_freq\\nlimit 20;\\n'.
   ```
 - `trilogy file write query41.preql`
 
@@ -666,69 +790,6 @@ limit 20;
 
   Write stats: received 1439 chars / 1439 bytes; tail: …'ile_manufacts\r\\norder by\r\\n    item.product_name\r\\nlimit 100;\r\\n'.
   ```
-- `trilogy run --import raw/store_sales:ss select count(ss.customer.id) as cnt where ss.date.month_seq between 1188 and 1190 and ss.customer.id in (select cs.bi…r.id from raw/web_sales.preql as ws where ws.item.category='Women' and ws.item.class='maternity' and ws.date.year=1998 and ws.date.month_of_year=12);`
-
-  ```text
-  Syntax error in stdin: Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
-  Location:
-  ...select cs.billing_customer.id ??? from raw/catalog_sales.preql a...
-  ```
-- `trilogy run --import raw.date:date select distinct date.day_name, date.day_of_week order by date.day_of_week;`
-
-  ```text
-  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
-  Location:
-  ...port raw.date as date; select ??? distinct date.day_name, date.d...
-  ```
-- `trilogy file write query64.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.catalog_returns as cr;
-import raw.store_r…
-    y1999.product_name asc,
-    y1999.store_name asc,
-    y2000.cnt_2000 asc,
-    y1999.wholesale_1999 asc,
-    y2000.wholesale_2000 asc
-limit 100;
-`
-
-  ```text
-  refused to write 'query64.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [104]: Definition or statement after WHERE/SELECT? Concept definitions (`auto`/`property`/`key`/`metric`/`rowset`), `def`, `datasource`, and `import` are top-level statements and must appear BEFORE the `where`/`select` block - they cannot sit inside a query. Move this statement above your `where`, and make sure each statement ends with `;`. Example: put `auto x <- sum(sales.amount) by store.id;` above `where ... select ...`.
-  Location:
-  ...g_sales: total ext_list_price ??? rowset cat_sales_item as selec...
-
-  Write stats: received 7130 chars / 7130 bytes; tail: …'wholesale_1999 asc,\\n    y2000.wholesale_2000 asc\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query64.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.catalog_returns as cr;
-import raw.store_r…
-    y1999.product_name asc,
-    y1999.store_name asc,
-    y2000.cnt_2000 asc,
-    y1999.wholesale_1999 asc,
-    y2000.wholesale_2000 asc
-limit 100;
-`
-
-  ```text
-  refused to write 'query64.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 7:1
-    |
-  7 | rowset cat_sales_item as
-    | ^---
-    |
-    = expected EOI, block, or show_statement
-  Location:
-  ...g_sales: total ext_list_price ??? rowset cat_sales_item as selec...
-
-  Write stats: received 6090 chars / 6090 bytes; tail: …'wholesale_1999 asc,\\n    y2000.wholesale_2000 asc\\nlimit 100;\\n'.
-  ```
 - `trilogy file write query70.preql --content import raw.store_sales as ss;
 
 # Top 5 states by store net profit in year 2000, considering only known stores
@@ -756,44 +817,6 @@ limit 100
 
   Write stats: received 1086 chars / 1086 bytes; tail: …'_level desc,\\n    ss.store.state asc,\\n    rnk asc\\nlimit 100\\n;'.
   ```
-- `trilogy run --import raw/all_sales:all select all.date.year, count(*) as cnt where all.item.category = 'Books' limit 10;`
-
-  ```text
-  Syntax error in stdin: Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
-  Location:
-  ...as all; select all.date.year, ??? count(*) as cnt where all.item...
-  ```
-- `trilogy run --import raw/all_sales:all select all.date.year, count(all.order_id) as cnt where all.item.category = 'Books' group by all.date.year;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...e all.item.category = 'Books' ??? group by all.date.year;
-  ```
-- `trilogy file write query75.preql --content import raw/all_sales as all;
-
-# Deduplicated line-level records for Books items, with net values
-with lines as
-whe…yr2002.sum_qty is not null
-    and cast(yr2002.sum_qty as float) / cast(yr2001.sum_qty as float) < 0.9
-order by qty_diff asc, amt_diff asc
-limit 100;`
-
-  ```text
-  refused to write 'query75.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 1:8
-    |
-  1 | import raw/all_sales as all;
-    |        ^---
-    |
-    = expected IMPORT_DOT
-  Location:
-  import ??? raw/all_sales as all;  # Dedup...
-
-  Write stats: received 1859 chars / 1859 bytes; tail: …' float) < 0.9\\norder by qty_diff asc, amt_diff asc\\nlimit 100;'.
-  ```
 - `trilogy file write query76.preql -e -c import raw.store_sales as store;
 import raw.web_sales as web;
 import raw.catalog_sales as catalog;
@@ -814,197 +837,56 @@ limit 100;`
 
   Write stats: received 1709 chars / 1709 bytes; tail: …' nulls first,\\n  combined.category asc nulls first\\nlimit 100;'.
   ```
-- `trilogy file write query80.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…eturns,
-  combined.profit
-by rollup (combined.channel, combined.outlet)
-order by combined.channel nulls first, combined.outlet nulls first
-limit 100;`
+
+### `syntax-missing-alias`
+
+- `trilogy run --import raw.all_sales:s select s.channel, s.channel_dim_text_id, sum(s.ext_sales_price) where s.date.date between '2000-08-23'::date and '2000-09-06'::date and s.channel_dim_id is not null group by s.channel, s.channel_dim_text_id limit 5;`
 
   ```text
-  refused to write 'query80.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+  Syntax error in stdin: Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `sum(s.ext_sales_price) as ext_sales_price_sum`
   Location:
-  ...turns numeric, profit numeric) ???  select   combined.channel,
-
-  Write stats: received 2071 chars / 2071 bytes; tail: …'.channel nulls first, combined.outlet nulls first\\nlimit 100;'.
+  ...xt_id, sum(s.ext_sales_price) ??? where s.date.date between '200...
   ```
-- `trilogy run --import raw/date:date select date.week_seq, min(date.date) as week_start, max(date.date) as week_end where date.week_seq in (5244, 5257, 5264) group by date.week_seq order by date.week_seq;`
+- `trilogy run --import raw.store_sales:ss select ss.customer.last_name, ss.customer.first_name, ss.date.date, ss.date.year limit 5 where ss.date.year = 2000 and ss.customer.id is not null;`
 
   ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Syntax error in stdin: Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `ss.date.year as ss_date_year`
   Location:
-  ...eek_seq in (5244, 5257, 5264) ??? group by date.week_seq order b...
+  ...e, ss.date.date, ss.date.year ??? limit 5 where ss.date.year = 2...
   ```
-- `trilogy run --import raw/store_returns:sr select count(*) as cnt where sr.return_date.week_seq in (5244, 5257, 5264);`
+- `trilogy run --import raw.store_sales:ss select ss.customer.last_name, ss.customer.first_name, ss.date.date, ss.date.year limit 5 where ss.date.year = 2000 and ss.customer.id is not null;`
 
   ```text
-  Syntax error in stdin: Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
+  Syntax error in stdin: Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `ss.date.year as ss_date_year`
   Location:
-  ...w.store_returns as sr; select ??? count(*) as cnt where sr.retur...
+  ...e, ss.date.date, ss.date.year ??? limit 5 where ss.date.year = 2...
   ```
-- `trilogy file write query83.preql --content import raw/all_sales as s;
 
-# Store channel returns, aggregated at item level
-with store_ret as
-where s.channel = …atalog_ret.catalog_row_count > 0
-  and web_ret.web_row_count > 0
-order by store_ret.item_code nulls first, store_ret.store_qty nulls first
-limit 100;`
+### `planner-recursion`
+
+- `trilogy run query75.preql`
 
   ```text
-  refused to write 'query83.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 1:8
-    |
-  1 | import raw/all_sales as s;
-    |        ^---
-    |
-    = expected IMPORT_DOT
-  Location:
-  import ??? raw/all_sales as s;  # Store c...
-
-  Write stats: received 2224 chars / 2224 bytes; tail: …'code nulls first, store_ret.store_qty nulls first\\nlimit 100;'.
+  Resolution error in query75.preql: query could not be planned; this is a bug.
   ```
-- `trilogy file write query84.preql --content import raw.customer as c;
-import raw.store_returns as sr;
-
-# Join on demographic match — the return's point-in-tim… as customer_code,
-  concat(coalesce(c.last_name, ''), ', ', coalesce(c.first_name, '')) as full_name
-order by
-  customer_code nulls first
-limit 100;`
+- `trilogy run query75.preql`
 
   ```text
-  refused to write 'query84.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 9:1
-    |
-  9 | where
-    | ^---
-    |
-    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
-  Location:
-  ...r: customer lives in Edgewood ??? where    c.address.city = 'Edg...
-
-  Write stats: received 614 chars / 616 bytes; tail: …'as full_name\\norder by\\n  customer_code nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write query87.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Derive the (last_name…t_name,
-    ss.customer.first_name as first_name,
-    ss.date.date as sale_date
-;
-
-select
-    count(ss_only.last_name) as unique_combination_count
-;
-`
-
-  ```text
-  refused to write 'query87.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 7:29
-    |
-  7 | auto ss_key <- concat(isnull(ss.customer.last_name, '<NULL>'), '|',
-    |                             ^---
-    |
-    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-  ...0 auto ss_key <- concat(isnull ??? (ss.customer.last_name, '<NULL...
-
-  Write stats: received 1162 chars / 1162 bytes; tail: …'\\n    count(ss_only.last_name) as unique_combination_count\\n;\\n'.
-  ```
-- `trilogy file write query87_test.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-select
-    count_d…lling_customer.id
-subset join ss.customer.id = ws.billing_customer.id
-subset join ss.date.id = cs.sold_date.id
-subset join ss.date.id = ws.date.id
-;
-`
-
-  ```text
-  refused to write 'query87_test.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 25:1
-     |
-  25 | subset join ss.customer.id = cs.billing_customer.id
-     | ^---
-     |
-     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
-  Location:
-  ...0     and ws.date.year = 2000 ??? subset join ss.customer.id = c...
-
-  Write stats: received 1014 chars / 1014 bytes; tail: …'.id = cs.sold_date.id\\nsubset join ss.date.id = ws.date.id\\n;\\n'.
+  Resolution error in query75.preql: query could not be planned; this is a bug.
   ```
 
 ### `cli-misuse`
 
-- `trilogy explore raw/date_dim.preql`
+- `trilogy explore raw/`
 
   ```text
-  Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
-  ```
-- `trilogy trilogy agent-info syntax example scoped-join`
-
-  ```text
-  No such command 'trilogy'.
+  Invalid value for 'PATH': File 'raw/' is a directory.
   ```
 
-### `syntax-missing-alias`
+### `undefined-concept`
 
-- `trilogy run --import raw.store_sales:store_sales select store_sales.date.year, min(store_sales.date.week_seq), max(store_sales.date.week_seq) where store_sales.date.year in (2001, 2002) order by 1;`
-
-  ```text
-  Syntax error in stdin: Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `min(store_sales.date.week_seq) as week_seq_min`
-  Location:
-  ...min(store_sales.date.week_seq) ??? , max(store_sales.date.week_se...
-  ```
-- `trilogy file write test.preql --content import raw.store_sales as ss;
-
-rowset base <-
-select
-    ss.item.id as item_id,
-    ss.date.year as yr
-;
-
-rowset filtered <-
-where base.yr = 1999
-select
-    base.item_id
-;
-
-select count(filtered.item_id);
-`
+- `trilogy explore query11.preql`
 
   ```text
-  refused to write 'test.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `count(filtered.item_id) as item_id_count`
-  Location:
-  ...select count(filtered.item_id) ??? ;
-
-  Write stats: received 205 chars / 205 bytes; tail: …'\\nselect\\n    base.item_id\\n;\\n\\nselect count(filtered.item_id);\\n'.
-  ```
-
-### `join-resolution`
-
-- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws select count(cs.billing_customer.id) as cat_cust, count(ws.billing_customer.id) as web_cust where cs.item.category='Women' and cs.item.class='maternity' and cs.date.year=1998 and cs.date.month_of_year=12;`
-
-  ```text
-  Resolution error in stdin: Could not resolve connections for query with output ['local.cat_cust<Purpose.METRIC>Derivation.AGGREGATE>', 'local.web_cust<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  Failed to parse query11.preql: (UndefinedConceptException(...), '3 undefined concept references; fix all before re-running:\n  - first_name (line 59, col 5, in ORDER BY); did you mean: all.billing_customer.first_name, all.ship_customer.first_name, all.purchasing_customer.first_name, store_2001.all.billing_customer.first_name?\n  - last_name (line 60, col 5, in ORDER BY); did you mean: all.billing_customer.last_name, all.ship_customer.last_name, all.purchasing_customer.last_name, store_2001.all.billing_customer.last_name?\n  - preferred_cust_flag (line 61, col 5, in ORDER BY); did you mean: all.ship_customer.preferred_cust_flag, all.billing_customer.preferred_cust_flag, all.purchasing_customer.preferred_cust_flag, store_2002.all.billing_customer.preferred_cust_flag?')
   ```

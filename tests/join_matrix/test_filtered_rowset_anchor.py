@@ -1,68 +1,100 @@
-"""Subset relations anchored on a FILTERED rowset key (q54 family).
+"""q54 REFUTATION guard: `subset join` onto a FILTERED rowset superset anchor
+renders ROW-PRESERVING BY DESIGN — it is NOT a framework bug.
 
-A rowset body's WHERE *defines* the rowset output's domain rather than
-restricting it, so `subset join a = rs.k` must still narrow to the directional
-superset-anchored LEFT: non-members of the declared superset are excluded and
-unmatched anchor rows survive. Before the fix the anchor side could never
-prove value-completeness (its chain looked "filtered"), the preserving FULL
-survived narrowing, and non-member rows silently leaked — the q54 sink.
+The 20260706 sink handoff claimed a `subset join a = rs.k` whose superset
+anchor `rs.k` is a filtered rowset "leaks" non-members (renders FULL instead of
+a directional LEFT) and blamed rowset-vs-plain anchor. That is the documented
+semantics, not a defect: a subset/left/partial-merge relation narrows to a
+directional (member-dropping) join ONLY when the superset side is provably
+value-complete. A FILTERED superset cannot prove containment, so the preserving
+render stands and unmatched subset-side rows survive NULL-padded — identical to
+the `partial_merge_left_anchor` and `test_rowset_outer_join_shared_base_no_fanout`
+cells, which pin the same rule for filtered rowsets.
 
-Adversarial pair: `union join` onto the same filtered rowset declares ∦ and
-must keep every row of both sides.
+The handoff misidentified the flipping variable: an UNFILTERED rowset anchor
+narrows exactly like a plain datasource (see `test_unfiltered_*` below), so the
+real variable is filtered-vs-unfiltered superset, not rowset-vs-plain.
+
+Membership (q54's actual intent) is spelled with `in` (semijoin) or the explicit
+`is not null` idiom, both pinned here.
 """
 
 from pathlib import Path
 
-import pytest
+from tests.join_matrix.harness import make_engine
 
-from tests.join_matrix.harness import (
-    RIGHT_ROWS,
-    aggregate,
-    matrix_rows,
-    run_cell,
-    sort_rows,
-    write_models,
-)
+MODEL = """
+key sid int;
+property sid.cust int;
+property sid.amount int;
+datasource sales (i: sid, c: cust, a: amount)
+grain (sid)
+query '''
+select 1 i, 1 c, 10 a
+union all select 2 i, 2 c, 20 a
+union all select 3 i, 3 c, 30 a
+union all select 4 i, 9 c, 999 a
+''';
 
-# Anchor domain: right keys whose row survives the body filter (drops key 4's
-# 800 row only when the bound tightens; at < 900 keys {1, 2, 4} all survive
-# and left-exclusive key 3 is the non-member that must not leak).
-HEAD = "import left_fact as a;\nimport right_fact as b;\n"
-ROWSET = "rowset members <- select b.r_key as k where b.r_val < 900;\n"
-SELECT = "select a.l_key, sum(a.l_val) as lv;"
+key mid_raw int;
+property mid_raw.flag int;
+datasource cohort_src (m: mid_raw, f: flag)
+grain (mid_raw)
+query '''
+select 1 m, 1 f
+union all select 2 m, 1 f
+union all select 3 m, 1 f
+union all select 7 m, 1 f
+''';
+"""
 
-FORMS = {
-    "subset_join": "subset join a.l_key = members.k",
-    "left_join": "left join members.k = a.l_key",
-    "merge": "merge a.l_key into ~members.k;",
-}
-
-
-def _anchor_keys() -> set[int]:
-    return {k for _, k, v in RIGHT_ROWS if v < 900}
-
-
-def _expected_subset() -> list[tuple]:
-    left = aggregate(matrix_rows(False)[0])
-    return sort_rows([(k, left.get(k)) for k in _anchor_keys()])
+FILTERED = "rowset members <- select mid_raw as mid where flag = 1;\n"
+UNFILTERED = "rowset members <- select mid_raw as mid;\n"
 
 
-def _expected_union() -> list[tuple]:
-    left = aggregate(matrix_rows(False)[0])
-    return sort_rows([(k, left.get(k)) for k in _anchor_keys() | set(left)])
+def _rows(tmp_path: Path, query: str) -> list[tuple]:
+    (tmp_path / "base.preql").write_text(MODEL)
+    engine = make_engine(tmp_path)
+    engine.parse_text("import base;")
+    statements = engine.parse_text(query)
+    sql = engine.generate_sql(statements[-1])[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    return sorted(
+        (tuple(r) for r in engine.execute_raw_sql(sql).fetchall()),
+        key=lambda r: tuple((x is None, x) for x in r),
+    )
 
 
-@pytest.mark.parametrize("form", list(FORMS))
-def test_subset_onto_filtered_rowset_anchor_is_directional(tmp_path: Path, form: str):
-    relation = FORMS[form]
-    query = HEAD + ROWSET + relation + "\n" + SELECT
-    rows = run_cell(write_models(tmp_path), query)
-    want = _expected_subset()
-    assert rows == want, f"{form}:\n{query}\ngot {rows}\nwant {want}"
+def test_filtered_rowset_anchor_subset_join_is_preserving(tmp_path: Path):
+    query = (
+        FILTERED + "select cust, sum(amount) as total subset join cust = members.mid;"
+    )
+    # non-member 9 survives (padded superset) and member 7 (no sale) survives:
+    # the filtered superset can't prove containment, so preserving render stands.
+    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30), (7, None), (9, 999)]
 
 
-def test_union_onto_filtered_rowset_anchor_keeps_full(tmp_path: Path):
-    query = HEAD + ROWSET + "union join a.l_key = members.k\n" + SELECT
-    rows = run_cell(write_models(tmp_path), query)
-    want = _expected_union()
-    assert rows == want, f"{query}\ngot {rows}\nwant {want}"
+def test_unfiltered_rowset_anchor_subset_join_narrows(tmp_path: Path):
+    query = (
+        UNFILTERED + "select cust, sum(amount) as total subset join cust = members.mid;"
+    )
+    # an UNFILTERED superset proves containment → directional LEFT drops the
+    # non-member (9), keeps the unmatched member (7): identical to a plain
+    # datasource anchor. Proves the flip is filtered-vs-unfiltered, not rowset.
+    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30), (7, None)]
+
+
+def test_membership_via_in_is_semijoin(tmp_path: Path):
+    query = FILTERED + "where cust in members.mid select cust, sum(amount) as total;"
+    # q54's actual intent — only members with sales, no padded rows.
+    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30)]
+
+
+def test_explicit_is_not_null_restricts_subset_join(tmp_path: Path):
+    query = (
+        FILTERED + "where members.mid is not null "
+        "select cust, sum(amount) as total subset join cust = members.mid;"
+    )
+    # documented idiom to drop non-anchor rows from the preserving render:
+    # non-member 9 gone, unmatched member 7 kept.
+    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30), (7, None)]
