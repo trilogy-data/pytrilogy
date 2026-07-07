@@ -104,6 +104,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
    Use `by *` to aggregate across all data (a single row output).
    auto x_resp <- sum(y); # responsive to query grain if you select x_resp
    auto x_fixed <- sum(y) by *; # always a single row output, regardless of query grain
+- **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows — e.g. one output row per matching fact when the projected columns repeat — include the fact's grain keys in the select, hidden with `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
@@ -124,7 +125,7 @@ SELECT
 ...
 HAVING # filters data AFTER it has been aggregated or windowed
 ```
-INLINE filter x ? cond <- filters one expression's input (e.g. sum(x ? x > 0)).
+INLINE filter x ? cond <- filters the immediate prior expression (e.g. sum(x ? x > 0) is sum (x where x is more than 0)).
 
 Note that aggregates/windows in WHERE do not filter the inputs to each other. You must use inline filters if you want a where clause aggregate/window to be filtered.
 

@@ -1,6 +1,14 @@
 # q84 regression (pass→fail) — silent grain collapse across a `union join` to a rowset
 
-Status: OPEN. Class: FRAMEWORK bug (silent wrong-rows), PRE-EXISTING (not caused by
+Status: **REFUTED 2026-07-06 — NOT A FRAMEWORK BUG.** The "OLD passing" query's
+`--sr.ticket_number as ticket` / `--sr.item.id as item_id` lines are NOT comments — `--` is Trilogy's
+select-item HIDE modifier. Those hidden outputs are what put the returns grain into the select grain
+(and GROUP BY); with identical authored outputs the datasource and rowset forms behave identically in
+both directions. 15 rows is the correct answer to the Trilogy the new agent wrote. Verdict + corrected
+trigger matrix: `handoffs/handoff_q84_union_join_rowset_grain_collapse.md`; parity guards:
+`tests/engine/test_duckdb_union_join_rowset_grain.py`. Original (faulty) analysis below.
+
+Class (original, wrong): FRAMEWORK bug (silent wrong-rows), PRE-EXISTING (not caused by
 `4e69c5547`). The pass→fail is agent authoring **variance** landing on the defect.
 
 ## Symptom

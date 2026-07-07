@@ -36,7 +36,11 @@ select 3 as line_id, 2 as item_id, cast(null as varchar) as cat, 2001 as yr unio
 select 4 as line_id, 3 as item_id, 'b' as cat, 2001 as yr union all
 select 5 as line_id, 1 as item_id, 'a' as cat, 2002 as yr union all
 select 6 as line_id, 2 as item_id, cast(null as varchar) as cat, 2002 as yr union all
-select 7 as line_id, 4 as item_id, 'c' as cat, 2003 as yr
+select 7 as line_id, 4 as item_id, 'c' as cat, 2003 as yr union all
+select 8 as line_id, 1 as item_id, 'a' as cat, 2011 as yr union all
+select 9 as line_id, 2 as item_id, 'b' as cat, 2011 as yr union all
+select 10 as line_id, 1 as item_id, 'b' as cat, 2012 as yr union all
+select 11 as line_id, 2 as item_id, 'a' as cat, 2012 as yr
 ''';
 """
 
@@ -198,6 +202,50 @@ select combined.c, count(combined.k) -> items;
 """,
     )
     assert rows == [("b", 1)]
+
+
+def test_except_subset_consumer_keeps_tuple_identity():
+    # q87 shape: 2011 tuples {(1,'a'),(2,'b')} vs 2012 {(1,'b'),(2,'a')} — no
+    # tuple matches, so EXCEPT keeps both rows even though every k (and every
+    # c) appears in both arms. A consumer reading only one declared output must
+    # not prune the arms' projections: set-op row identity is the full tuple.
+    executor = _executor()
+    query = """
+with combined as except(
+    (where yr = 2011 select item_id -> k, cat -> c),
+    (where yr = 2012 select item_id -> k, cat -> c)
+) -> (k, c);
+select count(combined.k) -> total;
+"""
+    assert _rows(executor, query) == [(2,)]
+
+
+def test_intersect_subset_consumer_keeps_tuple_identity():
+    executor = _executor()
+    query = """
+with combined as intersect(
+    (where yr = 2011 select item_id -> k, cat -> c),
+    (where yr = 2012 select item_id -> k, cat -> c)
+) -> (k, c);
+select count(combined.k) -> total;
+"""
+    assert _rows(executor, query) == [(0,)]
+
+
+def test_union_subset_consumer_still_prunes():
+    # For a UNION ALL bag an unused column can't change row multiplicity, so
+    # demand-driven pruning stays on — only set operators keep the full tuple.
+    executor = _executor()
+    query = """
+with combined as union(
+    (where yr = 2011 select item_id -> k, cat -> c),
+    (where yr = 2012 select item_id -> k, cat -> c)
+) -> (k, c);
+select count(combined.k) -> total;
+"""
+    sql = executor.generate_sql(query)[-1]
+    assert _rows(executor, query) == [(4,)]
+    assert sql.count('as "c"') == 0, sql
 
 
 def test_filter_over_except_output():

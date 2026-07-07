@@ -1,5 +1,26 @@
 # q87 token sink 443k→918k — `except(...)`/`intersect(...)` set-op arms are column-pruned (SILENT wrong result)
 
+> **FIXED 2026-07-06** — `HideUnusedConcepts.optimize` now returns early for any
+> `UnionCTE` whose operator is not `UNION ALL`: EXCEPT/INTERSECT arms keep every
+> declared output column (set-op row identity), while `_hide_branch_only_outputs`
+> still hides branch-only extras (arms must project exactly the declared tuple)
+> and UNION ALL pruning is unchanged. Guards:
+> `tests/engine/test_duckdb_setops.py::test_{except,intersect}_subset_consumer_keeps_tuple_identity`
+> (+ `test_union_subset_consumer_still_prunes`). Verified on sf1: the minimal
+> 2-arm repro below now returns **47,318** (was 0), matching the all-columns row
+> in the trigger matrix exactly.
+>
+> **Residual RESOLVED (prompt gap, not engine):** the full 3-arm q87 form with
+> true whole-tuple projection returns **47,270** vs reference 47,298. The 28-row
+> gap is NOT concat NULL-conflation as hypothesized below (no concat involved) and
+> not `year=2000` vs `d_month_seq 1200-1211` (both give 47,270). It is entirely
+> **anonymous sales** (NULL `SS_CUSTOMER_SK`; the model keeps them as
+> `(NULL, NULL, date)` tuples, the reference's inner `customer` join drops them):
+> adding `customer.id is not null` to all three arms yields **47,298 exactly**.
+> The prompt says "combinations containing missing name parts still count" —
+> which reads as *including* anonymous sales — so a faithful whole-tuple answer
+> cannot match the reference. Prompt fix: require a billing customer on record.
+
 Run: `evals/tpcds_agent/results/20260706-222300`, q87 **FAIL, 917,645 tokens**
 (prior enriched leg `20260706-135542_enriched` = 443k). `ref_rows=1 cand_rows=1`,
 `detail="result set differs from reference"` — no hard error, silent wrong count.

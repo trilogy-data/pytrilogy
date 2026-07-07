@@ -441,7 +441,7 @@
   {
     "id": 87,
     "grade": "medium",
-    "prompt": "Count the unique (last name, first name, sale date) combinations from store sales in the year 2000 whose (last name, first name, sale date) does not appear among catalog sales in 2000 and does not appear among web sales in 2000. Derive the name from each sale's billing customer, and match purely on the (last name, first name, date) combination — not on customer id. Customers may be missing a first or last name: a missing name part is treated as a value of its own, so two combinations match when all three parts agree (missing matching missing), and combinations containing missing name parts still count toward the total. Report a single count."
+    "prompt": "Count the unique (last name, first name, sale date) combinations from store sales in the year 2000 whose (last name, first name, sale date) does not appear among catalog sales in 2000 and does not appear among web sales in 2000. Derive the name from each sale's billing customer, and match purely on the (last name, first name, date) combination — not on customer id. Consider only sales that have a billing customer on record; exclude anonymous sales with no customer attached. Customers may be missing a first or last name: a missing name part is treated as a value of its own, so two combinations match when all three parts agree (missing matching missing), and combinations containing missing name parts still count toward the total. Report a single count."
   },
   {
     "id": 88,

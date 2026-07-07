@@ -188,6 +188,34 @@ def _own_coverage_partial(
     )
 
 
+def _rowset_definition_boundary(
+    concept: BuildConcept, side_cte: CTE | UnionCTE
+) -> bool:
+    """``side_cte`` is ``concept``'s own rowset materialization boundary: a
+    ROWSET-derived key output here whose parent CTEs do not carry it. A rowset
+    output is RENAMED at its boundary (no shared address across it), so the
+    subtree below computes the concept's DEFINITION — a condition there (the
+    body's WHERE/HAVING) creates the domain rather than restricting it, and
+    the boundary carries every value of the concept by construction (q54: a
+    `subset join` anchored on a filtered rowset key must still narrow to the
+    directional LEFT). A datasource-bound rowset key (no parent CTEs) makes
+    no such claim."""
+    if not isinstance(side_cte, CTE):
+        return False
+    if concept.derivation != Derivation.ROWSET:
+        return False
+    if not side_cte.parent_ctes:
+        return False
+    keys = _key_addresses(concept)
+    if not any(_key_addresses(out) & keys for out in side_cte.output_columns):
+        return False
+    return not any(
+        _key_addresses(out) & keys
+        for parent in side_cte.parent_ctes
+        for out in parent.output_columns
+    )
+
+
 def _accumulate_filter(
     side_cte: CTE | UnionCTE,
     _visited: frozenset[str] = frozenset(),

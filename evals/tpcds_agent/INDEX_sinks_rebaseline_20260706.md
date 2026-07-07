@@ -15,7 +15,7 @@ subagent per sink. This index collects the verdicts; each row links its bug repo
 
 | q | new tok | status | class | one-line root cause | fix locus |
 |---|---|---|---|---|---|
-| q23 | 1.08M | fail | **ENGINE (silent)** | `sum(x) by k ? off-grain-cond` sums LIFETIME + post-agg CASE gate → wrong threshold | `filter_node.py` pushdown L114-146 + FilterItem/agg lowering in `build.py` |
+| q23 | 1.08M | fail | agent+doc (NOT a bug) | `(sum(x) by k) ? cond` filters the aggregate expr → lifetime BY DESIGN (`?`=filter-prior-expr); agent wanted windowed `sum(x?cond) by k`. Misleading docs fixed by owner | none (doc fix only) |
 | q54 | 1.39M | pass* | **ENGINE (silent)** | `subset join a=b` w/ ROWSET superset anchor renders FULL+coalesce not LEFT → non-members leak | `build.py` `_rowset_outer_pair` ~L2400-2414 |
 | q87 | 918k | fail | **ENGINE (silent)** | `HideUnusedConcepts` prunes UnionCTE outputs ignoring `set_operator` → EXCEPT/INTERSECT compares 1 col | `optimizations/hide_unused_concept.py` L87-128 |
 | q84 | 749k | fail | **ENGINE (silent)** | `union join` onto rowset drops rowset grain cols from GROUP BY → silent dedup (16→15) | group/rowset grain resolution (`group_node`/`rowset_node`) |
@@ -40,13 +40,17 @@ latent framework defects: q87 (except optimizer), q54 (subset-join rowset anchor
 q83/q84 (all_sales + union join), q11 (all_sales disconnect message). The engine fixes
 below matter more now precisely because the guidance points agents at these paths.
 
-## Six real engine bugs — priority order (silent > perf > DX)
-1. **q23** filtered-aggregate off-grain `where` gates instead of filtering input (silent, wrong analytics).
+## Five real engine bugs — priority order (silent > perf > DX)
+1. **q87** EXCEPT/INTERSECT output pruning (silent; NEW-feature latent bug, guidance-amplified).
 2. **q54** subset-join rowset-anchor → FULL leak (silent, subset/union-join family correctness).
-3. **q87** EXCEPT/INTERSECT output pruning (silent; NEW-feature latent bug, guidance-amplified).
-4. **q84** union-join-onto-rowset grain collapse (silent dedup).
-5. **q83** unnecessary huge-fact join (perf; can time out full queries).
-6. **q30** suggestion ranking (DX defect that becomes silent-wrong via agent trust).
+3. **q84** union-join-onto-rowset grain collapse (silent dedup).
+4. **q83** unnecessary huge-fact join (perf; can time out full queries).
+5. **q30** suggestion ranking (DX defect that becomes silent-wrong via agent trust).
+
+**q23 was mis-filed as a 6th engine bug — WITHDRAWN.** `?` filters the immediately-prior expression
+uniformly (owner ruling); `(sum(x) by k) ? cond` filtering the aggregate result → lifetime is BY
+DESIGN. The old `ai/constants.py:127` / `syntax_examples.py:107` "filters one expression's input"
+wording misled the agent (and this investigation); owner updated the docs. No engine change.
 
 ## Non-engine follow-ups
 - **q59:** NO action — `query59.sql` override already exists and is used; failure is a

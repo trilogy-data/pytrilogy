@@ -91,6 +91,9 @@ limit 100;
 #    known AFTER the join / aggregation (e.g. comparing two joined rowsets'
 #    counts), select that value (hide it with `--`) and test it in `having` -
 #    `having` is the post-aggregation/output filter. There is only ONE `where`.
+#  - Output rows dedupe to the select grain. To keep legitimate duplicates (one
+#    row per matching fact), select the fact's grain keys - hide with `--` if
+#    they shouldn't appear in the output.
 #  - No FROM, GROUP BY, DISTINCT, SELECT *, subqueries, or SQL-style set/JOIN
 #    operators. Grouping is automatic; blend with the scoped `join` above.
 """,
@@ -104,7 +107,7 @@ limit 100;
             "`by <grain>` pins the aggregate's grain"
         ),
         body="""\
-# `?` is a per-aggregate filter (a WHERE that applies to ONE aggregate), so
+# `?` is a local filter - a filter that applies only to the prior expression-
 # several differently-filtered measures can share one select. Add `by <grain>`
 # to pin an aggregate to a grain other than the select's.
 import iris as iris;
