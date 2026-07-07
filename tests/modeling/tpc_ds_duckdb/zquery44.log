@@ -1,6 +1,6 @@
 query_id = "44"
 generator = "v3"
-gen_length = 3135
+gen_length = 3141
 preql_size = 1002
 comp_size = 1462
 generated_sql = """
@@ -106,7 +106,7 @@ SELECT
     \"young\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
     \"vacuous\"
-    FULL JOIN \"young\" on \"vacuous\".\"ascending_rnk_a\" = \"young\".\"descending_rnk_d\"
+    LEFT OUTER JOIN \"young\" on \"vacuous\".\"ascending_rnk_a\" = \"young\".\"descending_rnk_d\"
 WHERE
     coalesce(\"vacuous\".\"ascending_rnk_a\",\"young\".\"descending_rnk_d\") < 11
 

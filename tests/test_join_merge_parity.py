@@ -97,11 +97,14 @@ select c.brand, c.c_qty, p.p_qty order by c.brand asc;
 """,
         [(10, 7, 7), (20, 15, 3), (30, 4, None)],
     ),
-    # partial merge (`merge x into ~y`) declares c.brand ⊆ p.brand. Both
-    # rowsets are FILTERED, so the subset can't be proven against the 2001
-    # side and the preserving render stands: the 2002-only brand 30 survives
-    # with a NULL p_qty — pins that merge~ and `left join` share the
-    # declaration machinery and both render row-preserving.
+    # partial merge (`merge x into ~y`) declares c.brand ⊆ p.brand, anchored on
+    # p (2001). p is a ROWSET output: its body `where year=2001` DEFINES p.brand's
+    # domain at the opaque rename boundary, so the anchor is complete by
+    # construction and the subset relation narrows to the directional LEFT — the
+    # 2002-only brand 30 violates the declared c ⊆ p and drops (ruled semantics
+    # for a lying declaration). "Keep both years" is the `full join` /
+    # non-partial merge form above (`yoy_independent_rowsets`). Pins that merge~
+    # and `left join` share the declaration machinery and both narrow directionally.
     "partial_merge_left_anchor": (
         """
 import sales as sales;
@@ -117,9 +120,11 @@ rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.
 merge c.brand into ~p.brand;
 select p.brand, p.p_qty, c.c_qty order by p.brand asc;
 """,
-        [(10, 7, 7), (20, 3, 15), (30, None, 4)],
+        [(10, 7, 7), (20, 3, 15)],
     ),
-    # ... and the explicit `is not null` idiom restores the old anchored rows.
+    # the explicit `is not null` idiom is now coincident with the directional
+    # narrowing above (both drop the 2002-only brand 30); pins that an authored
+    # filter composes with the subset join and yields the same anchored rows.
     "partial_merge_left_anchor_filtered": (
         """
 import sales as sales;

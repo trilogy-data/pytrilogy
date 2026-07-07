@@ -1,22 +1,18 @@
-"""q54 REFUTATION guard: `subset join` onto a FILTERED rowset superset anchor
-renders ROW-PRESERVING BY DESIGN — it is NOT a framework bug.
+"""`subset join` onto a rowset superset anchor narrows DIRECTIONALLY (q54 family).
 
-The 20260706 sink handoff claimed a `subset join a = rs.k` whose superset
-anchor `rs.k` is a filtered rowset "leaks" non-members (renders FULL instead of
-a directional LEFT) and blamed rowset-vs-plain anchor. That is the documented
-semantics, not a defect: a subset/left/partial-merge relation narrows to a
-directional (member-dropping) join ONLY when the superset side is provably
-value-complete. A FILTERED superset cannot prove containment, so the preserving
-render stands and unmatched subset-side rows survive NULL-padded — identical to
-the `partial_merge_left_anchor` and `test_rowset_outer_join_shared_base_no_fanout`
-cells, which pin the same rule for filtered rowsets.
+A rowset boundary is OPAQUE: its output is a freshly-named concept whose value
+set is whatever the body produces, so the body WHERE/HAVING *defines* that
+domain rather than restricting a pre-existing one. At the rename boundary the
+anchor is therefore complete BY CONSTRUCTION, and `subset join a = rs.k`
+(declaring a ⊆ rs.k) narrows to the directional superset-anchored LEFT exactly
+like a plain datasource or an unfiltered rowset: non-members of the declared
+superset drop, unmatched anchor rows survive NULL-padded.
 
-The handoff misidentified the flipping variable: an UNFILTERED rowset anchor
-narrows exactly like a plain datasource (see `test_unfiltered_*` below), so the
-real variable is filtered-vs-unfiltered superset, not rowset-vs-plain.
-
-Membership (q54's actual intent) is spelled with `in` (semijoin) or the explicit
-`is not null` idiom, both pinned here.
+The flipping variable is NOT rowset-vs-plain — filtered, unfiltered, and plain
+datasource anchors all narrow identically (pinned below). "Keep both sides"
+(neither domain contains the other) is the explicit `union join` / FULL form.
+Row membership (q54's actual intent) is `in` (semijoin) or the `is not null`
+idiom.
 """
 
 from pathlib import Path
@@ -51,6 +47,10 @@ union all select 7 m, 1 f
 FILTERED = "rowset members <- select mid_raw as mid where flag = 1;\n"
 UNFILTERED = "rowset members <- select mid_raw as mid;\n"
 
+# member 7 has no sale (unmatched anchor row → NULL-padded); non-member 9 has a
+# sale but is outside the declared superset (dropped by directional narrowing).
+DIRECTIONAL = [(1, 10), (2, 20), (3, 30), (7, None)]
+
 
 def _rows(tmp_path: Path, query: str) -> list[tuple]:
     (tmp_path / "base.preql").write_text(MODEL)
@@ -65,23 +65,36 @@ def _rows(tmp_path: Path, query: str) -> list[tuple]:
     )
 
 
-def test_filtered_rowset_anchor_subset_join_is_preserving(tmp_path: Path):
+def test_filtered_rowset_anchor_subset_join_narrows(tmp_path: Path):
     query = (
         FILTERED + "select cust, sum(amount) as total subset join cust = members.mid;"
     )
-    # non-member 9 survives (padded superset) and member 7 (no sale) survives:
-    # the filtered superset can't prove containment, so preserving render stands.
-    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30), (7, None), (9, 999)]
+    # filtered rowset anchor is complete at its opaque boundary → non-member 9
+    # drops, unmatched member 7 kept.
+    assert _rows(tmp_path, query) == DIRECTIONAL
 
 
 def test_unfiltered_rowset_anchor_subset_join_narrows(tmp_path: Path):
     query = (
         UNFILTERED + "select cust, sum(amount) as total subset join cust = members.mid;"
     )
-    # an UNFILTERED superset proves containment → directional LEFT drops the
-    # non-member (9), keeps the unmatched member (7): identical to a plain
-    # datasource anchor. Proves the flip is filtered-vs-unfiltered, not rowset.
-    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30), (7, None)]
+    assert _rows(tmp_path, query) == DIRECTIONAL
+
+
+def test_plain_datasource_anchor_subset_join_narrows(tmp_path: Path):
+    query = "select cust, sum(amount) as total subset join cust = mid_raw;"
+    # identical to both rowset forms — proves the flip is completeness, not
+    # rowset-vs-plain.
+    assert _rows(tmp_path, query) == DIRECTIONAL
+
+
+def test_union_join_keeps_both_sides(tmp_path: Path):
+    query = (
+        FILTERED + "select cust, sum(amount) as total union join cust = members.mid;"
+    )
+    # ∦ declaration: neither domain contains the other, so both the unmatched
+    # member (7) and the non-member sale (9) survive.
+    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30), (7, None), (9, 999)]
 
 
 def test_membership_via_in_is_semijoin(tmp_path: Path):
@@ -90,11 +103,11 @@ def test_membership_via_in_is_semijoin(tmp_path: Path):
     assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30)]
 
 
-def test_explicit_is_not_null_restricts_subset_join(tmp_path: Path):
+def test_explicit_is_not_null_matches_directional(tmp_path: Path):
     query = (
         FILTERED + "where members.mid is not null "
         "select cust, sum(amount) as total subset join cust = members.mid;"
     )
-    # documented idiom to drop non-anchor rows from the preserving render:
-    # non-member 9 gone, unmatched member 7 kept.
-    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30), (7, None)]
+    # the `is not null` idiom composes with (and here coincides with) the
+    # directional narrowing.
+    assert _rows(tmp_path, query) == DIRECTIONAL

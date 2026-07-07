@@ -31,10 +31,10 @@ datasource orders (oid: oid, st: status, amt: amt)
 grain (oid) address orders_tbl;
 """
 
-# joins are row-preserving (docs/subset_union_join_design.md): both rowsets are
-# filtered, so the declared subset cannot be proven and unmatched rows from
-# EITHER side survive — the intersection is the explicit both-sides
-# `is not null` idiom.
+# the derived-key relation declares (b.oid + 1) ⊆ a.oid, so `a` is the anchor
+# and the join narrows to a directional LEFT (a rowset output is complete at its
+# own rename boundary). The explicit both-sides `is not null` idiom below further
+# restricts to the intersection.
 QUERY = """import orders as orders;
 
 with a as select orders.oid as oid, orders.amt as amt where orders.status = 1;
@@ -42,7 +42,7 @@ with b as select orders.oid as oid, orders.amt as amt where orders.status = 2;
 
 where a.amt is not null and b.amt is not null
 select a.oid, a.amt, b.oid, b.amt
-left join a.oid = b.oid + 1
+subset join b.oid + 1 = a.oid
 order by a.oid asc;
 """
 
@@ -52,7 +52,7 @@ with a as select orders.oid as oid, orders.amt as amt where orders.status = 1;
 with b as select orders.oid as oid, orders.amt as amt where orders.status = 2;
 
 select a.oid, a.amt, b.oid, b.amt
-left join a.oid = b.oid + 1
+subset join b.oid + 1 = a.oid
 order by a.oid asc nulls last;
 """
 
@@ -118,13 +118,11 @@ def test_offset_join_execution(models: Path, backend: ParserBackend) -> None:
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_offset_join_execution_preserving(models: Path, backend: ParserBackend) -> None:
-    """Without explicit filters the join preserves: unmatched rows from both
-    filtered rowsets survive NULL-padded alongside the offset match."""
+def test_offset_join_narrows_to_anchor(models: Path, backend: ParserBackend) -> None:
+    """The derived-key relation declares (b.oid + 1) ⊆ a.oid, so `a` is the
+    superset anchor: the offset match and a's unmatched rows survive, while the
+    b-only row (derived key 2, absent from a) drops — directional LEFT."""
     with _using_backend(backend):
         res = _seeded_executor(models).execute_text(PRESERVING_QUERY)[-1]
         rows = [tuple(r) for r in res.fetchall()]
-    assert (3, 30.0, 2, 200.0) in rows
-    assert (7, 70.0, None, None) in rows
-    # the b-only row's a.oid coalesces with the derived key (b.oid + 1 = 2)
-    assert (2, None, 1, 100.0) in rows
+    assert rows == [(3, 30.0, 2, 200.0), (7, 70.0, None, None)]
