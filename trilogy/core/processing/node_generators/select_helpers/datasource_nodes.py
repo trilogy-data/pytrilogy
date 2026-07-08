@@ -29,6 +29,9 @@ from trilogy.core.processing.node_generators.select_helpers.condition_routing im
     datasource_conditions,
     preexisting_conditions,
 )
+from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
+    membership_complete_grain_keys,
+)
 from trilogy.core.processing.nodes import (
     ConstantNode,
     GroupNode,
@@ -335,6 +338,17 @@ def create_datasource_node(
             conditions.conditional, datasource.non_partial_for.conditional
         )
     )
+    # A ~ grain key whose universe is pinned to this datasource by a membership-
+    # proving WHERE (a returns-only column proven non-null) is complete for this
+    # result even without a table-level ``complete where`` — so the discovery loop
+    # must not see it come back partial and re-source it from a sibling anchor.
+    membership_complete = (
+        set()
+        if partial_is_full
+        else membership_complete_grain_keys(
+            datasource, environment.datasources.values(), conditions
+        )
+    )
 
     routed_conditions = datasource_conditions(
         datasource, conditions, injected_conditions, partial_is_full
@@ -378,7 +392,13 @@ def create_datasource_node(
         parents=[],
         depth=depth,
         partial_concepts=(
-            [] if partial_is_full else [c for c in output_concepts if c in partial_lcl]
+            []
+            if partial_is_full
+            else [
+                c
+                for c in output_concepts
+                if c in partial_lcl and c.canonical_address not in membership_complete
+            ]
         ),
         rollup_concepts=rollup_concepts,
         # a BASIC derivation computed at this scan (`l_key + 1`) is NULL
