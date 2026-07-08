@@ -311,6 +311,7 @@ NUMERIC_INPUT_TYPES: Set[VALID_INPUT_ITEM] = {
     DataType.INTEGER,
     DataType.BIGINT,
     DataType.FLOAT,
+    DataType.DOUBLE,
     DataType.NUMBER,
     DataType.NUMERIC,
 }

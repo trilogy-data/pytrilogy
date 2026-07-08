@@ -1041,9 +1041,12 @@ def function_to_concept(
     else:
         derivation = Derivation.BASIC
         # single-row inputs (e.g. grainless aggregates) combine to a single row;
-        # mirrors Concept.calculate_granularity for built concepts.
-        if concrete_args and all(
-            x.granularity == Granularity.SINGLE_ROW for x in concrete_args
+        # a grand-total (abstract) grain is single-row by definition even when
+        # the flattened concrete args look multi-row (e.g. sum(x)/greatest(sum(1),1)
+        # whose args flatten to the raw columns). Mirrors calculate_granularity.
+        if (grain is not None and grain.abstract) or (
+            concrete_args
+            and all(x.granularity == Granularity.SINGLE_ROW for x in concrete_args)
         ):
             granularity = Granularity.SINGLE_ROW
         else:

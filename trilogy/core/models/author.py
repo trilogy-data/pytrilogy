@@ -1538,7 +1538,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             [x.granularity == Granularity.SINGLE_ROW for x in lineage.concept_arguments]
         ):
             return Granularity.SINGLE_ROW
-        elif grain.components == {ALL_ROWS_CONCEPT}:
+        elif grain.abstract:
+            # A grand-total grain (no components, or only all-rows markers) is
+            # single-row by definition — covers BASIC-over-aggregate scalars
+            # whose flattened concept_arguments look multi-row.
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 
