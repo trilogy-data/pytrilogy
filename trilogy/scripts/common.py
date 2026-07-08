@@ -702,6 +702,12 @@ def handle_execution_exception(
         print_error(
             f"Resolution error{location}: query could not be planned; this is a bug."
         )
+    elif isinstance(e, ImportError):
+        # A bad import target is a fixable authoring mistake — the raised message
+        # already carries a "Did you mean ...?" hint. Label it so the reader (or
+        # agent) fixes the path rather than re-issuing the same import as if it
+        # were an internal crash.
+        print_error(f"Import error{location}: {e}")
     else:
         print_error(f"Unexpected error{location}: {e}")
     if debug:

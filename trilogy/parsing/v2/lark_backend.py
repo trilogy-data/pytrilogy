@@ -190,9 +190,12 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
         raise create_syntax_error(221, align_pos, text)
 
     # 222: a named `union(...) -> (...)` definition not terminated with `;`
-    # before the consuming statement. Confirm by inserting `;` and reparsing.
+    # before the consuming statement. Confirm by terminating the PREFIX only
+    # (`text[:sig_pos] + ";"`), not the whole file — a second, downstream error
+    # would defeat a whole-file reparse and suppress this diagnostic. (See the
+    # pest_backend.py:222 note.)
     sig_pos = detect_missing_signature_semicolon(text, pos)
-    if sig_pos is not None and _lark_parses(text[:sig_pos] + ";" + text[sig_pos:]):
+    if sig_pos is not None and _lark_parses(text[:sig_pos] + ";"):
         raise create_syntax_error(222, sig_pos, text)
 
     if last_token and e.token.type == "$END":

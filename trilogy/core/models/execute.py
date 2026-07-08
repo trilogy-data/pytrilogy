@@ -1297,8 +1297,15 @@ class QueryDatasource:
                 x.address for x in self.output_concepts if x.purpose != Purpose.METRIC
             )
             group = "_grouped_by_" + "_".join(keys)
+        # Sort member identifiers: a join is commutative for identity, but
+        # optimization passes reassign ``datasources`` post-construction (no
+        # __post_init__ re-sort), so the same logical join can present its
+        # members in two orders. Canonicalizing here — mirroring the sorted
+        # grain/filter suffixes — keeps A_join_B and B_join_A one identity so
+        # get_datasource_cte can find the built CTE. (UNION path above keeps
+        # list order on purpose for EXCEPT arm semantics.)
         return (
-            "_join_".join([d.identifier for d in self.datasources])
+            "_join_".join(sorted(d.identifier for d in self.datasources))
             + group
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")

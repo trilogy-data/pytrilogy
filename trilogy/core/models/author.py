@@ -1511,6 +1511,21 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         return Derivation.ROOT
 
     @classmethod
+    def _lineage_has_inline_aggregate(cls, node) -> bool:
+        # True if the lineage tree contains an aggregate anywhere (e.g. the inline
+        # sums in `sum(x)/greatest(sum(1),1)`). Named concepts are NOT recursed
+        # into — their granularity is already reflected via concept_arguments.
+        from trilogy.core.models.build import BuildAggregateWrapper, BuildFunction
+
+        if isinstance(node, (AggregateWrapper, BuildAggregateWrapper)):
+            return True
+        if isinstance(node, (Function, BuildFunction)):
+            if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                return True
+            return any(cls._lineage_has_inline_aggregate(a) for a in node.arguments)
+        return False
+
+    @classmethod
     def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):
         from trilogy.core.models.build import BuildFilterItem, BuildFunction
 
@@ -1538,10 +1553,12 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             [x.granularity == Granularity.SINGLE_ROW for x in lineage.concept_arguments]
         ):
             return Granularity.SINGLE_ROW
-        elif grain.abstract:
-            # A grand-total grain (no components, or only all-rows markers) is
-            # single-row by definition — covers BASIC-over-aggregate scalars
-            # whose flattened concept_arguments look multi-row.
+        elif grain.abstract and cls._lineage_has_inline_aggregate(lineage):
+            # A grand-total grain reached BY AGGREGATION is single-row — covers
+            # BASIC-over-aggregate scalars (e.g. sum(x)/greatest(sum(1),1)) whose
+            # flattened concept_arguments look multi-row. Gate on an inline
+            # aggregate so an abstract grain produced by a multi-row UNION/bag
+            # passthrough (e.g. renaming a union output) stays multi-row.
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 

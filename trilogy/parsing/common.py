@@ -1041,10 +1041,16 @@ def function_to_concept(
     else:
         derivation = Derivation.BASIC
         # single-row inputs (e.g. grainless aggregates) combine to a single row;
-        # a grand-total (abstract) grain is single-row by definition even when
-        # the flattened concrete args look multi-row (e.g. sum(x)/greatest(sum(1),1)
-        # whose args flatten to the raw columns). Mirrors calculate_granularity.
-        if (grain is not None and grain.abstract) or (
+        # a grand-total (abstract) grain reached BY AGGREGATION is single-row even
+        # when the flattened concrete args look multi-row (e.g. sum(x)/greatest(
+        # sum(1),1) whose args flatten to the raw columns). Gate on an inline
+        # aggregate so an abstract grain from a multi-row UNION/bag passthrough
+        # stays multi-row. Mirrors calculate_granularity.
+        if (
+            grain is not None
+            and grain.abstract
+            and Concept._lineage_has_inline_aggregate(parent)
+        ) or (
             concrete_args
             and all(x.granularity == Granularity.SINGLE_ROW for x in concrete_args)
         ):
@@ -1117,6 +1123,27 @@ def filter_item_to_concept(
     modifiers = get_lineage_modifiers(parent, environment)
     grain = cparent.grain if cparent.purpose == Purpose.PROPERTY else Grain()
     granularity = cparent.granularity
+    if grain.abstract:
+        # A filter over a grainless value (`1 ? cond`) still produces a distinct
+        # CASE-mask per row of the condition's row-grain args, so it must carry
+        # that grain (descended to keys — the mask varies per row, not per
+        # distinct property value). Otherwise `sum(1 ? cond)` treats the mask as
+        # a single-row constant and dedups it to one row, collapsing the count.
+        cond_key_addrs: list[str] = []
+        for ref in parent.where.row_arguments:
+            if ref.address not in environment.concepts:
+                continue
+            cond_concept = environment.concepts[ref.address]
+            if cond_concept.derivation in (Derivation.CONSTANT, Derivation.AGGREGATE):
+                continue
+            cond_key_addrs += (
+                list(cond_concept.keys) if cond_concept.keys else [cond_concept.address]
+            )
+        cond_grain = Grain.from_concepts(cond_key_addrs, environment=environment)
+        if not cond_grain.abstract:
+            grain = cond_grain
+            granularity = Granularity.MULTI_ROW
+            fallback_keys = set(cond_grain.components)
     return Concept(
         name=name,
         datatype=cparent.datatype,

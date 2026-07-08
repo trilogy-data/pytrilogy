@@ -329,9 +329,14 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
         return create_syntax_error(221, align_pos, text)
 
     # 222: a named `union(...) -> (...)` definition not terminated with `;`
-    # before the consuming statement. Confirm by inserting `;` and reparsing.
+    # before the consuming statement. Confirm by terminating the PREFIX only
+    # (`text[:sig_pos] + ";"`), not by reparsing the whole file — a SECOND,
+    # downstream error (e.g. a bad consuming `select`) would defeat a whole-file
+    # reparse and suppress this diagnostic, leaving the raw pest error (a caret
+    # inside the `-> (...)` tuple reading as "add a data_type"). The missing `;`
+    # is the first error to report; a valid terminated prefix confirms it.
     sig_pos = detect_missing_signature_semicolon(text, pos)
-    if sig_pos is not None and _pest_parses(text[:sig_pos] + ";" + text[sig_pos:]):
+    if sig_pos is not None and _pest_parses(text[:sig_pos] + ";"):
         return create_syntax_error(222, sig_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position

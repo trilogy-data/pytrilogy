@@ -81,3 +81,19 @@ def test_union_sum_does_not_drift():
         MODEL + "\nwith u as select all_k, all_amt;\nselect sum(u.all_amt) -> total;"
     ).fetchall()
     assert rows[0].total == Decimal("0.30")
+
+
+def test_double_accepted_by_aggregate_functions():
+    # double is an 8-byte float; it must be a valid input to sum/avg/etc. so
+    # authors can use `cast(0 as double)` placeholders without float32 drift.
+    exec = Dialects.DUCK_DB.default_executor()
+    q = (
+        "const vals <- unnest([112458734.70, 0.01, 0.02]);\n"
+        "with u as select cast(vals as double) as d;\n"
+        "select sum(u.d) as s, avg(u.d) as a, max(u.d) as mx, min(u.d) as mn;"
+    )
+    row = exec.execute_query(q).fetchall()[0]
+    # float32 would drift to ~112458736.03; double stays precise
+    assert abs(row.s - 112458734.73) < 1e-6, row.s
+    assert row.mx == 112458734.70
+    assert row.mn == 0.01

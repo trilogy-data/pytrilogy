@@ -57,6 +57,21 @@ def test_handle_execution_exception_labels_syntax_errors(capsys):
     assert "Syntax error:" not in combined, combined
 
 
+def test_handle_execution_exception_labels_import_error(capsys):
+    """A bad import path raises ImportError (with a `Did you mean ...?` hint); it
+    must be labelled `Import error:`, not `Unexpected error:`, so the reader fixes
+    the path instead of re-issuing the same import as if it were a crash. (q58.)"""
+    with raises(Exit):
+        handle_execution_exception(
+            ImportError(
+                "Unable to import 'raw.raw.foo': not found. Did you mean: raw.foo?"
+            )
+        )
+    combined = "".join(capsys.readouterr())
+    assert "Import error:" in combined, combined
+    assert "Unexpected error:" not in combined, combined
+
+
 def test_handle_execution_exception_labels_resolution_errors(capsys):
     """A disconnected/unresolvable query is a fixable modeling mistake, labelled
     `Resolution error:` rather than `Unexpected error:`."""
