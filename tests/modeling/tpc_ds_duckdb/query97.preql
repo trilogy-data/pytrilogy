@@ -5,11 +5,11 @@ import all_sales as sales;
 rowset pair_presence <- where
     sales.channel in ('STORE', 'CATALOG')
     and sales.date.month_seq between 1200 and 1200 + 11
-    and sales.billing_customer.id is not null
-    and sales.item.id is not null
+    and sales.billing_customer.sk is not null
+    and sales.item.sk is not null
 select
-    sales.billing_customer.id,
-    sales.item.id,
+    sales.billing_customer.sk,
+    sales.item.sk,
     max(
             case
                 when sales.channel = 'STORE' then sales.order_id

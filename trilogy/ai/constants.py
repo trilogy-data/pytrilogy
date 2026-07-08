@@ -46,7 +46,7 @@ Join on the full grain. When blending two FACT models, write one join clause per
 trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH union join a.order_number = b.order_number AND union join a.item.id = b.item.id.
 Matching only one key of a multi-key grain may cause duplication.
 
-Joins do NOT ever drop results. To filter, condition on a property that would exist on only one side of a join.
+Joins do NOT ever drop results; they only merge models. To filter, explicit add a condition on the element to restrict to. 
 
 Full example: trilogy agent-info syntax example scoped-join.
 

@@ -16,7 +16,7 @@ import customer as customer; # the customer account tied to the order
 import customer as return_customer; # the customer account tied to the return
 import promotion as promotion;
 import customer_demographic as customer_demographic; # the customer demographics recorded on this sale (the buyer's demographic profile at the time of purchase)
-import household_demographic as household_demographic; # the household demographics recorded on this sale (the buyer's household at the time of purchase)
+import household_demographic as sale_household_demographic; # the household demographics recorded on this sale (the buyer's household at the time of purchase)
 import store as store;
 import store as return_store;
 import address as sale_address; # the customer's address as recorded on the sale (the purchase-time address)
@@ -24,7 +24,7 @@ import reason as return_reason;
 
 key ticket_number int; # Store-sale ticket (receipt) number identifying a single in-store transaction.
 
-properties <ticket_number, item.id> (
+properties <ticket_number, item.sk> (
     quantity int, # Number of units of the item sold on this ticket line.
     sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit. The whole-line total is ext_sales_price (the "total price").
     list_price numeric::usd, # Per-unit list price before discounts.
@@ -46,19 +46,19 @@ properties <ticket_number, item.id> (
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
 
-auto line_item <- concat(ticket_number::string, '-', item.id::string); # Unique line-item identifier (one ticket + item). Count line items with count(line_item); do NOT use count(ticket_number), a receipt key that dedups and undercounts multi-item tickets.
+auto line_item <- concat(ticket_number::string, '-', item.sk::string); # Unique line-item identifier (one ticket + item). Count line items with count(line_item); do NOT use count(ticket_number), a receipt key that dedups and undercounts multi-item tickets.
 auto line_item_count<- sum(row_counter); # Number of line items (= count(line_item)); kept for queries that reference it.
 auto is_returned <- _returned_ticket is not null; # True if this ticket line was later returned, else False.
 
 datasource store_sales (
     raw('''1'''): row_counter,
-    SS_SOLD_DATE_SK: ?date.id, # FK to date the sale occurred (optional in source data).
-    SS_SOLD_TIME_SK: ?time.id, # FK to time-of-day the sale occurred.
-    SS_CUSTOMER_SK: ?customer.id, # FK to the purchasing customer (optional — anonymous sales allowed).
-    SS_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at time of sale.
-    SS_HDEMO_SK: ?household_demographic.id, # FK to the customer's household profile at time of sale.
+    SS_SOLD_DATE_SK: ?date.sk, # FK to date the sale occurred (optional in source data).
+    SS_SOLD_TIME_SK: ?time.sk, # FK to time-of-day the sale occurred.
+    SS_CUSTOMER_SK: ?customer.sk, # FK to the purchasing customer (optional — anonymous sales allowed).
+    SS_CDEMO_SK: ?customer_demographic.sk, # FK to the customer's demographic profile at time of sale.
+    SS_HDEMO_SK: ?sale_household_demographic.sk, # FK to the customer's household profile at time of sale.
     SS_TICKET_NUMBER: ticket_number,
-    SS_ITEM_SK: item.id, # FK to the item sold.
+    SS_ITEM_SK: item.sk, # FK to the item sold.
     SS_SALES_PRICE: sales_price,
     SS_LIST_PRICE: list_price,
     SS_EXT_SALES_PRICE: ext_sales_price,
@@ -66,30 +66,30 @@ datasource store_sales (
     SS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     SS_EXT_DISCOUNT_AMT: ext_discount_amount,
     SS_NET_PROFIT: net_profit,
-    SS_PROMO_SK: ?promotion.id, # FK to the promotion applied to the line, if any.
+    SS_PROMO_SK: ?promotion.sk, # FK to the promotion applied to the line, if any.
     SS_QUANTITY: quantity,
     SS_COUPON_AMT: coupon_amt,
-    SS_STORE_SK: ?store.id, # FK to the store the sale occurred at.
+    SS_STORE_SK: ?store.sk, # FK to the store the sale occurred at.
     SS_NET_PAID: net_paid,
     SS_EXT_TAX: ext_tax,
     SS_WHOLESALE_COST: wholesale_cost,
-    SS_ADDR_SK: ?sale_address.id, # FK to the customer's address at time of sale.
+    SS_ADDR_SK: ?sale_address.sk, # FK to the customer's address at time of sale.
 )
-grain (item.id, ticket_number)
+grain (item.sk, ticket_number)
 address memory.store_sales;
 
 datasource store_returns (
-    SR_RETURNED_DATE_SK: return_date.id, # FK to date the return occurred.
-    SR_RETURN_TIME_SK: return_time.id, # FK to time-of-day the return was processed.
-    SR_ITEM_SK: ~item.id,
-    SR_CUSTOMER_SK: return_customer.id, # FK to the customer returning the item (may differ from purchaser).
+    SR_RETURNED_DATE_SK: return_date.sk, # FK to date the return occurred.
+    SR_RETURN_TIME_SK: return_time.sk, # FK to time-of-day the return was processed.
+    SR_ITEM_SK: ~item.sk,
+    SR_CUSTOMER_SK: return_customer.sk, # FK to the customer returning the item (may differ from purchaser).
     SR_RETURN_AMT: return_amount,
     SR_RETURN_QUANTITY: return_quantity,
     SR_TICKET_NUMBER: ~ticket_number,
-    SR_STORE_SK: return_store.id, # FK to the store the return was processed at.
-    SR_REASON_SK: return_reason.id, # FK to the return-reason code.
+    SR_STORE_SK: return_store.sk, # FK to the store the return was processed at.
+    SR_REASON_SK: return_reason.sk, # FK to the return-reason code.
     SR_NET_LOSS: return_net_loss,
     SR_TICKET_NUMBER: _returned_ticket,
 )
-grain (item.id, ticket_number)
+grain (item.sk, ticket_number)
 address memory.store_returns;

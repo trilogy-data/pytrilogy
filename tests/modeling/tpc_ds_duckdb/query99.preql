@@ -15,9 +15,9 @@ end;
 where
     ship_date.month_seq between 1200 and 1211
     and order_number is not null
-    and call_center.id is not null
-    and warehouse.id is not null
-    and ship_mode.id is not null
+    and call_center.sk is not null
+    and warehouse.sk is not null
+    and ship_mode.sk is not null
 select
     warehouse_short_name,
     ship_mode.type,

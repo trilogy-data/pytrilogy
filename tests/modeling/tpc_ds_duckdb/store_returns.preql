@@ -15,7 +15,7 @@ import reason as return_reason;
 
 key ticket_number int; # Surrogate key uniquely identifying a store sales ticket.
 
-properties <item.id, ticket_number> (
+properties <item.sk, ticket_number> (
     return_amount numeric::usd?, # Dollar amount refunded to the customer for the returned item (USD).
     return_quantity int?, # Number of units returned on this line.
     net_loss numeric::usd?, # Net financial loss on the return for this line (USD).
@@ -23,18 +23,18 @@ properties <item.id, ticket_number> (
 );
 
 datasource store_returns (
-    SR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
-    SR_RETURN_TIME_SK: ?time.id, # FK to the time-of-day the return was processed.
-    SR_ITEM_SK: item.id, # FK to the returned item.
-    SR_CUSTOMER_SK: ?billing_customer.id, # FK to the customer initiating the return.
-    SR_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at return time (optional).
-    SR_REASON_SK: ?return_reason.id, # FK to the return-reason code.
+    SR_RETURNED_DATE_SK: return_date.sk, # FK to the date the item was returned.
+    SR_RETURN_TIME_SK: ?time.sk, # FK to the time-of-day the return was processed.
+    SR_ITEM_SK: item.sk, # FK to the returned item.
+    SR_CUSTOMER_SK: ?billing_customer.sk, # FK to the customer initiating the return.
+    SR_CDEMO_SK: ?customer_demographic.sk, # FK to the customer's demographic profile at return time (optional).
+    SR_REASON_SK: ?return_reason.sk, # FK to the return-reason code.
     SR_RETURN_AMT: return_amount,
     SR_RETURN_QUANTITY: return_quantity,
     SR_NET_LOSS: net_loss,
     SR_REFUNDED_CASH: refunded_cash,
     SR_TICKET_NUMBER: ticket_number, # FK to the original store-sale ticket the return is associated with.
-    SR_STORE_SK: store.id, # FK to the store the return was processed at.
+    SR_STORE_SK: store.sk, # FK to the store the return was processed at.
 )
-grain (item.id, ticket_number)
+grain (item.sk, ticket_number)
 address memory.store_returns;

@@ -3,10 +3,10 @@
 
 import std.money;
 
-key id int; # Surrogate key uniquely identifying a promotion.
+key sk int; # Surrogate key uniquely identifying a promotion.
 
-properties id (
-    text_id string, # Stable business identifier for the promotion (16-char alphanumeric).
+properties sk (
+    id string, # Stable business identifier for the promotion (16-char alphanumeric).
     channel_email enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the email channel, else 'N'.
     --channel_catalog enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the printed-catalog channel, else 'N'.
     channel_event enum<string>['Y', 'N']?, # 'Y' if the promotion ran via in-person events, else 'N'.
@@ -18,8 +18,8 @@ properties id (
 );
 
 datasource promotion (
-    P_PROMO_SK: id,
-    P_PROMO_ID: text_id,
+    P_PROMO_SK: sk,
+    P_PROMO_ID: id,
     P_COST: cost,
     P_CHANNEL_EMAIL: channel_email,
     P_CHANNEL_EVENT: channel_event,
@@ -29,5 +29,5 @@ datasource promotion (
     P_CHANNEL_RADIO: channel_radio,
     P_CHANNEL_PRESS: channel_press,
 )
-grain (id)
+grain (sk)
 address memory.promotion;

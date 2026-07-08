@@ -9,7 +9,7 @@ WITH
 cheerful as (
 SELECT
     \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" as \"discount_amount\",
-    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\"
+    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
     INNER JOIN \"memory\".\"item\" as \"item_items\" on \"catalog_sales\".\"CS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
@@ -19,8 +19,8 @@ WHERE
 ),
 thoughtful as (
 SELECT
-    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
-    avg(\"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_5510773609506287\"
+    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_sk\",
+    avg(\"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_2427483520831228\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
@@ -33,8 +33,8 @@ SELECT
     sum(\"cheerful\".\"discount_amount\") as \"total_discount\"
 FROM
     \"cheerful\"
-    INNER JOIN \"thoughtful\" on \"cheerful\".\"item_id\" = \"thoughtful\".\"item_id\"
+    INNER JOIN \"thoughtful\" on \"cheerful\".\"item_sk\" = \"thoughtful\".\"item_sk\"
 WHERE
-    \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_5510773609506287\"
+    \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_2427483520831228\"
 
 LIMIT (100)"""

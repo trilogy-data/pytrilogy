@@ -69,6 +69,7 @@ from trilogy.core.models.author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    ReferenceReplacements,
     RowsetItem,
     SubselectComparison,
     SubselectItem,
@@ -258,7 +259,18 @@ def _concept_address(c: Any, rename: Mapping[str, str] | None = None) -> str:
         nested = _render_aggregate(c)
         if nested:
             return nested
-    addr = c.address if hasattr(c, "address") else str(c)
+        # A composite (non-aggregate) argument like `a || b` embeds concept refs
+        # that `rename` must reach: after `_rewrite_aliased_source_refs` rewrites a
+        # HAVING copy's inner ref to the SELECT alias while the SELECT copy keeps the
+        # source name, the two aggregate signatures only compare equal once the
+        # rename is pushed through the whole expression. Both compared sides run
+        # this, so the rendered key need only be self-consistent.
+        if isinstance(c, Function) and rename:
+            replacements: ReferenceReplacements = [
+                (src, ConceptRef(address=tgt)) for src, tgt in rename.items()
+            ]
+            return str(c.with_reference_replacement(replacements))
+    addr = c.address if isinstance(c, (ConceptRef, Concept)) else str(c)
     return rename.get(addr, addr) if rename is not None else addr
 
 

@@ -7,13 +7,13 @@ import catalog_returns as cr;
 # a matching catalog_return. catalog_sales is reached through cr.sales (cr
 # already imports catalog_sales as sales) so we avoid the cross-import merge.
 auto cs_ui_refund_amt <- coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
-auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
-auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
+auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.sk;
+auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.sk;
 
 rowset cs_ui <- where
     cs_ui_sale > 2 * cs_ui_refund
 select
-    cr.sales.item.id as cs_ui_item_id,
+    cr.sales.item.sk as cs_ui_item_id,
 ;
 
 # Row-level filter common to both year slices. Excludes the cross-CDEMO
@@ -23,17 +23,17 @@ select
 # in PR #549's null-safe promotion). Empirically re-confirmed 2026-06-10: pushing
 # the inequality into this row filter (and collapsing ss_rows_* away) blows the
 # sf=1 plan past 3GB / 5+ min, so the extra row-grain rowset stays on purpose.
-def year_row_filter(yr) -> ss.item.id in cs_ui.cs_ui_item_id
+def year_row_filter(yr) -> ss.item.sk in cs_ui.cs_ui_item_id
 and ss.date.year = yr
 and ss.is_returned
 and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
 and ss.item.current_price between 65 and 74
-and ss.customer.id is not null
-and ss.store.id is not null
-and ss.sale_address.id is not null
-and ss.customer.address.id is not null;
+and ss.customer.sk is not null
+and ss.store.sk is not null
+and ss.sale_address.sk is not null
+and ss.customer.address.sk is not null;
 
-# Row-grain projection for each year — id keys only, no descriptive text. Both
+# Row-grain projection for each year — sk keys only, no descriptive text. Both
 # marital_status columns are selected so the outer aggregate can apply the
 # inequality without dragging the customer_demographics joins into the main
 # aggregate's join planning.
@@ -41,10 +41,10 @@ rowset ss_rows_99 <- where
     @year_row_filter(1999) = True
 select
     ss.ticket_number,
-    ss.item.id,
-    ss.store.id,
-    ss.sale_address.id,
-    ss.customer.address.id,
+    ss.item.sk,
+    ss.store.sk,
+    ss.sale_address.sk,
+    ss.customer.address.sk,
     ss.date.year,
     ss.customer.first_sales_date.year,
     ss.customer.first_shipto_date.year,
@@ -59,8 +59,8 @@ rowset ss_rows_00 <- where
     @year_row_filter(2000) = True
 select
     ss.ticket_number,
-    ss.item.id,
-    ss.store.id,
+    ss.item.sk,
+    ss.store.sk,
     ss.date.year,
     ss.wholesale_cost,
     ss.list_price,
@@ -69,15 +69,15 @@ select
     ss.customer.demographics.marital_status,
 ;
 
-# Per-year aggregates on id keys. The marital-status inequality is applied here
+# Per-year aggregates on sk keys. The marital-status inequality is applied here
 # (not in year_row_filter) per the perf note above.
 rowset agg_99 <- where
     ss_rows_99.ss.customer_demographic.marital_status != ss_rows_99.ss.customer.demographics.marital_status
 select
-    ss_rows_99.ss.item.id as item_sk_99,
-    ss_rows_99.ss.store.id as store_sk_99,
-    ss_rows_99.ss.sale_address.id as b_addr_99,
-    ss_rows_99.ss.customer.address.id as c_addr_99,
+    ss_rows_99.ss.item.sk as item_sk_99,
+    ss_rows_99.ss.store.sk as store_sk_99,
+    ss_rows_99.ss.sale_address.sk as b_addr_99,
+    ss_rows_99.ss.customer.address.sk as c_addr_99,
     ss_rows_99.ss.date.year as syear_99,
     ss_rows_99.ss.customer.first_sales_date.year as fsyear_99,
     ss_rows_99.ss.customer.first_shipto_date.year as s2year_99,
@@ -90,8 +90,8 @@ select
 rowset agg_00 <- where
     ss_rows_00.ss.customer_demographic.marital_status != ss_rows_00.ss.customer.demographics.marital_status
 select
-    ss_rows_00.ss.item.id as item_sk_00,
-    ss_rows_00.ss.store.id as store_sk_00,
+    ss_rows_00.ss.item.sk as item_sk_00,
+    ss_rows_00.ss.store.sk as store_sk_00,
     ss_rows_00.ss.date.year as syear_00,
     count(ss_rows_00.ss.ticket_number) as cnt_00,
     sum(ss_rows_00.ss.wholesale_cost) as s1_00,
@@ -100,20 +100,20 @@ select
 ;
 
 # Join the two year slices on item + store. Chaining each join key to its base
-# (`= ss.item.id`, `= ss.store.id`) puts the base key in the join group so the
+# (`= ss.item.sk`, `= ss.store.sk`) puts the base key in the join group so the
 # store/item properties can be enriched off it; the arm-only address ids are
 # chained to their base so the address text enriches from them.
 where
     agg_00.cnt_00 <= agg_99.cnt_99
-full join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.id
-full join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.id
-full join agg_99.b_addr_99 = ss.sale_address.id
-full join agg_99.c_addr_99 = ss.customer.address.id
+full join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.sk
+full join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.sk
+full join agg_99.b_addr_99 = ss.sale_address.sk
+full join agg_99.c_addr_99 = ss.customer.address.sk
 select
-    --ss.item.id,
-    --ss.store.id,
-    --ss.sale_address.id,
-    --ss.customer.address.id,
+    --ss.item.sk,
+    --ss.store.sk,
+    --ss.sale_address.sk,
+    --ss.customer.address.sk,
     ss.item.product_name as p_name,
     ss.store.name as s_name,
     ss.store.zip as s_zip,

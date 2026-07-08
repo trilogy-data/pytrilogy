@@ -9,17 +9,17 @@ where
     and analysis.catalog_date.month_of_year between 4 and 10
     and analysis.is_returned
 select
-    analysis.item.text_id,
+    analysis.item.id,
     analysis.item.desc,
-    analysis.store.text_id,
+    analysis.store.id,
     analysis.store.name,
     sum(analysis.store_net_profit) as store_sales_profit,
     sum(analysis.store_return_net_loss) as store_returns_loss,
     sum(analysis.catalog_net_profit) as catalog_sales_profit,
 order by
-    analysis.item.text_id asc,
+    analysis.item.id asc,
     analysis.item.desc asc,
-    analysis.store.text_id asc,
+    analysis.store.id asc,
     analysis.store.name asc
 limit 100
 ;

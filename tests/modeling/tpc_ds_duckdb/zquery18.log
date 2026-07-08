@@ -1,7 +1,7 @@
 query_id = "18"
 generator = "v3"
-gen_length = 6916
-preql_size = 1425
+gen_length = 6876
+preql_size = 1410
 comp_size = 1593
 generated_sql = """
 
@@ -10,7 +10,7 @@ cooperative as (
 SELECT
     \"cs_billing_customer_customers\".\"C_BIRTH_YEAR\" as \"cs_billing_customer_birth_year\",
     \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEP_COUNT\" as \"cs_billing_customer_demographic_dependent_count\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_sk\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
@@ -27,13 +27,13 @@ SELECT
     \"cs_billing_customer_address_customer_address\".\"CA_COUNTY\" as \"cs_billing_customer_address_county\",
     \"cs_billing_customer_address_customer_address\".\"CA_STATE\" as \"cs_billing_customer_address_state\",
     \"cs_catalog_sales\".\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_sk\",
     \"cs_catalog_sales\".\"CS_LIST_PRICE\" as \"cs_list_price\",
     \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_catalog_sales\".\"CS_QUANTITY\" as \"cs_quantity\",
     \"cs_catalog_sales\".\"CS_SALES_PRICE\" as \"cs_sales_price\",
-    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_text_id\"
+    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
@@ -48,27 +48,27 @@ questionable as (
 SELECT
     \"cooperative\".\"cs_billing_customer_birth_year\" as \"row_birth_year\",
     \"cooperative\".\"cs_billing_customer_demographic_dependent_count\" as \"row_dep_count\",
-    \"cooperative\".\"cs_item_id\" as \"cs_item_id\",
+    \"cooperative\".\"cs_item_sk\" as \"cs_item_sk\",
     \"cooperative\".\"cs_order_number\" as \"cs_order_number\"
 FROM
     \"cooperative\"),
 yummy as (
 SELECT
-    \"questionable\".\"cs_item_id\" as \"cs_item_id\",
+    \"questionable\".\"cs_item_sk\" as \"cs_item_sk\",
     \"questionable\".\"cs_order_number\" as \"cs_order_number\",
     \"questionable\".\"row_dep_count\" as \"row_dep_count\",
     \"uneven\".\"cs_billing_customer_address_country\" as \"cs_billing_customer_address_country\",
     \"uneven\".\"cs_billing_customer_address_county\" as \"cs_billing_customer_address_county\",
     \"uneven\".\"cs_billing_customer_address_state\" as \"cs_billing_customer_address_state\",
     \"uneven\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
-    \"uneven\".\"cs_item_text_id\" as \"cs_item_text_id\",
+    \"uneven\".\"cs_item_id\" as \"cs_item_id\",
     \"uneven\".\"cs_list_price\" as \"cs_list_price\",
     \"uneven\".\"cs_net_profit\" as \"cs_net_profit\",
     \"uneven\".\"cs_quantity\" as \"cs_quantity\",
     \"uneven\".\"cs_sales_price\" as \"cs_sales_price\"
 FROM
     \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"),
+    INNER JOIN \"questionable\" on \"uneven\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"),
 juicy as (
 SELECT
     \"questionable\".\"row_birth_year\" as \"row_birth_year\",
@@ -76,7 +76,7 @@ SELECT
     \"yummy\".\"cs_billing_customer_address_county\" as \"cs_billing_customer_address_county\",
     \"yummy\".\"cs_billing_customer_address_state\" as \"cs_billing_customer_address_state\",
     \"yummy\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
-    \"yummy\".\"cs_item_text_id\" as \"cs_item_text_id\",
+    \"yummy\".\"cs_item_id\" as \"cs_item_id\",
     \"yummy\".\"cs_list_price\" as \"cs_list_price\",
     \"yummy\".\"cs_net_profit\" as \"cs_net_profit\",
     \"yummy\".\"cs_quantity\" as \"cs_quantity\",
@@ -84,9 +84,9 @@ SELECT
     \"yummy\".\"row_dep_count\" as \"row_dep_count\"
 FROM
     \"yummy\"
-    INNER JOIN \"questionable\" on \"yummy\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
+    INNER JOIN \"questionable\" on \"yummy\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
 SELECT
-    \"juicy\".\"cs_item_text_id\" as \"cs_item_text_id\",
+    \"juicy\".\"cs_item_id\" as \"cs_item_id\",
     \"juicy\".\"cs_billing_customer_address_country\" as \"cs_billing_customer_address_country\",
     \"juicy\".\"cs_billing_customer_address_state\" as \"cs_billing_customer_address_state\",
     \"juicy\".\"cs_billing_customer_address_county\" as \"cs_billing_customer_address_county\",
@@ -105,5 +105,5 @@ ORDER BY
     \"juicy\".\"cs_billing_customer_address_country\" asc nulls first,
     \"juicy\".\"cs_billing_customer_address_state\" asc nulls first,
     \"juicy\".\"cs_billing_customer_address_county\" asc nulls first,
-    \"juicy\".\"cs_item_text_id\" asc nulls first
+    \"juicy\".\"cs_item_id\" asc nulls first
 LIMIT (100)"""

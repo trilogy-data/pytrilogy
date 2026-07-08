@@ -1,17 +1,17 @@
 # Income band info: lower and upper dollar bounds (USD, inclusive) for
 # each household-income range bucket.
 
-key id int; # Surrogate key uniquely identifying an income band.
+key sk int; # Surrogate key uniquely identifying an income band.
 
-properties id (
+properties sk (
     lower_bound int, # Lower bound of the household-income band (USD, inclusive).
     upper_bound int, # Upper bound of the household-income band (USD, inclusive).
 );
 
 datasource income_band (
-    IB_INCOME_BAND_SK: id,
+    IB_INCOME_BAND_SK: sk,
     IB_LOWER_BOUND: lower_bound,
     IB_UPPER_BOUND: upper_bound,
 )
-grain (id)
+grain (sk)
 address memory.income_band;

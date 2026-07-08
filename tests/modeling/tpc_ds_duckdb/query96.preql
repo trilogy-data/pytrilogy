@@ -3,10 +3,10 @@ import store_sales as store_sales;
 where
     store_sales.time.hour = 20
     and store_sales.time.minute >= 30
-    and store_sales.household_demographic.dependent_count = 7
+    and store_sales.sale_household_demographic.dependent_count = 7
     and store_sales.store.name = 'ese'
 select
-    count(concat(store_sales.ticket_number::string, '-', store_sales.item.id::string)) as ct,
+    count(concat(store_sales.ticket_number::string, '-', store_sales.item.sk::string)) as ct,
 order by
     ct asc
 limit 100

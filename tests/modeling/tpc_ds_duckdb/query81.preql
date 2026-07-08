@@ -1,11 +1,11 @@
 import catalog_returns as cr;
 
 # Non-rowset equivalent of the rowset form: the key-join shape achieved by
-# grouping the aggregate to (return_address.state, customer.id). The year/state
+# grouping the aggregate to (return_address.state, customer.sk). The year/state
 # filter is bound *inside* the conditional sum because a plain sum + a row-grain
 # WHERE year=2000 loses the filter from the customer-grain aggregate.
 auto customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null)
-    by cr.return_address.state, cr.billing_customer.id;
+    by cr.return_address.state, cr.billing_customer.sk;
 auto scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
 
 where
@@ -13,8 +13,8 @@ where
     and cr.billing_customer.address.state = 'GA'
     and cr.return_address.state is not null
 select
-    --cr.billing_customer.id,
-    cr.billing_customer.text_id,
+    --cr.billing_customer.sk,
+    cr.billing_customer.id,
     cr.billing_customer.salutation,
     cr.billing_customer.first_name,
     cr.billing_customer.last_name,
@@ -31,7 +31,7 @@ select
     cr.billing_customer.address.location_type,
     customer_state,
 order by
-    cr.billing_customer.text_id asc nulls first,
+    cr.billing_customer.id asc nulls first,
     cr.billing_customer.salutation asc nulls first,
     cr.billing_customer.first_name asc nulls first,
     cr.billing_customer.last_name asc nulls first,

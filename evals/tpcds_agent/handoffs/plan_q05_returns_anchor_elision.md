@@ -85,6 +85,31 @@ ro = 1 GROUP BY o`.
   `test_partial_datasource.py`, `complex/test_dataset_merge.py` (**1268 passed**); full
   `tests/modeling/` incl. `tpc_ds_duckdb` (**pass**). ruff / mypy / black clean.
 
+## Known limitation — condition-decomposition sensitivity
+
+The drop is **not** robust to every filter shape; it fires when enough
+membership-proving atoms survive the planner's per-concept condition
+decomposition into re-sourcings. Measured on the real q05 model (dim-aggregate of
+`sum(return_amount)` by the return dim):
+
+| filters | anchor dropped? |
+|---|---|
+| `channel='STORE'` + `return_date between` + `return_channel_dim_id is not null` | **yes** (the actual q05 arm) |
+| `channel='STORE'` + `return_date between` only | no |
+| `channel='STORE'` + `return_channel_dim_id is not null` only | no |
+| bare-key output (`select order_id, sum(return_amount)`) | yes (single filter suffices) |
+
+Why: a dim-aggregate spawns a re-sourcing whose condition is decomposed down to
+`channel='STORE'` alone; there the membership atom is absent, so the `~` keys come
+back partial and the anchor is re-added — *unless* a second filter (the
+`return_date` INNER join) independently pins the sourcing to `returns`. The q05
+arm has both filters, so it drops (verified byte-identical, and verified the drop
+disappears when `membership_complete_grain_keys` is neutralized). The robust
+version is Root A from the discussion: propagate the effective predicate into
+decomposed filter-base re-sourcings so membership fires in every copy. Deferred —
+the current fix clears the q05 sink; the fragility only ever costs a *missed*
+optimization (falls back to today's correct slow plan), never a wrong result.
+
 ## Scope / non-goals
 
 - **Per-channel arms only.** q05's arms filter to one channel → single-channel non-union

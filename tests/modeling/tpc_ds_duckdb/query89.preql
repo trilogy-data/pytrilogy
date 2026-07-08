@@ -7,7 +7,7 @@ auto avg_monthly_sales <- avg(sum_sales)
 
 where
     store_sales.date.year = 1999
-    and store_sales.store.id is not null
+    and store_sales.store.sk is not null
     and (
         (
             store_sales.item.category in ('Books', 'Electronics', 'Sports')

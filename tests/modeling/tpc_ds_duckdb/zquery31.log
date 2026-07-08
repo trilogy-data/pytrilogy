@@ -8,7 +8,7 @@ generated_sql = """
 WITH 
 thoughtful as (
 SELECT
-    \"sales_store_sales_unified\".\"SS_ADDR_SK\" as \"sales_bill_address_id\",
+    \"sales_store_sales_unified\".\"SS_ADDR_SK\" as \"sales_bill_address_sk\",
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_date_date\".\"D_QOY\" as \"sales_date_quarter\",
@@ -21,7 +21,7 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" as \"sales_bill_address_id\",
+    \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" as \"sales_bill_address_sk\",
      'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_date_date\".\"D_QOY\" as \"sales_date_quarter\",
@@ -41,7 +41,7 @@ SELECT
     sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"store_q2_q3_increase\"
 FROM
     \"thoughtful\"
-    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"thoughtful\".\"sales_bill_address_id\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"thoughtful\".\"sales_bill_address_sk\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 GROUP BY
     1,
     2

@@ -1,11 +1,11 @@
 query_id = "82"
 generator = "v3"
-gen_length = 1026
-preql_size = 554
+gen_length = 1021
+preql_size = 544
 comp_size = 590
 generated_sql = """
 SELECT
-    \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_text_id\",
+    \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_id\",
     \"inventory_item_items\".\"I_ITEM_DESC\" as \"inventory_item_desc\",
     \"inventory_item_items\".\"I_CURRENT_PRICE\" as \"inventory_item_current_price\"
 FROM

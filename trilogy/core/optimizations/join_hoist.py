@@ -372,6 +372,12 @@ class JoinHoist(OptimizationRule):
         if isinstance(dim_cte, DatasourceCTE) and cte.renders_inline(dim_cte):
             dim_was_inlined = True
             dim_qds = dim_cte.datasource
+        # An inlined dim appears in cte.source_map under its folded datasource
+        # identifier, not its CTE name; the cleanup below must scrub whichever
+        # token actually occurs or it leaves references to a table no longer in
+        # this CTE's FROM (e.g. a group-by coalesce member).
+        dim_render_token = cte.source_key_for(dim_cte)
+        dim_tokens = {dim_cte.name, dim_render_token}
 
         # find the corresponding BaseJoin in cte.source.joins (matches by right ds)
         cte_base_join: BaseJoin | None = None
@@ -517,9 +523,11 @@ class JoinHoist(OptimizationRule):
                 redirect_addrs.append(pair.right.address)
             for addr in redirect_addrs:
                 rendering_sources = cte.source_map.get(addr)
-                if not rendering_sources or dim_cte.name not in rendering_sources:
+                if not rendering_sources or not dim_tokens.intersection(
+                    rendering_sources
+                ):
                     continue
-                new_sources = [s for s in rendering_sources if s != dim_cte.name]
+                new_sources = [s for s in rendering_sources if s not in dim_tokens]
                 if pair.cte is not None and pair.cte.name not in new_sources:
                     new_sources.append(pair.cte.name)
                 cte.source_map[addr] = new_sources
@@ -549,6 +557,19 @@ class JoinHoist(OptimizationRule):
             cte.parent_ctes = [
                 p for p in cte.dependency_nodes() if p.name != dim_cte.name
             ]
+            # A folded dim with no remaining join is gone from the FROM: drop it
+            # from inlined_parents and purge its now-dangling token from any
+            # leftover source_map entries (dim-only attributes never joined
+            # locally), so nothing renders a reference to an absent table.
+            if dim_was_inlined:
+                cte.inlined_parents = [
+                    p for p in cte.inlined_parents if p.name != dim_cte.name
+                ]
+                for addr, srcs in list(cte.source_map.items()):
+                    if isinstance(srcs, list) and dim_render_token in srcs:
+                        cte.source_map[addr] = [
+                            s for s in srcs if s != dim_render_token
+                        ]
         return True
 
     def optimize(

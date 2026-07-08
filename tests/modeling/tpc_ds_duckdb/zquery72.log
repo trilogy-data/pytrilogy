@@ -8,13 +8,13 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" as \"cs_billing_customer_demographic_id\",
-    \"cs_catalog_sales\".\"CS_BILL_HDEMO_SK\" as \"cs_bill_household_demographic_id\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"inv_item_id\",
-    \"cs_catalog_sales\".\"CS_PROMO_SK\" as \"cs_promotion_id\",
+    \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" as \"cs_billing_customer_demographic_sk\",
+    \"cs_catalog_sales\".\"CS_BILL_HDEMO_SK\" as \"cs_bill_household_demographic_sk\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"inv_item_sk\",
+    \"cs_catalog_sales\".\"CS_PROMO_SK\" as \"cs_promotion_sk\",
     \"cs_catalog_sales\".\"CS_QUANTITY\" as \"cs_quantity\",
-    \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
-    \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"cs_sold_date_id\"
+    \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" as \"cs_ship_date_sk\",
+    \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"cs_sold_date_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
 GROUP BY
@@ -51,20 +51,20 @@ GROUP BY
     4),
 juicy as (
 SELECT
-    \"cheerful\".\"cs_promotion_id\" as \"cs_promotion_id\",
+    \"cheerful\".\"cs_promotion_sk\" as \"cs_promotion_sk\",
     \"cs_item_items\".\"I_ITEM_DESC\" as \"cs_item_desc\",
     \"cs_sold_date_date\".\"D_WEEK_SEQ\" as \"cs_sold_date_week_seq\",
     \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"inv_warehouse_name\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
     INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"cheerful\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cheerful\".\"inv_item_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cheerful\".\"cs_sold_date_id\" = \"cs_sold_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"household_demographics\" as \"cs_bill_household_demographic_household_demographics\" on \"cheerful\".\"cs_bill_household_demographic_id\" = \"cs_bill_household_demographic_household_demographics\".\"HD_DEMO_SK\"
-    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_billing_customer_demographic_customer_demographics\" on \"cheerful\".\"cs_billing_customer_demographic_id\" = \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"cheerful\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cheerful\".\"inv_item_sk\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cheerful\".\"cs_sold_date_sk\" = \"cs_sold_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"household_demographics\" as \"cs_bill_household_demographic_household_demographics\" on \"cheerful\".\"cs_bill_household_demographic_sk\" = \"cs_bill_household_demographic_household_demographics\".\"HD_DEMO_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_billing_customer_demographic_customer_demographics\" on \"cheerful\".\"cs_billing_customer_demographic_sk\" = \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cheerful\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cheerful\".\"cs_ship_date_sk\" = \"cs_ship_date_date\".\"D_DATE_SK\"
 WHERE
     \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\" and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cheerful\".\"cs_quantity\"
 
@@ -91,11 +91,11 @@ SELECT
     \"juicy\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
     \"juicy\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
     sum(CASE
-	WHEN \"juicy\".\"cs_promotion_id\" is not null THEN 1
+	WHEN \"juicy\".\"cs_promotion_sk\" is not null THEN 1
 	ELSE 0
 	END) as \"promo\",
     sum(CASE
-	WHEN \"juicy\".\"cs_promotion_id\" is null THEN 1
+	WHEN \"juicy\".\"cs_promotion_sk\" is null THEN 1
 	ELSE 0
 	END) as \"no_promo\"
 FROM

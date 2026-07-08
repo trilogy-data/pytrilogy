@@ -9,8 +9,8 @@ WITH
 cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" as \"sales_time_id\"
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" as \"sales_time_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -22,8 +22,8 @@ WHERE
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_TIME_SK\" as \"sales_time_id\"
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_store_sales_unified\".\"SS_SOLD_TIME_SK\" as \"sales_time_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -35,8 +35,8 @@ WHERE
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" as \"sales_time_id\"
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" as \"sales_time_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -53,8 +53,8 @@ SELECT
     sum(\"cheerful\".\"sales_ext_sales_price\") as \"ext_price\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"cheerful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"cheerful\".\"sales_time_sk\" = \"sales_time_time\".\"T_TIME_SK\"
 GROUP BY
     1,
     2,

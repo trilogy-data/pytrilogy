@@ -408,7 +408,7 @@ limit 100;
 # two keys' value domains relate - it never drops rows (rendering is always
 # row-preserving; restrict rows with explicit `is not null` filters):
 #   subset join a = b  -> declares a's values are contained in b's (a is the
-#                         narrow side, b authoritative; a rows all match)
+#                         narrow side, b superset, all values in a in b)
 #   union  join a = b  -> neither domain contains the other; the key coalesces
 #                         and unmatched rows from EITHER side are kept
 # Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot).

@@ -1,7 +1,7 @@
 query_id = "67"
 generator = "v3"
-gen_length = 3631
-preql_size = 846
+gen_length = 3591
+preql_size = 836
 comp_size = 1224
 generated_sql = """
 
@@ -17,7 +17,7 @@ SELECT
     \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ss_item_product_name\",
     \"ss_store_sales\".\"SS_QUANTITY\" as \"ss_quantity\",
     \"ss_store_sales\".\"SS_SALES_PRICE\" as \"ss_sales_price\",
-    \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\"
+    \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_id\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -35,7 +35,7 @@ SELECT
     \"thoughtful\".\"ss_item_category\" as \"ss_item_category\",
     \"thoughtful\".\"ss_item_class\" as \"ss_item_class\",
     \"thoughtful\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"thoughtful\".\"ss_store_text_id\" as \"ss_store_text_id\",
+    \"thoughtful\".\"ss_store_id\" as \"ss_store_id\",
     sum(coalesce(\"thoughtful\".\"ss_sales_price\" * \"thoughtful\".\"ss_quantity\",0)) as \"sumsales\"
 FROM
     \"thoughtful\"
@@ -50,7 +50,7 @@ SELECT
     \"cooperative\".\"ss_item_category\" as \"ss_item_category\",
     \"cooperative\".\"ss_item_class\" as \"ss_item_class\",
     \"cooperative\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"cooperative\".\"ss_store_text_id\" as \"ss_store_text_id\",
+    \"cooperative\".\"ss_store_id\" as \"ss_store_id\",
     \"cooperative\".\"sumsales\" as \"sumsales\",
     rank() over (partition by \"cooperative\".\"ss_item_category\" order by \"cooperative\".\"sumsales\" desc ) as \"rk\"
 FROM
@@ -63,7 +63,7 @@ SELECT
     \"questionable\".\"ss_date_year\" as \"ss_date_year\",
     \"questionable\".\"ss_date_quarter\" as \"ss_date_quarter\",
     \"questionable\".\"ss_date_month_of_year\" as \"ss_date_month_of_year\",
-    \"questionable\".\"ss_store_text_id\" as \"ss_store_text_id\",
+    \"questionable\".\"ss_store_id\" as \"ss_store_id\",
     \"questionable\".\"sumsales\" as \"sumsales\",
     \"questionable\".\"rk\" as \"rk\"
 FROM
@@ -79,7 +79,7 @@ ORDER BY
     \"questionable\".\"ss_date_year\" asc nulls first,
     \"questionable\".\"ss_date_quarter\" asc nulls first,
     \"questionable\".\"ss_date_month_of_year\" asc nulls first,
-    \"questionable\".\"ss_store_text_id\" asc nulls first,
+    \"questionable\".\"ss_store_id\" asc nulls first,
     \"questionable\".\"sumsales\" asc nulls first,
     \"questionable\".\"rk\" asc nulls first
 LIMIT (100)"""

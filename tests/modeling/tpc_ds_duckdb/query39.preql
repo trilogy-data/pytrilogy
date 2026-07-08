@@ -1,9 +1,9 @@
 import inventory as inventory;
 
 def month_mean(month) -> avg(inventory.quantity_on_hand ? inventory.date.month_of_year = month)
-    by inventory.warehouse.id, inventory.item.id;
+    by inventory.warehouse.sk, inventory.item.sk;
 def month_stdev(month) -> stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = month)
-    by inventory.warehouse.id, inventory.item.id;
+    by inventory.warehouse.sk, inventory.item.sk;
 
 auto mean1 <- @month_mean(1);
 auto stdev1 <- @month_stdev(1);
@@ -21,15 +21,15 @@ end;
 where
     inventory.date.year = 2001
     and inventory.date.month_of_year in (1, 2)
-    and inventory.warehouse.id is not null
+    and inventory.warehouse.sk is not null
 select
-    inventory.warehouse.id as wsk1,
-    inventory.item.id as isk1,
+    inventory.warehouse.sk as wsk1,
+    inventory.item.sk as isk1,
     1 as dmoy1,
     mean1,
     cov1,
-    inventory.warehouse.id as wsk2,
-    inventory.item.id as isk2,
+    inventory.warehouse.sk as wsk2,
+    inventory.item.sk as isk2,
     2 as dmoy2,
     mean2,
     cov2,

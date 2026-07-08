@@ -7,8 +7,8 @@ where
     and store_sales.item.category is not null
     and store_sales.date.month_of_year = 1
     and store_sales.item.current_price > 1.2 * avg(store_sales.item.current_price) by store_sales.item.category
-    and store_sales.customer.id is not null
-    and store_sales.customer.address.id is not null
+    and store_sales.customer.sk is not null
+    and store_sales.customer.address.sk is not null
 select
     store_sales.customer.address.state,
     store_sales.line_item_count

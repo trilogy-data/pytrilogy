@@ -3,20 +3,20 @@ import all_sales as sales;
 const first_year <- 2001;
 const second_year <- 2002;
 
-def channel_year_total(channel, year) -> sum(sales.net_paid ? sales.channel = channel and sales.date.year = year) by sales.billing_customer.id;
+def channel_year_total(channel, year) -> sum(sales.net_paid ? sales.channel = channel and sales.date.year = year) by sales.billing_customer.sk;
 
 auto store_first_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.date.year = first_year)
-    by sales.billing_customer.id;
+    by sales.billing_customer.sk;
 auto web_first_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.date.year = first_year)
-    by sales.billing_customer.id;
+    by sales.billing_customer.sk;
 auto store_second_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.date.year = second_year)
-    by sales.billing_customer.id;
+    by sales.billing_customer.sk;
 auto web_second_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.date.year = second_year)
-    by sales.billing_customer.id;
+    by sales.billing_customer.sk;
 
 where
     sales.channel in ('STORE', 'WEB')
-    and sales.billing_customer.id is not null
+    and sales.billing_customer.sk is not null
     and store_first_year > 0
     and web_first_year > 0
     and (case
@@ -27,7 +27,7 @@ where
             else null
         end)
 select
-    sales.billing_customer.text_id as customer_id,
+    sales.billing_customer.id as customer_id,
     sales.billing_customer.first_name as customer_first_name,
     sales.billing_customer.last_name as customer_last_name,
 order by

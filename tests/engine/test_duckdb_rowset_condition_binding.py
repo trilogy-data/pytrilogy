@@ -77,6 +77,29 @@ select best_filter.cid as out_id;
     assert [r.out_id for r in rows] == [30]
 
 
+def test_rowset_having_inline_aggregate_over_renamed_source():
+    query = MODEL + r"""
+rowset freq <- select
+    cust_id as ckey,
+    count_distinct(cust_id::string || '-' || year::string) as yr_cnt
+having
+    count_distinct(cust_id::string || '-' || year::string) > 1;
+select freq.ckey order by freq.ckey asc;
+"""
+    # The HAVING aggregate is identical to the `yr_cnt` output, so it must bind to
+    # that materialized column and render as a group HAVING. The bug: the pure
+    # rename `cust_id as ckey` let `_rewrite_aliased_source_refs` rewrite the HAVING
+    # copy's inner `cust_id` to `ckey` while `yr_cnt`'s lineage kept `cust_id`, so
+    # the signatures no longer matched, the aggregate re-inlined into a post-group
+    # filter with its now-grouped-away inputs, and rendering hit INVALID_REFERENCE.
+    exec = Dialects.DUCK_DB.default_executor()
+    sql = exec.generate_sql(query)[-1]
+    assert "INVALID_REFERENCE" not in sql
+    rows = exec.execute_query(query).fetchall()
+    # only cust 10 spans >1 (cust_id, year) pair (2000 and 2001)
+    assert [r.freq_ckey for r in rows] == [10]
+
+
 def test_rowset_two_column_filter_plain_output():
     query = MODEL + r"""
 rowset cust_totals <- where year >= 2000

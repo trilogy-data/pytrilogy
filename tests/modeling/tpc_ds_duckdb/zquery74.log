@@ -1,16 +1,16 @@
 query_id = "74"
 generator = "v3"
-gen_length = 3504
-preql_size = 1396
+gen_length = 3494
+preql_size = 1391
 comp_size = 2151
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -19,9 +19,9 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -30,7 +30,7 @@ WHERE
 ),
 cooperative as (
 SELECT
-    \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\"
+    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
 FROM
     \"thoughtful\"
 GROUP BY
@@ -38,10 +38,10 @@ GROUP BY
     \"thoughtful\".\"sales_channel\"),
 uneven as (
 SELECT
-    \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\"
+    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
 FROM
     \"thoughtful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
 GROUP BY
     1
 HAVING
@@ -55,20 +55,20 @@ HAVING
 ),
 questionable as (
 SELECT
-    \"cooperative\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_text_id\",
+    \"cooperative\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
+    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
     \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
     \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\"
 FROM
     \"cooperative\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\")
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
-    \"questionable\".\"sales_billing_customer_text_id\" as \"customer_id\",
+    \"questionable\".\"sales_billing_customer_id\" as \"customer_id\",
     \"questionable\".\"sales_billing_customer_first_name\" as \"customer_first_name\",
     \"questionable\".\"sales_billing_customer_last_name\" as \"customer_last_name\"
 FROM
     \"questionable\"
-    INNER JOIN \"uneven\" on \"questionable\".\"sales_billing_customer_id\" = \"uneven\".\"sales_billing_customer_id\"
+    INNER JOIN \"uneven\" on \"questionable\".\"sales_billing_customer_sk\" = \"uneven\".\"sales_billing_customer_sk\"
 GROUP BY
     1,
     2,

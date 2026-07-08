@@ -5,7 +5,7 @@ where
     and inventory.item.current_price between 0.99 and 1.49
 select
     inventory.warehouse.name,
-    inventory.item.text_id,
+    inventory.item.id,
     sum(
             case
                 when inventory.date.date < '2000-03-11'::date then inventory.quantity_on_hand
@@ -26,6 +26,6 @@ having
 
 order by
     inventory.warehouse.name asc nulls first,
-    inventory.item.text_id asc nulls first
+    inventory.item.id asc nulls first
 limit 100
 ;

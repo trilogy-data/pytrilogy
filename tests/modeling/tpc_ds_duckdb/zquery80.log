@@ -39,7 +39,7 @@ WHERE
 abundant as (
 SELECT
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"sales_return_amount\",
     \"sales_catalog_returns_unified\".\"CR_NET_LOSS\" as \"sales_return_net_loss\"
@@ -48,7 +48,7 @@ FROM
 UNION ALL
 SELECT
      'STORE'  as \"sales_channel\",
-    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_returns_unified\".\"SR_RETURN_AMT\" as \"sales_return_amount\",
     \"sales_store_returns_unified\".\"SR_NET_LOSS\" as \"sales_return_net_loss\"
@@ -57,7 +57,7 @@ FROM
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
-    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_returns_unified\".\"WR_RETURN_AMT\" as \"sales_return_amount\",
     \"sales_web_returns_unified\".\"WR_NET_LOSS\" as \"sales_return_net_loss\"
@@ -67,36 +67,36 @@ vacuous as (
 SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_CATALOG_PAGE_SK\" as \"sales_channel_dim_id\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"sales_net_profit\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_catalog_sales_unified\".\"CS_PROMO_SK\" as \"sales_promotion_id\"
+    \"sales_catalog_sales_unified\".\"CS_PROMO_SK\" as \"sales_promotion_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
 UNION ALL
 SELECT
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_STORE_SK\" as \"sales_channel_dim_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_NET_PROFIT\" as \"sales_net_profit\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-    \"sales_store_sales_unified\".\"SS_PROMO_SK\" as \"sales_promotion_id\"
+    \"sales_store_sales_unified\".\"SS_PROMO_SK\" as \"sales_promotion_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"sales_channel_dim_id\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_sales_unified\".\"WS_NET_PROFIT\" as \"sales_net_profit\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_web_sales_unified\".\"WS_PROMO_SK\" as \"sales_promotion_id\"
+    \"sales_web_sales_unified\".\"WS_PROMO_SK\" as \"sales_promotion_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 abhorrent as (
@@ -118,17 +118,17 @@ SELECT
 	END as \"id_label\"
 FROM
     \"vacuous\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"vacuous\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"vacuous\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
-    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"vacuous\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"vacuous\".\"sales_promotion_sk\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
+    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
     INNER JOIN \"cheerful\" on \"vacuous\".\"sales_channel_dim_id\" = \"cheerful\".\"sales_channel_dim_id\" AND coalesce(\"vacuous\".\"sales_channel\", \"abundant\".\"sales_channel\") = \"cheerful\".\"sales_channel\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"vacuous\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"vacuous\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
     cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N' and \"cheerful\".\"sales_channel_dim_text_id\" is not null
 )
 SELECT
     \"abhorrent\".\"channel_label\" as \"channel\",
-    \"abhorrent\".\"id_label\" as \"id\",
+    \"abhorrent\".\"id_label\" as \"sk\",
     sum(\"abhorrent\".\"sales_ext_sales_price\") as \"sales_total\",
     sum(coalesce(\"abhorrent\".\"sales_return_amount\",0)) as \"returns_total\",
     sum(\"abhorrent\".\"profit_minus_loss\") as \"profit_total\"
@@ -138,5 +138,5 @@ GROUP BY
     ROLLUP (1, 2)
 ORDER BY 
     \"channel\" asc nulls first,
-    \"id\" asc nulls first
+    \"sk\" asc nulls first
 LIMIT (100)"""

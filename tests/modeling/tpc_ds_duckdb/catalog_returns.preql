@@ -18,7 +18,7 @@ import reason as reason;
 
 key order_number int; # Catalog order number linking the return back to the originating catalog sale.
 
-properties <order_number, item.id> (
+properties <order_number, item.sk> (
     net_loss numeric::usd, # Net financial loss on the return in USD (refund plus handling costs minus any restocked value).
     refunded_cash numeric::usd?, # Cash portion of the refund (USD).
     reversed_charge numeric::usd?, # Amount reversed on the original payment method (USD).
@@ -30,17 +30,17 @@ properties <order_number, item.id> (
 );
 
 datasource catalog_returns (
-    CR_RETURNED_DATE_SK: date.id, # FK to the date the item was returned.
-    CR_RETURNED_TIME_SK: time.id, # FK to the time-of-day the return was processed.
-    CR_ITEM_SK: item.id, # FK to the returned item.
+    CR_RETURNED_DATE_SK: date.sk, # FK to the date the item was returned.
+    CR_RETURNED_TIME_SK: time.sk, # FK to the time-of-day the return was processed.
+    CR_ITEM_SK: item.sk, # FK to the returned item.
     CR_ORDER_NUMBER: sales.order_number, # FK to the originating catalog sales order.
     CR_ORDER_NUMBER: order_number,
-    CR_RETURNING_CUSTOMER_SK: ?billing_customer.id, # FK to the customer returning the item.
-    CR_REFUNDED_CUSTOMER_SK: ?refunded_customer.id, # FK to the customer receiving the refund (may differ from returning customer).
-    CR_RETURNING_ADDR_SK: ?return_address.id, # FK to the address the return originated from.
-    CR_REFUNDED_ADDR_SK: ?refunded_address.id, # FK to the address the refund was issued to.
-    CR_CALL_CENTER_SK: ?call_center.id, # FK to the call center that handled the return.
-    CR_REASON_SK: ?reason.id, # FK to the return-reason code.
+    CR_RETURNING_CUSTOMER_SK: ?billing_customer.sk, # FK to the customer returning the item.
+    CR_REFUNDED_CUSTOMER_SK: ?refunded_customer.sk, # FK to the customer receiving the refund (may differ from returning customer).
+    CR_RETURNING_ADDR_SK: ?return_address.sk, # FK to the address the return originated from.
+    CR_REFUNDED_ADDR_SK: ?refunded_address.sk, # FK to the address the refund was issued to.
+    CR_CALL_CENTER_SK: ?call_center.sk, # FK to the call center that handled the return.
+    CR_REASON_SK: ?reason.sk, # FK to the return-reason code.
     CR_NET_LOSS: net_loss,
     CR_REFUNDED_CASH: refunded_cash,
     CR_REVERSED_CHARGE: reversed_charge,
@@ -49,5 +49,5 @@ datasource catalog_returns (
     CR_RETURN_AMT_INC_TAX: return_amt_inc_tax,
     CR_RETURN_QUANTITY: return_quantity,
 )
-grain (item.id, order_number)
+grain (item.sk, order_number)
 address memory.catalog_returns;

@@ -25,7 +25,7 @@ select
     avg(sales.quantity * sales.list_price) as average_sales,
 ;
 
-# One per fact row (all_sales grain is (channel, order_id, item.id)).
+# One per fact row (all_sales grain is (channel, order_id, item.sk)).
 auto channel_label <- case
     when sales.channel = 'STORE' then 'store'
     when sales.channel = 'CATALOG' then 'catalog'

@@ -1,7 +1,7 @@
 query_id = "12"
 generator = "v3"
-gen_length = 2026
-preql_size = 669
+gen_length = 2006
+preql_size = 659
 comp_size = 749
 generated_sql = """
 
@@ -12,7 +12,7 @@ SELECT
     \"web_sales_item_items\".\"I_CLASS\" as \"web_sales_item_class\",
     \"web_sales_item_items\".\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
     \"web_sales_item_items\".\"I_ITEM_DESC\" as \"web_sales_item_desc\",
-    \"web_sales_item_items\".\"I_ITEM_ID\" as \"web_sales_item_text_id\",
+    \"web_sales_item_items\".\"I_ITEM_ID\" as \"web_sales_item_id\",
     sum(\"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\") as \"itemrevenue\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
@@ -36,7 +36,7 @@ FROM
 GROUP BY
     1)
 SELECT
-    \"cheerful\".\"web_sales_item_text_id\" as \"web_sales_item_text_id\",
+    \"cheerful\".\"web_sales_item_id\" as \"web_sales_item_id\",
     \"cheerful\".\"web_sales_item_desc\" as \"web_sales_item_desc\",
     \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
@@ -49,7 +49,7 @@ FROM
 ORDER BY 
     \"cheerful\".\"web_sales_item_category\" asc,
     \"cheerful\".\"web_sales_item_class\" asc,
-    \"cheerful\".\"web_sales_item_text_id\" asc,
+    \"cheerful\".\"web_sales_item_id\" asc,
     \"cheerful\".\"web_sales_item_desc\" asc,
     \"revenueratio\" asc
 LIMIT (100)"""

@@ -1,5 +1,5 @@
 WHERE
-    store_sales.date.id is not null
+    store_sales.date.sk is not null
 SELECT
     store_sales.date.year,
     count(store_sales.ticket_number) as store_order_count
@@ -7,7 +7,7 @@ HAVING
     store_order_count>0
 MERGE
 WHERE
-    web_sales.date.id is not null
+    web_sales.date.sk is not null
 SELECT
     web_sales.date.year,
     count(web_sales.order_number) as web_order_count

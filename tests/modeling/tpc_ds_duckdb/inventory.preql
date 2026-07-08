@@ -5,13 +5,13 @@ import warehouse as warehouse;
 import item as item;
 import date as date;
 
-property <date.id, item.id, warehouse.id>.quantity_on_hand int?; # Number of units of the item physically on hand in the warehouse at the snapshot date.
+property <date.sk, item.sk, warehouse.sk>.quantity_on_hand int?; # Number of units of the item physically on hand in the warehouse at the snapshot date.
 
 datasource warehouse_inventory (
-    inv_warehouse_sk: ?warehouse.id, # FK to warehouse the snapshot was taken for.
-    inv_date_sk: date.id, # FK to the date (snapshot date, typically weekly).
+    inv_warehouse_sk: ?warehouse.sk, # FK to warehouse the snapshot was taken for.
+    inv_date_sk: date.sk, # FK to the date (snapshot date, typically weekly).
     inv_quantity_on_hand: quantity_on_hand,
-    inv_item_sk: item.id, # FK to the item being counted.
+    inv_item_sk: item.sk, # FK to the item being counted.
 )
-grain (date.id, item.id, warehouse.id)
+grain (date.sk, item.sk, warehouse.sk)
 address memory.inventory;

@@ -51,37 +51,37 @@ FROM
 vacuous as (
 SELECT
      'CATALOG'  as \"s_channel\",
-    \"s_catalog_returns_unified\".\"CR_ITEM_SK\" as \"s_item_id\",
+    \"s_catalog_returns_unified\".\"CR_ITEM_SK\" as \"s_item_sk\",
     \"s_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"s_order_id\",
     \"s_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"s_return_amount\",
-    \"s_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" as \"s_return_date_id\",
+    \"s_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" as \"s_return_date_sk\",
     \"s_catalog_returns_unified\".\"CR_NET_LOSS\" as \"s_return_net_loss\"
 FROM
     \"memory\".\"catalog_returns\" as \"s_catalog_returns_unified\"
 UNION ALL
 SELECT
      'STORE'  as \"s_channel\",
-    \"s_store_returns_unified\".\"SR_ITEM_SK\" as \"s_item_id\",
+    \"s_store_returns_unified\".\"SR_ITEM_SK\" as \"s_item_sk\",
     \"s_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"s_order_id\",
     \"s_store_returns_unified\".\"SR_RETURN_AMT\" as \"s_return_amount\",
-    \"s_store_returns_unified\".\"SR_RETURNED_DATE_SK\" as \"s_return_date_id\",
+    \"s_store_returns_unified\".\"SR_RETURNED_DATE_SK\" as \"s_return_date_sk\",
     \"s_store_returns_unified\".\"SR_NET_LOSS\" as \"s_return_net_loss\"
 FROM
     \"memory\".\"store_returns\" as \"s_store_returns_unified\"
 UNION ALL
 SELECT
      'WEB'  as \"s_channel\",
-    \"s_web_returns_unified\".\"WR_ITEM_SK\" as \"s_item_id\",
+    \"s_web_returns_unified\".\"WR_ITEM_SK\" as \"s_item_sk\",
     \"s_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"s_order_id\",
     \"s_web_returns_unified\".\"WR_RETURN_AMT\" as \"s_return_amount\",
-    \"s_web_returns_unified\".\"WR_RETURNED_DATE_SK\" as \"s_return_date_id\",
+    \"s_web_returns_unified\".\"WR_RETURNED_DATE_SK\" as \"s_return_date_sk\",
     \"s_web_returns_unified\".\"WR_NET_LOSS\" as \"s_return_net_loss\"
 FROM
     \"memory\".\"web_returns\" as \"s_web_returns_unified\"),
 young as (
 SELECT
      'CATALOG'  as \"s_channel\",
-    \"s_catalog_returns_unified\".\"CR_ITEM_SK\" as \"s_item_id\",
+    \"s_catalog_returns_unified\".\"CR_ITEM_SK\" as \"s_item_sk\",
     \"s_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"s_order_id\",
     \"s_catalog_returns_unified\".\"CR_CATALOG_PAGE_SK\" as \"s_return_channel_dim_id\"
 FROM
@@ -89,7 +89,7 @@ FROM
 UNION ALL
 SELECT
      'STORE'  as \"s_channel\",
-    \"s_store_returns_unified\".\"SR_ITEM_SK\" as \"s_item_id\",
+    \"s_store_returns_unified\".\"SR_ITEM_SK\" as \"s_item_sk\",
     \"s_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"s_order_id\",
     \"s_store_returns_unified\".\"SR_STORE_SK\" as \"s_return_channel_dim_id\"
 FROM
@@ -97,7 +97,7 @@ FROM
 UNION ALL
 SELECT
      'WEB'  as \"s_channel\",
-    \"s_web_sales_unified\".\"WS_ITEM_SK\" as \"s_item_id\",
+    \"s_web_sales_unified\".\"WS_ITEM_SK\" as \"s_item_sk\",
     \"s_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"s_order_id\",
     \"s_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"s_return_channel_dim_id\"
 FROM
@@ -106,9 +106,9 @@ sweltering as (
 SELECT
      'CATALOG'  as \"s_channel\",
     \"s_catalog_sales_unified\".\"CS_CATALOG_PAGE_SK\" as \"s_channel_dim_id\",
-    \"s_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"s_date_id\",
+    \"s_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"s_date_sk\",
     \"s_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"s_ext_sales_price\",
-    \"s_catalog_sales_unified\".\"CS_ITEM_SK\" as \"s_item_id\",
+    \"s_catalog_sales_unified\".\"CS_ITEM_SK\" as \"s_item_sk\",
     \"s_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"s_net_profit\",
     \"s_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"s_order_id\"
 FROM
@@ -117,9 +117,9 @@ UNION ALL
 SELECT
      'STORE'  as \"s_channel\",
     \"s_store_sales_unified\".\"SS_STORE_SK\" as \"s_channel_dim_id\",
-    \"s_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"s_date_id\",
+    \"s_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"s_date_sk\",
     \"s_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"s_ext_sales_price\",
-    \"s_store_sales_unified\".\"SS_ITEM_SK\" as \"s_item_id\",
+    \"s_store_sales_unified\".\"SS_ITEM_SK\" as \"s_item_sk\",
     \"s_store_sales_unified\".\"SS_NET_PROFIT\" as \"s_net_profit\",
     \"s_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"s_order_id\"
 FROM
@@ -128,9 +128,9 @@ UNION ALL
 SELECT
      'WEB'  as \"s_channel\",
     \"s_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"s_channel_dim_id\",
-    \"s_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"s_date_id\",
+    \"s_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"s_date_sk\",
     \"s_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"s_ext_sales_price\",
-    \"s_web_sales_unified\".\"WS_ITEM_SK\" as \"s_item_id\",
+    \"s_web_sales_unified\".\"WS_ITEM_SK\" as \"s_item_sk\",
     \"s_web_sales_unified\".\"WS_NET_PROFIT\" as \"s_net_profit\",
     \"s_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"s_order_id\"
 FROM
@@ -155,11 +155,11 @@ SELECT
     CASE WHEN cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"cheerful\".\"s_return_channel_dim_text_id\" is not null THEN \"vacuous\".\"s_return_net_loss\" ELSE NULL END as \"_virt_filter_return_net_loss_7776255813480323\"
 FROM
     \"sweltering\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"s_date_date\" on \"sweltering\".\"s_date_id\" = \"s_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"s_date_date\" on \"sweltering\".\"s_date_sk\" = \"s_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"abundant\" on \"sweltering\".\"s_channel\" = \"abundant\".\"s_channel\" AND \"sweltering\".\"s_channel_dim_id\" = \"abundant\".\"s_channel_dim_id\"
-    FULL JOIN \"young\" on \"sweltering\".\"s_item_id\" = \"young\".\"s_item_id\" AND \"sweltering\".\"s_order_id\" = \"young\".\"s_order_id\" AND coalesce(\"sweltering\".\"s_channel\", \"abundant\".\"s_channel\") = \"young\".\"s_channel\"
-    FULL JOIN \"vacuous\" on \"young\".\"s_item_id\" = \"vacuous\".\"s_item_id\" AND \"young\".\"s_order_id\" = \"vacuous\".\"s_order_id\" AND coalesce(\"young\".\"s_channel\", \"abundant\".\"s_channel\") = \"vacuous\".\"s_channel\"
-    FULL JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"vacuous\".\"s_return_date_id\" = \"s_return_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"young\" on \"sweltering\".\"s_item_sk\" = \"young\".\"s_item_sk\" AND \"sweltering\".\"s_order_id\" = \"young\".\"s_order_id\" AND coalesce(\"sweltering\".\"s_channel\", \"abundant\".\"s_channel\") = \"young\".\"s_channel\"
+    FULL JOIN \"vacuous\" on \"young\".\"s_item_sk\" = \"vacuous\".\"s_item_sk\" AND \"young\".\"s_order_id\" = \"vacuous\".\"s_order_id\" AND coalesce(\"young\".\"s_channel\", \"abundant\".\"s_channel\") = \"vacuous\".\"s_channel\"
+    FULL JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"vacuous\".\"s_return_date_sk\" = \"s_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"young\".\"s_return_channel_dim_id\" = \"cheerful\".\"s_return_channel_dim_id\" AND coalesce(\"young\".\"s_channel\", \"sweltering\".\"s_channel\") = \"cheerful\".\"s_channel\"
 WHERE
     coalesce(\"abundant\".\"s_channel_dim_text_id\",\"cheerful\".\"s_return_channel_dim_text_id\") is not null and ( cast(\"s_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' or cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06' )
@@ -177,7 +177,7 @@ GROUP BY
     cast(\"s_return_date_date\".\"D_DATE\" as date),
     coalesce(\"abundant\".\"s_channel\",\"cheerful\".\"s_channel\",\"sweltering\".\"s_channel\",\"vacuous\".\"s_channel\",\"young\".\"s_channel\"),
     coalesce(\"abundant\".\"s_channel_dim_text_id\",\"cheerful\".\"s_return_channel_dim_text_id\"),
-    coalesce(\"sweltering\".\"s_item_id\",\"vacuous\".\"s_item_id\",\"young\".\"s_item_id\"),
+    coalesce(\"sweltering\".\"s_item_sk\",\"vacuous\".\"s_item_sk\",\"young\".\"s_item_sk\"),
     coalesce(\"sweltering\".\"s_order_id\",\"vacuous\".\"s_order_id\",\"young\".\"s_order_id\"))
 SELECT
     \"scrawny\".\"channel_label\" as \"channel_label\",

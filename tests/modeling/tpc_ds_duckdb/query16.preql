@@ -1,7 +1,7 @@
 import catalog_sales as cs;
 import catalog_returns as cr;
 
-auto multi_warehouse_sales <- cs.order_number ? count(cs.warehouse.id) by cs.order_number > 1;
+auto multi_warehouse_sales <- cs.order_number ? count(cs.warehouse.sk) by cs.order_number > 1;
 
 where
     cs.ship_date.date between '2002-02-01'::date and '2002-04-02'::date

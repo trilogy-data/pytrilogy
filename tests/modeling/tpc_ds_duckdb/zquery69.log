@@ -56,7 +56,7 @@ FROM
     \"cheerful\"),
 sweltering as (
 SELECT
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
     \"customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"customer_demographics_credit_rating\",
     \"customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"customer_demographics_education_status\",
     \"customer_demographics_customer_demographics\".\"CD_GENDER\" as \"customer_demographics_gender\",
@@ -80,11 +80,11 @@ SELECT
     \"sweltering\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
     \"sweltering\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
     \"sweltering\".\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
-    count(\"sweltering\".\"customer_id\") as \"cnt1\",
+    count(\"sweltering\".\"customer_sk\") as \"cnt1\",
     \"sweltering\".\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
-    count(\"sweltering\".\"customer_id\") as \"cnt2\",
+    count(\"sweltering\".\"customer_sk\") as \"cnt2\",
     \"sweltering\".\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
-    count(\"sweltering\".\"customer_id\") as \"cnt3\"
+    count(\"sweltering\".\"customer_sk\") as \"cnt3\"
 FROM
     \"sweltering\"
 GROUP BY

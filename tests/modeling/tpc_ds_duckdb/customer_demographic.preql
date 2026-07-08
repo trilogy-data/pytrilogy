@@ -2,9 +2,9 @@
 # credit rating, purchase-estimate bucket, and dependent counts
 # (total / employed / college).
 
-key id int; # Surrogate key uniquely identifying a customer demographic profile.
+key sk int; # Surrogate key uniquely identifying a customer demographic profile.
 
-properties id (
+properties sk (
     gender enum<string>['M', 'F'], # Customer gender code: 'M' male, 'F' female.
     marital_status enum<string>['M', 'S', 'D', 'W', 'U'], # Marital status: M=married, S=single, D=divorced, W=widowed, U=unknown.
     education_status enum<string>['Primary', 'Secondary', 'College', '2 yr Degree', '4 yr Degree', 'Advanced Degree', 'Unknown'], # Highest education level attained.
@@ -16,7 +16,7 @@ properties id (
 );
 
 datasource customer_demographics (
-    CD_DEMO_SK: id,
+    CD_DEMO_SK: sk,
     CD_GENDER: gender,
     CD_MARITAL_STATUS: marital_status,
     CD_EDUCATION_STATUS: education_status,
@@ -26,5 +26,5 @@ datasource customer_demographics (
     CD_DEP_EMPLOYED_COUNT: employed_dependent_count,
     CD_DEP_COLLEGE_COUNT: college_dependent_count,
 )
-grain (id)
+grain (sk)
 address memory.customer_demographics;

@@ -6,7 +6,7 @@ auto store_in_window <- sum(
     case
         when sales.channel = 'STORE'
         and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.billing_customer.id is not null then 1
+        and sales.billing_customer.sk is not null then 1
         else 0
     end
 )
@@ -15,7 +15,7 @@ auto catalog_in_window <- sum(
     case
         when sales.channel = 'CATALOG'
         and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.billing_customer.id is not null then 1
+        and sales.billing_customer.sk is not null then 1
         else 0
     end
 )
@@ -24,7 +24,7 @@ auto web_in_window <- sum(
     case
         when sales.channel = 'WEB'
         and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.billing_customer.id is not null then 1
+        and sales.billing_customer.sk is not null then 1
         else 0
     end
 )

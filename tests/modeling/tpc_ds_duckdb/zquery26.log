@@ -1,11 +1,11 @@
 query_id = "26"
 generator = "v3"
-gen_length = 1410
-preql_size = 519
+gen_length = 1405
+preql_size = 509
 comp_size = 583
 generated_sql = """
 SELECT
-    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_text_id\",
+    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_id\",
     avg(\"cs_catalog_sales\".\"CS_QUANTITY\") as \"agg1\",
     avg(\"cs_catalog_sales\".\"CS_LIST_PRICE\") as \"agg2\",
     avg(\"cs_catalog_sales\".\"CS_COUPON_AMT\") as \"agg3\",

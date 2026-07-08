@@ -4,18 +4,18 @@ import store_returns as returns;
 # sr_cdemo_sk = cd_demo_sk in the reference; cross-table value join.
 where
     customer.address.city = 'Edgewood'
-    and returns.customer_demographic.id is not null
-    and customer.household_demographic.id is not null
+    and returns.customer_demographic.sk is not null
+    and customer.household_demographic.sk is not null
     and customer.household_demographic.income_band.lower_bound >= 38128
     and customer.household_demographic.income_band.upper_bound <= 38128 + 50000
     and returns.ticket_number is not null
-left join customer.demographics.id = returns.customer_demographic.id
+left join customer.demographics.sk = returns.customer_demographic.sk
 select
-    customer.text_id,
+    customer.id,
     concat(coalesce(customer.last_name, ''), ', ', coalesce(customer.first_name, '')) as customername,
     --returns.ticket_number,
-    --returns.item.id,
+    --returns.item.sk,
 order by
-    customer.text_id asc nulls first
+    customer.id asc nulls first
 limit 100
 ;

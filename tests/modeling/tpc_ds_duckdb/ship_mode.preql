@@ -1,19 +1,19 @@
 # Ship-mode info: carrier company plus delivery-speed tier
 # (EXPRESS, NEXT DAY, OVERNIGHT, REGULAR, TWO DAY, LIBRARY).
 
-key id int; # Surrogate key uniquely identifying a ship mode.
+key sk int; # Surrogate key uniquely identifying a ship mode.
 
-properties id (
-    text_id string, # Stable business identifier for the ship mode (16-char alphanumeric).
+properties sk (
+    id string, # Stable business identifier for the ship mode (16-char alphanumeric).
     type enum<string>['EXPRESS', 'LIBRARY', 'NEXT DAY', 'OVERNIGHT', 'REGULAR', 'TWO DAY'], # Delivery-speed tier (rate class).
     carrier string?, # Carrier company name (e.g. 'UPS', 'FEDEX', 'USPS').
 );
 
 datasource ship_mode (
-    SM_SHIP_MODE_SK: id,
-    SM_SHIP_MODE_ID: text_id,
+    SM_SHIP_MODE_SK: sk,
+    SM_SHIP_MODE_ID: id,
     SM_TYPE: type,
     SM_CARRIER: carrier,
 )
-grain (id)
+grain (sk)
 address memory.ship_mode;

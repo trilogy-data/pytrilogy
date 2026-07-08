@@ -1,7 +1,7 @@
 import item as item;
 
 auto manufact_matches <- count(
-    item.id
+    item.sk
         ? (item.category = 'Books'       and item.color = 'tan'     and item.units = 'Oz'     and item.size = 'N/A')
        or (item.category = 'Electronics' and item.color = 'purple'  and item.units = 'Ton'    and item.size = 'N/A')
        or (item.category = 'Men'         and item.color = 'misty'   and item.units = 'Box'    and item.size = 'medium')

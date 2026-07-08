@@ -8,7 +8,7 @@ generated_sql = """
 WITH 
 yummy as (
 SELECT
-    sum(\"store_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_1360566110228423\"
+    sum(\"store_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_8086358811880305\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
@@ -44,7 +44,7 @@ GROUP BY
     3),
 vacuous as (
 SELECT
-    avg(\"yummy\".\"_virt_agg_sum_1360566110228423\") as \"_virt_agg_avg_3671348824407731\"
+    avg(\"yummy\".\"_virt_agg_sum_8086358811880305\") as \"_virt_agg_avg_3394423827549395\"
 FROM
     \"yummy\")
 SELECT
@@ -56,5 +56,5 @@ FROM
     \"vacuous\"
     INNER JOIN \"questionable\" on 1=1
 WHERE
-    \"questionable\".\"peach_sales\" > 0.05 * (\"vacuous\".\"_virt_agg_avg_3671348824407731\")
+    \"questionable\".\"peach_sales\" > 0.05 * (\"vacuous\".\"_virt_agg_avg_3394423827549395\")
 """

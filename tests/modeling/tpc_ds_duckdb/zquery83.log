@@ -1,7 +1,7 @@
 query_id = "83"
 generator = "v3"
-gen_length = 5100
-preql_size = 1586
+gen_length = 5055
+preql_size = 1541
 comp_size = 2195
 generated_sql = """
 
@@ -19,40 +19,40 @@ GROUP BY
 questionable as (
 SELECT
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" as \"sales_return_date_id\",
+    \"sales_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" as \"sales_return_date_sk\",
     \"sales_catalog_returns_unified\".\"CR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
 UNION ALL
 SELECT
      'STORE'  as \"sales_channel\",
-    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
-    \"sales_store_returns_unified\".\"SR_RETURNED_DATE_SK\" as \"sales_return_date_id\",
+    \"sales_store_returns_unified\".\"SR_RETURNED_DATE_SK\" as \"sales_return_date_sk\",
     \"sales_store_returns_unified\".\"SR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
-    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_web_returns_unified\".\"WR_RETURNED_DATE_SK\" as \"sales_return_date_id\",
+    \"sales_web_returns_unified\".\"WR_RETURNED_DATE_SK\" as \"sales_return_date_sk\",
     \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
 concerned as (
 SELECT
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\",
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\",
     CASE WHEN \"questionable\".\"sales_channel\" = 'CATALOG' THEN \"questionable\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_9747092284480774\",
     CASE WHEN \"questionable\".\"sales_channel\" = 'STORE' THEN \"questionable\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_5221868426357137\",
     CASE WHEN \"questionable\".\"sales_channel\" = 'WEB' THEN \"questionable\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_4509973400283298\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
-    INNER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_sk\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_sk\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_return_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null)
 
@@ -66,11 +66,11 @@ yummy as (
 SELECT
     \"questionable\".\"sales_channel\" as \"sales_channel\",
     \"questionable\".\"sales_return_quantity\" as \"sales_return_quantity\",
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\"
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
-    FULL JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
-    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_sk\"
+    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_sk\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_return_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null)
 
@@ -79,10 +79,10 @@ GROUP BY
     2,
     3,
     \"questionable\".\"sales_order_id\",
-    coalesce(\"questionable\".\"sales_item_id\",\"sales_item_items\".\"I_ITEM_SK\")),
+    coalesce(\"questionable\".\"sales_item_sk\",\"sales_item_items\".\"I_ITEM_SK\")),
 abhorrent as (
 SELECT
-    \"concerned\".\"sales_item_text_id\" as \"sales_item_text_id\"
+    \"concerned\".\"sales_item_id\" as \"sales_item_id\"
 FROM
     \"concerned\"
 GROUP BY
@@ -92,7 +92,7 @@ HAVING
 ),
 juicy as (
 SELECT
-    \"yummy\".\"sales_item_text_id\" as \"sales_item_text_id\",
+    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\"
@@ -101,7 +101,7 @@ FROM
 GROUP BY
     1)
 SELECT
-    \"juicy\".\"sales_item_text_id\" as \"item_id\",
+    \"juicy\".\"sales_item_id\" as \"item_id\",
     \"juicy\".\"sr_item_qty\" as \"sr_item_qty\",
     ( ( (\"juicy\".\"sr_item_qty\" * 1.0) / ( ( \"juicy\".\"sr_item_qty\" + \"juicy\".\"cr_item_qty\" ) + \"juicy\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"sr_dev\",
     \"juicy\".\"cr_item_qty\" as \"cr_item_qty\",
@@ -111,7 +111,7 @@ SELECT
     ( ( \"juicy\".\"sr_item_qty\" + \"juicy\".\"cr_item_qty\" ) + \"juicy\".\"wr_item_qty\" ) / 3.0 as \"average\"
 FROM
     \"abhorrent\"
-    INNER JOIN \"juicy\" on \"abhorrent\".\"sales_item_text_id\" = \"juicy\".\"sales_item_text_id\"
+    INNER JOIN \"juicy\" on \"abhorrent\".\"sales_item_id\" = \"juicy\".\"sales_item_id\"
 ORDER BY 
     \"item_id\" asc nulls first,
     \"juicy\".\"sr_item_qty\" asc nulls first

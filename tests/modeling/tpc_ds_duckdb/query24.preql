@@ -13,7 +13,7 @@ select
 having
     peach_sales > 0.05 * (avg(
             sum(store_sales.net_paid)
-                by store_sales.customer.id, store_sales.item.id, store_sales.store.id
+                by store_sales.customer.sk, store_sales.item.sk, store_sales.store.sk
         )
             by *)
 

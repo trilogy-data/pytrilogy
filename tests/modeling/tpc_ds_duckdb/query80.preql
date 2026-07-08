@@ -22,13 +22,13 @@ where
     and sales.channel_dim_text_id is not null
 select
     channel_label as channel,
-    id_label as id,
+    id_label as sk,
     sum(sales.ext_sales_price) as sales_total,
     sum(coalesce(sales.return_amount, 0)) as returns_total,
     sum(profit_minus_loss) as profit_total,
 by rollup (channel_label, id_label)
 order by
     channel asc nulls first,
-    id asc nulls first
+    sk asc nulls first
 limit 100
 ;

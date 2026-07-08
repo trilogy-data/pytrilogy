@@ -17,7 +17,7 @@ auto nsum <- lead(sum_sales, 1)
 auto sum_minus_avg <- sum_sales - avg_monthly_sales;
 
 where
-    catalog_sales.call_center.id is not null
+    catalog_sales.call_center.sk is not null
     and (
         catalog_sales.date.year = 1999
         or (catalog_sales.date.year = 1998 and catalog_sales.date.month_of_year = 12)

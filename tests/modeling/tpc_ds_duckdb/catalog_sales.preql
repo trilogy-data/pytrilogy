@@ -27,7 +27,7 @@ auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day); # Number of
 
 
 # metrics
-properties <order_number, item.id> (
+properties <order_number, item.sk> (
     quantity int, # Number of units of the item ordered on this line.
     sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit (USD). The whole-line total is ext_sales_price (the "total price").
     list_price numeric::usd, # Per-unit catalog list price before discounts.
@@ -45,27 +45,27 @@ properties <order_number, item.id> (
     return_net_loss numeric::usd?, # Net financial loss on the return for this line.
     --return_quantity int?, # Units returned for this line.
     _returned_order_number int?, # The catalog_returns order number matched to this line.
-    row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.id combination).
+    row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.sk combination).
 );
 
-auto line_item <- concat(order_number::string, '-', item.id::string); # Unique line-item identifier (one catalog order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
+auto line_item <- concat(order_number::string, '-', item.sk::string); # Unique line-item identifier (one catalog order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
 auto line_item_count <- sum(row_counter); # Number of catalog-sale line items (= count(line_item)); kept for queries that reference it.
 auto profit <- ext_list_price - ext_wholesale_cost - discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
 auto is_returned <- _returned_order_number is not null; # True if this line was later returned, else False.
 
 datasource catalog_sales (
     raw('''1'''): row_counter,
-    CS_SOLD_DATE_SK: ?date.id,
-    CS_SOLD_DATE_SK: ?sold_date.id, 
-    CS_SOLD_TIME_SK: ?time.id,
-    CS_SHIP_DATE_SK: ?ship_date.id, 
-    CS_SHIP_CUSTOMER_SK: ?ship_customer.id,
-    CS_SHIP_ADDR_SK: ?customer_address.id, 
-    CS_BILL_CUSTOMER_SK: ?billing_customer.id,
-    CS_BILL_CDEMO_SK: ?billing_customer_demographic.id,
-    CS_BILL_HDEMO_SK: ?bill_household_demographic.id,
-    CS_BILL_ADDR_SK: ?bill_address.id,
-    CS_ITEM_SK: item.id,
+    CS_SOLD_DATE_SK: ?date.sk,
+    CS_SOLD_DATE_SK: ?sold_date.sk, 
+    CS_SOLD_TIME_SK: ?time.sk,
+    CS_SHIP_DATE_SK: ?ship_date.sk, 
+    CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
+    CS_SHIP_ADDR_SK: ?customer_address.sk, 
+    CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
+    CS_BILL_CDEMO_SK: ?billing_customer_demographic.sk,
+    CS_BILL_HDEMO_SK: ?bill_household_demographic.sk,
+    CS_BILL_ADDR_SK: ?bill_address.sk,
+    CS_ITEM_SK: item.sk,
     CS_QUANTITY: quantity,
     CS_LIST_PRICE: list_price,
     CS_SALES_PRICE: sales_price,
@@ -73,29 +73,29 @@ datasource catalog_sales (
     CS_WHOLESALE_COST: wholesale_cost,
     CS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     CS_EXT_DISCOUNT_AMT: discount_amount,
-    CS_CALL_CENTER_SK: ?call_center.id, 
-    CS_CATALOG_PAGE_SK: ?catalog_page.id, 
+    CS_CALL_CENTER_SK: ?call_center.sk, 
+    CS_CATALOG_PAGE_SK: ?catalog_page.sk, 
     CS_EXT_SHIP_COST: ext_ship_cost,
     CS_EXT_SALES_PRICE: ext_sales_price,
     CS_EXT_LIST_PRICE: ext_list_price,
     CS_NET_PROFIT: net_profit,
     CS_COUPON_AMT: coupon_amt,
-    CS_WAREHOUSE_SK: ?warehouse.id, 
-    CS_PROMO_SK: ?promotion.id, 
-    CS_SHIP_MODE_SK: ?ship_mode.id, 
+    CS_WAREHOUSE_SK: ?warehouse.sk, 
+    CS_PROMO_SK: ?promotion.sk, 
+    CS_SHIP_MODE_SK: ?ship_mode.sk, 
     CS_NET_PAID: net_paid,
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
-grain (item.id, order_number)
+grain (item.sk, order_number)
 address memory.catalog_sales;
 
 datasource catalog_returns_inline (
     CR_ORDER_NUMBER: ~order_number,
-    CR_ITEM_SK: ~item.id,
+    CR_ITEM_SK: ~item.sk,
     CR_RETURN_AMOUNT: return_amount,
     CR_NET_LOSS: return_net_loss,
     CR_RETURN_QUANTITY: return_quantity,
     CR_ORDER_NUMBER: _returned_order_number,
 )
-grain (item.id, order_number)
+grain (item.sk, order_number)
 address memory.catalog_returns;

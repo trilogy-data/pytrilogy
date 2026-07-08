@@ -1,14 +1,14 @@
 query_id = "81"
 generator = "v3"
-gen_length = 7519
-preql_size = 1976
+gen_length = 7489
+preql_size = 1966
 comp_size = 1459
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_billing_customer_id\",
+    \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_billing_customer_sk\",
     \"cr_return_address_customer_address\".\"CA_STATE\" as \"cr_return_address_state\",
     sum(CASE WHEN \"cr_date_date\".\"D_YEAR\" = 2000 and \"cr_return_address_customer_address\".\"CA_STATE\" is not null THEN \"cr_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\" ELSE NULL END) as \"customer_state\"
 FROM
@@ -34,8 +34,8 @@ SELECT
     \"cr_billing_customer_address_customer_address\".\"CA_STREET_TYPE\" as \"cr_billing_customer_address_street_type\",
     \"cr_billing_customer_address_customer_address\".\"CA_SUITE_NUMBER\" as \"cr_billing_customer_address_suite_number\",
     \"cr_billing_customer_address_customer_address\".\"CA_ZIP\" as \"cr_billing_customer_address_zip\",
-    \"cr_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"cr_billing_customer_text_id\",
-    \"cr_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"cr_billing_customer_id\",
+    \"cr_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"cr_billing_customer_id\",
+    \"cr_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"cr_billing_customer_sk\",
     \"cr_billing_customer_customers\".\"C_FIRST_NAME\" as \"cr_billing_customer_first_name\",
     \"cr_billing_customer_customers\".\"C_LAST_NAME\" as \"cr_billing_customer_last_name\",
     \"cr_billing_customer_customers\".\"C_SALUTATION\" as \"cr_billing_customer_salutation\"
@@ -69,17 +69,17 @@ SELECT
     \"wakeful\".\"cr_billing_customer_address_suite_number\" as \"cr_billing_customer_address_suite_number\",
     \"wakeful\".\"cr_billing_customer_address_zip\" as \"cr_billing_customer_address_zip\",
     \"wakeful\".\"cr_billing_customer_first_name\" as \"cr_billing_customer_first_name\",
+    \"wakeful\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
     \"wakeful\".\"cr_billing_customer_last_name\" as \"cr_billing_customer_last_name\",
-    \"wakeful\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",
-    \"wakeful\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\"
+    \"wakeful\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\"
 FROM
     \"questionable\"
-    INNER JOIN \"wakeful\" on \"questionable\".\"cr_billing_customer_id\" = \"wakeful\".\"cr_billing_customer_id\"
+    INNER JOIN \"wakeful\" on \"questionable\".\"cr_billing_customer_sk\" = \"wakeful\".\"cr_billing_customer_sk\"
 WHERE
     \"wakeful\".\"cr_billing_customer_address_state\" = 'GA'
 )
 SELECT
-    \"yummy\".\"cr_billing_customer_text_id\" as \"cr_billing_customer_text_id\",
+    \"yummy\".\"cr_billing_customer_id\" as \"cr_billing_customer_id\",
     \"yummy\".\"cr_billing_customer_salutation\" as \"cr_billing_customer_salutation\",
     \"yummy\".\"cr_billing_customer_first_name\" as \"cr_billing_customer_first_name\",
     \"yummy\".\"cr_billing_customer_last_name\" as \"cr_billing_customer_last_name\",
@@ -102,7 +102,7 @@ WHERE
     \"yummy\".\"customer_state\" > 1.2 * \"juicy\".\"_virt_agg_avg_7052944147524274\"
 
 ORDER BY 
-    \"yummy\".\"cr_billing_customer_text_id\" asc nulls first,
+    \"yummy\".\"cr_billing_customer_id\" asc nulls first,
     \"yummy\".\"cr_billing_customer_salutation\" asc nulls first,
     \"yummy\".\"cr_billing_customer_first_name\" asc nulls first,
     \"yummy\".\"cr_billing_customer_last_name\" asc nulls first,

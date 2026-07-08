@@ -1,7 +1,7 @@
 import web_sales as ws;
-property days_to_ship <- ws.ship_date.id - ws.date.id;
+property days_to_ship <- ws.ship_date.sk - ws.date.sk;
 WHERE
-    ws.ship_date.month_seq between 1200 and  1211 and ws.warehouse.id is not null and ws.ship_mode.id is not null and ws.web_site.id is not null
+    ws.ship_date.month_seq between 1200 and  1211 and ws.warehouse.sk is not null and ws.ship_mode.sk is not null and ws.web_site.sk is not null
 SELECT
     substring(ws.warehouse.name,1,20) -> w_substr,
     ws.ship_mode.type,

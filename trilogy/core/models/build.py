@@ -3342,20 +3342,29 @@ class Factory:
         return self._build_comparison(base)
 
     def _coalescing_presence_probe(self, ref: ConceptRef) -> Concept | None:
-        """Per-side probe for a null test on a coalescing join key-group member.
+        """Per-side probe for a null test on a coalescing join key member.
 
-        A `full`/`union` join key group renders as the mandatory coalesce of
-        every member, so `member is [not] null` would read the fused column and
-        never observe the member's own side being absent — presence counts over
-        the join silently collapse to (0, 0, N) (TPC-DS q97). The null test asks
-        a per-ROW question ("did this side match?"), not a domain question, so
-        rewrite its operand to a virt passthrough of the member. The probe is
-        materialized on the member's own rowset BEFORE the coalescing merge
-        (gen_rowset_node), rides through the FULL join un-fused, and is NULL
+        A `full`/`union` key group renders as the mandatory coalesce of every
+        member; a `subset` join renders row-preserving with its subset SOURCE
+        NULL-padded on anchor-only rows but the projected key coalesced. Either
+        way `member is [not] null` would read the fused/coalesced column and
+        never observe the member's own side being absent — full/union presence
+        counts collapse to (0, 0, N) (TPC-DS q97), and a subset-side null test
+        silently no-ops instead of expressing intersection (TPC-DS q59). The
+        null test asks a per-ROW question ("did this side match?"), not a
+        domain question, so rewrite its operand to a virt passthrough of the
+        member, materialized on the member's own rowset BEFORE the merge
+        (gen_rowset_node); it rides through the join un-fused and is NULL
         exactly where the member's side is absent. Projecting the member is
-        untouched: that remains the coalesced group axis."""
+        untouched: that remains the coalesced group axis. The superset/anchor
+        side of a subset join is preserved (never null), so it is not eligible
+        — a null test on it is a genuine no-op."""
         address = ref.address
-        if address not in self.domain_graph.coalescing_relation_members():
+        eligible = (
+            self.domain_graph.coalescing_relation_members()
+            | self.domain_graph.subset_sources()
+        )
+        if address not in eligible:
             return None
         member = self.environment.concepts.get(address)
         if member is None or member.derivation != Derivation.ROWSET:

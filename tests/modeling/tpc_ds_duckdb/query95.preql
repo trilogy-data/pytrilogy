@@ -1,6 +1,6 @@
 import web_sales as web_sales;
 
-auto multi_warehouse_order <- web_sales.order_number ? count(web_sales.warehouse.id) by web_sales.order_number > 1;
+auto multi_warehouse_order <- web_sales.order_number ? count(web_sales.warehouse.sk) by web_sales.order_number > 1;
 auto returned_orders <- web_sales.order_number ? web_sales.is_returned is True;
 
 where

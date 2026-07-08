@@ -1082,3 +1082,40 @@ limit 10;
     # A broadcast collapses every page onto the same channel total; correct
     # per-page returns vary.
     assert len(set(totals)) > 1, totals
+
+
+def test_join_hoist_inlined_dim_group_key_no_dangling_source(engine):
+    """A hoisted-away INNER join to an *inlined* dim (here the ss.item join, made
+    redundant on the avg-item-price branch because the parent group node already
+    carries the coalesced item key) must not leave the dim's folded datasource
+    token in the group key's coalesce. Before the fix join hoist scrubbed the
+    stale source by CTE name, but an inlined dim lives in source_map under its
+    datasource identifier, so a GROUP BY `coalesce(..., "ss_item_items"."sk")`
+    referenced a table absent from that CTE's FROM -> DuckDB BinderException."""
+    query = """
+import item as item;
+import store_sales as ss;
+
+merge item.sk into ~ss.item.sk;
+
+auto cat_avg_price <- avg(item.current_price) by item.category;
+
+select
+    ss.item.id,
+    ss.item.category,
+    ss.item.current_price,
+    cat_avg_price,
+    ss.item.current_price / cat_avg_price as ratio
+where
+    ss.date.year = 2001
+    and ss.date.month_of_year = 1
+    and ss.item.category is not null
+    and ss.customer.address.id is not null
+order by
+    ratio desc
+limit 10;
+"""
+    # executes cleanly against real data — the stale coalesce member raised a
+    # DuckDB BinderException (table "ss_item_items" not found) before the fix
+    rows = engine.execute_text(query)[0].fetchall()
+    assert len(rows) == 10

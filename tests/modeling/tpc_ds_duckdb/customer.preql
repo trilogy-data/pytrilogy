@@ -10,10 +10,10 @@ import address as address; # the customer's current home address (C_CURRENT_ADDR
 import date as first_sales_date;
 import date as first_shipto_date;
 
-key id int; # Surrogate key uniquely identifying a customer.
-unique property id.text_id string; # Stable natural/business customer ID (16-char alphanumeric).
+key sk int; # Surrogate key uniquely identifying a customer.
+unique property sk.id string; # Stable natural/business customer ID (16-char alphanumeric).
 
-properties id (
+properties sk (
     last_name string?, # Customer last (family) name. Nullable in source data. Not guaranteed unique; weak for identity.
     first_name string?, # Customer first (given) name. Nullable in source data. Display only; low analytical value alone.
     preferred_cust_flag enum<string>['Y', 'N']?, # 'Y' if the customer is flagged as a preferred/loyalty customer, else 'N'.
@@ -31,15 +31,15 @@ auto full_name <- concat(salutation, ' ', first_name, ' ', last_name); # Derived
 auto birth_date <- (birth_year::string || '/' || birth_month::string || '/' || birth_day::string)::date; # Derived calendar birth date; || so any NULL component yields a NULL date (concat() skips NULLs and would produce an uncastable string).
 
 datasource customers (
-    C_CUSTOMER_SK: id,
-    C_CUSTOMER_ID: text_id,
+    C_CUSTOMER_SK: sk,
+    C_CUSTOMER_ID: id,
     C_LAST_NAME: last_name,
     C_FIRST_NAME: first_name,
-    C_CURRENT_ADDR_SK: address.id,
-    C_CURRENT_CDEMO_SK: ?demographics.id,
-    C_CURRENT_HDEMO_SK: ?household_demographic.id,
-    C_FIRST_SALES_DATE_SK: ?first_sales_date.id,
-    C_FIRST_SHIPTO_DATE_SK: ?first_shipto_date.id,
+    C_CURRENT_ADDR_SK: address.sk,
+    C_CURRENT_CDEMO_SK: ?demographics.sk,
+    C_CURRENT_HDEMO_SK: ?household_demographic.sk,
+    C_FIRST_SALES_DATE_SK: ?first_sales_date.sk,
+    C_FIRST_SHIPTO_DATE_SK: ?first_shipto_date.sk,
     C_PREFERRED_CUST_FLAG: preferred_cust_flag,
     C_BIRTH_COUNTRY: birth_country,
     C_SALUTATION: salutation,
@@ -50,5 +50,5 @@ datasource customers (
     C_LOGIN: login,
     C_LAST_REVIEW_DATE_SK: last_review_date,
 )
-grain (id)
+grain (sk)
 address memory.customer;

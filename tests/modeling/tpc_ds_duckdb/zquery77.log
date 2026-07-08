@@ -74,7 +74,7 @@ GROUP BY
     1),
 yummy as (
 SELECT
-    \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_sk\",
     sum(\"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\") as \"_virt_agg_sum_6520591768854391\",
     sum(\"cs_catalog_sales\".\"CS_NET_PROFIT\") as \"_virt_agg_sum_6226990944561419\"
 FROM
@@ -156,7 +156,7 @@ FROM
 vacuous as (
 SELECT
     \"yummy\".\"_virt_agg_sum_6520591768854391\" * cast(\"cooperative\".\"cr_totals_cr_n_groups\" as numeric(15,2)) as \"___tvf_arm_0_u_sales\",
-    \"yummy\".\"cs_call_center_id\" as \"___tvf_arm_0_u_id\",
+    \"yummy\".\"cs_call_center_sk\" as \"___tvf_arm_0_u_id\",
     ( \"yummy\".\"_virt_agg_sum_6226990944561419\" * \"cooperative\".\"cr_totals_cr_n_groups\" ) - cast(\"cooperative\".\"cr_totals_cr_total_loss\" as numeric(15,2)) as \"___tvf_arm_0_u_profit\",
     :___tvf_arm_0_u_channel as \"___tvf_arm_0_u_channel\"
 FROM
@@ -219,7 +219,7 @@ FROM
     \"elated\")
 SELECT
     \"wary\".\"l0_union_u_channel\" as \"channel\",
-    \"wary\".\"l0_union_u_id\" as \"id\",
+    \"wary\".\"l0_union_u_id\" as \"sk\",
     sum(\"wary\".\"l0_union_u_sales\") as \"sales\",
     sum(\"wary\".\"l0_union_u_returns\") as \"returns_\",
     sum(\"wary\".\"l0_union_u_profit\") as \"profit\"
@@ -229,6 +229,6 @@ GROUP BY
     ROLLUP (1, 2)
 ORDER BY 
     \"channel\" asc nulls first,
-    \"id\" asc nulls first,
+    \"sk\" asc nulls first,
     \"returns_\" desc
 LIMIT (100)"""
