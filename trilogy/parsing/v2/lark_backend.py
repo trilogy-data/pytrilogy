@@ -14,6 +14,7 @@ from trilogy.parsing.v2.errors import (
     detect_clause_after_join,
     detect_definition_after_clause,
     detect_group_by,
+    detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_select_distinct,
     detect_star_argument,
@@ -178,6 +179,11 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     join_pos = detect_clause_after_join(text, pos)
     if join_pos is not None:
         raise create_syntax_error(220, join_pos, text)
+
+    # 225: a query-scoped join with a missing/malformed key expression.
+    join_key_pos = detect_join_missing_key(text, pos)
+    if join_key_pos is not None:
+        raise create_syntax_error(225, join_key_pos, text)
 
     align_pos = detect_align_missing_and(text, pos)
     if align_pos is not None:

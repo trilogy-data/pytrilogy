@@ -1,6 +1,14 @@
 # BUG q51 — multi-window reassembly joins on a null-unsafe `=` over a nullable measure, dropping full-outer rows
 
-**Type:** framework bug (silent wrong result). Enriched q51 fails where raw SQL passes; the
+> **RESOLVED 2026-07-08.** The concurrent null-safe reassembly work fixed this: the generated SQL
+> for the q51 agent query now uses `is not distinct from` (0 null-unsafe `=` joins on
+> `running_total`), and the 28 web-exclusive full-outer rows are KEPT (verified against run
+> `20260708-130405`). q51 still *scores* fail, but for an UNRELATED reason — after the `.id`/`.sk`
+> naming swap it reports the business `item.id` (`'AAAAA…'`) where the reference reports the
+> surrogate `i_item_sk` (`5`). That is a C1 grain issue (q51 is one of the rare queries that
+> reports the surrogate), not this reassembly bug. Original report retained below for history.
+
+**Type:** framework bug (silent wrong result) — FIXED. Enriched q51 fails where raw SQL passes; the
 agent's query is CORRECT. Run: `evals/tpcds_agent/results/20260708-030808_enriched`.
 
 ## Symptom

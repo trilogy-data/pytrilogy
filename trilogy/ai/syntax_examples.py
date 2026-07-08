@@ -193,6 +193,15 @@ select
     --student_dept_credits,
     --dept_avg_credits,
 having student_dept_credits > 1.2 * dept_avg_credits;
+
+# BENCHMARK OVER FULL POPULATION + FILTERED OUTPUT: if you also restrict the OUTPUT to a
+# subset (e.g. only customers whose home state is 'GA') but the group average must span
+# EVERY entity in the group, that output filter must NOT enter the average's input. A plain
+# `sum(x) by g` referenced in `having` gets pushed into the aggregate CTE, so a top-level
+# `where home_state = 'GA'` silently narrows the average to GA-only. Keep the benchmark
+# unfiltered: put the threshold comparison in `where` (it computes over the WHERE-unfiltered
+# input), OR compute the average in a SEPARATE rowset (no output filter) and apply the subset
+# filter only to the final selection.
 """,
     ),
     SyntaxExample(
@@ -338,6 +347,11 @@ limit 100;
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
 #    `union(...)` function form - the cleanest way to stack rows from several
 #    sources.
+#  - COUNTING rows across a union/set-op: pre-aggregate the count INSIDE each arm
+#    (`sum(1) as cnt`, then `sum(cnt)` outside) — an arm's `select` dedups to its own grain,
+#    so selecting a raw per-row flag and counting it OUTSIDE undercounts. And count a
+#    GUARANTEED-non-null key, never a nullable display column: `except`/`intersect` keep
+#    all-null rows (NULL-safe), which `count(nullable_col)` then silently skips.
 """,
     ),
     SyntaxExample(
@@ -656,6 +670,12 @@ limit 100;
 #  - COMPOSITE measures just work: `sum(a) - sum(b) as net` rolls up BOTH operands
 #    to the same levels because the `by rollup (…)` clause covers the whole select.
 #    To zero-fill a measure, wrap it: `coalesce(sum(a), 0) as a`.
+#  - FILTER-BEFORE-ROLLUP vs `having`: `by rollup (…) having x > t` filters EVERY level AFTER
+#    the rollup, so the subtotal/total rows still AGGREGATE the below-threshold leaves (they
+#    just aren't displayed). To keep only leaf groups meeting a threshold and roll up JUST
+#    those survivors, filter the leaves in a rowset FIRST (`rowset kept <- select … having x >
+#    t`), then `by rollup ()` over `kept`. `having` on the rollup itself is the wrong tool when
+#    subtotals must exclude the filtered-out leaves.
 """,
     ),
     SyntaxExample(

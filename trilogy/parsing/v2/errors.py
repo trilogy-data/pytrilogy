@@ -92,6 +92,14 @@ ERROR_CODES: dict[int, str] = {
         "`select s.channel, s.channel_dim_text_id` (not "
         "`select distinct s.channel, ...`)."
     ),
+    225: (
+        "Expected a join condition. A query-scoped `subset|union join` needs a "
+        "key equality - write `subset join a.key = b.key` (or `union join a.key "
+        "= b.key`). Chain more keys for a composite grain with `= c.key`, and "
+        "separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). "
+        "Both sides must be real fields or expressions - `...` is not a "
+        "placeholder."
+    ),
 }
 
 
@@ -251,6 +259,31 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
     ):
         return None
     return joins[-1].start()
+
+
+_QUERY_JOIN_RE = re.compile(
+    r"\b(?:left|inner|full|right|cross|subset|union)\s+join\b", re.IGNORECASE
+)
+_SELECT_KW_RE = re.compile(r"\bselect\b", re.IGNORECASE)
+
+
+def detect_join_missing_key(text: str, pos: int) -> int | None:
+    """Locate a query-scoped join whose key expression is missing or malformed -
+    e.g. `union join` with no key, `subset join a.id =` with no RHS, or a bare
+    `...` placeholder. A join key parses as an expression (`sum_operator`), so
+    both backends surface the opaque `expected sum_operator`; map it to a
+    join-condition message. Returns the offending join clause's position, or
+    None. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    if not joins:
+        return None
+    join = joins[-1]
+    # A `select` between the join and the failure means the key already parsed
+    # and the error is downstream (in the select) — not a missing join key.
+    if _SELECT_KW_RE.search(text, join.end(), pos):
+        return None
+    return join.start()
 
 
 _ALIGN_RE = re.compile(r"\balign\b", re.IGNORECASE)

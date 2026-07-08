@@ -73,10 +73,10 @@ import catalog_returns as cr;
 
 with catalog_item_agg as
 select
-  cs.item.text_id as item_id,
+  cs.item.id as item_id,
   sum(cs.ext_list_price) as cat_ext_list_price,
   sum(cr.refunded_cash + cr.reversed_charge + cr.store_credit) as cat_refund
-left join cs.order_number = cr.order_number and cs.item.id = cr.item.id
+left join cs.order_number = cr.order_number and cs.item.sk = cr.item.sk
 ;
 
 where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
@@ -86,7 +86,7 @@ where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
   and ss.date.year in (1999, 2000)
   and pr.return_amount is not null
 select
-  ss.item.product_name, ss.item.text_id as item_id,
+  ss.item.product_name, ss.item.id as item_id,
   ss.store.name as store_name, ss.store.zip as store_zip,
   ss.sale_address.street_number as sale_street_number, ss.sale_address.street_name as sale_street_name,
   ss.sale_address.city as sale_city, ss.sale_address.zip as sale_zip,
@@ -99,8 +99,8 @@ select
   sum(ss.ext_wholesale_cost) as wholesale_cost_sum,
   sum(ss.ext_list_price) as list_price_sum,
   sum(ss.coupon_amt) as coupon_amt_sum
-left join ss.ticket_number = pr.ticket_number and ss.item.id = pr.item.id
-left join ss.item.text_id = catalog_item_agg.item_id
+left join ss.ticket_number = pr.ticket_number and ss.item.sk = pr.item.sk
+left join ss.item.id = catalog_item_agg.item_id
 order by ss.item.product_name, ss.store.name
 limit 100;
 """
@@ -113,8 +113,8 @@ limit 100;
 def test_q64_nested_membership_two_source_agg_clean_error(engine):
     """A nested membership (`final_item <- qual_item ? qual_item in cat_qual_item`)
     whose inner RHS (`cat_qual_item`) is itself filtered by a comparison of two
-    aggregates from DIFFERENT, unmergeable facts (`sum(cs.*) by cs.item.text_id`
-    vs `sum(cr.*) by cr.item.text_id`) is genuinely unsourceable. It used to emit
+    aggregates from DIFFERENT, unmergeable facts (`sum(cs.*) by cs.item.id`
+    vs `sum(cr.*) by cr.item.id`) is genuinely unsourceable. It used to emit
     a dangling existence subquery against a non-existent CTE (the
     `INVALID_REFERENCE_BUG` sentinel) and crash with a raw ``ValueError``. The
     filter-node existence sourcing now propagates the failure so the search
@@ -125,14 +125,14 @@ import store_sales as ss;
 import catalog_sales as cs;
 import catalog_returns as cr;
 
-auto qual_item     <- cs.item.text_id ? cs.item.current_price between 65 and 74;
-auto cat_ext_list  <- sum(cs.ext_list_price) by cs.item.text_id;
-auto cat_refund    <- sum(coalesce(cr.refunded_cash, 0)) by cr.item.text_id;
-auto cat_qual_item <- cs.item.text_id ? cat_ext_list > cat_refund;
+auto qual_item     <- cs.item.id ? cs.item.current_price between 65 and 74;
+auto cat_ext_list  <- sum(cs.ext_list_price) by cs.item.id;
+auto cat_refund    <- sum(coalesce(cr.refunded_cash, 0)) by cr.item.id;
+auto cat_qual_item <- cs.item.id ? cat_ext_list > cat_refund;
 auto final_item    <- qual_item ? qual_item in cat_qual_item;
 
-where ss.item.text_id in final_item
-select ss.item.text_id, count(ss.line_item) as cnt;
+where ss.item.id in final_item
+select ss.item.id, count(ss.line_item) as cnt;
 """
     with pytest.raises(UnresolvableQueryException):
         engine.generate_sql(query)
@@ -240,13 +240,13 @@ def test_q64_nested_membership_single_source_agg_compiles(engine):
 import store_sales as ss;
 import catalog_sales as cs;
 
-auto qual_item     <- cs.item.text_id ? cs.item.current_price between 65 and 74;
-auto cat_ext_list  <- sum(cs.ext_list_price) by cs.item.text_id;
-auto cat_qual_item <- cs.item.text_id ? cat_ext_list > 100;
+auto qual_item     <- cs.item.id ? cs.item.current_price between 65 and 74;
+auto cat_ext_list  <- sum(cs.ext_list_price) by cs.item.id;
+auto cat_qual_item <- cs.item.id ? cat_ext_list > 100;
 auto final_item    <- qual_item ? qual_item in cat_qual_item;
 
-where ss.item.text_id in final_item
-select ss.item.text_id, count(ss.line_item) as cnt;
+where ss.item.id in final_item
+select ss.item.id, count(ss.line_item) as cnt;
 """
     sql = engine.generate_sql(query)[-1]
     assert "INVALID_REFERENCE_BUG" not in sql
@@ -613,13 +613,13 @@ def test_where_clause_inputs(engine):
     y = """import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 
-merge catalog_sales.billing_customer.id into store_sales.customer.id;
-merge catalog_sales.item.id into store_sales.item.id;
+merge catalog_sales.billing_customer.sk into store_sales.customer.sk;
+merge catalog_sales.item.sk into store_sales.item.sk;
 
 SELECT 
     store_sales.item.product_name,
     store_sales.item.desc,
-    store_sales.store.text_id,
+    store_sales.store.id,
     store_sales.store.name,
     sum(store_sales.net_profit) AS store_sales_profit ,
     sum(store_sales.return_net_loss) AS store_returns_loss ,
@@ -632,7 +632,7 @@ WHERE
 ORDER BY 
     store_sales.item.product_name asc,
     store_sales.item.desc asc,
-    store_sales.store.text_id asc,
+    store_sales.store.id asc,
     store_sales.store.name asc
 LIMIT 100;"""
     r1 = engine.parse_text(y)[-1]
@@ -670,7 +670,7 @@ def test_merge_grain_discovery():
     target_concepts = [
         build_environment.concepts["store_sales.ticket_number"],
         build_environment.concepts["store_sales.date.year"],
-        build_environment.concepts["store_sales.item.id"],
+        build_environment.concepts["store_sales.item.sk"],
     ]
     node = search_concepts(
         mandatory_list=target_concepts,
@@ -684,7 +684,7 @@ def test_merge_grain_discovery():
     assert (
         grain.components
         == BuildGrain(
-            components={"store_sales.ticket_number", "store_sales.item.id"}
+            components={"store_sales.ticket_number", "store_sales.item.sk"}
         ).components
     ), grain.components
 

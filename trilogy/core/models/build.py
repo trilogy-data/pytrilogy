@@ -205,6 +205,26 @@ class BuildConceptArgs:
         return self.concept_arguments
 
 
+GROUPING_IDENTITY_FUNCTIONS = frozenset(
+    {FunctionType.GROUPING, FunctionType.GROUPING_ID}
+)
+
+
+def is_grouping_identity(concept: BuildConcept) -> bool:
+    """A ``grouping()``/``grouping_id()`` indicator under a ROLLUP/CUBE/GROUPING
+    SETS. It renders as an aggregate (computed inside the grouped CTE) but is
+    semantically a *key*: the grouping-set bitmask is part of a rollup row's
+    identity, distinguishing a subtotal/grand-total (rolled-up dim -> NULL) from a
+    leaf carrying a data NULL. It can only be produced inside the grouped CTE, so
+    it must be threaded through as a pass-through rather than recovered by a
+    join-back on the (nullable) dims — which would collide those rows."""
+    lineage = concept.lineage
+    return (
+        isinstance(lineage, BuildAggregateWrapper)
+        and lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
+    )
+
+
 def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],

@@ -7,6 +7,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildWhereClause,
     BuildWindowItem,
+    is_grouping_identity,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
@@ -124,6 +125,19 @@ def gen_window_node(
             parent_addresses.update(p.address for p in parents)
 
     parent_concepts = unique(parent_concepts + additional_parent_concepts, "address")
+    # Grouping-set identity (grouping()/grouping_id()) lives at the window's own
+    # rollup grain and can only be produced inside that grouped CTE. Thread it
+    # through the single parent as a pass-through output — recovering it with a
+    # join-back on the (nullable) dims collides subtotal/total rows across
+    # grouping sets. See rollup_window_bug_handoff.
+    grouping_passthrough = [
+        x
+        for x in local_optional
+        if is_grouping_identity(x) and x.address not in parent_addresses
+    ]
+    if grouping_passthrough:
+        parent_concepts = unique(parent_concepts + grouping_passthrough, "address")
+        parent_addresses.update(x.address for x in grouping_passthrough)
     output_targets = parent_concepts + additional_outputs + [concept]
     # finally, the ones we'll need to enrich
     non_equivalent_optional = [

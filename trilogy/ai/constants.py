@@ -10,7 +10,7 @@ Typical usage only imports facts; dimensions will then be accessed through the n
 
 key | property | auto | metric — define new concepts in your script. These concepts (auto x <- ...) are definitions, NOT precomputed values: each reference expands in a query and re-evaluates in the referencing query's scope. 
 
-parameter NAME TYPE [default <literal>]; — declares a runtime value supplied via trilogy run <file>.preql --param NAME=VALUE (repeat --param for several). Reference it like any field. Without default, required at run time.
+parameter NAME TYPE [default <literal>]; — declares a runtime value supplied via trilogy run <file>.preql --param NAME=VALUE (repeat --param for several). Reference it like any field. Without default, required at run time. TYPE is any data type (see Data types); append `?` to allow null (`parameter cutoff date?;`).
 
 ## Combining models
 
@@ -189,6 +189,28 @@ Default to windows for **self-referential queries**; relating a row to other row
 - `partition by` accepts arbitrary expressions, not just identifiers: `partition by upper(student.state), case when student.gpa >= 3.5 then 1 else 0 end`.
 - Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate; write `sum(x) by g` directly instead.
 - `lag(<field>, <offset>) over (partition by <g> order by <expr>)` fetches the value `<offset>` rows back; `lead(...)` fetches it ahead. Offset defaults to 1. Examples: `lag(amount, 2) over (order by date asc) as prev_amount`; next-year same week = `lead(weekly, 53) over (order by week_seq asc) as next_year`.
+
+## Data types
+
+Types appear in concept/property declarations, `parameter` declarations, `type` aliases, and casts. A concept's type is written right after its name: `property user.email string;`, `key order.id int;`.
+
+Scalar types: `string`, `bytes`, `bool`, `int`, `bigint`, `float`, `double`, `number`, `numeric(<precision>,<scale>)` (alias `decimal(p,s)`, e.g. `numeric(12,2)` for exact money), `date`, `datetime`, `timestamp`, `geography`, `any`.
+
+Composite types:
+- `array<T>` (alias `list<T>`) — an ordered list, e.g. `array<int>`.
+- `map<K, V>` — e.g. `map<string, int>`.
+- `struct<name1: T1, name2: T2, ...>` — a named record; access fields with `.`.
+- `enum<T>[v1, v2, ...]` — a T constrained to the listed literals, e.g. `enum<string>['open', 'closed']`.
+
+Cast a value with `::type` or `cast(<expr> as <type>)`, e.g. `"2020-01-01"::date`, `cast(credits as numeric(12,2))`.
+
+### `?` — nullable, `~` — subset binding
+
+Two type/concept modifiers use punctuation:
+
+- **`?` after a type marks the concept (or parameter) as nullable** — its values may be NULL: `property user.middle_name string?;`, `parameter as_of date?;`. Without `?` a concept is non-nullable. 
+- **`~` prefixing a concept marks it as a binding of a SUBSET of that concept's values** — i.e. this reference does not carry the full domain, only a partial set. 
+It appears as a prefix on a select item (`~customer.id`) to flag the value as partial, and as `merge a into ~b` to declare a ⊆ b (the subset form of `merge`, equivalent to `subset join a = b`). A `~`-stamped value tells the planner not to treat this side as authoritative/complete for its concept.
 
 ## Expressions and miscellany
 

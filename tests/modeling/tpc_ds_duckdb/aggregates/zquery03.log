@@ -1,15 +1,16 @@
 query_id = 3
 generator = "v3"
-gen_length = 1963
+gen_length = 2088
 generated_sql = """
 
 WITH 
-cooperative as (
+questionable as (
 SELECT
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_date_year\" as \"store_sales_date_year\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_ext_sales_price\" as \"store_sales_ext_sales_price\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\"
 GROUP BY
@@ -17,21 +18,21 @@ GROUP BY
     2,
     3,
     4,
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_id\",
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_ticket_number\")
+    5)
 SELECT
-    \"cooperative\".\"store_sales_date_year\" as \"store_sales_date_year\",
-    \"cooperative\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    \"cooperative\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(\"cooperative\".\"store_sales_ext_sales_price\") as \"sum_agg\"
+    \"questionable\".\"store_sales_date_year\" as \"store_sales_date_year\",
+    \"questionable\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    \"questionable\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"sum_agg\"
 FROM
-    \"cooperative\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"questionable\" on \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" = \"questionable\".\"store_sales_ext_sales_price\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"questionable\".\"store_sales_ticket_number\"
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"cooperative\".\"store_sales_date_year\" asc,
+    \"questionable\".\"store_sales_date_year\" asc,
     \"sum_agg\" desc,
-    \"cooperative\".\"store_sales_item_brand_id\" asc
+    \"questionable\".\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

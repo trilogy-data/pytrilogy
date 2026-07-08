@@ -13,6 +13,7 @@ from trilogy.parsing.v2.errors import (
     detect_clause_after_join,
     detect_definition_after_clause,
     detect_group_by,
+    detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_select_distinct,
     detect_star_argument,
@@ -314,6 +315,13 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     join_pos = detect_clause_after_join(text, pos)
     if join_pos is not None:
         return create_syntax_error(220, join_pos, text)
+
+    # 225: a query-scoped join with a missing/malformed key expression
+    # (`union join ...`, `subset join a.id =`) — pest reports `expected
+    # sum_operator` since a join key is an expression.
+    join_key_pos = detect_join_missing_key(text, pos)
+    if join_key_pos is not None:
+        return create_syntax_error(225, join_key_pos, text)
 
     # 221: a multi-select `align` group separated by a comma instead of `and`.
     align_pos = detect_align_missing_and(text, pos)
