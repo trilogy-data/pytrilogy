@@ -1,7 +1,7 @@
 query_id = "16"
 generator = "v3"
-gen_length = 3724
-preql_size = 605
+gen_length = 3700
+preql_size = 601
 comp_size = 821
 generated_sql = """
 
@@ -44,9 +44,9 @@ FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cs_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
     1),
@@ -58,9 +58,9 @@ FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cs_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
     1,

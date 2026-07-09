@@ -16,10 +16,13 @@ splices the fresh result over the old one (see ``evals/common/replay.py``).
 from __future__ import annotations
 
 import argparse
+import functools
+import http.server
 import json
 import re
 import sys
 import threading
+import urllib.parse
 from pathlib import Path
 
 _RUN_RE = re.compile(r"\.r(\d+)\.jsonl$")
@@ -406,6 +409,11 @@ _HTML = r"""<!doctype html>
   .cmpbtn { background:var(--panel2); color:var(--txt); border:1px solid var(--border);
             border-radius:6px; padding:5px 12px; font-size:12px; cursor:pointer; }
   .cmpbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .cmpbtn[disabled] { opacity:.45; cursor:default; }
+  .cmpbtn[disabled]:hover { border-color:var(--border); color:var(--txt); }
+  .rpmsg { font-size:12px; color:var(--muted); }
+  .rpmsg.ok { color:var(--ok); }
+  .rpmsg.err { color:var(--err); }
   .cmpsel { background:var(--panel2); color:var(--txt); border:1px solid var(--border);
             border-radius:6px; padding:5px 8px; font-size:12px; cursor:pointer; }
   .cmp { display:flex; gap:12px; margin-bottom:20px; }
@@ -438,6 +446,9 @@ let expanded = new Set();   // keys of tool-result blocks the user expanded (cur
 let currentRun = null;   // which results dir we're viewing (null until runs.json loads)
 let compareOpen = false;   // side-by-side canonical vs agent query panel (per run)
 let compareView = 'src';   // 'src' (preql/sql source) or 'sql' (rendered SQL)
+let served = false;   // true once runs.json answers — replay needs the server
+let replay = {running:false, qid:null, log:[], result:null, error:null};
+let replayTimer = null;
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
 // Sidebar result color — mirrors the dashboard PNG (STATUS_COLORS_ALT): green=pass,
@@ -488,6 +499,75 @@ function compareHtml(run){
   return `<div class="cmp">`+col('canonical', q.canonical)+col('agent', q.candidate)+`</div>`;
 }
 
+const qlabel = q => 'q' + String(q).padStart(2,'0');
+// The replay bar re-renders from `replay` on every poll, so a run re-render
+// (live data refresh) never wipes an in-flight status.
+function replayBarHtml(run){
+  if(!served || !run.replayable) return '';
+  // Scope status to this dir+query: a job for another results dir is just "busy".
+  const mine = replay.qid === run.qid && replay.run === currentRun;
+  const label = (replay.running && mine) ? 'Replaying…' : 'Replay ' + qlabel(run.qid);
+  const dis = replay.running ? ' disabled' : '';
+  let status = '';
+  if(replay.running && mine){
+    status = `<span class="rpmsg">${esc(replay.log[replay.log.length-1] || 'starting…')}</span>`;
+  } else if(replay.running){
+    status = `<span class="rpmsg">busy: ${esc(qlabel(replay.qid))}</span>`;
+  } else if(mine && replay.error){
+    status = `<span class="rpmsg err">${esc(replay.error)}</span>`;
+  } else if(mine && replay.result){
+    const r = replay.result;
+    status = `<span class="rpmsg ok">${esc(r.prev_status||'absent')} → ${esc(r.status)}`
+           + ` · ${r.iterations} iters · ${r.duration_seconds}s`
+           + ` · pass ${r.pass_count}/${r.num_queries}</span>`;
+  }
+  return `<button class="cmpbtn" onclick="startReplay(${run.qid})"${dis}>${esc(label)}</button>${status}`;
+}
+function updateReplayBar(){
+  const el = document.getElementById('rpbar'), run = RUNS.find(r=>r.name===selectedName);
+  if(el && run) el.innerHTML = replayBarHtml(run);
+}
+async function startReplay(qid){
+  if(!confirm(`Replay ${qlabel(qid)} in ${currentRun}?\n\n`
+    + `Re-runs the agent and OVERWRITES this query's trajectory, candidate query `
+    + `and report entry. The current trajectory is not recoverable.`)) return;
+  replay = {running:true, run:currentRun, qid, log:['submitting…'], result:null, error:null};
+  updateReplayBar();
+  try{
+    const r = await fetch('replay', {method:'POST', headers:{'Content-Type':'application/json'},
+                                     body: JSON.stringify({run: currentRun, qid})});
+    const j = await r.json();
+    replay = r.ok ? j : {running:false, run:currentRun, qid, log:[], result:null, error: j.error || ('HTTP '+r.status)};
+  }catch(e){ replay = {running:false, run:currentRun, qid, log:[], result:null, error:String(e)}; }
+  updateReplayBar();
+  if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+}
+async function pollReplay(){
+  try{
+    const r = await fetch('replay_status.json', {cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json();
+    const finished = replay.running && !j.running;
+    replay = j;
+    updateReplayBar();
+    if(finished){
+      clearInterval(replayTimer); replayTimer = null;
+      lastPayload = null;   // the run's logs + report just changed under us
+      loadData();
+    }
+  }catch(e){ clearInterval(replayTimer); replayTimer = null; }
+}
+// A page reload mid-replay should re-attach to the running job, not lose it.
+async function initReplay(){
+  try{
+    const r = await fetch('replay_status.json', {cache:'no-store'});
+    if(!r.ok) return;
+    replay = await r.json();
+    updateReplayBar();
+    if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+  }catch(e){ /* static file — no replay */ }
+}
+
 function renderRun(run, keepScroll){
   const m = run.metrics||{}, meta = run.meta||{};
   const main = document.getElementById('main');
@@ -497,6 +577,7 @@ function renderRun(run, keepScroll){
         + `${rows}iters ${m.iterations??'?'} · prompt_tok ${(m.prompt_tokens||0).toLocaleString()} · `
         + `${meta.provider||''} ${meta.model||''} ${m.duration_seconds?('· '+m.duration_seconds+'s'):''}</div>`;
   if(m.detail) h += `<div class="meta" style="color:var(--err)">${esc(m.detail)}</div>`;
+  if(served && run.replayable) h += `<div class="cmpbar" id="rpbar">${replayBarHtml(run)}</div>`;
   h += `<div id="task">${esc(meta.task)}</div>`;
   const q = run.queries||{};
   if(q.candidate || q.canonical){
@@ -644,6 +725,7 @@ async function loadRuns(){
     const r = await fetch('runs.json', {cache:'no-store'});
     if(!r.ok) return;
     const j = await r.json();
+    served = true;
     if(currentRun === null) currentRun = j.current;
     const sel = document.getElementById('runsel');
     sel.innerHTML = j.runs.map(n =>
@@ -658,13 +740,182 @@ function onRunChange(){
   loadData();
 }
 applyData(RUNS, false);
-loadRuns().then(loadData);
+loadRuns().then(loadData).then(initReplay);
 setInterval(loadData, 4000);
 setInterval(loadRuns, 10000);
 </script>
 </body>
 </html>
 """
+
+
+_EVAL_DIR = Path(__file__).resolve().parent
+# `common` package (evals/) and this benchmark's `spec` — imported lazily by the
+# replay thread so the static build path never pulls in trilogy/matplotlib.
+sys.path[:0] = [str(_EVAL_DIR.parent), str(_EVAL_DIR)]
+
+_REPLAY_LOG_LINES = 200
+
+
+def _force_utf8_stdio() -> None:
+    """Replay progress can carry engine text; Windows consoles default to cp1252
+    and would raise mid-replay on the first non-ASCII byte."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
+class ReplayJob:
+    """One replay at a time, run off the HTTP thread. The page starts it with
+    POST /replay and polls GET /replay_status.json until ``running`` clears."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: dict = {
+            "running": False,
+            "run": None,
+            "qid": None,
+            "log": [],
+            "result": None,
+            "error": None,
+        }
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {**self._state, "log": list(self._state["log"])}
+
+    def _log(self, message: str) -> None:
+        print(f"[replay] {message}", flush=True)
+        with self._lock:
+            lines = self._state["log"]
+            lines.append(message)
+            del lines[:-_REPLAY_LOG_LINES]
+
+    def start(self, run_dir: Path, qid: int) -> str | None:
+        """Accept the job, or return why it was rejected."""
+        with self._lock:
+            if self._state["running"]:
+                return f"a replay is already running (q{self._state['qid']:02d})"
+            self._state = {
+                "running": True,
+                "run": run_dir.name,
+                "qid": qid,
+                "log": [],
+                "result": None,
+                "error": None,
+            }
+        threading.Thread(target=self._run, args=(run_dir, qid), daemon=True).start()
+        return None
+
+    def _run(self, run_dir: Path, qid: int) -> None:
+        result: dict | None = None
+        error: str | None = None
+        try:
+            from common import replay
+            from spec import SPEC
+
+            result = replay.replay_query(run_dir, SPEC, qid, log=self._log)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            self._log(error)
+        with self._lock:
+            self._state.update(running=False, result=result, error=error)
+
+
+def _list_run_dirs(root: Path) -> list[str]:
+    dirs = [
+        c for c in root.iterdir() if c.is_dir() and any(c.glob("agent_log.*.jsonl"))
+    ]
+    dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return [p.name for p in dirs]
+
+
+class ViewerHandler(http.server.SimpleHTTPRequestHandler):
+    """Static viewer.html plus the live-data and replay endpoints. ``root``,
+    ``default_dir``, ``job`` and ``log_requests`` are injected by :func:`serve`."""
+
+    root: Path
+    default_dir: Path
+    job: ReplayJob
+    log_requests: bool = False
+
+    def log_message(self, format: str, *args) -> None:
+        # The page polls every few seconds forever; the default per-request line
+        # grows the console without bound until it falls over.
+        if self.log_requests:
+            super().log_message(format, *args)
+
+    def _json(self, obj, status: int = 200) -> None:
+        payload = json.dumps(obj).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _resolve_run(self, name: str | None) -> Path | None:
+        """Name → run dir, constrained to the sibling run dirs we advertise."""
+        if name and name in _list_run_dirs(self.root):
+            return self.root / name
+        return None
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/runs.json":
+            self._json(
+                {"runs": _list_run_dirs(self.root), "current": self.default_dir.name}
+            )
+            return
+        if parsed.path == "/replay_status.json":
+            self._json(self.job.snapshot())
+            return
+        if parsed.path == "/data.json":
+            # Re-read the chosen run's logs per request so a live (or
+            # just-finished) run streams in — the page polls this.
+            qs = urllib.parse.parse_qs(parsed.query)
+            target = self._resolve_run((qs.get("run") or [None])[0]) or self.default_dir
+            self._json(collect(target))
+            return
+        super().do_GET()
+
+    def do_POST(self):
+        if urllib.parse.urlparse(self.path).path != "/replay":
+            self.send_error(404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length) or b"{}")
+            qid = int(body["qid"])
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            self._json({"error": "expected JSON body {run, qid}"}, 400)
+            return
+        run_dir = self._resolve_run(body.get("run"))
+        if run_dir is None:
+            self._json({"error": f"unknown run {body.get('run')!r}"}, 400)
+            return
+        rejected = self.job.start(run_dir, qid)
+        if rejected:
+            self._json({"error": rejected}, 409)
+            return
+        self._json(self.job.snapshot())
+
+
+def serve(results_dir: Path, port: int, log_requests: bool) -> None:
+    root = results_dir.parent  # sibling run dirs live alongside us
+    ViewerHandler.root = root
+    ViewerHandler.default_dir = results_dir
+    ViewerHandler.job = ReplayJob()
+    ViewerHandler.log_requests = log_requests
+    handler = functools.partial(ViewerHandler, directory=str(results_dir))
+    # Threading: a replay runs off-thread, but the browser still opens parallel
+    # connections for data.json + replay_status.json while it works.
+    with http.server.ThreadingHTTPServer(("127.0.0.1", port), handler) as httpd:
+        httpd.daemon_threads = True
+        print(f"serving http://127.0.0.1:{port}/viewer.html  (ctrl-c to stop)")
+        httpd.serve_forever()
 
 
 def _latest_results_dir() -> Path:
@@ -698,57 +949,17 @@ def main() -> int:
         help="run dir to view (default: the most recently updated one)",
     )
     p.add_argument("--serve", type=int, default=None, help="serve the dir on this port")
+    p.add_argument(
+        "--log-requests",
+        action="store_true",
+        help="log every HTTP request (off by default: the page polls forever)",
+    )
     args = p.parse_args()
+    _force_utf8_stdio()
     results_dir = args.results_dir or _latest_results_dir()
     build_html(results_dir)
     if args.serve is not None:
-        import functools
-        import http.server
-        import socketserver
-        import urllib.parse
-
-        root = results_dir.parent  # sibling run dirs live alongside us
-
-        def list_run_dirs() -> list[str]:
-            dirs = [
-                c
-                for c in root.iterdir()
-                if c.is_dir() and any(c.glob("agent_log.*.jsonl"))
-            ]
-            dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            return [p.name for p in dirs]
-
-        class _Handler(http.server.SimpleHTTPRequestHandler):
-            def _json(self, obj) -> None:
-                payload = json.dumps(obj).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-            def do_GET(self):
-                parsed = urllib.parse.urlparse(self.path)
-                if parsed.path == "/runs.json":
-                    self._json({"runs": list_run_dirs(), "current": results_dir.name})
-                    return
-                if parsed.path == "/data.json":
-                    # Re-read the chosen run's logs per request so a live (or
-                    # just-finished) run streams in — the page polls this.
-                    qs = urllib.parse.parse_qs(parsed.query)
-                    name = (qs.get("run") or [results_dir.name])[0]
-                    target = root / name if name in list_run_dirs() else results_dir
-                    self._json(collect(target))
-                    return
-                super().do_GET()
-
-        handler = functools.partial(_Handler, directory=str(results_dir))
-        with socketserver.TCPServer(("127.0.0.1", args.serve), handler) as httpd:
-            print(
-                f"serving http://127.0.0.1:{args.serve}/viewer.html  (ctrl-c to stop)"
-            )
-            httpd.serve_forever()
+        serve(results_dir, args.serve, args.log_requests)
     return 0
 
 

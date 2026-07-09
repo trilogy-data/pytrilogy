@@ -19,7 +19,7 @@ import customer_demographic as billing_customer_demographic; # customer demograp
 import household_demographic as bill_household_demographic; # household demographics recorded at the time of the sale
 import promotion as promotion;
 import ship_mode as ship_mode;
-import address as customer_address;
+import address as ship_address;
 import address as bill_address;
 
 key order_number int; # Catalog order number identifying a single catalog sales transaction.
@@ -60,7 +60,7 @@ datasource catalog_sales (
     CS_SOLD_TIME_SK: ?time.sk,
     CS_SHIP_DATE_SK: ?ship_date.sk, 
     CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
-    CS_SHIP_ADDR_SK: ?customer_address.sk, 
+    CS_SHIP_ADDR_SK: ?ship_address.sk, 
     CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
     CS_BILL_CDEMO_SK: ?billing_customer_demographic.sk,
     CS_BILL_HDEMO_SK: ?bill_household_demographic.sk,

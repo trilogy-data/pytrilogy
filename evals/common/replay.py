@@ -156,7 +156,9 @@ def replay_query(
     workspace = run_dir / "workspace"
     workspace_db = workspace / spec.db_filename
     if not workspace_db.exists():
-        raise ReplayError(f"no {spec.db_filename} in {workspace} — workspace was cleaned")
+        raise ReplayError(
+            f"no {spec.db_filename} in {workspace} — workspace was cleaned"
+        )
 
     category = _resolve_category(report)
     meta = report["meta"]
@@ -182,7 +184,9 @@ def replay_query(
     (run_dir / f"crash.q{qid:02d}.txt").unlink(missing_ok=True)
 
     log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
-    log(f"q{qid:02d}: running agent ({provider}/{model}, was {prev_status or 'absent'})")
+    log(
+        f"q{qid:02d}: running agent ({provider}/{model}, was {prev_status or 'absent'})"
+    )
     result = agent_runner.run_agent(
         worker,
         log_path,
@@ -203,9 +207,16 @@ def replay_query(
         shutil.copy2(produced, workspace / produced.name)
         produced.unlink()
 
-    log(f"q{qid:02d}: agent exit={result['exit_code']} in {result['duration']:.0f}s — scoring")
+    log(
+        f"q{qid:02d}: agent exit={result['exit_code']} "
+        f"in {result['duration']:.0f}s - scoring"
+    )
     metrics = scoring.parse_agent_log(log_path)
-    refs = spec.references_dir if spec.references_dir and spec.references_dir.exists() else None
+    refs = (
+        spec.references_dir
+        if spec.references_dir and spec.references_dir.exists()
+        else None
+    )
     try:
         score = scoring.score_query_timed(
             workspace_db,
@@ -263,8 +274,9 @@ def replay_query(
     except Exception as exc:
         log(f"  dashboard render skipped: {type(exc).__name__}: {exc}")
 
+    # ASCII only: this goes to a console that may be cp1252 (Windows).
     log(
-        f"q{qid:02d}: {prev_status or 'absent'} → {score.status}"
+        f"q{qid:02d}: {prev_status or 'absent'} -> {score.status}"
         f"  |  pass {report['summary']['pass_count']}/{report['meta']['num_queries']}"
     )
     return {

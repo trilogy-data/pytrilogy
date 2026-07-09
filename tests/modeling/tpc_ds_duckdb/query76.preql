@@ -19,7 +19,7 @@ auto ws_row_flag <- sum(
     by ws.order_number, ws.item.sk;
 auto cs_row_flag <- sum(
     case
-        when cs.customer_address.sk is null then 1
+        when cs.ship_address.sk is null then 1
         else 0
     end
 )
@@ -49,7 +49,7 @@ with q76_results as union(
         sum(ws_row_flag) as sales_cnt,
         sum(ws.ext_sales_price) as sales_amt,
     ),
-    (where cs.customer_address.sk is null and cs.order_number is not null and cs.date.sk is not null
+    (where cs.ship_address.sk is null and cs.order_number is not null and cs.date.sk is not null
      select
         'catalog' as channel,
         'cs_ship_addr_sk' as col_name,

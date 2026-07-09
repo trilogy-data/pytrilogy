@@ -1,7 +1,7 @@
 query_id = "76"
 generator = "v3"
-gen_length = 8339
-preql_size = 2137
+gen_length = 8331
+preql_size = 2129
 comp_size = 1708
 generated_sql = """
 
@@ -30,7 +30,7 @@ quizzical as (
 SELECT
     \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_sk\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_sk\"
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" as \"cs_ship_address_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
 WHERE
@@ -100,7 +100,7 @@ SELECT
     \"quizzical\".\"cs_item_sk\" as \"cs_item_sk\",
     \"quizzical\".\"cs_order_number\" as \"cs_order_number\",
     CASE
-	WHEN \"quizzical\".\"cs_customer_address_sk\" is null THEN 1
+	WHEN \"quizzical\".\"cs_ship_address_sk\" is null THEN 1
 	ELSE 0
 	END as \"cs_row_flag\"
 FROM
