@@ -197,9 +197,14 @@ def replay_query(
     *,
     timeout: int = DEFAULT_AGENT_TIMEOUT,
     env_file: Path | None = None,
+    refresh_model: bool = True,
     log: Callable[[str], None] = print,
 ) -> dict:
     """Re-run ``qid`` in ``run_dir`` and splice the result over the old one.
+
+    ``refresh_model`` re-seeds the workspace model first, so a fix to the curated
+    .preql model lands in the replay; pass False to re-run against the model
+    exactly as the original run saw it.
 
     Returns a summary dict of what changed. Raises :class:`ReplayError` when the
     run dir lacks what a replay needs (report, workspace, database)."""
