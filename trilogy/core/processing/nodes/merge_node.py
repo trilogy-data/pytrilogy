@@ -372,11 +372,26 @@ class MergeNode(StrategyNode):
             merged.values(), key=lambda source: source.identifier
         )
 
-        existence_final = [
-            x
-            for x in final_datasets
-            if all([y in self.existence_concepts for y in x.output_concepts])
-        ]
+        merge_output_addresses = {c.address for c in self.output_concepts}
+        existence_addr_set = {c.address for c in self.existence_concepts}
+
+        def _is_existence_only(x: QueryDatasource | BuildDatasource) -> bool:
+            out_addrs = {y.address for y in x.output_concepts}
+            if not out_addrs & existence_addr_set:
+                return False
+            # Existence-only if every concept it provides that this merge
+            # actually emits as a row output is an existence concept. A source's
+            # incidental extra columns (e.g. a membership rowset's other
+            # measures) are unused here and must not promote it to a joined row
+            # source — doing so leaves it dangling in the FROM (it has no join
+            # key, only a subselect) yet feeding the SELECT list.
+            return all(
+                a in existence_addr_set
+                for a in out_addrs
+                if a in merge_output_addresses
+            )
+
+        existence_final = [x for x in final_datasets if _is_existence_only(x)]
         # ``force_group is True`` means this merge exists to regroup its (finer)
         # parent to the output grain — a deliberate regroup requested upstream
         # (e.g. group_if_required_v2 collapsing a fan-out enrichment back to the
@@ -566,10 +581,19 @@ class MergeNode(StrategyNode):
 
         # Preserved sides first — first-wins inside ``resolve_concept_map``
         # naturally picks the always-non-NULL source when multiple datasources
-        # supply the same concept.
+        # supply the same concept. Existence-only sources sort LAST: their
+        # columns are reachable only through a subselect (no join), so a row
+        # source_map entry pointing at one renders an unresolvable FROM alias
+        # whenever a genuinely-joined parent also supplies the concept. Ordering
+        # them last lets the joined parent win while still leaving the existence
+        # source as the fallback provider when nothing else supplies it.
         ordered_datasets = sorted(
             final_datasets,
-            key=lambda ds: (null_status.get(ds.identifier, 0), ds.identifier),
+            key=lambda ds: (
+                ds in existence_final,
+                null_status.get(ds.identifier, 0),
+                ds.identifier,
+            ),
         )
         final_output_concepts = self.output_concepts
 
@@ -579,6 +603,34 @@ class MergeNode(StrategyNode):
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
         )
+        node_existence_source_map = resolve_existence_map(
+            final_datasets, self.existence_concepts
+        )
+        # A membership-RHS concept (`... in (rowset.a, rowset.b)`) carried as an
+        # OUTPUT column but supplied ONLY by an existence feeder is not row data
+        # — the feeder is reachable solely through its subselect, never a join,
+        # so emitting it in the SELECT dangles the FROM (``Referenced table ...
+        # not found``). Drop it from the row outputs and row source_map. Gated
+        # on: (a) it is an actual output column (a concept that only feeds a
+        # subselect is not in ``output`` and must keep its source_map entry —
+        # some nodes render the subselect FROM the row map), and (b) the
+        # subselect can still resolve it via ``existence_source_map`` after
+        # removal. A genuinely-joined parent supplying it (e.g. a coalesced grain
+        # key) leaves it non-all-feeder — feeders sort last above — so it stays.
+        existence_only_rows = {
+            addr
+            for addr in existence_addr_set
+            if addr in merge_output_addresses
+            and addr in node_existence_source_map
+            and source_map.get(addr)
+            and all(s in existence_final for s in source_map[addr])
+        }
+        if existence_only_rows:
+            for addr in existence_only_rows:
+                source_map.pop(addr, None)
+            final_output_concepts = [
+                c for c in final_output_concepts if c.address not in existence_only_rows
+            ]
         # Scoped OUTER joins can bind different physical key addresses for one
         # merged key. A chain of joins (e.g. `a.k=b.k`, `c.k=b.k`) makes those
         # addresses one equivalence class; the merged key on any output row is
@@ -633,9 +685,7 @@ class MergeNode(StrategyNode):
             datasources=final_datasets,
             source_type=self.source_type,
             source_map=source_map,
-            existence_source_map=resolve_existence_map(
-                final_datasets, self.existence_concepts
-            ),
+            existence_source_map=node_existence_source_map,
             joins=qd_joins,
             grain=grain,
             # union the join-analysis nullables (null-extended outer sides,

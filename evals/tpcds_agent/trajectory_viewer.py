@@ -362,6 +362,8 @@ _HTML = r"""<!doctype html>
   .badge.pass { background:rgba(63,185,80,.18); color:var(--ok); }
   .badge.exhausted,.badge.error,.badge.fail { background:rgba(248,81,73,.18); color:var(--err); }
   .badge.other { background:rgba(139,147,167,.18); color:var(--muted); }
+  .badge.over { background:rgba(248,81,73,.85); color:#fff; margin-left:4px; }
+  .sdot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; flex:0 0 8px; }
   #main { flex:1; overflow-y:auto; padding:22px 28px 80px; }
   #task { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:20px; white-space:pre-wrap; color:var(--muted); font-size:13px; max-height:160px; overflow:auto; }
   .turn { margin:0 0 14px; }
@@ -427,6 +429,12 @@ let compareOpen = false;   // side-by-side canonical vs agent query panel (per r
 let compareView = 'src';   // 'src' (preql/sql source) or 'sql' (rendered SQL)
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
+// Sidebar result color — mirrors the dashboard PNG (STATUS_COLORS_ALT): green=pass,
+// orange=fail/missed, purple=timed out (exhausted/crashed share the purple family).
+function statusColor(s){
+  return ({pass:'#81c784', fail:'#ffb74d', error:'#e57373', missing:'#cfcfcf',
+           timeout:'#ba68c8', exhausted:'#b39ddb', crashed:'#9575cd'})[s] || '#8b93a7';
+}
 
 const SQL_KW = new Set(('select from where group by order having limit offset join left right '
   + 'full inner outer cross on using as and or not in is null case when then else end with union '
@@ -578,8 +586,13 @@ function renderSide(){
   const el = document.getElementById('runs');
   el.innerHTML = RUNS.map((r,i)=>{
     const m=r.metrics||{};
-    return `<div class="run" data-i="${i}"><div class="nm">${esc(r.name)} ${badge(m.status)}</div>`
-         + `<div class="sub">${m.iterations??'?'} iters · ${((m.prompt_tokens||0)/1e6).toFixed(2)}M tok</div></div>`;
+    const c = statusColor(m.status);
+    const tok = m.prompt_tokens||0;
+    const over = tok > 500000 ? `<span class="badge over">500k+</span>` : '';
+    return `<div class="run" data-i="${i}"><div class="nm">`
+         + `<span class="sdot" style="background:${c}"></span>`
+         + `<span style="color:${c}">${esc(r.name)}</span> ${badge(m.status)}${over}</div>`
+         + `<div class="sub">${m.iterations??'?'} iters · ${(tok/1e6).toFixed(2)}M tok</div></div>`;
   }).join('');
   el.querySelectorAll('.run').forEach(node=>{
     node.onclick = ()=>{ selectedName = RUNS[+node.dataset.i].name; expanded = new Set();
