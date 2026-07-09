@@ -710,9 +710,16 @@ def _get_query_node_v4(
         )
         # Source any existence (`x in <set>`) args onto the HAVING-carrying node,
         # mirroring the v3 path -- without this the membership subselect renders a
-        # dangling CTE reference (INVALID_REFERENCE_BUG). Idempotent.
+        # dangling CTE reference (INVALID_REFERENCE_BUG). Idempotent. The query
+        # WHERE is threaded so the membership's aggregates filter pre-aggregation
+        # (matching the output path), not over the whole universe.
         append_existence_check(
-            ds, build_environment, graph, build_statement.having_clause, history
+            ds,
+            build_environment,
+            graph,
+            build_statement.having_clause,
+            history,
+            conditions=build_statement.where_clause,
         )
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components
@@ -879,9 +886,16 @@ def get_query_node(
         # Source any existence (`x in <set>`) args onto the node now carrying the
         # HAVING, mirroring the WHERE path — the predicate's subselect must read
         # from a real producer CTE, not a dangling reference. Idempotent, so the
-        # fold branch (which may already carry the set) is a no-op.
+        # fold branch (which may already carry the set) is a no-op. The query
+        # WHERE is threaded so the membership's aggregates filter pre-aggregation
+        # (matching the output path), not over the whole universe.
         append_existence_check(
-            ds, build_environment, graph, build_statement.having_clause, history
+            ds,
+            build_environment,
+            graph,
+            build_statement.having_clause,
+            history,
+            conditions=build_statement.where_clause,
         )
     ds.hidden_concepts = set(build_statement.hidden_components) | extra_hidden
     ds.ordering = build_statement.order_by

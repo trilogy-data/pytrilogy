@@ -1123,12 +1123,14 @@ def filter_item_to_concept(
     modifiers = get_lineage_modifiers(parent, environment)
     grain = cparent.grain if cparent.purpose == Purpose.PROPERTY else Grain()
     granularity = cparent.granularity
-    if grain.abstract:
-        # A filter over a grainless value (`1 ? cond`) still produces a distinct
-        # CASE-mask per row of the condition's row-grain args, so it must carry
-        # that grain (descended to keys — the mask varies per row, not per
-        # distinct property value). Otherwise `sum(1 ? cond)` treats the mask as
-        # a single-row constant and dedups it to one row, collapsing the count.
+    if cparent.purpose == Purpose.CONSTANT and grain.abstract:
+        # A filter over a grainless *constant* (`1 ? cond`) still produces a
+        # distinct CASE-mask per row of the condition's row-grain args, so it must
+        # carry that grain (descended to keys — the mask varies per row, not per
+        # distinct property value). Otherwise `sum(1 ? cond)` treats the mask as a
+        # single-row constant and dedups it to one row, collapsing the count.
+        # Gated to CONSTANT content: a key/property content already carries its own
+        # row grain and must NOT be widened by the (possibly finer) condition args.
         cond_key_addrs: list[str] = []
         for ref in parent.where.row_arguments:
             if ref.address not in environment.concepts:

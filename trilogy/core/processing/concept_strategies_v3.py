@@ -54,6 +54,7 @@ def append_existence_check(
     graph: ReferenceGraph,
     where: BuildWhereClause,
     history: History,
+    conditions: BuildWhereClause | None = None,
 ):
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
@@ -72,11 +73,19 @@ def append_existence_check(
             logger.info(
                 f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
             )
+            # A HAVING-derived membership subselect (`conditions` set) is this
+            # query's own post-aggregation semijoin: the query WHERE must be
+            # pushed pre-aggregate into its aggregate inputs, exactly as it is on
+            # the output path — else the membership recomputes the aggregate over
+            # the unfiltered universe and its value never matches the filtered
+            # output (q44 silent-empty). A user `x in (select ...)` RHS is an
+            # independent set (no conditions) and stays unfiltered.
             parent = source_query_concepts(
                 [*subselect],
                 history=history,
                 environment=environment,
                 g=graph,
+                conditions=conditions,
             )
             assert parent, "Could not resolve existence clause"
             node.add_parents([parent])

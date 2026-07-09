@@ -25,9 +25,12 @@ Return control once it runs cleanly to submit your result. This will be
 your final action.
 
 
-Not every question returns rows — some correctly produce an empty result. An
-empty result can be the right answer, so don't add, drop, or loosen filters just
-to force rows. 
+Every question in this set returns at least one row at this scale factor. A
+zero-row (or suspiciously tiny) result means your query is almost certainly wrong
+— recheck the grain, joins, and filters (an over-restrictive or wrong-population
+filter, a null-key row dropped by a join, a mis-scoped aggregate) rather than
+shipping the empty result as "the answer". Do NOT, however, add/drop/loosen
+filters just to force rows — find and fix the actual mistake.
 
 Question {{id}}:
 {{prompt}}{{params_block}}
@@ -49,9 +52,12 @@ working directory, and validate it with the run_file tool before finishing.
 Return control once it runs cleanly to submit your result. This will be 
 your final action.
 
-Not every question returns rows — some correctly produce an empty result. An
-empty result can be the right answer, so don't add, drop, or loosen filters just
-to force rows. 
+Every question in this set returns at least one row at this scale factor. A
+zero-row (or suspiciously tiny) result means your query is almost certainly wrong
+— recheck the grain, joins, and filters (an over-restrictive or wrong-population
+filter, a null-key row dropped by a join, a mis-scoped aggregate) rather than
+shipping the empty result as "the answer". Do NOT, however, add/drop/loosen
+filters just to force rows — find and fix the actual mistake.
 
 Question {{id}}:
 {{prompt}}{{params_block}}
@@ -77,9 +83,12 @@ question number). Validate each file with `trilogy run <file>` before moving
 on. Typically, you will import one fact file from raw/ per question, though
 some rare ones may require merging multiple facts.
 
-Not every question returns rows — some correctly produce an empty result. An
-empty result can be the right answer, so don't add, drop, or loosen filters just
-to force rows.
+Every question in this set returns at least one row at this scale factor. A
+zero-row (or suspiciously tiny) result means your query is almost certainly wrong
+— recheck the grain, joins, and filters (an over-restrictive or wrong-population
+filter, a null-key row dropped by a join, a mis-scoped aggregate) rather than
+shipping the empty result as "the answer". Do NOT, however, add/drop/loosen
+filters just to force rows — find and fix the actual mistake.
 
 Business questions
 ==================

@@ -51,6 +51,41 @@ select {agg} as c;
     assert results == [(1,)]
 
 
+def test_filtered_constant_aggregate_counts_rows():
+    """`sum(1 ? cond)` / `count(1 ? cond)` must count matching ROWS, not collapse
+    to a single deduped constant. The `1 ? cond` filter's content is grainless,
+    but its CASE mask (`CASE WHEN cond THEN 1`) varies per row of the condition's
+    row-grain args, so the filter concept must carry that (key-descended) grain.
+    Otherwise the mask is treated as a single-row constant and deduped to one row,
+    collapsing the aggregate to 1 (silent wrong result — the q14 denominator).
+    Bare `sum(1)` with no filter is a genuinely grainless constant and stays 1
+    (the documented global-scalar idiom, see test_global_literal_aggregate)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text("""
+key id int;
+property id.g string;
+property id.yr int;
+datasource t (id, g, yr) grain (id)
+  query '''select 1 as id, 'a' as g, 2001 as yr union all
+           select 2, 'a', 2001 union all
+           select 3, 'b', 2001 union all
+           select 4, 'b', 1990''';
+""")
+    # global filtered count over rows matching cond (3 of 4 rows)
+    assert engine.execute_text("select sum(1 ? yr between 1999 and 2001) as c;")[
+        -1
+    ].fetchall() == [(3,)]
+    # grouped filtered count keeps per-row identity (a=2, b=1)
+    assert [
+        (r.g, r.c)
+        for r in engine.execute_text(
+            "select g, sum(1 ? yr between 1999 and 2001) as c order by g asc;"
+        )[-1].fetchall()
+    ] == [("a", 2), ("b", 1)]
+    # bare sum(1) with no filter remains the single-constant idiom
+    assert engine.execute_text("select sum(1) as c;")[-1].fetchall() == [(1,)]
+
+
 @mark.parametrize(
     "src,expected",
     [

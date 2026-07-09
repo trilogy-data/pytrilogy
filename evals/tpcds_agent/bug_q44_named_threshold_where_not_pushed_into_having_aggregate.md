@@ -104,6 +104,24 @@ against the filtered output aggregate (`vacuous`).
 ## Verdict
 
 Real framework bug: a correct query silently returns 0 rows. Highest-severity class
-(silent wrong result), and it directly caused the ~980k-token spiral. DO NOT FIX (per task).
+(silent wrong result), and it directly caused the ~980k-token spiral.
 Canonical `tests/modeling/tpc_ds_duckdb/query44.{sql,preql}` and the workspace final rewrite
 both return the correct 10 rows.
+
+## FIXED 2026-07-08
+
+Root cause pinned: a HAVING predicate on a non-output concept is lowered to a
+value-membership semijoin (`_rewrite_having_finer_dims_to_membership` /
+`_build_grain_key_membership`, `parsing/v2/select_finalize.py`) whose subselect
+recomputes the select-grain aggregate. `append_existence_check`
+(`concept_strategies_v3.py`) sourced that subselect **without** the query WHERE,
+so the membership's aggregate (`abundant`) was computed over the *unfiltered*
+universe while the output aggregate (`vacuous`) had `WHERE store.sk=1` pushed in —
+the value tuple `(store1_avg, name)` could never match `(allstores_avg, name)`.
+
+Fix: thread the query WHERE as `conditions` into the HAVING membership's subselect
+sourcing (both v3 and v4 `get_query_node` call sites) so its aggregates filter
+pre-aggregation exactly like the output path. `append_existence_check` gained a
+`conditions` param; the user `x in (select ...)` WHERE-existence call sites keep
+`None` (an independent set must not inherit the outer WHERE). Guards:
+`tests/test_having_post_aggregation_filter.py::test_having_named_offgrain_threshold_*`.
