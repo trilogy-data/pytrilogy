@@ -260,6 +260,33 @@ def _q59_rows():
             sys.setrecursionlimit(prev)
 
 
+# --- q66: derived expression OVER a rowset OUTPUT column (not the join key) ----
+# Two rowsets cross-joined on a constant key; the projection wraps a RAW rowset
+# output column in arithmetic (``wh.reg * 2``). This once raised
+# DisconnectedConceptsException: the derived ``local.*`` concept did not inherit
+# the source rowset's grain in the connectivity graph, so it formed its own
+# component and couldn't relate to the other rowset. Selecting ``expr(col)`` must
+# work wherever selecting ``col`` works.
+# See evals/tpcds_agent/q66_derived_over_rowset_disconnected_bug.md
+Q66 = """import sales as s;
+rowset wh <- where s.region > 0 select s.region as reg, 1 as jk;
+rowset mon <- select s.period as period, 1 as jk;
+select wh.reg * 2 as r, mon.period {join};
+"""
+
+
+@pytest.mark.parametrize("jt", ["full", "left", "subset"])
+def test_q66_derived_over_rowset_output_connects(jt: str):
+    tail = Q66.format(join=f"{jt} join wh.jk = mon.jk")
+    # Resolves (no DisconnectedConceptsException) exactly like the raw-column form.
+    _build_sql("", tail)
+    _, raw_rows = _rows("", Q66.format(join=f"{jt} join wh.jk = mon.jk").replace(
+        "wh.reg * 2 as r", "wh.reg as r"
+    ))
+    _, der_rows = _rows("", tail)
+    assert der_rows == [(r * 2, p) for (r, p) in raw_rows]
+
+
 def test_q59_shared_canonical_composite_left_join_no_fanout():
     # KNOWN-BROKEN: shared-canonical composite scoped LEFT join (plain-eq co-key
     # whose two sides collapse to ONE canonical via a common parent rowset, + a

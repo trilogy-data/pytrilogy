@@ -9,23 +9,30 @@ bug" — override already existed; real issue was a 99/100 near-miss) and q23 (m
 bug off MISLEADING docs — owner ruled `?` filters the prior expression, working as designed). Treat
 every verdict as a lead, not a fact — reproduce first, and confirm semantics with the owner.
 
+Status as of 2026-07-08: four of the five are closed; the resolved handoff files have been
+deleted. Only **q83** remains open.
+
 | priority | handoff | class | verified | status | fix locus |
 |---|---|---|---|---|---|
-| — | `handoff_q87_except_intersect_column_pruning.md` | silent | subagent | ✅ FIXED | `optimizations/hide_unused_concept.py` (early-return non-UNION_ALL) |
-| 1 | `handoff_q54_subset_join_rowset_anchor_full_leak.md` | silent | subagent | open | `models/build.py` `_rowset_outer_pair` ~L2400 |
-| 2 | `handoff_q84_union_join_rowset_grain_collapse.md` | silent | subagent | open | group/rowset grain resolution |
-| 3 | `handoff_q83_unnecessary_sales_fact_join.md` | perf | subagent | open | `processing/concept_strategies_v4.py` |
-| 4 | `handoff_q30_concept_suggestion_ranking.md` | DX→silent | subagent | open | `models/environment.py:390` |
+| 1 | `handoff_q83_unnecessary_sales_fact_join.md` | perf | subagent | open | `processing/concept_strategies_v4.py` |
 
-**q87 is FIXED** (early-return for non-`UNION_ALL` `UnionCTE` in `HideUnusedConcepts` — the fix this
-handoff proposed; residual 28-row gap tracked separately). **q54 is now top priority** — like q87 it
-sits on a path (`subset/union join`) that commit `4e69c5547`'s expanded guidance steers agents toward.
+Closed since this rebaseline (handoff files removed):
 
-**q23 — RESOLVED, NOT A BUG** (`handoff_q23_filter_outside_aggregate_input.md`): `?` filters the
-immediately-prior expression uniformly (no inline where/having split). `(sum(x) by k) ? cond` filters
-the aggregate result → lifetime, by design; windowed needs `sum(x ? cond) by k`. The old
-`ai/constants.py:127` / `syntax_examples.py:107` phrasing ("filters one expression's input") misled
-both the agent and this investigation; owner has updated the docs. No engine change.
+- **q87 — ✅ FIXED**: early-return for non-`UNION_ALL` `UnionCTE` in `HideUnusedConcepts`
+  (`optimizations/hide_unused_concept.py`); residual 28-row gap tracked separately.
+- **q54 — ✅ FIXED** (2026-07-08): filtered-rowset-anchor subset/left join now narrows
+  directionally via `_rowset_definition_boundary` (`optimizations/value_set_join_upgrade.py`),
+  gated on strict SUBSET. The earlier "not a bug" refutation was overturned.
+- **q84 — NOT A BUG** (refuted): subagent misread Trilogy syntax; `--` is a HIDE modifier, not a
+  comment, and datasource/rowset forms are symmetric. Parity guards in
+  `test_duckdb_union_join_rowset_grain.py`.
+- **q30 — ✅ FIXED**: `_find_similar_concepts` ranked path matches by dict-insertion order, burying
+  the correct shallow match; now sorts by `(extra_segments, subsequence_gaps)`
+  (`models/environment.py`). Guards in `test_undefined_concept.py`.
+- **q23 — RESOLVED, NOT A BUG**: `?` filters the immediately-prior expression uniformly.
+  `(sum(x) by k) ? cond` filters the aggregate result → lifetime, by design; windowed needs
+  `sum(x ? cond) by k`. Misleading docs (`ai/constants.py` / `syntax_examples.py`) updated by owner.
+  No engine change.
 
-Not included (not engine bugs): q59 (override already exists; 99/100 near-miss), q23 (see above),
+Not included (not engine bugs): q59 (override already exists; 99/100 near-miss),
 q11 (DX — name `all_sales` in disconnect error), q05/q02/q14/q64/q75/q80 (agent/guidance — see index).

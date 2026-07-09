@@ -29,6 +29,13 @@ ERROR_CODES: dict[int, str] = {
         "`;`. Example: put `auto x <- sum(sales.amount) by store.id;` above "
         "`where ... select ...`."
     ),
+    105: (
+        "A `rowset`/`auto`/`metric`/`property` definition connects its name to "
+        "its expression with `<-`, not `as` - write `rowset base <- select ...;` "
+        "(a `rowset` may also use the `with base as select ...;` form). For "
+        "`auto`/`metric`/`property` only `<-` is valid, e.g. "
+        "`auto total <- sum(sales.amount);`."
+    ),
     201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
     202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
@@ -221,6 +228,29 @@ def detect_definition_after_clause(text: str, pos: int) -> int | None:
     if _QUERY_CLAUSE_RE.search(text, stmt_start, m.start()) is None:
         return None
     return m.start()
+
+
+# A `<-`-connected derivation (`rowset`/`auto`/`metric`/`property`) written with
+# the SQL `as` connector instead — e.g. `rowset base as select ...`. These
+# keywords bind their name with `<-` (a `rowset` may alternatively use the
+# `with <name> as ...` form). Reserved keywords + `<name> as` is unambiguous.
+_DERIVATION_AS_RE = re.compile(
+    r"\b(auto|metric|property|rowset)\s+[A-Za-z_][\w.]*\s+(as)\b", re.IGNORECASE
+)
+
+
+def detect_derivation_as_connector(text: str, pos: int) -> int | None:
+    """Locate a derivation (`rowset`/`auto`/`metric`/`property`) that uses the SQL
+    `as` connector instead of `<-` — e.g. `rowset base as select ...`. Both
+    backends reject the leading keyword itself, so ``pos`` sits at/near the
+    statement start; scan forward from the statement start and require the
+    keyword to be the statement's first token. Returns the offending `as`
+    position, or None. Shared by both grammar backends; purely textual."""
+    stmt_start = text.rfind(";", 0, pos + 1) + 1
+    m = _DERIVATION_AS_RE.search(text, stmt_start)
+    if m is None or text[stmt_start : m.start()].strip():
+        return None
+    return m.start(2)
 
 
 _JOIN_CLAUSE_RE = re.compile(

@@ -1,7 +1,9 @@
 # Handoff — q83: source-selection joins huge `*_sales` facts that contribute no output column (runaway perf)
 
-**Verification:** ⚠️ SUBAGENT-REPORTED — CONFIRM the repro/timing before fixing. Detail report:
-`bug_q83_timeout_regression_20260706.md`.
+**Verification:** ⚠️ SUBAGENT-REPORTED, STILL OPEN (2026-07-08) — CONFIRM the repro/timing before
+fixing. No guard test exists for the unnecessary-fact-join shape (the `test_duckdb_rowset.py::q83`
+guard covers a *different*, already-fixed ORDER-BY-measure issue). The former detail report
+`bug_q83_timeout_regression_20260706.md` has been deleted; this handoff is now the sole record.
 
 ## Confirmed-by-subagent bug
 The symptom is a RUNAWAY QUERY, not a planner loop: `generate_sql` is <1s but each

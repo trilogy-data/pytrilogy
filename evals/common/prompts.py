@@ -24,13 +24,9 @@ inside `raw/`). Validate with `trilogy run query{{nn}}.preql{{validate_params}}`
 Return control once it runs cleanly to submit your result. This will be 
 your final action.
 
-
 Every question in this set returns at least one row at this scale factor. A
-zero-row (or suspiciously tiny) result means your query is almost certainly wrong
-— recheck the grain, joins, and filters (an over-restrictive or wrong-population
-filter, a null-key row dropped by a join, a mis-scoped aggregate) rather than
-shipping the empty result as "the answer". Do NOT, however, add/drop/loosen
-filters just to force rows — find and fix the actual mistake.
+zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
+filters just to force rows; find and fix the actual mistake.
 
 Question {{id}}:
 {{prompt}}{{params_block}}
@@ -53,11 +49,8 @@ Return control once it runs cleanly to submit your result. This will be
 your final action.
 
 Every question in this set returns at least one row at this scale factor. A
-zero-row (or suspiciously tiny) result means your query is almost certainly wrong
-— recheck the grain, joins, and filters (an over-restrictive or wrong-population
-filter, a null-key row dropped by a join, a mis-scoped aggregate) rather than
-shipping the empty result as "the answer". Do NOT, however, add/drop/loosen
-filters just to force rows — find and fix the actual mistake.
+zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
+filters just to force rows; find and fix the actual mistake.
 
 Question {{id}}:
 {{prompt}}{{params_block}}
@@ -84,11 +77,8 @@ on. Typically, you will import one fact file from raw/ per question, though
 some rare ones may require merging multiple facts.
 
 Every question in this set returns at least one row at this scale factor. A
-zero-row (or suspiciously tiny) result means your query is almost certainly wrong
-— recheck the grain, joins, and filters (an over-restrictive or wrong-population
-filter, a null-key row dropped by a join, a mis-scoped aggregate) rather than
-shipping the empty result as "the answer". Do NOT, however, add/drop/loosen
-filters just to force rows — find and fix the actual mistake.
+zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
+filters just to force rows; find and fix the actual mistake.
 
 Business questions
 ==================
@@ -133,7 +123,7 @@ def _render_params_block(params: dict) -> tuple[str, str]:
         ptype = spec.get("type", "string")
         value = spec.get("value", "")
         desc = spec.get("description", "")
-        desc_tail = f" — {desc}" if desc else ""
+        desc_tail = f" - {desc}" if desc else ""
         lines.append(f"  - {name} ({ptype}){desc_tail}")
         lines.append(f"      value: {value}")
         cli_suffix_parts.append(f"--param {name}={_shell_quote(str(value))}")

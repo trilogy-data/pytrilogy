@@ -12,6 +12,7 @@ from trilogy.parsing.v2.errors import (
     detect_by_on_wrapped_aggregate,
     detect_clause_after_join,
     detect_definition_after_clause,
+    detect_derivation_as_connector,
     detect_group_by,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
@@ -309,6 +310,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     def_pos = detect_definition_after_clause(text, pos)
     if def_pos is not None:
         return create_syntax_error(104, def_pos, text)
+
+    # 105: a `<-` derivation (`rowset`/`auto`/`metric`/`property`) written with
+    # the SQL `as` connector — e.g. `rowset base as select ...`.
+    as_pos = detect_derivation_as_connector(text, pos)
+    if as_pos is not None:
+        return create_syntax_error(105, as_pos, text)
 
     # 220: a filter/WHERE continuation placed after a query-scoped join clause
     # (a join may only be followed by another join or `select`).

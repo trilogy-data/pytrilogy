@@ -24,7 +24,8 @@ diagnosing, remember the SQL legs write `queryNN.sql`, not `.preql`.
 ### Running the eval cases
 
 Needs `DEEPSEEK_API_KEY` (provider/model default to `deepseek`/`deepseek-chat`,
-read from repo `.env.secrets`). Defaults: `--scale-factor 1`, `--num-queries 20`.
+read from repo `.env.secrets`). Defaults: `--scale-factor 1`, `--num-queries 99`
+(the full TPC-DS set — pass `--num-queries`/`--query-ids` to scope a quick run).
 
 ```bash
 # All four legs in parallel, then render the cross-category funnel + matrix.

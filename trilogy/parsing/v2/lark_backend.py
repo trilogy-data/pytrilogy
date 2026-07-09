@@ -13,6 +13,7 @@ from trilogy.parsing.v2.errors import (
     detect_by_on_wrapped_aggregate,
     detect_clause_after_join,
     detect_definition_after_clause,
+    detect_derivation_as_connector,
     detect_group_by,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
@@ -136,6 +137,11 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     # derivation context (auto/property/metric/rowset NAME) but stopped before
     # the arrow + expression.
     if "__ANON_0" in e.expected:
+        # 105: the derivation used the SQL `as` connector in place of `<-`
+        # (e.g. `rowset base as select ...`) — a more targeted hint than 203.
+        as_pos = detect_derivation_as_connector(text, pos)
+        if as_pos is not None:
+            raise create_syntax_error(105, as_pos, text)
         raise create_syntax_error(203, pos, text)
 
     by_pos = _detect_unparenthesized_by_expr_lark(text, pos)

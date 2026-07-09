@@ -7,7 +7,14 @@ planner-RecursionError label fix (`scripts/common.py`).
 
 **NOT a resolution bug — the guard is correct (verified).** See "Is the query valid?" below.
 
-**Status:** root-caused, minimal repro. NOT fixed. Small, contained fix.
+**Status:** root-caused, minimal repro. STILL NOT fixed on HEAD (verified 2026-07-08 —
+`handle_execution_exception` in `trilogy/scripts/common.py` has no `ParseError`/`HydrationError`
+branch; `SyntaxError`/`InvalidSyntaxException` are labeled, but `HydrationError` still falls through
+to "Unexpected error"). Small, contained fix.
+
+**Sibling now fixed:** the `ImportError` mislabel (old q58 report) is resolved — `common.py` now has
+an explicit `ImportError` branch. This report covers the remaining `ParseError`/`HydrationError`
+family only.
 
 ---
 

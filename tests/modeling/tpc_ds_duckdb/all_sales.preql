@@ -1,6 +1,7 @@
 # Use as default for multi-channel analysis (WEB / CATALOG / STORE) or 
 # any two channel combination (WEB CATALOG/ STORE CATALOG/ etc). Carries sales and
-# return information in a consolidated format. Channel specific fields 
+# return information in a consolidated format.
+# Channel specific fields 
 # and data exist on peer models
 # (`store_sales`, `catalog_sales`, `web_sales`) for single-channel-only queries.
 
