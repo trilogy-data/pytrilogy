@@ -70,6 +70,61 @@ def _clear_candidates(dirs: list[Path], qid: int, ext: str) -> None:
             (base / name).unlink(missing_ok=True)
 
 
+def _enriched_dir(report: dict) -> Path | None:
+    """The ``--enriched-model-dir`` the run was seeded from, if it named one.
+    Otherwise None, and the enriched setup falls back to the spec default."""
+    source = str(report.get("meta", {}).get("model_source", ""))
+    prefix = "enriched:"
+    return Path(source[len(prefix) :]) if source.startswith(prefix) else None
+
+
+def _sync_worker_model(workspace: Path, worker: Path) -> None:
+    """Push the refreshed model into the worker copy. The worker's database and
+    trilogy.toml are deliberately left alone — only the model is re-seeded."""
+    if worker == workspace:
+        return
+    raw = workspace / "raw"
+    if raw.exists():
+        worker_raw = worker / "raw"
+        if worker_raw.exists():
+            shutil.rmtree(worker_raw)
+        shutil.copytree(raw, worker_raw)
+    schema = workspace / "schema.md"
+    if schema.exists():
+        shutil.copy2(schema, worker / "schema.md")
+
+
+def _refresh_model(
+    workspace: Path,
+    worker: Path,
+    spec: BenchmarkSpec,
+    category: Category,
+    report: dict,
+    log: Callable[[str], None],
+) -> None:
+    """Re-seed the run's model the same way the original run did, so an edit to
+    the curated .preql model (or to `trilogy ingest` itself) is what re-runs.
+
+    Per leg: enriched re-copies the curated dir, ingest re-runs `ingest --all`,
+    sql_schema regenerates schema.md, sql_bare is a no-op."""
+    log(f"refreshing '{category.key}' model")
+    setup = category.setup(
+        workspace,
+        spec,
+        db_path=workspace / spec.db_filename,
+        enriched_dir=_enriched_dir(report),
+    )
+    if setup["exit_code"] != 0:
+        raise ReplayError(
+            f"model refresh failed (exit {setup['exit_code']}): "
+            f"{(setup.get('stderr') or '')[:300]}"
+        )
+    _sync_worker_model(workspace, worker)
+    detail = (setup.get("stdout") or "").strip().splitlines()
+    if detail:
+        log(f"  {detail[-1][:120]}")
+
+
 def _metrics_rows(report: dict, run_dir: Path) -> list[dict]:
     """Per-query metrics for every query in the report. Reports written before
     the lossless-splice change lack ``per_query_metrics``; rebuild from the
