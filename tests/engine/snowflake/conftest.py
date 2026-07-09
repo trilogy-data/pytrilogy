@@ -48,4 +48,7 @@ def snowflake_engine(snowflake_model, fakesnow_happening):
         ),
         rendering=Rendering(parameters=False),
     )
-    yield executor
+    try:
+        yield executor
+    finally:
+        executor.close()

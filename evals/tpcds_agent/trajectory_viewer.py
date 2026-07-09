@@ -8,7 +8,9 @@
 Reads every ``agent_log.*.jsonl`` in the directory (plus ``repeat_report.json``
 for per-run status/metrics when present) and writes ``<results_dir>/viewer.html``
 — a static page with a run picker and a conversation timeline. No external
-assets. With ``--serve`` it also starts a local http server on that port.
+assets. With ``--serve`` it also starts a local http server on that port, which
+additionally serves a *Replay* button: re-runs the selected query in place and
+splices the fresh result over the old one (see ``evals/common/replay.py``).
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
+import threading
 from pathlib import Path
 
 _RUN_RE = re.compile(r"\.r(\d+)\.jsonl$")
@@ -301,6 +305,9 @@ def collect(results_dir: Path) -> list[dict]:
     ext = _CATEGORY_EXT.get(_run_category(results_dir) or "", "preql")
     ref_dir = _find_ref_dir(results_dir)
     workspace = results_dir / "workspace"
+    # Replay re-runs one query against the run's own workspace and rewrites its
+    # slice of report.json — neither is present for repeat-harness dirs.
+    replayable = (results_dir / "report.json").exists() and workspace.is_dir()
     runs: list[dict] = []
     for path in sorted(results_dir.glob("agent_log.*.jsonl")):
         m = _RUN_RE.search(path.name)
@@ -329,6 +336,10 @@ def collect(results_dir: Path) -> list[dict]:
             {
                 "name": path.name.replace("agent_log.", "").replace(".jsonl", ""),
                 "rep": rep,
+                "qid": qid,
+                # `qm` (not `qany`) — a repeat log's `.qNN.rNN.` name carries a
+                # qid but has no report entry to splice back into.
+                "replayable": replayable and qm is not None,
                 "meta": parsed["meta"],
                 "timeline": parsed["timeline"],
                 "metrics": metrics,

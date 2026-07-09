@@ -244,7 +244,9 @@ class Executor(object):
         self.execute_raw_sql("LOAD spatial;")
         self.connection.commit()
 
-    def close(self):
+    def close(self) -> None:
+        if self.connected:
+            self.connection.close()
         self.engine.dispose(close=True)
         if self.dialect == Dialects.DUCK_DB:
             import gc

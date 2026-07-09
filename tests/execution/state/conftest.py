@@ -41,7 +41,10 @@ def snowflake_engine():
             ),
             rendering=Rendering(parameters=False),
         )
-        yield executor
+        try:
+            yield executor
+        finally:
+            executor.close()
     else:
         with fakesnow.patch():
             executor = Dialects.SNOWFLAKE.default_executor(
@@ -54,7 +57,10 @@ def snowflake_engine():
                 ),
                 rendering=Rendering(parameters=False),
             )
-            yield executor
+            try:
+                yield executor
+            finally:
+                executor.close()
 
 
 @fixture(scope="function")
