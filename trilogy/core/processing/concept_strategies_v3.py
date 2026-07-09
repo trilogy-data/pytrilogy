@@ -192,13 +192,11 @@ def initialize_loop_context(
             )
             and x.address in conditions.row_arguments
         ]
-        # A filter-only rowset output (referenced in the WHERE but not selected, so
-        # absent from mandatory_list) materializes as its own subquery: its
-        # predicate can't be pushed below that materialization, and the comparison's
-        # other operand (a scalar/named concept) is never co-sourced unless we force
-        # every condition input into this level. Without this the planner sources
-        # the RowsetNode alone and the WHERE is structurally unsatisfiable, crashing
-        # INCOMPLETE_CONDITION (`Have {RowsetNode<...>} and need ... > threshold`).
+        # A filter-only rowset output (referenced in the WHERE but not selected)
+        # must eventually be injected because its opaque lineage cannot be rebuilt
+        # in the outer scope. Do that only after every non-terminal output has been
+        # sourced: promoting the WHERE while an aggregate is still pending lets
+        # the aggregate be built condition-free as an optional of the rowset.
         mandatory_addresses = {x.address for x in mandatory_list}
         # ...UNLESS the rowset input is UPSTREAM of a ROLLUP/CUBE/GROUPING SETS
         # aggregate at this level (`sum(ch.total_sales) by rollup (...)`): it feeds
@@ -222,17 +220,22 @@ def initialize_loop_context(
                 nonstandard_grouping_upstream |= get_upstream_concepts(m, nested=True)
         pushed_below_grouping: set[str] = set()
         candidate_filters = []
-        for x in conditions.row_arguments:
-            if (
-                x.address in mandatory_addresses
-                or x.derivation != Derivation.ROWSET
-                or x.granularity == Granularity.SINGLE_ROW
-            ):
-                continue
-            if {x.address, *x.pseudonyms} & nonstandard_grouping_upstream:
-                pushed_below_grouping.add(x.address)
-            else:
-                candidate_filters.append(x)
+        condition_terminal = all(
+            x.derivation in ROOT_DERIVATIONS or x.derivation == Derivation.ROWSET
+            for x in mandatory_list
+        )
+        if condition_terminal:
+            for x in conditions.row_arguments:
+                if (
+                    x.address in mandatory_addresses
+                    or x.derivation != Derivation.ROWSET
+                    or x.granularity == Granularity.SINGLE_ROW
+                ):
+                    continue
+                if {x.address, *x.pseudonyms} & nonstandard_grouping_upstream:
+                    pushed_below_grouping.add(x.address)
+                else:
+                    candidate_filters.append(x)
         required_filters += candidate_filters
         if pushed_below_grouping:
             # the filter on these inputs is enforced below the grouping, at the

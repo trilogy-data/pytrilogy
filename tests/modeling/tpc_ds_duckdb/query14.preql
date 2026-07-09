@@ -26,12 +26,7 @@ select
 ;
 
 # One per fact row (all_sales grain is (channel, order_id, item.sk)).
-auto channel_label <- case
-    when sales.channel = 'STORE' then 'store'
-    when sales.channel = 'CATALOG' then 'catalog'
-    when sales.channel = 'WEB' then 'web'
-    else null
-end;
+auto channel_label <- lower(sales.channel);
 
 
 # Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items whose

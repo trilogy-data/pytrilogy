@@ -1,7 +1,7 @@
 query_id = "14"
 generator = "v3"
-gen_length = 7118
-preql_size = 1750
+gen_length = 6964
+preql_size = 1610
 comp_size = 4229
 generated_sql = """
 
@@ -107,12 +107,7 @@ SELECT
     \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
     \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
-    CASE
-	WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN 'store'
-	WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"cheerful\".\"sales_channel\" = 'WEB' THEN 'web'
-	ELSE null
-	END as \"channel_label\"
+    LOWER(\"cheerful\".\"sales_channel\")  as \"channel_label\"
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"

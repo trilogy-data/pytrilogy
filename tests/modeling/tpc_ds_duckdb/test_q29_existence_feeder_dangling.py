@@ -10,6 +10,8 @@ CTE, which the renderer emitted in the SELECT list without ever joining it:
 ``Referenced table "..." not found`` at bind time.
 """
 
+from trilogy.constants import CONFIG
+
 QUERY = """
 import store_sales as ss;
 import store_returns as sr;
@@ -63,4 +65,17 @@ def test_q29_existence_feeder_not_a_dangling_row_source(engine_sf001):
     # materializing the FULL-JOIN plan, so the guard stays cheap under
     # full-suite memory pressure.
     sql = engine_sf001.generate_sql(QUERY)[-1]
+    engine_sf001.execute_raw_sql("EXPLAIN " + sql)
+
+
+def test_q29_existence_feeder_no_datasource_build_cache(engine_sf001):
+    # The build cache reshapes the CTE tree, which decides where predicate
+    # pushdown lands the subselect. With it off the membership pushed into a
+    # parent that never had the feeder promoted onto it.
+    prior = CONFIG.generation.datasource_build_cache
+    CONFIG.generation.datasource_build_cache = False
+    try:
+        sql = engine_sf001.generate_sql(QUERY)[-1]
+    finally:
+        CONFIG.generation.datasource_build_cache = prior
     engine_sf001.execute_raw_sql("EXPLAIN " + sql)

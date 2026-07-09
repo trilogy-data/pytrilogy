@@ -75,7 +75,7 @@
   {
     "id": 14,
     "grade": "hard",
-    "prompt": "Find items whose (brand, class, category) combination appears in all three channels (store sales, catalog sales, and web sales) at some point during 1999 through 2001 inclusive. For each channel and each (brand, class, category) of such items, sum the per-line quantity times per-line list price for November 2001 sales and count those sales, but only keep groups where the per-channel sales total exceeds the overall average sale value (quantity times list price) across all three channels in 1999-2001. This filter must be applied *before* rolling up. Roll up the result by (channel, brand, class, category) producing channel subtotals and a grand total. Report channel, numeric brand id, numeric class id, numeric category id, total sales, and total number of sales, ordered by those four grouping fields with nulls first; limit 100 rows."
+    "prompt": "Find items whose (brand, class, category) combination appears in all three channels (store sales, catalog sales, and web sales) at some point during 1999 through 2001 inclusive. For each channel and each (brand, class, category) of such items, sum the quantity * list price (don't use precalculated line totals) for November 2001 sales and count those sales, but only keep groups where the per-channel sales total exceeds the overall average sale value (quantity times list price) across all three channels in 1999-2001. This filter must be applied *before* rolling up. Roll up the result by (channel, brand, class, category) producing channel subtotals and a grand total. Report channel (lowercase), numeric brand id, numeric class id, numeric category id, total sales, and total number of sales, ordered by those four grouping fields with nulls first; limit 100 rows."
   },
   {
     "id": 15,
@@ -231,7 +231,7 @@
   {
     "id": 45,
     "grade": "medium",
-    "prompt": "For web sales in the 2nd quarter of year 2001, report the total web unit price (the sum of the unit price, not the total price) grouped by the buying customer's current home address ZIP code and city. Include a sale only if either the first 5 digits of that ZIP code are one of 85669, 86197, 88274, 83405, 86475, 85392, 85460, 80348, or 81792, OR the item belongs to the same item-id group as any item whose internal item key is one of 2, 3, 5, 7, 11, 13, 17, 19, 23, or 29. Use the address on the customer's current address record. Order by ZIP code then city; limit 100 rows."
+    "prompt": "For web sales in the 2nd quarter (use the precalculated dimension value, do not calculate fro date) of year 2001, report the total web unit price (the sum of the unit price, not the total price) grouped by the buying customer's current home address ZIP code and city. Include a sale only if either the first 5 digits of that ZIP code are one of 85669, 86197, 88274, 83405, 86475, 85392, 85460, 80348, or 81792, OR the item belongs to the same item-id group as any item whose internal item key is one of 2, 3, 5, 7, 11, 13, 17, 19, 23, or 29. Use the address on the customer's current address record. Order by ZIP code then city; limit 100 rows."
   },
   {
     "id": 46,
@@ -477,7 +477,6 @@
   {
     "id": 94,
     "grade": "hard",
-    "comment": "Requires a same-order correlated existence check (order spans more than one warehouse) plus an anti-join to web_returns (no line of the order returned). Gradeable at scale factor >= 1 (the eval default), where web_site company name 'pri' is present; absent at sf=0.01.",
     "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where at least one other line on the same order ships from a different warehouse and no line of that order has a web return, report the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
   },
   {
