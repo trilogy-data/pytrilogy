@@ -30,40 +30,56 @@ _FETCH_SCHEMES = {"http", "https", "file"}
 
 
 def _last_statement_sql(path: str) -> str | None:
-    """Best-effort compile of a just-written ``.preql`` to the SQL of its last
-    generatable statement, surfaced to agents so they can inspect the codegen
-    before running. Returns None (never raises) when no engine is configured,
-    the file has no output statement, or compilation fails — the write itself
-    has already succeeded and been syntax-validated."""
+    """Compile a just-written ``.preql`` to the SQL of its last generatable
+    statement, surfaced to agents so they can inspect the codegen before running.
+
+    Returns None when there is nothing to show: no engine configured, no
+    output-producing statement, or a query that simply doesn't *resolve*
+    against the environment (an undefined/disconnected concept is an authoring
+    mistake the writer fixes, not a codegen fault). A statement that resolves
+    but then fails to *render* is a codegen bug, so that error propagates rather
+    than being swallowed — the whole point of the preview is to surface it."""
     import contextlib
     import io
 
-    try:
-        from trilogy.scripts.common import create_executor, get_runtime_config
+    from trilogy.core.exceptions import (
+        DisconnectedConceptsException,
+        UndefinedConceptException,
+        UnresolvableQueryException,
+    )
+    from trilogy.scripts.common import create_executor, get_runtime_config
 
-        resolved = Path(path).resolve()
-        directory = resolved.parent
-        config = get_runtime_config(directory)
-        if not config.engine_dialect:
-            return None
-        # Swallow executor build/startup chatter (JSON events, startup prints);
-        # only the caller's own event should carry the SQL.
-        with contextlib.redirect_stdout(io.StringIO()):
-            executor = create_executor(
-                param=(),
-                directory=directory,
-                conn_args=(),
-                edialect=config.engine_dialect,
-                debug=False,
-                config=config,
-            )
-            statements = executor.parse_file(resolved)
-            if not statements:
-                return None
-            sql = executor.generate_sql(statements[-1])
-        return sql[-1] if sql else None
-    except Exception:
+    resolved = Path(path).resolve()
+    directory = resolved.parent
+    config = get_runtime_config(directory)
+    if not config.engine_dialect:
         return None
+    # Swallow executor build/startup chatter (JSON events, startup prints);
+    # only the caller's own event should carry the SQL.
+    with contextlib.redirect_stdout(io.StringIO()):
+        executor = create_executor(
+            param=(),
+            directory=directory,
+            conn_args=(),
+            edialect=config.engine_dialect,
+            debug=False,
+            config=config,
+        )
+        try:
+            # parse_file resolves each statement (discovery/planning); a genuine
+            # "can't resolve this from your model" is the author's to fix.
+            statements = executor.parse_file(resolved)
+        except (
+            UnresolvableQueryException,
+            DisconnectedConceptsException,
+            UndefinedConceptException,
+        ):
+            return None
+        if not statements:
+            return None
+        # Resolved cleanly; a failure past here is in SQL rendering — surface it.
+        sql = executor.generate_sql(statements[-1])
+    return sql[-1] if sql else None
 
 
 def _fetch_url(url: str, timeout: float = 30.0) -> bytes:
@@ -382,15 +398,29 @@ def write_cmd(
     # Optionally feed the just-written query's codegen back to the caller so an
     # agent can inspect the generated SQL (e.g. spot a degenerate GROUP BY)
     # before running. Off by default — compiling adds latency and tokens.
-    last_sql = (
-        _last_statement_sql(path)
-        if show_sql and not force and path.endswith(".preql")
-        else None
-    )
+    if not (show_sql and not force and path.endswith(".preql")):
+        _emit_write_success(path, len(data), None)
+        return
+    try:
+        last_sql = _last_statement_sql(path)
+    except Exception as exc:
+        # The bytes already landed and are syntax-valid; only the codegen
+        # preview failed. Confirm the write, then surface the rendering error
+        # loudly — a compile failure on a resolvable query is a framework bug
+        # worth reporting, not something to swallow.
+        _emit_write_success(path, len(data), None)
+        from trilogy.scripts.common import handle_execution_exception
+
+        handle_execution_exception(exc, source=path)
+        return  # unreachable — handle_execution_exception raises Exit
+    _emit_write_success(path, len(data), last_sql)
+
+
+def _emit_write_success(path: str, byte_count: int, last_sql: str | None) -> None:
     if is_json_mode():
-        emit_event("write", path=path, bytes=len(data), last_statement_sql=last_sql)
+        emit_event("write", path=path, bytes=byte_count, last_statement_sql=last_sql)
     else:
-        print_success(f"Wrote {len(data)} byte(s) to {path}")
+        print_success(f"Wrote {byte_count} byte(s) to {path}")
         if last_sql:
             print_info(f"Generated SQL (last statement):\n{last_sql}")
 
