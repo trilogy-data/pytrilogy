@@ -163,6 +163,7 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 ## Aggregation and grouping
 
 - Aggregates group at the query's automatic grain by default; 
+- An aggregate without an explicit `by` grain is responsive, including when defined as an `auto` concept. Its grain is determined where it is consumed, not where it is declared: `auto avg_credits <- avg(enroll.credits);` becomes per-department when selected with `enroll.department`.
 - override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens — function calls, casts, arithmetic: `avg(price) by (substring(phone, 1, 2))`.
 - **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) is a property of the WHOLE select — a clause after the select list (before `having`/`order by`/`limit`) that computes the query at multiple grain levels in one pass. It applies to EVERY aggregate in the select that has no explicit `by` grain, so there is exactly one consistent grouping:

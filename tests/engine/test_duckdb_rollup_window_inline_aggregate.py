@@ -191,18 +191,21 @@ by rollup (g1, g2);
     assert len(rows) == 8
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="inferred-key `by rollup ()` co-grains the inline window aggregate to "
-    "the partition, landing it in a different grouping pass; the cross-pass "
-    "stitch join still collides grouping sets (residual)",
-)
-def test_inferred_rollup_keys_inline_residual(executor):
+def test_inferred_rollup_keys_inline(executor):
+    """Inferred-key `by rollup ()`: the inline window aggregate resolves at the
+    select grain into the same grouping pass (it used to co-grain to the window
+    anchor, landing in a different pass whose stitch join collided sets)."""
     query = f"""
 select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
 by rollup ()
 {ORDER};
 """
-    got = executor.execute_raw_sql(executor.generate_sql(query)[-1]).fetchall()
-    assert len(got) == 8
+    sql = executor.generate_sql(query)[-1]
+    assert sql.upper().count("ROLLUP") == 1, sql
+    assert " JOIN " not in sql.upper(), sql
+    got = _norm(executor.execute_raw_sql(sql).fetchall())
+    expected = _norm(
+        executor.execute_raw_sql(_oracle_sql("sum(v)", "rollup (g1, g2)")).fetchall()
+    )
+    assert got == expected

@@ -1216,7 +1216,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         )
 
     def get_select_grain_and_keys(
-        self, grain: Grain, environment: Environment
+        self, grain: Grain, environment: Environment, pin_bare_aggregates: bool = True
     ) -> Tuple[
         Function
         | WindowItem
@@ -1276,17 +1276,18 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             final_grain = grain
             keys = set(grain.components)
         elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
-            wrapper_grain_components = cast(
-                List[ConceptRef | Concept], _grain_concept_refs(grain, environment)
-            )
-            new_lineage = AggregateWrapper(
-                function=new_lineage.function,
-                by=wrapper_grain_components,
-                grouping=new_lineage.grouping,
-                grouping_sets=new_lineage.grouping_sets,
-            )
+            if pin_bare_aggregates:
+                wrapper_grain_components = cast(
+                    List[ConceptRef | Concept], _grain_concept_refs(grain, environment)
+                )
+                new_lineage = AggregateWrapper(
+                    function=new_lineage.function,
+                    by=wrapper_grain_components,
+                    grouping=new_lineage.grouping,
+                    grouping_sets=new_lineage.grouping_sets,
+                )
             final_grain = grain
-            keys = set([x.address for x in new_lineage.by])
+            keys = set(grain.components)
         elif isinstance(new_lineage, NumberingWindowItem) and not new_lineage.arguments:
             window_grain_components = _grain_concept_refs(grain, environment)
             new_lineage = NumberingWindowItem(
@@ -1322,10 +1323,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 keys = final_grain.components
         return new_lineage, final_grain, keys
 
-    def set_select_grain(self, grain: Grain, environment: Environment) -> Self:
+    def set_select_grain(
+        self,
+        grain: Grain,
+        environment: Environment,
+        pin_bare_aggregates: bool = True,
+    ) -> Self:
         """Assign a mutable concept the appropriate grain/keys for a select"""
         new_lineage, final_grain, keys = self.get_select_grain_and_keys(
-            grain, environment
+            grain, environment, pin_bare_aggregates=pin_bare_aggregates
         )
         return self.__class__(
             name=self.name,
@@ -2358,6 +2364,16 @@ class AggregateGrouping:
             for grouping_set in self.grouping_sets
         ]
 
+    def with_namespace(self, namespace: str) -> "AggregateGrouping":
+        return AggregateGrouping(
+            mode=self.mode,
+            by=[x.with_namespace(namespace) for x in self.by],
+            grouping_sets=[
+                [x.with_namespace(namespace) for x in grouping_set]
+                for grouping_set in self.grouping_sets
+            ],
+        )
+
 
 @dataclass
 class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
@@ -2761,6 +2777,11 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     # arm) applies its own joins — the top-level build reads these off the
     # statement, but a nested arm only sees its lineage.
     scoped_joins: List[tuple[str, str, JoinType]] = dc_field(default_factory=list)
+    # SELECT-level multi-level grouping (`by rollup (a, b)` etc.). A select
+    # property, not a concept property: the build factory applies it to every
+    # un-pinned aggregate materialized in this select's projection scope, so no
+    # shared authoring object ever carries the spec.
+    grouping: Optional[AggregateGrouping] = None
 
     @property
     def output_components(self) -> List[ConceptRef]:
@@ -2795,6 +2816,7 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
                 )
                 for s, t, jt in self.scoped_joins
             ],
+            grouping=self.grouping.with_namespace(namespace) if self.grouping else None,
         )
 
 

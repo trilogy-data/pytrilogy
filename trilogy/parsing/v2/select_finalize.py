@@ -36,7 +36,6 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import replace as dc_replace
 from typing import Any, Callable, Iterable, Iterator, Mapping, NamedTuple, cast
 
@@ -927,18 +926,6 @@ def _collect_aggregate_wrappers(
     return found
 
 
-def _is_rollup_wrapper(node: Any) -> bool:
-    return (
-        isinstance(node, AggregateWrapper)
-        and node.grouping != AggregateGroupingMode.STANDARD
-    )
-
-
-def _collect_rollup_wrappers(node: Any) -> list[AggregateWrapper]:
-    """All non-STANDARD (ROLLUP/CUBE/GROUPING SETS) aggregate wrappers in a tree."""
-    return _collect_aggregate_wrappers(node, _is_rollup_wrapper)
-
-
 def _select_rollup_spec(
     select: SelectStatement,
     context: RuleContext,
@@ -1049,122 +1036,6 @@ def _collect_ungrouped_aggregates_deep(
     return found
 
 
-def _apply_grouping_spec(wrapper: AggregateWrapper, spec: Any) -> None:
-    wrapper.by = list(spec.by)
-    wrapper.grouping = spec.mode
-    wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
-
-
-def _collect_owned_ungrouped_aggregates(
-    lineage: Any, boundary_refs: set[str]
-) -> list[AggregateWrapper]:
-    """Un-grouped aggregate wrappers in an expression tree, stopping at
-    ``ConceptRef`` ownership boundaries (recorded in ``boundary_refs``). A named
-    concept's lineage is a shared definition — the environment's, or another
-    statement's — so its wrappers are stamped on a select-local clone by the
-    caller, never through the reference."""
-    if isinstance(lineage, ConceptRef):
-        boundary_refs.add(lineage.address)
-        return []
-    found: list[AggregateWrapper] = []
-    if _is_ungrouped_aggregate(lineage):
-        found.append(cast(AggregateWrapper, lineage))
-    children = list(_child_exprs(lineage))
-    if isinstance(lineage, (NavigationWindowItem, NumberingWindowItem)):
-        children += [*lineage.over, *(item.expr for item in lineage.order_by)]
-    for child in children:
-        found += _collect_owned_ungrouped_aggregates(child, boundary_refs)
-    return found
-
-
-def _without_grouping_stamp(concept: Concept) -> Concept:
-    """The environment-registration form of a select output: any SELECT-level
-    grouping spec stamped on its aggregates belongs to the enclosing select,
-    not to the concept's reusable definition. Non-standard grouping can only
-    originate from select-level stamping (aggregate-level rollup is not part of
-    the language), and stamping only targets previously un-grouped wrappers, so
-    resetting to a bare STANDARD aggregate is always the pre-stamp form."""
-    if concept.lineage is None or not _collect_rollup_wrappers(concept.lineage):
-        return concept
-    clone = dc_replace(concept, lineage=deepcopy(concept.lineage))
-    for wrapper in _collect_rollup_wrappers(clone.lineage):
-        wrapper.by = []
-        wrapper.grouping = AggregateGroupingMode.STANDARD
-        wrapper.grouping_sets = []
-    return clone
-
-
-def _stamp_select_grouping(
-    select: SelectStatement, context: RuleContext, spec: Any
-) -> bool:
-    """Stamp the SELECT-level grouping spec onto every un-grouped aggregate
-    feeding the projection — on objects this select owns.
-
-    Inline expressions are stamped on a deep copy swapped into the item (the
-    original tree is also the alias's environment-registered definition);
-    by-name concepts are stamped on a clone registered in
-    ``select.local_concepts``, which shadows the shared definition for this
-    select's grain calc and build. Stamping shared definitions in place leaks
-    the spec across statement boundaries: a later plain select renders ROLLUP
-    (silently wrong rows), a later different-key rollup keeps the stale keys,
-    and re-parsing the same text finds nothing left to stamp and errors."""
-    stamped = False
-    handled: set[str] = set()
-
-    def stamp_named(address: str) -> None:
-        nonlocal stamped
-        if address in handled:
-            return
-        handled.add(address)
-        base = select.local_concepts.get(address) or context.concepts.get(address)
-        if (
-            base is None
-            or isinstance(base, (UndefinedConcept, UndefinedConceptFull))
-            or base.lineage is None
-        ):
-            return
-        boundary: set[str] = set()
-        wrappers = _collect_owned_ungrouped_aggregates(base.lineage, boundary)
-        for ref in boundary:
-            stamp_named(ref)
-        if not wrappers:
-            return
-        clone = deepcopy(base)
-        clone_refs: set[str] = set()
-        for wrapper in _collect_owned_ungrouped_aggregates(clone.lineage, clone_refs):
-            _apply_grouping_spec(wrapper, spec)
-        select.local_concepts[address] = clone
-        select.grouping_stamped_locals.add(address)
-        stamped = True
-
-    for item in select.selection:
-        content = item.content
-        if isinstance(content, ConceptTransform):
-            boundary: set[str] = set()
-            wrappers = _collect_owned_ungrouped_aggregates(content.function, boundary)
-            for ref in boundary:
-                stamp_named(ref)
-            if not wrappers or isinstance(
-                content.output, (UndefinedConcept, UndefinedConceptFull)
-            ):
-                continue
-            replacement = deepcopy(content.function)
-            replacement_refs: set[str] = set()
-            for wrapper in _collect_owned_ungrouped_aggregates(
-                replacement, replacement_refs
-            ):
-                _apply_grouping_spec(wrapper, spec)
-            content.function = replacement
-            # replacement mirrors the output's existing lineage tree, so the
-            # narrower Concept.lineage union is satisfied by construction
-            content.output = dc_replace(content.output, lineage=cast(Any, replacement))
-            select.local_concepts[content.output.address] = content.output
-            stamped = True
-        elif isinstance(content, ConceptRef):
-            stamp_named(content.address)
-    return stamped
-
-
 def _validate_grouping_args_are_concepts(
     select: SelectStatement, context: RuleContext
 ) -> None:
@@ -1247,13 +1118,24 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
         return
     _validate_grouping_args_are_concepts(select, context)
     _normalize_grouping_args_to_rollup_keys(select, context)
-    stamped = _stamp_select_grouping(select, context, spec)
-    # Stamping only reaches aggregate wrappers; a passthrough of a
+    # The spec itself rides SelectLineage.grouping and is applied to un-pinned
+    # aggregates by the build factory — select-scoped by construction, so no
+    # shared authoring object is ever mutated with it. Here we only detect
+    # whether any projection aggregate exists to carry the pass.
+    seen: set[str] = set()
+    carried = False
+    for item in select.selection:
+        lineage = _item_lineage(item, context)
+        if lineage is None:
+            continue
+        if _collect_ungrouped_aggregates_deep(lineage, context, seen):
+            carried = True
+    # The spec travels only through aggregates; a passthrough of a
     # pre-aggregated (rowset) measure has none, so without this the spec
-    # would silently drop when nothing was stamped (q05) — and a passthrough
+    # would silently drop when nothing carries it (q05) — and a passthrough
     # next to a fresh aggregate would emit as a bare, ungrouped column in the
     # ROLLUP CTE. Re-aggregate the passthroughs, or raise.
-    _apply_grouping_to_passthroughs(select, context, spec, stamped)
+    _apply_grouping_to_passthroughs(select, context, spec, carried)
 
 
 _REAGGREGABLE_OPERATORS = {FunctionType.SUM, FunctionType.COUNT}
@@ -1424,13 +1306,11 @@ def _apply_grouping_to_passthroughs(
                 f"value. Aggregate it explicitly in the select instead (e.g. "
                 f"`sum(x) as {content.output.name}`)."
             )
+        # bare: the build factory applies the select's grouping spec
         aggregate = AggregateWrapper(
             function=context.function_factory.create_function(
                 [source], FunctionType.SUM
             ),
-            by=list(spec.by),
-            grouping=spec.mode,
-            grouping_sets=[list(g) for g in spec.grouping_sets],
         )
         content.function = aggregate
         # swap, don't mutate: the output object (or its lineage tree) may be the
@@ -1559,13 +1439,11 @@ def _promote_having_grouping_to_outputs(
     wrappers = _collect_standard_grouping_wrappers(select.having_clause.conditional)
     if not wrappers:
         return
-    mode, by, grouping_sets = spec
     reuse = _existing_grouping_outputs(select)
     sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
     for wrapper in wrappers:
-        wrapper.by = list(by)
-        wrapper.grouping = mode
-        wrapper.grouping_sets = [list(g) for g in grouping_sets]
+        # left un-stamped: the build factory applies the select's grouping spec
+        # to every un-pinned aggregate in the projection scope
         sig = _aggregate_full_signature(wrapper)
         if sig is None or sig in sig_to_ref:
             continue
@@ -1688,24 +1566,6 @@ def _promote_having_aggregates_to_outputs(
     rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
     select_aggs = _select_aggregate_outputs(select, rename)
     existing = {sig for sig, _ in select_aggs}
-    # Under a `by rollup/cube/grouping sets` spec, `_propagate_select_grouping`
-    # stamps the grouping keys onto every projection aggregate's `by`. A bare
-    # HAVING aggregate (`sum(x)`, no `by`) is the *same* measure at the select
-    # grain — i.e. the projected `sum(x) by <grouping keys>` — so point the HAVING
-    # at that projected alias instead of minting a fresh bare aggregate. A minted
-    # bare aggregate plans as a distinct plain-GROUP-BY node with no rollup NULL-key
-    # subtotal rows; the post-filter join back then drops every subtotal.
-    rollup_alias_by_bare_sig: dict[
-        tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef
-    ] = {}
-    spec = select.grouping
-    if spec is not None:
-        group_by = tuple(sorted(_concept_address(k, rename) for k in spec.by))
-        for (op, args, by), addr in select_aggs:
-            if by == group_by:
-                alias = context.concepts.get(addr)
-                if alias is not None:
-                    rollup_alias_by_bare_sig[(op, args, ())] = alias.reference
     # Grain of the explicit (pre-promotion) outputs. Promoting an aggregate is
     # grain-safe only if its value is one-per-grain-row (a bare aggregate, or an
     # off-grain `agg(x) by k` whose `by` is coarser than / equal to this grain).
@@ -1729,13 +1589,6 @@ def _promote_having_aggregates_to_outputs(
             continue
         sig = _aggregate_full_signature(node, rename)
         if sig is None or sig in existing or sig in sig_to_ref:
-            continue
-        # A bare HAVING aggregate that is the projected rollup measure at the
-        # select grain: redirect it to the projection's alias, keeping it in the
-        # single rollup grouping pass instead of splitting off a plain-grain node.
-        rollup_alias = rollup_alias_by_bare_sig.get(sig)
-        if rollup_alias is not None:
-            sig_to_ref[sig] = rollup_alias
             continue
         concept = arbitrary_to_concept(node, context.environment)
         if _promotion_grows_grain(concept, base_targets, base_components, context):
@@ -2381,25 +2234,24 @@ def finalize_select_statement(
             if CONFIG.parsing.select_as_definition and not context.environment.frozen:
                 existing = context.concepts.get(x.concept.address)
                 meta: Any = x.content.output.metadata
-                # A SELECT-level grouping spec stamped on the output's aggregates
-                # is a property of THIS select, not of the alias's reusable
-                # definition — register the unstamped form so a later
-                # `select ..., t2` doesn't silently inherit ROLLUP.
-                registered = _without_grouping_stamp(x.content.output)
                 if existing is None:
-                    context.add_top_level_concept(registered, meta=meta)
+                    context.add_top_level_concept(x.content.output, meta=meta)
                 elif (
                     existing.metadata
                     and existing.metadata.concept_source == ConceptSource.SELECT
                 ):
                     context.semantic_state.replace_concept(
                         x.concept.address,
-                        registered,
+                        x.content.output,
                         ConceptUpdateKind.TOP_LEVEL_DECLARATION,
                         meta=meta,
                     )
             adjusted = x.content.output.set_select_grain(
-                select.grain, context.environment
+                select.grain,
+                context.environment,
+                # under a select-level grouping spec, bare aggregates stay
+                # un-pinned so the build factory can stamp the spec onto them
+                pin_bare_aggregates=select.grouping is None,
             )
             x.content.output = adjusted
             select.local_concepts[adjusted.address] = adjusted

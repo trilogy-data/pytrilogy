@@ -52,12 +52,20 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import DataType, ListWrapper, MapWrapper, TupleWrapper
 from trilogy.parsing.v2.select_finalize import (
     _child_exprs,
-    _collect_rollup_wrappers,
+    _collect_aggregate_wrappers,
     _collect_standard_grouping_wrappers,
 )
 
 _DT = DataType.FLOAT
 _REF = ConceptRef(address="local.x")
+
+
+def _collect_rollup_wrappers(node) -> list[AggregateWrapper]:
+    return _collect_aggregate_wrappers(
+        node,
+        lambda n: isinstance(n, AggregateWrapper)
+        and n.grouping != AggregateGroupingMode.STANDARD,
+    )
 
 
 def _rollup() -> AggregateWrapper:

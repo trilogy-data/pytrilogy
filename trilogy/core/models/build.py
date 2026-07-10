@@ -52,6 +52,7 @@ from trilogy.core.exceptions import (
     UnionOutputResolutionError,
 )
 from trilogy.core.models.author import (
+    AggregateGrouping,
     AggregateWrapper,
     AlignClause,
     AlignItem,
@@ -2416,6 +2417,7 @@ class Factory:
         datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
         aggregate_grain: Grain | None = None,
+        select_grouping: AggregateGrouping | None = None,
     ):
         self.grain = grain or Grain()
         # Grain at which a bare (no explicit `by`) aggregate resolves, when it
@@ -2424,6 +2426,11 @@ class Factory:
         # aggregate condition must co-grain to the SELECT grain (like HAVING)
         # rather than collapsing to a global scalar. None => use `self.grain`.
         self.aggregate_grain = aggregate_grain
+        # SELECT-level `by rollup/cube/grouping sets` spec of the select whose
+        # projection scope this factory builds. Applied to every un-pinned
+        # aggregate at materialization — the select-scoped moment — so shared
+        # authoring definitions never carry (or leak) the spec.
+        self.select_grouping = select_grouping
         self.environment = environment
         # Build-scoped joins (query JOIN clauses plus environment MERGE
         # statements — the same relation declared at different scopes, resolved
@@ -3051,6 +3058,13 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             resolution_grain, self.environment
         )
+        stamped_lineage = self._apply_select_grouping_to_resolved(base, new_lineage)
+        if stamped_lineage is not new_lineage:
+            new_lineage = stamped_lineage
+            # the concept's grain is the pass's key set, not the co-grained
+            # resolution grain — e.g. a grouping() nested in a select dim would
+            # otherwise keep that dim as its grain, a circular dependency
+            final_grain = Grain(components={x.address for x in stamped_lineage.by})
 
         if new_lineage:
             build_lineage = self.build(new_lineage)
@@ -3088,6 +3102,10 @@ class Factory:
         cache_address = (
             f"{base.namespace}.{base.address}.{canonical_name}.{str(final_grain)}"
         )
+        if self.select_grouping is not None:
+            # build_cache persists across statements; a spec-stamped build of a
+            # concept must not be served to (or from) a spec-less statement
+            cache_address += f".{self._select_grouping_token()}"
         if cache_address in self.build_cache:
             return self.build_cache[cache_address]
 
@@ -3161,29 +3179,91 @@ class Factory:
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
         return self._build_aggregate_wrapper(base)
 
+    def _select_grouping_token(self) -> str:
+        spec = self.select_grouping
+        assert spec is not None
+        by = ",".join(str(x.address) for x in spec.by)
+        sets = "|".join(
+            ",".join(str(x.address) for x in grouping_set)
+            for grouping_set in spec.grouping_sets
+        )
+        return f"{spec.mode.value}:{by}:{sets}"
+
+    def _apply_select_grouping_to_resolved(
+        self, base: Concept, new_lineage: Any
+    ) -> Any:
+        """Stamp the select-level grouping spec onto a just-resolved bare
+        aggregate. ``get_select_grain_and_keys`` fills an un-pinned aggregate's
+        ``by`` from the resolution grain, so bare-ness is judged on the ORIGINAL
+        lineage: a user-pinned ``sum(x) by a, b`` stays its own standard pass.
+        Inferred-key specs (``by rollup ()``) keep the resolved grain as keys."""
+        spec = self.select_grouping
+        if spec is None or not isinstance(new_lineage, AggregateWrapper):
+            return new_lineage
+        if new_lineage.grouping != AggregateGroupingMode.STANDARD:
+            return new_lineage
+        original = (
+            base.lineage.content
+            if isinstance(base.lineage, FunctionCallWrapper)
+            else base.lineage
+        )
+        if isinstance(original, AggregateWrapper) and original.by:
+            return new_lineage
+        return AggregateWrapper(
+            function=new_lineage.function,
+            by=list(spec.by) if spec.by else list(new_lineage.by),
+            grouping=spec.mode,
+            grouping_sets=[list(g) for g in spec.grouping_sets],
+        )
+
     def _build_aggregate_wrapper(self, base: AggregateWrapper) -> BuildAggregateWrapper:
+        spec = self.select_grouping
+        grouping = base.grouping
+        grouping_sets_source = base.grouping_sets
         if not base.by:
-            agg_grain = (
-                self.aggregate_grain if self.aggregate_grain is not None else self.grain
-            )
-            by = [
-                self._build_concept(self.environment.concepts[c])
-                for c in agg_grain.component_order
-            ]
+            if spec is not None and base.grouping == AggregateGroupingMode.STANDARD:
+                # A bare aggregate materialized in this select's projection
+                # scope computes in the select's single ROLLUP/CUBE/GROUPING
+                # SETS pass; inferred-key specs (`by rollup ()`) group by the
+                # resolution grain.
+                grouping = spec.mode
+                grouping_sets_source = spec.grouping_sets
+                if spec.by:
+                    by = self._build_over_items(list(spec.by))
+                else:
+                    agg_grain = (
+                        self.aggregate_grain
+                        if self.aggregate_grain is not None
+                        else self.grain
+                    )
+                    by = [
+                        self._build_concept(self.environment.concepts[c])
+                        for c in agg_grain.component_order
+                    ]
+            else:
+                agg_grain = (
+                    self.aggregate_grain
+                    if self.aggregate_grain is not None
+                    else self.grain
+                )
+                by = [
+                    self._build_concept(self.environment.concepts[c])
+                    for c in agg_grain.component_order
+                ]
         else:
             by = self._build_over_items(list(base.by))
         grouping_sets = [
             self._build_over_items(list(grouping_set))
-            for grouping_set in base.grouping_sets
+            for grouping_set in grouping_sets_source
         ]
-        if base.grouping == AggregateGroupingMode.STANDARD:
+        if grouping == AggregateGroupingMode.STANDARD:
             by = sorted(by, key=lambda x: x.address)
 
         parent: BuildFunction = self._build_function(base.function)  # type: ignore
         return BuildAggregateWrapper(
             function=parent,
             by=by,
-            grouping=base.grouping,
+            grouping=grouping,
             grouping_sets=grouping_sets,
         )
 
@@ -3320,21 +3400,46 @@ class Factory:
                 out.append(built)
         return out
 
+    def _window_order_by_items(self, order_by: list, anchor: Any) -> list:
+        """Resolve bare (no ``by``) aggregates in a window's ORDER BY.
+
+        Under the select's grouping spec they compute in that single
+        ROLLUP/CUBE/GROUPING SETS pass (inferred-key specs stay bare and pick up
+        the resolved select grain plus the mode in ``__build_concept``);
+        otherwise the window's anchor concept defines the implicit grain.
+        Always copy — the OrderItem may belong to a shared authored definition,
+        and an in-place ``by`` leaks across statements."""
+        spec = self.select_grouping
+        out = []
+        for x in order_by:
+            expr = x.expr
+            if (
+                isinstance(expr, AggregateWrapper)
+                and not expr.by
+                and expr.grouping == AggregateGroupingMode.STANDARD
+            ):
+                if spec is not None:
+                    if spec.by:
+                        expr = AggregateWrapper(
+                            function=expr.function,
+                            by=list(spec.by),
+                            grouping=spec.mode,
+                            grouping_sets=[list(g) for g in spec.grouping_sets],
+                        )
+                elif anchor is not None:
+                    expr = AggregateWrapper(function=expr.function, by=[anchor])
+            if expr is not x.expr:
+                x = OrderItem(expr=expr, order=x.order)
+            out.append(x)
+        return out
+
     def _build_numbering_window_item(
         self, base: NumberingWindowItem
     ) -> BuildNumberingWindowItem:
         # An AggregateWrapper with empty `by` inside the order_by needs an
         # implicit grain — the rank's argument concepts define the row.
         anchor = base.arguments[0] if base.arguments else None
-        final_by = []
-        for x in base.order_by:
-            if (
-                isinstance(x.expr, AggregateWrapper)
-                and not x.expr.by
-                and anchor is not None
-            ):
-                x.expr.by = [anchor]
-            final_by.append(x)
+        final_by = self._window_order_by_items(base.order_by, anchor)
         return BuildNumberingWindowItem(
             type=base.type,
             arguments=[self._build_concept_ref(x) for x in base.arguments],
@@ -3349,15 +3454,8 @@ class Factory:
         validation = requires_concept_nesting(base.content)
         if validation:
             content, _ = self.instantiate_concept(validation)
-        final_by = []
-        for x in base.order_by:
-            if (
-                isinstance(x.expr, AggregateWrapper)
-                and not x.expr.by
-                and isinstance(content, (ConceptRef, Concept))
-            ):
-                x.expr.by = [content]
-            final_by.append(x)
+        anchor = content if isinstance(content, (ConceptRef, Concept)) else None
+        final_by = self._window_order_by_items(base.order_by, anchor)
         return BuildNavigationWindowItem(
             type=base.type,
             content=self.build(content),
@@ -3791,6 +3889,7 @@ class Factory:
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=self.scoped_joins,
+            select_grouping=base.grouping,
         )
         for k, v in base.local_concepts.items():
             materialized[k] = factory.build(v)

@@ -32,13 +32,14 @@ single-statement oracle 100/100 rows with one ROLLUP. Regression tests:
 `tests/engine/test_duckdb_rollup_window_inline_aggregate.py`.
 
 **Residuals** (documented, not fixed):
-1. Inferred-key `by rollup ()` + inline window aggregate: the inline aggregate
-   co-grains to the window *partition* (not the select grain) before spec
-   stamping, landing in a *different* grouping pass; the cross-pass stitch
-   still fans out (strict xfail in the new test file). Related: the plain
-   (non-rollup) inline form co-grains to the partition too, yielding
-   constant-per-partition ordering (all ranks 1) — a semantics question, not a
-   planner bug.
+1. ~~Inferred-key `by rollup ()` + inline window aggregate~~ — FIXED same day
+   by the build-time grouping refactor: the spec now rides
+   `SelectLineage.grouping` and the build factory applies it to un-pinned
+   aggregates at materialization (select-scoped by construction), so the
+   inline window aggregate resolves at select grain into the same pass. The
+   former strict xfail is now a real test. The plain (non-rollup) inline form
+   still orders by an anchor-grain aggregate (constant per partition, all
+   ranks 1) — a semantics question, not a planner bug.
 2. Non-window cross-pass recoveries (e.g. a filtered aggregate sibling over the
    same rollup) still stitch on nullable dims. A genuinely unavoidable join
    between grouping-pass outputs needs the grouping-identity-as-grain design

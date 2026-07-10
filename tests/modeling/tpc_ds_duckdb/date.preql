@@ -16,7 +16,7 @@ properties sk (
     day_name enum<string>['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']?, # Spelled-out day name.
     week_seq int::week, # Monotonically-increasing week-of-time sequence number. ~53 per year (e.g. 2001 = 5270-5322), so the same week one year later is week_seq + 53. One week_seq can appear in two years.
     month_of_year enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], # Month of the year (1 = January … 12 = December).
-    quarter enum<int>[1, 2, 3, 4], # Calendar quarter (1-4) within the year.
+    quarter enum<int>[1, 2, 3, 4], # Calendar quarter (1-4) within the year. Different than derived quarter from date - dim is weird. Use this instead of calculating from date.
     quarter_name string?, # Quarter label combining year and quarter (e.g. '1998Q3').
     --d_week_seq1 int, # Alternate week sequence (legacy duplicate of week_seq for joinable subselects).
     month_seq int, # Monotonically-increasing month sequence across the calendar (month-of-time).
