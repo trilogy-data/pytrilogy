@@ -445,6 +445,11 @@ def resolve_join_order_v2(
 def side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
     if side is None:
         return False
+    # Intrinsic nullability: the concept's own definition can yield NULL (a
+    # `?` column, a filtered value or aggregate, a no-else CASE) on any side
+    # that carries it, regardless of that side's join structure.
+    if concept.is_nullable:
+        return True
     equivalent = concept.equivalent_addresses
     if any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts):
         return True

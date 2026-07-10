@@ -405,8 +405,11 @@ def _expr_is_nullable(expr: Any, environment: Environment) -> bool:
     if isinstance(expr, AggregateWrapper):
         return _expr_is_nullable(expr.function, environment)
     if isinstance(expr, FilterItem):
-        # A filtered value is NULL exactly when its source value is.
-        return _expr_is_nullable(expr.content, environment)
+        # A filtered value is a partial property of its base: consumed at any
+        # grain wider than the filter (co-projection with the base key, an
+        # aggregate over the full group), it null-extends where the condition
+        # fails — nullable even when its source is not.
+        return True
     if isinstance(expr, NumberingWindowItem):
         # row_number / rank / dense_rank always produce a value.
         return False
