@@ -367,8 +367,20 @@ _HTML = r"""<!doctype html>
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
   #wrap { display:flex; height:100vh; }
-  #side { width:260px; flex:0 0 260px; border-right:1px solid var(--border); overflow-y:auto; background:var(--panel); }
-  #side h1 { font-size:13px; padding:14px 14px 6px; margin:0; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
+  /* Header (run picker + tally) stays put; only the run list scrolls. */
+  #side { width:260px; flex:0 0 260px; border-right:1px solid var(--border); background:var(--panel);
+          display:flex; flex-direction:column; min-height:0; }
+  #sidehead { flex:0 0 auto; border-bottom:1px solid var(--border); }
+  #runs { flex:1 1 auto; overflow-y:auto; min-height:0; }
+  #tally { padding:2px 14px 10px; }
+  .tally-n { font-size:13px; margin-bottom:6px; }
+  .tally-n .pct { color:var(--muted); }
+  .tally-f { display:flex; gap:6px; }
+  .fbtn { flex:1; background:var(--panel2); color:var(--muted); border:1px solid var(--border);
+          border-radius:6px; padding:4px 6px; font-size:11px; cursor:pointer; }
+  .fbtn:hover { color:var(--txt); }
+  .fbtn.on { border-color:var(--accent); color:var(--accent); }
+  .empty { padding:14px; color:var(--muted); font-size:12px; }
   .run { padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
   .run:hover { background:var(--panel2); }
   .run.active { background:var(--panel2); border-left:3px solid var(--accent); padding-left:11px; }
@@ -380,6 +392,16 @@ _HTML = r"""<!doctype html>
   .badge.other { background:rgba(139,147,167,.18); color:var(--muted); }
   .badge.over { background:rgba(248,81,73,.85); color:#fff; margin-left:4px; }
   .sdot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; flex:0 0 8px; }
+  .badge.replaying { background:rgba(91,157,255,.18); color:var(--accent); }
+  @keyframes sdotpulse { 0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(91,157,255,.55); }
+                         50% { opacity:.45; box-shadow:0 0 0 4px rgba(91,157,255,0); } }
+  @keyframes rowpulse { 0%,100% { background:var(--panel2); } 50% { background:var(--panel); } }
+  .sdot.pulse { animation:sdotpulse 1.4s ease-in-out infinite; }
+  .run.replaying { animation:rowpulse 1.4s ease-in-out infinite; border-left:3px solid var(--accent); padding-left:11px; }
+  .run.replaying .sub { color:var(--accent); }
+  @media (prefers-reduced-motion:reduce) {
+    .sdot.pulse, .run.replaying { animation:none; }
+  }
   #main { flex:1; overflow-y:auto; padding:22px 28px 80px; }
   #task { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:20px; white-space:pre-wrap; color:var(--muted); font-size:13px; max-height:160px; overflow:auto; }
   .turn { margin:0 0 14px; }
@@ -434,7 +456,10 @@ _HTML = r"""<!doctype html>
 <body>
 <div id="wrap">
   <div id="side">
-    <div id="runbar"><label>Run<span id="live"></span></label><select id="runsel" onchange="onRunChange()"></select></div>
+    <div id="sidehead">
+      <div id="runbar"><label>Run<span id="live"></span></label><select id="runsel" onchange="onRunChange()"></select></div>
+      <div id="tally"></div>
+    </div>
     <div id="runs"></div>
   </div>
   <div id="main"></div>
@@ -448,6 +473,7 @@ let expanded = new Set();   // keys of tool-result blocks the user expanded (cur
 let currentRun = null;   // which results dir we're viewing (null until runs.json loads)
 let compareOpen = false;   // side-by-side canonical vs agent query panel (per run)
 let compareView = 'src';   // 'src' (preql/sql source) or 'sql' (rendered SQL)
+let failOnly = false;   // sidebar filter: hide passing runs
 let served = false;   // true once runs.json answers — replay needs the server
 let replay = {running:false, qid:null, log:[], result:null, error:null};
 let replayTimer = null;
@@ -529,20 +555,23 @@ function updateReplayBar(){
   const el = document.getElementById('rpbar'), run = RUNS.find(r=>r.name===selectedName);
   if(el && run) el.innerHTML = replayBarHtml(run);
 }
+// Replay state drives both the bar and the sidebar pulse; the 4s data poll is
+// too coarse to start/stop the pulse on its own.
+function updateReplayUi(){ updateReplayBar(); renderSide(); }
 async function startReplay(qid){
   if(!confirm(`Replay ${qlabel(qid)} in ${currentRun}?\n\n`
     + `Re-seeds the semantic model, then re-runs the agent against the current `
     + `prompt and engine.\n\nOVERWRITES this query's trajectory, candidate query `
     + `and report entry. The current trajectory is not recoverable.`)) return;
   replay = {running:true, run:currentRun, qid, log:['submitting…'], result:null, error:null};
-  updateReplayBar();
+  updateReplayUi();
   try{
     const r = await fetch('replay', {method:'POST', headers:{'Content-Type':'application/json'},
                                      body: JSON.stringify({run: currentRun, qid})});
     const j = await r.json();
     replay = r.ok ? j : {running:false, run:currentRun, qid, log:[], result:null, error: j.error || ('HTTP '+r.status)};
   }catch(e){ replay = {running:false, run:currentRun, qid, log:[], result:null, error:String(e)}; }
-  updateReplayBar();
+  updateReplayUi();
   if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
 }
 async function pollReplay(){
@@ -552,11 +581,11 @@ async function pollReplay(){
     const j = await r.json();
     const finished = replay.running && !j.running;
     replay = j;
-    updateReplayBar();
+    updateReplayUi();
     if(finished){
       clearInterval(replayTimer); replayTimer = null;
       lastPayload = null;   // the run's logs + report just changed under us
-      loadData();
+      loadData(true);       // must win over any poll still in flight from mid-replay
     }
   }catch(e){ clearInterval(replayTimer); replayTimer = null; }
 }
@@ -566,7 +595,7 @@ async function initReplay(){
     const r = await fetch('replay_status.json', {cache:'no-store'});
     if(!r.ok) return;
     replay = await r.json();
-    updateReplayBar();
+    updateReplayUi();
     if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
   }catch(e){ /* static file — no replay */ }
 }
@@ -677,17 +706,51 @@ function markActive(){
   document.querySelectorAll('.run').forEach(n=>
     n.classList.toggle('active', RUNS[+n.dataset.i].name===selectedName));
 }
+// The row whose query is being replayed right now — its metrics are stale until
+// the job lands, so we pulse it instead of showing them.
+function isReplaying(run){
+  return replay.running && replay.run === currentRun && replay.qid === run.qid;
+}
+const PULSE_MS = 1400;
+// Re-rendering the row restarts its animation. Offsetting the delay by where the
+// wall clock sits in the cycle keeps the pulse continuous across re-renders.
+function pulseDelay(){ return `animation-delay:${-(performance.now() % PULSE_MS)}ms`; }
+const isPass = run => (run.metrics||{}).status === 'pass';
+// Under the "failing" filter, keep the selected and replaying rows visible so
+// the list doesn't yank the row you're reading out from under you.
+function isVisible(run){
+  return !failOnly || !isPass(run) || run.name === selectedName || isReplaying(run);
+}
+function renderTally(){
+  const el = document.getElementById('tally');
+  if(!el) return;
+  const total = RUNS.length, pass = RUNS.filter(isPass).length, failing = total - pass;
+  const pct = total ? Math.round(pass/total*100) : 0;
+  el.innerHTML = `<div class="tally-n"><b>${pass}/${total}</b> pass <span class="pct">(${pct}%)</span></div>`
+    + `<div class="tally-f">`
+    + `<button class="fbtn${failOnly?'':' on'}" onclick="setFailOnly(false)">All ${total}</button>`
+    + `<button class="fbtn${failOnly?' on':''}" onclick="setFailOnly(true)">Failing ${failing}</button>`
+    + `</div>`;
+}
+function setFailOnly(v){ failOnly = v; renderSide(); }
 function renderSide(){
+  renderTally();
   const el = document.getElementById('runs');
-  el.innerHTML = RUNS.map((r,i)=>{
+  const rows = RUNS.map((r,i)=>[r,i]).filter(([r])=>isVisible(r));
+  if(!rows.length){ el.innerHTML = `<div class="empty">No failing runs.</div>`; return; }
+  el.innerHTML = rows.map(([r,i])=>{
     const m=r.metrics||{};
-    const c = statusColor(m.status);
+    const busy = isReplaying(r);
+    const c = busy ? 'var(--accent)' : statusColor(m.status);
     const tok = m.prompt_tokens||0;
-    const over = tok > 500000 ? `<span class="badge over">500k+</span>` : '';
-    return `<div class="run" data-i="${i}"><div class="nm">`
-         + `<span class="sdot" style="background:${c}"></span>`
-         + `<span style="color:${c}">${esc(r.name)}</span> ${badge(m.status)}${over}</div>`
-         + `<div class="sub">${m.iterations??'?'} iters · ${(tok/1e6).toFixed(2)}M tok</div></div>`;
+    const over = (!busy && tok > 500000) ? `<span class="badge over">500k+</span>` : '';
+    const tail = busy ? `<span class="badge replaying">replaying</span>` : `${badge(m.status)}${over}`;
+    const sub = busy ? 'running agent…' : `${m.iterations??'?'} iters · ${(tok/1e6).toFixed(2)}M tok`;
+    const delay = busy ? pulseDelay() : '';
+    return `<div class="run${busy?' replaying':''}" data-i="${i}" style="${delay}"><div class="nm">`
+         + `<span class="sdot${busy?' pulse':''}" style="background:${c};${delay}"></span>`
+         + `<span style="color:${c}">${esc(r.name)}</span> ${tail}</div>`
+         + `<div class="sub">${esc(sub)}</div></div>`;
   }).join('');
   el.querySelectorAll('.run').forEach(node=>{
     node.onclick = ()=>{ selectedName = RUNS[+node.dataset.i].name; expanded = new Set();
@@ -710,17 +773,28 @@ function flashLive(){
   el.textContent = '● live'; el.style.color = 'var(--ok)'; el.style.opacity = '1';
   setTimeout(()=>{ el.style.opacity = '.5'; }, 500);
 }
-async function loadData(){
+// data.json takes tens of seconds on a cold cache (it transpiles every query),
+// so polls overlap and can resolve out of order. An older snapshot must never
+// overwrite a newer one: a mid-replay snapshot carries the already-truncated
+// agent log but the not-yet-rewritten report.json, i.e. new iters + stale status.
+let dataInFlight = 0, dataSeq = 0, appliedSeq = 0;
+async function loadData(force){
+  if(dataInFlight && !force) return;   // don't stack slow polls
+  const seq = ++dataSeq;
+  dataInFlight++;
   try{
     const q = currentRun ? ('?run=' + encodeURIComponent(currentRun)) : '';
     const r = await fetch('data.json' + q, {cache:'no-store'});
     if(!r.ok) return;
     const txt = await r.text();
+    if(seq <= appliedSeq) return;   // a newer snapshot already landed
+    appliedSeq = seq;
     if(txt === lastPayload) return;   // unchanged — don't disrupt the view
     lastPayload = txt;
     flashLive();
     applyData(JSON.parse(txt), true);
-  }catch(e){ /* opened as a static file or server gone — keep the baked snapshot */ }
+  }catch(e){ /* opened as a static file or server gone — keep the baked snapshot */
+  }finally{ dataInFlight--; }
 }
 // Populate the run-directory dropdown from sibling results dirs.
 async function loadRuns(){
@@ -740,11 +814,11 @@ async function loadRuns(){
 function onRunChange(){
   currentRun = document.getElementById('runsel').value;
   selectedName = null; lastPayload = null; expanded = new Set(); compareOpen = false;   // reset for the new run
-  loadData();
+  loadData(true);
 }
 applyData(RUNS, false);
-loadRuns().then(loadData).then(initReplay);
-setInterval(loadData, 4000);
+loadRuns().then(()=>loadData(true)).then(initReplay);
+setInterval(()=>loadData(), 4000);
 setInterval(loadRuns, 10000);
 </script>
 </body>
@@ -827,6 +901,11 @@ class ReplayJob:
             self._state.update(running=False, result=result, error=error)
 
 
+# A cold collect() transpiles every query (tens of seconds). Serialise it so
+# overlapping polls queue behind one build instead of each doing the work.
+_COLLECT_LOCK = threading.Lock()
+
+
 def _list_run_dirs(root: Path) -> list[str]:
     dirs = [
         c for c in root.iterdir() if c.is_dir() and any(c.glob("agent_log.*.jsonl"))
@@ -880,7 +959,9 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             # just-finished) run streams in — the page polls this.
             qs = urllib.parse.parse_qs(parsed.query)
             target = self._resolve_run((qs.get("run") or [None])[0]) or self.default_dir
-            self._json(collect(target))
+            with _COLLECT_LOCK:
+                payload = collect(target)
+            self._json(payload)
             return
         super().do_GET()
 

@@ -33,6 +33,7 @@ datasource catalog_returns (
     CR_RETURNED_DATE_SK: date.sk, # FK to the date the item was returned.
     CR_RETURNED_TIME_SK: time.sk, # FK to the time-of-day the return was processed.
     CR_ITEM_SK: item.sk, # FK to the returned item.
+    CR_ITEM_SK: sales.item.sk, # FK to the item in the originating catalog sale.
     CR_ORDER_NUMBER: sales.order_number, # FK to the originating catalog sales order.
     CR_ORDER_NUMBER: order_number,
     CR_RETURNING_CUSTOMER_SK: ?billing_customer.sk, # FK to the customer returning the item.

@@ -28,6 +28,8 @@ Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
 
+Exact response column names do not matter, but the position and values do.
+
 Question {{id}}:
 {{prompt}}{{params_block}}
 """
@@ -51,6 +53,8 @@ your final action.
 Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
+
+Exact response column names do not matter, but the position and values do.
 
 Question {{id}}:
 {{prompt}}{{params_block}}
@@ -79,6 +83,8 @@ some rare ones may require merging multiple facts.
 Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
+
+Exact response column names do not matter, but the position and values do.
 
 Business questions
 ==================

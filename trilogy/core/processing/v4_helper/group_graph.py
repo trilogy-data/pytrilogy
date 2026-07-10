@@ -883,9 +883,11 @@ def _refresh_input_contracts(
     attrs: dict[str, GroupAttrs],
     concept_attrs: dict[str, ConceptAttrs],
     concept_edges: EdgeMap,
+    scoped_join_key_addresses: frozenset[str] = frozenset(),
 ) -> None:
-    key_addresses = frozenset(
-        a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
+    key_addresses = (
+        frozenset(a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY)
+        | scoped_join_key_addresses
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     for gid in group_graph.nodes:
@@ -914,6 +916,7 @@ def _refresh_input_contracts(
                     required_grain=frozenset() if is_existence else required_grain,
                     preserve_keys=(
                         frozenset() if is_existence else required_grain | bridge_keys
+                        | scoped_join_key_addresses
                     ),
                     channel=(
                         InputChannel.EXISTENCE
@@ -1288,6 +1291,7 @@ def build_group_graph(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
+    scoped_join_key_addresses: frozenset[str] = frozenset(),
     *,
     return_merged_graph: Literal[False] = False,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]: ...
@@ -1301,6 +1305,7 @@ def build_group_graph(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
+    scoped_join_key_addresses: frozenset[str] = frozenset(),
     *,
     return_merged_graph: Literal[True],
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]: ...
@@ -1313,6 +1318,7 @@ def build_group_graph(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     datasource_columns: list[frozenset[str]] | None = None,
+    scoped_join_key_addresses: frozenset[str] = frozenset(),
     *,
     return_merged_graph: bool = False,
 ) -> (
@@ -1430,7 +1436,12 @@ def build_group_graph(
             mandatory_list,
         )
         _refresh_input_contracts(
-            group_graph, group_edges, attrs, concept_attrs, concept_edges
+            group_graph,
+            group_edges,
+            attrs,
+            concept_attrs,
+            concept_edges,
+            scoped_join_key_addresses,
         )
         _refresh_final_contract(group_graph, attrs, mandatory_list)
     if return_merged_graph:

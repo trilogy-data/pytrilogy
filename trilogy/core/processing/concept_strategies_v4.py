@@ -805,6 +805,13 @@ def _build_from_graph(
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
     ]
+    scoped_join_key_addresses = frozenset(
+        {
+            addr
+            for canonical, members in environment.scoped_join_key_groups.items()
+            for addr in {canonical, *members}
+        }
+    )
     (
         group_graph,
         group_edges,
@@ -818,6 +825,7 @@ def _build_from_graph(
         conditions,
         mandatory_list,
         datasource_columns,
+        scoped_join_key_addresses,
         return_merged_graph=True,
     )
     strategy_node = build_strategy_node(
