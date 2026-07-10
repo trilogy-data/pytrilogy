@@ -26,6 +26,28 @@ def test_normalize_path_variants():
     assert normal == Path(r"C:\some\path")
 
 
+def test_normalize_path_variants_canonicalizes_case():
+    """Editors (VS Code) pass lowercased paths; keys must match the resolver's casing."""
+    test_dir = Path(__file__).parent / "test_data"
+    lowered = Path(str(test_dir).lower())
+
+    assert normalize_path_variants(lowered) == normalize_path_variants(test_dir)
+
+
+def test_etl_dependency_case_insensitive_keys():
+    """A differently-cased folder path must produce the same edges."""
+    test_dir = Path(__file__).parent / "test_data"
+    lowered = Path(str(test_dir).lower())
+
+    strategy = ETLDependencyStrategy()
+    graph = strategy.build_folder_graph(lowered)
+
+    base_node, consumer_node = create_script_nodes(
+        [lowered / "base.preql", lowered / "consumer.preql"]
+    )
+    assert graph.has_edge(str(base_node.path), str(consumer_node.path))
+
+
 def test_no_dependency():
     """Test that NoDependencyStrategy creates no edges"""
     x = NoDependencyStrategy()
