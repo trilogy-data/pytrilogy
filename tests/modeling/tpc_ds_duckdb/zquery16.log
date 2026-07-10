@@ -1,7 +1,7 @@
 query_id = "16"
 generator = "v3"
-gen_length = 3700
-preql_size = 601
+gen_length = 3987
+preql_size = 629
 comp_size = 821
 generated_sql = """
 
@@ -15,13 +15,6 @@ FROM
 GROUP BY
     1,
     2),
-quizzical as (
-SELECT
-    \"cr_catalog_returns\".\"CR_ORDER_NUMBER\" as \"cr_order_number\"
-FROM
-    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
-GROUP BY
-    1),
 questionable as (
 SELECT
     \"cooperative\".\"cs_order_number\" as \"multi_warehouse_sales\"
@@ -37,6 +30,17 @@ SELECT
     \"questionable\".\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
     \"questionable\"),
+cheerful as (
+SELECT
+    coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") as \"returned_orders\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
+WHERE
+    (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) = True and coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+
+GROUP BY
+    1),
 thoughtful as (
 SELECT
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\"
@@ -46,45 +50,34 @@ FROM
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select cheerful.\"returned_orders\" from cheerful where cheerful.\"returned_orders\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
     1),
 concerned as (
 SELECT
-    \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_ext_ship_cost\",
-    \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\"
+    sum(\"cs_catalog_sales\".\"CS_EXT_SHIP_COST\") as \"total_shipping_cost\",
+    sum(\"cs_catalog_sales\".\"CS_NET_PROFIT\") as \"total_net_profit\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
-
-GROUP BY
-    1,
-    2,
-    \"cs_catalog_sales\".\"CS_ITEM_SK\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\"),
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select cheerful.\"returned_orders\" from cheerful where cheerful.\"returned_orders\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+),
 vacuous as (
 SELECT
     count(\"thoughtful\".\"cs_order_number\") as \"order_count\"
 FROM
-    \"thoughtful\"),
-young as (
-SELECT
-    sum(\"concerned\".\"cs_ext_ship_cost\") as \"total_shipping_cost\",
-    sum(\"concerned\".\"cs_net_profit\") as \"total_net_profit\"
-FROM
-    \"concerned\")
+    \"thoughtful\")
 SELECT
     coalesce(\"vacuous\".\"order_count\",0) as \"order_count\",
-    \"young\".\"total_shipping_cost\" as \"total_shipping_cost\",
-    \"young\".\"total_net_profit\" as \"total_net_profit\"
+    \"concerned\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"concerned\".\"total_net_profit\" as \"total_net_profit\"
 FROM
     \"vacuous\"
-    FULL JOIN \"young\" on 1=1
+    FULL JOIN \"concerned\" on 1=1
 ORDER BY 
     coalesce(\"vacuous\".\"order_count\",0) desc
 LIMIT (100)"""

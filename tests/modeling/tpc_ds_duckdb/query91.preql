@@ -1,26 +1,26 @@
-import catalog_returns as cr;
+import catalog_sales as cs;
 
 where
-    cr.date.year = 1998
-    and cr.date.month_of_year = 11
+    cs.return_date.year = 1998
+    and cs.return_date.month_of_year = 11
     and (
         (
-            cr.billing_customer.demographics.marital_status = 'M'
-            and cr.billing_customer.demographics.education_status = 'Unknown'
+            cs.return_customer.demographics.marital_status = 'M'
+            and cs.return_customer.demographics.education_status = 'Unknown'
         )
         or (
-            cr.billing_customer.demographics.marital_status = 'W'
-            and cr.billing_customer.demographics.education_status = 'Advanced Degree'
+            cs.return_customer.demographics.marital_status = 'W'
+            and cs.return_customer.demographics.education_status = 'Advanced Degree'
         )
     )
-    and cr.billing_customer.household_demographic.buy_potential like 'Unknown%'
-    and cr.billing_customer.address.gmt_offset = -7
+    and cs.return_customer.household_demographic.buy_potential like 'Unknown%'
+    and cs.return_customer.address.gmt_offset = -7
 select
-    cr.call_center.id as call_center,
-    cr.call_center.name as call_center_name,
-    cr.call_center.manager as manager,
-    sum(cr.net_loss)
-            by cr.call_center.id, cr.call_center.name, cr.call_center.manager, cr.billing_customer.demographics.marital_status, cr.billing_customer.demographics.education_status as returns_loss,
+    cs.return_call_center.id as call_center,
+    cs.return_call_center.name as call_center_name,
+    cs.return_call_center.manager as manager,
+    sum(cs.return_net_loss)
+            by cs.return_call_center.id, cs.return_call_center.name, cs.return_call_center.manager, cs.return_customer.demographics.marital_status, cs.return_customer.demographics.education_status as returns_loss,
 order by
     returns_loss desc nulls first
 ;

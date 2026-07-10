@@ -2,7 +2,6 @@
 # Same merge-join shape as the store branch but keyed on web_page; included so
 # the per-branch v3/v4 parity audit covers all three multiselect arms.
 import web_sales as ws;
-import web_returns as wr;
 
 const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;
@@ -16,11 +15,11 @@ select
 ;
 
 rowset wr_grouped <- where
-    wr.return_date.date between period_start and period_end
+    ws.return_date.date between period_start and period_end
 select
-    wr.web_page.sk as wr_wp_id,
-    sum(wr.return_amount) as wr_returns,
-    sum(wr.net_loss) as wr_loss,
+    ws.return_web_page.sk as wr_wp_id,
+    sum(ws.return_amount) as wr_returns,
+    sum(ws.return_net_loss) as wr_loss,
 ;
 
 left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id

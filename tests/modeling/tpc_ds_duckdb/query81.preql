@@ -1,51 +1,51 @@
-import catalog_returns as cr;
+import catalog_sales as cs;
 
 # Non-rowset equivalent of the rowset form: the key-join shape achieved by
 # grouping the aggregate to (return_address.state, customer.sk). The year/state
 # filter is bound *inside* the conditional sum because a plain sum + a row-grain
 # WHERE year=2000 loses the filter from the customer-grain aggregate.
-auto customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null)
-    by cr.return_address.state, cr.billing_customer.sk;
-auto scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
+auto customer_state <- sum(cs.return_amount_inc_tax ? cs.return_date.year = 2000 and cs.return_address.state is not null)
+    by cs.return_address.state, cs.return_customer.sk;
+auto scaled_state <- 1.2 * avg(customer_state) by cs.return_address.state;
 
 where
     customer_state > scaled_state
-    and cr.billing_customer.address.state = 'GA'
-    and cr.return_address.state is not null
+    and cs.return_customer.address.state = 'GA'
+    and cs.return_address.state is not null
 select
-    --cr.billing_customer.sk,
-    cr.billing_customer.id,
-    cr.billing_customer.salutation,
-    cr.billing_customer.first_name,
-    cr.billing_customer.last_name,
-    cr.billing_customer.address.street_number,
-    cr.billing_customer.address.street_name,
-    cr.billing_customer.address.street_type,
-    cr.billing_customer.address.suite_number,
-    cr.billing_customer.address.city,
-    cr.billing_customer.address.county,
-    cr.billing_customer.address.state,
-    cr.billing_customer.address.zip,
-    cr.billing_customer.address.country,
-    cr.billing_customer.address.gmt_offset,
-    cr.billing_customer.address.location_type,
+    --cs.return_customer.sk,
+    cs.return_customer.id,
+    cs.return_customer.salutation,
+    cs.return_customer.first_name,
+    cs.return_customer.last_name,
+    cs.return_customer.address.street_number,
+    cs.return_customer.address.street_name,
+    cs.return_customer.address.street_type,
+    cs.return_customer.address.suite_number,
+    cs.return_customer.address.city,
+    cs.return_customer.address.county,
+    cs.return_customer.address.state,
+    cs.return_customer.address.zip,
+    cs.return_customer.address.country,
+    cs.return_customer.address.gmt_offset,
+    cs.return_customer.address.location_type,
     customer_state,
 order by
-    cr.billing_customer.id asc nulls first,
-    cr.billing_customer.salutation asc nulls first,
-    cr.billing_customer.first_name asc nulls first,
-    cr.billing_customer.last_name asc nulls first,
-    cr.billing_customer.address.street_number asc nulls first,
-    cr.billing_customer.address.street_name asc nulls first,
-    cr.billing_customer.address.street_type asc nulls first,
-    cr.billing_customer.address.suite_number asc nulls first,
-    cr.billing_customer.address.city asc nulls first,
-    cr.billing_customer.address.county asc nulls first,
-    cr.billing_customer.address.state asc nulls first,
-    cr.billing_customer.address.zip asc nulls first,
-    cr.billing_customer.address.country asc nulls first,
-    cr.billing_customer.address.gmt_offset asc nulls first,
-    cr.billing_customer.address.location_type asc nulls first,
+    cs.return_customer.id asc nulls first,
+    cs.return_customer.salutation asc nulls first,
+    cs.return_customer.first_name asc nulls first,
+    cs.return_customer.last_name asc nulls first,
+    cs.return_customer.address.street_number asc nulls first,
+    cs.return_customer.address.street_name asc nulls first,
+    cs.return_customer.address.street_type asc nulls first,
+    cs.return_customer.address.suite_number asc nulls first,
+    cs.return_customer.address.city asc nulls first,
+    cs.return_customer.address.county asc nulls first,
+    cs.return_customer.address.state asc nulls first,
+    cs.return_customer.address.zip asc nulls first,
+    cs.return_customer.address.country asc nulls first,
+    cs.return_customer.address.gmt_offset asc nulls first,
+    cs.return_customer.address.location_type asc nulls first,
     customer_state asc nulls first
 limit 100
 ;

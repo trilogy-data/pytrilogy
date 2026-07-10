@@ -1,16 +1,16 @@
-import store_returns as returns;
+import store_sales as ss;
 
 where
-    returns.store.state = 'TN' and returns.return_date.year = 2000
+    ss.return_store.state = 'TN' and ss.return_date.year = 2000
 select
-    returns.billing_customer.id,
-    --sum(returns.return_amount) by returns.billing_customer.sk, returns.store.sk as total_returns,
-    --returns.store.sk,
-    --avg(total_returns) by returns.store.sk as avg_store_returns,
+    ss.return_customer.id,
+    --sum(ss.return_amount) by ss.return_customer.sk, ss.return_store.sk as total_returns,
+    --ss.return_store.sk,
+    --avg(total_returns) by ss.return_store.sk as avg_store_returns,
 having
     total_returns > (1.2 * avg_store_returns)
 
 order by
-    returns.billing_customer.id asc
+    ss.return_customer.id asc
 limit 100
 ;

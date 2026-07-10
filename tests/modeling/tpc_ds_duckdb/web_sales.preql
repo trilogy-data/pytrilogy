@@ -1,8 +1,12 @@
 # For cross-channel questions, prefer `all_sales` (combines this with store_sales and catalog_sales).
-# Web channel sales info at (item, order_number) grain: quantity, sales /
-# list / extended prices, extended shipping cost, extended discount, net
-# paid, net profit, sold vs ship dates, and an is_returned flag with
-# per-line refund amount / quantity for returned orders.
+# Web channel sales AND returns at (item, order_number) grain — the single
+# model for all web-channel analysis, including returns-only questions.
+# Sales: quantity, sales / list / extended prices, extended shipping cost,
+# extended discount, net paid, net profit, sold vs ship dates. Returns (NULL
+# on lines never returned): is_returned flag, refund amount / quantity / tax /
+# fee / ship cost / refunded cash / reversed charge / account credit / net
+# loss, plus return date/time/customer/refund-customer/reason/web-page/
+# demographics/addresses.
 
 import std.money;
 
@@ -16,8 +20,16 @@ import customer as billing_customer; # the bill-to customer's latest/current rec
 import customer as ship_customer; # the ship-to customer's latest/current records
 import customer as return_customer; # the customer tied to the return
 import customer as return_refund_customer; # the customer refunded for the return
+import customer_demographic as return_customer_demographic; # the returning customer's demographics recorded on the return
+import customer_demographic as return_refund_customer_demographic; # the refunded customer's demographics recorded on the return
+import household_demographic as return_household_demographic; # the returning customer's household demographics recorded on the return
+import household_demographic as return_refund_household_demographic; # the refunded customer's household demographics recorded on the return
+import address as return_address; # the address the return originated from (the returning side)
+import address as return_refund_address; # the address the refund was issued to
+import reason as return_reason;
 import web_site as web_site;
 import web_page as web_page;
+import web_page as return_web_page; # the web page the return was filed through
 import promotion as promotion;
 import warehouse as warehouse;
 import ship_mode as ship_mode;
@@ -43,7 +55,14 @@ properties <order_number, item.sk> (
     ext_discount_amount numeric::usd?, # Extended discount amount applied to the line (USD).
     return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
     return_net_loss numeric::usd?, # Net financial loss on the return for this line (joined from web_returns).
-    --return_quantity int?, # Units returned for this line (joined from web_returns).
+    return_quantity int?, # Units returned for this line (joined from web_returns).
+    return_tax numeric::usd?, # Sales tax refunded on the return.
+    return_amount_inc_tax numeric::usd?, # Refund amount including tax.
+    return_fee numeric::usd?, # Restocking or handling fee withheld from the refund.
+    return_ship_cost numeric::usd?, # Shipping cost associated with the return.
+    refunded_cash numeric::usd?, # Cash portion of the refund.
+    reversed_charge numeric::usd?, # Refund portion reversed on the original payment method.
+    account_credit numeric::usd?, # Refund portion issued as account credit.
     _returned_order_number int?, # Internal: the web_returns order number matched to this line; NULL when not returned. Use is_returned instead.
     row_counter int, # Constant 1, one per web line item (a unique order_number + item.sk combination).
 );
@@ -94,8 +113,23 @@ datasource web_returns (
     WR_ITEM_SK: ~item.sk,
     WR_RETURNING_CUSTOMER_SK: return_customer.sk, # FK to the customer returning the item.
     WR_REFUNDED_CUSTOMER_SK: return_refund_customer.sk, # FK to the customer receiving the refund.
+    WR_RETURNING_CDEMO_SK: ?return_customer_demographic.sk, # FK to the returning customer's demographic profile.
+    WR_REFUNDED_CDEMO_SK: ?return_refund_customer_demographic.sk, # FK to the refunded customer's demographic profile.
+    WR_RETURNING_HDEMO_SK: ?return_household_demographic.sk, # FK to the returning customer's household profile.
+    WR_REFUNDED_HDEMO_SK: ?return_refund_household_demographic.sk, # FK to the refunded customer's household profile.
+    WR_RETURNING_ADDR_SK: ?return_address.sk, # FK to the address the return originated from.
+    WR_REFUNDED_ADDR_SK: ?return_refund_address.sk, # FK to the address the refund was issued to.
+    WR_REASON_SK: ?return_reason.sk, # FK to the return-reason code.
+    WR_WEB_PAGE_SK: ?return_web_page.sk, # FK to the web page the return was filed through.
     WR_ORDER_NUMBER: ~order_number,
     WR_RETURN_AMT: return_amount,
+    WR_RETURN_TAX: return_tax,
+    WR_RETURN_AMT_INC_TAX: return_amount_inc_tax,
+    WR_FEE: return_fee,
+    WR_RETURN_SHIP_COST: return_ship_cost,
+    WR_REFUNDED_CASH: refunded_cash,
+    WR_REVERSED_CHARGE: reversed_charge,
+    WR_ACCOUNT_CREDIT: account_credit,
     WR_NET_LOSS: return_net_loss,
     WR_RETURN_QUANTITY: return_quantity,
     WR_ORDER_NUMBER: _returned_order_number, # Real column (NULL-padded by the LEFT join) backing is_returned.

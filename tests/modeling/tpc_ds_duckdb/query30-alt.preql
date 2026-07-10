@@ -1,48 +1,48 @@
-import web_returns as web_returns;
+import web_sales as ws;
 
 # Non-rowset equivalent of query30 (rowset form): the key-join shape achieved by
 # grouping the aggregate to (return_address.state, customer.sk). The year/state
 # filter is bound *inside* the conditional sum because a plain sum + a row-grain
 # WHERE year=2002 loses the filter from the customer-grain aggregate.
 auto customer_state_returns_2002 <- sum(
-    web_returns.return_amount
-        ? web_returns.return_date.year = 2002 and web_returns.return_address.state is not null
+    ws.return_amount
+        ? ws.return_date.year = 2002 and ws.return_address.state is not null
 )
-    by web_returns.return_address.state, web_returns.billing_customer.sk;
-auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
+    by ws.return_address.state, ws.return_customer.sk;
+auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by ws.return_address.state;
 
 where
     customer_state_returns_2002 > scaled_state_returns_2002
-    and web_returns.billing_customer.address.state = 'GA'
-    and web_returns.return_address.state is not null
+    and ws.return_customer.address.state = 'GA'
+    and ws.return_address.state is not null
 select
-    --web_returns.billing_customer.sk,
-    web_returns.billing_customer.id,
-    web_returns.billing_customer.salutation,
-    web_returns.billing_customer.first_name,
-    web_returns.billing_customer.last_name,
-    web_returns.billing_customer.preferred_cust_flag,
-    web_returns.billing_customer.birth_day,
-    web_returns.billing_customer.birth_month,
-    web_returns.billing_customer.birth_year,
-    web_returns.billing_customer.birth_country,
-    web_returns.billing_customer.login,
-    web_returns.billing_customer.email_address,
-    web_returns.billing_customer.last_review_date,
+    --ws.return_customer.sk,
+    ws.return_customer.id,
+    ws.return_customer.salutation,
+    ws.return_customer.first_name,
+    ws.return_customer.last_name,
+    ws.return_customer.preferred_cust_flag,
+    ws.return_customer.birth_day,
+    ws.return_customer.birth_month,
+    ws.return_customer.birth_year,
+    ws.return_customer.birth_country,
+    ws.return_customer.login,
+    ws.return_customer.email_address,
+    ws.return_customer.last_review_date,
     customer_state_returns_2002,
 order by
-    web_returns.billing_customer.id asc nulls first,
-    web_returns.billing_customer.salutation asc nulls first,
-    web_returns.billing_customer.first_name asc nulls first,
-    web_returns.billing_customer.last_name asc nulls first,
-    web_returns.billing_customer.preferred_cust_flag asc nulls first,
-    web_returns.billing_customer.birth_day asc nulls first,
-    web_returns.billing_customer.birth_month asc nulls first,
-    web_returns.billing_customer.birth_year asc nulls first,
-    web_returns.billing_customer.birth_country asc nulls first,
-    web_returns.billing_customer.login asc nulls first,
-    web_returns.billing_customer.email_address asc nulls first,
-    web_returns.billing_customer.last_review_date asc nulls first,
+    ws.return_customer.id asc nulls first,
+    ws.return_customer.salutation asc nulls first,
+    ws.return_customer.first_name asc nulls first,
+    ws.return_customer.last_name asc nulls first,
+    ws.return_customer.preferred_cust_flag asc nulls first,
+    ws.return_customer.birth_day asc nulls first,
+    ws.return_customer.birth_month asc nulls first,
+    ws.return_customer.birth_year asc nulls first,
+    ws.return_customer.birth_country asc nulls first,
+    ws.return_customer.login asc nulls first,
+    ws.return_customer.email_address asc nulls first,
+    ws.return_customer.last_review_date asc nulls first,
     customer_state_returns_2002 asc nulls first
 limit 100
 ;

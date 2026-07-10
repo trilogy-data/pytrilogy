@@ -1,11 +1,11 @@
-import store_returns as returns;
+import store_sales as ss;
 
 show where
-    returns.store.state = 'TN' and returns.return_date.year = 2000
+    ss.return_store.state = 'TN' and ss.return_date.year = 2000
 select
-    returns.billing_customer.id,
-    --sum(returns.return_amount) as total_returns,
+    ss.return_customer.id,
+    --sum(ss.return_amount) as total_returns,
 order by
-    returns.billing_customer.id asc
+    ss.return_customer.id asc
 limit 100
 ;

@@ -35,7 +35,11 @@ _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
 #   json v1: every namespace rendered in full (role-played conformed
 #            dimensions repeat their schema once per role).
 #   json v2: conformed dimensions collapse into one combined-key entry
-#            (``"date, return_date, …": [schema]``) — the default.
+#            (``"date, return_date, …": [schema]``) — the default. Imported
+#            namespaces render in the same full grouped-declaration form
+#            under ``imported`` (each entry pairs its schema with the
+#            import-line description(s)); they are never collapsed to the
+#            old name-only leaf list.
 #   rich v1: the only rich shape so far (no conformed dedup yet).
 RENDER_TYPE_JSON = "json"
 RENDER_TYPE_RICH = "rich"
@@ -643,44 +647,27 @@ def _dedup_conformed(
     return deduped
 
 
-def build_concepts_payload(
+def _imported_payload(
     env: Environment,
-    concept_items: list[tuple[str, Concept]],
-    expand_imports: bool = False,
-    import_descriptions: dict[str, str] | None = None,
-    expand_roles: bool = False,
-    version: int | None = None,
-) -> dict:
-    """Build the JSON-serializable concept dump: local namespaces rendered in
-    full Trilogy declaration syntax, imported namespaces collapsed to a
-    name-only list (unless ``expand_imports``) so a fact file's dozens of
-    inherited dimensions don't drown the local declarations. Each imported
-    namespace is one object pairing its ``concepts`` list with its optional
-    import ``description``. ``None``-valued keys are dropped so the payload
-    stays compact whether emitted as a JSON event or embedded in an agent
-    prompt.
+    imported_items: list[tuple[str, Concept]],
+    descriptions: dict[str, str],
+    expand_roles: bool,
+    version: int,
+) -> dict[str, dict]:
+    """Full-detail rendering of imported namespaces: the same grouped
+    declaration layout as the local ``namespaces`` section, with role-played
+    conformed dimensions deduped into one combined-key entry (v2+, same
+    machinery as locals). Each entry pairs its schema (``concepts``) with the
+    import-line description — a per-role ``roles`` map on a combined entry,
+    because those descriptions are what distinguish look-alike roles
+    (sale-time vs current-snapshot demographics). A name-only collapse here
+    hid key semantics (surrogate ``sk`` vs business ``id``), enum value sets,
+    and role notes — the exact facts an agent mis-guesses most expensively.
 
-    ``version`` selects the payload shape (defaults to the active JSON render
-    version): v2 collapses role-played conformed dimensions into one
-    combined-key entry; v1 renders every role in full. ``expand_roles`` forces
-    the full per-role dump regardless of version."""
-    if version is None:
-        version = render_version(RENDER_TYPE_JSON)
-    if expand_imports:
-        local_items, imported_items = concept_items, []
-    else:
-        local_items = [
-            (a, c) for a, c in concept_items if c.namespace == DEFAULT_NAMESPACE
-        ]
-        imported_items = [
-            (a, c) for a, c in concept_items if c.namespace != DEFAULT_NAMESPACE
-        ]
-    # Imported namespaces collapse to ONE comma-joined line of bare leaf
-    # names (the `<ns>.` prefix is in the key, so repeating it per leaf —
-    # let alone one leaf per pretty-printed line — just burns tokens). The
-    # agent reaches a concept as `<ns>.<leaf>`; drill in with --regex.
-    imported: dict[str, list[str]] = defaultdict(list)
-    for addr, c in sorted(imported_items, key=lambda kc: kc[0]):
+    Internal namespaces (``__``) and ``_``-prefixed leaves stay hidden,
+    matching the collapse this replaced."""
+    visible: list[tuple[str, Concept]] = []
+    for addr, c in imported_items:
         if c.namespace.startswith("__"):  # internal model — never expose
             continue
         disp = _display_address(addr)
@@ -688,29 +675,67 @@ def build_concepts_payload(
         leaf = disp[len(prefix) :] if disp.startswith(prefix) else disp
         if leaf.startswith("_"):  # internal/intermediate concept — hide
             continue
-        imported[c.namespace].append(leaf)
-    # Each imported namespace is one object carrying its (optional) import
-    # description alongside its comma-joined concept list, so the two aren't
-    # split across top-level dicts the agent has to cross-reference.
-    descriptions = import_descriptions or {}
-    imported_merged: dict[str, dict[str, str]] = {}
-    for ns in sorted(imported):
-        if not imported[ns]:
-            continue
-        entry: dict[str, str] = {}
-        desc = (descriptions.get(ns) or "").strip()
-        if desc:
-            entry["description"] = desc
-        entry["concepts"] = ", ".join(imported[ns])
-        imported_merged[ns] = entry
+        visible.append((addr, c))
+    if not visible:
+        return {}
+    grouped = _grouped_decls(env, visible)
+    if version >= 2 and not expand_roles:
+        grouped = _dedup_conformed(env, grouped, visible)
+    out: dict[str, dict] = {}
+    for key, groups in grouped.items():
+        members = key.split(_ROLE_DELIM)
+        entry: dict = {}
+        descs = {
+            m: (descriptions.get(m) or "").strip()
+            for m in members
+            if (descriptions.get(m) or "").strip()
+        }
+        if len(members) > 1:
+            if descs:
+                entry["roles"] = descs
+        elif descs:
+            entry["description"] = descs[members[0]]
+        entry["concepts"] = groups
+        out[key] = entry
+    return out
+
+
+def build_concepts_payload(
+    env: Environment,
+    concept_items: list[tuple[str, Concept]],
+    import_descriptions: dict[str, str] | None = None,
+    expand_roles: bool = False,
+    version: int | None = None,
+) -> dict:
+    """Build the JSON-serializable concept dump: local namespaces rendered in
+    full Trilogy declaration syntax under ``namespaces``; imported namespaces
+    rendered in the same full form under ``imported``, with role-played
+    conformed dimensions deduped into one combined-key entry carrying the
+    per-role import descriptions. ``None``-valued keys are dropped so the
+    payload stays compact whether emitted as a JSON event or embedded in an
+    agent prompt.
+
+    ``version`` selects the payload shape (defaults to the active JSON render
+    version): v2 collapses role-played conformed dimensions into one
+    combined-key entry; v1 renders every role in full. ``expand_roles`` forces
+    the full per-role dump regardless of version."""
+    if version is None:
+        version = render_version(RENDER_TYPE_JSON)
+    local_items = [(a, c) for a, c in concept_items if c.namespace == DEFAULT_NAMESPACE]
+    imported_items = [
+        (a, c) for a, c in concept_items if c.namespace != DEFAULT_NAMESPACE
+    ]
     namespaces = _grouped_decls(env, local_items)
     if namespaces and version >= 2 and not expand_roles:
         namespaces = _dedup_conformed(env, namespaces, local_items)
+    imported = _imported_payload(
+        env, imported_items, import_descriptions or {}, expand_roles, version
+    )
     payload = {
         "version": version,
         "count": len(concept_items),
         "namespaces": namespaces or None,
-        "imported": imported_merged or None,
+        "imported": imported or None,
     }
     return {k: v for k, v in payload.items() if v is not None}
 
@@ -720,20 +745,19 @@ def _emit_explore_json(
     concept_items: list[tuple[str, Concept]],
     show: str,
     import_descriptions: dict[str, str],
-    expand_imports: bool,
     expand_roles: bool,
 ) -> None:
     """Emit the explore results as a stream of pretty-printed JSON events,
-    honoring ``--show``. Concepts are grouped by namespace; the local ones are
-    rendered in full Trilogy declaration syntax, imported namespaces collapse
-    to a name-only list (unless ``--expand-imports``/``--regex``) so a fact
-    file's dozens of inherited dimensions don't drown the local declarations."""
+    honoring ``--show``. Concepts are grouped by namespace and rendered in
+    full Trilogy declaration syntax — local under ``namespaces``, imported
+    under ``imported`` with conformed role-players deduped (``--expand-imports``
+    only affects the rich renderer; JSON is always full detail)."""
     if show in ("all", "groups", "concepts"):
         emit_event(
             "concepts",
             discriminator="type",
             **build_concepts_payload(
-                env, concept_items, expand_imports, import_descriptions, expand_roles
+                env, concept_items, import_descriptions, expand_roles
             ),
         )
     if show in ("all", "datasources"):
@@ -819,12 +843,11 @@ def _emit_explore_json(
     is_flag=True,
     default=False,
     help=(
-        "Render imported concepts in full detail instead of collapsing them "
-        "to a name-only listing. The default collapses imports because a fact "
-        "file typically pulls in 5-10 dimensions, each contributing dozens of "
-        "concepts; the collapse keeps the local declarations readable. Passing "
-        "--regex also bypasses the collapse — when you're filtering you want "
-        "matching imports in full."
+        "Rich output only: render imported concepts in full detail instead of "
+        "collapsing them to a name-only listing. Passing --regex also bypasses "
+        "the collapse — when you're filtering you want matching imports in "
+        "full. JSON output always renders imports in full (with role-played "
+        "conformed dimensions deduped), so this flag is a no-op there."
     ),
 )
 @click.option(
@@ -901,9 +924,7 @@ def explore(
     expand = expand_imports or bool(regex_patterns)
 
     if is_json_mode():
-        _emit_explore_json(
-            env, concept_items, show, import_descriptions, expand, expand_roles
-        )
+        _emit_explore_json(env, concept_items, show, import_descriptions, expand_roles)
         return
 
     if show in ("all", "groups"):

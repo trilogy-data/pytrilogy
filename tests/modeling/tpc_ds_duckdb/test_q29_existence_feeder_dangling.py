@@ -1,6 +1,7 @@
 """Regression for the q29 dangling existence-source BinderException.
 
-A three-fact query (store_sales x store_returns x catalog_sales) with a composite
+A three-fact query (store_sales x a second returns-anchored store_sales import
+x catalog_sales) with a composite
 `(a, b) in (rowset.x, rowset.y)` membership filter whose rowset (``cs_agg``)
 ALSO carries an unused measure column. The membership rowset is an existence
 feeder — reachable only through the subselect, never joined — but its incidental
@@ -14,7 +15,7 @@ from trilogy.constants import CONFIG
 
 QUERY = """
 import store_sales as ss;
-import store_returns as sr;
+import store_sales as sr;
 import catalog_sales as cs;
 
 with cs_agg as
@@ -31,7 +32,7 @@ where sr.return_date.year = 1999
 select
   sr.ticket_number,
   sr.item.sk as item_sk,
-  sr.billing_customer.id as cid,
+  sr.return_customer.id as cid,
   sr.return_quantity as sr_qty
 ;
 

@@ -477,7 +477,7 @@
   {
     "id": 94,
     "grade": "hard",
-    "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where at least one other line on the same order ships from a different warehouse and no line of that order has a web return, report the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
+    "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where - under any situation, not just the prior filters - at least one other line on the same order ships from a different warehouse and no line of that order has a web return, report the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
   },
   {
     "id": 95,
@@ -494,7 +494,7 @@
   {
     "id": 97,
     "grade": "medium",
-    "prompt": "For sales whose sold date falls in the year 2000, take each unique (customer, item) combination from store sales and each unique (billing customer, item) combination from catalog sales. Report three counts: combinations present only in the store set, combinations present only in the catalog set, and combinations present in both. Output a single row with those three counts; limit 100 rows."
+    "prompt": "For sales whose sold date falls in the year 2000, take each unique (customer, item key fk) combination from store sales and each unique (billing customer, item key fk) combination from catalog sales. (Yes, we care about the unique item version, not just the item id). Report three counts: combinations present only in the store set, combinations present only in the catalog set, and combinations present in both. Output a single row with those three counts; limit 100 rows."
   },
   {
     "id": 98,
@@ -504,6 +504,6 @@
   {
     "id": 99,
     "grade": "medium",
-    "prompt": "For catalog sales whose ship date falls in the year 2000, and only for sales where the warehouse, shipping mode, and call center are all recorded, report the count of catalog-sale line items (each line item is a unique order + item combination) bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Report 0 (not null) for any bucket with no matching line items. For each combination of the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name, report the five bucketed counts. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
+    "prompt": "For catalog sales whose ship date falls in the year 2000, and only for sales where the warehouse, shipping mode, and call center are all recorded (non null surrogate keys), report the count of catalog-sale line items (each line item is a unique order + item combination) bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Report 0 (not null) for any bucket with no matching line items. For each combination of the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name, report the five bucketed counts. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
   }
 ]

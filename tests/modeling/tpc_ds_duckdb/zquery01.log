@@ -1,50 +1,51 @@
 query_id = "01"
 generator = "v3"
-gen_length = 1679
-preql_size = 446
+gen_length = 1788
+preql_size = 419
 comp_size = 689
 generated_sql = """
 
 WITH 
-thoughtful as (
+cooperative as (
 SELECT
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_billing_customer_sk\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_sk\",
-    sum(\"returns_store_returns\".\"SR_RETURN_AMT\") as \"total_returns\"
+    \"ss_return_store_store\".\"S_STORE_SK\" as \"ss_return_store_sk\",
+    \"ss_store_returns\".\"SR_CUSTOMER_SK\" as \"ss_return_customer_sk\",
+    sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"total_returns\"
 FROM
-    \"memory\".\"store_returns\" as \"returns_store_returns\"
-    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_return_store_store\" on \"ss_store_returns\".\"SR_STORE_SK\" = \"ss_return_store_store\".\"S_STORE_SK\"
 WHERE
-    \"returns_store_store\".\"S_STATE\" = 'TN' and \"returns_return_date_date\".\"D_YEAR\" = 2000
+    \"ss_return_store_store\".\"S_STATE\" = 'TN' and \"ss_return_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1,
     2),
-abundant as (
+uneven as (
 SELECT
-    \"thoughtful\".\"returns_store_sk\" as \"returns_store_sk\",
-    avg(\"thoughtful\".\"total_returns\") as \"avg_store_returns\"
+    \"cooperative\".\"ss_return_store_sk\" as \"ss_return_store_sk\",
+    avg(\"cooperative\".\"total_returns\") as \"avg_store_returns\"
 FROM
-    \"thoughtful\"
+    \"cooperative\"
 GROUP BY
     1),
-questionable as (
+abundant as (
 SELECT
-    \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_id\",
-    \"thoughtful\".\"returns_store_sk\" as \"returns_store_sk\",
-    \"thoughtful\".\"total_returns\" as \"total_returns\"
+    \"cooperative\".\"ss_return_store_sk\" as \"ss_return_store_sk\",
+    \"cooperative\".\"total_returns\" as \"total_returns\",
+    \"ss_return_customer_customers\".\"C_CUSTOMER_ID\" as \"ss_return_customer_id\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"thoughtful\".\"returns_billing_customer_sk\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\")
+    \"cooperative\"
+    INNER JOIN \"memory\".\"customer\" as \"ss_return_customer_customers\" on \"cooperative\".\"ss_return_customer_sk\" = \"ss_return_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
-    \"questionable\".\"returns_billing_customer_id\" as \"returns_billing_customer_id\"
+    \"abundant\".\"ss_return_customer_id\" as \"ss_return_customer_id\"
 FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_sk\" = \"abundant\".\"returns_store_sk\"
+    \"abundant\"
+    INNER JOIN \"uneven\" on \"abundant\".\"ss_return_store_sk\" = \"uneven\".\"ss_return_store_sk\"
 WHERE
-    \"questionable\".\"total_returns\" > ( 1.2 * \"abundant\".\"avg_store_returns\" )
+    \"abundant\".\"total_returns\" > ( 1.2 * \"uneven\".\"avg_store_returns\" )
 
 ORDER BY 
-    \"questionable\".\"returns_billing_customer_id\" asc
+    \"abundant\".\"ss_return_customer_id\" asc
 LIMIT (100)"""

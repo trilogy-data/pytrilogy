@@ -67,9 +67,9 @@ def test_q64_rowset_join_with_second_fact_join_hoist(engine_sf001):
     """
     query = """
 import store_sales as ss;
-import store_returns as pr;
+import store_sales as pr;
 import catalog_sales as cs;
-import catalog_returns as cr;
+import catalog_sales as cr;
 
 with catalog_item_agg as
 select
@@ -123,7 +123,7 @@ def test_q64_nested_membership_two_source_agg_clean_error(engine):
     query = """
 import store_sales as ss;
 import catalog_sales as cs;
-import catalog_returns as cr;
+import catalog_sales as cr;
 
 auto qual_item     <- cs.item.id ? cs.item.current_price between 65 and 74;
 auto cat_ext_list  <- sum(cs.ext_list_price) by cs.item.id;
@@ -194,7 +194,7 @@ select r.wk, r.amt having r.wk in (r.wk ? r.dow = 0);
 def test_q64_correlated_filter_membership_clean_error(engine):
     """Membership whose RHS filters one fact by a correlated equality to the OUTER
     fact (`ss.ticket in (sr.ticket ? sr.ticket = ss.ticket)`) is unresolvable —
-    store_sales and store_returns have no fact-to-fact join, and Trilogy `?`
+    the two unmerged store_sales imports have no fact-to-fact join, and Trilogy `?`
     filters are not correlated subqueries. The correlated `=` used to mint a
     virtual filter concept whose lineage referenced both facts, adding a graph
     edge that falsely bridged the two disconnected components; the disconnect
@@ -203,7 +203,7 @@ def test_q64_correlated_filter_membership_clean_error(engine):
     the two facts stay disconnected and the standard error fires."""
     query = """
 import store_sales as store_sales;
-import store_returns as store_returns;
+import store_sales as store_returns;
 where store_sales.ticket_number in (
     store_returns.ticket_number ? store_returns.ticket_number = store_sales.ticket_number
   )
@@ -224,7 +224,7 @@ def test_q64_noncorrelated_filter_membership_still_resolves(engine):
     membership semijoin resolves normally."""
     query = """
 import store_sales as store_sales;
-import store_returns as store_returns;
+import store_sales as store_returns;
 where store_sales.ticket_number in (
     store_returns.ticket_number ? store_returns.return_amount > 0
   )
@@ -335,14 +335,12 @@ order by r asc limit 15;
 def test_copy_perf():
     env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
-import catalog_returns as catalog_returns;
 import catalog_sales as catalog_sales;
 import customer_demographic as customer_demographic;
 import customer as customer;
 import inventory as inventory;
 import item as item;
 import promotion as promotion;
-import store_returns as physical_returns;
 import store_sales as store_sales;
 import store as store;
 import time as time;
@@ -363,14 +361,12 @@ def test_generate_queries_perf():
 
     env, _ = Environment(working_path=working_path).parse("""
 import call_center as call_center;
-import catalog_returns as catalog_returns;
 import catalog_sales as catalog_sales;
 import customer_demographic as customer_demographic;
 import customer as customer;
 import inventory as inventory;
 import item as item;
 import promotion as promotion;
-import store_returns as physical_returns;
 import store_sales as store_sales;
 import store as store;
 import time as time;

@@ -21,8 +21,8 @@ exercising different planner paths — they share an SQL reference.)
 - **q77** — store/catalog/web rollup with per-channel dims that differ
   from q5/q80 (store→s_store_sk, catalog→cs_call_center_sk,
   web→wp_web_page_sk), so unified_sales doesn't fit. Hand-shaped using
-  the raw fact imports (catalog_sales, catalog_returns, store_sales,
-  web_sales, web_returns) per channel.
+  the raw fact imports (catalog_sales, store_sales, web_sales — each
+  carrying its channel's returns) per channel.
   - **Catalog branch CROSS-JOIN broadcast.** The reference does
     `FROM cs , cr` (no join key), so per-id sales/profit get fanned
     out by N_cr_groups and per-id returns/loss broadcast as the cr

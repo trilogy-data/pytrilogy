@@ -401,9 +401,9 @@ def test_thirty_alt(engine):
     assert len(query) < 12000, query
     assert query.count('"memory"."web_returns"') == 1, query
     assert query.count("GROUP BY") == 2, query
-    assert '"WR_RETURNING_ADDR_SK" as "web_returns_return_address_id"' not in query
+    assert '"WR_RETURNING_ADDR_SK" as "ws_return_address_id"' not in query
     assert 'LEFT OUTER JOIN "abundant"' not in query
-    assert 'web_returns_return_address_state" is not distinct from' in query
+    assert 'ws_return_address_state" is not distinct from' in query
 
 
 def test_thirty_one(engine):

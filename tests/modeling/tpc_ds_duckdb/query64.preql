@@ -1,19 +1,19 @@
 # Matches PRAGMA tpcds(64) at sf=1 (2 rows).
 import store_sales as ss;
-import catalog_returns as cr;
+import catalog_sales as cs;
 
 # cs_ui: items where catalog sale (sum of cs_ext_list_price) exceeds twice the
 # catalog refund (refunded_cash + reversed_charge + store_credit) for items with
-# a matching catalog_return. catalog_sales is reached through cr.sales (cr
-# already imports catalog_sales as sales) so we avoid the cross-import merge.
-auto cs_ui_refund_amt <- coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
-auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.sk;
-auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.sk;
+# a matching catalog_return. The `? cs.is_returned` filters restrict both sums
+# to returned lines, matching the reference's INNER cs<->cr join.
+auto cs_ui_refund_amt <- coalesce(cs.refunded_cash, 0) + coalesce(cs.reversed_charge, 0) + coalesce(cs.store_credit, 0);
+auto cs_ui_sale <- sum(cs.ext_list_price ? cs.is_returned) by cs.item.sk;
+auto cs_ui_refund <- sum(cs_ui_refund_amt ? cs.is_returned) by cs.item.sk;
 
 rowset cs_ui <- where
     cs_ui_sale > 2 * cs_ui_refund
 select
-    cr.sales.item.sk as cs_ui_item_id,
+    cs.item.sk as cs_ui_item_id,
 ;
 
 # Row-level filter common to both year slices. Excludes the cross-CDEMO
