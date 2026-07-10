@@ -152,6 +152,26 @@ def test_find_similar_partial_path_subsequence_ranks_first():
     assert sugg[0] == "y1999.agg.item_id"
 
 
+def test_find_similar_same_namespace_nearmiss_beats_leaf_flood():
+    """A namespaced typo on a middle segment (`cs.billing_customer.id` for the real
+    `cs.bill_customer.id`) must surface the same-namespace near-miss FIRST — not be
+    buried under the flood of unrelated concepts sharing the common leaf `id`, nor
+    outranked by an identical name in a different namespace (`ws.billing_customer.id`).
+    """
+    d = _dict_with(
+        "cs.bill_customer.id",
+        "ws.billing_customer.id",
+        "cs.item.id",
+        "cs.date.id",
+        "all_sales.item.id",
+        "all_sales.date.id",
+    )
+    sugg = d._find_similar_concepts("cs.billing_customer.id")
+    assert sugg[0] == "cs.bill_customer.id"
+    # the same-namespace near-miss outranks the different-namespace exact-name match
+    assert sugg.index("cs.bill_customer.id") < sugg.index("ws.billing_customer.id")
+
+
 def test_find_similar_partial_path_via_extra_keys():
     """The real path is often only STAGED (a rowset/CTE output not yet committed);
     the partial-path match must still find it through `extra_keys`."""
@@ -168,6 +188,94 @@ def test_is_subsequence_is_ordered():
     assert _is_subsequence(["y1999", "item_id"], ["y1999", "agg", "item_id"])
     assert not _is_subsequence(["item_id", "y1999"], ["y1999", "agg", "item_id"])
     assert not _is_subsequence(["x"], ["y1999", "agg", "item_id"])
+
+
+def test_subsequence_gaps_measures_tightness():
+    from trilogy.core.models.environment import _subsequence_gaps
+
+    # contiguous run (query is a prefix) -> no gaps
+    assert _subsequence_gaps(["a", "b"], ["a", "b", "c"]) == 0
+    # contiguous run in the middle -> still no gaps
+    assert _subsequence_gaps(["b", "c"], ["a", "b", "c", "d"]) == 0
+    # one intermediate segment skipped
+    assert _subsequence_gaps(["a", "c"], ["a", "b", "c"]) == 1
+    # two intermediate segments skipped between the matched pair
+    assert _subsequence_gaps(["a", "id"], ["a", "x", "y", "id"]) == 2
+    # gaps count only segments BETWEEN matches, not trailing depth
+    assert _subsequence_gaps(["a", "b"], ["a", "b", "c", "d", "e"]) == 0
+
+
+def test_find_similar_q30_shallow_child_beats_deep_near_miss():
+    """Regression for q30: a bare import-alias reference (`web_returns.billing_customer`)
+    must surface — and rank FIRST — the obvious shallow child
+    (`web_returns.billing_customer.id`, one extra segment), even though six DEEP
+    wrong-namespace near-misses (`web_returns.web_sales.billing_customer.demographics.*`,
+    three extra segments) were inserted BEFORE it and would otherwise consume the
+    entire 6-slot cap in dict-insertion order."""
+    d = _dict_with(
+        "web_returns.web_sales.billing_customer.demographics.id",
+        "web_returns.web_sales.billing_customer.demographics.gender",
+        "web_returns.web_sales.billing_customer.demographics.marital_status",
+        "web_returns.web_sales.billing_customer.demographics.education",
+        "web_returns.web_sales.billing_customer.demographics.credit_rating",
+        "web_returns.web_sales.billing_customer.demographics.purchase_estimate",
+        "web_returns.billing_customer.id",
+        "web_returns.billing_customer.first_name",
+    )
+    sugg = d._find_similar_concepts("web_returns.billing_customer")
+    assert "web_returns.billing_customer.id" in sugg
+    assert sugg[0] == "web_returns.billing_customer.id"
+    # the shallow children (extra 1) both outrank every deep near-miss (extra 3)
+    deep = "web_returns.web_sales.billing_customer.demographics.id"
+    assert sugg.index("web_returns.billing_customer.first_name") < sugg.index(deep)
+
+
+def test_find_similar_path_matches_rank_by_fewest_extra_segments():
+    """Regardless of insertion order, a path match with fewer extra segments
+    beyond the query is closer and must rank ahead of a deeper one."""
+    d = _dict_with(
+        "a.b.deep1.deep2.c",  # extra 3, inserted first
+        "a.b.mid.c",  # extra 2
+        "a.b.c",  # extra 1, inserted last — the closest
+    )
+    sugg = d._find_similar_concepts("a.c")
+    # query `a.c`: all three contain it as a subsequence; rank by extra segments
+    assert sugg[0] == "a.b.c"
+    assert (
+        sugg.index("a.b.c") < sugg.index("a.b.mid.c") < sugg.index("a.b.deep1.deep2.c")
+    )
+
+
+def test_find_similar_contiguity_breaks_ties_at_equal_depth():
+    """When two path matches have the SAME extra depth, the tighter (contiguous)
+    match wins: `ns.alias.id` (query as a contiguous prefix) beats `ns.other.id`
+    where the query segments are split by an intervening namespace."""
+    d = _dict_with(
+        "ns.other.id",  # query `ns.id` gapped by `other`, extra 1
+        "ns.id.suffix",  # query `ns.id` contiguous prefix, extra 1
+    )
+    sugg = d._find_similar_concepts("ns.id")
+    assert sugg.index("ns.id.suffix") < sugg.index("ns.other.id")
+
+
+def test_find_similar_shallow_child_survives_flood_of_deep_near_misses():
+    """Adversarial: MANY (>6) deep wrong-namespace near-misses all inserted before
+    the single correct shallow child. The correct child must still appear within
+    the capped top-6 because ranking runs BEFORE the cap."""
+    deep = [f"root.other.alias.deep.field{i}" for i in range(20)]
+    d = _dict_with(*deep, "root.alias.id")
+    sugg = d._find_similar_concepts("root.alias")
+    assert "root.alias.id" in sugg
+    assert sugg[0] == "root.alias.id"
+    assert len(sugg) <= 6
+
+
+def test_find_similar_equal_rank_preserves_insertion_order():
+    """Ties (same extra depth AND same gap count) fall back to stable
+    dict-insertion order — sorting must not reshuffle equally-relevant matches."""
+    d = _dict_with("ns.alias.a", "ns.alias.b", "ns.alias.c")
+    sugg = d._find_similar_concepts("ns.alias")
+    assert sugg[:3] == ["ns.alias.a", "ns.alias.b", "ns.alias.c"]
 
 
 def test_rowset_field_shorthand_resolves_to_rowset_path(tmp_path):

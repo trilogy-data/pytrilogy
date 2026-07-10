@@ -6,7 +6,7 @@ from pathlib import Path
 from local_scripts.fuzzer.generate import generate_cases
 from local_scripts.fuzzer.models import FuzzCase
 from local_scripts.fuzzer.random_data import generate_random_seeds, random_seed
-from local_scripts.fuzzer.runner import CaseOutcome, CaseResult, write_repro
+from local_scripts.fuzzer.runner import CaseOutcome, CaseResult, run_case, write_repro
 
 
 def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
@@ -128,3 +128,23 @@ def test_repro_contains_standalone_program_and_diagnostics(tmp_path: Path) -> No
     assert metadata["expected"] == [[1]]
     assert metadata["actual"] == [[2]]
     assert metadata["repro"] == str(repro)
+
+
+def test_accepted_compile_error_passes() -> None:
+    case = FuzzCase(
+        case_id="seed__family__expected_error",
+        seed="seed",
+        family="family",
+        description="description",
+        tags=("tag",),
+        trilogy="select missing_concept;\n",
+        oracle_sql="select 1",
+        accepted_compile_errors=("UndefinedConceptException",),
+    )
+
+    outcome = run_case(case)
+
+    assert outcome.result.status == "pass"
+    assert outcome.result.error_stage == "compile"
+    assert outcome.result.error is not None
+    assert outcome.result.error.startswith("UndefinedConceptException:")

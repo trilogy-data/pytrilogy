@@ -6,7 +6,7 @@ where
     and analysis.catalog_date.year in (2001, 2002)
     and analysis.is_returned
 select
-    analysis.item.text_id,
+    analysis.item.id,
     analysis.item.desc,
     analysis.store.state,
     count(analysis.store_quantity) as store_sales_quantitycount,
@@ -22,7 +22,7 @@ select
     stddev(analysis.catalog_quantity) as catalog_sales_quantitystdev,
     stddev(analysis.catalog_quantity) / avg(analysis.catalog_quantity) as catalog_sales_quantitycov,
 order by
-    analysis.item.text_id asc nulls first,
+    analysis.item.id asc nulls first,
     analysis.item.desc asc nulls first,
     analysis.store.state asc nulls first
 limit 100

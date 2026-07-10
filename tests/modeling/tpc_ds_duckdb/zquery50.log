@@ -1,6 +1,6 @@
 query_id = "50"
 generator = "v3"
-gen_length = 4530
+gen_length = 4526
 preql_size = 1580
 comp_size = 1903
 generated_sql = """
@@ -9,8 +9,8 @@ WITH
 cheerful as (
 SELECT
     \"store_sales_return_date_date\".\"D_DATE_SK\" - \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"days_to_return\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_sk\",
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_sk\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
@@ -26,12 +26,12 @@ GROUP BY
     4),
 thoughtful as (
 SELECT
-    \"cheerful\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    count(CASE WHEN \"cheerful\".\"days_to_return\" > -1 and \"cheerful\".\"days_to_return\" <= 30 THEN \"cheerful\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7691116690045464\",
-    count(CASE WHEN \"cheerful\".\"days_to_return\" > 120 and \"cheerful\".\"days_to_return\" <= 99999 THEN \"cheerful\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7969998780980378\",
-    count(CASE WHEN \"cheerful\".\"days_to_return\" > 30 and \"cheerful\".\"days_to_return\" <= 60 THEN \"cheerful\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_3393740962845140\",
-    count(CASE WHEN \"cheerful\".\"days_to_return\" > 60 and \"cheerful\".\"days_to_return\" <= 90 THEN \"cheerful\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_4020156712075239\",
-    count(CASE WHEN \"cheerful\".\"days_to_return\" > 90 and \"cheerful\".\"days_to_return\" <= 120 THEN \"cheerful\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_5623669394588902\"
+    \"cheerful\".\"store_sales_store_sk\" as \"store_sales_store_sk\",
+    count(CASE WHEN \"cheerful\".\"days_to_return\" > -1 and \"cheerful\".\"days_to_return\" <= 30 THEN \"cheerful\".\"store_sales_item_sk\" ELSE NULL END) as \"_virt_agg_count_2164836669115738\",
+    count(CASE WHEN \"cheerful\".\"days_to_return\" > 120 and \"cheerful\".\"days_to_return\" <= 99999 THEN \"cheerful\".\"store_sales_item_sk\" ELSE NULL END) as \"_virt_agg_count_77459047872674\",
+    count(CASE WHEN \"cheerful\".\"days_to_return\" > 30 and \"cheerful\".\"days_to_return\" <= 60 THEN \"cheerful\".\"store_sales_item_sk\" ELSE NULL END) as \"_virt_agg_count_5152376548599237\",
+    count(CASE WHEN \"cheerful\".\"days_to_return\" > 60 and \"cheerful\".\"days_to_return\" <= 90 THEN \"cheerful\".\"store_sales_item_sk\" ELSE NULL END) as \"_virt_agg_count_2266798048195902\",
+    count(CASE WHEN \"cheerful\".\"days_to_return\" > 90 and \"cheerful\".\"days_to_return\" <= 120 THEN \"cheerful\".\"store_sales_item_sk\" ELSE NULL END) as \"_virt_agg_count_3765878766448650\"
 FROM
     \"cheerful\"
 GROUP BY
@@ -39,12 +39,12 @@ GROUP BY
     \"cheerful\".\"store_sales_ticket_number\"),
 questionable as (
 SELECT
-    \"thoughtful\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    sum(\"thoughtful\".\"_virt_agg_count_3393740962845140\") as \"days_31_60\",
-    sum(\"thoughtful\".\"_virt_agg_count_4020156712075239\") as \"days_61_90\",
-    sum(\"thoughtful\".\"_virt_agg_count_5623669394588902\") as \"days_91_120\",
-    sum(\"thoughtful\".\"_virt_agg_count_7691116690045464\") as \"days_30\",
-    sum(\"thoughtful\".\"_virt_agg_count_7969998780980378\") as \"days_120_plus\"
+    \"thoughtful\".\"store_sales_store_sk\" as \"store_sales_store_sk\",
+    sum(\"thoughtful\".\"_virt_agg_count_2164836669115738\") as \"days_30\",
+    sum(\"thoughtful\".\"_virt_agg_count_2266798048195902\") as \"days_61_90\",
+    sum(\"thoughtful\".\"_virt_agg_count_3765878766448650\") as \"days_91_120\",
+    sum(\"thoughtful\".\"_virt_agg_count_5152376548599237\") as \"days_31_60\",
+    sum(\"thoughtful\".\"_virt_agg_count_77459047872674\") as \"days_120_plus\"
 FROM
     \"thoughtful\"
 GROUP BY
@@ -67,7 +67,7 @@ SELECT
     \"questionable\".\"days_120_plus\" as \"days_120_plus\"
 FROM
     \"memory\".\"store\" as \"store_sales_store_store\"
-    INNER JOIN \"questionable\" on \"store_sales_store_store\".\"S_STORE_SK\" = \"questionable\".\"store_sales_store_id\"
+    INNER JOIN \"questionable\" on \"store_sales_store_store\".\"S_STORE_SK\" = \"questionable\".\"store_sales_store_sk\"
 ORDER BY 
     \"store_sales_store_store\".\"S_STORE_NAME\" asc nulls first,
     \"store_sales_store_store\".\"S_COMPANY_ID\" asc nulls first,

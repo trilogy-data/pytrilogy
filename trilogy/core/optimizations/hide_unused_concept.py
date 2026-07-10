@@ -1,3 +1,4 @@
+from trilogy.core.enums import SetOperator
 from trilogy.core.models.build import (
     BuildConcept,
 )
@@ -55,6 +56,13 @@ class HideUnusedConcepts(OptimizationRule):
         children = inverse_map.get(cte.name, [])
         if not children:
             return False, None
+        if isinstance(cte, UnionCTE) and cte.operator != SetOperator.UNION_ALL.value:
+            # EXCEPT/INTERSECT arms dedupe and compare on the entire projected
+            # row: every declared output column is set-op row identity, so
+            # demand-driven pruning silently changes results. Branch-only
+            # extras (not in the declared tuple) still hide — arms must
+            # project exactly the declared outputs.
+            return self._hide_branch_only_outputs(cte), None
         used: set[str] = set()
         for v in children:
             self.debug(f"Analyzing usage of {cte.name} in {v.name}")

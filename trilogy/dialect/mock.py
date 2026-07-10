@@ -78,7 +78,7 @@ def mock_datatype(
         return [
             f"mock_string_{random.randint(0, 999_999)}" for _ in range(scale_factor)
         ]
-    elif datatype == DataType.FLOAT:
+    elif datatype in (DataType.FLOAT, DataType.DOUBLE):
         if is_key:
             # unique floats for keys
             return [float(i) for i in range(1, scale_factor + 1)]

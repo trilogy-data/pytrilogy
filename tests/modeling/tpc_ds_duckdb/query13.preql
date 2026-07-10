@@ -7,19 +7,19 @@ where
             store_sales.customer_demographic.marital_status = 'M'
             and store_sales.customer_demographic.education_status = 'Advanced Degree'
             and store_sales.sales_price between 100.0 and 150.0
-            and store_sales.household_demographic.dependent_count = 3
+            and store_sales.sale_household_demographic.dependent_count = 3
         )
         or (
             store_sales.customer_demographic.marital_status = 'S'
             and store_sales.customer_demographic.education_status = 'College'
             and store_sales.sales_price between 50.0 and 100.0
-            and store_sales.household_demographic.dependent_count = 1
+            and store_sales.sale_household_demographic.dependent_count = 1
         )
         or (
             store_sales.customer_demographic.marital_status = 'W'
             and store_sales.customer_demographic.education_status = '2 yr Degree'
             and store_sales.sales_price between 150.0 and 200.0
-            and store_sales.household_demographic.dependent_count = 1
+            and store_sales.sale_household_demographic.dependent_count = 1
         )
     )
     and (

@@ -88,6 +88,14 @@ FUNCTION_MAP = {
     # aggregate
     FunctionType.BOOL_AND: lambda x, types: f"LOGICAL_AND({x[0]})",
     FunctionType.BOOL_OR: lambda x, types: f"LOGICAL_OR({x[0]})",
+    # native CONCAT propagates NULL; wrap to match the null-skipping semantics.
+    # ARRAY_TO_STRING omits NULL elements when no null_text is given.
+    FunctionType.CONCAT: lambda x, types: (
+        "CONCAT(" + ", ".join([f"COALESCE({a}, '')" for a in x]) + ")"
+    ),
+    FunctionType.CONCAT_WS: lambda x, types: (
+        f"ARRAY_TO_STRING([{', '.join(x[1:])}], {x[0]})"
+    ),
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -99,6 +107,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "STRING",
     DataType.INTEGER: "INT64",
     DataType.FLOAT: "FLOAT64",
+    DataType.DOUBLE: "FLOAT64",
     DataType.BOOL: "BOOL",
     DataType.NUMERIC: "NUMERIC",
     DataType.MAP: "MAP",
@@ -232,6 +241,12 @@ class BigqueryDialect(BaseDialect):
     DATATYPE_MAP = DATATYPE_MAP
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_QUALIFY = True
+    # BigQuery requires an explicit DISTINCT on set operators.
+    SET_OPERATOR_MAP: dict[str, str] = {
+        **BaseDialect.SET_OPERATOR_MAP,
+        "EXCEPT": "EXCEPT DISTINCT",
+        "INTERSECT": "INTERSECT DISTINCT",
+    }
 
     def hash_column_value(self, column_name: str) -> str:
         return f"FARM_FINGERPRINT(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS STRING))"

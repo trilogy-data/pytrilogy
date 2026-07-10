@@ -7,7 +7,6 @@ from trilogy.parsing.v2.rules_context import (
     NodeHydrator,
     RuleContext,
     core_meta,
-    fail,
     hydrated_children,
 )
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
@@ -19,21 +18,23 @@ def expr_tuple(
     hydrate: HydrateFunction,
 ) -> Any:
     from trilogy.core.models.core import (
+        DataType,
         TupleWrapper,
         arg_to_datatype,
         reduce_tuple_element_datatypes,
     )
 
-    # Elements need only be pairwise-compatible (numeric family, enum-over-base,
-    # trait-wrapped), not identically typed — for both literal value tuples and
-    # column-expression (composite-membership) tuples.
+    # A merged element type only makes sense for a value-list tuple; a composite
+    # (row) membership tuple compares position-wise and may legitimately mix
+    # types, so defer validation to SubselectComparison (per-position for row
+    # tuples, per-element-vs-left for scalar value lists).
     args = hydrated_children(node, hydrate)
+    datatypes = [arg_to_datatype(x) for x in args]
     try:
-        dtype, nullable = reduce_tuple_element_datatypes(
-            [arg_to_datatype(x) for x in args]
-        )
-    except ValueError as e:
-        raise fail(node, str(e))
+        dtype, nullable = reduce_tuple_element_datatypes(datatypes)
+    except ValueError:
+        dtype = DataType.UNKNOWN
+        nullable = any(d == DataType.NULL for d in datatypes)
     return TupleWrapper(val=tuple(args), type=dtype, nullable=nullable)
 
 

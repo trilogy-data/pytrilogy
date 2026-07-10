@@ -2,10 +2,10 @@
 # page number) where a catalog product appeared, plus publication cadence
 # (monthly / quarterly / bi-annual) and a free-form description.
 
-key id int; # Surrogate key uniquely identifying a catalog page slot.
+key sk int; # Surrogate key uniquely identifying a catalog page slot.
 
-properties id (
-    text_id string, # Stable business identifier for the catalog page (16-char alphanumeric).
+properties sk (
+    id string, # Stable business identifier for the catalog page (16-char alphanumeric).
     --department string?, # Department name the catalog page belongs to (e.g. 'DEPARTMENT').
     --catalog_number int?, # Catalog issue/edition number.
     --catalog_page_number int?, # Page number within the catalog.
@@ -14,13 +14,13 @@ properties id (
 );
 
 datasource catalog_page (
-    CP_CATALOG_PAGE_SK: id,
-    CP_CATALOG_PAGE_ID: text_id,
+    CP_CATALOG_PAGE_SK: sk,
+    CP_CATALOG_PAGE_ID: id,
     CP_DEPARTMENT: department,
     CP_CATALOG_NUMBER: catalog_number,
     CP_CATALOG_PAGE_NUMBER: catalog_page_number,
     CP_DESCRIPTION: description,
     CP_TYPE: type,
 )
-grain (id)
+grain (sk)
 address memory.catalog_page;

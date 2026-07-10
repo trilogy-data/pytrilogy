@@ -1,4 +1,4 @@
-# q77 STORE branch, extracted as a standalone select (negative test id -2).
+# q77 STORE branch, extracted as a standalone select (negative test sk -2).
 # Two per-store aggregates joined by a rowset `merge` (sales keyed by store,
 # returns keyed by return_store). Checks v4 parity on the merge-join shape.
 import store_sales as ss;
@@ -9,7 +9,7 @@ const period_end <- '2000-09-22'::date;
 rowset ss_grouped <- where
     ss.date.date between period_start and period_end
 select
-    ss.store.id as ss_store_id,
+    ss.store.sk as ss_store_id,
     sum(ss.ext_sales_price) as ss_sales,
     sum(ss.net_profit) as ss_profit,
 ;
@@ -17,7 +17,7 @@ select
 rowset sr_grouped <- where
     ss.return_date.date between period_start and period_end
 select
-    ss.return_store.id as sr_store_id,
+    ss.return_store.sk as sr_store_id,
     sum(ss.return_amount) as sr_returns,
     sum(ss.return_net_loss) as sr_loss,
 ;

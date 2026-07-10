@@ -4,24 +4,24 @@ import inventory as inv;
 where
     cs.sold_date.year = 1999
     and cs.bill_household_demographic.buy_potential = '>10000'
-    and cs.bill_customer_demographic.marital_status = 'D'
+    and cs.billing_customer_demographic.marital_status = 'D'
     and inv.date.week_seq = cs.sold_date.week_seq
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
-left join inv.item.id = cs.item.id
+left join inv.item.sk = cs.item.sk
 select
     cs.item.desc as item_desc,
     inv.warehouse.name as warehouse_name,
     cs.sold_date.week_seq as week_seq,
     sum(
             case
-                when cs.promotion.id is null then 1
+                when cs.promotion.sk is null then 1
                 else 0
             end
         ) as no_promo,
     sum(
             case
-                when cs.promotion.id is not null then 1
+                when cs.promotion.sk is not null then 1
                 else 0
             end
         ) as promo,

@@ -1,21 +1,21 @@
 # Call center info: physical centers handling catalog and web orders,
 # with name, manager, and location county.
 
-key id int; # Surrogate key uniquely identifying a call center.
+key sk int; # Surrogate key uniquely identifying a call center.
 
-properties id (
-    text_id string, # Stable business identifier for the call center (16-char alphanumeric).
+properties sk (
+    id string, # Stable business identifier for the call center (16-char alphanumeric).
     county string, # County in which the call center is physically located.
     name string, # Display name of the call center.
     manager string?, # Name of the call center's general manager.
 );
 
 datasource call_center (
-    CC_CALL_CENTER_SK: id,
-    CC_CALL_CENTER_ID: text_id,
+    CC_CALL_CENTER_SK: sk,
+    CC_CALL_CENTER_ID: id,
     CC_COUNTY: county,
     CC_NAME: name,
     CC_MANAGER: manager,
 )
-grain (id)
+grain (sk)
 address memory.call_center;

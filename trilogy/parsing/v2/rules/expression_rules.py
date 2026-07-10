@@ -197,7 +197,7 @@ def sum_operator(
         operator = {
             "+": FunctionType.ADD,
             "-": FunctionType.SUBTRACT,
-            "||": FunctionType.CONCAT,
+            "||": FunctionType.CONCAT_STRICT,
         }.get(op)
         if operator is None:
             raise fail(node, f"Unknown operator: {op}")

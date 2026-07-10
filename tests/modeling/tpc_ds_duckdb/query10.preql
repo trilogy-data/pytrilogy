@@ -5,35 +5,35 @@ import all_sales as sales;
 # standalone atom: UnionDimPushdown then pushes the date_dim join + filter down
 # through the dedup and into each union branch, pruning every channel's scan to
 # 2002 months 1-4 *before* the UNION ALL.
-auto store_buyers <- sales.purchasing_customer.id ?
+auto store_buyers <- sales.purchasing_customer.sk ?
     sales.channel = 'STORE'
     and sales.date.year = 2002
     and sales.date.month_of_year in (1, 2, 3, 4);
-auto webcat_buyers <- sales.purchasing_customer.id ?
+auto webcat_buyers <- sales.purchasing_customer.sk ?
     sales.channel in ('WEB', 'CATALOG')
     and sales.date.year = 2002
     and sales.date.month_of_year in (1, 2, 3, 4);
 
 where
-    sales.purchasing_customer.id in store_buyers
-    and sales.purchasing_customer.id in webcat_buyers
+    sales.purchasing_customer.sk in store_buyers
+    and sales.purchasing_customer.sk in webcat_buyers
     and sales.purchasing_customer.address.county in ('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', 'La Porte County')
     and sales.purchasing_customer.demographics.gender is not null
 select
     sales.purchasing_customer.demographics.gender,
     sales.purchasing_customer.demographics.marital_status,
     sales.purchasing_customer.demographics.education_status,
-    count(sales.purchasing_customer.id) as cnt1,
+    count(sales.purchasing_customer.sk) as cnt1,
     sales.purchasing_customer.demographics.purchase_estimate,
-    count(sales.purchasing_customer.id) as cnt2,
+    count(sales.purchasing_customer.sk) as cnt2,
     sales.purchasing_customer.demographics.credit_rating,
-    count(sales.purchasing_customer.id) as cnt3,
+    count(sales.purchasing_customer.sk) as cnt3,
     sales.purchasing_customer.demographics.dependent_count,
-    count(sales.purchasing_customer.id) as cnt4,
+    count(sales.purchasing_customer.sk) as cnt4,
     sales.purchasing_customer.demographics.employed_dependent_count,
-    count(sales.purchasing_customer.id) as cnt5,
+    count(sales.purchasing_customer.sk) as cnt5,
     sales.purchasing_customer.demographics.college_dependent_count,
-    count(sales.purchasing_customer.id) as cnt6,
+    count(sales.purchasing_customer.sk) as cnt6,
 order by
     sales.purchasing_customer.demographics.gender asc,
     sales.purchasing_customer.demographics.marital_status asc,

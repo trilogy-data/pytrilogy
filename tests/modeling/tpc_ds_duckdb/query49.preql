@@ -2,14 +2,14 @@ import all_sales as sales;
 
 # Per-(channel, item) ratios. Filter requires a returns row with return_amount > 10000
 # (acts as INNER on LEFT JOIN to returns), and Dec 2001.
-def in_window(metric) -> sum(metric) by sales.channel, sales.item.id;
+def in_window(metric) -> sum(metric) by sales.channel, sales.item.sk;
 
-auto return_qty <- sum(sales.return_quantity) by sales.channel, sales.item.id;
-auto sale_qty <- sum(sales.quantity) by sales.channel, sales.item.id;
-auto return_amt <- sum(sales.return_amount) by sales.channel, sales.item.id;
-auto sale_paid <- sum(sales.net_paid) by sales.channel, sales.item.id;
-auto return_rank <- rank(sales.item.id) over (partition by sales.channel order by return_ratio asc);
-auto currency_rank <- rank(sales.item.id) over (partition by sales.channel order by currency_ratio asc);
+auto return_qty <- sum(sales.return_quantity) by sales.channel, sales.item.sk;
+auto sale_qty <- sum(sales.quantity) by sales.channel, sales.item.sk;
+auto return_amt <- sum(sales.return_amount) by sales.channel, sales.item.sk;
+auto sale_paid <- sum(sales.net_paid) by sales.channel, sales.item.sk;
+auto return_rank <- rank(sales.item.sk) over (partition by sales.channel order by return_ratio asc);
+auto currency_rank <- rank(sales.item.sk) over (partition by sales.channel order by currency_ratio asc);
 auto channel_label <- case
     when sales.channel = 'WEB' then 'web'
     when sales.channel = 'CATALOG' then 'catalog'
@@ -28,7 +28,7 @@ where
     and sales.date.month_of_year = 12
 select
     channel_label as channel,
-    sales.item.id as item,
+    sales.item.sk as item,
     return_ratio,
     return_rank,
     currency_rank,

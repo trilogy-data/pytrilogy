@@ -114,6 +114,7 @@ class SyntaxNodeKind(str, Enum):
     FNOT = "fnot"
     FBOOL = "fbool"
     CONCAT = "concat"
+    CONCAT_WS = "concat_ws"
     FCOALESCE = "fcoalesce"
     FGREATEST = "fgreatest"
     FLEAST = "fleast"
@@ -231,8 +232,10 @@ class SyntaxNodeKind(str, Enum):
     ALIGN_ITEM = "align_item"
     DERIVE_CLAUSE = "derive_clause"
     DERIVE_ITEM = "derive_item"
-    # Table-valued functions (relational union)
+    # Table-valued functions (relational union/except/intersect)
     TVF_UNION_INVOCATION = "tvf_union_invocation"
+    TVF_EXCEPT_INVOCATION = "tvf_except_invocation"
+    TVF_INTERSECT_INVOCATION = "tvf_intersect_invocation"
     TVF_SELECT_STATEMENT = "tvf_select_statement"
     TVF_OUTPUT = "tvf_output"
     TVF_OUTPUT_ITEM = "tvf_output_item"
@@ -451,6 +454,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "fnot": SyntaxNodeKind.FNOT,
     "fbool": SyntaxNodeKind.FBOOL,
     "concat": SyntaxNodeKind.CONCAT,
+    "concat_ws": SyntaxNodeKind.CONCAT_WS,
     "fcoalesce": SyntaxNodeKind.FCOALESCE,
     "fgreatest": SyntaxNodeKind.FGREATEST,
     "fleast": SyntaxNodeKind.FLEAST,
@@ -569,6 +573,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "derive_clause": SyntaxNodeKind.DERIVE_CLAUSE,
     "derive_item": SyntaxNodeKind.DERIVE_ITEM,
     "tvf_union_invocation": SyntaxNodeKind.TVF_UNION_INVOCATION,
+    "tvf_except_invocation": SyntaxNodeKind.TVF_EXCEPT_INVOCATION,
+    "tvf_intersect_invocation": SyntaxNodeKind.TVF_INTERSECT_INVOCATION,
     "tvf_select_statement": SyntaxNodeKind.TVF_SELECT_STATEMENT,
     "tvf_output": SyntaxNodeKind.TVF_OUTPUT,
     "tvf_output_item": SyntaxNodeKind.TVF_OUTPUT_ITEM,

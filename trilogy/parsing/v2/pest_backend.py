@@ -12,7 +12,9 @@ from trilogy.parsing.v2.errors import (
     detect_by_on_wrapped_aggregate,
     detect_clause_after_join,
     detect_definition_after_clause,
+    detect_derivation_as_connector,
     detect_group_by,
+    detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_select_distinct,
     detect_star_argument,
@@ -309,11 +311,24 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     if def_pos is not None:
         return create_syntax_error(104, def_pos, text)
 
+    # 105: a `<-` derivation (`rowset`/`auto`/`metric`/`property`) written with
+    # the SQL `as` connector — e.g. `rowset base as select ...`.
+    as_pos = detect_derivation_as_connector(text, pos)
+    if as_pos is not None:
+        return create_syntax_error(105, as_pos, text)
+
     # 220: a filter/WHERE continuation placed after a query-scoped join clause
     # (a join may only be followed by another join or `select`).
     join_pos = detect_clause_after_join(text, pos)
     if join_pos is not None:
         return create_syntax_error(220, join_pos, text)
+
+    # 225: a query-scoped join with a missing/malformed key expression
+    # (`union join ...`, `subset join a.id =`) — pest reports `expected
+    # sum_operator` since a join key is an expression.
+    join_key_pos = detect_join_missing_key(text, pos)
+    if join_key_pos is not None:
+        return create_syntax_error(225, join_key_pos, text)
 
     # 221: a multi-select `align` group separated by a comma instead of `and`.
     align_pos = detect_align_missing_and(text, pos)
@@ -321,9 +336,14 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
         return create_syntax_error(221, align_pos, text)
 
     # 222: a named `union(...) -> (...)` definition not terminated with `;`
-    # before the consuming statement. Confirm by inserting `;` and reparsing.
+    # before the consuming statement. Confirm by terminating the PREFIX only
+    # (`text[:sig_pos] + ";"`), not by reparsing the whole file — a SECOND,
+    # downstream error (e.g. a bad consuming `select`) would defeat a whole-file
+    # reparse and suppress this diagnostic, leaving the raw pest error (a caret
+    # inside the `-> (...)` tuple reading as "add a data_type"). The missing `;`
+    # is the first error to report; a valid terminated prefix confirms it.
     sig_pos = detect_missing_signature_semicolon(text, pos)
-    if sig_pos is not None and _pest_parses(text[:sig_pos] + ";" + text[sig_pos:]):
+    if sig_pos is not None and _pest_parses(text[:sig_pos] + ";"):
         return create_syntax_error(222, sig_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position

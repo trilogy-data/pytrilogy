@@ -1,35 +1,35 @@
 import all_sales as sales;
 
-def channel_sum(metric, channel) -> sum(metric ? sales.channel = channel) by sales.date.year, sales.item.id, sales.billing_customer.id;
+def channel_sum(metric, channel) -> sum(metric ? sales.channel = channel) by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 
 auto ss_qty <- sum(sales.quantity ? sales.channel = 'STORE')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto ss_wc <- sum(sales.wholesale_cost ? sales.channel = 'STORE')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto ss_sp <- sum(sales.sales_price ? sales.channel = 'STORE')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto ws_qty <- sum(sales.quantity ? sales.channel = 'WEB')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto ws_wc <- sum(sales.wholesale_cost ? sales.channel = 'WEB')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto ws_sp <- sum(sales.sales_price ? sales.channel = 'WEB')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto cs_qty <- sum(sales.quantity ? sales.channel = 'CATALOG')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto cs_wc <- sum(sales.wholesale_cost ? sales.channel = 'CATALOG')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto cs_sp <- sum(sales.sales_price ? sales.channel = 'CATALOG')
-    by sales.date.year, sales.item.id, sales.billing_customer.id;
+    by sales.date.year, sales.item.sk, sales.billing_customer.sk;
 auto other_chan_qty <- coalesce(ws_qty, 0) + coalesce(cs_qty, 0);
 auto other_chan_wc <- coalesce(ws_wc, 0) + coalesce(cs_wc, 0);
 auto other_chan_sp <- coalesce(ws_sp, 0) + coalesce(cs_sp, 0);
 
 where
-    sales.is_returned is null and sales.date.year = 2000 and sales.billing_customer.id is not null
+    sales.is_returned is null and sales.date.year = 2000 and sales.billing_customer.sk is not null
 select
     sales.date.year as ss_sold_year,
-    sales.item.id as ss_item_sk,
-    sales.billing_customer.id as ss_customer_sk,
+    sales.item.sk as ss_item_sk,
+    sales.billing_customer.sk as ss_customer_sk,
     round(ss_qty::numeric(7,2) / other_chan_qty::numeric(7,2), 2) as ratio,
     ss_qty as store_qty,
     ss_wc as store_wholesale_cost,

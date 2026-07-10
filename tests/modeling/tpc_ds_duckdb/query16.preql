@@ -1,11 +1,11 @@
 import catalog_sales as cs;
 import catalog_returns as cr;
 
-auto multi_warehouse_sales <- cs.order_number ? count(cs.warehouse.id) by cs.order_number > 1;
+auto multi_warehouse_sales <- cs.order_number ? count(cs.warehouse.sk) by cs.order_number > 1;
 
 where
     cs.ship_date.date between '2002-02-01'::date and '2002-04-02'::date
-    and cs.customer_address.state = 'GA'
+    and cs.ship_address.state = 'GA'
     and cs.call_center.county = 'Williamson County'
     and cs.order_number not in cr.order_number
     and cs.order_number in multi_warehouse_sales

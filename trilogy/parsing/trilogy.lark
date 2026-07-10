@@ -43,7 +43,7 @@
     // single-comparison/arithmetic cases, so prior derivations are unaffected.
     concept_derivation:  select_hide_modifier? (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" conditional
 
-    rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (tvf_union_invocation | multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (tvf_union_invocation | multi_select_statement | select_statement))
+    rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (_tvf_invocation | multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (_tvf_invocation | multi_select_statement | select_statement))
     
     concept_nullable_modifier: "?"
 
@@ -127,7 +127,7 @@
 
     // join_clause may appear before "select" (legacy) OR right after the select
     // list (preferred, SQL-like); both positions collect into the same join set.
-    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  having?  select_grouping? order_by?  limit?
+    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  select_grouping?  having? order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
     // for this select only (a query-local merge). LEFT anchors its first key
@@ -148,7 +148,7 @@
     join_group: sum_chain (COMPARISON_OPERATOR sum_chain)+
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  having? select_grouping? order_by?  limit?
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  select_grouping? having? order_by?  limit?
 
     align_item: select_hide_modifier? IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 
@@ -364,15 +364,23 @@
     _UNION.1: "UNION("i
     union: _UNION   (expr ",")* expr ")"
 
-    // table-valued function: relational union(...). Reuses the _UNION token at
-    // statement (rowset-RHS / inline-FROM) positions, disjoint from the atom-level
-    // `union` expression above. Output signature binds result columns positionally.
+    // table-valued functions: relational union(...)/except(...)/intersect(...).
+    // union reuses the _UNION token at statement (rowset-RHS / inline-FROM)
+    // positions, disjoint from the atom-level `union` expression above; except/
+    // intersect exist only at these statement positions. Output signature binds
+    // result columns positionally. except/intersect are SQL set operators
+    // (deduplicated, NULL-safe row comparison); except left-folds over 3+ arms.
+    _EXCEPT.1: "EXCEPT("i
+    _INTERSECT.1: "INTERSECT("i
     tvf_output_item: select_hide_modifier? IDENTIFIER (PURPOSE? data_type concept_nullable_modifier?)? metadata?
     tvf_output: "->" "(" tvf_output_item ("," tvf_output_item)* ","? ")"
     tvf_rel_arg: "(" select_statement ")"
     _tvf_arg: tvf_rel_arg
     tvf_union_invocation: _UNION (_tvf_arg ("," _tvf_arg)* ","?)? ")" tvf_output
-    tvf_select_statement: "from"i tvf_union_invocation select_statement
+    tvf_except_invocation: _EXCEPT (_tvf_arg ("," _tvf_arg)* ","?)? ")" tvf_output
+    tvf_intersect_invocation: _INTERSECT (_tvf_arg ("," _tvf_arg)* ","?)? ")" tvf_output
+    _tvf_invocation: tvf_union_invocation | tvf_except_invocation | tvf_intersect_invocation
+    tvf_select_statement: "from"i _tvf_invocation select_statement
 
     //indexing into an expression is a function
     index_access: atom "[" int_lit "]"
@@ -451,7 +459,8 @@
     _fcast_primary: "cast"i "(" expr "as"i (data_type | IDENTIFIER) ")"
     _fcast_alt: atom "::" (data_type | IDENTIFIER)
     fcast: _fcast_primary | _fcast_alt
-    concat: ("concat"i "(" (expr ",")* expr ")") 
+    concat: ("concat"i "(" (expr ",")* expr ")")
+    concat_ws: ("concat_ws"i "(" expr "," (expr ",")* expr ")")
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fgreatest: "greatest"i "(" (expr ",")* expr ")"
     fleast: "least"i "(" (expr ",")* expr ")"
@@ -468,7 +477,7 @@
     _FRECURSE_EDGE.1: "recurse_edge("i
     frecurse_edge: _FRECURSE_EDGE expr "," expr ")"
 
-    _generic_functions: fcast |  concat  | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
+    _generic_functions: fcast | concat_ws | concat  | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/
@@ -737,13 +746,13 @@
 
     list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">"
 
-    numeric_type: "numeric"i "(" int_lit "," int_lit ")"
+    numeric_type: ("numeric"i | "decimal"i) "(" int_lit "," int_lit ")"
 
     map_type: "map"i "<" (data_type | IDENTIFIER) "," (data_type | IDENTIFIER) ">"
 
     enum_type: "enum"i "<" data_type ">" "[" (string_lit | int_lit) ("," (string_lit | int_lit))* ","? "]"
 
-    !data_type:  ("string"i | "bytes"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
+    !data_type:  ("string"i | "bytes"i | "geography"i | "number"i | "numeric"i | "decimal"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "double"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     
     PURPOSE.2:  "key"i | "metric"i | CONST
     _PROPERTIES: "properties"i

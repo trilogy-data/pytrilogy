@@ -1,25 +1,19 @@
 import all_sales as sales;
 
-# Composite key for (brand_id, class_id, category_id) tuples — encoded so a
-# single-column `in` filter can carry membership downstream.
-auto tuple_key <- concat(
-    sales.item.brand_id::string,
-    '|',
-    sales.item.class_id::string,
-    '|',
-    sales.item.category_id::string
-);
+# count_distinct(channel) per (brand_id, class_id, category_id) tuple - how many
+# of the 3 channels each item tuple sold in.
+auto cross_channel_count <- count_distinct(sales.channel)
+    by sales.item.brand_id, sales.item.class_id, sales.item.category_id;
 
-# Map all_sales' uppercase channel codes to the reference's lowercase labels.
-auto cross_channel_count <- count_distinct(sales.channel) by tuple_key;
-
-# cross_tuples: tuples sold in all 3 channels during 1999-2001. Equivalent to
-# the reference's 3-way INTERSECT on (i_brand_id, i_class_id, i_category_id)
-# across store/catalog/web sales.
+# cross_tuples: (brand_id, class_id, category_id) tuples sold in all 3 channels
+# during 1999-2001. Equivalent to the reference's 3-way INTERSECT on
+# (i_brand_id, i_class_id, i_category_id) across store/catalog/web sales.
 rowset cross_tuples <- where
     sales.date.year between 1999 and 2001
 select
-    tuple_key as ci_tuple_key,
+    sales.item.brand_id as ci_brand_id,
+    sales.item.class_id as ci_class_id,
+    sales.item.category_id as ci_category_id,
 having
     cross_channel_count = 3
 ;
@@ -31,21 +25,19 @@ select
     avg(sales.quantity * sales.list_price) as average_sales,
 ;
 
-# One per fact row (all_sales grain is (channel, order_id, item.id)).
-auto channel_label <- case
-    when sales.channel = 'STORE' then 'store'
-    when sales.channel = 'CATALOG' then 'catalog'
-    when sales.channel = 'WEB' then 'web'
-    else null
-end;
+# One per fact row (all_sales grain is (channel, order_id, item.sk)).
+auto channel_label <- lower(sales.channel);
 
 
-# Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in
-# cross_tuples, HAVING sum(quantity*list_price) > avg_sales.
+# Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items whose
+# (brand_id, class_id, category_id) tuple is in cross_tuples, HAVING
+# sum(quantity*list_price) > avg_sales. Row-wise tuple membership matches all three
+# key parts together (a per-column `in` would match unrelated cross-pairs).
 rowset l0_filtered <- where
     sales.date.year = 2001
     and sales.date.month_of_year = 11
-    and tuple_key in cross_tuples.ci_tuple_key
+    and (sales.item.brand_id, sales.item.class_id, sales.item.category_id)
+        in (cross_tuples.ci_brand_id, cross_tuples.ci_class_id, cross_tuples.ci_category_id)
 select
     channel_label as channel_l0,
     sales.item.brand_id as brand_l0,

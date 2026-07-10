@@ -1,14 +1,14 @@
 import web_returns as web_returns;
 
 # Non-rowset equivalent of query30 (rowset form): the key-join shape achieved by
-# grouping the aggregate to (return_address.state, customer.id). The year/state
+# grouping the aggregate to (return_address.state, customer.sk). The year/state
 # filter is bound *inside* the conditional sum because a plain sum + a row-grain
 # WHERE year=2002 loses the filter from the customer-grain aggregate.
 auto customer_state_returns_2002 <- sum(
     web_returns.return_amount
         ? web_returns.return_date.year = 2002 and web_returns.return_address.state is not null
 )
-    by web_returns.return_address.state, web_returns.billing_customer.id;
+    by web_returns.return_address.state, web_returns.billing_customer.sk;
 auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
 
 where
@@ -16,8 +16,8 @@ where
     and web_returns.billing_customer.address.state = 'GA'
     and web_returns.return_address.state is not null
 select
-    --web_returns.billing_customer.id,
-    web_returns.billing_customer.text_id,
+    --web_returns.billing_customer.sk,
+    web_returns.billing_customer.id,
     web_returns.billing_customer.salutation,
     web_returns.billing_customer.first_name,
     web_returns.billing_customer.last_name,
@@ -31,7 +31,7 @@ select
     web_returns.billing_customer.last_review_date,
     customer_state_returns_2002,
 order by
-    web_returns.billing_customer.text_id asc nulls first,
+    web_returns.billing_customer.id asc nulls first,
     web_returns.billing_customer.salutation asc nulls first,
     web_returns.billing_customer.first_name asc nulls first,
     web_returns.billing_customer.last_name asc nulls first,

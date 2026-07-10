@@ -16,11 +16,11 @@ where
     and cr.billing_customer.household_demographic.buy_potential like 'Unknown%'
     and cr.billing_customer.address.gmt_offset = -7
 select
-    cr.call_center.text_id as call_center,
+    cr.call_center.id as call_center,
     cr.call_center.name as call_center_name,
     cr.call_center.manager as manager,
     sum(cr.net_loss)
-            by cr.call_center.text_id, cr.call_center.name, cr.call_center.manager, cr.billing_customer.demographics.marital_status, cr.billing_customer.demographics.education_status as returns_loss,
+            by cr.call_center.id, cr.call_center.name, cr.call_center.manager, cr.billing_customer.demographics.marital_status, cr.billing_customer.demographics.education_status as returns_loss,
 order by
     returns_loss desc nulls first
 ;

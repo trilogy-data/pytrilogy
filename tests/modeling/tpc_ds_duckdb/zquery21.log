@@ -1,12 +1,12 @@
 query_id = "21"
 generator = "v3"
-gen_length = 1510
-preql_size = 862
+gen_length = 1505
+preql_size = 852
 comp_size = 1014
 generated_sql = """
 SELECT
     \"inventory_warehouse_warehouse\".\"w_warehouse_name\" as \"inventory_warehouse_name\",
-    \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_text_id\",
+    \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_id\",
     sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0

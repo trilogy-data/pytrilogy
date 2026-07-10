@@ -412,9 +412,34 @@ class TestConditionsMetIndependentScope:
                 {"cnt_2000", "r_item_id", "cnt_1999", "item_id"},
                 [cnt_2000, r_item_id, cnt_1999, item_id, year],
                 BuildWhereClause(conditional=outer),
+                require_applier=True,
             )
             is True
         )
+
+    def test_all_exempt_no_applier_blocks_at_final_scope(self):
+        """A stack of ONLY exempt (rowset-scope) nodes with no node applying
+        the outer condition must not pass at a final scope — that is the
+        silent-filter-drop shape (q02 base-model WHERE over a pure-rowset
+        select). As a fragment (require_applier=False) it may pass; the
+        consuming level re-validates with the full sibling stack."""
+        cnt_2000 = _concept("cnt_2000", derivation=Derivation.ROWSET)
+        r_item_id = _concept("r_item_id", derivation=Derivation.ROWSET)
+        year = _concept("year")
+        outer = _eq(year, "1999")
+        rowset_node = _StackNode(
+            [cnt_2000, r_item_id],
+            preexisting_conditions=_eq(year, "2000"),
+            label="rowset",
+        )
+        args = (
+            [rowset_node],
+            {"cnt_2000", "r_item_id"},
+            [cnt_2000, r_item_id, year],
+            BuildWhereClause(conditional=outer),
+        )
+        assert _conditions_met(*args, require_applier=True) is False
+        assert _conditions_met(*args, require_applier=False) is True
 
     def test_plain_conflicting_scope_still_blocks(self):
         """A plain (non-rowset) node carrying a conflicting condition is NOT
@@ -437,6 +462,7 @@ class TestConditionsMetIndependentScope:
                 {"cnt_a", "other", "cnt_1999", "item_id"},
                 [cnt_a, other, cnt_1999, item_id, year],
                 BuildWhereClause(conditional=outer),
+                require_applier=True,
             )
             is False
         )

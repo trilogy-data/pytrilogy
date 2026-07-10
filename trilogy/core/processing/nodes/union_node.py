@@ -1,6 +1,6 @@
 from typing import List
 
-from trilogy.core.enums import SourceType
+from trilogy.core.enums import SetOperator, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -11,7 +11,9 @@ from trilogy.core.processing.nodes.base_node import StrategyNode
 
 
 class UnionNode(StrategyNode):
-    """Union nodes represent combining two keyspaces"""
+    """Union nodes represent combining two keyspaces. ``set_operator`` picks
+    the SQL combinator (UNION ALL / EXCEPT / INTERSECT); for EXCEPT the parent
+    order is semantic (left-fold), preserved through the QueryDatasource."""
 
     source_type = SourceType.UNION
 
@@ -26,6 +28,7 @@ class UnionNode(StrategyNode):
         partial_concepts: List[BuildConcept] | None = None,
         preexisting_conditions: BoolExpr | None = None,
         grain: BuildGrain | None = None,
+        set_operator: SetOperator = SetOperator.UNION_ALL,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -45,6 +48,7 @@ class UnionNode(StrategyNode):
         # datasource``) survive a covering UNION; the caller in
         # ``create_union_datasource`` filters out non-intrinsic stamps before
         # passing them in. Anything else is a usage error.
+        self.set_operator = set_operator
 
     def add_output_concepts(self, concepts, rebuild=True, unhide=True):
         for x in self.parents:
@@ -67,4 +71,5 @@ class UnionNode(StrategyNode):
             partial_concepts=self.partial_concepts,
             preexisting_conditions=self.preexisting_conditions,
             grain=self.grain,
+            set_operator=self.set_operator,
         )

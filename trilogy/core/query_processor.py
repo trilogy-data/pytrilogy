@@ -370,6 +370,7 @@ def datasource_to_cte(
                 for c in query_datasource.output_concepts
             ],
             grain=direct_parents[0].grain,
+            operator=query_datasource.set_operator.value,
             order_by=query_datasource.ordering,
             rollup_concepts=query_datasource.rollup_concepts,
         )
@@ -709,9 +710,16 @@ def _get_query_node_v4(
         )
         # Source any existence (`x in <set>`) args onto the HAVING-carrying node,
         # mirroring the v3 path -- without this the membership subselect renders a
-        # dangling CTE reference (INVALID_REFERENCE_BUG). Idempotent.
+        # dangling CTE reference (INVALID_REFERENCE_BUG). Idempotent. The query
+        # WHERE is threaded so the membership's aggregates filter pre-aggregation
+        # (matching the output path), not over the whole universe.
         append_existence_check(
-            ds, build_environment, graph, build_statement.having_clause, history
+            ds,
+            build_environment,
+            graph,
+            build_statement.having_clause,
+            history,
+            conditions=build_statement.where_clause,
         )
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components
@@ -818,8 +826,40 @@ def get_query_node(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"
         )
     ds: StrategyNode = ods
+    extra_hidden: set[str] = set()
     if build_statement.having_clause:
         having = build_statement.having_clause.conditional
+        # Only outputs + WHERE go through discovery, so a HAVING referencing a
+        # precomputed rowset measure raw (`having rs.total > 0.5 * named_max`)
+        # may land on a node with no source for it — the reference would then
+        # re-render from the measure's base lineage, which this node cannot
+        # source (INVALID_REFERENCE). Re-plan with those args as extra hidden
+        # outputs so the condition binds to the rowset output column. Gated to
+        # ROWSET derivation (never re-derivable from outputs) at or above the
+        # select grain (so the plan grain cannot change — a finer arg keeps the
+        # existing routing, mirroring the q21 HAVING promotion guard).
+        planned = {c.address for c in ds.output_concepts}
+        missing_rowset_args = unique(
+            [
+                r
+                for r in build_statement.having_clause.row_arguments
+                if r.address not in planned
+                and r.derivation == Derivation.ROWSET
+                and set(r.grain.components).issubset(build_statement.grain.components)
+            ],
+            "address",
+        )
+        if missing_rowset_args:
+            replanned = source_query_concepts(
+                output_concepts=search_concepts + missing_rowset_args,
+                environment=build_environment,
+                g=graph,
+                conditions=build_statement.where_clause,
+                history=history,
+            )
+            if replanned:
+                ds = replanned
+                extra_hidden = {r.address for r in missing_rowset_args}
         # A HAVING filters the SELECT outputs, which a resolved merge/select
         # node already carries — so fold the predicate onto that node rather
         # than wrapping it in a fresh SelectNode. The wrapper adds a CTE level
@@ -846,11 +886,18 @@ def get_query_node(
         # Source any existence (`x in <set>`) args onto the node now carrying the
         # HAVING, mirroring the WHERE path — the predicate's subselect must read
         # from a real producer CTE, not a dangling reference. Idempotent, so the
-        # fold branch (which may already carry the set) is a no-op.
+        # fold branch (which may already carry the set) is a no-op. The query
+        # WHERE is threaded so the membership's aggregates filter pre-aggregation
+        # (matching the output path), not over the whole universe.
         append_existence_check(
-            ds, build_environment, graph, build_statement.having_clause, history
+            ds,
+            build_environment,
+            graph,
+            build_statement.having_clause,
+            history,
+            conditions=build_statement.where_clause,
         )
-    ds.hidden_concepts = build_statement.hidden_components
+    ds.hidden_concepts = set(build_statement.hidden_components) | extra_hidden
     ds.ordering = build_statement.order_by
     # TODO: avoid this
     ds.rebuild_cache()

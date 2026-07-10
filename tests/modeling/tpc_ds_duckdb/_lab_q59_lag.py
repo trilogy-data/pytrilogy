@@ -38,14 +38,14 @@ def gen(preql: str) -> str:
 VARIANT = """
 import store_sales as ss;
 
-def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.id, ss.date.week_seq;
+def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.sk, ss.date.week_seq;
 
 with wss as
-where ss.date.month_seq between 1212 and 1235 and ss.store.id is not null and ss.date.week_seq is not null
+where ss.date.month_seq between 1212 and 1235 and ss.store.sk is not null and ss.date.week_seq is not null
 SELECT
-    ss.store.id as store_id,
+    ss.store.sk as store_id,
     ss.store.name as store_name,
-    ss.store.text_id as store_text_id,
+    ss.store.id as store_text_id,
     ss.date.week_seq as week_seq,
     @day_sales('Sunday')    as sun_sales,
     @day_sales('Monday')    as mon_sales,

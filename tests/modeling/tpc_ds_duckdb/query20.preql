@@ -4,7 +4,7 @@ where
     cs.item.category in ('Sports', 'Books', 'Home')
     and cs.sold_date.date between '1999-02-22'::date and '1999-03-24'::date
 select
-    cs.item.text_id,
+    cs.item.id,
     cs.item.desc,
     cs.item.category,
     cs.item.class,
@@ -12,12 +12,12 @@ select
     sum(cs.ext_sales_price) as revenue,
     revenue * 100.0 / (sum(revenue) by cs.item.class) as revenue_ratio,
 having
-    cs.item.text_id is not null
+    cs.item.id is not null
 
 order by
     cs.item.category asc nulls first,
     cs.item.class asc nulls first,
-    cs.item.text_id asc nulls first,
+    cs.item.id asc nulls first,
     cs.item.desc asc nulls first,
     revenue_ratio asc nulls first
 limit 100

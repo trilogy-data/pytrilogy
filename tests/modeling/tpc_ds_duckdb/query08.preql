@@ -405,7 +405,7 @@ const zips_pre <- unnest(
         '35576'
     ]
 );
-auto zip_p_count <- count(customer.id ? customer.preferred_cust_flag = 'Y') by customer.address.zip;
+auto zip_p_count <- count(customer.sk ? customer.preferred_cust_flag = 'Y') by customer.address.zip;
 auto zips <- substring(zips_pre::string, 1, 5);
 auto p_cust_zip <- customer.address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);

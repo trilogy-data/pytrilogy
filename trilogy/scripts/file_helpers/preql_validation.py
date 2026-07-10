@@ -7,7 +7,7 @@ operators) before it lands on disk.
 
 from __future__ import annotations
 
-from trilogy.parsing.v2.errors import detect_having_after_grouping
+from trilogy.parsing.v2.errors import detect_grouping_after_having
 
 # HTML entities seen written into .preql files by some models that escape their
 # own tool output. We catch the comparison-operator ones explicitly because
@@ -87,12 +87,12 @@ def validate_preql_content(path: str, content: str) -> str | None:
     syntax_error = validate_preql_syntax(content)
     if syntax_error:
         hint = ""
-        if detect_having_after_grouping(content):
+        if detect_grouping_after_having(content):
             hint = (
-                "\nHint: HAVING must come *before* the `by rollup/cube/grouping "
-                "sets` clause in Trilogy (the reverse of SQL's `GROUP BY ... "
-                "HAVING`). Reorder to:\n"
-                "    select <cols> having <cond> by rollup (<keys>) "
+                "\nHint: the `by rollup/cube/grouping sets` clause must come "
+                "*before* HAVING in Trilogy (same order as SQL's "
+                "`GROUP BY ... HAVING`). Reorder to:\n"
+                "    select <cols> by rollup (<keys>) having <cond> "
                 "order by <cols> limit <n>;\n"
             )
         return (

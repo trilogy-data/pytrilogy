@@ -44,9 +44,13 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
+    SetOperator,
     WindowType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import (
+    InvalidSyntaxException,
+    UnionOutputResolutionError,
+)
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
@@ -199,6 +203,26 @@ class BuildConceptArgs:
     @property
     def row_arguments(self) -> Sequence["BuildConcept"]:
         return self.concept_arguments
+
+
+GROUPING_IDENTITY_FUNCTIONS = frozenset(
+    {FunctionType.GROUPING, FunctionType.GROUPING_ID}
+)
+
+
+def is_grouping_identity(concept: BuildConcept) -> bool:
+    """A ``grouping()``/``grouping_id()`` indicator under a ROLLUP/CUBE/GROUPING
+    SETS. It renders as an aggregate (computed inside the grouped CTE) but is
+    semantically a *key*: the grouping-set bitmask is part of a rollup row's
+    identity, distinguishing a subtotal/grand-total (rolled-up dim -> NULL) from a
+    leaf carrying a data NULL. It can only be produced inside the grouped CTE, so
+    it must be threaded through as a pass-through rather than recovered by a
+    join-back on the (nullable) dims — which would collide those rows."""
+    lineage = concept.lineage
+    return (
+        isinstance(lineage, BuildAggregateWrapper)
+        and lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
+    )
 
 
 def concept_is_relevant(
@@ -1921,12 +1945,13 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                     if c.address in cte.output_lcl:
                         return c
 
-        # Reaching here is an internal planner error, not user syntax: the
-        # renderer asked to map a union/multiselect output column against a CTE
-        # that doesn't expose it (typically an outer aggregate grouped the column
-        # away before an ORDER BY / projection re-referenced it). Raise a plain
-        # RuntimeError — surfacing it as a "Syntax error" wrongly blames the query.
-        raise RuntimeError(
+        # Reaching here means this CTE can't source the column directly
+        # (typically an outer aggregate grouped it away before a projection
+        # re-referenced it, or a collapsed join kept it only as a pseudonym).
+        # The dedicated ValueError subclass lets the renderer's candidate
+        # probing recover via a pseudonym twin; unrecovered, it surfaces as an
+        # internal planner error, not a "Syntax error" blaming the query.
+        raise UnionOutputResolutionError(
             f"Internal planner error: could not resolve union/multiselect output "
             f"'{concept.address}' against CTE '{cte.name}' (it is not in that CTE's "
             f"outputs {sorted(cte.output_lcl.addresses)}). If this came from an "
@@ -1935,12 +1960,16 @@ class BuildMultiSelectLineage(BuildConceptArgs):
         )
 
 
+@dataclass(slots=True)
 class BuildUnionSelectLineage(BuildMultiSelectLineage):
-    """Build form of a relational `union(...)` TVF: a positional column-stack
-    (SQL UNION) of arm selects. Same arm/align machinery as the multiselect
-    build lineage; the distinct type routes the planner to the union combiner
-    (`UnionNode`) instead of the FULL-JOIN merge. `build_output_components` holds
-    only the bound union columns."""
+    """Build form of a relational `union(...)`/`except(...)`/`intersect(...)`
+    TVF: a positional column-stack (SQL set operation) of arm selects. Same
+    arm/align machinery as the multiselect build lineage; the distinct type
+    routes the planner to the union combiner (`UnionNode`) instead of the
+    FULL-JOIN merge. `build_output_components` holds only the bound columns.
+    For EXCEPT the arm order is semantic (left-fold)."""
+
+    operator: SetOperator = SetOperator.UNION_ALL
 
 
 @dataclass(slots=True)
@@ -3333,20 +3362,29 @@ class Factory:
         return self._build_comparison(base)
 
     def _coalescing_presence_probe(self, ref: ConceptRef) -> Concept | None:
-        """Per-side probe for a null test on a coalescing join key-group member.
+        """Per-side probe for a null test on a coalescing join key member.
 
-        A `full`/`union` join key group renders as the mandatory coalesce of
-        every member, so `member is [not] null` would read the fused column and
-        never observe the member's own side being absent — presence counts over
-        the join silently collapse to (0, 0, N) (TPC-DS q97). The null test asks
-        a per-ROW question ("did this side match?"), not a domain question, so
-        rewrite its operand to a virt passthrough of the member. The probe is
-        materialized on the member's own rowset BEFORE the coalescing merge
-        (gen_rowset_node), rides through the FULL join un-fused, and is NULL
+        A `full`/`union` key group renders as the mandatory coalesce of every
+        member; a `subset` join renders row-preserving with its subset SOURCE
+        NULL-padded on anchor-only rows but the projected key coalesced. Either
+        way `member is [not] null` would read the fused/coalesced column and
+        never observe the member's own side being absent — full/union presence
+        counts collapse to (0, 0, N) (TPC-DS q97), and a subset-side null test
+        silently no-ops instead of expressing intersection (TPC-DS q59). The
+        null test asks a per-ROW question ("did this side match?"), not a
+        domain question, so rewrite its operand to a virt passthrough of the
+        member, materialized on the member's own rowset BEFORE the merge
+        (gen_rowset_node); it rides through the join un-fused and is NULL
         exactly where the member's side is absent. Projecting the member is
-        untouched: that remains the coalesced group axis."""
+        untouched: that remains the coalesced group axis. The superset/anchor
+        side of a subset join is preserved (never null), so it is not eligible
+        — a null test on it is a genuine no-op."""
         address = ref.address
-        if address not in self.domain_graph.coalescing_relation_members():
+        eligible = (
+            self.domain_graph.coalescing_relation_members()
+            | self.domain_graph.subset_sources()
+        )
+        if address not in eligible:
             return None
         member = self.environment.concepts.get(address)
         if member is None or member.derivation != Derivation.ROWSET:
@@ -3714,6 +3752,7 @@ class Factory:
             build_cls=BuildUnionSelectLineage,
             derivation=Derivation.TVF_UNION,
             outputs_only=True,
+            extra_lineage_kwargs={"operator": base.operator},
         )
 
     def _build_multi_select_lineage(
@@ -3722,6 +3761,7 @@ class Factory:
         build_cls: type[BuildMultiSelectLineage] = BuildMultiSelectLineage,
         derivation: Derivation = Derivation.MULTISELECT,
         outputs_only: bool = False,
+        extra_lineage_kwargs: dict[str, Any] | None = None,
     ) -> BuildMultiSelectLineage:
         local_build_cache: dict[str, BuildConcept] = {}
 
@@ -3819,6 +3859,7 @@ class Factory:
             local_concepts=base_local,
             build_output_components=final,
             build_concept_arguments=all_input,
+            **(extra_lineage_kwargs or {}),
         )
         for k in base.derived_concepts:
             local_build_cache[k].lineage = lineage

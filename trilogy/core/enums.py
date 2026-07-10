@@ -86,6 +86,18 @@ class Derivation(Enum):
     SUBSELECT = "subselect"
 
 
+class SetOperator(Enum):
+    """Row combinator of a relational TVF (`union(...)`/`except(...)`/
+    `intersect(...)`). Values are the SQL keywords (dialects may respell via
+    SET_OPERATOR_MAP). UNION_ALL is a bag stack; EXCEPT/INTERSECT are set
+    operators — output rows are deduplicated and NULLs compare equal, and for
+    EXCEPT the arm order is semantic (left-fold: a except b except c)."""
+
+    UNION_ALL = "UNION ALL"
+    EXCEPT = "EXCEPT"
+    INTERSECT = "INTERSECT"
+
+
 class Granularity(Enum):
     SINGLE_ROW = "single_row"
     MULTI_ROW = "multi_row"
@@ -233,7 +245,11 @@ class FunctionType(Enum):
     CASE = "case"
     SIMPLE_CASE = "simple_case"
     CAST = "cast"
+    # concat() skips NULL arguments (DuckDB CONCAT); CONCAT_STRICT is the `||`
+    # operator, which propagates NULL (SQL-strict)
     CONCAT = "concat"
+    CONCAT_STRICT = "concat_strict"
+    CONCAT_WS = "concat_ws"
     CONSTANT = "constant"
     TYPED_CONSTANT = "typed_constant"
     COALESCE = "coalesce"

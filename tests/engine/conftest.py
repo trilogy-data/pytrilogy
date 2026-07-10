@@ -243,7 +243,10 @@ def snowflake_engine(
         ),
         rendering=Rendering(parameters=False),
     )
-    yield executor
+    try:
+        yield executor
+    finally:
+        executor.close()
 
 
 @fixture(scope="session")
@@ -255,7 +258,10 @@ def snowflake_engine_parameterized(
         environment=presto_model,
         conf=SnowflakeConfig(account="account", username="user", password="password"),
     )
-    yield executor
+    try:
+        yield executor
+    finally:
+        executor.close()
 
 
 @fixture(scope="session")

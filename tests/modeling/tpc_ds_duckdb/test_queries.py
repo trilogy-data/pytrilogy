@@ -348,8 +348,11 @@ def test_twenty_two(engine):
     _ = run_query(engine, 22)
 
 
-def test_twenty_three(engine_sf001):
-    query = run_query(engine_sf001, 23)
+# sf=1 (not sf=0.01): q23 returns 0 rows at sf=0.01, so the smaller dataset makes
+# this a degenerate empty-vs-empty comparison that validates nothing. At sf=1 it
+# returns 4 real rows, and run_query asserts them against the reference exactly.
+def test_twenty_three(engine):
+    query = run_query(engine, 23)
     assert len(query) < 8500, query
 
 
@@ -659,11 +662,12 @@ def test_seventy_four(engine):
 
 
 def test_seventy_five(engine):
-    # query75.preql is the query-scoped `join` form (two per-year rowsets each
-    # summing the shared `deduped` rowset, inner-joined on the 4 item-attribute
-    # keys). Exercises the shared-parent DISTINCT dedup that must NOT fuse into
-    # the child aggregate (see handoff_q75_join_dedup_fusion.md).
-    _ = run_query(engine, 75)
+    # query75.preql is the query-scoped `join` form: two per-year rowsets each
+    # summing per-line net (sale - matched return) directly, joined on the 4
+    # item-attribute keys. Scored against query75.sql (sql_override), which uses
+    # UNION ALL - we deliberately drop the official q75's artificial
+    # UNION-DISTINCT dedup, so PRAGMA tpcds(75) is NOT the reference here.
+    _ = run_query(engine, 75, sql_override=True)
 
 
 def test_seventy_six(engine):

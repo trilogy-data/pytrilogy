@@ -467,6 +467,137 @@ def test_write_non_preql_skips_validation(runner, tmp_path: Path):
     assert target.read_text() == "auto x not closed"
 
 
+def _duckdb_dir(tmp_path: Path) -> Path:
+    """A directory with a minimal duckdb ``trilogy.toml`` so ``--show-sql``
+    (and ``_last_statement_sql``) have an engine to compile against."""
+    (tmp_path / "trilogy.toml").write_text('[engine]\ndialect = "duckdb"\n')
+    return tmp_path
+
+
+def test_write_show_sql_emits_generated_sql(runner, tmp_path: Path):
+    """``--show-sql`` compiles the last statement and prints its SQL alongside
+    the write confirmation so an agent can inspect the codegen before running."""
+    target = _duckdb_dir(tmp_path) / "q.preql"
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--content", "select 1 -> x;", "--show-sql"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Wrote" in result.output
+    assert "Generated SQL" in result.output
+    assert 'as "x"' in result.output
+
+
+def test_write_show_sql_json_carries_last_statement_sql(runner, tmp_path: Path):
+    import json
+
+    target = _duckdb_dir(tmp_path) / "q.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "--format",
+            "json",
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--show-sql",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    event = json.loads(result.output)
+    assert event["event"] == "write"
+    assert 'as "x"' in event["last_statement_sql"]
+
+
+def test_write_without_show_sql_skips_compile(runner, tmp_path: Path):
+    """No ``--show-sql`` means no compile step, so no generated SQL surfaces."""
+    target = _duckdb_dir(tmp_path) / "q.preql"
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--content", "select 1 -> x;"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Generated SQL" not in result.output
+
+
+def test_last_statement_sql_none_without_engine(tmp_path: Path):
+    from trilogy.scripts.file import _last_statement_sql
+
+    target = tmp_path / "q.preql"
+    target.write_text("select 1 -> x;\n")
+    assert _last_statement_sql(str(target)) is None
+
+
+def test_last_statement_sql_none_for_definitions_only(tmp_path: Path):
+    from trilogy.scripts.file import _last_statement_sql
+
+    target = _duckdb_dir(tmp_path) / "defs.preql"
+    target.write_text("key id int;\n")
+    assert _last_statement_sql(str(target)) is None
+
+
+def test_last_statement_sql_none_when_unresolvable(runner, tmp_path: Path):
+    """A query that can't resolve (undefined concept) is an authoring mistake,
+    not a codegen fault: the write still succeeds and no SQL is emitted."""
+    from trilogy.scripts.file import _last_statement_sql
+
+    target = _duckdb_dir(tmp_path) / "q.preql"
+    target.write_text("select undefined_thing -> x;\n")
+    assert _last_statement_sql(str(target)) is None
+
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select undefined_thing -> x;",
+            "--show-sql",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Wrote" in result.output
+    assert "Generated SQL" not in result.output
+
+
+def test_last_statement_sql_raises_on_render_error(tmp_path: Path, monkeypatch):
+    """A statement that resolves but fails to *render* is a codegen bug — the
+    error propagates instead of being swallowed into a silent None."""
+    import trilogy.executor as executor_module
+    from trilogy.scripts.file import _last_statement_sql
+
+    def boom(self, command):
+        raise RuntimeError("codegen exploded")
+
+    monkeypatch.setattr(executor_module.Executor, "generate_sql", boom)
+    target = _duckdb_dir(tmp_path) / "q.preql"
+    target.write_text("select 1 -> x;\n")
+    with pytest.raises(RuntimeError, match="codegen exploded"):
+        _last_statement_sql(str(target))
+
+
+def test_write_show_sql_render_error_confirms_write_then_surfaces(
+    runner, tmp_path: Path, monkeypatch
+):
+    """When ``--show-sql`` compilation raises, the bytes still landed: confirm
+    the write, then surface the codegen error with a non-zero exit."""
+    from trilogy.scripts import file as file_module
+
+    def boom(_path):
+        raise RuntimeError("codegen exploded")
+
+    monkeypatch.setattr(file_module, "_last_statement_sql", boom)
+    target = tmp_path / "q.preql"
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--content", "select 1 -> x;", "--show-sql"]
+    )
+    assert result.exit_code == 1, result.output
+    assert "Wrote" in result.output
+    assert "codegen exploded" in result.output
+    assert target.read_text() == "select 1 -> x;"
+
+
 def test_get_backend_rejects_unknown_scheme():
     with pytest.raises(FileOperationError):
         get_backend("s3://bucket/key")

@@ -67,8 +67,8 @@ subset join per_ch.b = all_ch.b
     and per_ch.c = all_ch.c
     and per_ch.g = all_ch.g
 where all_ch.b is not null and all_ch.c is not null and all_ch.g is not null
-having sum(per_ch.ts) > stats.overall_avg
-by rollup (per_ch.ch, per_ch.b, per_ch.c, per_ch.g);
+by rollup (per_ch.ch, per_ch.b, per_ch.c, per_ch.g)
+having sum(per_ch.ts) > stats.overall_avg;
 """
 
 # same semantics via the canonical concat-tuple-key membership idiom
@@ -87,8 +87,8 @@ select per_ch2.ch,
     case when grouping(per_ch2.g) = 1 then null else per_ch2.g end as out_g,
     sum(per_ch2.ts) as total_sales,
     sum(per_ch2.cnt) as total_count
-having sum(per_ch2.ts) > stats.overall_avg
-by rollup (per_ch2.ch, per_ch2.b, per_ch2.c, per_ch2.g);
+by rollup (per_ch2.ch, per_ch2.b, per_ch2.c, per_ch2.g)
+having sum(per_ch2.ts) > stats.overall_avg;
 """
 
 

@@ -187,6 +187,28 @@ def _producible_derived_join_keys(
     return result
 
 
+def _rowset_scope_routed(concept: BuildConcept) -> bool:
+    """Whether `concept`'s value derives (transitively) from some rowset's
+    outputs, i.e. whether a cross-rowset relation can resolve it. A base-model
+    concept (e.g. an outer WHERE arg like `s.date.year`) is NOT routed: no
+    rowset scope resolves it, so it must never be bundled into a request aimed
+    at another rowset — that side would delegate it right back through this
+    one. Base residue belongs to the outer loop / the standard bridge path."""
+    if concept.derivation == Derivation.ROWSET:
+        return True
+    stack = list(concept.concept_arguments)
+    seen: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        if current.derivation == Derivation.ROWSET:
+            return True
+        stack.extend(current.concept_arguments)
+    return False
+
+
 def _is_presence_probe(address: str) -> bool:
     """Per-side presence probe minted by `Factory._coalescing_presence_probe`
     (the null-test rewrite for coalescing join key-group members). The single
@@ -526,6 +548,12 @@ def _build_translation_node(
         partial_concepts=list(base_node.partial_concepts),
         nullable_concepts=nullable,
     )
+    # The body WHERE already constrains this scope's rows; advertise it so an
+    # outer condition the body implies (q44's redundant `where store.id = 1`
+    # over rowsets filtered to store 1) counts as applied instead of demanding
+    # an impossible re-application. The independent-scope exemption for
+    # UNRELATED outer conditions is untouched.
+    node.preexisting_conditions = base_node.preexisting_conditions
     if select.where_clause:
         for item in additional_relevant:
             logger.info(
@@ -801,18 +829,30 @@ def _enrich_rowset_node(
     # discovery would re-enter this rowset and recurse. Materialize it locally and
     # merge with the other side over its pseudonym. Gated on the shape so the
     # cheaper standard enrichment below is unperturbed for every other rowset.
+    #
+    # The enrichment relates this scope to the OTHER side of the declared
+    # relation, so its request may only carry concepts that relation can resolve
+    # (rowset-derived values and computations over them). A base-model concept —
+    # typically an outer WHERE arg like `s.date.year` — has no source on the
+    # other side; bundling it asks the other rowset to resolve it, whose own
+    # enrichment symmetrically delegates it back through this one, unbounded
+    # (q02). Base residue is left to the outer loop, and when any condition arg
+    # is base-model the conditions can't be discharged here either, so they are
+    # withheld from the request and the merge makes no preexisting claim.
     derived_keys = _producible_derived_join_keys(node, environment)
-    if derived_keys and remaining:
+    relation_remaining = [x for x in remaining if _rowset_scope_routed(x)]
+    routed_cond = [x for x in cond_remaining if _rowset_scope_routed(x)]
+    if derived_keys and relation_remaining:
         merged = _enrich_via_derived_join_key(
             derived_keys,
-            unique(remaining + cond_remaining, "address"),
+            unique(relation_remaining + routed_cond, "address"),
             local_optional,
             environment,
             g,
             depth,
             source_concepts,
             history,
-            conditions,
+            conditions if len(routed_cond) == len(cond_remaining) else None,
             node,
         )
         if merged is not None:

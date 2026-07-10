@@ -1003,6 +1003,25 @@ def get_inputs_that_require_pushdown(
     ]
 
 
+def _rowset_sourced(concept: BuildConcept, seen: set[str] | None = None) -> bool:
+    """The concept is a rowset output or derives (through any lineage chain —
+    aggregate, BASIC wrap, filter) from one, so it can only be computed at or
+    above the rowset scope, never inside it."""
+    seen = seen if seen is not None else set()
+    if concept.address in seen:
+        return False
+    seen.add(concept.address)
+    if concept.derivation == Derivation.ROWSET:
+        return True
+    if concept.lineage is None:
+        return False
+    return any(
+        _rowset_sourced(arg, seen)
+        for arg in concept.lineage.concept_arguments
+        if isinstance(arg, BuildConcept)
+    )
+
+
 def _resolve_condition_disposition(
     conditions: BuildWhereClause | None,
     original_conditions: BuildWhereClause | None,
@@ -1017,14 +1036,37 @@ def _resolve_condition_disposition(
 
     Returns (inject_row_args, routing_conditions).
     """
+    # Condition inputs must be sourced at this level when every remaining
+    # concept is condition-terminal: a materialized root (nothing further up
+    # to push into) or a rowset output (an opaque scope conditions may never
+    # be pushed inside — see NO_PUSHDOWN_DERIVATIONS). Without injection a
+    # WHERE aggregate over a rowset column has no sourcing path at all and
+    # the query fails as INCOMPLETE_CONDITION. With ROWSET remainders inject
+    # only when every condition row-arg itself computes at/above the rowset
+    # scope: a base-model row-arg (e.g. `where year = 2001` beside a rowset
+    # join) already resolves through rowset sourcing, and injecting it here
+    # strands it with no join path to the rowset outputs.
+    remaining_addresses = {x.address for x in remaining}
     all_materialized_roots = (
         bool(remaining)
         and conditions is not None
         and all(
-            x.derivation == Derivation.ROOT
-            and x.granularity != Granularity.SINGLE_ROW
-            and x.canonical_address in materialized_canonical
+            x.granularity != Granularity.SINGLE_ROW
+            and (
+                (
+                    x.derivation == Derivation.ROOT
+                    and x.canonical_address in materialized_canonical
+                )
+                or x.derivation == Derivation.ROWSET
+            )
             for x in remaining
+        )
+        and (
+            all(x.derivation != Derivation.ROWSET for x in remaining)
+            or all(
+                x.address in remaining_addresses or _rowset_sourced(x)
+                for x in conditions.row_arguments
+            )
         )
     )
 

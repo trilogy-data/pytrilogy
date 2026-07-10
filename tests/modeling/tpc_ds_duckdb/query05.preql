@@ -12,9 +12,9 @@ end;
 # returns to the return entity (matching the reference's UNION-then-rollup).
 auto entity_text <- coalesce(s.channel_dim_text_id, s.return_channel_dim_text_id);
 auto entity_id <- case
-    when s.channel = 'STORE' then concat('store', entity_text)
-    when s.channel = 'CATALOG' then concat('catalog_page', entity_text)
-    when s.channel = 'WEB' then concat('web_site', entity_text)
+    when s.channel = 'STORE' then 'store' || entity_text
+    when s.channel = 'CATALOG' then 'catalog_page' || entity_text
+    when s.channel = 'WEB' then 'web_site' || entity_text
     else null
 end;
 

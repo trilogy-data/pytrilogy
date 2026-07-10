@@ -57,7 +57,7 @@ FROM
 macho as (
 SELECT
     \"customer_address_customer_address\".\"CA_STATE\" as \"customer_address_state\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
     \"customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
     \"customer_demographics_customer_demographics\".\"CD_DEP_COUNT\" as \"customer_demographics_dependent_count\",
     \"customer_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" as \"customer_demographics_employed_dependent_count\",
@@ -109,9 +109,9 @@ SELECT
     \"macho\".\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
     \"macho\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
     \"macho\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    count(\"macho\".\"customer_id\") as \"cnt1\",
-    count(\"macho\".\"customer_id\") as \"cnt2\",
-    count(\"macho\".\"customer_id\") as \"cnt3\"
+    count(\"macho\".\"customer_sk\") as \"cnt1\",
+    count(\"macho\".\"customer_sk\") as \"cnt2\",
+    count(\"macho\".\"customer_sk\") as \"cnt3\"
 FROM
     \"macho\"
 GROUP BY

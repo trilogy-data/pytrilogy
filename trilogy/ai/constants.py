@@ -10,7 +10,7 @@ Typical usage only imports facts; dimensions will then be accessed through the n
 
 key | property | auto | metric — define new concepts in your script. These concepts (auto x <- ...) are definitions, NOT precomputed values: each reference expands in a query and re-evaluates in the referencing query's scope. 
 
-parameter NAME TYPE [default <literal>]; — declares a runtime value supplied via trilogy run <file>.preql --param NAME=VALUE (repeat --param for several). Reference it like any field. Without default, required at run time.
+parameter NAME TYPE [default <literal>]; — declares a runtime value supplied via trilogy run <file>.preql --param NAME=VALUE (repeat --param for several). Reference it like any field. Without default, required at run time. TYPE is any data type (see Data types); append `?` to allow null (`parameter cutoff date?;`).
 
 ## Combining models
 
@@ -20,6 +20,8 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 | Blend two models on shared keys inside one query | scoped `subset\|union join` (the default) |
 | Make a connection universal to all queries in a file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
+| Rows in A but never in B (set difference) | `except(...)` |
+| Rows present in every source (set intersection) | `intersect(...)` |
 
 ### Query-scoped join (the default)
 
@@ -44,6 +46,8 @@ Join on the full grain. When blending two FACT models, write one join clause per
 trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH union join a.order_number = b.order_number AND union join a.item.id = b.item.id.
 Matching only one key of a multi-key grain may cause duplication.
 
+Joins do NOT ever drop results; they only merge models. To filter, explicit add a condition on the element to restrict to. 
+
 Full example: trilogy agent-info syntax example scoped-join.
 
 merge (model-level)
@@ -56,6 +60,12 @@ union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select
 
 Full example: trilogy agent-info syntax example union-stack-channels.
 
+except / intersect (set operations)
+
+except((armA), (armB), ...) -> (...) and intersect(...) share union's arm shape but are SQL SET operators: output rows are DISTINCT, whole rows compare null-safely (NULL matches NULL — rows with missing values match instead of vanishing, unlike `not in`), and except subtracts later arms from the FIRST, left to right (arm order matters). Prefer except over multi-column `not in` for "combinations in A that never appear in B"; aggregate the outputs directly for a distinct-combination count.
+
+Full example: trilogy agent-info syntax example except-intersect-setops.
+
 ## SELECT statements
 
 ```
@@ -64,7 +74,8 @@ WHERE?            # filters data BEFORE it reaches aggregates or windows
 SELECT            # Defines the output grain for aggregates
   <EXPR> [AS <ALIAS>], ...
   SUBSET|UNION JOIN <a> = <b> [= <c>] ...   # one or more join concepts beyond model defaults (LEFT/FULL legacy aliases)
-HAVING?           # filters final projection
+BY ROLLUP|CUBE|GROUPING SETS?  # multi-level grouping for all aggregates in the select
+HAVING?           # filters final projection (after any grouping clause, as in SQL)
 ORDER BY?
 LIMIT?
 ```
@@ -89,8 +100,13 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 
 ### Not SQL — what to never write
 
-- **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators.** To stack rows use `union(...)`; to blend fact models use a scoped join.
-- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. Use explicit grain agg(x) by <dims> as needed to override the default. Use `by *` to aggregate across all data (a single row output).
+- **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators between selects.** To stack rows use `union(...)`; for set difference/intersection use `except(...)`/`intersect(...)`; to blend fact models use a scoped join.
+- **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. 
+   Use explicit grain agg(x) by <dims> as needed to override the default. 
+   Use `by *` to aggregate across all data (a single row output).
+   auto x_resp <- sum(y); # responsive to query grain if you select x_resp
+   auto x_fixed <- sum(y) by *; # always a single row output, regardless of query grain
+- **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows — e.g. one output row per matching fact when the projected columns repeat — include the fact's grain keys in the select, hidden with `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
@@ -111,7 +127,7 @@ SELECT
 ...
 HAVING # filters data AFTER it has been aggregated or windowed
 ```
-INLINE filter x ? cond <- filters one expression's input (e.g. sum(x ? x > 0)).
+INLINE filter x ? cond <- filters the immediate prior expression (e.g. sum(x ? x > 0) is sum (x where x is more than 0)).
 
 Note that aggregates/windows in WHERE do not filter the inputs to each other. You must use inline filters if you want a where clause aggregate/window to be filtered.
 
@@ -144,13 +160,15 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 
 ## Aggregation and grouping
 
-- Aggregates group at the query's automatic grain by default; override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
+- Aggregates group at the query's automatic grain by default; 
+- override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens — function calls, casts, arithmetic: `avg(price) by (substring(phone, 1, 2))`.
-- **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) is a property of the WHOLE select — a clause after the select list (before `order by`/`limit`) that computes the query at multiple grain levels in one pass. It applies to EVERY aggregate in the select that has no explicit `by` grain, so there is exactly one consistent grouping:
+- **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) is a property of the WHOLE select — a clause after the select list (before `having`/`order by`/`limit`) that computes the query at multiple grain levels in one pass. It applies to EVERY aggregate in the select that has no explicit `by` grain, so there is exactly one consistent grouping:
   - `select d1, d2, agg(<expr>) as a by rollup (d1, d2)` → grouping sets `(d1, d2)`, `(d1)`, `()` — standard SQL ROLLUP, useful for subtotals + grand total.
   - `select d1, d2, agg(<expr>) as a by cube (d1, d2)` → every subset of the grouping keys.
   - `select d1, d2, agg(<expr>) as a by grouping sets ((d1, d2), (d1), ())` → arbitrary explicit combinations; parens around each set; `()` is the grand total.
   - `by rollup ()` (empty) rolls up over the select's own automatic grain.
+  - A `having` clause comes AFTER the grouping clause — same relative order as SQL's `GROUP BY ... HAVING`, and it filters every grouping level (subtotals and grand total included): `select d1, sum(x) as t by rollup (d1) having t > 100 order by d1;`
   - Because it is select-level, multiple measures just share it — no per-aggregate repetition or macro needed:
 
     ```
@@ -172,6 +190,28 @@ Default to windows for **self-referential queries**; relating a row to other row
 - Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate; write `sum(x) by g` directly instead.
 - `lag(<field>, <offset>) over (partition by <g> order by <expr>)` fetches the value `<offset>` rows back; `lead(...)` fetches it ahead. Offset defaults to 1. Examples: `lag(amount, 2) over (order by date asc) as prev_amount`; next-year same week = `lead(weekly, 53) over (order by week_seq asc) as next_year`.
 
+## Data types
+
+Types appear in concept/property declarations, `parameter` declarations, `type` aliases, and casts. A concept's type is written right after its name: `property user.email string;`, `key order.id int;`.
+
+Scalar types: `string`, `bytes`, `bool`, `int`, `bigint`, `float`, `double`, `number`, `numeric(<precision>,<scale>)` (alias `decimal(p,s)`, e.g. `numeric(12,2)` for exact money), `date`, `datetime`, `timestamp`, `geography`, `any`.
+
+Composite types:
+- `array<T>` (alias `list<T>`) — an ordered list, e.g. `array<int>`.
+- `map<K, V>` — e.g. `map<string, int>`.
+- `struct<name1: T1, name2: T2, ...>` — a named record; access fields with `.`.
+- `enum<T>[v1, v2, ...]` — a T constrained to the listed literals, e.g. `enum<string>['open', 'closed']`.
+
+Cast a value with `::type` or `cast(<expr> as <type>)`, e.g. `"2020-01-01"::date`, `cast(credits as numeric(12,2))`.
+
+### `?` — nullable, `~` — subset binding
+
+Two type/concept modifiers use punctuation:
+
+- **`?` after a type marks the concept (or parameter) as nullable** — its values may be NULL: `property user.middle_name string?;`, `parameter as_of date?;`. Without `?` a concept is non-nullable. 
+- **`~` prefixing a concept marks it as a binding of a SUBSET of that concept's values** — i.e. this reference does not carry the full domain, only a partial set. 
+It appears as a prefix on a select item (`~customer.id`) to flag the value as partial, and as `merge a into ~b` to declare a ⊆ b (the subset form of `merge`, equivalent to `subset join a = b`). A `~`-stamped value tells the planner not to treat this side as authoritative/complete for its concept.
+
 ## Expressions and miscellany
 
 - **Operator precedence** (highest binds first; use `(...)` to override):
@@ -180,6 +220,7 @@ Default to windows for **self-referential queries**; relating a row to other row
   3. Multiplicative: `*`, `/`, `%`.
   4. Additive / string concat: `+`, `-`, `||`.
   5. Comparison: `=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `not like`, `not ilike`, `between ... and ...`, `in (...)`, `not in (...)`, `is null`.
+- String concatenation NULL semantics (all backends): `a || b` is NULL if either side is NULL; `concat(a, b, ...)` skips NULL arguments (all-NULL gives `''`); `concat_ws(sep, a, b, ...)` joins with `sep`, skipping NULL arguments and their separators (empty strings are kept).
   6. Logical `and`.
   7. Logical `or`.
 - Cast with `::type`, e.g. `"2020-01-01"::date`.

@@ -69,6 +69,7 @@ from trilogy.core.models.author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    ReferenceReplacements,
     RowsetItem,
     SubselectComparison,
     SubselectItem,
@@ -258,7 +259,18 @@ def _concept_address(c: Any, rename: Mapping[str, str] | None = None) -> str:
         nested = _render_aggregate(c)
         if nested:
             return nested
-    addr = c.address if hasattr(c, "address") else str(c)
+        # A composite (non-aggregate) argument like `a || b` embeds concept refs
+        # that `rename` must reach: after `_rewrite_aliased_source_refs` rewrites a
+        # HAVING copy's inner ref to the SELECT alias while the SELECT copy keeps the
+        # source name, the two aggregate signatures only compare equal once the
+        # rename is pushed through the whole expression. Both compared sides run
+        # this, so the rendered key need only be self-consistent.
+        if isinstance(c, Function) and rename:
+            replacements: ReferenceReplacements = [
+                (src, ConceptRef(address=tgt)) for src, tgt in rename.items()
+            ]
+            return str(c.with_reference_replacement(replacements))
+    addr = c.address if isinstance(c, (ConceptRef, Concept)) else str(c)
     return rename.get(addr, addr) if rename is not None else addr
 
 
@@ -1830,35 +1842,71 @@ def _order_match_signature(
     return (op, nargs, tuple(sorted(rename.get(b, b) for b in by)))
 
 
-def _select_order_match_outputs(
+def _order_expr_signature(
+    node: Any, rename: Mapping[str, str]
+) -> tuple[Any, ...] | None:
+    """Full structural signature of an ORDER BY expression, composing the
+    window/aggregate/scalar signatures so a compound of aggregates (e.g.
+    ``grouping(a) + grouping(b)``) can match a projected compound output."""
+    if isinstance(node, Parenthetical):
+        return _order_expr_signature(node.content, rename)
+    wsig = _window_signature(node, rename)
+    if wsig is not None:
+        return ("win", wsig)
+    asig = _order_match_signature(node, rename)
+    if asig is not None:
+        return ("agg", asig)
+    if isinstance(node, ConceptRef):
+        return ("ref", rename.get(node.address, node.address))
+    if isinstance(node, Function):
+        arg_sigs = []
+        for arg in node.arguments:
+            sig = _order_expr_signature(arg, rename)
+            if sig is None:
+                return None
+            arg_sigs.append(sig)
+        return ("fn", node.operator, tuple(arg_sigs))
+    if isinstance(node, (AggregateWrapper, NavigationWindowItem, NumberingWindowItem)):
+        return None
+    return ("lit", type(node).__name__, str(node))
+
+
+def _select_order_expr_outputs(
     select: SelectStatement, rename: Mapping[str, str]
 ) -> dict[tuple[Any, ...], ConceptRef]:
-    """Map each aggregate-producing select item's order-match signature to its
-    output ref (first wins)."""
+    """Map each expression-producing select item's full signature to its output
+    ref (first wins). Bare renames are handled by ``_alias_rename_map``; only
+    derived shapes (functions, aggregates, windows) register here."""
     results: dict[tuple[Any, ...], ConceptRef] = {}
     for item in select.selection:
-        if isinstance(item.content, ConceptTransform):
-            sig = _order_match_signature(item.content.function, rename)
-            if sig is not None:
-                results.setdefault(sig, item.content.output.reference)
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        sig = _order_expr_signature(item.content.function, rename)
+        if sig is not None and sig[0] in ("fn", "agg", "win"):
+            results.setdefault(sig, item.content.output.reference)
     return results
 
 
-def _substitute_order_by_aggregates(select: SelectStatement) -> None:
-    """Rewrite ORDER BY aggregates that match a projected SELECT output to
-    reference that output's alias. The ordering scope cannot recompute an
-    aggregate, but an inline aggregate identical to a projected (possibly hidden)
-    output is just sorting by that materialized column — resolve it instead of
-    forcing a manual alias rewrite. Mirrors ``_substitute_having_*``."""
+def _substitute_order_by_outputs(select: SelectStatement) -> None:
+    """Rewrite ORDER BY expressions that match a projected SELECT output —
+    windows, scalar-derived expressions, aggregates, and compounds thereof — to
+    reference that output's alias. The ordering scope operates over the
+    projected rows, so an inline expression identical to a (possibly hidden)
+    output is just sorting by that materialized column; re-deriving it instead
+    re-references source columns a grouped final node no longer exposes
+    (ungrouped-column binder errors). Mirrors the ``_substitute_having_*``
+    passes."""
     if not select.order_by:
         return
     rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
-    sig_to_ref = _select_order_match_outputs(select, rename)
+    sig_to_ref = _select_order_expr_outputs(select, rename)
     if not sig_to_ref:
         return
 
     def match(node: Any) -> ConceptRef | None:
-        sig = _order_match_signature(node, rename)
+        if isinstance(node, ConceptRef):
+            return None
+        sig = _order_expr_signature(node, rename)
         return sig_to_ref.get(sig) if sig is not None else None
 
     new_items: list[OrderItem] = []
@@ -2019,11 +2067,12 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             )
         _validate_having_aggregates_match_select(select, context, line_no)
     if select.order_by:
-        # Resolve inline ORDER BY aggregates that match a projected output to
-        # that output's alias before validating refs, so an aggregate identical
-        # to a (possibly hidden) projection sorts by the materialized column
-        # rather than tripping the "not a SELECT output" check.
-        _substitute_order_by_aggregates(select)
+        # Resolve inline ORDER BY expressions that match a projected output
+        # (windows, scalar derivations, aggregates) to that output's alias
+        # before validating refs, so an expression identical to a (possibly
+        # hidden) projection sorts by the materialized column rather than
+        # re-deriving source columns the final node no longer exposes.
+        _substitute_order_by_outputs(select)
         for cref in select.order_by.concept_arguments:
             if cref.address not in allowed_addresses:
                 raise SyntaxError(

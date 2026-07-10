@@ -29,7 +29,7 @@ import household_demographic as bill_household_demographic; # household demograp
 key order_number int; # Web order number identifying a single web sales transaction.
 --key return_order_number int; # Web order number on the returns side, for return-only queries.
 
-properties <order_number, item.id> (
+properties <order_number, item.sk> (
     quantity int, # Number of units of the item ordered on this line.
     sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit (USD). The whole-line total is ext_sales_price (the "total price").
     list_price numeric::usd, # Per-unit list price before discounts (USD).
@@ -45,10 +45,10 @@ properties <order_number, item.id> (
     return_net_loss numeric::usd?, # Net financial loss on the return for this line (joined from web_returns).
     --return_quantity int?, # Units returned for this line (joined from web_returns).
     _returned_order_number int?, # Internal: the web_returns order number matched to this line; NULL when not returned. Use is_returned instead.
-    row_counter int, # Constant 1, one per web line item (a unique order_number + item.id combination).
+    row_counter int, # Constant 1, one per web line item (a unique order_number + item.sk combination).
 );
 
-auto line_item <- concat(order_number::string, '-', item.id::string); # Unique line-item identifier (one web order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
+auto line_item <- concat(order_number::string, '-', item.sk::string); # Unique line-item identifier (one web order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
 auto line_item_count <- sum(row_counter); # Number of web-sale line items (= count(line_item)); kept for queries that reference it.
 auto days_to_ship <- date_diff(date.date, ship_date.date, day); # Shipping lag in days (ship date minus sold date); positive when shipped after sold.
 
@@ -57,13 +57,13 @@ auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_s
 
 datasource web_sales (
     raw('''1'''): row_counter,
-    WS_SOLD_DATE_SK: ?date.id, # FK to the date the order was sold.
-    WS_SOLD_TIME_SK: ?time.id, # FK to the time-of-day the order was placed.
-    WS_SHIP_DATE_SK: ?ship_date.id, # FK to the date the order shipped.
-    WS_BILL_CUSTOMER_SK: ?billing_customer.id, # FK to the customer billed for the order.
-    WS_SHIP_CUSTOMER_SK: ?ship_customer.id, # FK to the customer the order was shipped to.
+    WS_SOLD_DATE_SK: ?date.sk, # FK to the date the order was sold.
+    WS_SOLD_TIME_SK: ?time.sk, # FK to the time-of-day the order was placed.
+    WS_SHIP_DATE_SK: ?ship_date.sk, # FK to the date the order shipped.
+    WS_BILL_CUSTOMER_SK: ?billing_customer.sk, # FK to the customer billed for the order.
+    WS_SHIP_CUSTOMER_SK: ?ship_customer.sk, # FK to the customer the order was shipped to.
     WS_ORDER_NUMBER: order_number,
-    WS_ITEM_SK: item.id, # FK to the item ordered.
+    WS_ITEM_SK: item.sk, # FK to the item ordered.
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_WHOLESALE_COST: wholesale_cost,
@@ -72,33 +72,33 @@ datasource web_sales (
     WS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     WS_EXT_SHIP_COST: ext_ship_cost,
     WS_NET_PROFIT: net_profit,
-    WS_WEB_SITE_SK: ?web_site.id, # FK to the web site the order was placed through.
-    WS_WEB_PAGE_SK: ?web_page.id, # FK to the web page the order was placed on.
-    WS_PROMO_SK: ?promotion.id, # FK to the promotion applied to the line, if any.
-    WS_WAREHOUSE_SK: ?warehouse.id, # FK to the warehouse fulfilling the order.
-    WS_SHIP_ADDR_SK: ?ship_address.id, # FK to the shipping address.
-    WS_BILL_ADDR_SK: ?bill_address.id, # FK to the billing address.
-    WS_SHIP_MODE_SK: ?ship_mode.id, # FK to the ship-mode used for the order.
+    WS_WEB_SITE_SK: ?web_site.sk, # FK to the web site the order was placed through.
+    WS_WEB_PAGE_SK: ?web_page.sk, # FK to the web page the order was placed on.
+    WS_PROMO_SK: ?promotion.sk, # FK to the promotion applied to the line, if any.
+    WS_WAREHOUSE_SK: ?warehouse.sk, # FK to the warehouse fulfilling the order.
+    WS_SHIP_ADDR_SK: ?ship_address.sk, # FK to the shipping address.
+    WS_BILL_ADDR_SK: ?bill_address.sk, # FK to the billing address.
+    WS_SHIP_MODE_SK: ?ship_mode.sk, # FK to the ship-mode used for the order.
     WS_EXT_DISCOUNT_AMT: ext_discount_amount,
-    WS_SHIP_HDEMO_SK: ?ship_household_demographic.id, # FK to the ship-to customer's household profile.
-    WS_BILL_HDEMO_SK: ?bill_household_demographic.id, # FK to the bill-to customer's household profile.
+    WS_SHIP_HDEMO_SK: ?ship_household_demographic.sk, # FK to the ship-to customer's household profile.
+    WS_BILL_HDEMO_SK: ?bill_household_demographic.sk, # FK to the bill-to customer's household profile.
     WS_NET_PAID: net_paid,
     WS_LIST_PRICE: list_price,
 )
-grain (item.id, order_number)
+grain (item.sk, order_number)
 address memory.web_sales;
 
 datasource web_returns (
-    WR_RETURNED_DATE_SK: return_date.id, # FK to the date the return occurred.
-    WR_RETURNED_TIME_SK: return_time.id, # FK to the time-of-day the return was processed.
-    WR_ITEM_SK: ~item.id,
-    WR_RETURNING_CUSTOMER_SK: return_customer.id, # FK to the customer returning the item.
-    WR_REFUNDED_CUSTOMER_SK: return_refund_customer.id, # FK to the customer receiving the refund.
+    WR_RETURNED_DATE_SK: return_date.sk, # FK to the date the return occurred.
+    WR_RETURNED_TIME_SK: return_time.sk, # FK to the time-of-day the return was processed.
+    WR_ITEM_SK: ~item.sk,
+    WR_RETURNING_CUSTOMER_SK: return_customer.sk, # FK to the customer returning the item.
+    WR_REFUNDED_CUSTOMER_SK: return_refund_customer.sk, # FK to the customer receiving the refund.
     WR_ORDER_NUMBER: ~order_number,
     WR_RETURN_AMT: return_amount,
     WR_NET_LOSS: return_net_loss,
     WR_RETURN_QUANTITY: return_quantity,
     WR_ORDER_NUMBER: _returned_order_number, # Real column (NULL-padded by the LEFT join) backing is_returned.
 )
-grain (item.id, order_number)
+grain (item.sk, order_number)
 address memory.web_returns;

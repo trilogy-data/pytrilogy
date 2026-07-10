@@ -41,6 +41,7 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
+    SetOperator,
     WindowOrder,
     WindowType,
 )
@@ -695,6 +696,16 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                         raise SyntaxError(
                             f"Cannot compare composite-membership elements {le} ({lt}) "
                             f"and {re} ({rt}) of different types in {str(self)}"
+                        )
+            elif isinstance(self.right, TupleWrapper):
+                # value-list membership: each element must be comparable to the
+                # left scalar (elements need not be comparable to each other)
+                for elem in self.right.val:
+                    et = arg_to_datatype(elem)
+                    if not is_compatible_datatype(left_type, et):
+                        raise SyntaxError(
+                            f"Cannot compare {left_name} and value-list element "
+                            f"{elem} ({et}) with operator {self.operator} in {str(self)}"
                         )
             elif isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 left_type, right_type.value_data_type
@@ -1500,6 +1511,21 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         return Derivation.ROOT
 
     @classmethod
+    def _lineage_has_inline_aggregate(cls, node) -> bool:
+        # True if the lineage tree contains an aggregate anywhere (e.g. the inline
+        # sums in `sum(x)/greatest(sum(1),1)`). Named concepts are NOT recursed
+        # into — their granularity is already reflected via concept_arguments.
+        from trilogy.core.models.build import BuildAggregateWrapper, BuildFunction
+
+        if isinstance(node, (AggregateWrapper, BuildAggregateWrapper)):
+            return True
+        if isinstance(node, (Function, BuildFunction)):
+            if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                return True
+            return any(cls._lineage_has_inline_aggregate(a) for a in node.arguments)
+        return False
+
+    @classmethod
     def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):
         from trilogy.core.models.build import BuildFilterItem, BuildFunction
 
@@ -1527,7 +1553,12 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             [x.granularity == Granularity.SINGLE_ROW for x in lineage.concept_arguments]
         ):
             return Granularity.SINGLE_ROW
-        elif grain.components == {ALL_ROWS_CONCEPT}:
+        elif grain.abstract and cls._lineage_has_inline_aggregate(lineage):
+            # A grand-total grain reached BY AGGREGATION is single-row — covers
+            # BASIC-over-aggregate scalars (e.g. sum(x)/greatest(sum(1),1)) whose
+            # flattened concept_arguments look multi-row. Gate on an inline
+            # aggregate so an abstract grain produced by a multi-row UNION/bag
+            # passthrough (e.g. renaming a union output) stays multi-row.
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 
@@ -2842,14 +2873,24 @@ class MultiSelectLineage(ReferenceReplaceable, ConceptArgs, Namespaced):
 
 @dataclass
 class UnionSelectLineage(MultiSelectLineage):
-    """Positional column-stack (SQL UNION) of arm selects.
+    """Positional column-stack (SQL UNION ALL / EXCEPT / INTERSECT) of arm
+    selects.
 
     Shares the multiselect arm structure, but `align` items carry positional
     output bindings (output *i* <- each arm's *i*-th column) and the build
     combiner is a `UnionNode`, not the FULL-JOIN of a multiselect. The visible
     output is exactly the bound union columns — the arms' internal (per-arm
-    mangled) columns are never exposed.
+    mangled) columns are never exposed. For EXCEPT the arm order is semantic
+    (left-fold), so it must be preserved end-to-end.
     """
+
+    operator: SetOperator = SetOperator.UNION_ALL
+
+    def with_namespace(self, namespace: str) -> "UnionSelectLineage":
+        base = super().with_namespace(namespace)
+        assert isinstance(base, UnionSelectLineage)
+        base.operator = self.operator
+        return base
 
     @property
     def output_components(self) -> list[ConceptRef]:

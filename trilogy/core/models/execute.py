@@ -20,9 +20,13 @@ from trilogy.core.enums import (
     JoinType,
     Modifier,
     Purpose,
+    SetOperator,
     SourceType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import (
+    InvalidSyntaxException,
+    UnionOutputResolutionError,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
@@ -564,7 +568,7 @@ class CTE:
                     return True
                 try:
                     return check_is_not_in_group(c.lineage.find_source(c, self))
-                except SyntaxError:
+                except UnionOutputResolutionError:
                     return False
 
             if c.derivation == Derivation.CONSTANT:
@@ -984,6 +988,10 @@ class QueryDatasource:
     limit: Optional[int] = None
     condition: BoolExpr | None = None
     source_type: SourceType = field(default=SourceType.SELECT)
+    # Row combinator when source_type == UNION. EXCEPT/INTERSECT are
+    # non-commutative set operators: their arm order is semantic, so
+    # __post_init__ must not re-sort datasources for them.
+    set_operator: SetOperator = field(default=SetOperator.UNION_ALL)
     partial_concepts: List[BuildConcept] = field(default_factory=list)
     rollup_concepts: List[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
@@ -1001,7 +1009,8 @@ class QueryDatasource:
     base_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
 
     def __post_init__(self) -> None:
-        self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
+        if self.set_operator is SetOperator.UNION_ALL:
+            self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
         unique_pairs: set[str] = set()
         for join in self.joins:
             if not isinstance(join, BaseJoin):
@@ -1268,8 +1277,16 @@ class QueryDatasource:
             # outer grain (which reflects the projected column subset) into the
             # identifier. UnionCTE.condition is always None at render time
             # (consumers wrap row-level filters as CASE), so the QDS-level
-            # condition is also irrelevant to identity.
-            return "_union_".join([d.identifier for d in self.datasources]) + "_unioned"
+            # condition is also irrelevant to identity. The operator IS
+            # identity: an except() over the same arms must not merge with a
+            # union() (and for EXCEPT the preserved arm order distinguishes
+            # a-except-b from b-except-a).
+            suffix = (
+                "_unioned"
+                if self.set_operator is SetOperator.UNION_ALL
+                else f"_{self.set_operator.name.lower()}ed"
+            )
+            return "_union_".join([d.identifier for d in self.datasources]) + suffix
         filters = string_to_hash(str(self.condition)) if self.condition else ""
         grain = "_".join(
             [str(c).replace(".", "_") for c in sorted(self.grain.components)]
@@ -1280,8 +1297,15 @@ class QueryDatasource:
                 x.address for x in self.output_concepts if x.purpose != Purpose.METRIC
             )
             group = "_grouped_by_" + "_".join(keys)
+        # Sort member identifiers: a join is commutative for identity, but
+        # optimization passes reassign ``datasources`` post-construction (no
+        # __post_init__ re-sort), so the same logical join can present its
+        # members in two orders. Canonicalizing here — mirroring the sorted
+        # grain/filter suffixes — keeps A_join_B and B_join_A one identity so
+        # get_datasource_cte can find the built CTE. (UNION path above keeps
+        # list order on purpose for EXCEPT arm semantics.)
         return (
-            "_join_".join([d.identifier for d in self.datasources])
+            "_join_".join(sorted(d.identifier for d in self.datasources))
             + group
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")

@@ -20,7 +20,6 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
-    condition_implies,
     decompose_condition,
 )
 from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
@@ -37,9 +36,8 @@ from trilogy.core.processing.discovery_utility import (
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
-    _is_independent_scope,
-    _is_scalar_only,
-    _node_condition_implies,
+    _stack_applies_condition,
+    _stack_exempt_or_implies,
     validate_stack,
 )
 from trilogy.core.processing.nodes import (
@@ -56,6 +54,7 @@ def append_existence_check(
     graph: ReferenceGraph,
     where: BuildWhereClause,
     history: History,
+    conditions: BuildWhereClause | None = None,
 ):
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
@@ -74,11 +73,19 @@ def append_existence_check(
             logger.info(
                 f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
             )
+            # A HAVING-derived membership subselect (`conditions` set) is this
+            # query's own post-aggregation semijoin: the query WHERE must be
+            # pushed pre-aggregate into its aggregate inputs, exactly as it is on
+            # the output path — else the membership recomputes the aggregate over
+            # the unfiltered universe and its value never matches the filtered
+            # output (q44 silent-empty). A user `x in (select ...)` RHS is an
+            # independent set (no conditions) and stays unfiltered.
             parent = source_query_concepts(
                 [*subselect],
                 history=history,
                 environment=environment,
                 g=graph,
+                conditions=conditions,
             )
             assert parent, "Could not resolve existence clause"
             node.add_parents([parent])
@@ -185,13 +192,11 @@ def initialize_loop_context(
             )
             and x.address in conditions.row_arguments
         ]
-        # A filter-only rowset output (referenced in the WHERE but not selected, so
-        # absent from mandatory_list) materializes as its own subquery: its
-        # predicate can't be pushed below that materialization, and the comparison's
-        # other operand (a scalar/named concept) is never co-sourced unless we force
-        # every condition input into this level. Without this the planner sources
-        # the RowsetNode alone and the WHERE is structurally unsatisfiable, crashing
-        # INCOMPLETE_CONDITION (`Have {RowsetNode<...>} and need ... > threshold`).
+        # A filter-only rowset output (referenced in the WHERE but not selected)
+        # must eventually be injected because its opaque lineage cannot be rebuilt
+        # in the outer scope. Do that only after every non-terminal output has been
+        # sourced: promoting the WHERE while an aggregate is still pending lets
+        # the aggregate be built condition-free as an optional of the rowset.
         mandatory_addresses = {x.address for x in mandatory_list}
         # ...UNLESS the rowset input is UPSTREAM of a ROLLUP/CUBE/GROUPING SETS
         # aggregate at this level (`sum(ch.total_sales) by rollup (...)`): it feeds
@@ -215,17 +220,22 @@ def initialize_loop_context(
                 nonstandard_grouping_upstream |= get_upstream_concepts(m, nested=True)
         pushed_below_grouping: set[str] = set()
         candidate_filters = []
-        for x in conditions.row_arguments:
-            if (
-                x.address in mandatory_addresses
-                or x.derivation != Derivation.ROWSET
-                or x.granularity == Granularity.SINGLE_ROW
-            ):
-                continue
-            if {x.address, *x.pseudonyms} & nonstandard_grouping_upstream:
-                pushed_below_grouping.add(x.address)
-            else:
-                candidate_filters.append(x)
+        condition_terminal = all(
+            x.derivation in ROOT_DERIVATIONS or x.derivation == Derivation.ROWSET
+            for x in mandatory_list
+        )
+        if condition_terminal:
+            for x in conditions.row_arguments:
+                if (
+                    x.address in mandatory_addresses
+                    or x.derivation != Derivation.ROWSET
+                    or x.granularity == Granularity.SINGLE_ROW
+                ):
+                    continue
+                if {x.address, *x.pseudonyms} & nonstandard_grouping_upstream:
+                    pushed_below_grouping.add(x.address)
+                else:
+                    candidate_filters.append(x)
         required_filters += candidate_filters
         if pushed_below_grouping:
             # the filter on these inputs is enforced below the grouping, at the
@@ -394,16 +404,7 @@ def _restrict_completion_conditions(
     row args that belonged only to dropped (already-applied) atoms.
     """
     atoms = decompose_condition(conditions.conditional)
-    kept = [
-        a
-        for a in atoms
-        if not all(
-            _is_scalar_only(n, a)
-            or _is_independent_scope(n, a)
-            or _node_condition_implies(n, a)
-            for n in stack
-        )
-    ]
+    kept = [a for a in atoms if not _stack_applies_condition(stack, a)]
     if len(kept) == len(atoms):
         return conditions, non_virtual
     residual = combine_condition_atoms(kept)
@@ -432,20 +433,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 
-    elif all(
-        [
-            x.preexisting_conditions == context.conditions.conditional
-            or (
-                x.preexisting_conditions is not None
-                and condition_implies(
-                    x.preexisting_conditions, context.conditions.conditional
-                )
-            )
-            or _is_scalar_only(x, context.conditions.conditional)
-            or _is_independent_scope(x, context.conditions.conditional)
-            for x in context.stack
-        ]
-    ):
+    elif _stack_exempt_or_implies(context.stack, context.conditions.conditional):
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 
@@ -511,7 +499,14 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         # missing those atoms and re-filters or fails as incomplete.
         if reapply_conditions is not context.conditions and context.conditions:
             output.set_preexisting_conditions(context.conditions.conditional)
-    elif context.conditions:
+    elif context.conditions and _stack_applies_condition(
+        context.stack, context.conditions.conditional
+    ):
+        # Advertise the condition as pre-applied only when some parent actually
+        # applied it. An all-exempt stack (scalar / rowset scopes) may be
+        # returned unfiltered as a fragment, but claiming the condition here
+        # would make every consumer treat this node as the applier and the
+        # filter would silently drop end to end.
         output.preexisting_conditions = context.conditions.conditional
     logger.info(
         f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts or []]} with {context.conditions}"
@@ -642,6 +637,12 @@ def _search_concepts(
             context.completion_mandatory,
             conditions=context.conditions,
             accept_partial=accept_partial,
+            # depth 0 is a final scope (statement root, union arm, rowset
+            # body): its conditions render here or nowhere, so exemption
+            # without an actual applier would silently drop the filter. A
+            # deeper search is a fragment whose consumer re-validates with
+            # the full sibling stack.
+            require_condition_applier=depth == 0,
         )
         # assign
         context.found = found_c

@@ -35,7 +35,7 @@ consumer level, and before any rule that flattens / inlines the UnionCTE.
 from dataclasses import dataclass
 from typing import cast
 
-from trilogy.core.enums import Derivation, JoinType, SourceType
+from trilogy.core.enums import Derivation, JoinType, SetOperator, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -390,6 +390,12 @@ class UnionDimPushdown(OptimizationRule):
     def _optimize_union(
         self, cte: UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
+        # EXCEPT/INTERSECT compare whole rows and (for EXCEPT) are
+        # order-sensitive; rewriting their arms changes results. Only a
+        # UNION ALL stack is safe to restructure.
+        if cte.operator != SetOperator.UNION_ALL.value:
+            self.complete[cte.name] = True
+            return False, None
         if not all(isinstance(b, CTE) for b in cte.internal_ctes):
             self.complete[cte.name] = True
             return False, None

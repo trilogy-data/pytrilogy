@@ -1,12 +1,21 @@
 query_id = "41"
 generator = "v3"
-gen_length = 2024
+gen_length = 2033
 preql_size = 1244
 comp_size = 1166
 generated_sql = """
 
 WITH 
 highfalutin as (
+SELECT
+    \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
+    CASE WHEN \"item_items\".\"I_MANUFACT_ID\" BETWEEN 1 AND 500 THEN \"item_items\".\"I_PRODUCT_NAME\" ELSE NULL END as \"filtered_product_name\"
+FROM
+    \"memory\".\"item\" as \"item_items\"
+GROUP BY
+    1,
+    2),
+cheerful as (
 SELECT
     \"item_items\".\"I_MANUFACT\" as \"item_manufact\"
 FROM
@@ -15,24 +24,15 @@ GROUP BY
     1
 HAVING
     count(CASE WHEN ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'tan' and \"item_items\".\"I_UNITS\" = 'Oz' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'purple' and \"item_items\".\"I_UNITS\" = 'Ton' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" = 'misty' and \"item_items\".\"I_UNITS\" = 'Box' and \"item_items\".\"I_SIZE\" = 'medium' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'medium' and \"item_items\".\"I_UNITS\" = 'Tsp' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'midnight' and \"item_items\".\"I_UNITS\" = 'Gram' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'pale' and \"item_items\".\"I_UNITS\" = 'Pound' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'khaki' and \"item_items\".\"I_UNITS\" = 'Pallet' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'mint' and \"item_items\".\"I_UNITS\" = 'Gross' and \"item_items\".\"I_SIZE\" = 'N/A' ) THEN \"item_items\".\"I_ITEM_SK\" ELSE NULL END) > 0
-),
-cheerful as (
+)
 SELECT
-    \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
-    CASE WHEN \"item_items\".\"I_MANUFACT_ID\" BETWEEN 1 AND 500 THEN \"item_items\".\"I_PRODUCT_NAME\" ELSE NULL END as \"filtered_product_name\"
+    \"highfalutin\".\"filtered_product_name\" as \"filtered_product_name\"
 FROM
-    \"memory\".\"item\" as \"item_items\"
-GROUP BY
-    1,
-    2)
-SELECT
-    \"cheerful\".\"filtered_product_name\" as \"filtered_product_name\"
-FROM
-    \"cheerful\"
-    INNER JOIN \"highfalutin\" on \"cheerful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
+    \"highfalutin\"
+    INNER JOIN \"cheerful\" on \"highfalutin\".\"item_manufact\" is not distinct from \"cheerful\".\"item_manufact\"
 WHERE
-    \"cheerful\".\"filtered_product_name\" is not null
+    \"highfalutin\".\"filtered_product_name\" is not null
 
 ORDER BY 
-    \"cheerful\".\"filtered_product_name\" asc
+    \"highfalutin\".\"filtered_product_name\" asc
 LIMIT (100)"""

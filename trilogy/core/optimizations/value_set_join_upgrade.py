@@ -39,7 +39,7 @@ rename, hoist, or repartition intermediate CTEs.
 
 from __future__ import annotations
 
-from trilogy.core.domain_graph import DomainGraph
+from trilogy.core.domain_graph import DomainGraph, ResolvedRelation
 from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
@@ -185,6 +185,46 @@ def _own_coverage_partial(
     return any(
         p.address == concept.address and p.address not in subset_endpoints
         for p in side_cte.partial_concepts
+    )
+
+
+def _rowset_definition_boundary(
+    concept: BuildConcept, side_cte: CTE | UnionCTE
+) -> bool:
+    """``side_cte`` is ``concept``'s own rowset materialization boundary: a
+    ROWSET-derived key output here whose parent CTEs do not carry it under its
+    own address.
+
+    A rowset boundary is OPAQUE: the output is a renamed, freshly-named concept
+    whose value set is whatever the body produces. The body WHERE/HAVING
+    *defines* that domain rather than restricting a pre-existing one, so at the
+    rename boundary the side carries every value of the concept by construction
+    — a `subset`/`left` join declaring `a ⊆ rs.k` narrows to the directional
+    (member-dropping) LEFT exactly as it would against a plain datasource, and
+    "keep both sides" is spelled with the explicit `union`/`full` join.
+
+    An EXTERNAL filter on the rowset OUTPUT lands in a CTE above this boundary
+    whose parent still carries the key, so it fails the parent-exclusion test
+    and is not mistaken for definitional — falling through to the normal
+    ``_complete_values`` / filter-free checks. Matching is on the concept's OWN
+    address (not the ``_key_addresses`` pseudonym closure): a scoped-join merge
+    pseudonym-links the two join sides' keys, and using that closure would let
+    the OTHER side's address leak into the parent-exclusion test. A
+    datasource-bound rowset key (no parent CTEs) makes no such claim."""
+    if not isinstance(side_cte, CTE):
+        return False
+    if concept.derivation != Derivation.ROWSET:
+        return False
+    if not side_cte.parent_ctes:
+        return False
+    addr = concept.address
+    if not any(out.address == addr for out in side_cte.output_columns):
+        return False
+    return not any(
+        out.address == addr
+        for parent in side_cte.parent_ctes
+        if isinstance(parent, CTE)
+        for out in parent.output_columns
     )
 
 
@@ -623,6 +663,26 @@ def _pair_side_fully_matches(
                 for s in subset_join_map
             ):
                 return False
+    # A ROWSET superset anchor at its own rename boundary is complete by
+    # construction (opaque boundary — the body filter DEFINES the domain), so
+    # the author-declared subset side fully matches it. An external filter on
+    # the rowset output fails the boundary test and falls through below.
+    #
+    # Gated on a STRICT directional subset between the two OWN addresses
+    # (`relation(...) is SUBSET`): a scoped-join merge collapses every
+    # anchor-joined key onto one canonical, so two INDEPENDENT rowsets joined to
+    # a common anchor land in each other's pseudonym closure — `_proven_subset_of`
+    # (which walks that closure) would then falsely read one sibling as the
+    # superset of the other and narrow them against each other (INNER on their
+    # intersection, corrupting a preserved anchor row). The own-address relation
+    # is UNKNOWN for such siblings and SUBSET only toward the genuine anchor, so
+    # the boundary completeness applies to the real superset alone.
+    if (
+        _rowset_definition_boundary(sup_concept, sup_cte)
+        and domain_graph.relation(sub_concept.address, sup_concept.address)
+        is ResolvedRelation.SUBSET
+    ):
+        return True
     if not _complete_values(sup_concept, sup_cte, domain_graph):
         return False
     return _accumulate_filter(sup_cte) is None

@@ -56,6 +56,7 @@ from trilogy.core.models.build import (
     BuildCaseWhen,
     BuildComparison,
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildExpr,
     BuildFilterItem,
@@ -341,6 +342,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.BYTES: "bytes",
     DataType.INTEGER: "int",
     DataType.FLOAT: "float",
+    DataType.DOUBLE: "double",
     DataType.BOOL: "bool",
     DataType.NUMERIC: "numeric",
     DataType.MAP: "map",
@@ -352,6 +354,32 @@ DATATYPE_MAP: dict[DataType, str] = {
 COMPLEX_DATATYPE_MAP = {
     DataType.ARRAY: lambda x: f"{x}[]",
 }
+
+UNION_CASTABLE_TYPES = {
+    DataType.INTEGER,
+    DataType.BIGINT,
+    DataType.FLOAT,
+    DataType.DOUBLE,
+    DataType.NUMERIC,
+}
+
+
+def union_arm_cast_target(
+    arm_type: CONCRETE_TYPES, output_type: CONCRETE_TYPES
+) -> DataType | NumericType | None:
+    """A union arm bound to a narrower physical type than the union's derived
+    output (e.g. a float placeholder beside a numeric measure) lets the engine
+    downgrade the whole column; return the type the arm must be cast to."""
+    arm = arm_type.type if isinstance(arm_type, TraitDataType) else arm_type
+    out = output_type.type if isinstance(output_type, TraitDataType) else output_type
+    if arm == out or not isinstance(out, (DataType, NumericType)):
+        return None
+    if (isinstance(arm, NumericType) or arm in UNION_CASTABLE_TYPES) and (
+        isinstance(out, NumericType) or out in UNION_CASTABLE_TYPES
+    ):
+        return out
+    return None
+
 
 # Maps lowercased DB type names (as returned by information_schema, SQLite's
 # PRAGMA table_info, or DuckDB's DESCRIBE) to DataType. `normalize_db_type`
@@ -593,7 +621,10 @@ FUNCTION_MAP = {
     FunctionType.GEO_CENTROID: lambda x, types: f"ST_Centroid({x[0]})",
     FunctionType.GEO_TRANSFORM: lambda x, types: f"ST_Transform({x[0]}, {x[1]}, {x[2]})",
     # string types
+    # concat()/concat_ws() skip NULL arguments; CONCAT_STRICT (`||`) propagates
     FunctionType.CONCAT: lambda x, types: f"concat({','.join(x)})",
+    FunctionType.CONCAT_STRICT: lambda x, types: f"({' || '.join(x)})",
+    FunctionType.CONCAT_WS: lambda x, types: f"concat_ws({', '.join(x)})",
     # constant types
     FunctionType.CURRENT_DATE: lambda x, types: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x, types: "current_datetime()",
@@ -769,6 +800,14 @@ class BaseDialect:
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
     SUPPORTS_AGGREGATE_GROUPING_MODES = False
+    # Per-dialect spelling of set-operation combinators between UnionCTE arms.
+    # Keys are SetOperator values; dialects with non-standard spellings (e.g.
+    # BigQuery's EXCEPT DISTINCT) override entries.
+    SET_OPERATOR_MAP: dict[str, str] = {
+        "UNION ALL": "UNION ALL",
+        "EXCEPT": "EXCEPT",
+        "INTERSECT": "INTERSECT",
+    }
     # Whether HAVING can reference a SELECT-list output alias. True for
     # DuckDB/BigQuery/Snowflake/MySQL; false for standard SQL (Postgres, MSSQL).
     # Gates the aggregate-predicate -> HAVING pushdown and lets that HAVING
@@ -812,6 +851,10 @@ class BaseDialect:
         self.rendering = rendering or CONFIG.rendering
         self.config = config
         self.used_map: dict[str, set[str]] = defaultdict(set)
+        # scoped concept-address -> rendered column ref substitutions, set while
+        # rendering membership-subselect expression operands whose columns must
+        # resolve against the existence source rather than the host CTE
+        self._existence_ref_overrides: dict[str, str] = {}
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.QUERY:
@@ -969,9 +1012,57 @@ class BaseDialect:
                 return f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
             # otherwise we've derived it, safe to use alias
             return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
-        return (
-            f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
-        )
+        rendered = self.render_expr(order_item.expr, cte=cte)
+        if self._order_expr_needs_group_wrap(order_item.expr, cte, rendered):
+            rendered = f"MIN({rendered})"
+        return f"{rendered} {order_item.order.value}"
+
+    @staticmethod
+    def _scalar_order_leaves(expr: Any) -> list[BuildConcept] | None:
+        """Leaf concepts of a purely scalar (concepts, scalar functions,
+        literals) expression; ``None`` if it contains an aggregate, window, or
+        any other compound node that must not be re-wrapped in an aggregate."""
+        leaves: list[BuildConcept] = []
+        stack: list[Any] = [expr]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, BuildConcept):
+                leaves.append(node)
+            elif isinstance(node, BuildParenthetical):
+                stack.append(node.content)
+            elif isinstance(node, BuildFunction):
+                if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                    return None
+                stack.extend(node.arguments)
+            elif isinstance(node, BuildConceptArgs):
+                return None
+        return leaves
+
+    def _order_expr_needs_group_wrap(
+        self, expr: Any, cte: CTE | UnionCTE, rendered: str
+    ) -> bool:
+        """A grouping ``group_to_grain`` node's ORDER BY may re-render an
+        expression over raw source columns absent from its GROUP BY (e.g.
+        ``order by <source col>`` when only a derivation of it is projected) —
+        invalid SQL. Wrapping the rendered expression in MIN() makes it
+        group-safe: for inputs functionally determined by the group it is a
+        no-op, otherwise it orders each group by its minimum member value."""
+        if not isinstance(cte, CTE) or not cte.group_to_grain:
+            return False
+        if self._all_grouped_outputs_are_passthrough(
+            cte
+        ) and not self._has_local_aggregate(cte):
+            return False
+        group_addresses = {c.address for c in cte.group_concepts}
+        leaves = self._scalar_order_leaves(expr)
+        if leaves is None or all(c.address in group_addresses for c in leaves):
+            return False
+        # a re-rendered expression textually identical to a grouped one is
+        # already group-safe (e.g. ORDER BY lower(x) with GROUP BY lower(x))
+        group_rendered = {
+            self.render_concept_sql(c, cte, alias=False) for c in cte.group_concepts
+        }
+        return rendered not in group_rendered
 
     def _canonical_render_siblings(
         self, c: BuildConcept, cte: CTE | UnionCTE
@@ -1119,7 +1210,9 @@ class BaseDialect:
                 )
             return self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
 
-        # check if it's not inherited AND no pseudonyms are inherited
+        # not sourced directly -> render from lineage. A pseudonym twin that IS
+        # sourced is not consulted here: render_concept_sql probes it as a
+        # fallback candidate when this render raises ValueError.
         if c.lineage and cte.source_map.get(c.address, []) == []:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"
@@ -1226,6 +1319,17 @@ class BaseDialect:
                     rval = c.safe_address
                 else:
                     rval = self.render_expr(local_matched[0], cte)
+                    # coerce the arm to the union's derived type so the engine
+                    # cannot downgrade the column to the narrowest arm (e.g. a
+                    # float placeholder beside a numeric measure)
+                    cast_target = union_arm_cast_target(
+                        local_matched[0].datatype, c.datatype
+                    )
+                    if cast_target is not None:
+                        rval = self.FUNCTION_MAP[FunctionType.CAST](
+                            [rval, self.render_expr(cast_target, cte=cte)],
+                            [local_matched[0].datatype, cast_target],
+                        )
             elif (
                 isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.CONSTANT
@@ -1500,18 +1604,64 @@ class BaseDialect:
             )
             for a in left.arguments
         )
-        from_clause = ""
+        from_clauses: set[str] = set()
         cols: list[str] = []
+        null_cols: list[str] = []
         for rc in right.arguments:
-            assert isinstance(
-                rc, BuildConcept
-            ), "composite membership operands must be concepts"
-            from_clause, col_ref = self._resolve_existence_column(
-                rc, cte, cte_map, raise_invalid
+            if isinstance(rc, BuildConcept):
+                from_clause, col_ref = self._resolve_existence_column(
+                    rc, cte, cte_map, raise_invalid
+                )
+                from_clauses.add(from_clause)
+                cols.append(col_ref)
+                null_cols.append(col_ref)
+                continue
+            # expression operand (cast/concat over sourced columns): resolve
+            # each referenced concept to pin the existence FROM and null guards,
+            # then render the expression with its column refs substituted by
+            # those resolutions (the host CTE's own source map can't see them)
+            concepts = (
+                list(rc.concept_arguments) if isinstance(rc, BuildFunction) else []
             )
-            cols.append(col_ref)
+            overrides: dict[str, str] = {}
+            for inner in concepts:
+                from_clause, col_ref = self._resolve_existence_column(
+                    inner, cte, cte_map, raise_invalid
+                )
+                from_clauses.add(from_clause)
+                null_cols.append(col_ref)
+                overrides[inner.address] = col_ref
+            prior = self._existence_ref_overrides
+            self._existence_ref_overrides = {**prior, **overrides}
+            try:
+                cols.append(
+                    self.render_expr(
+                        rc,
+                        cte=cte,
+                        cte_map=cte_map,
+                        raise_invalid=raise_invalid,
+                        materialized_addresses=materialized_addresses,
+                    )
+                )
+            finally:
+                self._existence_ref_overrides = prior
+        if len(from_clauses) != 1:
+            raise ValueError(
+                "composite membership right-hand operands must resolve to a "
+                f"single existence source, got {sorted(from_clauses) or 'none'}"
+            )
+        from_clause = next(iter(from_clauses))
+        if " as " in from_clause and any(
+            not isinstance(rc, BuildConcept) for rc in right.arguments
+        ):
+            # expression operands render logical column refs, which can't be
+            # redirected onto an inlined raw-table parent's physical columns
+            raise ValueError(
+                "composite membership expression operands are not supported "
+                "against an inlined datasource; materialize the source as a CTE"
+            )
         select_list = ", ".join(cols)
-        not_null = " and ".join(f"{c} is not null" for c in cols)
+        not_null = " and ".join(f"{c} is not null" for c in null_cols)
         return (
             f"({left_sql}) {operator.value} "
             f"(select {select_list} from {from_clause} where {not_null})"
@@ -1835,6 +1985,8 @@ class BaseDialect:
         elif isinstance(e, FILTER_ITEMS):
             return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} ELSE NULL END"
         elif isinstance(e, BuildConcept):
+            if e.address in self._existence_ref_overrides:
+                return self._existence_ref_overrides[e.address]
             if (
                 isinstance(e.lineage, FUNCTION_ITEMS)
                 and e.lineage.operator == FunctionType.CONSTANT
@@ -2176,7 +2328,8 @@ class BaseDialect:
 
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):
-            base_statement = f"\n{cte.operator}\n".join(
+            operator = self.SET_OPERATOR_MAP.get(cte.operator, cte.operator)
+            base_statement = f"\n{operator}\n".join(
                 [
                     self.render_cte(child, auto_sort=False).statement
                     for child in cte.internal_ctes

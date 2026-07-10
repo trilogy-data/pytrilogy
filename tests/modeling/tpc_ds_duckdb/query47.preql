@@ -19,7 +19,7 @@ auto nsum <- lead(sum_sales, 1)
 auto sum_minus_avg <- sum_sales - avg_monthly_sales;
 
 where
-    store_sales.store.id is not null
+    store_sales.store.sk is not null
     and (
         store_sales.date.year = 1999
         or (store_sales.date.year = 1998 and store_sales.date.month_of_year = 12)

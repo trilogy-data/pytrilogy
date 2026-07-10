@@ -1,15 +1,15 @@
 query_id = "37"
 generator = "v3"
-gen_length = 1429
-preql_size = 480
+gen_length = 1424
+preql_size = 470
 comp_size = 592
 generated_sql = """
 
 WITH 
 wakeful as (
 SELECT
-    \"inv_warehouse_inventory\".\"inv_date_sk\" as \"inv_date_id\",
-    \"inv_warehouse_inventory\".\"inv_item_sk\" as \"inv_item_id\",
+    \"inv_warehouse_inventory\".\"inv_date_sk\" as \"inv_date_sk\",
+    \"inv_warehouse_inventory\".\"inv_item_sk\" as \"inv_item_sk\",
     \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inv_quantity_on_hand\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
@@ -22,17 +22,17 @@ GROUP BY
     3),
 thoughtful as (
 SELECT
-    CASE WHEN cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and \"wakeful\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500 THEN \"wakeful\".\"inv_item_id\" ELSE NULL END as \"inv_item_ids\"
+    CASE WHEN cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and \"wakeful\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500 THEN \"wakeful\".\"inv_item_sk\" ELSE NULL END as \"inv_item_ids\"
 FROM
     \"wakeful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"wakeful\".\"inv_date_id\" = \"inv_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"wakeful\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01'
 
 GROUP BY
     1)
 SELECT
-    \"items_items\".\"I_ITEM_ID\" as \"items_text_id\",
+    \"items_items\".\"I_ITEM_ID\" as \"items_id\",
     \"items_items\".\"I_ITEM_DESC\" as \"items_desc\",
     \"items_items\".\"I_CURRENT_PRICE\" as \"items_current_price\"
 FROM

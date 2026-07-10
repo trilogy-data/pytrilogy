@@ -1,6 +1,7 @@
 # Use as default for multi-channel analysis (WEB / CATALOG / STORE) or 
 # any two channel combination (WEB CATALOG/ STORE CATALOG/ etc). Carries sales and
-# return information in a consolidated format. Channel specific fields 
+# return information in a consolidated format.
+# Channel specific fields 
 # and data exist on peer models
 # (`store_sales`, `catalog_sales`, `web_sales`) for single-channel-only queries.
 
@@ -20,7 +21,7 @@ key channel enum<string>['WEB', 'CATALOG', 'STORE']; # the channel for the sale/
 key channel_dim_id int; # the ID of the store/web/site for each order (web_site_id, catalog_id, or store_id as appropriate)
 key return_channel_dim_id int; # the ID of the store/web/site used for the return; Unrelated to channel_id
 
-key outlet_id int; # the channel's selling-outlet surrogate id, per channel: store (STORE), call cent for (CATALOG), web_page (WEB). Distinct from channel_dim_id (which is store/web_site/catalog_page).
+key outlet_id int; # the channel's selling-outlet surrogate sk, per channel: store (STORE), call cent for (CATALOG), web_page (WEB). Distinct from channel_dim_id (which is store/web_site/catalog_page).
 key order_id int; # the ID of the order (ticket number for store, order number for web/catalog)
 
 # return identifier
@@ -32,9 +33,9 @@ properties return_channel_dim_id (
 );
 # Line-grain facts. Sales measures come from the per-channel *sales* datasources;
 # the return measures (return_*, is_returned) come from the separate per-channel
-# *returns* datasources, unified onto the same (order_id, channel, item.id) grain.
+# *returns* datasources, unified onto the same (order_id, channel, item.sk) grain.
 # A row can carry sales facts, return facts, or both.
-properties <order_id, channel, item.id> (
+properties <order_id, channel, item.sk> (
     quantity int?, # Units of the item on this sales line.
     sales_price float?, # Per-unit "unit price" charged for ONE unit; the whole-line total is ext_sales_price (the "total price").
     list_price float?, # Per-unit list price before discounts.
@@ -50,7 +51,7 @@ properties <order_id, channel, item.id> (
     # --- return measures: sourced from the *returns* datasources below, not the sales ones ---
     return_amount float?, # Amount refunded for the line, if returned.
     return_quantity int?, # Units returned on the line. GOTCHA: NULL even when a return exists (is_returned=true) for some TPC-DS rows. Presence is independent of this measure — don't coalesce to 0 unless asked (the reference keeps the NULL through its derived percentages/averages).
-    return_net_loss float?, # Net financial loss on the return for the line.
+    return_net_loss float?, # Net financial loss on the return for the line at order time; does not include return net loss.
     is_returned bool?, # Marks a returned line. Sourced only as raw true from the returns datasources, so it is true-or-NULL here (no explicit false): test "not returned" as `is_returned is null`, not `= false`.
     sale_line_item_counter int?, # counter of sales rows (NOT return-only rows). Use is_returned for return presence; `sale_line_item_counter ? is_returned` counts lines with BOTH a sale and a return.
 );
@@ -58,19 +59,19 @@ properties <order_id, channel, item.id> (
 partial datasource web_sales_unified (
     raw(''' 'WEB' '''): channel,
     WS_ORDER_NUMBER: order_id,
-    WS_ITEM_SK: item.id,
-    WS_SOLD_DATE_SK: ?date.id,
-    WS_SOLD_TIME_SK: ?time.id,
-    WS_BILL_CUSTOMER_SK: ?billing_customer.id,
-    WS_BILL_CUSTOMER_SK: ?purchasing_customer.id,
-    WS_SHIP_CUSTOMER_SK: ?ship_customer.id,
-    WS_BILL_ADDR_SK: ?bill_address.id,
-    WS_PROMO_SK: ?promotion.id,
+    WS_ITEM_SK: item.sk,
+    WS_SOLD_DATE_SK: ?date.sk,
+    WS_SOLD_TIME_SK: ?time.sk,
+    WS_BILL_CUSTOMER_SK: ?billing_customer.sk,
+    WS_BILL_CUSTOMER_SK: ?purchasing_customer.sk,
+    WS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
+    WS_BILL_ADDR_SK: ?bill_address.sk,
+    WS_PROMO_SK: ?promotion.sk,
     WS_WEB_SITE_SK: ?channel_dim_id,
     WS_WEB_SITE_SK: ?return_channel_dim_id,
     WS_WEB_PAGE_SK: ?outlet_id,
-    WS_WAREHOUSE_SK: ?warehouse.id,
-    WS_SHIP_MODE_SK: ?ship_mode.id,
+    WS_WAREHOUSE_SK: ?warehouse.sk,
+    WS_SHIP_MODE_SK: ?ship_mode.sk,
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_LIST_PRICE: list_price,
@@ -85,25 +86,25 @@ partial datasource web_sales_unified (
     WS_NET_PAID_INC_TAX: net_paid_inc_tax,
     raw(''' 1 '''): sale_line_item_counter,
 )
-grain (item.id, order_id, channel)
+grain (item.sk, order_id, channel)
 complete where channel = 'WEB'
 address memory.web_sales;
 
 partial datasource catalog_sales_unified (
     raw(''' 'CATALOG' '''): channel,
     CS_ORDER_NUMBER: order_id,
-    CS_ITEM_SK: item.id,
-    CS_SOLD_DATE_SK: ?date.id,
-    CS_SOLD_TIME_SK: ?time.id,
-    CS_BILL_CUSTOMER_SK: ?billing_customer.id,
-    CS_SHIP_CUSTOMER_SK: ?ship_customer.id,
-    CS_SHIP_CUSTOMER_SK: ?purchasing_customer.id,
-    CS_BILL_ADDR_SK: ?bill_address.id,
-    CS_PROMO_SK: ?promotion.id,
+    CS_ITEM_SK: item.sk,
+    CS_SOLD_DATE_SK: ?date.sk,
+    CS_SOLD_TIME_SK: ?time.sk,
+    CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
+    CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
+    CS_SHIP_CUSTOMER_SK: ?purchasing_customer.sk,
+    CS_BILL_ADDR_SK: ?bill_address.sk,
+    CS_PROMO_SK: ?promotion.sk,
     CS_CATALOG_PAGE_SK: ?channel_dim_id,
     CS_CALL_CENTER_SK: ?outlet_id,
-    CS_WAREHOUSE_SK: ?warehouse.id,
-    CS_SHIP_MODE_SK: ?ship_mode.id,
+    CS_WAREHOUSE_SK: ?warehouse.sk,
+    CS_SHIP_MODE_SK: ?ship_mode.sk,
     CS_QUANTITY: quantity,
     CS_SALES_PRICE: sales_price,
     CS_LIST_PRICE: list_price,
@@ -118,25 +119,25 @@ partial datasource catalog_sales_unified (
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
     raw(''' 1 '''): sale_line_item_counter,
 )
-grain (item.id, order_id, channel)
+grain (item.sk, order_id, channel)
 complete where channel = 'CATALOG'
 address memory.catalog_sales;
 
 partial datasource store_sales_unified (
     raw(''' 'STORE' '''): channel,
     SS_TICKET_NUMBER: order_id,
-    SS_ITEM_SK: item.id,
-    SS_SOLD_DATE_SK: ?date.id,
-    SS_SOLD_TIME_SK: ?time.id,
-    SS_CUSTOMER_SK: ?billing_customer.id,
-    SS_CUSTOMER_SK: ?ship_customer.id,
-    SS_CUSTOMER_SK: ?purchasing_customer.id,
-    SS_ADDR_SK: ?bill_address.id,
-    SS_PROMO_SK: ?promotion.id,
+    SS_ITEM_SK: item.sk,
+    SS_SOLD_DATE_SK: ?date.sk,
+    SS_SOLD_TIME_SK: ?time.sk,
+    SS_CUSTOMER_SK: ?billing_customer.sk,
+    SS_CUSTOMER_SK: ?ship_customer.sk,
+    SS_CUSTOMER_SK: ?purchasing_customer.sk,
+    SS_ADDR_SK: ?bill_address.sk,
+    SS_PROMO_SK: ?promotion.sk,
     SS_STORE_SK: ?channel_dim_id,
     SS_STORE_SK: ?outlet_id,
-    raw(''' NULL '''): warehouse.id,
-    raw(''' NULL '''): ship_mode.id,
+    raw(''' NULL '''): warehouse.sk,
+    raw(''' NULL '''): ship_mode.sk,
     SS_QUANTITY: quantity,
     SS_SALES_PRICE: sales_price,
     SS_LIST_PRICE: list_price,
@@ -151,7 +152,7 @@ partial datasource store_sales_unified (
     SS_NET_PAID_INC_TAX: net_paid_inc_tax,
     raw(''' 1 '''): sale_line_item_counter,
 )
-grain (item.id, order_id, channel)
+grain (item.sk, order_id, channel)
 complete where channel = 'STORE'
 address memory.store_sales;
 
@@ -212,43 +213,43 @@ address memory.web_site;
 partial datasource web_returns_unified (
     raw(''' 'WEB' '''): channel,
     WR_ORDER_NUMBER: ~order_id,
-    WR_ITEM_SK: ~item.id,
-    WR_RETURNED_DATE_SK: ?~return_date.id,
+    WR_ITEM_SK: ~item.sk,
+    WR_RETURNED_DATE_SK: ?~return_date.sk,
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
     WR_NET_LOSS: return_net_loss,
     raw(''' true '''): is_returned,
 )
-grain (item.id, order_id, channel)
+grain (item.sk, order_id, channel)
 complete where channel = 'WEB'
 address memory.web_returns;
 
 partial datasource catalog_returns_unified (
     raw(''' 'CATALOG' '''): channel,
     CR_ORDER_NUMBER: ~order_id,
-    CR_ITEM_SK: ~item.id,
+    CR_ITEM_SK: ~item.sk,
     CR_CATALOG_PAGE_SK: ?return_channel_dim_id,
-    CR_RETURNED_DATE_SK: ?~return_date.id,
+    CR_RETURNED_DATE_SK: ?~return_date.sk,
     CR_RETURN_AMOUNT: return_amount,
     CR_RETURN_QUANTITY: return_quantity,
     CR_NET_LOSS: return_net_loss,
     raw(''' true '''): is_returned,
 )
-grain (item.id, order_id, channel)
+grain (item.sk, order_id, channel)
 complete where channel = 'CATALOG'
 address memory.catalog_returns;
 
 partial datasource store_returns_unified (
     raw(''' 'STORE' '''): channel,
     SR_TICKET_NUMBER: ~order_id,
-    SR_ITEM_SK: ~item.id,
+    SR_ITEM_SK: ~item.sk,
     SR_STORE_SK: ?return_channel_dim_id,
-    SR_RETURNED_DATE_SK: ?~return_date.id,
+    SR_RETURNED_DATE_SK: ?~return_date.sk,
     SR_RETURN_AMT: return_amount,
     SR_RETURN_QUANTITY: return_quantity,
     SR_NET_LOSS: return_net_loss,
     raw(''' true '''): is_returned,
 )
-grain (item.id, order_id, channel)
+grain (item.sk, order_id, channel)
 complete where channel = 'STORE'
 address memory.store_returns;

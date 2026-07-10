@@ -29,6 +29,13 @@ ERROR_CODES: dict[int, str] = {
         "`;`. Example: put `auto x <- sum(sales.amount) by store.id;` above "
         "`where ... select ...`."
     ),
+    105: (
+        "A `rowset`/`auto`/`metric`/`property` definition connects its name to "
+        "its expression with `<-`, not `as` - write `rowset base <- select ...;` "
+        "(a `rowset` may also use the `with base as select ...;` form). For "
+        "`auto`/`metric`/`property` only `<-` is valid, e.g. "
+        "`auto total <- sum(sales.amount);`."
+    ),
     201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
     202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
@@ -43,7 +50,9 @@ ERROR_CODES: dict[int, str] = {
     ),
     213: (
         "A `by <grain>` clause must follow an aggregate, but the expression "
-        "before it has none. To take each distinct value once per grain, wrap it "
+        "before it has none. If the `by` sits inside an aggregate's "
+        "parentheses (`max(x by *)`), move it outside the call: `max(x) by *`. "
+        "To take each distinct value once per grain, wrap it "
         "in `group(...)` - e.g. `group(item.current_price) by item.id, "
         "item.category`. For a reduction, use an aggregate: `sum(x) by ...`, "
         "`avg(x) by ...`, `max(x) by ...`."
@@ -90,23 +99,33 @@ ERROR_CODES: dict[int, str] = {
         "`select s.channel, s.channel_dim_text_id` (not "
         "`select distinct s.channel, ...`)."
     ),
+    225: (
+        "Expected a join condition. A query-scoped `subset|union join` needs a "
+        "key equality - write `subset join a.key = b.key` (or `union join a.key "
+        "= b.key`). Chain more keys for a composite grain with `= c.key`, and "
+        "separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). "
+        "Both sides must be real fields or expressions - `...` is not a "
+        "placeholder."
+    ),
 }
 
 
-# A HAVING placed *after* the `by rollup/cube/grouping sets` clause is a parse
-# error — Trilogy orders HAVING *before* the grouping clause, the reverse of
-# SQL's `GROUP BY ... HAVING`. Agents reach for the SQL order and hit an opaque
-# "expected order_by or limit"; detect the shape to add a targeted hint. Matches
-# a grouping clause followed by `having` within the same statement (no `;`
-# between). Advisory only — gated behind an actual syntax error.
-_HAVING_AFTER_GROUPING = re.compile(
-    r"\bby\s+(?:rollup|cube|grouping\s+sets)\b(?:(?!;).)*?\bhaving\b",
+# A `by rollup/cube/grouping sets` clause placed *after* HAVING is a parse
+# error — Trilogy orders the grouping clause *before* HAVING, matching SQL's
+# `GROUP BY ... HAVING` (this was the reverse until 2026-07; older queries hit
+# an opaque "expected order_by or limit"). Detect the legacy shape to add a
+# targeted hint: `having` followed by a grouping clause within the same
+# statement (no `;` between). A `by rollup/cube/grouping sets` lead can never
+# be an aggregate's own `by` grain (those keywords are reserved), so the match
+# is unambiguous. Advisory only — gated behind an actual syntax error.
+_GROUPING_AFTER_HAVING = re.compile(
+    r"\bhaving\b(?:(?!;).)*?\bby\s+(?:rollup|cube|grouping\s+sets)\b",
     re.IGNORECASE | re.DOTALL,
 )
 
 
-def detect_having_after_grouping(content: str) -> bool:
-    return bool(_HAVING_AFTER_GROUPING.search(content))
+def detect_grouping_after_having(content: str) -> bool:
+    return bool(_GROUPING_AFTER_HAVING.search(content))
 
 
 _SUBSELECT_RE = re.compile(r"\(\s*(with)\b", re.IGNORECASE)
@@ -211,6 +230,29 @@ def detect_definition_after_clause(text: str, pos: int) -> int | None:
     return m.start()
 
 
+# A `<-`-connected derivation (`rowset`/`auto`/`metric`/`property`) written with
+# the SQL `as` connector instead — e.g. `rowset base as select ...`. These
+# keywords bind their name with `<-` (a `rowset` may alternatively use the
+# `with <name> as ...` form). Reserved keywords + `<name> as` is unambiguous.
+_DERIVATION_AS_RE = re.compile(
+    r"\b(auto|metric|property|rowset)\s+[A-Za-z_][\w.]*\s+(as)\b", re.IGNORECASE
+)
+
+
+def detect_derivation_as_connector(text: str, pos: int) -> int | None:
+    """Locate a derivation (`rowset`/`auto`/`metric`/`property`) that uses the SQL
+    `as` connector instead of `<-` — e.g. `rowset base as select ...`. Both
+    backends reject the leading keyword itself, so ``pos`` sits at/near the
+    statement start; scan forward from the statement start and require the
+    keyword to be the statement's first token. Returns the offending `as`
+    position, or None. Shared by both grammar backends; purely textual."""
+    stmt_start = text.rfind(";", 0, pos + 1) + 1
+    m = _DERIVATION_AS_RE.search(text, stmt_start)
+    if m is None or text[stmt_start : m.start()].strip():
+        return None
+    return m.start(2)
+
+
 _JOIN_CLAUSE_RE = re.compile(
     r"\b(?:inner|left|right|full|cross)\s+join\b", re.IGNORECASE
 )
@@ -247,6 +289,31 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
     ):
         return None
     return joins[-1].start()
+
+
+_QUERY_JOIN_RE = re.compile(
+    r"\b(?:left|inner|full|right|cross|subset|union)\s+join\b", re.IGNORECASE
+)
+_SELECT_KW_RE = re.compile(r"\bselect\b", re.IGNORECASE)
+
+
+def detect_join_missing_key(text: str, pos: int) -> int | None:
+    """Locate a query-scoped join whose key expression is missing or malformed -
+    e.g. `union join` with no key, `subset join a.id =` with no RHS, or a bare
+    `...` placeholder. A join key parses as an expression (`sum_operator`), so
+    both backends surface the opaque `expected sum_operator`; map it to a
+    join-condition message. Returns the offending join clause's position, or
+    None. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    if not joins:
+        return None
+    join = joins[-1]
+    # A `select` between the join and the failure means the key already parsed
+    # and the error is downstream (in the select) — not a missing join key.
+    if _SELECT_KW_RE.search(text, join.end(), pos):
+        return None
+    return join.start()
 
 
 _ALIGN_RE = re.compile(r"\balign\b", re.IGNORECASE)

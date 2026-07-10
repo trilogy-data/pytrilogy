@@ -28,6 +28,16 @@ _TERMINATED = """with u as union(
 ) -> (channel, np);
 select u.channel, sum(u.np) as s limit 10;"""
 
+# Missing `;` AND a second, downstream error (`count(*)`, which Trilogy rejects).
+# The [222] diagnostic used to gate on a WHOLE-FILE reparse, which the downstream
+# error defeated — suppressing [222] and leaving the opaque signature error. It
+# must still fire (the missing `;` is the first error to report). (TPC-DS q38.)
+_UNTERMINATED_WITH_DOWNSTREAM_ERROR = """with u as union(
+ (select foo as channel, sum(bar) as np),
+ (select foo as channel, sum(baz) as np)
+) -> (channel, np)
+select count(*) as s limit 10;"""
+
 
 @pytest.mark.parametrize("backend", [parse_lark, parse_pest])
 def test_missing_semicolon_friendly_error(backend):
@@ -36,6 +46,17 @@ def test_missing_semicolon_friendly_error(backend):
     msg = str(exc.value)
     assert "Syntax [222]" in msg, msg
     assert "terminated with a semicolon" in msg, msg
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+def test_missing_semicolon_reported_despite_downstream_error(backend):
+    # The [222] missing-`;` diagnostic must survive a coexisting downstream error
+    # (whole-file reparse would fail; the prefix-only reparse confirms it).
+    with pytest.raises(InvalidSyntaxException) as exc:
+        backend(_UNTERMINATED_WITH_DOWNSTREAM_ERROR)
+    msg = str(exc.value)
+    assert "Syntax [222]" in msg, msg
+    assert "data_type" not in msg, msg
 
 
 @pytest.mark.parametrize("backend", [parse_lark, parse_pest])

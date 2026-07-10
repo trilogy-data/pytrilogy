@@ -1,10 +1,10 @@
 # Time-of-day info: seconds since midnight decomposed into hour, minute,
 # and second, plus a meal_time bucket (breakfast / lunch / dinner).
 
-key id int; # Surrogate key uniquely identifying a time-of-day row (seconds since midnight).
+key sk int; # Surrogate key uniquely identifying a time-of-day row (seconds since midnight).
 
-properties id (
-    text_id string, # Stable business identifier for the time-of-day row (16-char alphanumeric).
+properties sk (
+    id string, # Stable business identifier for the time-of-day row (16-char alphanumeric).
     time int, # Seconds elapsed since midnight (0-86399).
     hour int, # Hour of day (0-23).
     minute int, # Minute within the hour (0-59).
@@ -13,13 +13,13 @@ properties id (
 );
 
 datasource time (
-    T_TIME_SK: id,
-    T_TIME_ID: text_id,
+    T_TIME_SK: sk,
+    T_TIME_ID: id,
     T_TIME: time,
     T_HOUR: hour,
     T_MINUTE: minute,
     T_SECOND: second,
     T_MEAL_TIME: meal_time,
 )
-grain (id)
+grain (sk)
 address memory.time_dim;

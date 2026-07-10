@@ -931,23 +931,27 @@ select sales.brand as brand, sum(sales.amt) as amt_02;
 
 
 @pytest.mark.parametrize(
-    "jointype,expected",
+    "relation,expected",
     [
-        # LEFT declares y02.brand ⊆ y01.brand; both rowsets are filtered, so
-        # the subset can't be proven against the filtered 2001 side and the
-        # preserving render stands — brand 3 (2002-only) survives NULL-padded.
-        # Row restriction is an explicit filter (`where y01.amt_01 is not
-        # null`), never a silent join drop.
-        ("LEFT", [(1, 15.0, 15.0), (2, 20.0, None), (3, None, 30.0)]),
-        # FULL: every brand from either year, padded NULL on the missing side.
-        ("FULL", [(1, 15.0, 15.0), (2, 20.0, None), (3, None, 30.0)]),
+        # `subset join y02.brand = y01.brand` declares y02.brand ⊆ y01.brand,
+        # anchored on y01 (2001). y01 is a ROWSET output: its body `where
+        # year=2001` DEFINES y01.brand's domain at the opaque rename boundary, so
+        # the anchor is complete by construction and the subset narrows to the
+        # directional LEFT — brand 3 (2002-only) violates the declared subset and
+        # drops. "Keep both years" is the `union join` form below.
+        ("subset join y02.brand = y01.brand", [(1, 15.0, 15.0), (2, 20.0, None)]),
+        # union: every brand from either year, padded NULL on the missing side.
+        (
+            "union join y01.brand = y02.brand",
+            [(1, 15.0, 15.0), (2, 20.0, None), (3, None, 30.0)],
+        ),
     ],
 )
 def test_rowset_outer_join_shared_base_no_fanout(
-    yearly_engine: Executor, tmp_path: Path, jointype: str, expected: list
+    yearly_engine: Executor, tmp_path: Path, relation: str, expected: list
 ):
     text = (
-        _YEARLY_ROWSETS + f"\n{jointype} JOIN y01.brand = y02.brand\n"
+        _YEARLY_ROWSETS + f"\n{relation}\n"
         "SELECT y02.brand, y01.amt_01, y02.amt_02 ORDER BY y02.brand asc;\n"
     )
     sql = yearly_engine.generate_sql(text)[-1]

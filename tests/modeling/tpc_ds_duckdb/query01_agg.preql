@@ -3,9 +3,9 @@ import store_returns as returns;
 show where
     returns.store.state = 'TN' and returns.return_date.year = 2000
 select
-    returns.billing_customer.text_id,
+    returns.billing_customer.id,
     --sum(returns.return_amount) as total_returns,
 order by
-    returns.billing_customer.text_id asc
+    returns.billing_customer.id asc
 limit 100
 ;

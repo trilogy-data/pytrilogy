@@ -1,6 +1,7 @@
 from trilogy.core.enums import (
     BooleanOperator,
     JoinType,
+    SetOperator,
     SourceType,
 )
 from trilogy.core.models.build import (
@@ -239,6 +240,11 @@ class PredicatePushdown(OptimizationRule):
             return False
         if parent_cte.source.source_type == SourceType.FILTER:
             return False
+        # EXCEPT/INTERSECT arms participate in whole-row set comparison;
+        # conservatively leave them untouched (pushing a filter on the compared
+        # outputs is provably sound, but branch source_map extras are not).
+        if parent_cte.operator != SetOperator.UNION_ALL.value:
+            return False
 
         # Concepts the union can expose. ``output_columns`` lists what the
         # union QDS chose to project, but each branch's ``source_map`` often
@@ -385,6 +391,11 @@ class PredicatePushdown(OptimizationRule):
     ) -> bool:
         if not isinstance(candidate, BuildConceptArgs):
             return False
+        # Dropping an arm of EXCEPT/INTERSECT changes the set result (for
+        # EXCEPT even a provably-empty-under-filter subtracted arm is only
+        # droppable if actually empty). Prune UNION ALL stacks only.
+        if parent_cte.operator != SetOperator.UNION_ALL.value:
+            return False
         children = inverse_map.get(parent_cte.name, [])
         if not children:
             return False
@@ -510,14 +521,28 @@ class PredicatePushdown(OptimizationRule):
                 # regular dependency CTE or from an already-inlined datasource
                 # (datasource inlining runs before this pass) — propagate both
                 # so the pushed subselect has a real source to render against
-                # instead of a dangling CTE reference.
+                # instead of a dangling CTE reference. A subselect-only feeder
+                # is absent from ``source_map`` entirely and lives in
+                # ``existence_source_map``; promote it into the same map.
                 promotions: list[
-                    tuple[str, list[CTE | UnionCTE], list[DatasourceCTE]]
+                    tuple[
+                        str, list[str], bool, list[CTE | UnionCTE], list[DatasourceCTE]
+                    ]
                 ] = []
                 for x in all_inputs.difference(row_conditions):
-                    if x in parent_cte.source_map or x not in cte.source_map:
+                    if (
+                        x in parent_cte.source_map
+                        or x in parent_cte.existence_source_map
+                    ):
                         continue
-                    source_names = cte.source_map[x]
+                    existence_only = x not in cte.source_map
+                    if existence_only and x not in cte.existence_source_map:
+                        continue
+                    source_names = (
+                        cte.existence_source_map[x]
+                        if existence_only
+                        else cte.source_map[x]
+                    )
                     dep_sources = [
                         parent
                         for parent in cte.dependency_nodes()
@@ -543,10 +568,12 @@ class PredicatePushdown(OptimizationRule):
                             f"existence source {x} ({source_names}) is not resolvable"
                         )
                         return False
-                    promotions.append((x, dep_sources, inlined_sources))
+                    promotions.append(
+                        (x, source_names, existence_only, dep_sources, inlined_sources)
+                    )
                 if any(
                     _promotion_would_cycle(parent_cte, srcs)
-                    for _, srcs, _ in promotions
+                    for _, _, _, srcs, _ in promotions
                 ):
                     self.log(
                         f"Not pushing {candidate} into {parent_cte.name}: existence "
@@ -568,8 +595,17 @@ class PredicatePushdown(OptimizationRule):
                 else:
                     parent_cte.condition = candidate
                 # promote up existence sources
-                for x, sources, inlined_sources in promotions:
-                    parent_cte.source_map[x] = cte.source_map[x]
+                for (
+                    x,
+                    source_names,
+                    existence_only,
+                    sources,
+                    inlined_sources,
+                ) in promotions:
+                    if existence_only:
+                        parent_cte.existence_source_map[x] = list(source_names)
+                    else:
+                        parent_cte.source_map[x] = list(source_names)
                     for source in sources:
                         parent_cte.add_dependency(source)
                     for inlined in inlined_sources:

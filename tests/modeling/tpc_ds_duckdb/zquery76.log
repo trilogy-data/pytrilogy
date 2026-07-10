@@ -1,16 +1,16 @@
 query_id = "76"
 generator = "v3"
-gen_length = 8339
-preql_size = 2137
+gen_length = 8331
+preql_size = 2129
 comp_size = 1708
 generated_sql = """
 
 WITH 
 divergent as (
 SELECT
-    \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_id\",
+    \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_sk\",
     \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
-    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" as \"ws_ship_customer_id\"
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" as \"ws_ship_customer_sk\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
 WHERE
@@ -18,8 +18,8 @@ WHERE
 ),
 young as (
 SELECT
-    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_sk\",
     \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
@@ -28,9 +28,9 @@ WHERE
 ),
 quizzical as (
 SELECT
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_sk\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\"
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" as \"cs_ship_address_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
 WHERE
@@ -41,7 +41,7 @@ SELECT
     \"ws_date_date\".\"D_QOY\" as \"ws_date_quarter\",
     \"ws_date_date\".\"D_YEAR\" as \"ws_date_year\",
     \"ws_web_sales\".\"WS_EXT_SALES_PRICE\" as \"ws_ext_sales_price\",
-    \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_id\",
+    \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_sk\",
     \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
@@ -54,7 +54,7 @@ SELECT
     \"ss_date_date\".\"D_QOY\" as \"ss_date_quarter\",
     \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\",
-    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
     \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
@@ -65,7 +65,7 @@ WHERE
 thoughtful as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"cs_ext_sales_price\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_sk\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_date_date\".\"D_QOY\" as \"cs_date_quarter\",
     \"cs_date_date\".\"D_YEAR\" as \"cs_date_year\"
@@ -77,30 +77,30 @@ WHERE
 ),
 busy as (
 SELECT
-    \"divergent\".\"ws_item_id\" as \"ws_item_id\",
+    \"divergent\".\"ws_item_sk\" as \"ws_item_sk\",
     \"divergent\".\"ws_order_number\" as \"ws_order_number\",
     CASE
-	WHEN \"divergent\".\"ws_ship_customer_id\" is null THEN 1
+	WHEN \"divergent\".\"ws_ship_customer_sk\" is null THEN 1
 	ELSE 0
 	END as \"ws_row_flag\"
 FROM
     \"divergent\"),
 sparkling as (
 SELECT
-    \"young\".\"ss_item_id\" as \"ss_item_id\",
+    \"young\".\"ss_item_sk\" as \"ss_item_sk\",
     \"young\".\"ss_ticket_number\" as \"ss_ticket_number\",
     CASE
-	WHEN \"young\".\"ss_store_id\" is null THEN 1
+	WHEN \"young\".\"ss_store_sk\" is null THEN 1
 	ELSE 0
 	END as \"ss_row_flag\"
 FROM
     \"young\"),
 highfalutin as (
 SELECT
-    \"quizzical\".\"cs_item_id\" as \"cs_item_id\",
+    \"quizzical\".\"cs_item_sk\" as \"cs_item_sk\",
     \"quizzical\".\"cs_order_number\" as \"cs_order_number\",
     CASE
-	WHEN \"quizzical\".\"cs_customer_address_id\" is null THEN 1
+	WHEN \"quizzical\".\"cs_ship_address_sk\" is null THEN 1
 	ELSE 0
 	END as \"cs_row_flag\"
 FROM
@@ -116,8 +116,8 @@ SELECT
     sum(\"friendly\".\"ws_ext_sales_price\") as \"___tvf_arm_1_sales_amt\"
 FROM
     \"busy\"
-    INNER JOIN \"friendly\" on \"busy\".\"ws_item_id\" = \"friendly\".\"ws_item_id\" AND \"busy\".\"ws_order_number\" = \"friendly\".\"ws_order_number\"
-    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"busy\".\"ws_item_id\" = \"ws_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"friendly\" on \"busy\".\"ws_item_sk\" = \"friendly\".\"ws_item_sk\" AND \"busy\".\"ws_order_number\" = \"friendly\".\"ws_order_number\"
+    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"busy\".\"ws_item_sk\" = \"ws_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,
@@ -133,8 +133,8 @@ SELECT
     sum(\"vacuous\".\"ss_ext_sales_price\") as \"___tvf_arm_0_sales_amt\"
 FROM
     \"sparkling\"
-    INNER JOIN \"vacuous\" on \"sparkling\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\" AND \"sparkling\".\"ss_ticket_number\" = \"vacuous\".\"ss_ticket_number\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"sparkling\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"vacuous\" on \"sparkling\".\"ss_item_sk\" = \"vacuous\".\"ss_item_sk\" AND \"sparkling\".\"ss_ticket_number\" = \"vacuous\".\"ss_ticket_number\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"sparkling\".\"ss_item_sk\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,
@@ -150,8 +150,8 @@ SELECT
     sum(\"thoughtful\".\"cs_ext_sales_price\") as \"___tvf_arm_2_sales_amt\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"highfalutin\" on \"thoughtful\".\"cs_item_id\" = \"highfalutin\".\"cs_item_id\" AND \"thoughtful\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
-    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"thoughtful\".\"cs_item_id\" = \"cs_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"highfalutin\" on \"thoughtful\".\"cs_item_sk\" = \"highfalutin\".\"cs_item_sk\" AND \"thoughtful\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
+    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"thoughtful\".\"cs_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,

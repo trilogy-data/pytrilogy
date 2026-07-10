@@ -8,7 +8,7 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\"
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -18,7 +18,7 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\"
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -28,7 +28,7 @@ WHERE
 ),
 thoughtful as (
 SELECT
-    \"cheerful\".\"sales_billing_customer_id\" as \"_my_customers_my_cust_id\"
+    \"cheerful\".\"sales_billing_customer_sk\" as \"_my_customers_my_cust_id\"
 FROM
     \"cheerful\"
 GROUP BY
@@ -40,7 +40,7 @@ FROM
     \"thoughtful\"),
 sparkling as (
 SELECT
-    \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_id\",
+    \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_sk\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
@@ -58,7 +58,7 @@ GROUP BY
     \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
 abhorrent as (
 SELECT
-    \"sparkling\".\"ss_customer_id\" as \"_my_revenue_rev_cust_id\",
+    \"sparkling\".\"ss_customer_sk\" as \"_my_revenue_rev_cust_id\",
     sum(\"sparkling\".\"ss_ext_sales_price\") as \"_my_revenue_revenue\"
 FROM
     \"sparkling\"

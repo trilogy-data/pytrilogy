@@ -324,7 +324,7 @@ def reduce_expression(
 
     lower_check: Any
     upper_check: Any
-    if datatype in (DataType.INTEGER, DataType.FLOAT):
+    if datatype in (DataType.INTEGER, DataType.FLOAT, DataType.DOUBLE):
         lower_check = float("-inf")
         upper_check = float("inf")
     elif datatype == DataType.DATE:

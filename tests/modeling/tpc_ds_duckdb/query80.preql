@@ -7,9 +7,9 @@ auto channel_label <- case
     else null
 end;
 auto id_label <- case
-    when sales.channel = 'STORE' then concat('store', sales.channel_dim_text_id)
-    when sales.channel = 'CATALOG' then concat('catalog_page', sales.channel_dim_text_id)
-    when sales.channel = 'WEB' then concat('web_site', sales.channel_dim_text_id)
+    when sales.channel = 'STORE' then 'store' || sales.channel_dim_text_id
+    when sales.channel = 'CATALOG' then 'catalog_page' || sales.channel_dim_text_id
+    when sales.channel = 'WEB' then 'web_site' || sales.channel_dim_text_id
     else null
 end;
 auto profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss, 0);
@@ -22,13 +22,13 @@ where
     and sales.channel_dim_text_id is not null
 select
     channel_label as channel,
-    id_label as id,
+    id_label as sk,
     sum(sales.ext_sales_price) as sales_total,
     sum(coalesce(sales.return_amount, 0)) as returns_total,
     sum(profit_minus_loss) as profit_total,
 by rollup (channel_label, id_label)
 order by
     channel asc nulls first,
-    id asc nulls first
+    sk asc nulls first
 limit 100
 ;

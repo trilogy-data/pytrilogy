@@ -93,7 +93,12 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda args, types: f"sum({args[0]})",
     FunctionType.AVG: lambda args, types: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
-    FunctionType.CONCAT: lambda args, types: f"({' || '.join(args)})",
+    # concat() skips NULLs (coalesce-wrapped for pre-3.44 sqlite); || propagates
+    FunctionType.CONCAT: lambda args, types: (
+        "(" + " || ".join([f"coalesce({a}, '')" for a in args]) + ")"
+    ),
+    FunctionType.CONCAT_STRICT: lambda args, types: f"({' || '.join(args)})",
+    FunctionType.CONCAT_WS: lambda args, types: f"concat_ws({', '.join(args)})",
     FunctionType.CONTAINS: lambda args, types: f"(instr(lower({args[0]}), lower({args[1]})) > 0)",
     FunctionType.BOOL_OR: lambda args, types: f"max(CAST({args[0]} as integer))",
     FunctionType.BOOL_AND: lambda args, types: f"min(CAST({args[0]} as integer))",
@@ -216,6 +221,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "TEXT",
     DataType.INTEGER: "INTEGER",
     DataType.FLOAT: "REAL",
+    DataType.DOUBLE: "REAL",
     DataType.BOOL: "INTEGER",
     DataType.NUMERIC: "NUMERIC",
     DataType.DATE: "TEXT",

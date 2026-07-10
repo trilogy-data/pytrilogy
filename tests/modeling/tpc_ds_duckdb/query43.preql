@@ -4,7 +4,7 @@ where
     store_sales.store.gmt_offset = -5 and store_sales.date.year = 2000
 select
     store_sales.store.name,
-    store_sales.store.text_id,
+    store_sales.store.id,
     sum(store_sales.sales_price ? store_sales.date.day_name = 'Sunday') as sun_sales,
     sum(store_sales.sales_price ? store_sales.date.day_name = 'Monday') as mon_sales,
     sum(store_sales.sales_price ? store_sales.date.day_name = 'Tuesday') as tue_sales,
@@ -14,7 +14,7 @@ select
     sum(store_sales.sales_price ? store_sales.date.day_name = 'Saturday') as sat_sales,
 order by
     store_sales.store.name asc,
-    store_sales.store.text_id asc,
+    store_sales.store.id asc,
     sun_sales asc,
     mon_sales asc,
     tue_sales asc,

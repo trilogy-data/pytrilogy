@@ -5,14 +5,16 @@ import catalog_sales as catalog_sales;
 import customer as customer;
 import item as item;
 
-auto customer_item <- concat(concat(customer.id::string, '-'), item.id::string);
+# || so a NULL customer sk yields a NULL key (concat() skips NULLs and would
+# mint a '-item' key, counting customerless rows as real overlap members)
+auto customer_item <- customer.sk::string || '-' || item.sk::string;
 auto catalog_sales <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
 auto store_sales <- customer_item ? store_sales.date.month_seq between 1200 and 1200 + 11;
 
-left join customer.id = store_sales.customer.id
-left join item.id = store_sales.item.id
-left join customer.id = catalog_sales.bill_customer.id
-left join item.id = catalog_sales.item.id
+left join customer.sk = store_sales.customer.sk
+left join item.sk = store_sales.item.sk
+left join customer.sk = catalog_sales.billing_customer.sk
+left join item.sk = catalog_sales.item.sk
 select
     sum(
             case

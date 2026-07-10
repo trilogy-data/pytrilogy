@@ -29,6 +29,14 @@ FUNCTION_MAP = {
     FunctionType.ARRAY: lambda x, types: f"ARRAY[{', '.join(x)}]",
     # regex
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_LIKE({x[0]}, {x[1]})",
+    # native concat propagates NULL; wrap to match the null-skipping semantics.
+    # array_join omits NULL elements when no null_replacement is given.
+    FunctionType.CONCAT: lambda x, types: (
+        "concat(" + ", ".join([f"coalesce({a}, '')" for a in x]) + ")"
+    ),
+    FunctionType.CONCAT_WS: lambda x, types: (
+        f"array_join(ARRAY[{', '.join(x[1:])}], {x[0]})"
+    ),
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

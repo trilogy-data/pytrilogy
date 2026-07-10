@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from trilogy.constants import MAGIC_TVF_UNION_NAME
-from trilogy.core.enums import ConceptSource, Derivation, Modifier, Purpose
+from trilogy.core.enums import ConceptSource, Derivation, Modifier, Purpose, SetOperator
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AlignClause,
@@ -92,17 +92,35 @@ def tvf_rel_arg(
     for child in node.child_nodes():
         if child.kind == SyntaxNodeKind.SELECT_STATEMENT:
             return hydrate(child)
-    raise fail(node, "union(...) argument must be a parenthesized select")
+    raise fail(
+        node, "union/except/intersect(...) argument must be a parenthesized select"
+    )
 
 
-def _lower_union(
+TVF_INVOCATION_OPERATORS: dict[SyntaxNodeKind, SetOperator] = {
+    SyntaxNodeKind.TVF_UNION_INVOCATION: SetOperator.UNION_ALL,
+    SyntaxNodeKind.TVF_EXCEPT_INVOCATION: SetOperator.EXCEPT,
+    SyntaxNodeKind.TVF_INTERSECT_INVOCATION: SetOperator.INTERSECT,
+}
+
+_TVF_SURFACE_NAMES: dict[SetOperator, str] = {
+    SetOperator.UNION_ALL: "union",
+    SetOperator.EXCEPT: "except",
+    SetOperator.INTERSECT: "intersect",
+}
+
+
+def _lower_set_op(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
     namespace: str,
+    operator: SetOperator,
 ) -> UnionSelectStatement:
-    """Lower a `union(...)` node to a UnionSelectStatement whose output concepts
-    are bound (and registered) under ``namespace``."""
+    """Lower a `union(...)`/`except(...)`/`intersect(...)` node to a
+    UnionSelectStatement whose output concepts are bound (and registered)
+    under ``namespace``."""
+    surface = _TVF_SURFACE_NAMES[operator]
     arm_nodes: list[SyntaxNode] = []
     output_node: SyntaxNode | None = None
     for child in node.child_nodes():
@@ -114,12 +132,12 @@ def _lower_union(
     if output_node is None:
         raise fail(
             node,
-            "A table-valued union(...) requires an output signature: "
-            "`union(...) -> (col1, col2)`.",
+            f"A table-valued {surface}(...) requires an output signature: "
+            f"`{surface}(...) -> (col1, col2)`.",
         )
     if len(arm_nodes) < 2:
         raise InvalidSyntaxException(
-            "union(...) requires at least two relational arms."
+            f"{surface}(...) requires at least two relational arms."
         )
 
     outputs: list[TVFOutputItem] = hydrate(output_node)
@@ -138,7 +156,7 @@ def _lower_union(
         n = len(arm.output_components)
         if n != len(outputs):
             raise InvalidSyntaxException(
-                f"union arm {i} projects {n} column(s) but the output signature "
+                f"{surface} arm {i} projects {n} column(s) but the output signature "
                 f"declares {len(outputs)}. Each arm must project exactly one "
                 "column per output item, in order."
             )
@@ -186,16 +204,26 @@ def _lower_union(
         align=align_c,
         namespace=namespace,
         derived_concepts=derived_concepts,
+        operator=operator,
         meta=metadata_from_meta(node.meta),
     )
 
 
-def tvf_union_invocation(
+def tvf_set_op_invocation(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> UnionSelectStatement:
-    return _lower_union(node, context, hydrate, context.environment.namespace)
+    operator = TVF_INVOCATION_OPERATORS.get(node.kind) if node.kind else None
+    if operator is None:
+        raise fail(node, "unknown set-op invocation")
+    return _lower_set_op(
+        node,
+        context,
+        hydrate,
+        context.environment.namespace,
+        operator,
+    )
 
 
 def tvf_select_statement(
@@ -203,27 +231,33 @@ def tvf_select_statement(
     context: RuleContext,
     hydrate: HydrateFunction,
 ):
-    """Inline `from union(...) -> (...) select ...`.
+    """Inline `from union|except|intersect(...) -> (...) select ...`.
 
-    Lowers the union under a hidden magic namespace, then exposes its outputs
+    Lowers the set op under a hidden magic namespace, then exposes its outputs
     as bare ROWSET-derived local bindings (so they resolve in the trailing
     select without leaking globally, and build via the rowset path rather than
     recursing as a directly-selected multiselect concept)."""
     union_node: SyntaxNode | None = None
+    operator: SetOperator | None = None
     select_node: SyntaxNode | None = None
     for child in node.child_nodes():
-        if child.kind == SyntaxNodeKind.TVF_UNION_INVOCATION:
+        if child.kind is not None and child.kind in TVF_INVOCATION_OPERATORS:
             union_node = child
+            operator = TVF_INVOCATION_OPERATORS[child.kind]
         elif child.kind == SyntaxNodeKind.SELECT_STATEMENT:
             select_node = child
-    if union_node is None or select_node is None:
-        raise fail(node, "inline union requires `from union(...) -> (...) select ...`")
+    if union_node is None or operator is None or select_node is None:
+        raise fail(
+            node,
+            "inline set op requires `from union|except|intersect(...) -> (...) select ...`",
+        )
 
-    union_stmt = _lower_union(
+    union_stmt = _lower_set_op(
         node=union_node,
         context=context,
         hydrate=hydrate,
         namespace=MAGIC_TVF_UNION_NAME,
+        operator=operator,
     )
     union_lineage = union_stmt.as_lineage(context.environment)
     env_ns = context.environment.namespace
@@ -265,6 +299,8 @@ TVF_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.TVF_OUTPUT_ITEM: tvf_output_item,
     SyntaxNodeKind.TVF_OUTPUT: tvf_output,
     SyntaxNodeKind.TVF_REL_ARG: tvf_rel_arg,
-    SyntaxNodeKind.TVF_UNION_INVOCATION: tvf_union_invocation,
+    SyntaxNodeKind.TVF_UNION_INVOCATION: tvf_set_op_invocation,
+    SyntaxNodeKind.TVF_EXCEPT_INVOCATION: tvf_set_op_invocation,
+    SyntaxNodeKind.TVF_INTERSECT_INVOCATION: tvf_set_op_invocation,
     SyntaxNodeKind.TVF_SELECT_STATEMENT: tvf_select_statement,
 }

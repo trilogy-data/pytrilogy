@@ -44,6 +44,33 @@ def test_abstract_property_parsing():
     )
 
 
+def test_basic_over_grainless_aggregates_is_single_row():
+    """A BASIC concept that inlines grand-total aggregates (`sum(x)/greatest(sum(1),1)`)
+    has an abstract (grand-total) grain and must be Granularity.SINGLE_ROW. Its
+    `concept_arguments` flatten through the aggregates to the raw leaf columns
+    (MULTI_ROW), so the "all args single-row" check fails; single-row-ness must be
+    read off the abstract grain instead. If mis-tagged MULTI_ROW it is treated as a
+    finer dimension in the HAVING promotion gate and silently misrouted."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text("""
+key order_id int;
+property order_id.amount float;
+datasource orders (order_id: order_id, amount: amount)
+grain (order_id)
+query '''select 1 as order_id, 100.0 as amount union all select 2, 200.0''';
+
+auto gavg <- sum(amount) / greatest(sum(1), 1);
+auto gsum2 <- sum(amount) + sum(amount);
+""")
+    for name in ("gavg", "gsum2"):
+        concept = exec.environment.concepts[name]
+        assert concept.grain.abstract, (name, concept.grain.components)
+        assert concept.granularity == Granularity.SINGLE_ROW, (
+            name,
+            concept.granularity,
+        )
+
+
 def test_abstract_property_sql_generation():
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(SETUP)

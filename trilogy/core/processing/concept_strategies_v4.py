@@ -299,11 +299,14 @@ def _resolve_union_select(
     history: "V4History",
     conditions: list[BuildWhereClause],
 ) -> BuildInfo:
-    """Plan a relational `union(...)` TVF: a column-positional row stack.
+    """Plan a relational `union(...)`/`except(...)`/`intersect(...)` TVF: a
+    column-positional row stack.
 
     Each arm is planned independently (same arm recursion as a multiselect),
-    then each arm projects its i-th column onto the shared union output concept
-    and the arms are stacked with a `UnionNode` (SQL UNION ALL) — not joined."""
+    then each arm projects its i-th column onto the shared output concept and
+    the arms are combined with a `UnionNode` carrying the lineage's set
+    operator (UNION ALL / EXCEPT / INTERSECT) — not joined. Arm order is
+    preserved; for EXCEPT it is semantic (left-fold)."""
     lineage = union_concept.lineage
     assert isinstance(lineage, BuildUnionSelectLineage)
 
@@ -358,6 +361,7 @@ def _resolve_union_select(
         environment=environment,
         depth=depth,
         parents=arm_nodes,
+        set_operator=lineage.operator,
     )
     node.set_output_concepts(list(mandatory_list))
     node.rebuild_cache()

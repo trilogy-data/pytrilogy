@@ -1,23 +1,42 @@
 #!/usr/bin/env python
 """Bundle agent trajectory logs into one self-contained HTML viewer.
 
-    python trajectory_viewer.py <results_dir> [--serve PORT]
+    python trajectory_viewer.py [results_dir] [--serve PORT]
+
+``results_dir`` defaults to the run dir with the most recently modified log.
 
 Reads every ``agent_log.*.jsonl`` in the directory (plus ``repeat_report.json``
 for per-run status/metrics when present) and writes ``<results_dir>/viewer.html``
 — a static page with a run picker and a conversation timeline. No external
-assets. With ``--serve`` it also starts a local http server on that port.
+assets. With ``--serve`` it also starts a local http server on that port, which
+additionally serves a *Replay* button: re-seeds the model, re-runs the selected
+query in place, and splices the fresh result over the old one — so a prompt,
+model or engine fix can be validated without re-running the benchmark (see
+``evals/common/replay.py``).
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
+import http.server
 import json
 import re
+import sys
+import threading
+import urllib.parse
 from pathlib import Path
 
 _RUN_RE = re.compile(r"\.r(\d+)\.jsonl$")
 _QID_RE = re.compile(r"\.q(\d+)\.jsonl$")
+_QID_ANY = re.compile(r"\.q(\d+)\b")  # query id in either eval or repeat log names
+# Which candidate/canonical extension each eval leg authors.
+_CATEGORY_EXT = {
+    "enriched": "preql",
+    "ingest": "preql",
+    "sql_bare": "sql",
+    "sql_schema": "sql",
+}
 
 
 def _call_label(name: str, args: list[str]) -> str:
@@ -167,13 +186,133 @@ def _load_eval_report(results_dir: Path) -> dict[int, dict]:
     return by_id
 
 
+def _find_ref_dir(results_dir: Path) -> Path | None:
+    """Locate the hand-authored canonical query dir by walking up to the repo root."""
+    for anc in results_dir.parents:
+        cand = anc / "tests" / "modeling" / "tpc_ds_duckdb"
+        if cand.is_dir():
+            return cand
+    return None
+
+
+def _read_query(base: Path | None, qid: int, ext: str) -> dict | None:
+    if base is None:
+        return None
+    for name in (f"query{qid:02d}.{ext}", f"query{qid}.{ext}"):
+        p = base / name
+        if p.exists():
+            return {
+                "name": name,
+                "lang": ext,
+                "src": p.read_text(encoding="utf-8"),
+                "_path": p,
+                "_base": base,
+            }
+    return None
+
+
+# --- preql → SQL transpilation (best-effort; the viewer stays usable without it) ---
+_TRANSPILE_ENGINE: object | None = None
+_ENGINE_FAILED = False
+_SQL_CACHE: dict[tuple, tuple] = {}  # (path, mtime, working_path) -> (sql, is_error)
+_PARAMS: dict[int, dict] | None = None
+
+
+def _transpile_engine():
+    """A DB-less in-memory DuckDB executor reused across renders — generate_sql is
+    pure transpilation, so we never open the (large) workspace database."""
+    global _TRANSPILE_ENGINE, _ENGINE_FAILED
+    if _TRANSPILE_ENGINE is None and not _ENGINE_FAILED:
+        try:
+            from trilogy import Dialects
+            from trilogy.core.models.environment import Environment
+            from trilogy.dialect.config import DuckDBConfig
+
+            _TRANSPILE_ENGINE = Dialects.DUCK_DB.default_executor(
+                environment=Environment(), conf=DuckDBConfig()
+            )
+        except Exception:
+            _ENGINE_FAILED = True
+    return _TRANSPILE_ENGINE
+
+
+def _load_params() -> dict[int, dict]:
+    global _PARAMS
+    if _PARAMS is None:
+        _PARAMS = {}
+        pf = Path(__file__).parent / "query_prompts.json"
+        if pf.exists():
+            data = json.loads(pf.read_text(encoding="utf-8"))
+            qs = data.get("queries", []) if isinstance(data, dict) else data
+            _PARAMS = {q["id"]: q["params"] for q in qs if q.get("params")}
+    return _PARAMS
+
+
+def _render_sql(text: str, working_path: Path, params: dict | None) -> tuple[str, bool]:
+    engine = _transpile_engine()
+    if engine is None:
+        return "", True
+    from trilogy.core.models.environment import Environment
+
+    try:
+        engine.environment = Environment(working_path=working_path)
+        if params:
+            engine.environment.set_parameters(
+                **{name: spec.get("value") for name, spec in params.items()}
+            )
+        statements = engine.generate_sql(text)
+        return (statements[-1] if statements else "-- (no statement)"), False
+    except Exception as exc:
+        return f"{type(exc).__name__}: {exc}", True
+
+
+def _augment_sql(q: dict | None, params: dict | None) -> dict | None:
+    """Attach rendered SQL (cached by file mtime) and strip internal path fields."""
+    if q is None:
+        return None
+    base, path = q.pop("_base"), q.pop("_path")
+    if q["lang"] != "preql":
+        q["sql"], q["sqlError"] = q["src"], False  # SQL legs: candidate is already SQL
+        return q
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    key = (str(path), mtime, str(base))
+    if key not in _SQL_CACHE:
+        _SQL_CACHE[key] = _render_sql(q["src"], base, params)
+    q["sql"], q["sqlError"] = _SQL_CACHE[key]
+    return q
+
+
+def _run_category(results_dir: Path) -> str | None:
+    """The eval leg (enriched/ingest/sql_bare/sql_schema) — picks the query language."""
+    rp = results_dir / "repeat_report.json"
+    if rp.exists():
+        return json.loads(rp.read_text(encoding="utf-8")).get("meta", {}).get("mode")
+    ep = results_dir / "report.json"
+    if ep.exists():
+        return (
+            json.loads(ep.read_text(encoding="utf-8")).get("meta", {}).get("category")
+        )
+    return None
+
+
 def collect(results_dir: Path) -> list[dict]:
     report = {}
+    repeat_qid = None
     rp = results_dir / "repeat_report.json"
     if rp.exists():
         data = json.loads(rp.read_text(encoding="utf-8"))
         report = {r["rep"]: r for r in data.get("runs", [])}
+        repeat_qid = data.get("meta", {}).get("query_id")
     eval_report = _load_eval_report(results_dir)
+    ext = _CATEGORY_EXT.get(_run_category(results_dir) or "", "preql")
+    ref_dir = _find_ref_dir(results_dir)
+    workspace = results_dir / "workspace"
+    # Replay re-runs one query against the run's own workspace and rewrites its
+    # slice of report.json — neither is present for repeat-harness dirs.
+    replayable = (results_dir / "report.json").exists() and workspace.is_dir()
     runs: list[dict] = []
     for path in sorted(results_dir.glob("agent_log.*.jsonl")):
         m = _RUN_RE.search(path.name)
@@ -185,13 +324,31 @@ def collect(results_dir: Path) -> list[dict]:
         parsed = parse_log(path)
         # Derived per-run metrics fill gaps; authoritative report values win.
         metrics = {**parsed["derived"], **reported}
+        qany = _QID_ANY.search(path.name)
+        qid = int(qany.group(1)) if qany else repeat_qid
+        queries = {}
+        if qid is not None:
+            # Candidate at workspace root (single-leg runs), else the rep's worker dir.
+            candidate = _read_query(workspace, qid, ext) or _read_query(
+                workspace / f"_worker_{rep}", qid, ext
+            )
+            params = _load_params().get(qid)
+            queries = {
+                "candidate": _augment_sql(candidate, params),
+                "canonical": _augment_sql(_read_query(ref_dir, qid, ext), params),
+            }
         runs.append(
             {
                 "name": path.name.replace("agent_log.", "").replace(".jsonl", ""),
                 "rep": rep,
+                "qid": qid,
+                # `qm` (not `qany`) — a repeat log's `.qNN.rNN.` name carries a
+                # qid but has no report entry to splice back into.
+                "replayable": replayable and qm is not None,
                 "meta": parsed["meta"],
                 "timeline": parsed["timeline"],
                 "metrics": metrics,
+                "queries": queries,
             }
         )
     return runs
@@ -210,8 +367,20 @@ _HTML = r"""<!doctype html>
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
   #wrap { display:flex; height:100vh; }
-  #side { width:260px; flex:0 0 260px; border-right:1px solid var(--border); overflow-y:auto; background:var(--panel); }
-  #side h1 { font-size:13px; padding:14px 14px 6px; margin:0; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
+  /* Header (run picker + tally) stays put; only the run list scrolls. */
+  #side { width:260px; flex:0 0 260px; border-right:1px solid var(--border); background:var(--panel);
+          display:flex; flex-direction:column; min-height:0; }
+  #sidehead { flex:0 0 auto; border-bottom:1px solid var(--border); }
+  #runs { flex:1 1 auto; overflow-y:auto; min-height:0; }
+  #tally { padding:2px 14px 10px; }
+  .tally-n { font-size:13px; margin-bottom:6px; }
+  .tally-n .pct { color:var(--muted); }
+  .tally-f { display:flex; gap:6px; }
+  .fbtn { flex:1; background:var(--panel2); color:var(--muted); border:1px solid var(--border);
+          border-radius:6px; padding:4px 6px; font-size:11px; cursor:pointer; }
+  .fbtn:hover { color:var(--txt); }
+  .fbtn.on { border-color:var(--accent); color:var(--accent); }
+  .empty { padding:14px; color:var(--muted); font-size:12px; }
   .run { padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
   .run:hover { background:var(--panel2); }
   .run.active { background:var(--panel2); border-left:3px solid var(--accent); padding-left:11px; }
@@ -221,6 +390,18 @@ _HTML = r"""<!doctype html>
   .badge.pass { background:rgba(63,185,80,.18); color:var(--ok); }
   .badge.exhausted,.badge.error,.badge.fail { background:rgba(248,81,73,.18); color:var(--err); }
   .badge.other { background:rgba(139,147,167,.18); color:var(--muted); }
+  .badge.over { background:rgba(248,81,73,.85); color:#fff; margin-left:4px; }
+  .sdot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; flex:0 0 8px; }
+  .badge.replaying { background:rgba(91,157,255,.18); color:var(--accent); }
+  @keyframes sdotpulse { 0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(91,157,255,.55); }
+                         50% { opacity:.45; box-shadow:0 0 0 4px rgba(91,157,255,0); } }
+  @keyframes rowpulse { 0%,100% { background:var(--panel2); } 50% { background:var(--panel); } }
+  .sdot.pulse { animation:sdotpulse 1.4s ease-in-out infinite; }
+  .run.replaying { animation:rowpulse 1.4s ease-in-out infinite; border-left:3px solid var(--accent); padding-left:11px; }
+  .run.replaying .sub { color:var(--accent); }
+  @media (prefers-reduced-motion:reduce) {
+    .sdot.pulse, .run.replaying { animation:none; }
+  }
   #main { flex:1; overflow-y:auto; padding:22px 28px 80px; }
   #task { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:20px; white-space:pre-wrap; color:var(--muted); font-size:13px; max-height:160px; overflow:auto; }
   .turn { margin:0 0 14px; }
@@ -248,12 +429,37 @@ _HTML = r"""<!doctype html>
   #runbar label { font-size:11px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
   #runsel { width:100%; margin-top:5px; background:var(--panel2); color:var(--txt);
             border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; }
+  .cmpbar { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .cmpbtn { background:var(--panel2); color:var(--txt); border:1px solid var(--border);
+            border-radius:6px; padding:5px 12px; font-size:12px; cursor:pointer; }
+  .cmpbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .cmpbtn[disabled] { opacity:.45; cursor:default; }
+  .cmpbtn[disabled]:hover { border-color:var(--border); color:var(--txt); }
+  .rpmsg { font-size:12px; color:var(--muted); }
+  .rpmsg.ok { color:var(--ok); }
+  .rpmsg.err { color:var(--err); }
+  .cmpsel { background:var(--panel2); color:var(--txt); border:1px solid var(--border);
+            border-radius:6px; padding:5px 8px; font-size:12px; cursor:pointer; }
+  .cmp { display:flex; gap:12px; margin-bottom:20px; }
+  .cmp-col { flex:1; min-width:0; }
+  .cmp-h { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:4px; }
+  .cmp-col pre { margin:0; max-height:70vh; }
+  .code.err { color:var(--err); white-space:pre-wrap; }
+  .hl-kw { color:#ff7ab6; font-weight:600; }
+  .hl-st { color:#7ee787; }
+  .hl-id { color:#79c0ff; }
+  .hl-cm { color:#8b93a7; font-style:italic; }
+  .hl-nu { color:#f0a45d; }
+  .hl-op { color:#ff7ab6; }
 </style>
 </head>
 <body>
 <div id="wrap">
   <div id="side">
-    <div id="runbar"><label>Run<span id="live"></span></label><select id="runsel" onchange="onRunChange()"></select></div>
+    <div id="sidehead">
+      <div id="runbar"><label>Run<span id="live"></span></label><select id="runsel" onchange="onRunChange()"></select></div>
+      <div id="tally"></div>
+    </div>
     <div id="runs"></div>
   </div>
   <div id="main"></div>
@@ -265,8 +471,134 @@ let selectedName = RUNS.length ? RUNS[0].name : null;
 let lastPayload = null;
 let expanded = new Set();   // keys of tool-result blocks the user expanded (current run)
 let currentRun = null;   // which results dir we're viewing (null until runs.json loads)
+let compareOpen = false;   // side-by-side canonical vs agent query panel (per run)
+let compareView = 'src';   // 'src' (preql/sql source) or 'sql' (rendered SQL)
+let failOnly = false;   // sidebar filter: hide passing runs
+let served = false;   // true once runs.json answers — replay needs the server
+let replay = {running:false, qid:null, log:[], result:null, error:null};
+let replayTimer = null;
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
+// Sidebar result color — mirrors the dashboard PNG (STATUS_COLORS_ALT): green=pass,
+// orange=fail/missed, purple=timed out (exhausted/crashed share the purple family).
+function statusColor(s){
+  return ({pass:'#81c784', fail:'#ffb74d', error:'#e57373', missing:'#cfcfcf',
+           timeout:'#ba68c8', exhausted:'#b39ddb', crashed:'#9575cd'})[s] || '#8b93a7';
+}
+
+const SQL_KW = new Set(('select from where group by order having limit offset join left right '
+  + 'full inner outer cross on using as and or not in is null case when then else end with union '
+  + 'all distinct asc desc between like ilike over partition rows range unbounded preceding '
+  + 'following current row cast exists interval coalesce nulls first last').split(' '));
+const PREQL_KW = new Set(('import as auto def rowset merge property key datasource grain address '
+  + 'where select order by having limit filter into with union all and or not is null case when '
+  + 'then else end between like over partition asc desc true false raw const type persist show '
+  + 'rollup by where').split(' '));
+function sp(c,t){ return `<span class="hl-${c}">${esc(t)}</span>`; }
+function hl(code, lang){
+  const kw = lang==='preql' ? PREQL_KW : SQL_KW;
+  const re = /(--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(<-|->|::|\?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+  let out='', last=0, m;
+  while((m=re.exec(code))){
+    out += esc(code.slice(last, m.index));
+    last = re.lastIndex;
+    if(m[1]) out += sp('cm', m[1]);
+    else if(m[2]) out += sp('st', m[2]);
+    else if(m[3]) out += sp('id', m[3]);
+    else if(m[4]) out += sp('op', m[4]);
+    else if(m[5]) out += sp('nu', m[5]);
+    else out += SQL_KW.has(m[6].toLowerCase()) || kw.has(m[6].toLowerCase()) ? sp('kw', m[6]) : esc(m[6]);
+  }
+  return out + esc(code.slice(last));
+}
+function hasPreql(q){ return ['candidate','canonical'].some(k=>q[k] && q[k].lang==='preql'); }
+function compareHtml(run){
+  const q = run.queries||{};
+  if(!q.candidate && !q.canonical) return '';
+  const sql = compareView==='sql';
+  const body = o => {
+    if(!o) return `<pre class="code">(not found)</pre>`;
+    const txt = sql ? o.sql : o.src, lang = sql ? 'sql' : o.lang;
+    if(sql && o.sqlError) return `<pre class="code err">${esc(txt)}</pre>`;
+    return `<pre class="code">${hl(txt, lang)}</pre>`;
+  };
+  const label = o => !o ? 'n/a' : o.name + (sql && o.lang==='preql' ? ' → SQL' : '');
+  const col = (who,o) => `<div class="cmp-col"><div class="cmp-h">${esc(who)} · ${esc(label(o))}</div>${body(o)}</div>`;
+  return `<div class="cmp">`+col('canonical', q.canonical)+col('agent', q.candidate)+`</div>`;
+}
+
+const qlabel = q => 'q' + String(q).padStart(2,'0');
+// The replay bar re-renders from `replay` on every poll, so a run re-render
+// (live data refresh) never wipes an in-flight status.
+function replayBarHtml(run){
+  if(!served || !run.replayable) return '';
+  // Scope status to this dir+query: a job for another results dir is just "busy".
+  const mine = replay.qid === run.qid && replay.run === currentRun;
+  const label = (replay.running && mine) ? 'Replaying…' : 'Replay ' + qlabel(run.qid);
+  const dis = replay.running ? ' disabled' : '';
+  let status = '';
+  if(replay.running && mine){
+    status = `<span class="rpmsg">${esc(replay.log[replay.log.length-1] || 'starting…')}</span>`;
+  } else if(replay.running){
+    status = `<span class="rpmsg">busy: ${esc(qlabel(replay.qid))}</span>`;
+  } else if(mine && replay.error){
+    status = `<span class="rpmsg err">${esc(replay.error)}</span>`;
+  } else if(mine && replay.result){
+    const r = replay.result;
+    status = `<span class="rpmsg ok">${esc(r.prev_status||'absent')} → ${esc(r.status)}`
+           + ` · ${r.iterations} iters · ${r.duration_seconds}s`
+           + ` · pass ${r.pass_count}/${r.num_queries}</span>`;
+  }
+  return `<button class="cmpbtn" onclick="startReplay(${run.qid})"${dis}>${esc(label)}</button>${status}`;
+}
+function updateReplayBar(){
+  const el = document.getElementById('rpbar'), run = RUNS.find(r=>r.name===selectedName);
+  if(el && run) el.innerHTML = replayBarHtml(run);
+}
+// Replay state drives both the bar and the sidebar pulse; the 4s data poll is
+// too coarse to start/stop the pulse on its own.
+function updateReplayUi(){ updateReplayBar(); renderSide(); }
+async function startReplay(qid){
+  if(!confirm(`Replay ${qlabel(qid)} in ${currentRun}?\n\n`
+    + `Re-seeds the semantic model, then re-runs the agent against the current `
+    + `prompt and engine.\n\nOVERWRITES this query's trajectory, candidate query `
+    + `and report entry. The current trajectory is not recoverable.`)) return;
+  replay = {running:true, run:currentRun, qid, log:['submitting…'], result:null, error:null};
+  updateReplayUi();
+  try{
+    const r = await fetch('replay', {method:'POST', headers:{'Content-Type':'application/json'},
+                                     body: JSON.stringify({run: currentRun, qid})});
+    const j = await r.json();
+    replay = r.ok ? j : {running:false, run:currentRun, qid, log:[], result:null, error: j.error || ('HTTP '+r.status)};
+  }catch(e){ replay = {running:false, run:currentRun, qid, log:[], result:null, error:String(e)}; }
+  updateReplayUi();
+  if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+}
+async function pollReplay(){
+  try{
+    const r = await fetch('replay_status.json', {cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json();
+    const finished = replay.running && !j.running;
+    replay = j;
+    updateReplayUi();
+    if(finished){
+      clearInterval(replayTimer); replayTimer = null;
+      lastPayload = null;   // the run's logs + report just changed under us
+      loadData(true);       // must win over any poll still in flight from mid-replay
+    }
+  }catch(e){ clearInterval(replayTimer); replayTimer = null; }
+}
+// A page reload mid-replay should re-attach to the running job, not lose it.
+async function initReplay(){
+  try{
+    const r = await fetch('replay_status.json', {cache:'no-store'});
+    if(!r.ok) return;
+    replay = await r.json();
+    updateReplayUi();
+    if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+  }catch(e){ /* static file — no replay */ }
+}
 
 function renderRun(run, keepScroll){
   const m = run.metrics||{}, meta = run.meta||{};
@@ -277,7 +609,21 @@ function renderRun(run, keepScroll){
         + `${rows}iters ${m.iterations??'?'} · prompt_tok ${(m.prompt_tokens||0).toLocaleString()} · `
         + `${meta.provider||''} ${meta.model||''} ${m.duration_seconds?('· '+m.duration_seconds+'s'):''}</div>`;
   if(m.detail) h += `<div class="meta" style="color:var(--err)">${esc(m.detail)}</div>`;
+  if(served && run.replayable) h += `<div class="cmpbar" id="rpbar">${replayBarHtml(run)}</div>`;
   h += `<div id="task">${esc(meta.task)}</div>`;
+  const q = run.queries||{};
+  if(q.candidate || q.canonical){
+    h += `<div class="cmpbar"><button class="cmpbtn" onclick="toggleCompare()">`
+       + `${compareOpen?'Hide':'Compare'} canonical vs agent query</button>`;
+    if(compareOpen && hasPreql(q)){
+      h += `<select class="cmpsel" onchange="setCompareView(this.value)">`
+         + `<option value="src"${compareView==='src'?' selected':''}>Trilogy (preql)</option>`
+         + `<option value="sql"${compareView==='sql'?' selected':''}>Rendered SQL</option></select>`;
+    }
+    if(compareOpen) h += `<button class="cmpbtn" onclick="copyBoth(this)">Copy both</button>`;
+    h += `</div>`;
+    if(compareOpen) h += compareHtml(run);
+  }
   for(let i=0;i<run.timeline.length;i++){
     const ev = run.timeline[i];
     if(ev.role==='assistant'){
@@ -322,21 +668,93 @@ function toggleOut(head){
   const pre = head.nextElementSibling, k = head.dataset.key;
   if(pre.classList.toggle('show')) expanded.add(k); else expanded.delete(k);
 }
+function toggleCompare(){
+  compareOpen = !compareOpen;
+  const sel = RUNS.find(r=>r.name===selectedName);
+  if(sel) renderRun(sel, true);
+}
+function setCompareView(v){
+  compareView = v;
+  const sel = RUNS.find(r=>r.name===selectedName);
+  if(sel) renderRun(sel, true);
+}
+function writeClip(text){
+  if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+  return new Promise((res,rej)=>{
+    const ta=document.createElement('textarea'); ta.value=text;
+    ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); res(); }catch(e){ rej(e); } finally{ document.body.removeChild(ta); }
+  });
+}
+function copyBoth(btn){
+  const run = RUNS.find(r=>r.name===selectedName);
+  if(!run) return;
+  const q = run.queries||{}, sql = compareView==='sql';
+  const suffix = o => sql && o.lang==='preql' ? ' → SQL' : '';
+  const block = (who,o) => {
+    if(!o) return `-- ===== ${who} (n/a) =====\n(not found)`;
+    const err = sql && o.sqlError ? '-- (render error)\n' : '';
+    return `-- ===== ${who} (${o.name}${suffix(o)}) =====\n` + err + (sql ? o.sql : o.src);
+  };
+  const text = block('CANONICAL', q.canonical) + '\n\n' + block('AGENT', q.candidate) + '\n';
+  const old = btn.textContent;
+  writeClip(text).then(()=>{ btn.textContent='Copied ✓'; }).catch(()=>{ btn.textContent='Copy failed'; });
+  setTimeout(()=>{ btn.textContent=old; }, 1200);
+}
 
 function markActive(){
   document.querySelectorAll('.run').forEach(n=>
     n.classList.toggle('active', RUNS[+n.dataset.i].name===selectedName));
 }
+// The row whose query is being replayed right now — its metrics are stale until
+// the job lands, so we pulse it instead of showing them.
+function isReplaying(run){
+  return replay.running && replay.run === currentRun && replay.qid === run.qid;
+}
+const PULSE_MS = 1400;
+// Re-rendering the row restarts its animation. Offsetting the delay by where the
+// wall clock sits in the cycle keeps the pulse continuous across re-renders.
+function pulseDelay(){ return `animation-delay:${-(performance.now() % PULSE_MS)}ms`; }
+const isPass = run => (run.metrics||{}).status === 'pass';
+// Under the "failing" filter, keep the selected and replaying rows visible so
+// the list doesn't yank the row you're reading out from under you.
+function isVisible(run){
+  return !failOnly || !isPass(run) || run.name === selectedName || isReplaying(run);
+}
+function renderTally(){
+  const el = document.getElementById('tally');
+  if(!el) return;
+  const total = RUNS.length, pass = RUNS.filter(isPass).length, failing = total - pass;
+  const pct = total ? Math.round(pass/total*100) : 0;
+  el.innerHTML = `<div class="tally-n"><b>${pass}/${total}</b> pass <span class="pct">(${pct}%)</span></div>`
+    + `<div class="tally-f">`
+    + `<button class="fbtn${failOnly?'':' on'}" onclick="setFailOnly(false)">All ${total}</button>`
+    + `<button class="fbtn${failOnly?' on':''}" onclick="setFailOnly(true)">Failing ${failing}</button>`
+    + `</div>`;
+}
+function setFailOnly(v){ failOnly = v; renderSide(); }
 function renderSide(){
+  renderTally();
   const el = document.getElementById('runs');
-  el.innerHTML = RUNS.map((r,i)=>{
+  const rows = RUNS.map((r,i)=>[r,i]).filter(([r])=>isVisible(r));
+  if(!rows.length){ el.innerHTML = `<div class="empty">No failing runs.</div>`; return; }
+  el.innerHTML = rows.map(([r,i])=>{
     const m=r.metrics||{};
-    return `<div class="run" data-i="${i}"><div class="nm">${esc(r.name)} ${badge(m.status)}</div>`
-         + `<div class="sub">${m.iterations??'?'} iters · ${((m.prompt_tokens||0)/1e6).toFixed(2)}M tok</div></div>`;
+    const busy = isReplaying(r);
+    const c = busy ? 'var(--accent)' : statusColor(m.status);
+    const tok = m.prompt_tokens||0;
+    const over = (!busy && tok > 500000) ? `<span class="badge over">500k+</span>` : '';
+    const tail = busy ? `<span class="badge replaying">replaying</span>` : `${badge(m.status)}${over}`;
+    const sub = busy ? 'running agent…' : `${m.iterations??'?'} iters · ${(tok/1e6).toFixed(2)}M tok`;
+    const delay = busy ? pulseDelay() : '';
+    return `<div class="run${busy?' replaying':''}" data-i="${i}" style="${delay}"><div class="nm">`
+         + `<span class="sdot${busy?' pulse':''}" style="background:${c};${delay}"></span>`
+         + `<span style="color:${c}">${esc(r.name)}</span> ${tail}</div>`
+         + `<div class="sub">${esc(sub)}</div></div>`;
   }).join('');
   el.querySelectorAll('.run').forEach(node=>{
     node.onclick = ()=>{ selectedName = RUNS[+node.dataset.i].name; expanded = new Set();
-      markActive(); renderRun(RUNS[+node.dataset.i], false); };
+      compareOpen = false; markActive(); renderRun(RUNS[+node.dataset.i], false); };
   });
   markActive();
 }
@@ -355,17 +773,28 @@ function flashLive(){
   el.textContent = '● live'; el.style.color = 'var(--ok)'; el.style.opacity = '1';
   setTimeout(()=>{ el.style.opacity = '.5'; }, 500);
 }
-async function loadData(){
+// data.json takes tens of seconds on a cold cache (it transpiles every query),
+// so polls overlap and can resolve out of order. An older snapshot must never
+// overwrite a newer one: a mid-replay snapshot carries the already-truncated
+// agent log but the not-yet-rewritten report.json, i.e. new iters + stale status.
+let dataInFlight = 0, dataSeq = 0, appliedSeq = 0;
+async function loadData(force){
+  if(dataInFlight && !force) return;   // don't stack slow polls
+  const seq = ++dataSeq;
+  dataInFlight++;
   try{
     const q = currentRun ? ('?run=' + encodeURIComponent(currentRun)) : '';
     const r = await fetch('data.json' + q, {cache:'no-store'});
     if(!r.ok) return;
     const txt = await r.text();
+    if(seq <= appliedSeq) return;   // a newer snapshot already landed
+    appliedSeq = seq;
     if(txt === lastPayload) return;   // unchanged — don't disrupt the view
     lastPayload = txt;
     flashLive();
     applyData(JSON.parse(txt), true);
-  }catch(e){ /* opened as a static file or server gone — keep the baked snapshot */ }
+  }catch(e){ /* opened as a static file or server gone — keep the baked snapshot */
+  }finally{ dataInFlight--; }
 }
 // Populate the run-directory dropdown from sibling results dirs.
 async function loadRuns(){
@@ -373,6 +802,7 @@ async function loadRuns(){
     const r = await fetch('runs.json', {cache:'no-store'});
     if(!r.ok) return;
     const j = await r.json();
+    served = true;
     if(currentRun === null) currentRun = j.current;
     const sel = document.getElementById('runsel');
     sel.innerHTML = j.runs.map(n =>
@@ -383,17 +813,203 @@ async function loadRuns(){
 }
 function onRunChange(){
   currentRun = document.getElementById('runsel').value;
-  selectedName = null; lastPayload = null; expanded = new Set();   // reset for the new run
-  loadData();
+  selectedName = null; lastPayload = null; expanded = new Set(); compareOpen = false;   // reset for the new run
+  loadData(true);
 }
 applyData(RUNS, false);
-loadRuns().then(loadData);
-setInterval(loadData, 4000);
+loadRuns().then(()=>loadData(true)).then(initReplay);
+setInterval(()=>loadData(), 4000);
 setInterval(loadRuns, 10000);
 </script>
 </body>
 </html>
 """
+
+
+_EVAL_DIR = Path(__file__).resolve().parent
+# `common` package (evals/) and this benchmark's `spec` — imported lazily by the
+# replay thread so the static build path never pulls in trilogy/matplotlib.
+sys.path[:0] = [str(_EVAL_DIR.parent), str(_EVAL_DIR)]
+
+_REPLAY_LOG_LINES = 200
+
+
+def _force_utf8_stdio() -> None:
+    """Replay progress can carry engine text; Windows consoles default to cp1252
+    and would raise mid-replay on the first non-ASCII byte."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
+class ReplayJob:
+    """One replay at a time, run off the HTTP thread. The page starts it with
+    POST /replay and polls GET /replay_status.json until ``running`` clears."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: dict = {
+            "running": False,
+            "run": None,
+            "qid": None,
+            "log": [],
+            "result": None,
+            "error": None,
+        }
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {**self._state, "log": list(self._state["log"])}
+
+    def _log(self, message: str) -> None:
+        print(f"[replay] {message}", flush=True)
+        with self._lock:
+            lines = self._state["log"]
+            lines.append(message)
+            del lines[:-_REPLAY_LOG_LINES]
+
+    def start(self, run_dir: Path, qid: int) -> str | None:
+        """Accept the job, or return why it was rejected."""
+        with self._lock:
+            if self._state["running"]:
+                return f"a replay is already running (q{self._state['qid']:02d})"
+            self._state = {
+                "running": True,
+                "run": run_dir.name,
+                "qid": qid,
+                "log": [],
+                "result": None,
+                "error": None,
+            }
+        threading.Thread(target=self._run, args=(run_dir, qid), daemon=True).start()
+        return None
+
+    def _run(self, run_dir: Path, qid: int) -> None:
+        result: dict | None = None
+        error: str | None = None
+        try:
+            from common import replay
+            from spec import SPEC
+
+            result = replay.replay_query(run_dir, SPEC, qid, log=self._log)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            self._log(error)
+        with self._lock:
+            self._state.update(running=False, result=result, error=error)
+
+
+# A cold collect() transpiles every query (tens of seconds). Serialise it so
+# overlapping polls queue behind one build instead of each doing the work.
+_COLLECT_LOCK = threading.Lock()
+
+
+def _list_run_dirs(root: Path) -> list[str]:
+    dirs = [
+        c for c in root.iterdir() if c.is_dir() and any(c.glob("agent_log.*.jsonl"))
+    ]
+    dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return [p.name for p in dirs]
+
+
+class ViewerHandler(http.server.SimpleHTTPRequestHandler):
+    """Static viewer.html plus the live-data and replay endpoints. ``root``,
+    ``default_dir``, ``job`` and ``log_requests`` are injected by :func:`serve`."""
+
+    root: Path
+    default_dir: Path
+    job: ReplayJob
+    log_requests: bool = False
+
+    def log_message(self, format: str, *args) -> None:
+        # The page polls every few seconds forever; the default per-request line
+        # grows the console without bound until it falls over.
+        if self.log_requests:
+            super().log_message(format, *args)
+
+    def _json(self, obj, status: int = 200) -> None:
+        payload = json.dumps(obj).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _resolve_run(self, name: str | None) -> Path | None:
+        """Name → run dir, constrained to the sibling run dirs we advertise."""
+        if name and name in _list_run_dirs(self.root):
+            return self.root / name
+        return None
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/runs.json":
+            self._json(
+                {"runs": _list_run_dirs(self.root), "current": self.default_dir.name}
+            )
+            return
+        if parsed.path == "/replay_status.json":
+            self._json(self.job.snapshot())
+            return
+        if parsed.path == "/data.json":
+            # Re-read the chosen run's logs per request so a live (or
+            # just-finished) run streams in — the page polls this.
+            qs = urllib.parse.parse_qs(parsed.query)
+            target = self._resolve_run((qs.get("run") or [None])[0]) or self.default_dir
+            with _COLLECT_LOCK:
+                payload = collect(target)
+            self._json(payload)
+            return
+        super().do_GET()
+
+    def do_POST(self):
+        if urllib.parse.urlparse(self.path).path != "/replay":
+            self.send_error(404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length) or b"{}")
+            qid = int(body["qid"])
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            self._json({"error": "expected JSON body {run, qid}"}, 400)
+            return
+        run_dir = self._resolve_run(body.get("run"))
+        if run_dir is None:
+            self._json({"error": f"unknown run {body.get('run')!r}"}, 400)
+            return
+        rejected = self.job.start(run_dir, qid)
+        if rejected:
+            self._json({"error": rejected}, 409)
+            return
+        self._json(self.job.snapshot())
+
+
+def serve(results_dir: Path, port: int, log_requests: bool) -> None:
+    root = results_dir.parent  # sibling run dirs live alongside us
+    ViewerHandler.root = root
+    ViewerHandler.default_dir = results_dir
+    ViewerHandler.job = ReplayJob()
+    ViewerHandler.log_requests = log_requests
+    handler = functools.partial(ViewerHandler, directory=str(results_dir))
+    # Threading: a replay runs off-thread, but the browser still opens parallel
+    # connections for data.json + replay_status.json while it works.
+    with http.server.ThreadingHTTPServer(("127.0.0.1", port), handler) as httpd:
+        httpd.daemon_threads = True
+        print(f"serving http://127.0.0.1:{port}/viewer.html  (ctrl-c to stop)")
+        httpd.serve_forever()
+
+
+def _latest_results_dir() -> Path:
+    """The dir holding the most recently modified ``agent_log.*.jsonl`` — the
+    default when no dir is passed, so `python trajectory_viewer.py` just works."""
+    search_root = Path(__file__).parent
+    logs = list(search_root.glob("**/agent_log.*.jsonl"))
+    if not logs:
+        raise SystemExit(f"no agent_log.*.jsonl found under {search_root}")
+    return max(logs, key=lambda p: p.stat().st_mtime).parent
 
 
 def build_html(results_dir: Path) -> Path:
@@ -410,59 +1026,24 @@ def build_html(results_dir: Path) -> Path:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("results_dir", type=Path)
+    p.add_argument(
+        "results_dir",
+        type=Path,
+        nargs="?",
+        help="run dir to view (default: the most recently updated one)",
+    )
     p.add_argument("--serve", type=int, default=None, help="serve the dir on this port")
+    p.add_argument(
+        "--log-requests",
+        action="store_true",
+        help="log every HTTP request (off by default: the page polls forever)",
+    )
     args = p.parse_args()
-    build_html(args.results_dir)
+    _force_utf8_stdio()
+    results_dir = args.results_dir or _latest_results_dir()
+    build_html(results_dir)
     if args.serve is not None:
-        import functools
-        import http.server
-        import socketserver
-        import urllib.parse
-
-        results_dir = args.results_dir
-        root = results_dir.parent  # sibling run dirs live alongside us
-
-        def list_run_dirs() -> list[str]:
-            dirs = [
-                c
-                for c in root.iterdir()
-                if c.is_dir() and any(c.glob("agent_log.*.jsonl"))
-            ]
-            dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            return [p.name for p in dirs]
-
-        class _Handler(http.server.SimpleHTTPRequestHandler):
-            def _json(self, obj) -> None:
-                payload = json.dumps(obj).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-            def do_GET(self):
-                parsed = urllib.parse.urlparse(self.path)
-                if parsed.path == "/runs.json":
-                    self._json({"runs": list_run_dirs(), "current": results_dir.name})
-                    return
-                if parsed.path == "/data.json":
-                    # Re-read the chosen run's logs per request so a live (or
-                    # just-finished) run streams in — the page polls this.
-                    qs = urllib.parse.parse_qs(parsed.query)
-                    name = (qs.get("run") or [results_dir.name])[0]
-                    target = root / name if name in list_run_dirs() else results_dir
-                    self._json(collect(target))
-                    return
-                super().do_GET()
-
-        handler = functools.partial(_Handler, directory=str(results_dir))
-        with socketserver.TCPServer(("127.0.0.1", args.serve), handler) as httpd:
-            print(
-                f"serving http://127.0.0.1:{args.serve}/viewer.html  (ctrl-c to stop)"
-            )
-            httpd.serve_forever()
+        serve(results_dir, args.serve, args.log_requests)
     return 0
 
 

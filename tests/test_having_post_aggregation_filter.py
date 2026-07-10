@@ -235,6 +235,89 @@ def test_mixed_dim_and_aggregate_having():
     assert rows == [(20, 200)]
 
 
+# --- BASIC-wrapped grainless scalar comparison (q44) --------------------------
+#
+# `having <select-grain agg> > <grainless scalar * literal>` combined with an
+# off-grain WHERE dimension. The BASIC wrapper (`base * 0.5`) left the scalar
+# tagged MULTI_ROW, so instead of hidden scalar promotion the predicate was
+# misrouted into the finer-dim grain-key semijoin, whose filter CTE grouped by
+# the WHERE dimension and emitted the ungrouped grain key (DuckDB binder error).
+
+
+def test_having_vs_basic_wrapped_grainless_scalar_with_offgrain_where():
+    # E-region item averages: 1 -> 100, 2 -> 50, 4 -> 40; every threshold form
+    # (half of filtered avg 63.33 or unfiltered avg 79.4) keeps all three.
+    rows = _rows(
+        "auto base <- avg(quantity) by *;\n"
+        "auto threshold <- base * 0.5;\n"
+        "where region = 'E' "
+        "select item_id, avg(quantity) as avg_qty "
+        "having avg_qty > threshold;"
+    )
+    assert sorted(rows) == [(1, 100.0), (2, 50.0), (4, 40.0)]
+
+
+def test_having_basic_identity_wrapper_matches_bare_scalar():
+    bare = _rows(
+        "auto threshold <- avg(quantity) by *;\n"
+        "where region = 'E' "
+        "select item_id, avg(quantity) as avg_qty "
+        "having avg_qty > threshold;"
+    )
+    wrapped = _rows(
+        "auto base <- avg(quantity) by *;\n"
+        "auto threshold <- base * 1.0;\n"
+        "where region = 'E' "
+        "select item_id, avg(quantity) as avg_qty "
+        "having avg_qty > threshold;"
+    )
+    assert sorted(wrapped) == sorted(bare)
+
+
+# --- named off-grain threshold + off-grain WHERE (q44 silent-empty) ----------
+#
+# `having <select-grain agg> > <named agg grained by an off-grain dim>` with a
+# query WHERE on that same off-grain dim. The HAVING is lowered to a value-
+# membership semijoin whose subselect recomputes the select-grain aggregate; the
+# query WHERE must be pushed pre-aggregation into that subselect (as it is on the
+# output path) or the membership compares a whole-universe aggregate against the
+# filtered output value and silently drops matching rows.
+
+
+def test_having_named_offgrain_threshold_pushes_where_into_membership_aggregate():
+    # region-'E' item averages: item1 100 (its 'W' sale excluded), item2 50,
+    # item4 40; region_avg('E')=63.33 so threshold 31.67 keeps all three. item1
+    # also sells in 'W' (7), so its whole-universe avg (53.5) differs from its
+    # filtered 100 — the membership must compare the filtered value or item1 drops.
+    rows = _rows(
+        "auto region_avg <- avg(quantity) by region;\n"
+        "auto threshold <- 0.5 * region_avg;\n"
+        "auto item_avg <- avg(quantity) by item_id;\n"
+        "where region = 'E' "
+        "select brand_id, item_avg "
+        "having item_avg > threshold "
+        "order by item_avg;"
+    )
+    assert sorted(rows) == [(10, 50.0), (10, 100.0), (30, 40.0)]
+
+
+def test_having_named_offgrain_threshold_matches_inline_form():
+    named = _rows(
+        "auto region_avg <- avg(quantity) by region;\n"
+        "auto threshold <- 0.5 * region_avg;\n"
+        "auto item_avg <- avg(quantity) by item_id;\n"
+        "where region = 'E' "
+        "select brand_id, item_avg having item_avg > threshold;"
+    )
+    inline = _rows(
+        "auto region_avg <- avg(quantity) by region;\n"
+        "auto item_avg <- avg(quantity) by item_id;\n"
+        "where region = 'E' "
+        "select brand_id, item_avg having item_avg > 0.5 * region_avg;"
+    )
+    assert sorted(named) == sorted(inline)
+
+
 # --- clean errors ------------------------------------------------------------
 
 

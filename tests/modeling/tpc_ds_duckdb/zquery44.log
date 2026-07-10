@@ -1,6 +1,6 @@
 query_id = "44"
 generator = "v3"
-gen_length = 3135
+gen_length = 3141
 preql_size = 1002
 comp_size = 1462
 generated_sql = """
@@ -16,7 +16,7 @@ WHERE
 ),
 cooperative as (
 SELECT
-    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
     avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"item_avg_profit\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
@@ -27,7 +27,7 @@ GROUP BY
     1),
 questionable as (
 SELECT
-    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\"
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
@@ -44,14 +44,14 @@ FROM
 abundant as (
 SELECT
     \"cooperative\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"cooperative\".\"ss_item_id\" as \"ss_item_id\"
+    \"cooperative\".\"ss_item_sk\" as \"ss_item_sk\"
 FROM
     \"questionable\"
-    INNER JOIN \"cooperative\" on \"questionable\".\"ss_item_id\" = \"cooperative\".\"ss_item_id\"),
+    INNER JOIN \"cooperative\" on \"questionable\".\"ss_item_sk\" = \"cooperative\".\"ss_item_sk\"),
 uneven as (
 SELECT
     \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"abundant\".\"ss_item_id\" as \"ss_item_id\"
+    \"abundant\".\"ss_item_sk\" as \"ss_item_sk\"
 FROM
     \"cheerful\"
     INNER JOIN \"abundant\" on 1=1
@@ -63,7 +63,7 @@ GROUP BY
     2),
 yummy as (
 SELECT
-    \"uneven\".\"ss_item_id\" as \"ss_item_id\",
+    \"uneven\".\"ss_item_sk\" as \"ss_item_sk\",
     rank() over (order by \"uneven\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
     rank() over (order by \"uneven\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
@@ -74,7 +74,7 @@ SELECT
     \"yummy\".\"_descending_rnk_d\" as \"_descending_rnk_d\"
 FROM
     \"yummy\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"yummy\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"yummy\".\"ss_item_sk\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2),
@@ -84,7 +84,7 @@ SELECT
     \"yummy\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\"
 FROM
     \"yummy\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"yummy\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"yummy\".\"ss_item_sk\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2),
@@ -106,7 +106,7 @@ SELECT
     \"young\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
     \"vacuous\"
-    FULL JOIN \"young\" on \"vacuous\".\"ascending_rnk_a\" = \"young\".\"descending_rnk_d\"
+    LEFT OUTER JOIN \"young\" on \"vacuous\".\"ascending_rnk_a\" = \"young\".\"descending_rnk_d\"
 WHERE
     coalesce(\"vacuous\".\"ascending_rnk_a\",\"young\".\"descending_rnk_d\") < 11
 

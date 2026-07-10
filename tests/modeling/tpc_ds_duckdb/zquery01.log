@@ -1,15 +1,15 @@
 query_id = "01"
 generator = "v3"
-gen_length = 1699
-preql_size = 456
+gen_length = 1679
+preql_size = 446
 comp_size = 689
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_billing_customer_id\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_billing_customer_sk\",
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_sk\",
     sum(\"returns_store_returns\".\"SR_RETURN_AMT\") as \"total_returns\"
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
@@ -23,7 +23,7 @@ GROUP BY
     2),
 abundant as (
 SELECT
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
+    \"thoughtful\".\"returns_store_sk\" as \"returns_store_sk\",
     avg(\"thoughtful\".\"total_returns\") as \"avg_store_returns\"
 FROM
     \"thoughtful\"
@@ -31,20 +31,20 @@ GROUP BY
     1),
 questionable as (
 SELECT
-    \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_text_id\",
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
+    \"returns_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_billing_customer_id\",
+    \"thoughtful\".\"returns_store_sk\" as \"returns_store_sk\",
     \"thoughtful\".\"total_returns\" as \"total_returns\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"thoughtful\".\"returns_billing_customer_id\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\")
+    INNER JOIN \"memory\".\"customer\" as \"returns_billing_customer_customers\" on \"thoughtful\".\"returns_billing_customer_sk\" = \"returns_billing_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
-    \"questionable\".\"returns_billing_customer_text_id\" as \"returns_billing_customer_text_id\"
+    \"questionable\".\"returns_billing_customer_id\" as \"returns_billing_customer_id\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"
+    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_sk\" = \"abundant\".\"returns_store_sk\"
 WHERE
     \"questionable\".\"total_returns\" > ( 1.2 * \"abundant\".\"avg_store_returns\" )
 
 ORDER BY 
-    \"questionable\".\"returns_billing_customer_text_id\" asc
+    \"questionable\".\"returns_billing_customer_id\" asc
 LIMIT (100)"""

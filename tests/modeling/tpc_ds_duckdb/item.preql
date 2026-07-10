@@ -4,11 +4,11 @@
 
 import std.money;
 
-key id int; # Surrogate key (one row per SCD version of an item; SEVERAL ids share one text_id). Do NOT group/report per-item by this — it splits an item across versions. Use text_id.
+key sk int; # Surrogate key (one row per SCD version of an item; SEVERAL ids share one id).
 
-properties id (
-    text_id string, # The item's business "item code" (i_item_id, 16-char). This is THE per-item identifier: GROUP BY and report this for per-item results, not the surrogate id.
-    product_name string?, # Marketing product name shown to customers.
+properties sk (
+    id string, # The item's business "item code" (i_item_id, 16-char). The typical per-item identifier: use this for per-item results, not the surrogate sk. Not unique - this table is an SCD.
+    product_name string?, # Marketing product name shown to customers. 
     brand_id int?, # Numeric brand identifier (composite of category + class + brand digits).
     brand_name string?, # Brand display name.
     manufacturer_id int?, # Numeric manufacturer identifier (1-1000).
@@ -27,8 +27,8 @@ properties id (
 );
 
 datasource items (
-    I_ITEM_SK: id,
-    I_ITEM_ID: text_id,
+    I_ITEM_SK: sk,
+    I_ITEM_ID: id,
     I_ITEM_DESC: desc,
     I_BRAND: brand_name,
     I_BRAND_ID: brand_id,
@@ -46,5 +46,5 @@ datasource items (
     I_UNITS: units,
     I_PRODUCT_NAME: product_name,
 )
-grain (id)
+grain (sk)
 address memory.item;

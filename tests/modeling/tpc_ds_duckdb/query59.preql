@@ -1,6 +1,6 @@
 import store_sales as ss;
 
-def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.id, ss.date.week_seq;
+def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.sk, ss.date.week_seq;
 
 auto sun_sales <- @day_sales('Sunday');
 auto mon_sales <- @day_sales('Monday');
@@ -12,29 +12,29 @@ auto sat_sales <- @day_sales('Saturday');
 
 auto year_flag <- max(case when ss.date.month_seq between 1212 and  1223 then 1 
 when ss.date.month_seq between 1224 and 1235 then 2 else 0 end)
-    by ss.store.id, ss.date.week_seq;
+    by ss.store.sk, ss.date.week_seq;
 
 
 # Normalized week-within-year so year1's W lines up with year2's W+52
 auto normalized_week <- ss.date.week_seq - (case when year_flag = 2 then 52 else 0 end);
 
-auto sun_ratio <- sun_sales / lead(sun_sales, 1) over (partition by ss.store.id, normalized_week order by year_flag asc);
-auto mon_ratio <- mon_sales / lead(mon_sales, 1) over (partition by ss.store.id, normalized_week order by year_flag asc);
-auto tue_ratio <- tue_sales / lead(tue_sales, 1) over (partition by ss.store.id, normalized_week order by year_flag asc);
-auto wed_ratio <- wed_sales / lead(wed_sales, 1) over (partition by ss.store.id, normalized_week order by year_flag asc);
-auto thu_ratio <- thu_sales / lead(thu_sales, 1) over (partition by ss.store.id, normalized_week order by year_flag asc);
-auto fri_ratio <- fri_sales / lead(fri_sales, 1) over (partition by ss.store.id, normalized_week order by year_flag asc);
-auto sat_ratio <- sat_sales / lead(sat_sales, 1) over (partition by ss.store.id, normalized_week order by year_flag asc);
+auto sun_ratio <- sun_sales / lead(sun_sales, 1) over (partition by ss.store.sk, normalized_week order by year_flag asc);
+auto mon_ratio <- mon_sales / lead(mon_sales, 1) over (partition by ss.store.sk, normalized_week order by year_flag asc);
+auto tue_ratio <- tue_sales / lead(tue_sales, 1) over (partition by ss.store.sk, normalized_week order by year_flag asc);
+auto wed_ratio <- wed_sales / lead(wed_sales, 1) over (partition by ss.store.sk, normalized_week order by year_flag asc);
+auto thu_ratio <- thu_sales / lead(thu_sales, 1) over (partition by ss.store.sk, normalized_week order by year_flag asc);
+auto fri_ratio <- fri_sales / lead(fri_sales, 1) over (partition by ss.store.sk, normalized_week order by year_flag asc);
+auto sat_ratio <- sat_sales / lead(sat_sales, 1) over (partition by ss.store.sk, normalized_week order by year_flag asc);
 
 where
     ss.date.month_seq between 1212 and 1235
-    and ss.store.id is not null
+    and ss.store.sk is not null
     and ss.date.week_seq is not null
 select
-    --ss.store.id,
+    --ss.store.sk,
     --normalized_week,
     ss.store.name as s_store_name1,
-    ss.store.text_id as s_store_id1,
+    ss.store.id as s_store_id1,
     ss.date.week_seq as d_week_seq1,
     sun_ratio as sun_sales_ratio,
     mon_ratio as mon_sales_ratio,

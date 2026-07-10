@@ -4,30 +4,30 @@ import store_sales as ss;
 # Pre-compute in a filtered `with` block so trilogy emits
 # `WHERE SS_ADDR_SK IS NULL` instead of `avg(CASE WHEN SS_ADDR_SK IS NULL THEN ...)`.
 rowset addr_null_threshold <- where
-    ss.store.id = 1 and ss.sale_address.id is null
+    ss.store.sk = 1 and ss.sale_address.sk is null
 select
     avg(ss.net_profit) as threshold,
 ;
 
 # Per-item avg profit at store 4
-auto item_avg_profit <- avg(ss.net_profit) by ss.item.id;
+auto item_avg_profit <- avg(ss.net_profit) by ss.item.sk;
 
 rowset ascending <- where
-    ss.store.id = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
+    ss.store.sk = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
 select
-    rank(ss.item.id) over (order by item_avg_profit asc) as rnk_a,
+    rank(ss.item.sk) over (order by item_avg_profit asc) as rnk_a,
     ss.item.product_name as best_performing,
 ;
 
 rowset descending <- where
-    ss.store.id = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
+    ss.store.sk = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
 select
-    rank(ss.item.id) over (order by item_avg_profit desc) as rnk_d,
+    rank(ss.item.sk) over (order by item_avg_profit desc) as rnk_d,
     ss.item.product_name as worst_performing,
 ;
 
 where
-    ss.store.id = 1
+    ss.store.sk = 1
 left join ascending.rnk_a = descending.rnk_d
 select
     ascending.rnk_a as rnk,

@@ -3,10 +3,10 @@
 
 import std.geography;
 
-key id int; # Surrogate key uniquely identifying a customer address row.
+key sk int; # Surrogate key uniquely identifying a customer address row.
 
-properties id (
-    text_id string, # Stable business identifier for the address (16-char alphanumeric).
+properties sk (
+    id string, # Stable business identifier for the address (16-char alphanumeric).
     street_number string?, # Numeric portion of the street address (e.g. '123').
     street_name string?, # Street name portion of the address (excludes house number).
     street_type string?, # Street type suffix (e.g. 'Ave', 'St', 'Rd').
@@ -21,8 +21,8 @@ properties id (
 );
 
 datasource customer_address (
-    CA_ADDRESS_SK: id,
-    CA_ADDRESS_ID: text_id,
+    CA_ADDRESS_SK: sk,
+    CA_ADDRESS_ID: id,
     CA_STREET_NUMBER: street_number,
     CA_STREET_NAME: street_name,
     CA_STREET_TYPE: street_type,
@@ -35,5 +35,5 @@ datasource customer_address (
     CA_GMT_OFFSET: gmt_offset,
     CA_LOCATION_TYPE: location_type,
 )
-grain (id)
+grain (sk)
 address memory.customer_address;

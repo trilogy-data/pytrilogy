@@ -8,9 +8,9 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
@@ -20,9 +20,9 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -43,8 +43,8 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    \"cheerful\".\"sales_billing_customer_id\",
-    \"cheerful\".\"sales_item_id\"),
+    \"cheerful\".\"sales_billing_customer_sk\",
+    \"cheerful\".\"sales_item_sk\"),
 abundant as (
 SELECT
     \"cooperative\".\"_pair_presence_catalog_present\" as \"pair_presence_catalog_present\",

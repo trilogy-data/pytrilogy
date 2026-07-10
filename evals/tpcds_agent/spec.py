@@ -31,5 +31,7 @@ SPEC = BenchmarkSpec(
     # result sets, which agents spin on (re-exploring instead of accepting a
     # valid 0-row answer). Override with --scale-factor for quick local runs.
     default_scale_factor=1.0,
-    default_num_queries=20,
+    # Full TPC-DS set (99 queries) by default so a plain rebaseline covers
+    # everything; pass --num-queries / --query-ids to scope a quick local run.
+    default_num_queries=99,
 )

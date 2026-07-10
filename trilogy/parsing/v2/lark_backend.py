@@ -13,7 +13,9 @@ from trilogy.parsing.v2.errors import (
     detect_by_on_wrapped_aggregate,
     detect_clause_after_join,
     detect_definition_after_clause,
+    detect_derivation_as_connector,
     detect_group_by,
+    detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_select_distinct,
     detect_star_argument,
@@ -135,6 +137,11 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     # derivation context (auto/property/metric/rowset NAME) but stopped before
     # the arrow + expression.
     if "__ANON_0" in e.expected:
+        # 105: the derivation used the SQL `as` connector in place of `<-`
+        # (e.g. `rowset base as select ...`) — a more targeted hint than 203.
+        as_pos = detect_derivation_as_connector(text, pos)
+        if as_pos is not None:
+            raise create_syntax_error(105, as_pos, text)
         raise create_syntax_error(203, pos, text)
 
     by_pos = _detect_unparenthesized_by_expr_lark(text, pos)
@@ -179,14 +186,22 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     if join_pos is not None:
         raise create_syntax_error(220, join_pos, text)
 
+    # 225: a query-scoped join with a missing/malformed key expression.
+    join_key_pos = detect_join_missing_key(text, pos)
+    if join_key_pos is not None:
+        raise create_syntax_error(225, join_key_pos, text)
+
     align_pos = detect_align_missing_and(text, pos)
     if align_pos is not None:
         raise create_syntax_error(221, align_pos, text)
 
     # 222: a named `union(...) -> (...)` definition not terminated with `;`
-    # before the consuming statement. Confirm by inserting `;` and reparsing.
+    # before the consuming statement. Confirm by terminating the PREFIX only
+    # (`text[:sig_pos] + ";"`), not the whole file — a second, downstream error
+    # would defeat a whole-file reparse and suppress this diagnostic. (See the
+    # pest_backend.py:222 note.)
     sig_pos = detect_missing_signature_semicolon(text, pos)
-    if sig_pos is not None and _lark_parses(text[:sig_pos] + ";" + text[sig_pos:]):
+    if sig_pos is not None and _lark_parses(text[:sig_pos] + ";"):
         raise create_syntax_error(222, sig_pos, text)
 
     if last_token and e.token.type == "$END":

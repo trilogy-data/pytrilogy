@@ -150,6 +150,30 @@ def _local_property_conditions(
     )
 
 
+def _union_key_siblings(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> List[BuildConcept]:
+    """Sibling `union(...)` concepts that stack a key for every arm of this
+    union — e.g. `all_k <- union(k1, k2)` beside `all_amt <- union(amt, pad)`.
+    Such a sibling is the stacked row identity of this union's output."""
+    if not isinstance(concept.lineage, BuildFunction):
+        return []
+    arms = concept.lineage.concept_arguments
+    out: List[BuildConcept] = []
+    for other in environment.concepts.values():
+        if other.address == concept.address or other.derivation != Derivation.UNION:
+            continue
+        if not isinstance(other.lineage, BuildFunction):
+            continue
+        other_args = {x.address for x in other.lineage.concept_arguments}
+        if all(
+            a.address in other_args or (a.keys and set(a.keys) & other_args)
+            for a in arms
+        ):
+            out.append(other)
+    return unique(out, "address")
+
+
 def _walk_aggregate_grain_inputs(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -184,6 +208,14 @@ def _walk_aggregate_grain_inputs(
             for c in concept.grain.components
             if c in environment.concepts
         ]
+    if concept.derivation == Derivation.UNION:
+        # A union output's per-arm keys can't be stacked into one column, so
+        # its usable row identity is a sibling union over those keys (which a
+        # UnionNode CAN output). Without one, fall through to the per-arm key
+        # demand — unsatisfiable, but loud, never a silent dedup.
+        siblings = _union_key_siblings(concept, environment)
+        if siblings:
+            return siblings
     if concept.purpose == Purpose.PROPERTY and concept.keys:
         return [
             environment.concepts[c] for c in concept.keys if c in environment.concepts

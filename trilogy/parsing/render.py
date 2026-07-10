@@ -102,11 +102,11 @@ QUERY_TEMPLATE = Template("""{% if where %}where
 {{ where }}
 {% endif %}{% for join in joins %}{{ join }}
 {% endfor %}select{%- for select in select_columns %}
-{{ select }},{% endfor %}{% if having %}
+{{ select }},{% endfor %}{%- if grouping %}
+{{ grouping }}
+{% endif %}{% if having %}
 having
 {{ having }}
-{% endif %}{%- if grouping %}
-{{ grouping }}
 {% endif %}{%- if order_by %}
 order by{% for order in order_by %}
 {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
@@ -1293,6 +1293,8 @@ class Renderer:
             return " / ".join(args)
         if arg.operator == FunctionType.MOD:
             return f"{args[0]} % {args[1]}"
+        if arg.operator == FunctionType.CONCAT_STRICT:
+            return " || ".join(args)
         if arg.operator == FunctionType.PARENTHETICAL:
             return f"({args[0]})"
         if arg.operator == FunctionType.GROUP:

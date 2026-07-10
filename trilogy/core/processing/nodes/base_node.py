@@ -7,6 +7,7 @@ from trilogy.core.enums import (
     Derivation,
     JoinType,
     Modifier,
+    SetOperator,
     SourceType,
 )
 from trilogy.core.functions import propagates_argument_nulls
@@ -501,6 +502,9 @@ class StrategyNode:
             output_concepts=self.output_concepts,
             datasources=parent_sources,
             source_type=self.source_type,
+            # Only UnionNode carries a non-default combinator; it must be set at
+            # construction so __post_init__ preserves arm order for EXCEPT.
+            set_operator=getattr(self, "set_operator", SetOperator.UNION_ALL),
             source_map=source_map,
             existence_source_map=resolve_existence_map(
                 parent_sources, self.existence_concepts

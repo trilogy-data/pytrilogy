@@ -1,12 +1,12 @@
 query_id = "43"
 generator = "v3"
-gen_length = 1917
-preql_size = 1007
+gen_length = 1912
+preql_size = 997
 comp_size = 1346
 generated_sql = """
 SELECT
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
+    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_id\",
     sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Sunday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"sun_sales\",
     sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Monday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"mon_sales\",
     sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Tuesday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"tue_sales\",

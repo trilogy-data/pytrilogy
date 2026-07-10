@@ -5,9 +5,9 @@ import all_sales as sales;
 # Store has no warehouse/ship_mode mappings, so the planner uses the
 # 2-channel (web+catalog) union for any aggregate that touches them.
 def web_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.channel = 'WEB' and sales.date.month_of_year = month)
-    by sales.warehouse.id, sales.date.year;
+    by sales.warehouse.sk, sales.date.year;
 def cat_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.channel = 'CATALOG' and sales.date.month_of_year = month)
-    by sales.warehouse.id, sales.date.year;
+    by sales.warehouse.sk, sales.date.year;
 def channel_total(ws, cs) -> coalesce(ws, 0) + coalesce(cs, 0);
 def per_sqft(ws, cs) -> coalesce(ws, 0) / sales.warehouse.square_feet + coalesce(cs, 0) / sales.warehouse.square_feet;
 def ws_sales(month) -> @web_month_sum(sales.ext_sales_price, month);
@@ -23,9 +23,9 @@ where
     and sales.date.year = 2001
     and sales.time.time between 30838 and 59638
     and sales.ship_mode.carrier in ('DHL', 'BARIAN')
-    and sales.warehouse.id is not null
+    and sales.warehouse.sk is not null
 select
-    --sales.warehouse.id,
+    --sales.warehouse.sk,
     sales.warehouse.name as w_warehouse_name,
     sales.warehouse.square_feet as w_warehouse_sq_ft,
     sales.warehouse.city as w_city,

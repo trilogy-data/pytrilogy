@@ -3,14 +3,14 @@ import store_returns as returns;
 where
     returns.store.state = 'TN' and returns.return_date.year = 2000
 select
-    returns.billing_customer.text_id,
-    --sum(returns.return_amount) by returns.billing_customer.id, returns.store.id as total_returns,
-    --returns.store.id,
-    --avg(total_returns) by returns.store.id as avg_store_returns,
+    returns.billing_customer.id,
+    --sum(returns.return_amount) by returns.billing_customer.sk, returns.store.sk as total_returns,
+    --returns.store.sk,
+    --avg(total_returns) by returns.store.sk as avg_store_returns,
 having
     total_returns > (1.2 * avg_store_returns)
 
 order by
-    returns.billing_customer.text_id asc
+    returns.billing_customer.id asc
 limit 100
 ;

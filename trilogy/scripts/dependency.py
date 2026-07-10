@@ -11,16 +11,25 @@ from trilogy.execution.state import StaleAsset
 from trilogy.parsing.exceptions import ParseError
 
 
-def normalize_path_variants(path: str) -> Path:
+def normalize_path_variants(path: str | Path) -> Path:
     r"""
-    On Windows, paths from Rust may include UNC prefixes like \\?\C:\path.
-    This function returns the path without the prefix.
+    Canonicalize a path into the form used as a dependency-graph key.
+
+    On Windows, paths from Rust may include UNC prefixes like \\?\C:\path, and
+    callers may supply a different case than the one on disk (VS Code, for
+    example, passes a lowercased drive letter). Both spellings must collapse to
+    the same key or edge lookups silently miss.
+
+    Only absolute paths are resolved; a relative path would otherwise be
+    anchored to the current working directory.
     """
     # Strip Windows UNC prefix (\\?\)
     if str(path).startswith("\\\\?\\"):
-        normal_path = str(path)[4:]
-        return Path(normal_path)
-    return Path(path)
+        path = str(path)[4:]
+    normal_path = Path(path)
+    if normal_path.is_absolute():
+        return normal_path.resolve()
+    return normal_path
 
 
 @dataclass(frozen=True)
@@ -28,6 +37,9 @@ class ScriptNode:
     """Represents a script file with its path and associated data."""
 
     path: Path
+
+    def __post_init__(self):
+        object.__setattr__(self, "path", normalize_path_variants(self.path))
 
     def __hash__(self):
         return hash(self.path)
@@ -208,12 +220,8 @@ class ETLDependencyStrategy:
                 f"Found files in {len(directories)} different directories. {directories}"
             )
 
-        # Map each node's resolved path to its graph key.
-        # We need to handle both regular paths and UNC paths from Rust.
-        path_to_key: dict[Path, str] = {}
-        for node in nodes:
-            resolved_path = str(node.path.resolve())
-            path_to_key[normalize_path_variants(resolved_path)] = str(node.path)
+        # Node paths are already canonical, so each one is its own graph key.
+        path_to_key: dict[Path, str] = {node.path: str(node.path) for node in nodes}
 
         # Use directory resolver to get all edges at once
         directory = nodes[0].path.parent

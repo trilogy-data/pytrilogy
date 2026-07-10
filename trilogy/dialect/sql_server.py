@@ -14,9 +14,10 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda args, types: f"sum({args[0]})",
     FunctionType.AVG: lambda args, types: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
-    FunctionType.CONCAT: lambda args, types: (
-        f"CONCAT({','.join([f''' '{a}' ''' for a in args])})"
-    ),
+    # CONCAT skips NULLs natively; `+` propagates (CONCAT_NULL_YIELDS_NULL ON)
+    FunctionType.CONCAT: lambda args, types: f"CONCAT({', '.join(args)})",
+    FunctionType.CONCAT_STRICT: lambda args, types: f"({' + '.join(args)})",
+    FunctionType.CONCAT_WS: lambda args, types: f"CONCAT_WS({', '.join(args)})",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate

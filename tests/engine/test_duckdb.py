@@ -51,6 +51,41 @@ select {agg} as c;
     assert results == [(1,)]
 
 
+def test_filtered_constant_aggregate_counts_rows():
+    """`sum(1 ? cond)` / `count(1 ? cond)` must count matching ROWS, not collapse
+    to a single deduped constant. The `1 ? cond` filter's content is grainless,
+    but its CASE mask (`CASE WHEN cond THEN 1`) varies per row of the condition's
+    row-grain args, so the filter concept must carry that (key-descended) grain.
+    Otherwise the mask is treated as a single-row constant and deduped to one row,
+    collapsing the aggregate to 1 (silent wrong result — the q14 denominator).
+    Bare `sum(1)` with no filter is a genuinely grainless constant and stays 1
+    (the documented global-scalar idiom, see test_global_literal_aggregate)."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text("""
+key id int;
+property id.g string;
+property id.yr int;
+datasource t (id, g, yr) grain (id)
+  query '''select 1 as id, 'a' as g, 2001 as yr union all
+           select 2, 'a', 2001 union all
+           select 3, 'b', 2001 union all
+           select 4, 'b', 1990''';
+""")
+    # global filtered count over rows matching cond (3 of 4 rows)
+    assert engine.execute_text("select sum(1 ? yr between 1999 and 2001) as c;")[
+        -1
+    ].fetchall() == [(3,)]
+    # grouped filtered count keeps per-row identity (a=2, b=1)
+    assert [
+        (r.g, r.c)
+        for r in engine.execute_text(
+            "select g, sum(1 ? yr between 1999 and 2001) as c order by g asc;"
+        )[-1].fetchall()
+    ] == [("a", 2), ("b", 1)]
+    # bare sum(1) with no filter remains the single-constant idiom
+    assert engine.execute_text("select sum(1) as c;")[-1].fetchall() == [(1,)]
+
+
 @mark.parametrize(
     "src,expected",
     [
@@ -132,8 +167,8 @@ def test_inline_aggregate_in_order_by_raises():
     text = """
 rowset overall <- select avg(amount) as overall_avg;
 select brand, class, sum(amount) as total, --overall.overall_avg
-having total > overall.overall_avg
 by rollup (brand, class)
+having total > overall.overall_avg
 order by grouping(brand) desc, grouping(class) desc, brand nulls first;
 """
     with raises(Exception, match="ORDER BY contains aggregate"):
@@ -157,8 +192,8 @@ select
     --overall.overall_avg,
     --grouping(brand) as gb,
     --grouping(class) as gc
-having total > overall.overall_avg
 by rollup (brand, class)
+having total > overall.overall_avg
 order by gb desc, gc desc, brand nulls first, class nulls first;
 """
     sql = engine.generate_sql(text)[-1]
@@ -192,8 +227,8 @@ select
     --overall.overall_avg,
     --grouping(brand) as gb,
     --grouping(class) as gc
-having total > overall.overall_avg
 by rollup (brand, class)
+having total > overall.overall_avg
 order by
     grouping(brand) asc, brand asc nulls last,
     grouping(class) asc, class asc nulls last;
@@ -358,8 +393,8 @@ select
     brand,
     coalesce(sum(amount), 0) as m,
     grouping(brand) as g
-having m > 0
 by rollup (brand)
+having m > 0
 order by g, brand;
 """
     sql = engine.generate_sql(text)[-1]
@@ -388,8 +423,8 @@ select
     brand,
     coalesce(@rollup_agg(amount), 0) as m,
     grouping(brand) as g
-having m > 0
 by rollup (brand)
+having m > 0
 order by g, brand;
 """
     sql = engine.generate_sql(text)[-1]
@@ -506,7 +541,7 @@ def test_composite_rollup_aggregate_keeps_group_by():
     appear in the GROUP BY').
 
     The fix has three parts: a ROLLUP marks its grouping-key dims (and dims
-    derived from them, e.g. `concat('x', txt)`) nullable so the assembly join is
+    derived from them, e.g. `'x' || txt`) nullable so the assembly join is
     null-safe/OUTER and the rollup rows survive; the null-safe join keys aren't
     downgraded to `=` past the rollup; and the rollup group node renders its
     GROUP BY even when a sibling rollup is a passthrough.
@@ -520,7 +555,7 @@ def test_composite_rollup_aggregate_keeps_group_by():
     text = """
 select
   case when chan = 1 then 'aa' else 'bb' end as channel,
-  concat('x', txt) as outlet,
+  'x' || txt as outlet,
   sum(amt) as sales,
   sum(prof) - sum(coalesce(loss, 0)) as profit
 by rollup (chan, txt)
@@ -567,8 +602,8 @@ def test_rollup_sibling_column_join_preserves_subtotals():
     text = """
 select
     case when chan = 1 then 'store' when chan = 2 then 'web' end as label,
-    case when chan = 1 then concat('store', etxt)
-         when chan = 2 then concat('web', etxt) end as entity_fmt,
+    case when chan = 1 then 'store' || etxt
+         when chan = 2 then 'web' || etxt end as entity_fmt,
     sum(amt) as total
 by rollup (chan, ent)
 order by label asc nulls last, entity_fmt asc nulls last;
@@ -625,8 +660,8 @@ select
     by_channel.channel,
     by_channel.brand,
     sum(by_channel.total_sales) as total_sales
-having sum(by_channel.total_sales) > overall_avg.avg_val
 by rollup (by_channel.channel, by_channel.brand)
+having sum(by_channel.total_sales) > overall_avg.avg_val
 order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
@@ -661,8 +696,8 @@ select
     by_channel.channel,
     by_channel.brand,
     sum(by_channel.total_sales) as total_sales
-having sum(by_channel.total_sales) > avg_val
 by rollup (by_channel.channel, by_channel.brand)
+having sum(by_channel.total_sales) > avg_val
 order by by_channel.channel asc nulls first, by_channel.brand asc nulls first;
 """
     results = engine.execute_text(text)[-1].fetchall()
@@ -2946,9 +2981,9 @@ select
     total,
     --overall_avg
 where a in qualifying.a
+by rollup (a, b, c)
 having total > overall_avg
   and (grouping(a) + grouping(b) + grouping(c)) in (0, 1, 4)
-by rollup (a, b, c)
 order by a asc, b asc nulls last, c asc nulls last;
 """
 
@@ -2986,8 +3021,8 @@ def test_grouping_membership_in_having_routes_to_having_not_where():
     query = """
 auto total <- sum(x);
 select a, b, total
-having (grouping(a) + grouping(b)) in (0, 1)
 by rollup (a, b)
+having (grouping(a) + grouping(b)) in (0, 1)
 order by a asc, b asc nulls last;
 """
     sql = executor.generate_sql(query)[-1]
@@ -3046,8 +3081,8 @@ auto overall_avg <- avg(x) by *;
 select a, b,
     sum(x) as total,
     --overall_avg
-having total > overall_avg
 by rollup (a, b)
+having total > overall_avg
 order by a asc nulls first, b asc nulls first;
 """
     sql = executor.generate_sql(query)[-1]

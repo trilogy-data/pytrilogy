@@ -15,6 +15,7 @@ from trilogy.core.enums import (
     Modifier,
     PersistMode,
     PublishAction,
+    SetOperator,
     ShowCategory,
     ValidationScope,
 )
@@ -580,10 +581,14 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
 
 @dataclass
 class UnionSelectStatement(MultiSelectStatement):
-    """Relational `union(...)` TVF: a positional column-stack (SQL UNION) of the
-    arm selects. Reuses the multiselect arm structure (`selects`, `align` as the
-    positional output binding, `derived_concepts` as the union outputs) but
-    exposes only the bound union columns and lowers to a `UnionSelectLineage`."""
+    """Relational `union(...)`/`except(...)`/`intersect(...)` TVF: a positional
+    column-stack (SQL set operation) of the arm selects. Reuses the multiselect
+    arm structure (`selects`, `align` as the positional output binding,
+    `derived_concepts` as the bound outputs) but exposes only the bound columns
+    and lowers to a `UnionSelectLineage`. ``operator`` picks the SQL combinator;
+    for EXCEPT the arm order is semantic (left-fold)."""
+
+    operator: SetOperator = SetOperator.UNION_ALL
 
     def as_lineage(self, environment: Environment) -> UnionSelectLineage:
         new_selects = [x.as_lineage(environment) for x in self.selects]
@@ -597,6 +602,7 @@ class UnionSelectStatement(MultiSelectStatement):
             where_clause=self.where_clause,
             having_clause=self.having_clause,
             hidden_components=set(y for x in new_selects for y in x.hidden_components),
+            operator=self.operator,
         )
 
     @property

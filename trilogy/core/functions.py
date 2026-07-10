@@ -311,6 +311,7 @@ NUMERIC_INPUT_TYPES: Set[VALID_INPUT_ITEM] = {
     DataType.INTEGER,
     DataType.BIGINT,
     DataType.FLOAT,
+    DataType.DOUBLE,
     DataType.NUMBER,
     DataType.NUMERIC,
 }
@@ -1031,6 +1032,18 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.STRING,
         arg_count=InfiniteFunctionArgs,
     ),
+    FunctionType.CONCAT_STRICT: FunctionConfig(
+        valid_inputs={DataType.STRING},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=InfiniteFunctionArgs,
+    ),
+    FunctionType.CONCAT_WS: FunctionConfig(
+        valid_inputs={DataType.STRING},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=InfiniteFunctionArgs,
+    ),
     FunctionType.CONSTANT: FunctionConfig(
         output_purpose=Purpose.CONSTANT,
         arg_count=1,
@@ -1203,6 +1216,9 @@ NULL_SUPPRESSING_FUNCTIONS = {
     FunctionType.COALESCE,
     FunctionType.CASE,
     FunctionType.SIMPLE_CASE,
+    # concat()/concat_ws() skip NULL arguments (CONCAT_STRICT `||` propagates)
+    FunctionType.CONCAT,
+    FunctionType.CONCAT_WS,
 }
 
 
@@ -1231,6 +1247,8 @@ FUNCTION_FAMILIES: list[tuple[str, frozenset[FunctionType]]] = [
                 FunctionType.TRIM,
                 FunctionType.HEX,
                 FunctionType.CONCAT,
+                FunctionType.CONCAT_STRICT,
+                FunctionType.CONCAT_WS,
                 FunctionType.SPLIT,
                 FunctionType.STRPOS,
                 FunctionType.CONTAINS,

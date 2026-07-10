@@ -14,7 +14,7 @@ with nov2001_by_channel as union(
   (where ws.date.year = 2001 and ws.date.month_of_year = 11 and ws.item.brand_id in qualifying_combos.brand_id and ws.item.class_id in qualifying_combos.class_id and ws.item.category_id in qualifying_combos.category_id select 'WEB' as channel, ws.item.brand_id as brand_id, ws.item.class_id as class_id, ws.item.category_id as category_id, sum(ws.quantity * ws.list_price) as total_sales, count(ws.line_item) as num_sales)
 ) -> (channel, brand_id, class_id, category_id, total_sales, num_sales);
 select nov2001_by_channel.channel, nov2001_by_channel.brand_id, nov2001_by_channel.class_id, nov2001_by_channel.category_id, sum(nov2001_by_channel.total_sales) as total_sales, sum(nov2001_by_channel.num_sales) as num_sales
-having sum(nov2001_by_channel.total_sales) > overall_avg.avg_sale_value
 by rollup (nov2001_by_channel.channel, nov2001_by_channel.brand_id, nov2001_by_channel.class_id, nov2001_by_channel.category_id)
+having sum(nov2001_by_channel.total_sales) > overall_avg.avg_sale_value
 order by nov2001_by_channel.channel asc nulls first, nov2001_by_channel.brand_id asc nulls first, nov2001_by_channel.class_id asc nulls first, nov2001_by_channel.category_id asc nulls first
 limit 100;

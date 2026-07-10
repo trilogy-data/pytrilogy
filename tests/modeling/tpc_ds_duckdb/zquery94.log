@@ -9,7 +9,7 @@ WITH
 questionable as (
 SELECT
     \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
-    \"ws_web_sales\".\"WS_WAREHOUSE_SK\" as \"ws_warehouse_id\"
+    \"ws_web_sales\".\"WS_WAREHOUSE_SK\" as \"ws_warehouse_sk\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
 GROUP BY
@@ -30,7 +30,7 @@ FROM
 GROUP BY
     1
 HAVING
-    count(\"questionable\".\"ws_warehouse_id\") > 1
+    count(\"questionable\".\"ws_warehouse_sk\") > 1
 ),
 uneven as (
 SELECT

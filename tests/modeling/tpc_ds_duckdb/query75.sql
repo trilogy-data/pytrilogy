@@ -1,3 +1,9 @@
+-- NOTE: deliberately deviates from the official TPC-DS q75, which combines the
+-- three channels with bare `UNION` (DISTINCT). That dedup collapses genuinely
+-- distinct physical lines that coincidentally share (year, brand, class, cat,
+-- manufact, per-line cnt, per-line amt) - an artificial semantic we don't want
+-- to model or teach. We use `UNION ALL`: every line contributes, matching the
+-- natural per-line sum in query75.preql. Scored via sql_override (not PRAGMA).
 WITH all_sales AS
   ( SELECT d_year ,
            i_brand_id ,
@@ -20,7 +26,7 @@ WITH all_sales AS
       LEFT JOIN catalog_returns ON (cs_order_number=cr_order_number
                                     AND cs_item_sk=cr_item_sk)
       WHERE i_category='Books'
-      UNION SELECT d_year ,
+      UNION ALL SELECT d_year ,
                    i_brand_id ,
                    i_class_id ,
                    i_category_id ,
@@ -33,7 +39,7 @@ WITH all_sales AS
       LEFT JOIN store_returns ON (ss_ticket_number=sr_ticket_number
                                   AND ss_item_sk=sr_item_sk)
       WHERE i_category='Books'
-      UNION SELECT d_year ,
+      UNION ALL SELECT d_year ,
                    i_brand_id ,
                    i_class_id ,
                    i_category_id ,

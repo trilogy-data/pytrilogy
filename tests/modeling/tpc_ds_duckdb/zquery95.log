@@ -9,7 +9,7 @@ WITH
 questionable as (
 SELECT
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
-    \"web_sales_web_sales\".\"WS_WAREHOUSE_SK\" as \"web_sales_warehouse_id\"
+    \"web_sales_web_sales\".\"WS_WAREHOUSE_SK\" as \"web_sales_warehouse_sk\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
 GROUP BY
@@ -23,7 +23,7 @@ FROM
 GROUP BY
     1
 HAVING
-    count(\"questionable\".\"web_sales_warehouse_id\") > 1
+    count(\"questionable\".\"web_sales_warehouse_sk\") > 1
 ),
 uneven as (
 SELECT

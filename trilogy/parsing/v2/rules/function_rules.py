@@ -67,6 +67,7 @@ SIMPLE_FUNCTION_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.FHEX: FunctionType.HEX,
     SyntaxNodeKind.LEN: FunctionType.LENGTH,
     SyntaxNodeKind.CONCAT: FunctionType.CONCAT,
+    SyntaxNodeKind.CONCAT_WS: FunctionType.CONCAT_WS,
     SyntaxNodeKind.FCOALESCE: FunctionType.COALESCE,
     SyntaxNodeKind.FGREATEST: FunctionType.GREATEST,
     SyntaxNodeKind.FLEAST: FunctionType.LEAST,
