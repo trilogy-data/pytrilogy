@@ -16,7 +16,9 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     LooseBuildConceptList,
     concept_is_relevant,
+    nonstandard_grouping_spec,
     resolve_concepts_with_equivalents,
+    windowed_over_grouping_pass,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
@@ -25,6 +27,7 @@ from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,
 )
+from trilogy.core.processing.node_generators.window_node import gen_window_node
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -830,6 +833,39 @@ def gen_group_node(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for group node, has all of {[x.address for x in local_optional]}"
         )
         return result_node
+    # A missing window over this same ROLLUP/CUBE/GROUPING SETS pass cannot be
+    # enriched in: the stitch joins the pass output back on its visible dims,
+    # which are not a row identity across grouping sets (subtotal/total NULLs
+    # collide with data NULLs and fan out). Invert instead: plan window-first,
+    # which carries every pass output through one grouped CTE (no join).
+    concept_spec = nonstandard_grouping_spec(concept.lineage)
+    if concept_spec is not None:
+        stitched = [
+            x for x in missing_optional if windowed_over_grouping_pass(x, concept_spec)
+        ]
+        if stitched:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} group node for {concept.address} "
+                f"missing window(s) {[x.address for x in stitched]} over the same "
+                "grouping pass; join-back would collide grouping sets, delegating "
+                "to window-first plan"
+            )
+            window_driver = stitched[0]
+            delegate_optional = unique(
+                output_concepts
+                + [x for x in local_optional if x.address != window_driver.address],
+                "address",
+            )
+            return gen_window_node(
+                window_driver,
+                delegate_optional,
+                environment=environment,
+                g=g,
+                depth=depth,
+                source_concepts=source_concepts,
+                history=history,
+                conditions=conditions,
+            )
     enrichment = _reuse_wide_parent_for_enrichment(
         concept=concept,
         group_node=result_node,
