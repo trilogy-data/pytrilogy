@@ -40,6 +40,9 @@ from trilogy.core.processing.discovery_validation import (
     _stack_exempt_or_implies,
     validate_stack,
 )
+from trilogy.core.processing.node_generators.presence_probe import (
+    gen_coalescing_axis_node,
+)
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -706,15 +709,41 @@ def source_query_concepts(
         raise ValueError(f"No output concepts provided {output_concepts}")
     if not g:
         g = generate_graph(environment)
+    # keep the outermost statement's WHERE (existence sub-sourcing re-enters
+    # here with derived conditions; the probe axis ruling wants the original)
+    if history.statement_conditions is None and conditions is not None:
+        history.statement_conditions = conditions
 
-    root = search_concepts(
-        mandatory_list=output_concepts,
-        environment=environment,
-        g=g,
-        depth=0,
-        history=history,
-        conditions=conditions,
-    )
+    root: StrategyNode | None = None
+    # A statement whose SOLE output is a ROWSET member of a coalescing
+    # (`full`/`union`) key group projects the unified axis — assemble the
+    # coalesce of every member side. Statement-level only: within discovery a
+    # bare member request is routinely a SIDE sub-request from the rowset
+    # exposure machinery, which must stay one-sided. (Bound ROOT members are
+    # canonicalized and intercepted in generate_node instead.)
+    if (
+        len(output_concepts) == 1
+        and conditions is None
+        and output_concepts[0].derivation == Derivation.ROWSET
+    ):
+        root = gen_coalescing_axis_node(
+            output_concepts[0],
+            environment,
+            0,
+            g=g,
+            source_concepts=search_concepts,
+            history=history,
+        )
+
+    if root is None:
+        root = search_concepts(
+            mandatory_list=output_concepts,
+            environment=environment,
+            g=g,
+            depth=0,
+            history=history,
+            conditions=conditions,
+        )
     if not root:
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>" for c in output_concepts

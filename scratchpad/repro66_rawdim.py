@@ -1,7 +1,9 @@
 import tempfile
 from pathlib import Path
+
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
+
 SALES = """key sid int;
 property sid.period int;
 property sid.region int;

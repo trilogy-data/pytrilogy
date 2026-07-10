@@ -47,6 +47,15 @@ class History:
     # Root sets whose merge expansion is mid-flight; balanced add/discard (see
     # merge_in_progress) so it only blocks nested re-entry, unlike `started`.
     merge_in_progress_keys: set[str] = field(default_factory=set)
+    # Coalescing axes whose all-member assembly is mid-flight: sourcing a
+    # member SIDE re-enters discovery for that member, which must resolve the
+    # side alone rather than re-assembling the axis (balanced add/discard).
+    coalescing_axis_in_progress: set[str] = field(default_factory=set)
+    # The statement's WHERE, stashed at source_query_concepts entry: the
+    # discovery loop deliberately sources sub-requests with conditions=None,
+    # but presence-probe axis assembly needs statement-level truth (does the
+    # WHERE provably reject NULL probes?) to skip complement-side scans.
+    statement_conditions: "BuildWhereClause | None" = None
     build_caches: BuildCaches = field(default_factory=BuildCaches)
 
     def _concepts_to_lookup(

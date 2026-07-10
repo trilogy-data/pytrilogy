@@ -190,6 +190,21 @@ def test_presence_where_filter(tmp_path: Path):
     assert rows == sort_rows(want)
 
 
+def test_bare_member_projection_unions_domains(tmp_path: Path):
+    # A statement whose SOLE output is one member of the union group projects
+    # the unified axis: the coalesce of BOTH sides' domains, from either
+    # member's name (parity with the ROOT-key cells in
+    # test_root_presence_probe.py). Pre-fix each single-sourced its own side.
+    axis = sorted({c for c, _ in STORE_PAIRS} | {c for c, _ in CATALOG_PAIRS})
+    want = [(c,) for c in axis]
+    for member in ("store_set.cust", "catalog_set.cust"):
+        rows = _run(
+            tmp_path,
+            f"select {member} union join store_set.cust = catalog_set.cust;",
+        )
+        assert rows == want, member
+
+
 def test_presence_projection_stays_coalesced(tmp_path: Path):
     # Projecting a key-group member still renders the coalesced group axis;
     # only the null test binds per-side. Both semantics in one statement.

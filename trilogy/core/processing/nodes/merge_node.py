@@ -79,20 +79,6 @@ def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
     return list(classes.values())
 
 
-def _coalescing_axis_addresses(environment: BuildEnvironment) -> set[str]:
-    """Canonical addresses of coalescing (`full`/`union`) key groups. Two
-    sources of such an address are DIFFERENT SIDES of the relation (neither
-    domain contains the other), never interchangeable duplicates — the merge
-    must keep both and coalesce them."""
-    groups = environment.scoped_join_key_groups
-    if not groups:
-        return set()
-    members = environment.domain_graph.coalescing_relation_members()
-    if not members:
-        return set()
-    return {canonical for canonical, group in groups.items() if group & members}
-
-
 def deduplicate_nodes(
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
@@ -100,7 +86,6 @@ def deduplicate_nodes(
 ) -> tuple[bool, dict[str, QueryDatasource | BuildDatasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
-    coalescing_axes = _coalescing_axis_addresses(environment)
     set_map: dict[str, set[str]] = {}
     for k, v in merged.items():
         # Hidden concepts are excluded by ``resolve_concept_map`` for
@@ -122,7 +107,6 @@ def deduplicate_nodes(
                 continue
             if (
                 v1.issubset(v2)
-                and not (v1 & coalescing_axes)
                 and merged[k1].grain.issubset(merged[k2].grain)
                 and not merged[k2].partial_concepts
                 and not merged[k1].partial_concepts
@@ -198,6 +182,7 @@ class MergeNode(StrategyNode):
         virtual_output_concepts: List[BuildConcept] | None = None,
         existence_concepts: List[BuildConcept] | None = None,
         ordering: BuildOrderBy | None = None,
+        preserve_parents: bool = False,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -221,6 +206,11 @@ class MergeNode(StrategyNode):
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
         self.node_joins: List[NodeJoin] | None = node_joins
+        # A deliberately-assembled multi-side merge (coalescing axis, presence
+        # probe): every parent is a distinct SIDE of a declared relation, so
+        # the single-parent/duplicate collapse shortcuts must not fire — same
+        # addresses across sides are different domains, not redundancy.
+        self.preserve_parents = preserve_parents
 
         final_joins: List[NodeJoin] = []
         if self.node_joins is not None:
@@ -379,10 +369,13 @@ class MergeNode(StrategyNode):
             else:
                 merged[source.identifier] = source
 
-        # it's possible that we have more sources than we need
-        final_joins, merged = deduplicate_nodes_and_joins(
-            final_joins, merged, self.logging_prefix, self.environment
-        )
+        # it's possible that we have more sources than we need — unless every
+        # parent is a deliberate side of a coalescing relation (same addresses
+        # across sides are different domains, not redundancy)
+        if not self.preserve_parents:
+            final_joins, merged = deduplicate_nodes_and_joins(
+                final_joins, merged, self.logging_prefix, self.environment
+            )
         # early exit if we can just return the parent
         final_datasets: List[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
@@ -413,7 +406,10 @@ class MergeNode(StrategyNode):
         # (e.g. group_if_required_v2 collapsing a fan-out enrichment back to the
         # aggregate grain). Returning a parent that merely covers the output
         # *columns* would silently drop that group, so skip the short-circuits.
-        can_drop_merge = self.force_group is not True
+        # ``preserve_parents`` marks a deliberate multi-side assembly (each
+        # parent a distinct side of a coalescing relation) — a covering parent
+        # is one side's domain, never "good enough" for the unified axis.
+        can_drop_merge = self.force_group is not True and not self.preserve_parents
         if can_drop_merge and len(merged.keys()) == 1:
             final: QueryDatasource | BuildDatasource = list(merged.values())[0]
             if (
@@ -432,11 +428,6 @@ class MergeNode(StrategyNode):
                 return final
 
         # if we have multiple candidates, see if one is good enough
-        coalescing_axes = (
-            _coalescing_axis_addresses(self.environment)
-            if can_drop_merge and len(final_datasets) > 1
-            else set()
-        )
         for dataset in final_datasets if can_drop_merge else []:
             if any(
                 other.identifier != dataset.identifier and _has_applied_condition(other)
@@ -450,11 +441,6 @@ class MergeNode(StrategyNode):
                     if c.address not in [x.address for x in dataset.partial_concepts]
                 ]
             )
-            # A coalescing (`full`/`union`) axis provided by multiple parents
-            # is different SIDES of the relation, not redundancy — one side's
-            # column is never "good enough" for the unified axis.
-            if len(final_datasets) > 1 and output_set & coalescing_axes:
-                continue
             if (
                 all([c.address in output_set for c in self.all_concepts])
                 and not self.conditions
@@ -755,6 +741,7 @@ class MergeNode(StrategyNode):
             force_join_type=self.force_join_type,
             existence_concepts=list(self.existence_concepts),
             ordering=self.ordering,
+            preserve_parents=self.preserve_parents,
         )
 
 

@@ -1,5 +1,52 @@
 # Handoff: q67 inline window aggregate loses ROLLUP row identity
 
+## RESOLUTION (2026-07-10)
+
+Fixed for concrete-key grouping specs (`by rollup (k1, ...)` / `by cube` /
+`by grouping sets`), on the v3 planner path. The v4 path (`use_v4_discovery`)
+already planned these correctly via group-graph co-sourcing and was unchanged.
+
+Root cause confirmed as planner-shape, with one correction to the writeup: the
+bug class is wider than inline-equivalence. **Any** sibling measure not carried
+through the window branch was recovered by a stitch join on the nullable dims —
+including the "canonical workaround" alias form as soon as a second selected
+measure exists (`select total, wtotal, rank(...) over (order by wtotal)` fanned
+out identically). Canonicalizing equivalent aggregates alone would therefore
+not have closed the class; the fix makes all same-pass outputs co-source:
+
+- `trilogy/core/models/build.py`: `nonstandard_grouping_spec` (identity of a
+  grouping pass), `colocatable_in_grouping_pass` (concept is a plain output of
+  the pass: its aggregates, grouping()/grouping_id(), or a pointwise scalar over
+  those plus grouping keys/constants), `windowed_over_grouping_pass`.
+- `gen_window_node`: carries colocatable `local_optional` siblings through the
+  window parent, so the single grouped CTE emits every pass output (no
+  enrichment join).
+- `gen_group_node`: when a missing optional is a window over the same pass, the
+  enrichment stitch would collide grouping sets — it now delegates to
+  `gen_window_node` (window-first plan) instead of merging.
+
+Verified: minimal fixture (8/8 rows, 1 ROLLUP, 0 joins) across inline-same,
+inline-different-measure, alias-with-sibling, composite q67 expression, cube,
+grouping sets; q67 candidate form (explicit keys) at sf=1 matches the
+single-statement oracle 100/100 rows with one ROLLUP. Regression tests:
+`tests/engine/test_duckdb_rollup_window_inline_aggregate.py`.
+
+**Residuals** (documented, not fixed):
+1. Inferred-key `by rollup ()` + inline window aggregate: the inline aggregate
+   co-grains to the window *partition* (not the select grain) before spec
+   stamping, landing in a *different* grouping pass; the cross-pass stitch
+   still fans out (strict xfail in the new test file). Related: the plain
+   (non-rollup) inline form co-grains to the partition too, yielding
+   constant-per-partition ordering (all ranks 1) — a semantics question, not a
+   planner bug.
+2. Non-window cross-pass recoveries (e.g. a filtered aggregate sibling over the
+   same rollup) still stitch on nullable dims. A genuinely unavoidable join
+   between grouping-pass outputs needs the grouping-identity-as-grain design
+   (requirement 3 below); not needed for the window family after this fix.
+3. Requirement 1 (canonicalize equivalent aggregates) was intentionally not
+   implemented: with co-sourcing it is cosmetic (duplicate identical column in
+   the grouped CTE), and it would not have fixed the sibling-measure cases.
+
 ## Summary
 
 There is a recurring silent wrong-result bug when a window over a `ROLLUP`

@@ -1,7 +1,9 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, 'evals')
 from common import scoring
+
 ws = Path('evals/tpcds_agent/results/20260709-020529_enriched/workspace')
 eng = scoring.make_scoring_engine(ws / 'tpcds.duckdb', ws, 'tpcds')
 # genuinely disconnected: two rowsets, NO join

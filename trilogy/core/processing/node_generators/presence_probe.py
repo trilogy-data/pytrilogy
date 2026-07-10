@@ -1,6 +1,7 @@
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
 from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import condition_proves_non_null
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_datasource_node,
 )
@@ -77,17 +78,26 @@ def member_binding_datasources(
 
 def coalescing_axis_group(
     address: str, environment: BuildEnvironment
-) -> set[str] | None:
-    """The key group when `address` is the canonical of a coalescing
-    (`full`/`union`) relation, else None. Under a coalescing declaration the
-    unified axis is the union of the members' domains, so no single member
-    binding can satisfy it."""
-    group = environment.scoped_join_key_groups.get(address)
-    if not group:
+) -> tuple[str, set[str]] | None:
+    """``(canonical, group)`` when `address` participates in a coalescing
+    (`full`/`union`) key group — as its canonical or any member — else None.
+    Under a coalescing declaration the unified axis is the union of the
+    members' domains, so no single member's source can satisfy it. Member
+    addresses matter for ROWSET members, which keep their own identity
+    (requests for them are not canonicalized)."""
+    groups = environment.scoped_join_key_groups
+    if not groups:
         return None
-    if not (group & environment.domain_graph.coalescing_relation_members()):
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    if not coalescing:
         return None
-    return group
+    group = groups.get(address)
+    if group is not None:
+        return (address, group) if group & coalescing else None
+    for canonical, members in groups.items():
+        if address in members and members & coalescing:
+            return canonical, members
+    return None
 
 
 def _pinned_member_node(
@@ -132,47 +142,87 @@ def gen_coalescing_axis_node(
     concept: BuildConcept,
     environment: BuildEnvironment,
     depth: int,
+    g=None,
+    source_concepts=None,
+    history: History | None = None,
 ) -> StrategyNode | None:
     """Materialize a coalescing (`full`/`union`) axis as the mandatory
-    coalesce of EVERY group member's own column.
+    coalesce of EVERY group member's own side.
 
-    Post-substitution the axis is one address that every member's datasource
-    binds, so generic sourcing satisfies it from whichever single table scores
+    Post-substitution a ROOT member's binding shares the canonical's address,
+    so generic sourcing satisfies the axis from whichever single table scores
     best — silently projecting one member's domain as the unified axis. Build
-    one side node per member, pinned to a datasource physically carrying that
-    member, and merge them: the same-address pair relates FULL (the union-key
-    registry forbids narrowing) and renders the coalesce.
+    one side node per member — a scan pinned to the member's own datasource
+    for bound (ROOT) members, the member's own sourcing (its rowset) for
+    unbound ones — and merge them: the sides relate FULL (the union-key
+    registry forbids narrowing) and render the coalesce.
 
     Deliberately NOT a completeness invariant: a query touching only one
     side's own attributes/predicates stays single-sourced (the author is
     querying that side; forcing the traversal is pure cost). This assembles
     the full axis only at the two sites that are ABOUT the axis: a bare axis
-    projection (RootNodeHandler) and a presence probe's key (an `is null`
-    probe's answer lives on the complement side). Returns None when any
-    member lacks a datasource binding (rowset members ride the rowset
-    exposure machinery instead)."""
-    group = coalescing_axis_group(concept.address, environment)
-    if group is None:
+    projection and a presence probe's key (an `is null` probe's answer lives
+    on the complement side)."""
+    found = coalescing_axis_group(concept.address, environment)
+    if found is None:
         return None
-    sides: list[StrategyNode] = []
-    for member in sorted(group):
-        side = _pinned_member_node(member, concept, environment, depth)
-        if side is None:
+    canonical, group = found
+    if history is not None:
+        if canonical in history.coalescing_axis_in_progress:
             return None
-        sides.append(side)
-    if len(sides) < 2:
-        return None
-    logger.info(
-        f"{LOGGER_PREFIX} assembling coalescing axis {concept.address} from"
-        f" {len(sides)} member sides"
-    )
-    return MergeNode(
-        input_concepts=[concept],
-        output_concepts=[concept],
-        environment=environment,
-        parents=sides,
-        depth=depth,
-    )
+        history.coalescing_axis_in_progress.add(canonical)
+    try:
+        key = environment.concepts.get(canonical) or concept
+        sides: list[StrategyNode] = []
+        for member in sorted(group):
+            side = _pinned_member_node(member, key, environment, depth)
+            if side is None and source_concepts is not None:
+                # No datasource carries the member (rowset/derived): source
+                # the member itself — its own scope materializes it, and the
+                # in-progress guard above keeps that sourcing one-sided.
+                member_concept = environment.concepts.get(member)
+                if member_concept is not None:
+                    side = source_concepts(
+                        mandatory_list=[member_concept],
+                        environment=environment,
+                        g=g,
+                        depth=depth + 1,
+                        history=history,
+                        conditions=None,
+                    )
+            if side is None:
+                return None
+            sides.append(side)
+        if len(sides) < 2:
+            return None
+        logger.info(
+            f"{LOGGER_PREFIX} assembling coalescing axis {concept.address} from"
+            f" {len(sides)} member sides"
+        )
+        return MergeNode(
+            input_concepts=unique(
+                [concept] + [c for s in sides for c in s.output_concepts], "address"
+            ),
+            output_concepts=[concept],
+            environment=environment,
+            parents=sides,
+            depth=depth,
+            preserve_parents=True,
+        )
+    finally:
+        if history is not None:
+            history.coalescing_axis_in_progress.discard(canonical)
+
+
+def _conditions_prove_probe_non_null(
+    probe: BuildConcept, conditions: BuildWhereClause | None
+) -> bool:
+    """True when the query's WHERE provably filters out NULL values of the
+    probe (`probe is not null` and negation-safe compositions) — the
+    null-rejection oracle shared with join safety."""
+    if conditions is None:
+        return False
+    return probe.address in condition_proves_non_null(conditions.conditional)
 
 
 def gen_presence_probe_node(
@@ -242,9 +292,27 @@ def gen_presence_probe_node(
         )
     parents: list[StrategyNode] = [pinned]
     # A coalescing (`full`/`union`) key: the pinned scan carries only its own
-    # member's slice of the axis (stamped partial); merge in the full axis so
-    # this node doesn't satisfy the axis address one-sided.
-    axis = gen_coalescing_axis_node(key, environment, depth)
+    # member's slice of the axis; merge in the full axis so this node doesn't
+    # satisfy the axis address one-sided (an `is null` test's answer lives on
+    # the complement side). Perf carve-out: when the statement WHERE provably
+    # rejects NULL probes (`probe is not null` and negation-safe equivalents),
+    # every surviving row has this member's side present, so the one-sided
+    # axis is already complete for the result — skip the complement scans.
+    # The loop sources sub-requests with conditions=None, so consult the
+    # statement-level WHERE stashed on History; unknown stays conservative.
+    statement_conditions = conditions or (
+        history.statement_conditions if history is not None else None
+    )
+    axis: StrategyNode | None = None
+    if not _conditions_prove_probe_non_null(concept, statement_conditions):
+        axis = gen_coalescing_axis_node(
+            key,
+            environment,
+            depth,
+            g=g,
+            source_concepts=source_concepts,
+            history=history,
+        )
     if axis is not None:
         parents.append(axis)
     remaining = [c for c in local_optional if c.address != key.address]
@@ -273,4 +341,5 @@ def gen_presence_probe_node(
         environment=environment,
         parents=parents,
         depth=depth,
+        preserve_parents=axis is not None,
     )

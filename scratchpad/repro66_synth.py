@@ -1,5 +1,6 @@
-import tempfile, sys
+import tempfile
 from pathlib import Path
+
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 
