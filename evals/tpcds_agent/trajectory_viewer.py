@@ -405,6 +405,12 @@ _HTML = r"""<!doctype html>
           border-radius:6px; padding:4px 6px; font-size:11px; cursor:pointer; }
   .fbtn:hover { color:var(--txt); }
   .fbtn.on { border-color:var(--accent); color:var(--accent); }
+  .rerun-bar { margin-top:8px; }
+  .fbtn.rerun { width:100%; }
+  .fbtn.rerun[disabled] { opacity:.6; cursor:default; }
+  .fbtn.cancel { flex:0 0 auto; border-color:var(--err); color:var(--err); margin-top:8px; width:100%; }
+  .rerun-st { font-size:11px; color:var(--muted); margin-top:5px; word-break:break-word; }
+  .rerun-st.ok { color:var(--ok); } .rerun-st.err { color:var(--err); }
   .empty { padding:14px; color:var(--muted); font-size:12px; }
   .run { padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
   .run:hover { background:var(--panel2); }
@@ -580,7 +586,7 @@ function replayBarHtml(run){
   if(replay.running && mine){
     status = `<span class="rpmsg">${esc(replay.log[replay.log.length-1] || 'starting…')}</span>`;
   } else if(replay.running){
-    status = `<span class="rpmsg">busy: ${esc(qlabel(replay.qid))}</span>`;
+    status = `<span class="rpmsg">busy: ${replay.mode==='all' ? 'full rerun' : esc(qlabel(replay.qid))}</span>`;
   } else if(mine && replay.error){
     status = `<span class="rpmsg err">${esc(replay.error)}</span>`;
   } else if(mine && replay.result){
@@ -614,16 +620,45 @@ async function startReplay(qid){
   updateReplayUi();
   if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
 }
+async function startReplayAll(){
+  if(!confirm(`Rerun ALL queries in ${currentRun}?\n\n`
+    + `Copies this run to a fresh sibling dir and re-runs every query there against `
+    + `the current prompts, model and engine. The original run is left untouched.\n\n`
+    + `This is slow — one full agent run per query.`)) return;
+  replay = {running:true, mode:'all', run:currentRun, qid:null,
+            progress:{done:0,total:0,qid:null}, log:['forking…'], result:null,
+            error:null, new_run:null};
+  updateReplayUi();
+  try{
+    const r = await fetch('replay_all', {method:'POST', headers:{'Content-Type':'application/json'},
+                                         body: JSON.stringify({run: currentRun})});
+    const j = await r.json();
+    replay = r.ok ? j : {running:false, mode:'all', run:currentRun, log:[], result:null,
+                         error: j.error || ('HTTP '+r.status)};
+  }catch(e){ replay = {running:false, mode:'all', run:currentRun, log:[], result:null, error:String(e)}; }
+  updateReplayUi();
+  if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+}
+async function cancelReplay(){
+  try{ await fetch('replay_cancel', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}); }
+  catch(e){ /* the poll will reflect the stop once it lands */ }
+}
 async function pollReplay(){
   try{
     const r = await fetch('replay_status.json', {cache:'no-store'});
     if(!r.ok) return;
     const j = await r.json();
     const finished = replay.running && !j.running;
+    // A full rerun forks a new dir; follow it live so the fork populates on screen.
+    const switchTo = (j.new_run && j.new_run !== currentRun) ? j.new_run : null;
     replay = j;
+    if(switchTo){
+      currentRun = switchTo; selectedName = null; expanded = new Set(); compareOpen = false;
+      loadRuns();
+    }
     updateReplayUi();
-    if(finished){
-      clearInterval(replayTimer); replayTimer = null;
+    if(finished || switchTo){
+      if(finished){ clearInterval(replayTimer); replayTimer = null; }
       lastPayload = null;   // the run's logs + report just changed under us
       loadData(true);       // must win over any poll still in flight from mid-replay
     }
@@ -750,7 +785,9 @@ function markActive(){
 // The row whose query is being replayed right now — its metrics are stale until
 // the job lands, so we pulse it instead of showing them.
 function isReplaying(run){
-  return replay.running && replay.run === currentRun && replay.qid === run.qid;
+  if(!replay.running || replay.run !== currentRun) return false;
+  const qid = replay.mode==='all' ? (replay.progress||{}).qid : replay.qid;
+  return qid != null && qid === run.qid;
 }
 const PULSE_MS = 1400;
 // Re-rendering the row restarts its animation. Offsetting the delay by where the
@@ -771,7 +808,30 @@ function renderTally(){
     + `<div class="tally-f">`
     + `<button class="fbtn${failOnly?'':' on'}" onclick="setFailOnly(false)">All ${total}</button>`
     + `<button class="fbtn${failOnly?' on':''}" onclick="setFailOnly(true)">Failing ${failing}</button>`
-    + `</div>`;
+    + `</div>` + rerunAllHtml();
+}
+// Fork the current run into a fresh sibling dir and replay every query there, so
+// the original stays a baseline. Server-only (needs the replay endpoints).
+function rerunAllHtml(){
+  if(!served) return '';
+  const on = replay.running && replay.mode==='all';
+  const dis = replay.running ? ' disabled' : '';
+  let status = '', cancel = '';
+  if(on){
+    const p = replay.progress||{};
+    const where = p.total ? `${qlabel(p.qid)} · ${p.done}/${p.total}`
+                          : (replay.log[replay.log.length-1] || 'forking…');
+    status = `<div class="rerun-st">${esc(where)}</div>`;
+    cancel = `<button class="fbtn cancel" onclick="cancelReplay()">Stop after this query</button>`;
+  } else if(replay.mode==='all' && replay.error){
+    status = `<div class="rerun-st err">${esc(replay.error)}</div>`;
+  } else if(replay.mode==='all' && replay.result){
+    const r = replay.result;
+    status = `<div class="rerun-st ok">reran ${r.count}/${r.total} · pass ${r.pass_count}/${r.num_queries}</div>`;
+  }
+  const label = on ? 'Rerunning…' : 'Rerun all → new run';
+  return `<div class="rerun-bar"><button class="fbtn rerun" onclick="startReplayAll()"${dis}>`
+       + `${esc(label)}</button>${status}${cancel}</div>`;
 }
 function setFailOnly(v){ failOnly = v; renderSide(); }
 function renderSide(){
@@ -891,10 +951,14 @@ class ReplayJob:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._cancel = False
         self._state: dict = {
             "running": False,
+            "mode": None,
             "run": None,
             "qid": None,
+            "progress": None,
+            "new_run": None,
             "log": [],
             "result": None,
             "error": None,
@@ -915,17 +979,50 @@ class ReplayJob:
         """Accept the job, or return why it was rejected."""
         with self._lock:
             if self._state["running"]:
-                return f"a replay is already running (q{self._state['qid']:02d})"
+                return self._busy_reason()
+            self._cancel = False
             self._state = {
                 "running": True,
+                "mode": "one",
                 "run": run_dir.name,
                 "qid": qid,
+                "progress": None,
+                "new_run": None,
                 "log": [],
                 "result": None,
                 "error": None,
             }
         threading.Thread(target=self._run, args=(run_dir, qid), daemon=True).start()
         return None
+
+    def start_all(self, run_dir: Path) -> str | None:
+        """Fork the run, then replay every query in the fork — original untouched."""
+        with self._lock:
+            if self._state["running"]:
+                return self._busy_reason()
+            self._cancel = False
+            self._state = {
+                "running": True,
+                "mode": "all",
+                "run": run_dir.name,
+                "qid": None,
+                "progress": {"done": 0, "total": 0, "qid": None},
+                "new_run": None,
+                "log": [],
+                "result": None,
+                "error": None,
+            }
+        threading.Thread(target=self._run_all, args=(run_dir,), daemon=True).start()
+        return None
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancel = True
+
+    def _busy_reason(self) -> str:
+        if self._state["mode"] == "all":
+            return "a full rerun is already running"
+        return f"a replay is already running (q{self._state['qid']:02d})"
 
     def _run(self, run_dir: Path, qid: int) -> None:
         result: dict | None = None
@@ -940,6 +1037,37 @@ class ReplayJob:
             self._log(error)
         with self._lock:
             self._state.update(running=False, result=result, error=error)
+
+    def _run_all(self, run_dir: Path) -> None:
+        result: dict | None = None
+        error: str | None = None
+        new_run: str | None = None
+        try:
+            from common import replay
+            from spec import SPEC
+
+            fork = replay.fork_run(run_dir, log=self._log)
+            new_run = fork.name
+            with self._lock:
+                self._state.update(run=new_run, new_run=new_run)
+            result = replay.replay_all(
+                fork,
+                SPEC,
+                log=self._log,
+                on_progress=self._progress,
+                cancelled=lambda: self._cancel,
+            )
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            self._log(error)
+        with self._lock:
+            self._state.update(
+                running=False, result=result, error=error, new_run=new_run
+            )
+
+    def _progress(self, done: int, total: int, qid: int) -> None:
+        with self._lock:
+            self._state["progress"] = {"done": done, "total": total, "qid": qid}
 
 
 # A cold collect() transpiles every query (tens of seconds). Serialise it so
@@ -1007,21 +1135,32 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != "/replay":
+        path = urllib.parse.urlparse(self.path).path
+        if path not in ("/replay", "/replay_all", "/replay_cancel"):
             self.send_error(404)
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
-            qid = int(body["qid"])
-        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
-            self._json({"error": "expected JSON body {run, qid}"}, 400)
+        except (ValueError, json.JSONDecodeError):
+            self._json({"error": "expected a JSON body"}, 400)
+            return
+        if path == "/replay_cancel":
+            self.job.cancel()
+            self._json(self.job.snapshot())
             return
         run_dir = self._resolve_run(body.get("run"))
         if run_dir is None:
             self._json({"error": f"unknown run {body.get('run')!r}"}, 400)
             return
-        rejected = self.job.start(run_dir, qid)
+        if path == "/replay_all":
+            rejected = self.job.start_all(run_dir)
+        else:
+            try:
+                rejected = self.job.start(run_dir, int(body["qid"]))
+            except (TypeError, ValueError, KeyError):
+                self._json({"error": "expected JSON body {run, qid}"}, 400)
+                return
         if rejected:
             self._json({"error": rejected}, 409)
             return
