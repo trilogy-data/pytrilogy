@@ -38,7 +38,10 @@ from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     validate_stack,
 )
-from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
+from trilogy.core.processing.node_generators.common import (
+    reinject_common_join_keys_v2,
+    relevant_authored_join_pairs,
+)
 from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
 )
@@ -87,11 +90,56 @@ __all__ = [
 ]
 
 
+def _authored_join_pairs_enforceable(
+    all_concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+    relevant_datasets: list[str],
+    g: ReferenceGraph,
+    orig_g: ReferenceGraph,
+    depth: int,
+) -> bool:
+    """No-silent-fallback guard: the direct-datasource path can only pair an
+    authored join relation whose members are bound on the kept datasources. A
+    relation needing a dimension hop must fall through to weak-component
+    discovery (which injects the hop) rather than return a single-component
+    plan that silently drops the authored equality."""
+    pairs = relevant_authored_join_pairs(all_concepts, environment)
+    if not pairs:
+        return True
+    kept_identifiers: set[str] = set()
+    for node in relevant_datasets:
+        datasource = g.datasources.get(node) or orig_g.datasources.get(node)
+        if isinstance(datasource, BuildUnionDatasource):
+            kept_identifiers.update(child.identifier for child in datasource.children)
+        elif datasource is not None:
+            kept_identifiers.add(datasource.identifier)
+    bound_here = {
+        binding.concept
+        for binding in environment.domain_graph.binding_edges
+        if binding.datasource in kept_identifiers
+    }
+    for pair in pairs:
+        unbound = [
+            member.address
+            for member in (pair.left, pair.right)
+            if member.address not in bound_here
+        ]
+        if unbound:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - "
+                f"authored join key members {unbound} not bound on kept "
+                f"datasources; deferring to weak discovery for enforcement"
+            )
+            return False
+    return True
+
+
 def create_pruned_concept_graph(
     g: ReferenceGraph,
     all_concepts: list[BuildConcept],
     datasources: list[BuildDatasource],
     criteria: SearchCriteria,
+    environment: BuildEnvironment | None = None,
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
     allow_intersection: bool = False,
@@ -198,6 +246,11 @@ def create_pruned_concept_graph(
             synonyms[xc] = c.address
     reinject_common_join_keys_v2(orig_g, g, synonyms, add_joins=True)
 
+    if environment is not None and not _authored_join_pairs_enforceable(
+        all_concepts, environment, relevant_datasets, g, orig_g, depth
+    ):
+        return None
+
     subgraphs = [
         s
         for s in nx.connected_components(g.to_undirected())
@@ -283,6 +336,7 @@ def _source_concepts_via_graph(
                 g,
                 concepts,
                 criteria=attempt,
+                environment=environment,
                 conditions=conditions,
                 datasources=list(environment.datasources.values()),
                 depth=depth,

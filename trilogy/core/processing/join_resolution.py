@@ -248,6 +248,7 @@ def resolve_join_order_v2(
     grain_size: dict[str, int] | None = None,
     full_join_keys: set[str] | None = None,
     anchor_key_nodes: set[str] | None = None,
+    authored_key_nodes: set[str] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -298,9 +299,16 @@ def resolve_join_order_v2(
         concept: [x for x in g.neighbors(concept) if x in datasources]
         for concept in concepts
     }
+    # An AUTHORED join key (scoped join / merge relation) pivots FIRST: its
+    # equality is a semantic pairing contract, not a heuristic tree edge. If a
+    # cheaper shared key (q25's item) seeds the tree instead, the sides pair on
+    # that key alone and the authored predicate lands on a leaf dimension where
+    # a preserving join NULLs the dimension instead of un-pairing the rows —
+    # silent wrong results under an unlucky order.
+    authored = authored_key_nodes or set()
     pivots = sorted(
         [x for x in pivot_map if len(pivot_map[x]) > 1],
-        key=lambda x: (len(pivot_map[x]), len(x), x),
+        key=lambda x: (x not in authored, len(pivot_map[x]), len(x), x),
     )
     solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
     eligible_left: set[str] = set()
@@ -712,6 +720,9 @@ def get_node_joins(
     anchor_key_nodes = {
         canon_node(a) for a in environment.domain_graph.left_anchor_keys()
     }
+    # Canonical keys of every authored join-key group: pivot the join tree on
+    # these first so the authored equality is the pairing between the sides.
+    authored_key_nodes = {canon_node(a) for a in environment.scoped_join_key_groups}
     joins = resolve_join_order_v2(
         graph,
         partials=partials,
@@ -719,6 +730,7 @@ def get_node_joins(
         grain_size=grain_size,
         full_join_keys=full_join_keys,
         anchor_key_nodes=anchor_key_nodes,
+        authored_key_nodes=authored_key_nodes,
     )
     return [
         BaseJoin(

@@ -24,6 +24,7 @@ from trilogy.core.processing.condition_utility import (
     preserved_non_partial_conditions,
 )
 from trilogy.core.processing.node_generators.common import (
+    inject_authored_join_key_terminals,
     reinject_common_join_keys_v2,
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
@@ -358,7 +359,10 @@ def resolve_weak_components(
     accept_partial: bool = False,
     search_conditions: BuildWhereClause | None = None,
 ) -> list[list[BuildConcept]] | None:
+    # order matters: property-key promotion must not see (and further promote)
+    # the authored-join terminals injected below
     all_concepts = inject_property_key_terminals(all_concepts, environment)
+    all_concepts = inject_authored_join_key_terminals(all_concepts, environment)
     break_flag = False
     found = []
     search_graph = environment_graph.copy()

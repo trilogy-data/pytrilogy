@@ -1,8 +1,19 @@
 from itertools import combinations
-from typing import Callable, Dict, Iterable, List, Set, Tuple, cast
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    NamedTuple,
+    Sequence,
+    Set,
+    Tuple,
+    cast,
+)
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
+from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
 from trilogy.core.enums import Derivation, JoinType, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
@@ -742,6 +753,160 @@ def injectable_concepts(
         if any(p in existing for p in concept.pseudonyms):
             continue
         yield concept
+
+
+class AuthoredJoinPair(NamedTuple):
+    """A declared relation's endpoints in AUTHOR address space (each retaining
+    its own `keys` for FK-carrier checks) plus the single BUILD concept the
+    merged key resolves to — ROOT members substitute onto one canonical, so
+    injection targets the canonical exactly like a physically shared key."""
+
+    left: BuildConcept
+    right: BuildConcept
+    canonical: BuildConcept
+
+
+def _member_origin(environment: BuildEnvironment, address: str) -> BuildConcept | None:
+    """The author-space concept for a relation endpoint: a substituted member's
+    original survives in alias_origin_lookup; an unsubstituted endpoint is its
+    own build concept."""
+    origin = environment.alias_origin_lookup.get(address)
+    if origin is not None:
+        return origin
+    concept = environment.concepts.get(address)
+    if concept is not None and concept.address == address:
+        return concept
+    return None
+
+
+def authored_join_pair_candidates(
+    environment: BuildEnvironment,
+) -> list[AuthoredJoinPair]:
+    """Declared SUBSET/INCOMPARABLE relation endpoint pairs on ROOT members,
+    scope-blind (global merge and query join are the same declaration at
+    different scopes). EQUAL relations are excluded (either side authoritative;
+    enforcement rides the canonical machinery); derived (BASIC/ROWSET) members
+    stay with the rowset key-exposure and merge-node exposure machinery."""
+    out: list[AuthoredJoinPair] = []
+    for edge in environment.domain_graph.edges:
+        if edge.provenance is not EdgeProvenance.DECLARED:
+            continue
+        if edge.relation not in (DomainRelation.SUBSET, DomainRelation.INCOMPARABLE):
+            continue
+        left = _member_origin(environment, edge.source)
+        right = _member_origin(environment, edge.target)
+        if left is None or right is None:
+            continue
+        if (
+            left.derivation is not Derivation.ROOT
+            or right.derivation is not Derivation.ROOT
+        ):
+            continue
+        canonical = environment.concepts.get(edge.source)
+        mate = environment.concepts.get(edge.target)
+        if canonical is None or mate is None or canonical.address != mate.address:
+            continue
+        out.append(AuthoredJoinPair(left=left, right=right, canonical=canonical))
+    return out
+
+
+def _member_carriers(
+    member: BuildConcept, bound_by_ds: dict[str, set[str]]
+) -> set[str]:
+    """Datasources that can anchor `member`'s side of a relation: they bind the
+    member itself, or bind ALL of its keys (an FK carrier able to join to the
+    member's dimension at its grain). Exact author addresses only — canonical
+    or pseudonym matching would anchor both sides from one source."""
+    keys = set(member.keys or ())
+    return {
+        identifier
+        for identifier, bound in bound_by_ds.items()
+        if member.address in bound or (keys and keys <= bound)
+    }
+
+
+def _relevant_authored_join_pairs(
+    all_concepts: Sequence[BuildConcept],
+    environment: BuildEnvironment,
+) -> tuple[list[AuthoredJoinPair], dict[str, set[str]]]:
+    """Authored relation pairs the request traverses, plus the author-space
+    binding index of the request's datasources. A pair is traversed when each
+    side is anchored by a requested-concept datasource the other side lacks.
+    One-sided requests and single-scan (denormalized) coverage skip injection,
+    so a declared relation stays lazy unless the query actually relates the two
+    sides.
+
+    Carrier matching runs in AUTHOR address space via the domain graph's
+    binding edges (datasource columns rebind to the canonical at build time,
+    which would erase the sides)."""
+    candidates = authored_join_pair_candidates(environment)
+    if not candidates:
+        return [], {}
+    requested: set[str] = set()
+    for c in all_concepts:
+        requested.add(c.address)
+        requested.update(c.pseudonyms)
+    bound_by_ds: dict[str, set[str]] = {}
+    for binding in environment.domain_graph.binding_edges:
+        bound_by_ds.setdefault(binding.datasource, set()).add(binding.concept)
+    bound_by_ds = {
+        identifier: bound
+        for identifier, bound in bound_by_ds.items()
+        if bound & requested
+    }
+    if not bound_by_ds:
+        return [], {}
+    out: list[AuthoredJoinPair] = []
+    for pair in candidates:
+        left_carriers = _member_carriers(pair.left, bound_by_ds)
+        right_carriers = _member_carriers(pair.right, bound_by_ds)
+        if left_carriers - right_carriers and right_carriers - left_carriers:
+            out.append(pair)
+    return out, bound_by_ds
+
+
+def relevant_authored_join_pairs(
+    all_concepts: Sequence[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[AuthoredJoinPair]:
+    return _relevant_authored_join_pairs(all_concepts, environment)[0]
+
+
+def inject_authored_join_key_terminals(
+    all_concepts: List[BuildConcept],
+    environment: BuildEnvironment,
+) -> List[BuildConcept]:
+    """Force the merged key of each traversed authored join relation into the
+    resolution as a mandatory terminal, mirroring shared-key treatment: each
+    side's subgraph must materialize the key, so the merge join pairs the
+    authored equality instead of silently dropping it (TPC-DS q17/q25).
+
+    Each member's keys are injected too, pinning BOTH sides' FK hops as
+    mandatory — otherwise the side-paths to the one merged key read as
+    alternative resolutions and raise ambiguity."""
+    pairs, _ = _relevant_authored_join_pairs(all_concepts, environment)
+    if not pairs:
+        return all_concepts
+    wanted: List[BuildConcept] = []
+    for pair in pairs:
+        wanted.append(pair.canonical)
+        for member in (pair.left, pair.right):
+            for key_addr in sorted(member.keys or ()):
+                key_concept = environment.concepts.get(key_addr)
+                if (
+                    key_concept is not None
+                    and key_concept.derivation is Derivation.ROOT
+                ):
+                    wanted.append(key_concept)
+    existing = {c.address for c in all_concepts}
+    additions = unique([c for c in wanted if c.address not in existing], "address")
+    if not additions:
+        return all_concepts
+    logger.info(
+        f"{LOGGER_PREFIX} injecting authored join key terminals "
+        f"{[c.address for c in additions]}"
+    )
+    return unique(all_concepts + additions, "address")
 
 
 # -----------------------------

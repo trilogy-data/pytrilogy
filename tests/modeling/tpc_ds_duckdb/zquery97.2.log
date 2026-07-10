@@ -1,76 +1,54 @@
 query_id = "97.2"
 generator = "v3"
-gen_length = 2963
+gen_length = 2763
 preql_size = 1118
 comp_size = 1159
 generated_sql = """
 
 WITH 
-quizzical as (
-SELECT
-    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"customer_sk\",
-    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"item_sk\",
-    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_sk\"
-FROM
-    \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
-GROUP BY
-    1,
-    2,
-    3),
 questionable as (
-SELECT
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_sk\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"item_sk\",
-    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_sk\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-GROUP BY
-    1,
-    2,
-    3),
-uneven as (
 SELECT
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\",
     \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
-    ((cast(coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"questionable\".\"customer_sk\",\"quizzical\".\"customer_sk\") as string) || '-') || cast(coalesce(\"item_items\".\"I_ITEM_SK\",\"questionable\".\"item_sk\",\"quizzical\".\"item_sk\") as string)) as \"customer_item\",
-    coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"questionable\".\"customer_sk\",\"quizzical\".\"customer_sk\") as \"customer_sk\",
-    coalesce(\"item_items\".\"I_ITEM_SK\",\"questionable\".\"item_sk\",\"quizzical\".\"item_sk\") as \"item_sk\"
+    ((cast(coalesce(\"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\",\"customer_customers\".\"C_CUSTOMER_SK\",\"store_sales_store_sales\".\"SS_CUSTOMER_SK\") as string) || '-') || cast(coalesce(\"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",\"item_items\".\"I_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") as string)) as \"customer_item\",
+    coalesce(\"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\",\"customer_customers\".\"C_CUSTOMER_SK\",\"store_sales_store_sales\".\"SS_CUSTOMER_SK\") as \"customer_sk\",
+    coalesce(\"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",\"item_items\".\"I_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") as \"item_sk\"
 FROM
-    \"questionable\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"questionable\".\"store_sales_date_sk\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"questionable\".\"item_sk\" = \"item_items\".\"I_ITEM_SK\"
-    FULL JOIN \"quizzical\" on \"questionable\".\"customer_sk\" is not distinct from \"quizzical\".\"customer_sk\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"questionable\".\"item_sk\") = \"quizzical\".\"item_sk\"
-    FULL JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_sk\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
-    FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"questionable\".\"customer_sk\", \"quizzical\".\"customer_sk\") = \"customer_customers\".\"C_CUSTOMER_SK\"
+    \"memory\".\"item\" as \"item_items\"
+    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"item_items\".\"I_ITEM_SK\" = \"store_sales_store_sales\".\"SS_ITEM_SK\"
+    FULL JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not distinct from \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
+    FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"store_sales_store_sales\".\"SS_CUSTOMER_SK\", \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\") = \"customer_customers\".\"C_CUSTOMER_SK\"
+    FULL JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2,
     3,
     4,
     5),
-yummy as (
+abundant as (
 SELECT
-    CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"catalog_present\",
-    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"store_present\"
+    CASE WHEN \"questionable\".\"catalog_sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 THEN \"questionable\".\"customer_item\" ELSE NULL END as \"catalog_present\",
+    CASE WHEN \"questionable\".\"store_sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 THEN \"questionable\".\"customer_item\" ELSE NULL END as \"store_present\"
 FROM
-    \"uneven\"
+    \"questionable\"
 GROUP BY
     1,
     2,
-    \"uneven\".\"customer_sk\",
-    \"uneven\".\"item_sk\")
+    \"questionable\".\"customer_sk\",
+    \"questionable\".\"item_sk\")
 SELECT
     sum(CASE
-	WHEN \"yummy\".\"store_present\" is not null and \"yummy\".\"catalog_present\" is null THEN 1
+	WHEN \"abundant\".\"store_present\" is not null and \"abundant\".\"catalog_present\" is null THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"yummy\".\"store_present\" is null and \"yummy\".\"catalog_present\" is not null THEN 1
+	WHEN \"abundant\".\"store_present\" is null and \"abundant\".\"catalog_present\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"yummy\".\"store_present\" is not null and \"yummy\".\"catalog_present\" is not null THEN 1
+	WHEN \"abundant\".\"store_present\" is not null and \"abundant\".\"catalog_present\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"yummy\""""
+    \"abundant\""""
