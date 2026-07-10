@@ -768,6 +768,110 @@ def _enrich_via_derived_join_key(
     )
 
 
+def _enrich_via_group_mate_keys(
+    enrich_remaining: List[BuildConcept],
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
+    g,
+    depth: int,
+    source_concepts,
+    history: History,
+    conditions: BuildWhereClause | None,
+    node: RowsetNode,
+    coalescing_members: dict[str, set[str]],
+    producible: set[str],
+) -> StrategyNode | None:
+    """Enrich a rowset across a coalescing scoped join whose key groups expose
+    no non-rowset bridge canonical (rowset <-> rowset `union`/`full` join, q59).
+
+    Each side of such a join materializes its OWN key-group member and the
+    merge pairs the group over the shared canonical, so there is no external
+    bridge column to request — the columns to source are the OTHER side's
+    members themselves. Sourcing them pulls the other scope directly and never
+    routes back through this rowset; a mate computed from this node's own
+    outputs (LEFT-anchor substitution) would, and is declined. Returns None to
+    fall through to the bare node when a group we expose has no externally
+    sourceable mate or the other side cannot expose one — merging then would
+    drop an authored key and fan out."""
+    node_outputs = {c.address for c in node.output_concepts}
+    mate_groups: list[set[str]] = []
+    mates: list[BuildConcept] = []
+    for out_c in node.output_concepts:
+        group_mates = coalescing_members.get(out_c.address)
+        if not group_mates:
+            continue
+        external: list[BuildConcept] = []
+        for mate_addr in sorted(group_mates):
+            if mate_addr in node_outputs:
+                continue
+            mate = environment.concepts.get(mate_addr)
+            if mate is None:
+                continue
+            mate_inputs = {a.address for a in mate.concept_arguments}
+            if mate_inputs and mate_inputs <= producible:
+                continue
+            external.append(mate)
+        if not external:
+            return None
+        mate_groups.append(
+            {m.address for m in external} | {p for m in external for p in m.pseudonyms}
+        )
+        mates.extend(external)
+    if not mates:
+        return None
+    # A presence probe over a mate must compute inside the mate's own scope,
+    # pre-merge (`_local_exposure_obligations`): post-merge the member reads as
+    # the fused group coalesce and the probe can never be NULL. The outer loop
+    # can't request it once this merge satisfies the member, so carry it here.
+    mate_addresses = {m.address for m in mates}
+    mate_probes = [
+        c
+        for c in environment.concepts.values()
+        if _is_presence_probe(c.address)
+        and probe_member_address(c.address, environment) in mate_addresses
+    ]
+    enrich_node = source_concepts(
+        mandatory_list=unique(mates + mate_probes + enrich_remaining, "address"),
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+        conditions=conditions,
+        history=history,
+    )
+    if not enrich_node:
+        return None
+    exposed: set[str] = set()
+    for x in enrich_node.output_concepts:
+        if x.address in enrich_node.hidden_concepts:
+            continue
+        exposed.add(x.address)
+        exposed |= set(x.pseudonyms)
+    if any(not (exposed & group) for group in mate_groups):
+        return None
+    for x in list(node.output_concepts):
+        if x.address in node.hidden_concepts and x.address in coalescing_members:
+            node.unhide_output_concepts([x])
+    non_hidden = [
+        x for x in node.output_concepts if x.address not in node.hidden_concepts
+    ]
+    non_hidden_enrich = [
+        x
+        for x in enrich_node.output_concepts
+        if x.address not in enrich_node.hidden_concepts
+    ]
+    carried_probes = [
+        p for p in mate_probes if p.address in {c.address for c in non_hidden_enrich}
+    ]
+    return MergeNode(
+        input_concepts=unique(non_hidden + non_hidden_enrich, "address"),
+        output_concepts=unique(non_hidden + local_optional + carried_probes, "address"),
+        environment=environment,
+        depth=depth,
+        parents=[node, enrich_node],
+        preexisting_conditions=conditions.conditional if conditions else None,
+    )
+
+
 def _enrich_rowset_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -877,6 +981,25 @@ def _enrich_rowset_node(
         + [canonical for _, canonical in bridge_keys]
     )
     if not possible_joins:
+        # No bridge canonical at all — the rowset<->rowset coalescing-join case:
+        # every group member is a rowset/derived column, so the only join
+        # columns are the other side's own members.
+        if relation_remaining:
+            merged = _enrich_via_group_mate_keys(
+                unique(relation_remaining + routed_cond, "address"),
+                local_optional,
+                environment,
+                g,
+                depth,
+                source_concepts,
+                history,
+                conditions if len(routed_cond) == len(cond_remaining) else None,
+                node,
+                coalescing_members,
+                producible,
+            )
+            if merged is not None:
+                return merged
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
         )

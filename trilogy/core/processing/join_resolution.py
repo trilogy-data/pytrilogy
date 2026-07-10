@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.enums import JoinType, Modifier, Purpose, SourceType
+from trilogy.core.enums import JoinType, Modifier, SourceType
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BuildConcept,
@@ -248,7 +248,6 @@ def resolve_join_order_v2(
     grain_size: dict[str, int] | None = None,
     full_join_keys: set[str] | None = None,
     anchor_key_nodes: set[str] | None = None,
-    payload_nodes: set[str] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -290,12 +289,6 @@ def resolve_join_order_v2(
     for i, ds1 in enumerate(datasources):
         for ds2 in datasources[i + 1 :]:
             connecting_concepts = find_all_connecting_concepts(g, ds1, ds2)
-            # Measures are payload, not row identity: a shared METRIC only
-            # stays a join key when it is the pair's sole connection.
-            if payload_nodes:
-                identity_concepts = connecting_concepts - payload_nodes
-                if identity_concepts:
-                    connecting_concepts = identity_concepts
             if connecting_concepts:
                 all_connections[(min(ds1, ds2), max(ds1, ds2))] = connecting_concepts
 
@@ -476,14 +469,6 @@ def get_modifiers(
     right: DataSource | None,
 ) -> list[Modifier]:
     """Use null-safe equality only when both exposed join keys can be NULL."""
-    # A METRIC join key is planner identity-reconstruction: both sides carry
-    # the same measure, which is NULL for any group whose (filtered) input set
-    # is empty. Ordinary `=` would drop exactly those rows (q59).
-    if (
-        left_concept.purpose == Purpose.METRIC
-        or right_concept.purpose == Purpose.METRIC
-    ):
-        return [Modifier.NULLABLE]
     if side_nullable(left_concept, left) and side_nullable(right_concept, right):
         return [Modifier.NULLABLE]
     return []
@@ -671,8 +656,6 @@ def get_node_joins(
     grain_size: dict[str, int] = {}
     ds_node_map: dict[str, DataSource] = {}
     ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
-    metric_nodes: set[str] = set()
-    non_metric_nodes: set[str] = set()
 
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
@@ -706,10 +689,6 @@ def get_node_joins(
             graph.add_node(node, type=NodeType.CONCEPT)
             graph.add_edge(ds_node, node)
             ds_concept_map.setdefault((ds_node, node), concept)
-            if concept.purpose == Purpose.METRIC:
-                metric_nodes.add(node)
-            else:
-                non_metric_nodes.add(node)
             if node in partial_nodes and node not in p_list:
                 p_list.append(node)
             if node in nullable_nodes and node not in n_list:
@@ -735,7 +714,6 @@ def get_node_joins(
         grain_size=grain_size,
         full_join_keys=full_join_keys,
         anchor_key_nodes=anchor_key_nodes,
-        payload_nodes=metric_nodes - non_metric_nodes,
     )
     return [
         BaseJoin(
