@@ -85,7 +85,7 @@
   {
     "id": 16,
     "grade": "medium",
-    "prompt": "For catalog sales whose ship date falls between 2002-02-01 and 2002-04-02 inclusive, shipping to a ship address in GA via a call center located in 'Williamson County', report the count of unique orders, the total extended ship cost, and the total net profit. Restrict to orders whose line items ship from more than one warehouse (so there exists another line in the same order shipping from a different warehouse) and that have no matching catalog return on the same order number. Order by the order count desc; limit 100 rows."
+    "prompt": "For catalog sales whose ship date falls between 2002-02-01 and 2002-04-02 inclusive, shipping to a directly recorded address in GA (not the customer current address) via a call center located in 'Williamson County', report the count of unique orders, the total extended ship cost, and the total net profit. Two additional filters, which are not scoped to the other conditions - restrict to orders whose line items ship from more than one warehouse (so there exists another line in the same order shipping from a different warehouse) and that have no matching catalog return on the same order number. Order by the order count desc; limit 100 rows."
   },
   {
     "id": 17,

@@ -1,7 +1,7 @@
 query_id = "18"
 generator = "v3"
-gen_length = 6876
-preql_size = 1410
+gen_length = 7104
+preql_size = 1692
 comp_size = 1593
 generated_sql = """
 
@@ -105,5 +105,8 @@ ORDER BY
     \"juicy\".\"cs_billing_customer_address_country\" asc nulls first,
     \"juicy\".\"cs_billing_customer_address_state\" asc nulls first,
     \"juicy\".\"cs_billing_customer_address_county\" asc nulls first,
-    \"juicy\".\"cs_item_id\" asc nulls first
+    \"juicy\".\"cs_item_id\" asc nulls first,
+    grouping(\"juicy\".\"cs_billing_customer_address_country\") asc nulls first,
+    grouping(\"juicy\".\"cs_billing_customer_address_state\") asc nulls first,
+    grouping(\"juicy\".\"cs_billing_customer_address_county\") asc nulls first
 LIMIT (100)"""

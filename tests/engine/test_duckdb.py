@@ -247,6 +247,133 @@ order by
     ]
 
 
+_DIRECT_GROUPING_ORDER_CASES = [
+    (
+        "rollup (brand, class)",
+        [
+            ("A", "X", 10.0),
+            ("A", "Y", 20.0),
+            ("B", "X", 30.0),
+            ("B", "Y", 100.0),
+            ("A", None, 30.0),
+            ("B", None, 130.0),
+            (None, None, 160.0),
+        ],
+    ),
+    (
+        "cube (brand, class)",
+        [
+            ("A", "X", 10.0),
+            ("A", "Y", 20.0),
+            ("B", "X", 30.0),
+            ("B", "Y", 100.0),
+            ("A", None, 30.0),
+            ("B", None, 130.0),
+            (None, "X", 40.0),
+            (None, "Y", 120.0),
+            (None, None, 160.0),
+        ],
+    ),
+    (
+        "grouping sets ((brand, class), (brand), ())",
+        [
+            ("A", "X", 10.0),
+            ("A", "Y", 20.0),
+            ("B", "X", 30.0),
+            ("B", "Y", 100.0),
+            ("A", None, 30.0),
+            ("B", None, 130.0),
+            (None, None, 160.0),
+        ],
+    ),
+]
+
+
+@mark.parametrize("spec,expected", _DIRECT_GROUPING_ORDER_CASES)
+def test_hidden_grouping_in_direct_rollup_orders_by_alias(spec, expected):
+    """q18: hidden `grouping()` indicators ordered by alias on a DIRECT grouped
+    select (no HAVING, so no downstream wrapper CTE). The ORDER BY re-renders the
+    hidden concept from its lineage; that render is already a grouping-set
+    indicator evaluated for the grouped row and must NOT get the scalar
+    group-safety MIN() wrap (DuckDB: 'GROUPING function is not supported here').
+    Hidden helpers stay absent from the returned columns."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = f"""
+select
+    brand,
+    class,
+    sum(amount) as total,
+    --grouping(brand) as gb,
+    --grouping(class) as gc
+by {spec}
+order by gb asc, gc asc, brand nulls first, class nulls first;
+"""
+    sql = engine.generate_sql(text)[-1]
+    assert "MIN(grouping(" not in sql, sql
+    assert "MAX(grouping(" not in sql, sql
+    rows = [tuple(r) for r in engine.execute_text(text)[-1].fetchall()]
+    assert len(rows[0]) == 3, rows
+    assert rows == expected
+
+
+def test_hidden_grouping_direct_rollup_inline_order_by_with_filter_and_limit():
+    """Inline `grouping(dim)` ORDER BY terms resolving to hidden projected twins
+    on a direct rollup (no HAVING wrapper), with a WHERE-filtered parent CTE and
+    a LIMIT — the full q18 shape."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    text = """
+select
+    brand,
+    class,
+    sum(amount) as total,
+    --grouping(brand) as gb,
+    --grouping(class) as gc
+where amount > 15.0
+by rollup (brand, class)
+order by grouping(brand) asc, grouping(class) asc, brand nulls first, class nulls first
+limit 4;
+"""
+    sql = engine.generate_sql(text)[-1]
+    assert "MIN(grouping(" not in sql, sql
+    rows = [tuple(r) for r in engine.execute_text(text)[-1].fetchall()]
+    assert rows == [
+        ("A", "Y", 20.0),
+        ("B", "X", 30.0),
+        ("B", "Y", 100.0),
+        ("A", None, 20.0),
+    ]
+
+
+def test_hidden_grouping_direct_rollup_real_null_dimension():
+    """A real NULL in a grouping dimension must sort with the detail rows
+    (grouping()=0), not get conflated with subtotal rows — the hidden indicator
+    is exactly what disambiguates them."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text("""
+key sale_id int;
+property sale_id.brand string;
+property sale_id.amount float;
+datasource null_sales (sale_id, brand, amount)
+  grain (sale_id)
+  query '''select 1 as sale_id, 'A' as brand, 10.0 as amount
+           union all select 2, cast(null as varchar), 5.0''';
+""")
+    text = """
+select
+    brand,
+    sum(amount) as total,
+    --grouping(brand) as gb
+by rollup (brand)
+order by gb asc, brand nulls first;
+"""
+    sql = engine.generate_sql(text)[-1]
+    assert "MIN(grouping(" not in sql, sql
+    rows = [tuple(r) for r in engine.execute_text(text)[-1].fetchall()]
+    assert rows == [(None, 5.0), ("A", 10.0), (None, 15.0)]
+
+
 def test_inline_aggregate_in_order_by_resolves_to_projected_alias():
     """An inline non-grouping aggregate in ORDER BY that is byte-identical to a
     projected output resolves to that output's alias instead of raising — the

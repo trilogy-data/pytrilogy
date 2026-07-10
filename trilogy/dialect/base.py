@@ -1018,15 +1018,32 @@ class BaseDialect:
         return f"{rendered} {order_item.order.value}"
 
     @staticmethod
-    def _scalar_order_leaves(expr: Any) -> list[BuildConcept] | None:
+    def _scalar_order_leaves(
+        expr: Any, cte: CTE | UnionCTE
+    ) -> list[BuildConcept] | None:
         """Leaf concepts of a purely scalar (concepts, scalar functions,
-        literals) expression; ``None`` if it contains an aggregate, window, or
-        any other compound node that must not be re-wrapped in an aggregate."""
+        literals) expression as it will actually render against ``cte``;
+        ``None`` if that rendering contains an aggregate, window, or any other
+        compound node that must not be re-wrapped in an aggregate. A concept
+        with no sourced column re-renders from its lineage (see
+        ``_render_concept_sql``), so its lineage is judged in its place — a
+        hidden ``grouping(x) as g`` ordered by alias renders ``grouping(x)``,
+        which is already group-scope-evaluated and must never become
+        ``MIN(grouping(x))``."""
         leaves: list[BuildConcept] = []
         stack: list[Any] = [expr]
+        seen: set[str] = set()
         while stack:
             node = stack.pop()
             if isinstance(node, BuildConcept):
+                if (
+                    node.lineage is not None
+                    and not cte.source_map.get(node.address, [])
+                    and node.address not in seen
+                ):
+                    seen.add(node.address)
+                    stack.append(node.lineage)
+                    continue
                 leaves.append(node)
             elif isinstance(node, BuildParenthetical):
                 stack.append(node.content)
@@ -1054,7 +1071,7 @@ class BaseDialect:
         ) and not self._has_local_aggregate(cte):
             return False
         group_addresses = {c.address for c in cte.group_concepts}
-        leaves = self._scalar_order_leaves(expr)
+        leaves = self._scalar_order_leaves(expr, cte)
         if leaves is None or all(c.address in group_addresses for c in leaves):
             return False
         # a re-rendered expression textually identical to a grouped one is
