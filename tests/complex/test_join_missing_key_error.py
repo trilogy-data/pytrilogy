@@ -34,8 +34,8 @@ def test_missing_join_key_reports_225(backend, query):
 @pytest.mark.parametrize(
     "query,expected_code",
     [
-        # a missing alias is still 201, not a join-key error
-        ("select a.x, count(a.v) limit 5;", "Syntax [201]"),
+        # a missing `as` connector is still 201, not a join-key error
+        ("select a.x, count(a.v) total limit 5;", "Syntax [201]"),
         # a select-expression error near a downstream join is not 225
         ("select a.x + union join a.id = b.id limit 5;", "Syntax [201]"),
     ],

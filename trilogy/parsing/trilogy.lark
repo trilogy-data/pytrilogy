@@ -279,13 +279,18 @@
     
     select_hide_modifier: "--"
     select_partial_modifier: "~"
-    select_item: (select_hide_modifier | select_partial_modifier)? (concept_lit  | select_transform  )
-    
+    // The alias tail is optional: `select a, b+1;` materializes an anonymous
+    // concept with a derived name. A bare concept ref parses as an unaliased
+    // select_transform whose expr collapses to the concept_lit (the old
+    // dedicated concept_lit alternative would be an LALR reduce/reduce
+    // conflict against expr now that the tail is optional).
+    select_item: (select_hide_modifier | select_partial_modifier)? select_transform
+
     select_list:  select_item ("," select_item )* ","?
-    
+
     //  count(post_id) -> post_count
     _assignment: ("->") | "as"i
-    select_transform : expr _assignment IDENTIFIER metadata?
+    select_transform : expr (_assignment IDENTIFIER metadata?)?
     
     metadata: "metadata" "(" IDENTIFIER "=" string_lit ")"
     

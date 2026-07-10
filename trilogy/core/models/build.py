@@ -2009,6 +2009,17 @@ class BuildColumnAssignment:
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
 
+    @property
+    def origin_concept_address(self) -> str:
+        """The authored concept address this column physically carries —
+        `origin_address` when a scoped relation substituted the binding onto
+        its canonical, else the concept's own address."""
+        return (
+            self.origin_address
+            if self.origin_address is not None
+            else self.concept.address
+        )
+
 
 @dataclass(slots=True)
 class BuildDatasource:

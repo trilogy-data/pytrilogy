@@ -75,6 +75,106 @@ def member_binding_datasources(
     return off_grain + at_grain
 
 
+def coalescing_axis_group(
+    address: str, environment: BuildEnvironment
+) -> set[str] | None:
+    """The key group when `address` is the canonical of a coalescing
+    (`full`/`union`) relation, else None. Under a coalescing declaration the
+    unified axis is the union of the members' domains, so no single member
+    binding can satisfy it."""
+    group = environment.scoped_join_key_groups.get(address)
+    if not group:
+        return None
+    if not (group & environment.domain_graph.coalescing_relation_members()):
+        return None
+    return group
+
+
+def _pinned_member_node(
+    member_address: str,
+    key: BuildConcept,
+    environment: BuildEnvironment,
+    depth: int,
+) -> StrategyNode | None:
+    """A scan of the member's own datasource producing the group key from the
+    member's authored column, grouped to key grain."""
+    candidates = member_binding_datasources(member_address, environment)
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        logger.info(
+            f"{LOGGER_PREFIX} member {member_address} bound in multiple"
+            f" datasources {[d.name for d in candidates]}; using the first"
+        )
+    node, force_group = create_datasource_node(
+        candidates[0],
+        [key],
+        accept_partial=True,
+        environment=environment,
+        depth=depth + 1,
+        conditions=None,
+    )
+    if not force_group:
+        return node
+    return GroupNode(
+        output_concepts=node.output_concepts,
+        input_concepts=node.output_concepts,
+        environment=environment,
+        parents=[node],
+        depth=depth,
+        partial_concepts=node.partial_concepts,
+        nullable_concepts=node.nullable_concepts,
+        force_group=True,
+    )
+
+
+def gen_coalescing_axis_node(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    depth: int,
+) -> StrategyNode | None:
+    """Materialize a coalescing (`full`/`union`) axis as the mandatory
+    coalesce of EVERY group member's own column.
+
+    Post-substitution the axis is one address that every member's datasource
+    binds, so generic sourcing satisfies it from whichever single table scores
+    best — silently projecting one member's domain as the unified axis. Build
+    one side node per member, pinned to a datasource physically carrying that
+    member, and merge them: the same-address pair relates FULL (the union-key
+    registry forbids narrowing) and renders the coalesce.
+
+    Deliberately NOT a completeness invariant: a query touching only one
+    side's own attributes/predicates stays single-sourced (the author is
+    querying that side; forcing the traversal is pure cost). This assembles
+    the full axis only at the two sites that are ABOUT the axis: a bare axis
+    projection (RootNodeHandler) and a presence probe's key (an `is null`
+    probe's answer lives on the complement side). Returns None when any
+    member lacks a datasource binding (rowset members ride the rowset
+    exposure machinery instead)."""
+    group = coalescing_axis_group(concept.address, environment)
+    if group is None:
+        return None
+    sides: list[StrategyNode] = []
+    for member in sorted(group):
+        side = _pinned_member_node(member, concept, environment, depth)
+        if side is None:
+            return None
+        sides.append(side)
+    if len(sides) < 2:
+        return None
+    logger.info(
+        f"{LOGGER_PREFIX} assembling coalescing axis {concept.address} from"
+        f" {len(sides)} member sides"
+    )
+    return MergeNode(
+        input_concepts=[concept],
+        output_concepts=[concept],
+        environment=environment,
+        parents=sides,
+        depth=depth,
+    )
+
+
 def gen_presence_probe_node(
     concept: BuildConcept,
     local_optional: list[BuildConcept],
@@ -140,28 +240,37 @@ def gen_presence_probe_node(
             nullable_concepts=node.nullable_concepts,
             force_group=True,
         )
+    parents: list[StrategyNode] = [pinned]
+    # A coalescing (`full`/`union`) key: the pinned scan carries only its own
+    # member's slice of the axis (stamped partial); merge in the full axis so
+    # this node doesn't satisfy the axis address one-sided.
+    axis = gen_coalescing_axis_node(key, environment, depth)
+    if axis is not None:
+        parents.append(axis)
     remaining = [c for c in local_optional if c.address != key.address]
-    if not remaining:
+    if remaining:
+        # Cover local_optional per the generator contract: the pinned scan can
+        # never provide it (it carries only the group key + probe), so source
+        # the rest alongside the key and join on it.
+        enrich = source_concepts(
+            mandatory_list=unique([key] + remaining, "address"),
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+            conditions=conditions,
+        )
+        if not enrich:
+            return None
+        parents.append(enrich)
+    if len(parents) == 1:
         return pinned
-    # Cover local_optional per the generator contract: the pinned scan can
-    # never provide it (it carries only the group key + probe), so source the
-    # rest alongside the key and join on it.
-    enrich = source_concepts(
-        mandatory_list=unique([key] + remaining, "address"),
-        environment=environment,
-        g=g,
-        depth=depth + 1,
-        history=history,
-        conditions=conditions,
-    )
-    if not enrich:
-        return None
     return MergeNode(
         input_concepts=unique(
-            pinned.output_concepts + enrich.output_concepts, "address"
+            [c for p in parents for c in p.output_concepts], "address"
         ),
         output_concepts=unique([concept, key] + remaining, "address"),
         environment=environment,
-        parents=[pinned, enrich],
+        parents=parents,
         depth=depth,
     )

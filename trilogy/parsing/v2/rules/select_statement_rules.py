@@ -33,7 +33,7 @@ from trilogy.parsing.v2.concept_factory import (
     arbitrary_to_concept_v2,
     unwrap_transformation_v2,
 )
-from trilogy.parsing.v2.errors import create_syntax_error
+from trilogy.parsing.v2.errors import create_syntax_error, suggest_select_alias
 from trilogy.parsing.v2.rules.concept_rules import (
     metadata_from_meta,
     parse_concept_reference,
@@ -47,6 +47,7 @@ from trilogy.parsing.v2.rules_context import (
     hydrated_children,
 )
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+from trilogy.utility import string_to_hash
 
 
 def select_statement(
@@ -342,14 +343,87 @@ def _existing_select_definition_target(
     return context.environment.concepts.data.get(address)
 
 
+def _has_top_level_comma(text: str) -> bool:
+    depth = 0
+    quote: str | None = None
+    for char in text:
+        if quote is not None:
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+        elif char in "([":
+            depth += 1
+        elif char in ")]":
+            depth -= 1
+        elif char == "," and depth <= 0:
+            return True
+    return False
+
+
+def _anonymous_select_transform(
+    node: SyntaxNode,
+    context: RuleContext,
+    expr_val: Expr,
+) -> ConceptTransform:
+    """An unaliased select expression: materialize it as a query-scoped
+    virtual concept named from the expression text (`count(x)` -> `x_count`).
+    A name collision with a differently-derived concept falls back to a
+    content-hashed suffix, so auto-names can never shadow or be shadowed."""
+    transformation = unwrap_transformation_v2(expr_val, context)
+    meta = metadata_from_meta(node.meta, concept_source=ConceptSource.SELECT)
+    text = (
+        context.source_text[node.start_pos : node.end_pos].strip()
+        if node.start_pos is not None and node.end_pos is not None
+        else ""
+    )
+    # A bare aggregate `by` list binds commas greedily, so an unaliased
+    # `sum(x) by a, b` swallows what reads like the next select item. Refuse
+    # the ambiguous spelling rather than silently picking one meaning; a
+    # top-level comma in a single item's source can only come from that
+    # gobbling. (Aliased items keep the established greedy behavior — the
+    # alias visibly terminates the list.)
+    if _has_top_level_comma(text):
+        raise fail(
+            node,
+            f"Ambiguous unaliased select expression `{text}`: the comma after a "
+            "bare `by` list binds to the list, not the select. Parenthesize the "
+            "grain to group by multiple keys (`by (a, b)`) or alias the "
+            "expression (`... as name`) to end the list.",
+        )
+    name = suggest_select_alias(text)
+    concept = arbitrary_to_concept_v2(
+        transformation, context=context, name=name, metadata=meta
+    )
+    existing = _existing_select_definition_target(context, concept.address)
+    if (
+        existing is not None
+        and not isinstance(existing, (UndefinedConcept, UndefinedConceptFull))
+        and existing.lineage != concept.lineage
+    ):
+        name = f"{name}_{string_to_hash(str(transformation))}"
+        concept = arbitrary_to_concept_v2(
+            transformation, context=context, name=name, metadata=meta
+        )
+    context.add_virtual_concept(concept, meta=core_meta(node.meta))
+    return ConceptTransform(function=transformation, output=concept)
+
+
 def select_transform(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> ConceptTransform:
+) -> ConceptTransform | ConceptRef:
     args = hydrated_children(node, hydrate)
     content_args = [a for a in args if not isinstance(a, str) or a not in ("->", "as")]
     expr_val = content_args[0]
+    if len(content_args) == 1:
+        # No alias. A bare concept reference is a plain projection, identical
+        # to the pre-optional-alias `concept_lit` select item; anything else
+        # becomes an anonymous derived output.
+        if isinstance(expr_val, ConceptRef):
+            return expr_val
+        return _anonymous_select_transform(node, context, expr_val)
     output_name: str = content_args[1]
     metadata: Metadata | None = content_args[2] if len(content_args) > 2 else None
     transformation = unwrap_transformation_v2(expr_val, context)

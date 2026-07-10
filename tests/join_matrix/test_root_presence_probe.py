@@ -21,8 +21,6 @@ which lands on the subset-side cells below.
 
 from pathlib import Path
 
-import pytest
-
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -222,26 +220,20 @@ def test_union_where_side_is_null(tmp_path: Path):
     assert rows == [(3, 2)]
 
 
-@pytest.mark.xfail(
-    reason="pre-existing: projecting a ROOT union-relation key with no other"
-    " side-specific output single-sources one member's table instead of"
-    " coalescing both (the mandatory-coalesce contract only engages when both"
-    " sides contribute outputs); tracked separately from the presence-probe"
-    " fix",
-    strict=True,
-)
 def test_union_bare_axis_projection_unions_domains(tmp_path: Path):
+    # Pre-fix this single-sourced one member's table as the unified axis.
+    # Every member binding is stamped partial (union = neither domain contains
+    # the other) and gen_coalescing_axis_node assembles the mandatory coalesce
+    # of every member side.
     rows = _run_union(tmp_path, "select c_cust union join s_cust = c_cust;")
     assert rows == [(1,), (2,), (3,)]
 
 
-@pytest.mark.xfail(
-    reason="pre-existing bare-axis single-sourcing (see"
-    " test_union_bare_axis_projection_unions_domains); the probe pins and"
-    " computes correctly but filters a single-sourced axis",
-    strict=True,
-)
 def test_union_where_side_is_null_bare_axis(tmp_path: Path):
+    # Anti-join over the complete axis: the store-side probe filters the
+    # coalesced domain, keeping catalog-only customers. Also pins the
+    # predicate-pushdown null-extension guard: `probe IS NULL` must never push
+    # below the FULL join that null-extends it.
     rows = _run_union(
         tmp_path,
         "where s_cust is null select c_cust union join s_cust = c_cust;",

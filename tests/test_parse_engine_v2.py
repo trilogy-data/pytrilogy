@@ -760,7 +760,7 @@ def test_lark_parse_error_keeps_rich_error_codes() -> None:
     # swallowing lark's UnexpectedToken again, these codes disappear.
     with _using_backend(ParserBackend.LARK):
         with pytest.raises(InvalidSyntaxException, match=r"Syntax \[201\]"):
-            parse_text("key revenue float;\nSELECT revenue + 1;", Environment())
+            parse_text("key revenue float;\nSELECT revenue + 1 total;", Environment())
 
 
 def _corpus_files() -> list[Path]:

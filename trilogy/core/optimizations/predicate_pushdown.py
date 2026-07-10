@@ -21,6 +21,7 @@ from trilogy.core.optimizations.utils import (
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
+    condition_proves_non_null,
     condition_value_implies,
     conditions_mutually_exclusive,
     gather_windows,
@@ -46,6 +47,50 @@ def _transitively_depends_on(node: CTE | UnionCTE, target_name: str) -> bool:
         seen.add(dep.name)
         stack.extend(dep.dependency_nodes())
     return False
+
+
+def _predicate_safe_past_null_extension(
+    candidate: BuildComparison | BuildConditional | BuildParenthetical,
+    cte: CTE | UnionCTE,
+    parent_cte: CTE | UnionCTE,
+) -> bool:
+    """A predicate that NULL operands can satisfy (`x IS NULL`, null-defaulted
+    coalesce forms) may hold at this CTE precisely BECAUSE an outer join
+    null-extended the parent's columns — a presence probe's `IS NULL` is true
+    exactly on the rows the parent contributed nothing to. Evaluated inside
+    the parent it reads the parent's real rows instead and inverts meaning
+    (the parent's own probe column is never null, so the pushed filter empties
+    the parent and the outer test trivially passes for every row). Only
+    null-REJECTING predicates commute with a null-extending join: rows they
+    keep must have real parent values, so pre- and post-join filtering agree."""
+    if not isinstance(cte, CTE):
+        return True
+    null_extended = False
+    for join in cte.joins:
+        if not isinstance(join, Join):
+            continue
+        sides: list[str] = [join.right_cte.name]
+        if join.left_cte is not None:
+            sides.append(join.left_cte.name)
+        if parent_cte.name not in sides:
+            continue
+        if join.jointype is JoinType.FULL:
+            null_extended = True
+        elif (
+            join.jointype is JoinType.LEFT_OUTER
+            and join.right_cte.name == parent_cte.name
+        ):
+            null_extended = True
+        elif (
+            join.jointype is JoinType.RIGHT_OUTER
+            and join.left_cte is not None
+            and join.left_cte.name == parent_cte.name
+        ):
+            null_extended = True
+    if not null_extended:
+        return True
+    proven = condition_proves_non_null(candidate)
+    return {x.address for x in candidate.row_arguments} <= proven
 
 
 def _promotion_would_cycle(
@@ -528,6 +573,12 @@ class PredicatePushdown(OptimizationRule):
             self.debug(
                 f"CTE {parent_cte.name} groups by keys that do not determine a pushed "
                 f"{candidate} (would filter rows inside groups); not pushing"
+            )
+            return False
+        if not _predicate_safe_past_null_extension(candidate, cte, parent_cte):
+            self.debug(
+                f"CTE {parent_cte.name} is null-extended by {cte.name}'s outer join "
+                f"and {candidate} is not null-rejecting; not pushing"
             )
             return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}

@@ -1,7 +1,7 @@
 query_id = "72"
 generator = "v3"
-gen_length = 6217
-preql_size = 957
+gen_length = 6289
+preql_size = 986
 comp_size = 1360
 generated_sql = """
 
@@ -42,7 +42,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\" and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\"
+    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"inv_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\"
 
 GROUP BY
     1,
@@ -66,7 +66,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cheerful\".\"cs_ship_date_sk\" = \"cs_ship_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\" and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cheerful\".\"cs_quantity\"
+    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"inv_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cheerful\".\"cs_quantity\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\"
 
 GROUP BY
     1,

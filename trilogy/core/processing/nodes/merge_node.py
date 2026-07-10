@@ -79,6 +79,20 @@ def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
     return list(classes.values())
 
 
+def _coalescing_axis_addresses(environment: BuildEnvironment) -> set[str]:
+    """Canonical addresses of coalescing (`full`/`union`) key groups. Two
+    sources of such an address are DIFFERENT SIDES of the relation (neither
+    domain contains the other), never interchangeable duplicates — the merge
+    must keep both and coalesce them."""
+    groups = environment.scoped_join_key_groups
+    if not groups:
+        return set()
+    members = environment.domain_graph.coalescing_relation_members()
+    if not members:
+        return set()
+    return {canonical for canonical, group in groups.items() if group & members}
+
+
 def deduplicate_nodes(
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
@@ -86,6 +100,7 @@ def deduplicate_nodes(
 ) -> tuple[bool, dict[str, QueryDatasource | BuildDatasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
+    coalescing_axes = _coalescing_axis_addresses(environment)
     set_map: dict[str, set[str]] = {}
     for k, v in merged.items():
         # Hidden concepts are excluded by ``resolve_concept_map`` for
@@ -107,6 +122,7 @@ def deduplicate_nodes(
                 continue
             if (
                 v1.issubset(v2)
+                and not (v1 & coalescing_axes)
                 and merged[k1].grain.issubset(merged[k2].grain)
                 and not merged[k2].partial_concepts
                 and not merged[k1].partial_concepts
@@ -416,6 +432,11 @@ class MergeNode(StrategyNode):
                 return final
 
         # if we have multiple candidates, see if one is good enough
+        coalescing_axes = (
+            _coalescing_axis_addresses(self.environment)
+            if can_drop_merge and len(final_datasets) > 1
+            else set()
+        )
         for dataset in final_datasets if can_drop_merge else []:
             if any(
                 other.identifier != dataset.identifier and _has_applied_condition(other)
@@ -429,6 +450,11 @@ class MergeNode(StrategyNode):
                     if c.address not in [x.address for x in dataset.partial_concepts]
                 ]
             )
+            # A coalescing (`full`/`union`) axis provided by multiple parents
+            # is different SIDES of the relation, not redundancy — one side's
+            # column is never "good enough" for the unified axis.
+            if len(final_datasets) > 1 and output_set & coalescing_axes:
+                continue
             if (
                 all([c.address in output_set for c in self.all_concepts])
                 and not self.conditions

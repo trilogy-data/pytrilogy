@@ -32,6 +32,7 @@ from trilogy.core.processing.node_generators import (
     gen_window_node,
 )
 from trilogy.core.processing.node_generators.presence_probe import (
+    gen_coalescing_axis_node,
     gen_presence_probe_node,
     is_presence_probe,
 )
@@ -538,6 +539,18 @@ def generate_node(
         conditions=conditions,
         required_concepts=required_concepts,
     )
+
+    # A bare request for a coalescing (`full`/`union`) axis is a query ABOUT
+    # the unified domain: assemble the mandatory coalesce of every member side
+    # BEFORE the single-select shortcut below satisfies it from whichever one
+    # member's table scores best. Requests carrying other outputs stay on the
+    # generic paths — a query touching only one side's attributes is querying
+    # that side, and forcing the traversal there is pure cost.
+    if not local_optional and concept.derivation == Derivation.ROOT:
+        axis = gen_coalescing_axis_node(concept, environment, depth + 1)
+        if axis is not None:
+            context.log_generation("coalescing axis")
+            return axis
 
     # Try materialized concept first
     # this is worth checking every loop iteration

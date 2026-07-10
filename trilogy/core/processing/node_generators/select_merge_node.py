@@ -39,6 +39,9 @@ from trilogy.core.processing.discovery_validation import (
     validate_stack,
 )
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
+from trilogy.core.processing.node_generators.presence_probe import (
+    coalescing_axis_group,
+)
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     covered_conditions,
 )
@@ -680,6 +683,25 @@ def gen_select_merge_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for normals: {normals}, abstract_props: {abstract_props}, constants: {constants}, conditions: {conditions}"
     )
+    # A request that is EXACTLY a coalescing (`full`/`union`) axis is a query
+    # about the unified domain: datasource scoring here would project one
+    # member's table as the axis. Decline it — the discovery loop's ROOT
+    # dispatch assembles the mandatory coalesce of every member side
+    # (gen_coalescing_axis_node) and owns condition application (a presence
+    # probe filter must land post-merge). Any other output in the request
+    # means the author is querying a side; those stay on this path.
+    if (
+        len(normals) == 1
+        and not abstract_props
+        and not constants
+        and normals[0].derivation == Derivation.ROOT
+        and coalescing_axis_group(normals[0].address, environment) is not None
+    ):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} bare coalescing axis request;"
+            " declining direct select so the loop assembles all member sides"
+        )
+        return None
     only_abstract = not normals and not constants and abstract_props
     only_constant = not normals and not abstract_props and constants
     if only_abstract:

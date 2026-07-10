@@ -676,7 +676,9 @@ def test_seventy_six(engine):
 
 
 def test_seventy_seven(engine):
-    _ = run_query(engine, 77)
+    # The stock TPC-DS query cross-joins catalog sales and return groups,
+    # inflating sales. Our reference matches all three channels by outlet.
+    _ = run_query(engine, 77, sql_override=True)
 
 
 def test_seventy_eight(engine):

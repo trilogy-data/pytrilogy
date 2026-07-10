@@ -28,6 +28,7 @@ WITH ss AS
         date_dim
    WHERE cs_sold_date_sk = d_date_sk
      AND d_date BETWEEN cast('2000-08-23' AS date) AND cast('2000-09-22' AS date)
+     AND cs_call_center_sk IS NOT NULL
    GROUP BY cs_call_center_sk),
      cr AS
   (SELECT cr_call_center_sk,
@@ -76,10 +77,10 @@ FROM
    UNION ALL SELECT 'catalog channel' AS channel ,
                     cs_call_center_sk AS id ,
                     sales ,
-                    returns_ ,
-                    (profit - profit_loss) AS profit
-   FROM cs ,
-        cr
+                    coalesce(returns_, 0) AS returns_ ,
+                    (profit - coalesce(profit_loss,0)) AS profit
+   FROM cs
+   LEFT JOIN cr ON cs.cs_call_center_sk = cr.cr_call_center_sk
    UNION ALL SELECT 'web channel' AS channel ,
                     ws.wp_web_page_sk AS id ,
                     sales ,

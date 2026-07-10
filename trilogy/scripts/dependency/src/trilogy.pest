@@ -283,9 +283,14 @@ show_statement  = { ^"show" ~ (show_category | validate_statement | select_state
 // =============================================================================
 select_hide_modifier    = { "--" }
 select_partial_modifier = { "~" }
-select_item   = { (select_hide_modifier | select_partial_modifier)? ~ (select_transform | concept_lit) }
+// The alias tail is optional: `select a, b+1;` materializes an anonymous
+// concept with a derived name. A bare concept ref parses as an unaliased
+// select_transform whose expr collapses to the concept_lit (a dedicated
+// concept_lit alternative would either be dead — expr matches a bare ref
+// first — or commit early and break `a + 1`; mirrors trilogy.lark).
+select_item   = { (select_hide_modifier | select_partial_modifier)? ~ select_transform }
 select_list   = { select_item ~ ("," ~ !SELECT_LIST_STOP ~ select_item)* ~ ","? }
-select_transform = { expr ~ ("->" | ^"as") ~ IDENTIFIER ~ metadata? }
+select_transform = { expr ~ (("->" | ^"as") ~ IDENTIFIER ~ metadata?)? }
 
 metadata = { ^"metadata" ~ "(" ~ IDENTIFIER ~ "=" ~ string_lit ~ ")" }
 
@@ -562,8 +567,15 @@ fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }
 // gets a chance to match `upper(...)`. Mirrors the lark `_filter_alt` LHS:
 // every non-left-recursive atom alternative, plus parenthesized `expr` for
 // arbitrary sub-trees.
+// The `filter` keyword needs a word-boundary guard: without it, an unaliased
+// select item like `filtered_even_orders` reads as `filter` + `ed_even_orders`
+// (pest is scannerless and inter-element whitespace is optional). FILTER_KW is
+// used only inside `&` so it emits no pair and both backends' trees stay
+// identical; the "." exclusion keeps a `filter.x` concept reference out of the
+// keyword path too. (Mirrors the WINDOW_LEGACY_KW lookahead pattern.)
+FILTER_KW = @{ ^"filter" ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
 filter_item = {
-      (^"filter" ~ IDENTIFIER ~ where)
+      (&FILTER_KW ~ ^"filter" ~ IDENTIFIER ~ where)
     | ((_constant_functions | _static_functions | _generic_functions | _date_functions | window_item | aggregate_functions | aggregate_by | custom_function | unnest | union | subselect | fgroup | expr_tuple | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
 }
 
