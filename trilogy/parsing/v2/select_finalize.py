@@ -36,6 +36,8 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import replace as dc_replace
 from typing import Any, Callable, Iterable, Iterator, Mapping, NamedTuple, cast
 
 from trilogy.constants import CONFIG
@@ -1047,6 +1049,122 @@ def _collect_ungrouped_aggregates_deep(
     return found
 
 
+def _apply_grouping_spec(wrapper: AggregateWrapper, spec: Any) -> None:
+    wrapper.by = list(spec.by)
+    wrapper.grouping = spec.mode
+    wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
+
+
+def _collect_owned_ungrouped_aggregates(
+    lineage: Any, boundary_refs: set[str]
+) -> list[AggregateWrapper]:
+    """Un-grouped aggregate wrappers in an expression tree, stopping at
+    ``ConceptRef`` ownership boundaries (recorded in ``boundary_refs``). A named
+    concept's lineage is a shared definition — the environment's, or another
+    statement's — so its wrappers are stamped on a select-local clone by the
+    caller, never through the reference."""
+    if isinstance(lineage, ConceptRef):
+        boundary_refs.add(lineage.address)
+        return []
+    found: list[AggregateWrapper] = []
+    if _is_ungrouped_aggregate(lineage):
+        found.append(cast(AggregateWrapper, lineage))
+    children = list(_child_exprs(lineage))
+    if isinstance(lineage, (NavigationWindowItem, NumberingWindowItem)):
+        children += [*lineage.over, *(item.expr for item in lineage.order_by)]
+    for child in children:
+        found += _collect_owned_ungrouped_aggregates(child, boundary_refs)
+    return found
+
+
+def _without_grouping_stamp(concept: Concept) -> Concept:
+    """The environment-registration form of a select output: any SELECT-level
+    grouping spec stamped on its aggregates belongs to the enclosing select,
+    not to the concept's reusable definition. Non-standard grouping can only
+    originate from select-level stamping (aggregate-level rollup is not part of
+    the language), and stamping only targets previously un-grouped wrappers, so
+    resetting to a bare STANDARD aggregate is always the pre-stamp form."""
+    if concept.lineage is None or not _collect_rollup_wrappers(concept.lineage):
+        return concept
+    clone = dc_replace(concept, lineage=deepcopy(concept.lineage))
+    for wrapper in _collect_rollup_wrappers(clone.lineage):
+        wrapper.by = []
+        wrapper.grouping = AggregateGroupingMode.STANDARD
+        wrapper.grouping_sets = []
+    return clone
+
+
+def _stamp_select_grouping(
+    select: SelectStatement, context: RuleContext, spec: Any
+) -> bool:
+    """Stamp the SELECT-level grouping spec onto every un-grouped aggregate
+    feeding the projection — on objects this select owns.
+
+    Inline expressions are stamped on a deep copy swapped into the item (the
+    original tree is also the alias's environment-registered definition);
+    by-name concepts are stamped on a clone registered in
+    ``select.local_concepts``, which shadows the shared definition for this
+    select's grain calc and build. Stamping shared definitions in place leaks
+    the spec across statement boundaries: a later plain select renders ROLLUP
+    (silently wrong rows), a later different-key rollup keeps the stale keys,
+    and re-parsing the same text finds nothing left to stamp and errors."""
+    stamped = False
+    handled: set[str] = set()
+
+    def stamp_named(address: str) -> None:
+        nonlocal stamped
+        if address in handled:
+            return
+        handled.add(address)
+        base = select.local_concepts.get(address) or context.concepts.get(address)
+        if (
+            base is None
+            or isinstance(base, (UndefinedConcept, UndefinedConceptFull))
+            or base.lineage is None
+        ):
+            return
+        boundary: set[str] = set()
+        wrappers = _collect_owned_ungrouped_aggregates(base.lineage, boundary)
+        for ref in boundary:
+            stamp_named(ref)
+        if not wrappers:
+            return
+        clone = deepcopy(base)
+        clone_refs: set[str] = set()
+        for wrapper in _collect_owned_ungrouped_aggregates(clone.lineage, clone_refs):
+            _apply_grouping_spec(wrapper, spec)
+        select.local_concepts[address] = clone
+        select.grouping_stamped_locals.add(address)
+        stamped = True
+
+    for item in select.selection:
+        content = item.content
+        if isinstance(content, ConceptTransform):
+            boundary: set[str] = set()
+            wrappers = _collect_owned_ungrouped_aggregates(content.function, boundary)
+            for ref in boundary:
+                stamp_named(ref)
+            if not wrappers or isinstance(
+                content.output, (UndefinedConcept, UndefinedConceptFull)
+            ):
+                continue
+            replacement = deepcopy(content.function)
+            replacement_refs: set[str] = set()
+            for wrapper in _collect_owned_ungrouped_aggregates(
+                replacement, replacement_refs
+            ):
+                _apply_grouping_spec(wrapper, spec)
+            content.function = replacement
+            # replacement mirrors the output's existing lineage tree, so the
+            # narrower Concept.lineage union is satisfied by construction
+            content.output = dc_replace(content.output, lineage=cast(Any, replacement))
+            select.local_concepts[content.output.address] = content.output
+            stamped = True
+        elif isinstance(content, ConceptRef):
+            stamp_named(content.address)
+    return stamped
+
+
 def _validate_grouping_args_are_concepts(
     select: SelectStatement, context: RuleContext
 ) -> None:
@@ -1129,17 +1247,7 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
         return
     _validate_grouping_args_are_concepts(select, context)
     _normalize_grouping_args_to_rollup_keys(select, context)
-    seen: set[str] = set()
-    stamped = False
-    for item in select.selection:
-        lineage = _item_lineage(item, context)
-        if lineage is None:
-            continue
-        for wrapper in _collect_ungrouped_aggregates_deep(lineage, context, seen):
-            wrapper.by = list(spec.by)
-            wrapper.grouping = spec.mode
-            wrapper.grouping_sets = [list(g) for g in spec.grouping_sets]
-            stamped = True
+    stamped = _stamp_select_grouping(select, context, spec)
     # Stamping only reaches aggregate wrappers; a passthrough of a
     # pre-aggregated (rowset) measure has none, so without this the spec
     # would silently drop when nothing was stamped (q05) — and a passthrough
@@ -1325,7 +1433,10 @@ def _apply_grouping_to_passthroughs(
             grouping_sets=[list(g) for g in spec.grouping_sets],
         )
         content.function = aggregate
-        content.output.lineage = aggregate
+        # swap, don't mutate: the output object (or its lineage tree) may be the
+        # alias's environment-registered definition
+        content.output = dc_replace(content.output, lineage=aggregate)
+        select.local_concepts[content.output.address] = content.output
         wrapped = True
     if not stamped and not wrapped:
         raise InvalidSyntaxException(
@@ -1413,7 +1524,15 @@ def _substitute_window_grouping_outputs(select: SelectStatement) -> None:
         if rewritten is function:
             continue
         item.content.function = rewritten
-        item.content.output.lineage = rewritten
+        if not isinstance(
+            item.content.output, (UndefinedConcept, UndefinedConceptFull)
+        ):
+            # swap, don't mutate: the output object may be the alias's
+            # environment-registered definition
+            item.content.output = dc_replace(item.content.output, lineage=rewritten)
+            select.local_concepts[item.content.output.address] = item.content.output
+        else:
+            item.content.output.lineage = rewritten
 
 
 def _promote_having_grouping_to_outputs(
@@ -1670,6 +1789,73 @@ def _promote_having_aggregates_to_outputs(
         output_addrs.add(named.address)
 
 
+def _bare_row_refs(node: Any) -> list[ConceptRef]:
+    """Concept references of an expression reachable without crossing an
+    aggregate or window boundary — the references that must exist as row-level
+    columns of the post-aggregation result for the expression to evaluate.
+
+    A ref *inside* an aggregate/window is not one: the computed value is
+    materialized (or validated) separately and its operands are collapsed away
+    by the grouping. This is the distinction between a raw concept being an
+    operand of a selected expression and it being available at the output
+    grain — ``count(x ? dim is not null) as c`` consumes ``dim`` but does not
+    carry it through the group CTE, so a bare HAVING reference to ``dim`` still
+    needs the semijoin rewrite (q72)."""
+    if isinstance(node, ConceptRef):
+        return [node]
+    if isinstance(node, (AggregateWrapper, NavigationWindowItem, NumberingWindowItem)):
+        return []
+    if isinstance(node, Function):
+        if (
+            node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+            or node.operator in _GROUPING_FNS
+        ):
+            return []
+        out: list[ConceptRef] = []
+        for arg in node.arguments:
+            out += _bare_row_refs(arg)
+        return out
+    if isinstance(node, FunctionCallWrapper):
+        return _bare_row_refs(node.content)
+    if isinstance(node, Parenthetical):
+        return _bare_row_refs(node.content)
+    if isinstance(node, SubselectComparison):
+        # The existence RHS is sourced as an independent subselect; only the
+        # row side must resolve at the output grain.
+        return _bare_row_refs(node.left)
+    if isinstance(node, (Comparison, Conditional)):
+        return _bare_row_refs(node.left) + _bare_row_refs(node.right)
+    if isinstance(node, Between):
+        return (
+            _bare_row_refs(node.left)
+            + _bare_row_refs(node.low)
+            + _bare_row_refs(node.high)
+        )
+    if isinstance(node, CaseWhen):
+        return _bare_row_refs(node.comparison) + _bare_row_refs(node.expr)
+    if isinstance(node, CaseElse):
+        return _bare_row_refs(node.expr)
+    if isinstance(node, FilterItem):
+        return _bare_row_refs(node.content) + _bare_row_refs(node.where.conditional)
+    return []
+
+
+def _row_grain_allowed_addresses(select: SelectStatement) -> set[str]:
+    """Addresses available as row-level references of the post-aggregation
+    result: the outputs themselves plus operands of *scalar* select derivations
+    (which stay at the output grain). Operands that appear only inside a
+    selected aggregate or window are excluded — the grouping collapses them.
+    Stricter than ``alias_source_addresses``, which intentionally exposes
+    aggregate operands so an inline HAVING/ORDER BY aggregate can match its
+    projected twin."""
+    allowed = {x.address for x in select.output_components}
+    for item in select.selection:
+        if isinstance(item.content, ConceptTransform):
+            for ref in _bare_row_refs(item.content.function):
+                allowed.add(ref.address)
+    return allowed
+
+
 def _build_grain_key_membership(
     leaf: Comparison | Between,
     grain_keys: list[str],
@@ -1744,6 +1930,19 @@ def _rewrite_having_finer_dims_to_membership(
     a group — it is invariant to predicate pushdown. The membership reuses the
     existing existence machinery, which sources the filtered set as an independent
     subquery that never contaminates the aggregate.
+
+    A leaf needs the rewrite under either rule:
+
+    - any of its *bare* row references (outside aggregates/windows) is not
+      materialized at the output grain (``_row_grain_allowed_addresses``). The
+      broader ``allowed_addresses`` cannot decide this: it includes aggregate
+      operands, but ``sum(x ? dim = 1) as c`` consumes ``dim`` without carrying
+      it through the group CTE, so a bare HAVING ``dim`` would otherwise slip
+      through unrewritten and either get pushed pre-aggregation (silent wrong
+      result) or reach rendering with no source (INVALID_REFERENCE_BUG, q72);
+    - any reference at all (including inside a finer off-grain aggregate that
+      ``_promote_having_aggregates_to_outputs`` deliberately skipped) is outside
+      ``allowed_addresses`` — the pre-existing rule.
     """
     if not select.having_clause:
         return
@@ -1763,6 +1962,7 @@ def _rewrite_having_finer_dims_to_membership(
     stable_grain_keys.extend(sorted(window_keys - set(stable_grain_keys)))
     if stable_grain_keys:
         grain_keys = stable_grain_keys
+    row_grain_allowed = _row_grain_allowed_addresses(select)
 
     def needs_membership(leaf: Any) -> bool:
         # SubselectComparison subclasses Comparison: an existing `x in <set>`
@@ -1771,6 +1971,7 @@ def _rewrite_having_finer_dims_to_membership(
         if not isinstance(leaf, (Comparison, Between)):
             return False
         extra = [r for r in leaf.row_arguments if r.address not in allowed_addresses]
+        extra += [r for r in _bare_row_refs(leaf) if r.address not in row_grain_allowed]
         if not extra:
             return False
         # A genuinely undefined reference is reported by the missing-ref check;
@@ -2038,16 +2239,33 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             | set(select.grain.components)
             | {x.address for x in select.output_components}
         )
+        # Bare row references (outside aggregates/windows) are held to the
+        # stricter standard the semijoin rewrite used: they must be materialized
+        # at the output grain, not merely be an operand of some selected
+        # aggregate. Anything the rewrite left bare and unmaterialized would
+        # otherwise reach planning with no backing column — pushed
+        # pre-aggregation or rendered as a missing-source sentinel (q72).
+        row_grain_allowed_for_having = _row_grain_allowed_addresses(select) | set(
+            select.grain.components
+        )
+        flagged = [
+            cref.address
+            for cref in select.having_clause.row_arguments
+            if cref.address not in allowed_for_having
+        ]
+        flagged += [
+            cref.address
+            for cref in _bare_row_refs(select.having_clause.conditional)
+            if cref.address not in row_grain_allowed_for_having
+        ]
         undefined_refs: list[str] = []
         unhandled_refs: list[str] = []
-        for cref in select.having_clause.row_arguments:
-            if cref.address in allowed_for_having:
-                continue
-            if _is_unresolved(context, cref.address):
-                if cref.address not in undefined_refs:
-                    undefined_refs.append(cref.address)
-            elif cref.address not in unhandled_refs:
-                unhandled_refs.append(cref.address)
+        for address in flagged:
+            if _is_unresolved(context, address):
+                if address not in undefined_refs:
+                    undefined_refs.append(address)
+            elif address not in unhandled_refs:
+                unhandled_refs.append(address)
         if undefined_refs:
             refs = ", ".join(f"'{a}'" for a in undefined_refs)
             verb = "is" if len(undefined_refs) == 1 else "are"
@@ -2163,15 +2381,20 @@ def finalize_select_statement(
             if CONFIG.parsing.select_as_definition and not context.environment.frozen:
                 existing = context.concepts.get(x.concept.address)
                 meta: Any = x.content.output.metadata
+                # A SELECT-level grouping spec stamped on the output's aggregates
+                # is a property of THIS select, not of the alias's reusable
+                # definition — register the unstamped form so a later
+                # `select ..., t2` doesn't silently inherit ROLLUP.
+                registered = _without_grouping_stamp(x.content.output)
                 if existing is None:
-                    context.add_top_level_concept(x.content.output, meta=meta)
+                    context.add_top_level_concept(registered, meta=meta)
                 elif (
                     existing.metadata
                     and existing.metadata.concept_source == ConceptSource.SELECT
                 ):
                     context.semantic_state.replace_concept(
                         x.concept.address,
-                        x.content.output,
+                        registered,
                         ConceptUpdateKind.TOP_LEVEL_DECLARATION,
                         meta=meta,
                     )
@@ -2189,7 +2412,9 @@ def finalize_select_statement(
             output_addresses.add(adjusted.address)
         else:
             addr = x.concept.address
-            resolved = context.concepts.get(addr)
+            # prefer a select-local override (e.g. a grouping-spec-stamped
+            # clone) over the shared environment definition
+            resolved = select.local_concepts.get(addr) or context.concepts.get(addr)
             if resolved is None or isinstance(
                 resolved, (UndefinedConcept, UndefinedConceptFull)
             ):

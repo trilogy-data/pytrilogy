@@ -227,6 +227,7 @@ It appears as a prefix on a select item (`~customer.id`) to flag the value as pa
   7. Logical `or`.
 - Cast with `::type`, e.g. `"2020-01-01"::date`.
 - Date parts have no quotes: `date_part(enroll.date, year)`, never `date_part(enroll.date, 'year')`. Prefer idiomatic function forms when available: `year(enroll.date)`.
+- `date_diff(start_date, end_date, unit)` computes `end_date - start_date`. Argument order matters: `date_diff('2020-01-01'::date, '2020-01-02'::date, day)` returns `1`; a shipping lag is `date_diff(sold_date, ship_date, day)`.
 - All functions take parentheses; zero-argument functions use empty ones (`current_date()`).
 - Comments use `#` only, per line. -- is NOT a comment.
 - When several columns share the same calculation, factor it into a `def` macro (invoked with `@name(...)`); for complex logic, break the query into reusable concept declarations.

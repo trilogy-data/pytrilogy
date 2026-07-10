@@ -180,6 +180,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     # SELECT-level multi-level grouping (`by rollup (a, b)` etc.); propagated to
     # un-grouped aggregates during finalize so every measure shares one grouping.
     grouping: Optional[AggregateGrouping] = None
+    # Addresses of named concepts whose grouping-spec-stamped clones live in
+    # local_concepts (the shared environment definitions stay unstamped); they
+    # must ride as_lineage's local_concepts so the build sees the grouping pass.
+    grouping_stamped_locals: set[str] = field(default_factory=set)
 
     def __post_init__(self):
         new = []
@@ -214,7 +218,11 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                 # (inline `from union(...) -> (...)`): their bare names (`dt`,
                 # `val`) are referenced but never appear as a ConceptTransform
                 # output, so the `derived` filter alone would drop the lineage.
-                if k in derived or isinstance(v.lineage, RowsetItem)
+                # Grouping-spec-stamped clones must also ride: the environment
+                # definition is deliberately unstamped.
+                if k in derived
+                or isinstance(v.lineage, RowsetItem)
+                or k in self.grouping_stamped_locals
             },
             hidden_components=self.hidden_components,
             grain=self.grain,

@@ -167,6 +167,30 @@ def test_rows_match_single_statement_oracle(executor, query, oracle):
     assert got == expected
 
 
+GROUPING_PARTITION_DEFS = """
+auto gg <- grouping(g1);
+auto bucket <- case when gg = 1 then '~total~' else g1 end;
+"""
+
+
+@pytest.mark.parametrize(
+    "partition",
+    ["bucket", "grouping(g1)", "case when grouping(g1) = 1 then '~t~' else g1 end"],
+    ids=["named_bucket", "direct_grouping", "inline_case_over_grouping"],
+)
+def test_grouping_derived_partition_keeps_rollup(executor, partition):
+    executor.execute_text(GROUPING_PARTITION_DEFS)
+    sql = executor.generate_sql(f"""
+select g1, g2, total,
+    rank(g1, g2) over (partition by {partition} order by total desc) as r
+by rollup (g1, g2);
+""")[-1]
+    assert sql.upper().count("ROLLUP") == 1, sql
+    assert " JOIN " not in sql.upper(), sql
+    rows = executor.execute_raw_sql(sql).fetchall()
+    assert len(rows) == 8
+
+
 @pytest.mark.xfail(
     strict=True,
     reason="inferred-key `by rollup ()` co-grains the inline window aggregate to "
