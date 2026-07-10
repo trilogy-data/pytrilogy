@@ -253,6 +253,15 @@ def initialize_loop_context(
             mandatory_list = completion_mandatory
             all_mandatory = set(c.address for c in completion_mandatory)
             must_evaluate_condition_on_this_level_not_push_down = True
+            # NOTE: this deliberately withholds even the non-self-referential
+            # row atoms from the computed values' sourcing. An aggregate
+            # referenced in the WHERE is evaluated over its own unfiltered
+            # scope (`where f = 1 and sx > 5` reads the full-population sx) —
+            # restrict its input by binding the condition inside the aggregate
+            # (`sum(x ? cond) by k`) instead. A residual-routing variant that
+            # pushed the row atoms into the computed values' builds was tried
+            # and reverted: it silently narrowed WHERE-referenced sibling
+            # aggregates (test_where_aggregate_input_not_filtered_by_where).
         else:
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Do not need to evaluate conditions yet."

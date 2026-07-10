@@ -1,5 +1,39 @@
 # q84: subset-join side-presence filter loses the joined datasource
 
+## RESOLUTION (2026-07-10)
+
+Split verdict — one framework bug fixed, one expectation re-ruled:
+
+- **FIXED (framework)**: presence probes were bespoke to ROWSET-derived
+  members. A null test on a datasource-bound (ROOT) member of a subset/union
+  key group silently no-op'd: the member's binding is substituted onto the
+  group canonical, so the test read whichever side sourcing picked and the
+  member's datasource could vanish from the plan. Probes now mint for ROOT
+  members (`Factory._coalescing_presence_probe`) and materialize on a scan
+  pinned to a datasource that physically carries the member's authored
+  column (`gen_presence_probe_node`, side identity recovered via
+  `BuildColumnAssignment.origin_address`). When the member is bound in both
+  its defining dimension (PK) and a fact (FK), the FK carrier is probed —
+  probing the dimension is a tautology. Matrix:
+  `tests/join_matrix/test_root_presence_probe.py`.
+- **RE-RULED (expected behavior below is wrong for the anchor side)**: the
+  authored `subset join c.demographics.sk = ss.return_customer_demographic.sk`
+  declares c ⊆ ss, making ss the trusted superset anchor. An anchor-side null
+  test is a genuine no-op and pruning the unreferenced anchor is sound under
+  the declaration; the wrongness is the LYING declaration, an author error per
+  docs/subset_union_join_design.md (matches the earlier q84 join-prune
+  NOT-A-BUG verdict). The correct authoring is the reversed direction —
+  `subset join ss.return_customer_demographic.sk = c.demographics.sk` — where
+  `ss.return_customer_demographic.sk is not null` is a subset-side test.
+  With the fix, that form returns exactly the SQL-oracle count (104 distinct
+  Edgewood customers with a matching return on the SF1 db; the reference's 16
+  rows include q84's additional income-band/household predicates).
+- **DISCOVERED (pre-existing, separate)**: projecting a ROOT union-relation
+  key with no other side-specific output single-sources one member's table
+  instead of coalescing both — pinned as strict xfails in
+  `test_root_presence_probe.py`
+  (`test_union_bare_axis_projection_unions_domains`).
+
 ## Classification
 
 Framework bug: silent wrong-result SQL generation.

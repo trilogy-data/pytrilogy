@@ -424,9 +424,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # the user's own reference uses one, in which case they're fair game.
         if not any(seg.startswith("_") for seg in concept_name.split(".")):
             keys = [
-                k
-                for k in keys
-                if not any(seg.startswith("_") for seg in k.split("."))
+                k for k in keys if not any(seg.startswith("_") for seg in k.split("."))
             ]
 
         # Partial-path match: a reference that drops an intermediate namespace

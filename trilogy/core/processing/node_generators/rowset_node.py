@@ -28,7 +28,7 @@ this one.
 
 from typing import List
 
-from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation, JoinType
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
@@ -40,6 +40,13 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import unsatisfied_optionals
+from trilogy.core.processing.node_generators.presence_probe import (
+    is_presence_probe as _is_presence_probe,
+)
+from trilogy.core.processing.node_generators.presence_probe import (
+    member_binding_datasources,
+    probe_member_address,
+)
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -209,13 +216,6 @@ def _rowset_scope_routed(concept: BuildConcept) -> bool:
     return False
 
 
-def _is_presence_probe(address: str) -> bool:
-    """Per-side presence probe minted by `Factory._coalescing_presence_probe`
-    (the null-test rewrite for coalescing join key-group members). The single
-    place the probe naming convention is interpreted."""
-    return PRESENCE_PROBE_PREFIX in address
-
-
 def _local_exposure_obligations(
     node: StrategyNode, environment: BuildEnvironment
 ) -> list[BuildConcept]:
@@ -261,6 +261,13 @@ def _local_exposure_obligations(
             consider(environment.concepts.get(candidate_addr), producible)
     for concept in environment.concepts.values():
         if _is_presence_probe(concept.address):
+            # A probe whose member is datasource-bound (ROOT) belongs to
+            # gen_presence_probe_node's pinned scan. Its argument is the
+            # canonicalized group key, which an anchor rowset may well output
+            # — claiming it here would compute the probe on the wrong side.
+            member = probe_member_address(concept.address, environment)
+            if member is not None and member_binding_datasources(member, environment):
+                continue
             consider(concept, own)
     return out
 

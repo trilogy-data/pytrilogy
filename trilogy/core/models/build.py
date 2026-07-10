@@ -3373,12 +3373,15 @@ class Factory:
         silently no-ops instead of expressing intersection (TPC-DS q59). The
         null test asks a per-ROW question ("did this side match?"), not a
         domain question, so rewrite its operand to a virt passthrough of the
-        member, materialized on the member's own rowset BEFORE the merge
-        (gen_rowset_node); it rides through the join un-fused and is NULL
-        exactly where the member's side is absent. Projecting the member is
-        untouched: that remains the coalesced group axis. The superset/anchor
-        side of a subset join is preserved (never null), so it is not eligible
-        — a null test on it is a genuine no-op."""
+        member, materialized on the member's own side BEFORE the merge — its
+        rowset body for ROWSET members (gen_rowset_node), a scan pinned to its
+        own datasource for ROOT members (gen_presence_probe_node); it rides
+        through the join un-fused and is NULL exactly where the member's side
+        is absent. Projecting the member is untouched: that remains the
+        coalesced group axis. The superset/anchor side of a subset join is
+        trusted (the declaration says every subset value matches it), so it is
+        not eligible — a null test on it is a genuine no-op; a lying subset
+        declaration is an author error (docs/subset_union_join_design.md)."""
         address = ref.address
         eligible = (
             self.domain_graph.coalescing_relation_members()
@@ -3387,7 +3390,10 @@ class Factory:
         if address not in eligible:
             return None
         member = self.environment.concepts.get(address)
-        if member is None or member.derivation != Derivation.ROWSET:
+        if member is None or member.derivation not in (
+            Derivation.ROWSET,
+            Derivation.ROOT,
+        ):
             return None
         from trilogy.parsing.common import arbitrary_to_concept
 
@@ -3405,7 +3411,12 @@ class Factory:
         )
         new = arbitrary_to_concept(probe_fn, environment=self.environment, name=name)
         built = self._build_concept(new)
-        self.local_concepts[name] = built
+        # key by ADDRESS: local_concepts propagates through the statement's
+        # build products (materialize_for_select, sub-select rebuilds), and
+        # every consumer resolves by address — a bare-name key strands the
+        # probe when a fresh factory rebuilds a lineage embedding its ref
+        # (gcat multiselect env-cleanup shape)
+        self.local_concepts[new.address] = built
         self.local_non_build_concepts[name] = new
         return new
 

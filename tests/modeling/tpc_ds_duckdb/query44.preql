@@ -9,8 +9,10 @@ select
     avg(ss.net_profit) as threshold,
 ;
 
-# Per-item avg profit at store 4
-auto item_avg_profit <- avg(ss.net_profit) by ss.item.sk;
+# Per-item avg profit at store 4. The store restriction is bound INSIDE the
+# aggregate: an aggregate referenced in a WHERE is evaluated over its own
+# unfiltered scope, so the row-grain `ss.store.sk = 1` below does not reach it.
+auto item_avg_profit <- avg(ss.net_profit ? ss.store.sk = 1) by ss.item.sk;
 
 rowset ascending <- where
     ss.store.sk = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold

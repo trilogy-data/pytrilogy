@@ -713,7 +713,9 @@ def test_eighty_three(engine):
 
 def test_eighty_four(engine):
     query = run_query(engine, 84)
-    assert len(query) < 4000, query
+    # Larger after ROOT presence probes: the return-side `is not null` now
+    # rides a per-side probe CTE pinned to store_returns.
+    assert len(query) < 4600, query
 
 
 def test_eighty_five(engine_sf001):

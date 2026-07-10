@@ -5,12 +5,13 @@ import store_sales as ss;
 where
     customer.address.city = 'Edgewood'
     and ss.return_customer_demographic.sk is not null
-    and customer.household_demographic.sk is not null
+    # and customer.household_demographic.sk is not null
     and customer.household_demographic.income_band.lower_bound >= 38128
     and customer.household_demographic.income_band.upper_bound <= 38128 + 50000
     and ss.is_returned
 left join customer.demographics.sk = ss.return_customer_demographic.sk
 select
+    --customer.sk,
     customer.id,
     concat(coalesce(customer.last_name, ''), ', ', coalesce(customer.first_name, '')) as customername,
     --ss.ticket_number,

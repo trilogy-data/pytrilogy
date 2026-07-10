@@ -1,6 +1,6 @@
 query_id = "16"
 generator = "v3"
-gen_length = 3987
+gen_length = 3787
 preql_size = 629
 comp_size = 821
 generated_sql = """
@@ -15,6 +15,17 @@ FROM
 GROUP BY
     1,
     2),
+cheerful as (
+SELECT
+    coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") as \"returned_orders\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
+WHERE
+    (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) = True
+
+GROUP BY
+    1),
 questionable as (
 SELECT
     \"cooperative\".\"cs_order_number\" as \"multi_warehouse_sales\"
@@ -30,17 +41,6 @@ SELECT
     \"questionable\".\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
     \"questionable\"),
-cheerful as (
-SELECT
-    coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") as \"returned_orders\"
-FROM
-    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
-WHERE
-    (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) = True and coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
-
-GROUP BY
-    1),
 thoughtful as (
 SELECT
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\"

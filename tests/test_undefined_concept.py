@@ -322,7 +322,9 @@ def test_undefined_function_arg_reports_item_line():
     statement's first line, which for `where ... select ...` points at the
     `where` keyword."""
     env = Environment()
-    env.parse("key x int;\nproperty x.y int;\ndatasource ds (x:x, y:y) grain (x) address ds;")
+    env.parse(
+        "key x int;\nproperty x.y int;\ndatasource ds (x:x, y:y) grain (x) address ds;"
+    )
     with pytest.raises(UndefinedConceptException) as exc:
         env.parse("where\n    y > 1\nselect\n    count(missing_thing) as foo\n;")
     assert "line 4" in str(exc.value)

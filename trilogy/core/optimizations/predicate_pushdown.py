@@ -212,6 +212,40 @@ def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
     return True
 
 
+def _predicate_safe_past_grouping(candidate, cte: CTE | UnionCTE) -> bool:
+    """True if ``candidate`` can be applied inside ``cte`` without changing any
+    aggregate it computes.
+
+    A scalar predicate lands in a grouping CTE as WHERE — a pre-aggregation row
+    filter — which preserves the aggregates only when the predicate is constant
+    within each group, so it drops whole groups: every row argument must be a
+    group key (or pseudonym of one), or a property whose keys are all group
+    keys. Anything else filters rows *inside* groups and silently changes the
+    aggregates (q81: a grain-key membership semijoin pushed into an
+    avg-by-partition group averaged only the semijoin-surviving rows).
+
+    This holds for every atom regardless of provenance: pushdown is an
+    optimization pass, so a push that changes what a group computes is a
+    semantics change, never a legal relocation. Pre-aggregation placement of a
+    WHERE is discovery's job, not this pass's.
+    """
+    if isinstance(cte, UnionCTE) or not cte.group_to_grain:
+        return True
+    if not isinstance(candidate, BuildConceptArgs):
+        return False
+    group_addrs: set[str] = set()
+    for key in cte.group_concepts:
+        group_addrs.add(key.address)
+        group_addrs.update(key.pseudonyms)
+    for arg in candidate.row_arguments:
+        if arg.address in group_addrs or set(arg.pseudonyms) & group_addrs:
+            continue
+        if arg.keys and set(arg.keys).issubset(group_addrs):
+            continue
+        return False
+    return True
+
+
 class PredicatePushdown(OptimizationRule):
     def __init__(self, having_alias: bool = False) -> None:
         super().__init__()
@@ -306,6 +340,8 @@ class PredicatePushdown(OptimizationRule):
                 x for x in branch.output_columns if x.address in non_materialized
             ]
             if any(isinstance(x.lineage, BuildWindowItem) for x in concrete):
+                return False
+            if not _predicate_safe_past_grouping(candidate, branch):
                 return False
             join_derived_addrs = {x.address for x in branch.join_derived_concepts}
             if row_conditions & join_derived_addrs:
@@ -486,6 +522,12 @@ class PredicatePushdown(OptimizationRule):
             self.debug(
                 f"CTE {parent_cte.name} computes a window whose result a pushed "
                 f"{candidate} would change (predicate not on partition keys); not pushing"
+            )
+            return False
+        if not _predicate_safe_past_grouping(candidate, parent_cte):
+            self.debug(
+                f"CTE {parent_cte.name} groups by keys that do not determine a pushed "
+                f"{candidate} (would filter rows inside groups); not pushing"
             )
             return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}

@@ -1,6 +1,6 @@
 query_id = "92"
 generator = "v3"
-gen_length = 1314
+gen_length = 1338
 preql_size = 489
 comp_size = 555
 generated_sql = """
@@ -20,13 +20,10 @@ WHERE
 thoughtful as (
 SELECT
     \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_sk\",
-    avg(\"ws_web_sales\".\"WS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_7302789918095377\"
+    avg(CASE WHEN cast(\"ws_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date THEN \"ws_web_sales\".\"WS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"_virt_agg_avg_7302789918095377\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
-WHERE
-    cast(\"ws_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
-
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
 GROUP BY
     1)
 SELECT
