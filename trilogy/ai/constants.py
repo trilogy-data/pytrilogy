@@ -82,8 +82,8 @@ LIMIT?
 
 If unspecified (no BY) aggregates always group to the grain of dimensions in the select, no matter where they appear in the query.
 
-
-A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
+A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. 
+These are standalone statements, not part of a select.  
 
 A rowset creates a "new" model with all concepts namespaced; `abc.def` output in a rowset called `foo` is
 referenced as `foo.abc.def`. Use joins to merge the rowset outputs back into the global namespace if needed.

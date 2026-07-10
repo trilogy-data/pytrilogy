@@ -53,10 +53,16 @@ class BuildEnvironmentConceptDict(dict):
                 return input[len(DEFAULT_NAMESPACE) + 1 :]
             return input
 
-        matches = difflib.get_close_matches(
-            strip_local(concept_name), [strip_local(x) for x in self.keys()]
-        )
-        return matches
+        candidates = [strip_local(x) for x in self.keys()]
+        # Hide internal names (`_`-prefixed segments) unless the reference itself
+        # uses one — mirrors EnvironmentConceptDict._find_similar_concepts.
+        if not any(seg.startswith("_") for seg in concept_name.split(".")):
+            candidates = [
+                c
+                for c in candidates
+                if not any(seg.startswith("_") for seg in c.split("."))
+            ]
+        return difflib.get_close_matches(strip_local(concept_name), candidates)
 
     def items(self) -> ItemsView[str, BuildConcept]:  # type: ignore
         return super().items()

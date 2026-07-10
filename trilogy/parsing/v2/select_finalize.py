@@ -2122,12 +2122,20 @@ def finalize_select_statement(
             # Validate transform inputs: an undefined concept used only as a
             # function argument (e.g. `sum(missing) as foo`) has a defined
             # output alias, so it would otherwise slip past to SQL generation.
+            # Args hydrated through concept resolution carry no token position,
+            # so fall back to the select ITEM's line (stamped on the output
+            # concept) rather than the statement's first line, which for a
+            # `where ... select ...` statement points at the `where` keyword.
+            out_meta = x.content.output.metadata
+            item_line = (
+                out_meta.line_number if out_meta and out_meta.line_number else line_no
+            )
             bad_arg = False
             for arg in x.content.function.concept_arguments:
                 if isinstance(
                     arg, (UndefinedConcept, UndefinedConceptFull)
                 ) and _is_unresolved(context, arg.address):
-                    undefined.append(_undefined_ref(arg, "SELECT", line_no))
+                    undefined.append(_undefined_ref(arg, "SELECT", item_line))
                     bad_arg = True
             if bad_arg:
                 continue

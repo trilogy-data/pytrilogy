@@ -387,7 +387,7 @@ def _concepts_payload(env, expand_roles=False, version=None):
         if not k.startswith("__") and not k.startswith("local._env_")
     ]
     return build_concepts_payload(
-        env, items, expand_imports=True, expand_roles=expand_roles, version=version
+        env, items, expand_roles=expand_roles, version=version
     )
 
 
@@ -397,7 +397,7 @@ def test_explore_v2_collapses_conformed_roles(conformed_preql: Path):
     payload = _concepts_payload(_load_environment(conformed_preql), version=2)
     assert payload["version"] == 2
     # The two date roles share one combined-key entry, not two full schemas.
-    combined = [k for k in payload["namespaces"] if "," in k]
+    combined = [k for k in payload["imported"] if "," in k]
     assert combined == ["sold_date, ship_date"] or combined == ["ship_date, sold_date"]
     assert "same_as" not in json_module.dumps(payload)
 
@@ -407,9 +407,9 @@ def test_explore_v1_renders_every_role_in_full(conformed_preql: Path):
 
     payload = _concepts_payload(_load_environment(conformed_preql), version=1)
     assert payload["version"] == 1
-    assert "sold_date" in payload["namespaces"]
-    assert "ship_date" in payload["namespaces"]
-    assert not any("," in k for k in payload["namespaces"])
+    assert "sold_date" in payload["imported"]
+    assert "ship_date" in payload["imported"]
+    assert not any("," in k for k in payload["imported"])
 
 
 def test_explore_expand_roles_forces_full_at_v2(conformed_preql: Path):
@@ -419,8 +419,8 @@ def test_explore_expand_roles_forces_full_at_v2(conformed_preql: Path):
         _load_environment(conformed_preql), expand_roles=True, version=2
     )
     assert payload["version"] == 2  # version unchanged…
-    assert "sold_date" in payload["namespaces"]  # …but roles not collapsed
-    assert "ship_date" in payload["namespaces"]
+    assert "sold_date" in payload["imported"]  # …but roles not collapsed
+    assert "ship_date" in payload["imported"]
 
 
 def test_explore_default_json_version_is_2(conformed_preql: Path):

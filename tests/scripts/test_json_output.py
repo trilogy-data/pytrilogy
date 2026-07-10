@@ -59,25 +59,6 @@ def events_of(events: list[dict], name: str) -> list[dict]:
     return [e for e in events if name in (e.get("event"), e.get("type"))]
 
 
-def all_decls(concepts: dict) -> list[str]:
-    """Flatten the role/grain-grouped ``namespaces`` payload back to a flat
-    list of declaration strings (keys, properties, metrics, ungrouped) so
-    tests can assert on individual concepts regardless of which bucket they
-    landed in."""
-    out: list[str] = []
-    for groups in concepts["namespaces"].values():
-        for g in groups:
-            for field in (
-                "keys",
-                "properties",
-                "unique_properties",
-                "metrics",
-                "ungrouped",
-            ):
-                out.extend(g.get(field, []))
-    return out
-
-
 def _db_workspace(tmp_path: Path) -> None:
     con = duckdb.connect(str(tmp_path / "test.duckdb"))
     con.execute("CREATE TABLE users (id INTEGER, name VARCHAR)")
@@ -261,16 +242,22 @@ def _import_workspace(tmp_path):
     return parent
 
 
-def test_explore_json_collapses_imported_namespaces(runner, tmp_path):
+def test_explore_json_imports_render_full_detail(runner, tmp_path):
     parent = _import_workspace(tmp_path)
     result = runner.invoke(
         cli, ["--format", "json", "explore", str(parent), "--show", "all"]
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
-    # Imported namespace collapses to a comma-joined leaf list, local stays full.
-    assert "dem" in concepts["imported"]
-    assert "edu" in concepts["imported"]["dem"]["concepts"]
+    # Imported namespaces render in the same grouped-declaration form as the
+    # local section — full types, not a name-only leaf list.
+    groups = concepts["imported"]["dem"]["concepts"]
+    key_group = next(g for g in groups if "keys" in g)
+    assert key_group["keys"] == ["dem.cd_id int;"]
+    prop_group = next(g for g in groups if "properties" in g)
+    assert prop_group["properties"] == ["edu string;"]
+    # Local declarations stay in `namespaces`, untouched.
+    assert concepts["namespaces"][""][0]["keys"] == ["ticket int;"]
 
 
 def test_explore_json_hides_underscore_imports(runner, tmp_path):
@@ -288,9 +275,40 @@ def test_explore_json_hides_underscore_imports(runner, tmp_path):
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
-    leaves = concepts["imported"]["dem"]["concepts"]
-    assert "edu" in leaves
-    assert "_raw_edu" not in leaves
+    dumped = json.dumps(concepts["imported"]["dem"])
+    assert "edu" in dumped
+    assert "_raw_edu" not in dumped
+
+
+def test_explore_json_imported_roles_carry_descriptions(runner, tmp_path):
+    """Role-played conformed dimensions dedup to one combined-key entry; the
+    per-role import descriptions ride along in a ``roles`` map — they are the
+    only thing distinguishing look-alike roles (e.g. sale-time vs
+    current-snapshot demographics), so the dedup must not drop them."""
+    (tmp_path / "d.preql").write_text(
+        "key id int; # a calendar date\nproperty id.year int;\n",
+        encoding="utf-8",
+    )
+    parent = tmp_path / "f.preql"
+    parent.write_text(
+        "import d as sold_date; # date the item sold\n"
+        "import d as ship_date; # date the item shipped\n"
+        "key fid int;\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(parent), "--show", "concepts"]
+    )
+    assert result.exit_code == 0, result.output
+    concepts = events_of(parse_events(result.output), "concepts")[0]
+    combined = next(k for k in concepts["imported"] if "," in k)
+    assert set(combined.split(", ")) == {"sold_date", "ship_date"}
+    entry = concepts["imported"][combined]
+    assert entry["roles"] == {
+        "sold_date": "date the item sold",
+        "ship_date": "date the item shipped",
+    }
+    assert any("year" in json.dumps(g) for g in entry["concepts"])
 
 
 def test_explore_json_uses_type_discriminator(runner, tmp_path):
@@ -339,9 +357,14 @@ def test_explore_json_include_builtins_hides_internal_namespace(runner, tmp_path
     assert "__preql_internal" not in (concepts.get("imported") or {})
 
 
-def test_explore_json_expand_imports_renders_everything_local(runner, tmp_path):
+def test_explore_json_expand_imports_flag_is_noop(runner, tmp_path):
+    """JSON output always renders imports in full detail, so --expand-imports
+    (a rich-renderer concern) changes nothing about the payload."""
     parent = _import_workspace(tmp_path)
-    result = runner.invoke(
+    plain = runner.invoke(
+        cli, ["--format", "json", "explore", str(parent), "--show", "concepts"]
+    )
+    expanded = runner.invoke(
         cli,
         [
             "--format",
@@ -349,16 +372,13 @@ def test_explore_json_expand_imports_renders_everything_local(runner, tmp_path):
             "explore",
             str(parent),
             "--show",
-            "all",
+            "concepts",
             "--expand-imports",
         ],
     )
-    assert result.exit_code == 0, result.output
-    concepts = events_of(parse_events(result.output), "concepts")[0]
-    # With --expand-imports there is no collapsed `imported` block; the imported
-    # concepts render in full alongside the local declarations.
-    assert concepts.get("imported") is None
-    assert any("edu" in d for d in all_decls(concepts))
+    assert plain.exit_code == 0, plain.output
+    assert expanded.exit_code == 0, expanded.output
+    assert parse_events(plain.output) == parse_events(expanded.output)
 
 
 def test_file_roundtrip_events(runner, tmp_path):

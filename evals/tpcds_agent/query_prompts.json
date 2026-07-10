@@ -457,7 +457,7 @@
   {
     "id": 90,
     "grade": "medium",
-    "prompt": "Count web sale lines for ship-to households (the household demographics recorded on the web sale) with a dependent count of 6, on web pages whose character count is between 5000 and 5200, where the sale's sold time falls in the morning hours 8 through 9. Count the same population where the sold time falls in the evening hours 19 through 20. Report a single value: the morning count divided by the evening count as a decimal ratio (null when the evening count is zero). Order by the ratio; limit 100 rows."
+    "prompt": "Count web sale lines for ship-to households (the household demographics recorded on the web sale) with a dependent count of 6, on web pages whose character count is between 5000 and 5200, where the sale's sold time falls in the morning hours 8 through 9. Count the same population where the sold time falls in the evening hours 19 through 20. Return a single column only: the morning count divided by the evening count as a decimal ratio (null when the evening count is zero). Order by the ratio; limit 100 rows."
   },
   {
     "id": 91,
@@ -472,7 +472,7 @@
   {
     "id": 93,
     "grade": "easy",
-    "prompt": "For each customer, sum an adjusted amount over their store-sale lines that have a matching store return whose reason is 'reason 28'. For each such line: if the return recorded a return quantity, the adjusted amount is (sold quantity minus return quantity) times sales price; otherwise the adjusted amount is sold quantity times sales price. Apply this formula exactly as written: if a line's sold quantity or sales price is not recorded, its adjusted amount is null and must stay null — do not substitute zero — so a customer whose lines are all null has a null sum. Report, per customer, the customer identifier exactly as recorded on the sale line (do not look the customer up in the customer table to translate it) and the summed adjusted amount; group all sales that have no recorded customer together as a single unidentified group rather than dropping them. Order by the sum then by the customer id, both with nulls first; limit 100 rows."
+    "prompt": "For each customer, sum an adjusted amount over their store-sale lines that have a matching store return whose reason is 'reason 28'. For each such line: if the return recorded a return quantity, the adjusted amount is (sold quantity minus return quantity) times sales price; otherwise the adjusted amount is sold quantity times sales price. Apply this formula exactly as written: if a line's sold quantity or sales price is not recorded, its adjusted amount is null and must stay null — do not substitute zero — so a customer whose lines are all null has a null sum. Report, per customer, the customer identifier exactly as recorded on the sale line (do not look the customer up in the customer table to translate it) and the summed adjusted amount; ke null customer sks as a null group. Order by the sum then by the customer id, both with nulls first; limit 100 rows."
   },
   {
     "id": 94,

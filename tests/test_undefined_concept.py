@@ -278,6 +278,57 @@ def test_find_similar_equal_rank_preserves_insertion_order():
     assert sugg[:3] == ["ns.alias.a", "ns.alias.b", "ns.alias.c"]
 
 
+def test_find_similar_exact_leaf_beats_fuzzy():
+    """An exact leaf match (user knows the NAME, missed the path) must outrank
+    character-level fuzz: bare `warehouse_count` surfaces
+    `all_orders.warehouse_count` ahead of `ws.warehouse.county`/`.country`."""
+    d = _dict_with(
+        "ws.warehouse.county",
+        "ws.warehouse.country",
+        "all_orders.warehouse_count",
+    )
+    sugg = d._find_similar_concepts("warehouse_count")
+    assert sugg[0] == "all_orders.warehouse_count"
+
+
+def test_find_similar_hides_internal_names():
+    """Mangled per-rowset aliases (`_all_orders_has_return`) and model-private
+    helpers (`ws._returned_order_number`) must not leak into suggestions."""
+    d = _dict_with(
+        "all_orders.has_return",
+        "_all_orders_has_return",
+        "ws._returned_order_number",
+        "ws.order_number",
+    )
+    sugg = d._find_similar_concepts("has_return")
+    assert "all_orders.has_return" in sugg
+    assert "_all_orders_has_return" not in sugg
+    sugg = d._find_similar_concepts("order_number")
+    assert "ws.order_number" in sugg
+    assert "ws._returned_order_number" not in sugg
+
+
+def test_find_similar_underscore_reference_allows_internal_names():
+    """A reference that itself uses an `_`-prefixed segment opts back into
+    internal candidates."""
+    d = _dict_with("_internal_helper_value")
+    sugg = d._find_similar_concepts("_internal_helper_val")
+    assert "_internal_helper_value" in sugg
+
+
+def test_undefined_function_arg_reports_item_line():
+    """An undefined concept inside a function argument carries no token
+    position; the error must fall back to the select ITEM's line — not the
+    statement's first line, which for `where ... select ...` points at the
+    `where` keyword."""
+    env = Environment()
+    env.parse("key x int;\nproperty x.y int;\ndatasource ds (x:x, y:y) grain (x) address ds;")
+    with pytest.raises(UndefinedConceptException) as exc:
+        env.parse("where\n    y > 1\nselect\n    count(missing_thing) as foo\n;")
+    assert "line 4" in str(exc.value)
+    assert "missing_thing" in str(exc.value)
+
+
 def test_rowset_field_shorthand_resolves_to_rowset_path(tmp_path):
     """A rowset column from an import namespace, selected WITHOUT `as`, keeps its
     full source path (`qual.ws.order_number`). The bare-leaf shorthand

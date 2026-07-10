@@ -92,6 +92,30 @@ def _read_events(path: Path) -> list[dict]:
     return events
 
 
+def _attribute_tool_tokens(timeline: list[dict]) -> None:
+    """Tool results carry no usage, so price them from the prompt growth they cause:
+    the next turn's prompt minus this turn's prompt+completion is what the results
+    in between added. Split proportionally by output size when a turn made several
+    calls (exact when it made one); skip non-positive deltas (history compaction)."""
+    turns = [i for i, e in enumerate(timeline) if e["role"] == "assistant"]
+    for a, b in zip(turns, turns[1:]):
+        u, nxt = timeline[a]["usage"], timeline[b]["usage"]
+        delta = nxt.get("prompt_tokens", 0) - (
+            u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)
+        )
+        tools = [e for e in timeline[a + 1 : b] if e["role"] == "tool"]
+        if delta <= 0 or not tools:
+            continue
+        sizes = [max(len(t["output"]), 1) for t in tools]
+        spent = 0
+        for t, size in zip(tools[:-1], sizes[:-1]):
+            t["tokens"] = round(delta * size / sum(sizes))
+            spent += t["tokens"]
+        tools[-1]["tokens"] = delta - spent
+        for t in tools:
+            t["exact"] = len(tools) == 1
+
+
 def parse_log(path: Path) -> dict:
     events = _read_events(path)
     meta: dict = {"task": "", "model": "", "provider": ""}
@@ -162,6 +186,7 @@ def parse_log(path: Path) -> dict:
                     "kickback": 0,
                 }
             )
+    _attribute_tool_tokens(timeline)
     derived = {
         "iterations": iterations,
         "tool_calls": tool_calls,
@@ -421,6 +446,10 @@ _HTML = r"""<!doctype html>
   .dot.ok { background:var(--ok); } .dot.err { background:var(--err); }
   .tool .name { font-family:ui-monospace,monospace; font-size:12.5px; color:var(--muted); }
   .out { display:none; } .out.show { display:block; }
+  .tok { font-family:ui-monospace,monospace; font-size:11px; padding:1px 6px; border-radius:10px;
+         background:rgba(139,147,167,.15); color:var(--muted); }
+  .tok.big { background:rgba(240,164,93,.18); color:#f0a45d; }
+  .tok.huge { background:rgba(248,81,73,.18); color:var(--err); }
   .usage { font-size:11px; color:var(--muted); margin-top:6px; }
   .meta { color:var(--muted); font-size:13px; margin-bottom:14px; }
   .chev { color:var(--muted); font-size:11px; margin-left:auto; }
@@ -525,6 +554,17 @@ function compareHtml(run){
   const label = o => !o ? 'n/a' : o.name + (sql && o.lang==='preql' ? ' → SQL' : '');
   const col = (who,o) => `<div class="cmp-col"><div class="cmp-h">${esc(who)} · ${esc(label(o))}</div>${body(o)}</div>`;
   return `<div class="cmp">`+col('canonical', q.canonical)+col('agent', q.candidate)+`</div>`;
+}
+
+const fmtTok = n => n < 1000 ? String(n) : (n/1000).toFixed(n < 10000 ? 1 : 0) + 'k';
+// Context cost of a tool result, from the prompt growth it caused. When one turn
+// made several calls the split is proportional to output size, so it's an estimate.
+function tokBadge(ev){
+  if(ev.tokens == null) return '';
+  const cls = ev.tokens >= 50000 ? ' huge' : ev.tokens >= 10000 ? ' big' : '';
+  const tip = ev.exact ? `${ev.tokens.toLocaleString()} tokens added to context`
+    : `~${ev.tokens.toLocaleString()} tokens (estimated: turn made multiple tool calls)`;
+  return `<span class="tok${cls}" title="${esc(tip)}">${ev.exact?'':'~'}+${fmtTok(ev.tokens)} tok</span>`;
 }
 
 const qlabel = q => 'q' + String(q).padStart(2,'0');
@@ -656,6 +696,7 @@ function renderRun(run, keepScroll){
       h += `<div class="turn tool"><div class="bubble">`
          + `<div class="head" data-key="${k}" onclick="toggleOut(this)">`
          + `<span class="dot ${ev.ok?'ok':'err'}"></span><span class="name">${esc(ev.name)} result</span>`
+         + tokBadge(ev)
          + `<span class="chev">▼ click to toggle</span></div>`
          + `<pre class="out${show}">${esc(ev.output)}</pre></div></div>`;
     }
