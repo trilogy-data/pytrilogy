@@ -9,8 +9,10 @@ Reads every ``agent_log.*.jsonl`` in the directory (plus ``repeat_report.json``
 for per-run status/metrics when present) and writes ``<results_dir>/viewer.html``
 — a static page with a run picker and a conversation timeline. No external
 assets. With ``--serve`` it also starts a local http server on that port, which
-additionally serves a *Replay* button: re-runs the selected query in place and
-splices the fresh result over the old one (see ``evals/common/replay.py``).
+additionally serves a *Replay* button: re-seeds the model, re-runs the selected
+query in place, and splices the fresh result over the old one — so a prompt,
+model or engine fix can be validated without re-running the benchmark (see
+``evals/common/replay.py``).
 """
 
 from __future__ import annotations
@@ -529,7 +531,8 @@ function updateReplayBar(){
 }
 async function startReplay(qid){
   if(!confirm(`Replay ${qlabel(qid)} in ${currentRun}?\n\n`
-    + `Re-runs the agent and OVERWRITES this query's trajectory, candidate query `
+    + `Re-seeds the semantic model, then re-runs the agent against the current `
+    + `prompt and engine.\n\nOVERWRITES this query's trajectory, candidate query `
     + `and report entry. The current trajectory is not recoverable.`)) return;
   replay = {running:true, run:currentRun, qid, log:['submitting…'], result:null, error:null};
   updateReplayBar();

@@ -8,6 +8,11 @@ slice of the run: the agent log, the candidate query file, and its entries in
 headline still describes the whole benchmark, exactly as ``--splice-from`` does
 for a partial re-run.
 
+A replay picks up edits to all three inputs a fix usually lands in: the question
+(``query_prompts.json``, re-read here), the engine (the agent subprocess
+re-imports trilogy), and the semantic model (re-seeded by ``refresh_model``).
+Only the database is reused as-is.
+
 Overwriting is the point (the viewer reloads the run in place), so the prior
 trajectory for that query is not recoverable afterwards.
 """
@@ -238,6 +243,8 @@ def replay_query(
     prev_status = prev["status"] if prev else None
 
     worker = _worker_dir(workspace, spec.db_filename)
+    if refresh_model:
+        _refresh_model(workspace, worker, spec, category, report, log)
     task = category.build_task(spec, entry)
     (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
     _clear_candidates([workspace, worker], qid, category.candidate_ext)
