@@ -358,13 +358,6 @@ def resolve_weak_components(
     accept_partial: bool = False,
     search_conditions: BuildWhereClause | None = None,
 ) -> list[list[BuildConcept]] | None:
-    scoped_join_concepts = [
-        environment.concepts[addr]
-        for canonical, members in environment.scoped_join_key_groups.items()
-        for addr in {canonical, *members}
-        if addr in environment.concepts
-    ]
-    all_concepts = unique([*all_concepts, *scoped_join_concepts], "address")
     all_concepts = inject_property_key_terminals(all_concepts, environment)
     break_flag = False
     found = []

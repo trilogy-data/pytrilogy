@@ -1,6 +1,6 @@
 query_id = "68"
 generator = "v3"
-gen_length = 3895
+gen_length = 4455
 preql_size = 1156
 comp_size = 1453
 generated_sql = """
@@ -58,11 +58,27 @@ SELECT
     \"yummy\".\"store_sales_customer_sk\" as \"bought_store_sales_customer_sk\",
     \"yummy\".\"store_sales_ticket_number\" as \"bought_store_sales_ticket_number\"
 FROM
-    \"yummy\")
+    \"yummy\"),
+concerned as (
 SELECT
-    \"cheerful\".\"customer_last_name\" as \"customer_last_name\",
-    \"cheerful\".\"customer_first_name\" as \"customer_first_name\",
+    \"vacuous\".\"bought_store_sales_customer_sk\" as \"bought_store_sales_customer_sk\"
+FROM
+    \"vacuous\"
+GROUP BY
+    1),
+young as (
+SELECT
     \"cheerful\".\"customer_address_city\" as \"customer_address_city\",
+    \"cheerful\".\"customer_first_name\" as \"customer_first_name\",
+    \"cheerful\".\"customer_last_name\" as \"customer_last_name\",
+    coalesce(\"cheerful\".\"customer_sk\",\"concerned\".\"bought_store_sales_customer_sk\") as \"customer_sk\"
+FROM
+    \"concerned\"
+    RIGHT OUTER JOIN \"cheerful\" on \"concerned\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"customer_sk\")
+SELECT
+    \"young\".\"customer_last_name\" as \"customer_last_name\",
+    \"young\".\"customer_first_name\" as \"customer_first_name\",
+    \"young\".\"customer_address_city\" as \"customer_address_city\",
     \"vacuous\".\"bought_bought_city\" as \"bought_bought_city\",
     \"vacuous\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
     \"vacuous\".\"bought_extended_price\" as \"bought_extended_price\",
@@ -70,11 +86,11 @@ SELECT
     \"vacuous\".\"bought_list_price\" as \"bought_list_price\"
 FROM
     \"vacuous\"
-    INNER JOIN \"cheerful\" on \"vacuous\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"customer_sk\"
+    INNER JOIN \"young\" on \"vacuous\".\"bought_store_sales_customer_sk\" = \"young\".\"customer_sk\"
 WHERE
-    \"cheerful\".\"customer_address_city\" != \"vacuous\".\"bought_bought_city\"
+    \"young\".\"customer_address_city\" != \"vacuous\".\"bought_bought_city\"
 
 ORDER BY 
-    \"cheerful\".\"customer_last_name\" asc nulls first,
+    \"young\".\"customer_last_name\" asc nulls first,
     \"vacuous\".\"bought_store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""
