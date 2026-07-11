@@ -108,7 +108,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
    Use `by *` to aggregate across all data (a single row output).
    auto avg_credits_at_query_grain <- avg(enroll.credits); # responsive to the consuming query's grain
    auto avg_credits_single_row <- avg(enroll.credits) by *; # explicit single-row grain, regardless of query grain
-- **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows — e.g. one output row per matching fact when the projected columns repeat — include the fact's grain keys in the select, hidden with `--` if they shouldn't appear in the output.
+- **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows, such as one output row per matching fact when the projected columns repeat, include the fact's grain keys in the select, hidden with the PREFIX `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`

@@ -57,7 +57,9 @@ def download_tasks(split: str, dest: Path) -> None:
     rows: list[dict] = []
     offset, page = 0, 100
     while True:
-        payload = json.loads(_fetch(ROWS_API.format(split=split, offset=offset, length=page)))
+        payload = json.loads(
+            _fetch(ROWS_API.format(split=split, offset=offset, length=page))
+        )
         batch = [r["row"] for r in payload["rows"]]
         rows.extend(batch)
         offset += len(batch)

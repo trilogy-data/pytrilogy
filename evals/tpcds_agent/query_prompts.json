@@ -60,7 +60,7 @@
   {
     "id": 11,
     "grade": "hard",
-    "prompt": "Among customers active in both store and web channels in 2001, find those whose web revenue grew faster than their store revenue from 2001 to 2002. \"Revenue\" here is the sum of (extended list price minus extended discount amount) over that customer's sales in the given channel in the given year. Include a customer only if they actually have sales in all four buckets - store in 2001, store in 2002, web in 2001, and web in 2002; a customer missing any one of these buckets is excluded entirely (do not treat a missing year as zero). Also require each customer's 2001 total in both channels to be positive. Report billing customer code, first name, last name, and preferred-customer flag (from the 2002 store record); ordered by those four fields with nulls first; limit 100 rows."
+    "prompt": "Among customers active in both store and web channels in 2001, find those whose web revenue grew proportionally faster than their store revenue from 2001 to 2002. \"Revenue\" here is the sum of (extended list price minus extended discount amount) over that customer's sales in the given channel in the given year. Include a customer only if they actually have sales in all four buckets - store in 2001, store in 2002, web in 2001, and web in 2002; a customer missing any one of these buckets is excluded entirely (do not treat a missing year as zero). Also require each customer's 2001 total in both channels to be positive. Report billing customer code, first name, last name, and preferred-customer flag (from the 2002 store record); ordered by those four fields with nulls first; limit 100 rows."
   },
   {
     "id": 12,
@@ -131,7 +131,7 @@
   {
     "id": 25,
     "grade": "medium",
-    "prompt": "For store sales in April 2001, matched to store returns from the same customer, item, and ticket whose return date is in April through October 2001, matched to catalog sales by customer sk (billed) and item whose sale date is also in April through October 2001, report per (item code, item description, store code, store name) where there is a catalog sale and a store return match; the sum of store-sale net profit, the sum of store-return net loss, and the sum of catalog-sale net profit. Order by item code, item description, store code, then store name; limit 100 rows."
+    "prompt": "For store sales in April 2001 that were returned by the same customer it was sold to and whose return date is in April through October 2001, matched to catalog sales by customer sk (billed) and item whose sale date is also in April through October 2001, report per (item code, item description, store code, store name) where there is a catalog sale and a store return match; the sum of store-sale net profit, the sum of store-return net loss, and the sum of catalog-sale net profit. Order by item code, item description, store code, then store name; limit 100 rows."
   },
   {
     "id": 26,
@@ -401,7 +401,7 @@
   {
     "id": 79,
     "grade": "medium",
-    "prompt": "List the customer's last name and first name, the first 30 characters of the selling store's city, the store-sale ticket number, and per-ticket totals of coupon amount and net profit Restrict to store sales made on a Monday in years 1999, 2000, or 2001, at stores with between 200 and 295 employees, to households recorded on the sale whose dependent count is 6 or whose vehicle count is greater than 2. Consider only sales with an identified customer. Total coupon amount and net profit per ticket, customer, sale address, and store city; include the customer's name fields. Order by last name, first name, the 30-character store city, net profit, then ticket number - all ordering must be nulls first except for ticket_number ; limit 100 rows."
+    "prompt": "Find the total coupon amount and net profit by customer sk, store city, sale address. Restrict to store sales made on a Monday from 1999 to 2001, at stores with between 200 and 295 employees, to households recorded on the sale whose dependent count is 6 or whose vehicle count is greater than 2. Consider only sales with an identified customer. Ensuring that unique customeres with the same address and name are NOT merged, only show in results the customer last name, first name first 30 characters of the store city, the ticket number, and the two aggregates. Order by last name, first name, the 30-character store city, net profit, then ticket number - all ordering must be nulls first except for ticket_number ; limit 100 rows."
   },
   {
     "id": 80,

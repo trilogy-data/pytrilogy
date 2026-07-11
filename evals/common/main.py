@@ -502,11 +502,13 @@ def run(spec: BenchmarkSpec) -> int:
         # agent should explore the model, not list raw DB tables. (No effect on
         # the SQL legs, which don't use the trilogy tool.)
         allow_database_introspection=False,
-        # Schema discovery goes through `explore`; the agent should not read or
-        # list raw files (drops list_files + `trilogy file read/list`).
-        allow_file_read=False,
+        # Schema discovery goes through `explore`; file read stays off unless
+        # the spec ships doc_files the agent must consult (DABstep's manual).
+        allow_file_read=spec.allow_file_read,
         disable_todo=not args.enable_todo,
     )
+    for doc in spec.doc_files:
+        shutil.copy2(doc, workspace / doc.name)
     if args.query_ids:
         wanted = {int(x.strip()) for x in args.query_ids.split(",") if x.strip()}
         active = [p for p in prompts.active_prompts(spec) if p["id"] in wanted]

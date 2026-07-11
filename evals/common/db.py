@@ -19,8 +19,12 @@ def cache_path(spec: BenchmarkSpec, scale_factor: float) -> Path:
 
 def build_database(spec: BenchmarkSpec, scale_factor: float) -> Path:
     """Return a cached DuckDB file populated with the benchmark's data at
-    ``scale_factor``, generating it via ``spec.duckdb_extension`` on first use."""
+    ``scale_factor``, generating it via ``spec.duckdb_extension`` on first use.
+    File-based benchmarks provide ``spec.database_builder`` instead."""
     import duckdb
+
+    if spec.database_builder is not None:
+        return spec.database_builder()
 
     spec.cache_dir.mkdir(parents=True, exist_ok=True)
     db_path = cache_path(spec, scale_factor)

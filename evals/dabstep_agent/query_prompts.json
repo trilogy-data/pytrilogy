@@ -1,0 +1,72 @@
+[
+  {
+    "id": 5,
+    "grade": "easy",
+    "task_id": "5",
+    "published_answer": "NL",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nWhich issuing country has the highest number of transactions? Return a single row with one column: the country code."
+  },
+  {
+    "id": 49,
+    "grade": "easy",
+    "task_id": "49",
+    "published_answer": "B. BE",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nWhat is the top country (ip_country) for fraud? Fraud is defined in the manual as the ratio of fraudulent volume over total volume; here consider the share of transactions flagged with a fraudulent dispute. Return a single row with one column: the country code."
+  },
+  {
+    "id": 70,
+    "grade": "easy",
+    "task_id": "70",
+    "published_answer": "Not Applicable",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nIs Martinis_Fine_Steakhouse in danger of getting a high-fraud rate fine? Return a single row with one column: 'yes' or 'no'."
+  },
+  {
+    "id": 1273,
+    "grade": "hard",
+    "task_id": "1273",
+    "published_answer": "0.120132",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nFor credit transactions, what would be the average fee that the card scheme GlobalCard would charge for a transaction value of 10 EUR? Average over all fee rules that could apply to a credit transaction on that scheme. Return a single row with one column: the average fee in EUR."
+  },
+  {
+    "id": 1305,
+    "grade": "hard",
+    "task_id": "1305",
+    "published_answer": "0.123217",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nFor account type H and the MCC description 'Eating Places and Restaurants', what would be the average fee that the card scheme GlobalCard would charge for a transaction value of 10 EUR? Average over all fee rules that could apply. Return a single row with one column: the average fee in EUR."
+  },
+  {
+    "id": 1464,
+    "grade": "hard",
+    "task_id": "1464",
+    "published_answer": "416 fee ids (see tasks_dev.json)",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nWhat is the fee ID or IDs that apply to account_type = R and aci = B? Return one row per fee ID (a single column)."
+  },
+  {
+    "id": 1681,
+    "grade": "hard",
+    "task_id": "1681",
+    "published_answer": "741, 709, 454, 813, 381, 536, 473, 572, 477, 286",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nFor the 10th day of the year 2023, what are the fee IDs applicable to Belles_cookbook_store? A fee is applicable when some transaction of that merchant on that day matches the rule on every populated field (card scheme, credit, ACI, intracountry, the merchant's account type / MCC / capture delay, and the merchant's monthly volume and monthly fraud level for that natural month). Return one row per fee ID (a single column)."
+  },
+  {
+    "id": 1753,
+    "grade": "hard",
+    "task_id": "1753",
+    "published_answer": "34 fee ids (see tasks_dev.json)",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nWhat are the applicable fee IDs for Belles_cookbook_store in March 2023? A fee is applicable when some transaction of that merchant in that month matches the rule on every populated field (card scheme, credit, ACI, intracountry, the merchant's account type / MCC / capture delay, and the merchant's monthly volume and monthly fraud level for that natural month). Return one row per fee ID (a single column)."
+  },
+  {
+    "id": 1871,
+    "grade": "hard",
+    "task_id": "1871",
+    "published_answer": "-0.94810300000017",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nIn January 2023, what delta would Belles_cookbook_store pay if the relative fee (the rate) of the fee with ID=384 changed to 1? The delta is the total fee change across the merchant's January transactions that fee 384 applies to (matching on every populated rule field, as described in the manual). Return a single row with one column: the delta in EUR."
+  },
+  {
+    "id": 2697,
+    "grade": "hard",
+    "task_id": "2697",
+    "published_answer": "E:13.57 (ACI reproduces; published fee value does not — our canonical total under the stated definition is 41.66)",
+    "prompt": "Domain docs in the working directory: manual.md (account types, ACI codes, and how fee rules match transactions), payments-readme.md (payments column reference), schema_notes.md (how the fee rules' list-fields map onto tables). Read the relevant sections before answering. If the question should not or cannot be answered from the available data and documentation, return a single row with the single field 'Not Applicable' instead.\n\nFor Belles_cookbook_store in January 2023: if we were to move its fraudulent transactions to a different Authorization Characteristics Indicator (ACI), which ACI would be preferred, considering the lowest possible fees? For each candidate ACI, compute each fraudulent transaction's fee as the average over all fee rules matching that transaction with its ACI replaced by the candidate, and total that over the transactions. Return a single row with two columns: the preferred ACI and its total fee in EUR rounded to 2 decimals."
+  }
+]
