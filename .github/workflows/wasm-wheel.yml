@@ -1,0 +1,76 @@
+# Experimental: build pyemscripten (WASM/Pyodide) wheels per PEP 783.
+# Standalone while we validate the toolchain; fold into pythonpublish.yml once stable.
+name: WASM wheel (experimental)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/wasm-wheel.yml'
+
+jobs:
+  build-pyemscripten:
+    name: Build pyemscripten wheel (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.13']
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install pyodide-build
+      run: pip install pyodide-build
+    - name: Sync version to Cargo.toml
+      run: python .scripts/sync_version.py
+    - name: Get pyodide config
+      id: pyodide-config
+      run: |
+        echo "rust-toolchain=$(pyodide config get rust_toolchain)" >> "$GITHUB_OUTPUT"
+        echo "emscripten-version=$(pyodide config get emscripten_version)" >> "$GITHUB_OUTPUT"
+        # Key name depends on pyodide-build version; fall back for older releases
+        PLATFORM_VERSION=$(pyodide config get pyemscripten_platform_version 2>/dev/null || pyodide config get pyodide_abi_version)
+        echo "pyemscripten-platform-version=$PLATFORM_VERSION" >> "$GITHUB_OUTPUT"
+        echo "rustflags=$(pyodide config get rustflags)" >> "$GITHUB_OUTPUT"
+    - uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984  # v16
+      with:
+        version: ${{ steps.pyodide-config.outputs.emscripten-version }}
+    - name: Build wheel
+      uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
+      env:
+        CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS: ${{ steps.pyodide-config.outputs.rustflags }}
+        MATURIN_PYEMSCRIPTEN_PLATFORM_VERSION: ${{ steps.pyodide-config.outputs.pyemscripten-platform-version }}
+      with:
+        target: wasm32-unknown-emscripten
+        args: --release --out dist --interpreter ${{ matrix.python-version }}
+        rust-toolchain: ${{ steps.pyodide-config.outputs.rust-toolchain }}
+    - name: Patch wheels with dependencies
+      run: python .scripts/patch_wheels.py dist
+    - name: Create Pyodide venv and install wheel
+      run: |
+        pyodide venv .venv-pyodide
+        .venv-pyodide/bin/pip install --find-links dist pytrilogy
+    - name: Smoke test - import and parse
+      run: |
+        .venv-pyodide/bin/python -c "
+        import _preql_import_resolver
+        from trilogy import parse
+        env, stmts = parse('const x <- 5; select x + 1 -> y;')
+        assert len(stmts) == 2
+        print('parse ok')
+        "
+    - name: Smoke test - execute against duckdb
+      run: |
+        .venv-pyodide/bin/python -c "
+        from trilogy import Dialects
+        exec = Dialects.DUCK_DB.default_executor()
+        rows = exec.execute_text('select 1+1 -> two;')[0].fetchall()
+        assert rows == [(2,)], rows
+        print('duckdb execution ok')
+        "
+    - name: Upload wheels
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      with:
+        name: wheels-wasm-${{ matrix.python-version }}
+        path: dist

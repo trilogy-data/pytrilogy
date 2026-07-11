@@ -416,7 +416,7 @@
   {
     "id": 82,
     "grade": "easy",
-    "prompt": "List the item code, description, and current price of items whose current price is between 62 and 92, that are from manufacturers 129, 270, 821, or 423, that had at least one inventory snapshot recording between 100 and 500 units on hand (at any single warehouse on any snapshot date) during 2000-05-25 to 2000-07-24, and where the specific item record appears in store sales data. Order by item code; limit 100 rows."
+    "prompt": "List the item code, description, and current price of items whose current price is between 62 and 92, that are from manufacturers 129, 270, 821, or 423, that had at least one inventory snapshot recording between 100 and 500 units on hand (at any single warehouse on any snapshot date) during 2000-05-25 to 2000-07-24, and where the specific item record (by item_sk) appears in store sales data. Order by item code; limit 100 rows."
   },
   {
     "id": 83,
@@ -483,7 +483,7 @@
     "id": 95,
     "grade": "hard",
     "comment": "Like query 94 but with a semi-join to web_returns (the order has at least one return). Gradeable at scale factor >= 1 (the eval default), where web_site company name 'pri' is present; absent at sf=0.01.",
-    "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where the order has at least one other line shipping from a different warehouse and at least one web return exists for the order, report the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
+    "prompt": "For web sales where the order has at least one other line shipping from a different warehouse and at least one web return exists for the order (unconstrained by other conditions), return matching orders from that set where the ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri'. Output the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
   },
   {
     "id": 96,

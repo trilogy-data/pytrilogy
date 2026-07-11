@@ -22,7 +22,7 @@ fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 struct PyGraphCore {
     graph: GraphCore,
@@ -188,7 +188,7 @@ impl PyImportResolver {
     }
 
     /// Resolve dependencies for a file and return the dependency graph
-    fn resolve(&mut self, py: Python<'_>, path: &str) -> PyResult<PyObject> {
+    fn resolve(&mut self, py: Python<'_>, path: &str) -> PyResult<Py<PyAny>> {
         let path_buf = PathBuf::from(path);
 
         let graph = self
@@ -196,30 +196,30 @@ impl PyImportResolver {
             .resolve(&path_buf)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Resolve error: {}", e)))?;
 
-        let result = pyo3::types::PyDict::new_bound(py);
+        let result = pyo3::types::PyDict::new(py);
 
         // Add root
         result.set_item("root", graph.root.to_string_lossy().to_string())?;
 
         // Add order (list of file paths in execution order)
-        let order = PyList::empty_bound(py);
+        let order = PyList::empty(py);
         for file_path in &graph.order {
             order.append(file_path.to_string_lossy().to_string())?;
         }
         result.set_item("order", order)?;
 
         // Add files (detailed info about each file)
-        let files = pyo3::types::PyDict::new_bound(py);
+        let files = pyo3::types::PyDict::new(py);
         for (path, node) in &graph.files {
-            let node_dict = pyo3::types::PyDict::new_bound(py);
+            let node_dict = pyo3::types::PyDict::new(py);
 
             node_dict.set_item("path", node.path.to_string_lossy().to_string())?;
             node_dict.set_item("relative_path", node.relative_path.to_string_lossy().to_string())?;
 
             // imports
-            let imports = PyList::empty_bound(py);
+            let imports = PyList::empty(py);
             for import in &node.imports {
-                let import_dict = pyo3::types::PyDict::new_bound(py);
+                let import_dict = pyo3::types::PyDict::new(py);
                 import_dict.set_item("raw_path", &import.raw_path)?;
                 import_dict.set_item("alias", &import.alias)?;
                 import_dict.set_item("is_stdlib", import.is_stdlib)?;
@@ -231,18 +231,18 @@ impl PyImportResolver {
             node_dict.set_item("imports", imports)?;
 
             // datasources
-            let datasources = PyList::empty_bound(py);
+            let datasources = PyList::empty(py);
             for ds in &node.datasources {
-                let ds_dict = pyo3::types::PyDict::new_bound(py);
+                let ds_dict = pyo3::types::PyDict::new(py);
                 ds_dict.set_item("name", &ds.name)?;
                 datasources.append(ds_dict)?;
             }
             node_dict.set_item("datasources", datasources)?;
 
             // persists
-            let persists = PyList::empty_bound(py);
+            let persists = PyList::empty(py);
             for persist in &node.persists {
-                let persist_dict = pyo3::types::PyDict::new_bound(py);
+                let persist_dict = pyo3::types::PyDict::new(py);
                 persist_dict.set_item("mode", &persist.mode)?;
                 persist_dict.set_item("target_datasource", &persist.target_datasource)?;
                 persists.append(persist_dict)?;
@@ -250,25 +250,25 @@ impl PyImportResolver {
             node_dict.set_item("persists", persists)?;
 
             // dependency lists
-            let import_dependencies = PyList::empty_bound(py);
+            let import_dependencies = PyList::empty(py);
             for dep in &node.import_dependencies {
                 import_dependencies.append(dep.to_string_lossy().to_string())?;
             }
             node_dict.set_item("import_dependencies", import_dependencies)?;
 
-            let updates_datasources = PyList::empty_bound(py);
+            let updates_datasources = PyList::empty(py);
             for ds in &node.updates_datasources {
                 updates_datasources.append(ds)?;
             }
             node_dict.set_item("updates_datasources", updates_datasources)?;
 
-            let declares_datasources = PyList::empty_bound(py);
+            let declares_datasources = PyList::empty(py);
             for ds in &node.declares_datasources {
                 declares_datasources.append(ds)?;
             }
             node_dict.set_item("declares_datasources", declares_datasources)?;
 
-            let depends_on_datasources = PyList::empty_bound(py);
+            let depends_on_datasources = PyList::empty(py);
             for ds in &node.depends_on_datasources {
                 depends_on_datasources.append(ds)?;
             }
@@ -279,16 +279,16 @@ impl PyImportResolver {
         result.set_item("files", files)?;
 
         // Add datasource_declarations
-        let declarations = pyo3::types::PyDict::new_bound(py);
+        let declarations = pyo3::types::PyDict::new(py);
         for (ds_name, declaring_path) in &graph.datasource_declarations {
             declarations.set_item(ds_name, declaring_path.to_string_lossy().to_string())?;
         }
         result.set_item("datasource_declarations", declarations)?;
 
         // Add datasource_updaters
-        let updaters = pyo3::types::PyDict::new_bound(py);
+        let updaters = pyo3::types::PyDict::new(py);
         for (ds_name, updater_paths) in &graph.datasource_updaters {
-            let paths_list = PyList::empty_bound(py);
+            let paths_list = PyList::empty(py);
             for updater_path in updater_paths {
                 paths_list.append(updater_path.to_string_lossy().to_string())?;
             }
@@ -297,13 +297,13 @@ impl PyImportResolver {
         result.set_item("datasource_updaters", updaters)?;
 
         // Add warnings
-        let warnings = PyList::empty_bound(py);
+        let warnings = PyList::empty(py);
         for warning in &graph.warnings {
             warnings.append(warning)?;
         }
         result.set_item("warnings", warnings)?;
 
-        Ok(result.into())
+        Ok(result.into_any().unbind())
     }
 
     /// Get just the dependency order for a file
@@ -323,7 +323,7 @@ impl PyImportResolver {
     }
 
     /// Resolve dependencies for all files in a directory
-    fn resolve_directory(&mut self, py: Python<'_>, dir_path: &str, _recursive: bool) -> PyResult<PyObject> {
+    fn resolve_directory(&mut self, py: Python<'_>, dir_path: &str, _recursive: bool) -> PyResult<Py<PyAny>> {
         use crate::directory_resolver::{process_directory_with_imports, build_edges, EdgeReason};
         use std::fs;
 
@@ -361,22 +361,22 @@ impl PyImportResolver {
         let edges = build_edges(&graph);
 
         // Convert to Python objects
-        let result = PyDict::new_bound(py);
-        let edges_list = PyList::empty_bound(py);
-        let files_list = PyList::empty_bound(py);
-        let warnings_list = PyList::empty_bound(py);
+        let result = PyDict::new(py);
+        let edges_list = PyList::empty(py);
+        let files_list = PyList::empty(py);
+        let warnings_list = PyList::empty(py);
 
         // Add files with debug info
-        let files_info_dict = PyDict::new_bound(py);
+        let files_info_dict = PyDict::new(py);
         for file_info in graph.files.values() {
             files_list.append(file_info.path.to_string_lossy().to_string())?;
-            let info_dict = PyDict::new_bound(py);
-            let ds_list = PyList::empty_bound(py);
+            let info_dict = PyDict::new(py);
+            let ds_list = PyList::empty(py);
             for ds in &file_info.datasources {
                 ds_list.append(ds)?;
             }
             info_dict.set_item("datasources", ds_list)?;
-            let persist_list = PyList::empty_bound(py);
+            let persist_list = PyList::empty(py);
             for p in &file_info.persists {
                 persist_list.append(p)?;
             }
@@ -387,11 +387,11 @@ impl PyImportResolver {
 
         // Add edges
         for edge in edges {
-            let edge_dict = PyDict::new_bound(py);
+            let edge_dict = PyDict::new(py);
             edge_dict.set_item("from", edge.from.to_string_lossy().to_string())?;
             edge_dict.set_item("to", edge.to.to_string_lossy().to_string())?;
 
-            let reason_dict = PyDict::new_bound(py);
+            let reason_dict = PyDict::new(py);
             match edge.reason {
                 EdgeReason::Import => {
                     reason_dict.set_item("type", "import")?;
@@ -423,6 +423,6 @@ impl PyImportResolver {
         result.set_item("edges", edges_list)?;
         result.set_item("warnings", warnings_list)?;
 
-        Ok(result.into())
+        Ok(result.into_any().unbind())
     }
 }
