@@ -6,6 +6,8 @@ on:
   push:
     paths:
       - '.github/workflows/wasm-wheel.yml'
+      - 'trilogy/scripts/dependency/**'
+      - 'pyproject.toml'
 
 jobs:
   build-pyemscripten:
