@@ -154,9 +154,11 @@ def _summaries_repeat(report: dict) -> list[dict]:
                 "duration_seconds": r.get("duration_seconds"),
                 "detail": r.get("detail"),
                 # repeat_report only tallies explore calls, not the full mix.
-                "tools": {"trilogy:explore": r["explore_calls"]}
-                if r.get("explore_calls")
-                else {},
+                "tools": (
+                    {"trilogy:explore": r["explore_calls"]}
+                    if r.get("explore_calls")
+                    else {}
+                ),
             }
         )
     return out
@@ -207,14 +209,28 @@ def archive_run(conn: sqlite3.Connection, run_dir: Path, suite: str) -> int:
                     run_timestamp, archived_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    run_name, suite, variant, s["question"], s.get("rep", 0), status,
+                    run_name,
+                    suite,
+                    variant,
+                    s["question"],
+                    s.get("rep", 0),
+                    status,
                     1 if status == "pass" else 0,
-                    s.get("total_tokens"), s.get("prompt_tokens"),
-                    s.get("completion_tokens"), s.get("total_turns"),
-                    s.get("final_query_size"), s.get("tool_errors"),
-                    s.get("ref_rows"), s.get("cand_rows"), s.get("duration_seconds"),
-                    s.get("detail"), s.get("model"), s.get("provider"),
-                    s.get("scale_factor"), s.get("run_timestamp"), now,
+                    s.get("total_tokens"),
+                    s.get("prompt_tokens"),
+                    s.get("completion_tokens"),
+                    s.get("total_turns"),
+                    s.get("final_query_size"),
+                    s.get("tool_errors"),
+                    s.get("ref_rows"),
+                    s.get("cand_rows"),
+                    s.get("duration_seconds"),
+                    s.get("detail"),
+                    s.get("model"),
+                    s.get("provider"),
+                    s.get("scale_factor"),
+                    s.get("run_timestamp"),
+                    now,
                 ),
             )
             for tool, calls in s.get("tools", {}).items():
@@ -222,7 +238,15 @@ def archive_run(conn: sqlite3.Connection, run_dir: Path, suite: str) -> int:
                     """INSERT INTO tool_use
                        (run_name, suite, variant, question, rep, tool, calls, archived_at)
                        VALUES (?,?,?,?,?,?,?,?)""",
-                    (run_name, suite, variant, s["question"], s.get("rep", 0),
-                     tool, calls, now),
+                    (
+                        run_name,
+                        suite,
+                        variant,
+                        s["question"],
+                        s.get("rep", 0),
+                        tool,
+                        calls,
+                        now,
+                    ),
                 )
     return sum(1 for s in summaries if s.get("question") is not None)

@@ -106,8 +106,8 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 - **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. 
    Use explicit grain agg(x) by <dims> as needed to override the default. 
    Use `by *` to aggregate across all data (a single row output).
-   auto x_resp <- sum(y); # responsive to query grain if you select x_resp
-   auto x_fixed <- sum(y) by *; # always a single row output, regardless of query grain
+   auto avg_credits_at_query_grain <- avg(enroll.credits); # responsive to the consuming query's grain
+   auto avg_credits_single_row <- avg(enroll.credits) by *; # explicit single-row grain, regardless of query grain
 - **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows — e.g. one output row per matching fact when the projected columns repeat — include the fact's grain keys in the select, hidden with `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
