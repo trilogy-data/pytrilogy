@@ -182,6 +182,35 @@ class BuildEnvironment:
                 out.setdefault(member, set()).update(m for m in distinct if m != member)
         return out
 
+    def pseudonym_unsatisfiable_group_mates(self) -> dict[str, set[str]]:
+        """`distinct_scoped_join_group_mates` widened for STACK VALIDATION:
+        additionally, in SUBSET (`left`/`subset`) groups, an UNBOUND
+        subset-side member (no datasource binding — a rowset or derived key)
+        is never satisfied through a group-mate pseudonym. Its per-row
+        presence exists only in its own scope: counting it as found off the
+        anchor drops its source from the plan entirely, stranding every
+        reference (a presence probe, a projection) as a render sentinel (q35
+        `subset join` between rowsets). Direction matters — the ANCHOR stays
+        satisfiable through the member's pseudonym (a member request for the
+        group canonical is a bijective relabel, e.g. an aggregate grain
+        canonicalized onto an otherwise-unreferenced anchor), and a bound
+        (ROOT) subset member resolves by binding substitution, the pseudonym
+        mechanism. Validation-only: the rowset enrichment machinery consumes
+        the narrower map, where a subset mate is a satisfiable request, not
+        an exposure obligation."""
+        out = self.distinct_scoped_join_group_mates()
+        subset_members = self.domain_graph.subset_sources()
+        for _, distinct in self._distinct_scoped_join_groups():
+            unbound_subset = {
+                m
+                for m in distinct
+                if m in subset_members and not self.domain_graph.binding_sources(m)
+            }
+            for member in distinct:
+                if unbound_subset - {member}:
+                    out.setdefault(member, set()).update(unbound_subset - {member})
+        return out
+
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []
         non_partial_concrete_concepts: list[BuildConcept] = []

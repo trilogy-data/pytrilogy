@@ -616,10 +616,13 @@ window_sql_over      = { _WINDOW_OVER_PAREN ~ window_sql_partition? ~ window_sql
 // The negative lookahead prevents alt 1 from consuming `1` as the offset
 // AND `by` as the expr (concept_lit greedily matches `by` as an identifier
 // because `by` can't be reserved — concepts like `id.by` use it as a name).
-WINDOW_LEGACY_KW = @{ (^"by" | ^"over" | ^"order") ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
+// `as` is excluded on both alternatives so a concept that shares a legacy
+// window name still aliases: `select count as n` is IDENTIFIER + alias, not
+// a window over a concept named `as`.
+WINDOW_LEGACY_KW = @{ (^"by" | ^"over" | ^"order" | ^"as") ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
 window_item_legacy = {
       WINDOW_TYPE_LEGACY ~ int_lit ~ !WINDOW_LEGACY_KW ~ expr ~ window_item_over? ~ window_item_order?
-    | WINDOW_TYPE_LEGACY ~ expr ~ window_item_over? ~ window_item_order?
+    | WINDOW_TYPE_LEGACY ~ !WINDOW_LEGACY_KW ~ expr ~ window_item_over? ~ window_item_order?
 }
 // SQL-like numbering: rank(a, b, c) over (...). All comma-separated fields
 // are equal-status grain keys. Empty args inherit the surrounding SELECT grain.

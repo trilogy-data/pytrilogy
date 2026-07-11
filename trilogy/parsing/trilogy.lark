@@ -237,7 +237,14 @@
     // rank/lag/lead - supports both legacy and SQL-like syntax
     // Legacy: row_number field over other_field order by third_field
     // SQL-like: row_number(field) over (partition by field2 order by field3)
-    WINDOW_TYPE_LEGACY: ("row_number"i|"rank"i|"dense_rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+/
+    // The trailing lookahead keeps a concept that shares a legacy window name
+    // usable as a plain reference: refuse the token when what follows can't
+    // start a window operand (`as` alias keyword, `->`, `;`, `,`, `)`). The
+    // guard must live in the terminal — the LALR lexer commits before any
+    // rule could backtrack. Leading `\s` in the lookahead stops the regex
+    // engine from shedding whitespace to dodge it. Mirrors the pest
+    // WINDOW_LEGACY_KW `as` exclusion.
+    WINDOW_TYPE_LEGACY: ("row_number"i|"rank"i|"dense_rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+(?!\s|as(?![\w.])|->|[;,)])/i
     // Numbering window functions (rank/dense_rank/row_number) take no SQL input —
     // their args are all equal-status grain keys.
     WINDOW_TYPE_SQL_NUMBERING.2: /row_number\s*\(/i | /rank\s*\(/i | /dense_rank\s*\(/i

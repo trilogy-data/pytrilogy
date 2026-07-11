@@ -151,11 +151,27 @@ def determine_induced_minimal_nodes(
         Derivation.AGGREGATE,
         Derivation.FILTER,
     )
+    # Mandatory concepts that are datasource-materialized reach this search
+    # promoted "as root instead of derived" (a summary table binding
+    # `count(x) by k` makes that aggregate a directly selectable column), so
+    # their nodes must survive the derivation purge below — otherwise the
+    # dijkstra seed list references a deleted node and the search dies with
+    # NodeNotFound. Exempt every grain variant of those canonicals; other
+    # aggregate/filter nodes stay purged to avoid ambiguous relation chains.
+    materialized = environment.materialized_canonical_concepts
+    mandatory_materialized = {
+        canonical
+        for n in nodelist
+        if (c := g_concepts.get(n)) is not None
+        and (canonical := c.canonical_address) in materialized
+    }
     for node, lookup in g_concepts.items():
         # inclusion of aggregates can create ambiguous node relation chains
         # there may be a better way to handle this
         # can be revisited if we need to connect a derived synonym based on an aggregate
         if lookup.derivation in derivations_to_remove:
+            if lookup.canonical_address in mandatory_materialized:
+                continue
             nodes_to_remove.append(node)
         # purge a node if we're already looking for all it's parents — but
         # keep BASIC concepts that are also directly bound to a datasource

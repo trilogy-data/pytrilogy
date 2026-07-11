@@ -172,14 +172,24 @@ def _can_pushdown_as_grouped_filter(
     # filter and group separate there so the aggregate's by-grain survives.
     assert isinstance(concept.lineage, FILTER_TYPES)
     content = concept.lineage.content
+    agg_args = [
+        r for r in filter_where.row_arguments if r.derivation == Derivation.AGGREGATE
+    ]
     if isinstance(content, BuildConcept):
-        agg_args = [
-            r
-            for r in filter_where.row_arguments
-            if r.derivation == Derivation.AGGREGATE
-        ]
         if any(a.grain != content.grain for a in agg_args):
             return False
+    # An aggregate-comparison mixed with a row-level predicate on anything but
+    # the group key itself can't collapse into one grouped CTE: the row
+    # predicate is invalid in HAVING at the group grain, and pre-filtering rows
+    # would corrupt the aggregate (it must be computed over all rows). Fall
+    # back to the standard plan, which materializes the aggregate at its own
+    # grain and evaluates the predicate at row level.
+    content_address = content.address if isinstance(content, BuildConcept) else None
+    if agg_args and any(
+        r.derivation != Derivation.AGGREGATE and r.address != content_address
+        for r in filter_where.row_arguments
+    ):
+        return False
     # A non-aggregate predicate on a *nested* filter concept (another `x ? cond`)
     # alongside the per-key aggregate(s) can't be collapsed into this group's
     # HAVING/WHERE: the nested filter needs its own per-row CASE materialized,
@@ -210,17 +220,16 @@ def build_parent_concepts(
     filter_where = concept.lineage.where
 
     same_filter_optional: list[BuildConcept] = []
-    # mypy struggled here? we shouldn't need explicit bools
-    global_filter_is_local_filter: bool = (
-        True if (conditions and conditions == filter_where) else False
+    global_filter_is_local_filter: bool = bool(
+        conditions and conditions == filter_where
     )
 
     exact_partial_matches = True
     for x in local_optional:
         if isinstance(x.lineage, FILTER_TYPES):
-            if set([x.address for x in x.lineage.where.concept_arguments]) == set(
-                [x.address for x in filter_where.concept_arguments]
-            ):
+            if {arg.address for arg in x.lineage.where.concept_arguments} == {
+                arg.address for arg in filter_where.concept_arguments
+            }:
                 exact_partial_matches = (
                     exact_partial_matches and x.lineage.where == filter_where
                 )
@@ -467,6 +476,13 @@ def gen_filter_node(
         filter_node = parent
     else:
         core_parent_nodes.append(row_parent)
+        # With no optional concepts requested, non-qualifying rows can never be
+        # observed downstream, so apply the predicate as a node condition (the
+        # aggregate operands are materialized parent columns, so it renders as
+        # a plain WHERE). The per-row CASE alone would leak a NULL group for
+        # rows that fail the filter. With optionals (or peer filters with a
+        # different where), those rows must survive, so only the CASE applies.
+        sole_output = not local_optional and not parent_existence_concepts
         filter_node = FilterNode(
             input_concepts=unique(
                 parent_row_concepts + flattened_existence,
@@ -475,6 +491,7 @@ def gen_filter_node(
             output_concepts=[concept] + same_filter_optional + row_output_concepts,
             environment=environment,
             parents=core_parent_nodes,
+            conditions=where.conditional if sole_output else None,
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 

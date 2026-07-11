@@ -271,7 +271,7 @@ def validate_stack(
     partial_addresses: set[str] = set()
     virtual_addresses: set[str] = set()
     seen: set[str] = set()
-    group_mates = environment.distinct_scoped_join_group_mates()
+    group_mates = environment.pseudonym_unsatisfiable_group_mates()
 
     for node in stack:
         resolved = node.resolve()
