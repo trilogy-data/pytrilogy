@@ -720,9 +720,21 @@ def get_node_joins(
     anchor_key_nodes = {
         canon_node(a) for a in environment.domain_graph.left_anchor_keys()
     }
-    # Canonical keys of every authored join-key group: pivot the join tree on
-    # these first so the authored equality is the pairing between the sides.
-    authored_key_nodes = {canon_node(a) for a in environment.scoped_join_key_groups}
+    # Canonical keys of ROOT-member authored join groups (the property-hop
+    # family): pivot the join tree on these first so the authored equality is
+    # the pairing between the sides regardless of cheaper shared-key edges.
+    # Derived/rowset-keyed groups are deliberately excluded — their ordering
+    # rides the rowset exposure machinery, and re-seeding them spins q2-family
+    # plans. Local import: common.py imports nodes.merge_node, which imports
+    # this module.
+    from trilogy.core.processing.node_generators.common import (
+        authored_join_pair_candidates,
+    )
+
+    authored_key_nodes = {
+        canon_node(pair.canonical.address)
+        for pair in authored_join_pair_candidates(environment)
+    }
     joins = resolve_join_order_v2(
         graph,
         partials=partials,

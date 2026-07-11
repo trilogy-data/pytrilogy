@@ -153,7 +153,10 @@ def test_gate_silent_for_canary_request():
     assert relevant_authored_join_pairs(request, build_env) == []
 
 
-def test_canonical_already_requested_adds_only_fk_carriers():
+def test_member_projected_is_noop():
+    # projecting the merged key pulls both dims into the request's datasource
+    # set, so every member is directly bound — the merged concept is already a
+    # natural shared join key and injection stays out of the way
     build_env = _build(TWO_FACT_MODEL, scoped_joins=SUBSET_JOIN)
     request = [
         build_env.concepts["local.a_amount"],
@@ -161,8 +164,37 @@ def test_canonical_already_requested_adds_only_fk_carriers():
         build_env.concepts["local.a_cust_id"],
     ]
     injected = inject_authored_join_key_terminals(list(request), build_env)
-    added = {c.address for c in injected} - {c.address for c in request}
-    assert added == {"local.a_cust_sk", "local.b_cust_sk"}
+    assert {c.address for c in injected} == {c.address for c in request}
+
+
+def test_gate_silent_for_directly_bound_members():
+    # q2 date-spine shape: the fact binds its FK member and the dim binds the
+    # canonical — every member is a physical column of a request datasource,
+    # enforcement is the natural join, and injection must stay out
+    model = """
+key date_sk int;
+property date_sk.week_seq int;
+datasource date_dim (
+    sk: date_sk,
+    wk: week_seq,
+) grain (date_sk) address date_dim;
+
+key cs_date_sk int;
+key cs_order int;
+property cs_order.cs_amount int;
+datasource cat_facts (
+    o: cs_order,
+    d: cs_date_sk,
+    amt: cs_amount,
+) grain (cs_order) address cat_facts;
+"""
+    joins = [("local.date_sk", "local.cs_date_sk", JoinType.LEFT_OUTER)]
+    build_env = _build(model, scoped_joins=joins)
+    request = [
+        build_env.concepts["local.cs_amount"],
+        build_env.concepts["local.week_seq"],
+    ]
+    assert relevant_authored_join_pairs(request, build_env) == []
 
 
 def test_chained_relations_gate_pairwise():

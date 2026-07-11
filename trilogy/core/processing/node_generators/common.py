@@ -779,6 +779,16 @@ def _member_origin(environment: BuildEnvironment, address: str) -> BuildConcept 
     return None
 
 
+def _canonical_key_addresses(
+    environment: BuildEnvironment, member: BuildConcept
+) -> set[str]:
+    out: set[str] = set()
+    for key_addr in member.keys or ():
+        key_concept = environment.concepts.get(key_addr)
+        out.add(key_concept.address if key_concept is not None else key_addr)
+    return out
+
+
 def authored_join_pair_candidates(
     environment: BuildEnvironment,
 ) -> list[AuthoredJoinPair]:
@@ -786,7 +796,14 @@ def authored_join_pair_candidates(
     scope-blind (global merge and query join are the same declaration at
     different scopes). EQUAL relations are excluded (either side authoritative;
     enforcement rides the canonical machinery); derived (BASIC/ROWSET) members
-    stay with the rowset key-exposure and merge-node exposure machinery."""
+    stay with the rowset key-exposure and merge-node exposure machinery.
+
+    A pair of properties keyed by the SAME canonical entity key is excluded:
+    the relation is a functional consequence of that key's own merge, which
+    discovery already enforces as a shared canonical — pairing the properties
+    independently is redundant (conformed-dimension property merges, stocks).
+    A pair whose keys stay distinct (q25's per-side customer surrogates) is the
+    load-bearing bridge and stays."""
     out: list[AuthoredJoinPair] = []
     for edge in environment.domain_graph.edges:
         if edge.provenance is not EdgeProvenance.DECLARED:
@@ -805,6 +822,9 @@ def authored_join_pair_candidates(
         canonical = environment.concepts.get(edge.source)
         mate = environment.concepts.get(edge.target)
         if canonical is None or mate is None or canonical.address != mate.address:
+            continue
+        left_keys = _canonical_key_addresses(environment, left)
+        if left_keys and left_keys == _canonical_key_addresses(environment, right):
             continue
         out.append(AuthoredJoinPair(left=left, right=right, canonical=canonical))
     return out
@@ -829,12 +849,20 @@ def _relevant_authored_join_pairs(
     all_concepts: Sequence[BuildConcept],
     environment: BuildEnvironment,
 ) -> tuple[list[AuthoredJoinPair], dict[str, set[str]]]:
-    """Authored relation pairs the request traverses, plus the author-space
-    binding index of the request's datasources. A pair is traversed when each
-    side is anchored by a requested-concept datasource the other side lacks.
-    One-sided requests and single-scan (denormalized) coverage skip injection,
-    so a declared relation stays lazy unless the query actually relates the two
-    sides.
+    """Authored relation pairs the request traverses AND that need discovery
+    help, plus the author-space binding index of the request's datasources.
+
+    Traversed: each side is anchored by a requested-concept datasource the
+    other side lacks. One-sided requests and single-scan (denormalized)
+    coverage skip, so a declared relation stays lazy unless the query actually
+    relates the two sides.
+
+    Needs help: at least one member is NOT directly bound on a request
+    datasource (reachable only through its FK dimension hop). When every
+    member is a physical column of the request's own datasources (the
+    fact→date-spine merge, the both-facts-bind-the-sk q25 form) the merged
+    concept is already a natural shared join key and injection only perturbs
+    the plan (q2 date-spine regression).
 
     Carrier matching runs in AUTHOR address space via the domain graph's
     binding edges (datasource columns rebind to the canonical at build time,
@@ -856,8 +884,13 @@ def _relevant_authored_join_pairs(
     }
     if not bound_by_ds:
         return [], {}
+    all_bound: set[str] = set()
+    for bound in bound_by_ds.values():
+        all_bound.update(bound)
     out: list[AuthoredJoinPair] = []
     for pair in candidates:
+        if pair.left.address in all_bound and pair.right.address in all_bound:
+            continue
         left_carriers = _member_carriers(pair.left, bound_by_ds)
         right_carriers = _member_carriers(pair.right, bound_by_ds)
         if left_carriers - right_carriers and right_carriers - left_carriers:
