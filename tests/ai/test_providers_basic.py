@@ -118,10 +118,15 @@ def _counts_flights(concept, env: Environment, flight_key: str) -> bool:
     """True if concept is a flight count, regardless of phrasing.
 
     Equivalent shapes: COUNT(id2), COUNT(<property keyed only on id2>) such as
-    flight_num, or SUM over a concept that itself counts flights (e.g. the auto
-    `count` measure rolled up via sum(count)).
+    flight_num, SUM over a concept that itself counts flights (e.g. the auto
+    `count` measure rolled up via sum(count)), or a rename of any of those
+    (`count as number_of_flights`).
     """
     lineage = concept.lineage
+    if isinstance(lineage, Function) and lineage.operator == FunctionType.ALIAS:
+        arg = lineage.arguments[0]
+        aliased = env.concepts.get(arg.address) if isinstance(arg, ConceptRef) else None
+        return aliased is not None and _counts_flights(aliased, env, flight_key)
     if not isinstance(lineage, AggregateWrapper):
         return False
     fn = lineage.function
