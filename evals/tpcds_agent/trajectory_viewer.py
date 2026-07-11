@@ -512,6 +512,7 @@ let failOnly = false;   // sidebar filter: hide passing runs
 let served = false;   // true once runs.json answers — replay needs the server
 let replay = {running:false, qid:null, log:[], result:null, error:null};
 let replayTimer = null;
+let archiveState = {busy:false, msg:'', ok:null};   // "archive this run to history db"
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
 // Sidebar result color — mirrors the dashboard PNG (STATUS_COLORS_ALT): green=pass,
@@ -808,7 +809,7 @@ function renderTally(){
     + `<div class="tally-f">`
     + `<button class="fbtn${failOnly?'':' on'}" onclick="setFailOnly(false)">All ${total}</button>`
     + `<button class="fbtn${failOnly?' on':''}" onclick="setFailOnly(true)">Failing ${failing}</button>`
-    + `</div>` + rerunAllHtml();
+    + `</div>` + rerunAllHtml() + archiveHtml();
 }
 // Fork the current run into a fresh sibling dir and replay every query there, so
 // the original stays a baseline. Server-only (needs the replay endpoints).
@@ -832,6 +833,34 @@ function rerunAllHtml(){
   const label = on ? 'Rerunning…' : 'Rerun all → new run';
   return `<div class="rerun-bar"><button class="fbtn rerun" onclick="startReplayAll()"${dis}>`
        + `${esc(label)}</button>${status}${cancel}</div>`;
+}
+// Archive this run dir's summary stats into the longitudinal history db.
+// Non-destructive (files stay); the CLI cleanup script archives-then-deletes.
+function archiveHtml(){
+  if(!served) return '';
+  const dis = archiveState.busy ? ' disabled' : '';
+  const label = archiveState.busy ? 'Archiving…' : 'Archive run → history db';
+  let status = '';
+  if(archiveState.msg){
+    const cls = archiveState.ok ? ' ok' : (archiveState.ok===false ? ' err' : '');
+    status = `<div class="rerun-st${cls}">${esc(archiveState.msg)}</div>`;
+  }
+  return `<div class="rerun-bar"><button class="fbtn rerun" onclick="archiveRun()"${dis}>`
+       + `${esc(label)}</button>${status}</div>`;
+}
+async function archiveRun(){
+  if(!currentRun) return;
+  archiveState = {busy:true, msg:'archiving '+currentRun+'…', ok:null};
+  renderTally();
+  try{
+    const r = await fetch('archive', {method:'POST', headers:{'Content-Type':'application/json'},
+                                      body: JSON.stringify({run: currentRun})});
+    const j = await r.json();
+    archiveState = r.ok
+      ? {busy:false, ok:true, msg:`archived ${j.count} questions → ${j.db}`}
+      : {busy:false, ok:false, msg: j.error || ('HTTP '+r.status)};
+  }catch(e){ archiveState = {busy:false, ok:false, msg:String(e)}; }
+  renderTally();
 }
 function setFailOnly(v){ failOnly = v; renderSide(); }
 function renderSide(){
@@ -915,6 +944,7 @@ async function loadRuns(){
 function onRunChange(){
   currentRun = document.getElementById('runsel').value;
   selectedName = null; lastPayload = null; expanded = new Set(); compareOpen = false;   // reset for the new run
+  archiveState = {busy:false, msg:'', ok:null};
   loadData(true);
 }
 applyData(RUNS, false);
@@ -1113,6 +1143,23 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             return self.root / name
         return None
 
+    def _archive(self, run_dir: Path) -> None:
+        """Write this run's summary stats into the longitudinal history db
+        (non-destructive; the files stay). Idempotent per run."""
+        try:
+            from common import archive
+            from spec import SPEC
+
+            conn = archive.connect()
+            try:
+                count = archive.archive_run(conn, run_dir, SPEC.short_name)
+            finally:
+                conn.close()
+        except Exception as exc:
+            self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            return
+        self._json({"ok": True, "count": count, "db": archive.default_db_path().name})
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/runs.json":
@@ -1136,7 +1183,7 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path not in ("/replay", "/replay_all", "/replay_cancel"):
+        if path not in ("/replay", "/replay_all", "/replay_cancel", "/archive"):
             self.send_error(404)
             return
         try:
@@ -1152,6 +1199,9 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
         run_dir = self._resolve_run(body.get("run"))
         if run_dir is None:
             self._json({"error": f"unknown run {body.get('run')!r}"}, 400)
+            return
+        if path == "/archive":
+            self._archive(run_dir)
             return
         if path == "/replay_all":
             rejected = self.job.start_all(run_dir)

@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from common import archive  # noqa: E402
 from spec import SPEC  # noqa: E402
 
 
@@ -42,19 +43,33 @@ def clean(results_dir: Path, max_age_hours: float, dry_run: bool) -> int:
     if not stale:
         print(f"nothing older than {max_age_hours}h in {results_dir}")
         return 0
-    freed = 0
+    # Archive summary stats before the raw logs are reclaimed. Kept open across
+    # the whole sweep; a bad report shouldn't abort the disk cleanup.
+    conn = None if dry_run else archive.connect()
+    freed = archived = 0
     for path in stale:
         size = _entry_size(path)
         freed += size
+        n = 0
+        if path.is_dir() and conn is not None:
+            try:
+                n = archive.archive_run(conn, path, SPEC.short_name)
+                archived += n
+            except Exception as exc:
+                print(f"  ! archive failed for {path.name}: {exc}")
         action = "would remove" if dry_run else "removing"
-        print(f"{action} {path.name} ({_human_size(size)})")
+        tag = f", archived {n}q" if n else ""
+        print(f"{action} {path.name} ({_human_size(size)}{tag})")
         if not dry_run:
             if path.is_dir():
                 shutil.rmtree(path)
             else:
                 path.unlink()
+    if conn is not None:
+        conn.close()
     verb = "would free" if dry_run else "freed"
-    print(f"\n{len(stale)} entries, {verb} {_human_size(freed)}")
+    extra = f", archived {archived} question rows" if archived else ""
+    print(f"\n{len(stale)} entries, {verb} {_human_size(freed)}{extra}")
     return len(stale)
 
 

@@ -13,4 +13,4 @@ __all__ = [
     "Environment",
     "EnvironmentConfig",
     "CONFIG",
-]1
+]
