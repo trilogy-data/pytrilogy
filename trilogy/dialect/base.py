@@ -98,6 +98,7 @@ from trilogy.core.processing.condition_utility import (
     contains_window,
     decompose_condition,
     is_scalar_condition,
+    references_any_concept,
 )
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.query_processor import (
@@ -2469,12 +2470,25 @@ class BaseDialect:
         having: BoolExpr | None = None
         qualify: BoolExpr | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
+        # Rollup-carrier outputs render as SUM(input) in this CTE (see
+        # _render_concept_sql), so a predicate touching one is aggregated at
+        # render time and must live in HAVING even though its input column is
+        # materialized (which would otherwise mark the atom WHERE-safe scalar).
+        rollup_addresses = (
+            {concept.address for concept in cte.rollup_concepts}
+            if cte.group_to_grain
+            else set()
+        )
         if cte.condition:
             # Window predicates (rank/lag/... over) can't live in WHERE or HAVING;
             # they must be lowered to QUALIFY. Fast-path the common no-window case.
-            if not contains_window(cte.condition, materialized=materialized) and (
-                not cte.group_to_grain
-                or is_scalar_condition(cte.condition, materialized=materialized)
+            if (
+                not contains_window(cte.condition, materialized=materialized)
+                and not references_any_concept(cte.condition, rollup_addresses)
+                and (
+                    not cte.group_to_grain
+                    or is_scalar_condition(cte.condition, materialized=materialized)
+                )
             ):
                 where = cte.condition
             else:
@@ -2482,8 +2496,9 @@ class BaseDialect:
                 for x in components:
                     if contains_window(x, materialized=materialized):
                         qualify = qualify + x if qualify else x
-                    elif cte.group_to_grain and not is_scalar_condition(
-                        x, materialized=materialized
+                    elif cte.group_to_grain and (
+                        not is_scalar_condition(x, materialized=materialized)
+                        or references_any_concept(x, rollup_addresses)
                     ):
                         having = having + x if having else x
                     else:

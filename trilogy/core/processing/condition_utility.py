@@ -23,6 +23,7 @@ from trilogy.core.models.build import (
     BuildCaseWhen,
     BuildComparison,
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildFilterItem,
@@ -448,6 +449,17 @@ def simplify_conditions(
         entry[1].append((condition.operator, comparison))
 
     return conditions_cover_domain(grouped)
+
+
+def references_any_concept(element: Any, addresses: set[str]) -> bool:
+    """True when the condition directly references any of the given addresses."""
+    if not addresses:
+        return False
+    if isinstance(element, BuildConcept):
+        return element.address in addresses
+    if isinstance(element, BuildConceptArgs):
+        return any(arg.address in addresses for arg in element.concept_arguments)
+    return False
 
 
 def decompose_condition(

@@ -101,3 +101,34 @@ def test_inline_equivalent_of_materialized_aggregate():
 def test_materialized_aggregate_same_grain_still_direct():
     rows = fetch("select customer_id, customer_order_count;")
     assert rows == [(101, 3), (102, 2), (103, 2), (104, 1)], rows
+
+
+# regression: the plan for this joins the summary through a rollup-carrier
+# group CTE that re-renders the count as SUM(...); the predicate atom pushed
+# into that CTE rendered as `WHERE sum(...)` (BinderException) instead of
+# routing to HAVING.
+def test_mixed_filter_over_materialized_aggregate():
+    rows = fetch("""
+select customer_id ? customer_order_count > 1
+                     and product_name = 'Mouse' as filtered;
+""")
+    assert sorted(r[0] for r in rows) == [101, 102], rows
+
+
+def test_materialized_where_form_matches_filter_form():
+    where_form = fetch("""
+select customer_id
+where customer_order_count > 1 and product_name = 'Mouse';
+""")
+    assert sorted(r[0] for r in where_form) == [101, 102], where_form
+
+
+# WHERE on a finer-grain dim can't be served by the materialized value —
+# the aggregate must re-derive from rows post-filter, matching the derived
+# path exactly (Mouse-only counts).
+def test_materialized_aggregate_rescopes_under_where():
+    rows = fetch("""
+select customer_id, product_name, customer_order_count
+where product_name = 'Mouse';
+""")
+    assert rows == [(101, "Mouse", 1), (102, "Mouse", 1), (104, "Mouse", 1)], rows

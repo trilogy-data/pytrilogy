@@ -1,5 +1,19 @@
 # q35 — `subset join` between rowsets strands the subset member's key (render sentinel)
 
+**STATUS: FIXED 2026-07-11.** Root cause was stack validation crediting an
+unbound (rowset) subset-join member as "found" through its group-mate
+pseudonym, so the member's rowset was never built. Fix: validation consumes a
+widened mates map (`BuildEnvironment.pseudonym_unsatisfiable_group_mates`) —
+an unbound, author-REFERENCED member of a subset group is never satisfiable
+via a mate's pseudonym (authorship = new `statement_authored_addresses`
+closure captured in `get_query_node`, computed pre-canonicalization so a
+grain canonicalized onto an unreferenced anchor still collapses per the ruled
+domain-metadata semantics). Guard tests:
+`tests/join_matrix/test_subset_join_between_rowsets.py` (incl. the full
+3-rowset or-of-members q35 shape). Note: projecting a member key yields the
+coalesced group axis (union-join parity), not a per-side NULL-padded column —
+per-side absence is the `is not null` presence-probe idiom.
+
 **Classification:** FRAMEWORK BUG (loud). The engine's own codegen emits an
 `INVALID_REFERENCE_BUG` render sentinel and raises `ValueError: Could not render
 the query`. Per our rules a render-sentinel from generated SQL is always a
