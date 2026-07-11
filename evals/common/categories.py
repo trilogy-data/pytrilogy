@@ -35,7 +35,11 @@ class Category:
     """setup(workspace, spec, *, db_path, enriched_dir) -> result dict
     (same shape as agent_runner.run_pre_ingest: exit_code/duration/stdout/stderr)."""
 
-    def build_task(self, spec: BenchmarkSpec, entry: dict) -> str:
+    def build_task(
+        self, spec: BenchmarkSpec, entry: dict, include_docs: bool = False
+    ) -> str:
+        if include_docs and spec.docs_preamble:
+            entry = {**entry, "prompt": f"{spec.docs_preamble}\n\n{entry['prompt']}"}
         if self.harness == "sql":
             return prompts.build_single_query_task_sql(spec, entry)
         return prompts.build_single_query_task(spec, entry)

@@ -68,14 +68,22 @@ class BenchmarkSpec:
     its own caching. Scale factor does not apply."""
 
     doc_files: tuple[Path, ...] = ()
-    """Documentation files copied into every agent workspace (e.g. DABstep's
+    """Documentation files copied into an agent workspace (e.g. DABstep's
     manual.md — domain knowledge the questions require but the schema doesn't
-    carry). Pair with ``allow_file_read=True`` so the agent can read them."""
+    carry). Installed only for the categories in ``doc_categories``."""
 
-    allow_file_read: bool = False
-    """Let the agent read workspace files (``trilogy file read`` / read_file).
-    Off for generator benchmarks (schema discovery must go through explore);
-    on when ``doc_files`` carry required domain context."""
+    doc_categories: tuple[str, ...] = ()
+    """Category keys whose workspaces receive ``doc_files`` (with file-read
+    enabled for the Trilogy toolset). DABstep gives the docs to the SQL
+    baselines and the auto-ingest leg but NOT to enriched — the curated model
+    is expected to carry the domain knowledge itself, so the funnel compares
+    agent+docs+db against agent+semantic-model."""
+
+    docs_preamble: str = ""
+    """Text prepended to each task prompt ON DOC-BEARING LEGS ONLY (what the
+    doc files are and that the agent should read them). Kept out of
+    query_prompts.json so docless legs don't send agents chasing files that
+    aren't in their workspace."""
 
     default_scale_factor: float = 0.01
     default_num_queries: int = 22

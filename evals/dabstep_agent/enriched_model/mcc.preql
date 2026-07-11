@@ -1,0 +1,14 @@
+# Merchant Category Code (MCC) lookup. The MCC is a four-digit code assigned
+# by the card networks to classify a merchant's business type (retail,
+# restaurant, hotel, ...); used for risk assessment, fraud detection, and
+# fee determination. First two digits = category, last two = subcategory.
+
+key code int; # four-digit MCC, e.g. 5812 = 'Eating Places and Restaurants'
+property code.description string; # official business-type description for the code
+
+root datasource merchant_category_codes (
+    mcc: code,
+    description,
+)
+grain (code)
+address merchant_category_codes;

@@ -491,6 +491,11 @@ def run(spec: BenchmarkSpec) -> int:
     cached = db.build_database(spec, args.scale_factor)
     workspace_db = db.copy_database(cached, workspace / spec.db_filename)
 
+    # Doc files are per-category: DABstep hands the markdown docs to the SQL
+    # baselines (and auto-ingest), but the enriched leg gets only the curated
+    # model — that leg measures whether the semantic layer carries the domain
+    # knowledge on its own.
+    leg_docs = spec.doc_files if category.key in spec.doc_categories else ()
     agent_runner.write_trilogy_toml(
         workspace,
         spec,
@@ -502,12 +507,12 @@ def run(spec: BenchmarkSpec) -> int:
         # agent should explore the model, not list raw DB tables. (No effect on
         # the SQL legs, which don't use the trilogy tool.)
         allow_database_introspection=False,
-        # Schema discovery goes through `explore`; file read stays off unless
-        # the spec ships doc_files the agent must consult (DABstep's manual).
-        allow_file_read=spec.allow_file_read,
+        # Schema discovery goes through `explore`; file read opens up only when
+        # this leg ships doc files the agent must consult (DABstep's manual).
+        allow_file_read=bool(leg_docs),
         disable_todo=not args.enable_todo,
     )
-    for doc in spec.doc_files:
+    for doc in leg_docs:
         shutil.copy2(doc, workspace / doc.name)
     if args.query_ids:
         wanted = {int(x.strip()) for x in args.query_ids.split(",") if x.strip()}
@@ -650,7 +655,7 @@ def run(spec: BenchmarkSpec) -> int:
         worker = acquire_worker()
         try:
             log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
-            task = category.build_task(spec, entry)
+            task = category.build_task(spec, entry, include_docs=bool(leg_docs))
             (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
             print(f"  [q{qid:02d}] starting (worker {worker.name})", flush=True)
             result = agent_runner.run_agent(
@@ -670,10 +675,13 @@ def run(spec: BenchmarkSpec) -> int:
                 (run_dir / f"crash.q{qid:02d}.txt").write_text(
                     result["output"], encoding="utf-8"
                 )
-            if worker != workspace:
-                produced = worker / f"query{qid:02d}{category.candidate_ext}"
-                if produced.exists():
-                    shutil.copy2(produced, workspace / produced.name)
+            produced = worker / prompts.candidate_filename(
+                spec, qid, category.candidate_ext
+            )
+            if produced.exists():
+                destination = workspace / f"query{qid:02d}{category.candidate_ext}"
+                if produced != destination:
+                    shutil.copy2(produced, destination)
                     produced.unlink()
             per_query_runs[index] = result
             per_query_metrics[index] = scoring.parse_agent_log(log_path)

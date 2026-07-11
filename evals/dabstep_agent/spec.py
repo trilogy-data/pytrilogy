@@ -31,10 +31,21 @@ SPEC = BenchmarkSpec(
     prompts_file=EVAL_DIR / "query_prompts.json",
     references_dir=EVAL_DIR / "references",
     database_builder=db_build.build_database,
-    # The manual carries the fee-matching semantics the questions hinge on —
-    # agents must be able to read it.
+    # The manual carries the fee-matching semantics the questions hinge on.
+    # The SQL baselines and the auto-ingest leg get the raw markdown; the
+    # enriched leg gets ONLY the curated model, which must encode that
+    # knowledge itself (concept docs + derived concepts) — the funnel then
+    # compares agent+docs+db against agent+semantic-model.
     doc_files=db_build.DOC_FILES,
-    allow_file_read=True,
+    doc_categories=("sql_bare", "sql_schema", "ingest"),
+    docs_preamble=(
+        "Domain docs in the working directory: manual.md (account types, ACI "
+        "codes, and how fee rules match transactions), payments-readme.md "
+        "(payments column reference), schema_notes.md (how the fee rules' "
+        "list-fields map onto tables). Read the relevant sections before "
+        "answering."
+    ),
+    default_enriched_dir=EVAL_DIR / "enriched_model",
     default_scale_factor=1.0,
     default_num_queries=10,
 )

@@ -13,7 +13,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "evals"))
 
-from common.prompts import _render_params_block, build_single_query_task  # noqa: E402
+from common.prompts import (  # noqa: E402
+    _render_params_block,
+    build_single_query_task,
+    candidate_filename,
+)
 from common.spec import BenchmarkSpec  # noqa: E402
 
 
@@ -62,7 +66,8 @@ def test_build_single_query_task_no_params_omits_block():
         {"id": 3, "prompt": "Do the thing."},
     )
     assert "Parameters" not in task
-    assert "trilogy run query03.preql`" in task
+    filename = candidate_filename(_spec(), 3, ".preql")
+    assert f"trilogy run {filename}`" in task
     assert "Do the thing." in task
 
 
@@ -84,7 +89,8 @@ def test_build_single_query_task_with_params_appends_block_and_cli_flag():
     assert "Parameters" in task
     assert "zips (string)" in task
     assert "10001,20002" in task
-    assert "trilogy run query08.preql --param zips=10001,20002`" in task
+    filename = candidate_filename(_spec(), 8, ".preql")
+    assert f"trilogy run {filename} --param zips=10001,20002`" in task
 
 
 def test_build_single_query_task_with_params_preserves_question_body():

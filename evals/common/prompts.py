@@ -8,18 +8,19 @@ the Trilogy language reference, which the agent loads via `trilogy agent-info`.
 from __future__ import annotations
 
 import json
+from hashlib import blake2s
 
 from .spec import BenchmarkSpec
 
 _SINGLE_QUERY_TEMPLATE = """\
-Trilogy project in this directory. `trilogy.toml` configures a DuckDB database
-(`{db}`) already loaded with {bench} data, and `raw/` is already
-populated with ingested Trilogy model files — do NOT re-run `trilogy ingest`
+Trilogy project in this directory. `trilogy.toml` configures an already-loaded
+DuckDB database, and `raw/` is already populated with ingested Trilogy model
+files — do NOT re-run `trilogy ingest`
 and do NOT edit files in `raw/`.
 
 Answer the ONE business question below by writing a Trilogy query file to
-`query{{nn}}.preql` in the working directory (alongside `trilogy.toml`, NOT
-inside `raw/`). Validate with `trilogy run query{{nn}}.preql{{validate_params}}`.
+`{filename}` in the working directory (alongside `trilogy.toml`, NOT inside
+`raw/`). Validate with `trilogy run {filename}{validate_params}`.
 
 Return control once it runs cleanly to submit your result. This will be 
 your final action.
@@ -30,8 +31,8 @@ filters just to force rows; find and fix the actual mistake.
 
 Exact response column names do not matter, but the position and values do.
 
-Question {{id}}:
-{{prompt}}{{params_block}}
+Business question {opaque_id}:
+{prompt}{params_block}
 """
 
 _PARAMS_HEADER = """
@@ -41,10 +42,10 @@ time; declare each in your .preql with `parameter NAME TYPE;` and reference
 them as regular fields):"""
 
 _SQL_SINGLE_QUERY_TEMPLATE = """\
-DuckDB database (`{db}`) loaded with {bench} data, configured in this directory.
-Answer the ONE business question below with plain DuckDB SQL.
+An already-loaded DuckDB database is configured in this directory. Answer the
+ONE business question below with plain DuckDB SQL.
 
-Write your answer as a SINGLE self-contained SELECT to `query{{nn}}.sql` in the
+Write your answer as a SINGLE self-contained SELECT to `{filename}` in the
 working directory, and validate it with the run_file tool before finishing.
 
 Return control once it runs cleanly to submit your result. This will be 
@@ -56,8 +57,8 @@ filters just to force rows; find and fix the actual mistake.
 
 Exact response column names do not matter, but the position and values do.
 
-Question {{id}}:
-{{prompt}}{{params_block}}
+Business question {opaque_id}:
+{prompt}{params_block}
 """
 
 _SQL_PARAMS_HEADER = """
@@ -94,6 +95,16 @@ Business questions
 
 def load_prompts(spec: BenchmarkSpec) -> list[dict]:
     return json.loads(spec.prompts_file.read_text(encoding="utf-8"))
+
+
+def opaque_query_id(spec: BenchmarkSpec, query_id: int) -> str:
+    """Stable agent-facing id that does not expose a benchmark's native id."""
+    source = f"{spec.short_name}:{query_id}".encode()
+    return str(int.from_bytes(blake2s(source, digest_size=4).digest(), "big"))
+
+
+def candidate_filename(spec: BenchmarkSpec, query_id: int, extension: str) -> str:
+    return f"answer_{opaque_query_id(spec, query_id)}{extension}"
 
 
 def active_prompts(spec: BenchmarkSpec) -> list[dict]:
@@ -138,11 +149,11 @@ def _render_params_block(params: dict) -> tuple[str, str]:
 
 
 def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
-    template = _SINGLE_QUERY_TEMPLATE.format(db=spec.db_filename, bench=spec.name)
+    template = _SINGLE_QUERY_TEMPLATE
     params_block, validate_params = _render_params_block(entry.get("params") or {})
     return template.format(
-        id=entry["id"],
-        nn=f"{entry['id']:02d}",
+        opaque_id=opaque_query_id(spec, entry["id"]),
+        filename=candidate_filename(spec, entry["id"], ".preql"),
         prompt=entry["prompt"],
         params_block=params_block,
         validate_params=validate_params,
@@ -163,10 +174,10 @@ def _render_sql_params_block(params: dict) -> str:
 def build_single_query_task_sql(spec: BenchmarkSpec, entry: dict) -> str:
     """SQL-baseline variant of ``build_single_query_task``: the agent writes
     plain DuckDB SQL to ``query{nn}.sql`` (no Trilogy)."""
-    template = _SQL_SINGLE_QUERY_TEMPLATE.format(db=spec.db_filename, bench=spec.name)
+    template = _SQL_SINGLE_QUERY_TEMPLATE
     return template.format(
-        id=entry["id"],
-        nn=f"{entry['id']:02d}",
+        opaque_id=opaque_query_id(spec, entry["id"]),
+        filename=candidate_filename(spec, entry["id"], ".sql"),
         prompt=entry["prompt"],
         params_block=_render_sql_params_block(entry.get("params") or {}),
     )

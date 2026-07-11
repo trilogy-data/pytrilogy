@@ -1,0 +1,30 @@
+# Merchant profiles. These attributes (account type, MCC, capture delay) plus
+# the merchant's computed monthly volume / fraud level (see payments) are what
+# fee rules match against.
+
+import mcc as category; # the merchant's assigned Merchant Category Code
+import acquirer as acquirer;
+
+key name string; # merchant name exactly as it appears on payment transactions
+
+properties name (
+    capture_delay enum<string>['1', '2', '7', 'immediate', 'manual'], # merchant's authorization->settlement capture config: a number of days (as a string), 'immediate', or 'manual'. Fee rules constrain this in buckets: '<3' (numeric days under 3), '3-5', '>5', 'immediate', 'manual'. Faster capture = more expensive.
+    account_type enum<string>['D', 'F', 'H', 'R', 'S'], # merchant business categorization: R = Enterprise Retail, D = Enterprise Digital, H = Enterprise Hospitality, F = Platform Franchise, S = Platform SaaS, O = Other.
+);
+
+root datasource merchant_data (
+    merchant: name,
+    capture_delay,
+    merchant_category_code: category.code,
+    account_type,
+)
+grain (name)
+address merchant_data;
+
+# A merchant can settle through several acquiring banks.
+datasource merchant_acquirers (
+    merchant: ~name,
+    acquirer: acquirer.name,
+)
+grain (name, acquirer.name)
+address merchant_acquirers;

@@ -51,18 +51,39 @@ python evals/dabstep_agent/download_data.py   # fetches data/context (~24MB) + t
 ```bash
 python evals/dabstep_agent/run_eval.py                       # ingest category, all 10
 python evals/dabstep_agent/run_eval.py --query-ids 5,49      # subset
-python evals/dabstep_agent/run_eval.py --categories sql_bare,sql_schema,ingest
+python evals/dabstep_agent/run_eval.py --categories sql_schema,enriched   # the headline A/B
 ```
 
-Same flags as the other benchmarks (`evals/common/main.py`). No enriched model
-exists yet, so `--category enriched` needs `--enriched-model-dir`.
+Same flags as the other benchmarks (`evals/common/main.py`).
 
-Differences from the generator benchmarks, all driven by spec fields:
+## The A/B this eval is built around
+
+DABstep's difficulty is domain knowledge (fee-matching semantics live in
+`manual.md`, not the schema), so doc availability is per-category
+(`spec.doc_categories`):
+
+| Category   | Gets                                             |
+|------------|--------------------------------------------------|
+| sql_bare   | db + markdown docs                               |
+| sql_schema | db + schema.md + markdown docs                   |
+| ingest     | auto Trilogy model + markdown docs               |
+| enriched   | curated Trilogy model ONLY — no markdown, no file read |
+
+The comparison: **agent + raw docs + db** vs **agent + semantic model**. The
+enriched model (`enriched_model/*.preql`, the spec's `default_enriched_dir`)
+is persistent and hand-curated — the manual's content is encoded as concept
+descriptions (ACI code meanings, account types, wildcard/'applies to all'
+matching semantics, the fee formula) and derived concepts (`txn_date`,
+`txn_month`, `intracountry`, `merchant_monthly_volume`,
+`merchant_monthly_fraud_pct`). Improving it over time is part of the eval
+loop; it must carry the domain knowledge on its own, but must NOT encode
+per-question answers.
+
+Other differences from the generator benchmarks:
 
 - `database_builder` — DuckDB built from `data/context` (`db_build.py`);
   list-valued fee-rule fields are unnested into child tables
   (`fee_account_types`, `fee_merchant_category_codes`, `fee_acis`,
   `merchant_acquirers`); empty child set = rule unconstrained on that dimension.
-- `doc_files` + `allow_file_read=True` — `manual.md`, `payments-readme.md`, and
-  `schema_notes.md` are copied into every workspace and the agent may read
-  them (the questions are unanswerable without the manual).
+- `doc_files` — `manual.md`, `payments-readme.md`, and `schema_notes.md`,
+  installed per the category table above.

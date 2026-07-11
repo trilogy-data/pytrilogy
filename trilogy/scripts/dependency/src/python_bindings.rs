@@ -22,7 +22,7 @@ fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[derive(Clone)]
 struct PyGraphCore {
     graph: GraphCore,
