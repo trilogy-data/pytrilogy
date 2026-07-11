@@ -177,8 +177,9 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         default_factory=EnvironmentConceptDict
     )
     grain: Grain = field(default_factory=Grain)
-    # SELECT-level multi-level grouping (`by rollup (a, b)` etc.); propagated to
-    # un-grouped aggregates during finalize so every measure shares one grouping.
+    # SELECT-level multi-level grouping (`by rollup (a, b)` etc.); carried on
+    # the lineage and applied to un-pinned aggregates by the build factory, so
+    # no shared authoring object is ever mutated with the spec.
     grouping: Optional[AggregateGrouping] = None
 
     def __post_init__(self):
@@ -223,6 +224,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                 (j.source_address, j.target_address, j.join_type)
                 for j in self.join_clauses
             ],
+            grouping=self.grouping,
         )
 
     @classmethod

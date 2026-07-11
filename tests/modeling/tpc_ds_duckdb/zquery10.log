@@ -1,6 +1,6 @@
 query_id = "10"
 generator = "v3"
-gen_length = 6412
+gen_length = 6260
 preql_size = 1997
 comp_size = 1858
 generated_sql = """
@@ -55,6 +55,16 @@ GROUP BY
     2,
     3,
     4),
+abundant as (
+SELECT
+    CASE WHEN \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG') and \"thoughtful\".\"sales_date_year\" = 2002 and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"thoughtful\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"webcat_buyers\"
+FROM
+    \"thoughtful\"
+WHERE
+    \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG')
+
+GROUP BY
+    1),
 questionable as (
 SELECT
     CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2002 and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"thoughtful\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"store_buyers\"
@@ -62,16 +72,6 @@ FROM
     \"thoughtful\"
 WHERE
     \"thoughtful\".\"sales_channel\" = 'STORE'
-
-GROUP BY
-    1),
-abundant as (
-SELECT
-    CASE WHEN \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG') and \"thoughtful\".\"sales_date_year\" = 2002 and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"thoughtful\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"webcat_buyers\"
-FROM
-    \"thoughtful\"
-WHERE
-    \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG') and \"thoughtful\".\"sales_purchasing_customer_sk\" in (select questionable.\"store_buyers\" from questionable where questionable.\"store_buyers\" is not null)
 
 GROUP BY
     1)

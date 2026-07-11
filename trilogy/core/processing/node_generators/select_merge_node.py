@@ -38,7 +38,14 @@ from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     validate_stack,
 )
-from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
+from trilogy.core.processing.node_generators.common import (
+    AuthoredJoinPair,
+    reinject_common_join_keys_v2,
+    relevant_authored_join_pairs,
+)
+from trilogy.core.processing.node_generators.presence_probe import (
+    coalescing_axis_group,
+)
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     covered_conditions,
 )
@@ -57,6 +64,7 @@ from trilogy.core.processing.node_generators.select_helpers.source_scoring impor
     deduplicate_datasources,
     get_graph_partial_nodes,
     get_materialization_score,
+    prune_dominated_datasources,
     resolve_subgraphs,
     score_datasource_node,
     subgraph_is_complete,
@@ -84,11 +92,72 @@ __all__ = [
 ]
 
 
+def _authored_key_scope(
+    pairs: list["AuthoredJoinPair"], environment: BuildEnvironment
+) -> set[str]:
+    """Canonical addresses of the pairing machinery for relevant authored
+    joins: each pair's merged canonical plus both members' FK carrier keys.
+    A datasource whose relevant bindings sit entirely inside this scope is a
+    side-path carrier candidate for dominated-source pruning."""
+    scope: set[str] = set()
+    for pair in pairs:
+        scope.add(pair.canonical.address)
+        for member in (pair.left, pair.right):
+            for key_addr in member.keys or ():
+                key_concept = environment.concepts.get(key_addr)
+                scope.add(key_concept.address if key_concept is not None else key_addr)
+    return scope
+
+
+def _authored_join_pairs_enforceable(
+    pairs: list["AuthoredJoinPair"],
+    environment: BuildEnvironment,
+    relevant_datasets: list[str],
+    g: ReferenceGraph,
+    orig_g: ReferenceGraph,
+    depth: int,
+) -> bool:
+    """No-silent-fallback guard: the direct-datasource path can only pair an
+    authored join relation whose members are bound on the kept datasources. A
+    relation needing a dimension hop must fall through to weak-component
+    discovery (which injects the hop) rather than return a single-component
+    plan that silently drops the authored equality."""
+    if not pairs:
+        return True
+    kept_identifiers: set[str] = set()
+    for node in relevant_datasets:
+        datasource = g.datasources.get(node) or orig_g.datasources.get(node)
+        if isinstance(datasource, BuildUnionDatasource):
+            kept_identifiers.update(child.identifier for child in datasource.children)
+        elif datasource is not None:
+            kept_identifiers.add(datasource.identifier)
+    bound_here = {
+        binding.concept
+        for binding in environment.domain_graph.binding_edges
+        if binding.datasource in kept_identifiers
+    }
+    for pair in pairs:
+        unbound = [
+            member.address
+            for member in (pair.left, pair.right)
+            if member.address not in bound_here
+        ]
+        if unbound:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - "
+                f"authored join key members {unbound} not bound on kept "
+                f"datasources; deferring to weak discovery for enforcement"
+            )
+            return False
+    return True
+
+
 def create_pruned_concept_graph(
     g: ReferenceGraph,
     all_concepts: list[BuildConcept],
     datasources: list[BuildDatasource],
     criteria: SearchCriteria,
+    environment: BuildEnvironment | None = None,
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
     allow_intersection: bool = False,
@@ -184,6 +253,20 @@ def create_pruned_concept_graph(
     relevant_datasets = deduplicate_datasources(
         relevant_datasets, relevant_concepts, g_edges, g.datasources, depth, partial
     )
+    authored_pairs: list[AuthoredJoinPair] = (
+        relevant_authored_join_pairs(all_concepts, environment)
+        if environment is not None
+        else []
+    )
+    if authored_pairs and environment is not None:
+        relevant_datasets = prune_dominated_datasources(
+            relevant_datasets,
+            relevant_concepts_pre,
+            g,
+            partial,
+            _authored_key_scope(authored_pairs, environment),
+            depth,
+        )
 
     keep = set(relevant_datasets)
     keep.update(relevant_concepts)
@@ -194,6 +277,11 @@ def create_pruned_concept_graph(
         for xc in c.pseudonyms:
             synonyms[xc] = c.address
     reinject_common_join_keys_v2(orig_g, g, synonyms, add_joins=True)
+
+    if environment is not None and not _authored_join_pairs_enforceable(
+        authored_pairs, environment, relevant_datasets, g, orig_g, depth
+    ):
+        return None
 
     subgraphs = [
         s
@@ -280,6 +368,7 @@ def _source_concepts_via_graph(
                 g,
                 concepts,
                 criteria=attempt,
+                environment=environment,
                 conditions=conditions,
                 datasources=list(environment.datasources.values()),
                 depth=depth,
@@ -680,6 +769,25 @@ def gen_select_merge_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for normals: {normals}, abstract_props: {abstract_props}, constants: {constants}, conditions: {conditions}"
     )
+    # A request that is EXACTLY a coalescing (`full`/`union`) axis is a query
+    # about the unified domain: datasource scoring here would project one
+    # member's table as the axis. Decline it — the discovery loop's ROOT
+    # dispatch assembles the mandatory coalesce of every member side
+    # (gen_coalescing_axis_node) and owns condition application (a presence
+    # probe filter must land post-merge). Any other output in the request
+    # means the author is querying a side; those stay on this path.
+    if (
+        len(normals) == 1
+        and not abstract_props
+        and not constants
+        and normals[0].derivation == Derivation.ROOT
+        and coalescing_axis_group(normals[0].address, environment) is not None
+    ):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} bare coalescing axis request;"
+            " declining direct select so the loop assembles all member sides"
+        )
+        return None
     only_abstract = not normals and not constants and abstract_props
     only_constant = not normals and not abstract_props and constants
     if only_abstract:

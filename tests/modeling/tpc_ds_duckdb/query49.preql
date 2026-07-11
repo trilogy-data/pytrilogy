@@ -10,12 +10,7 @@ auto return_amt <- sum(sales.return_amount) by sales.channel, sales.item.sk;
 auto sale_paid <- sum(sales.net_paid) by sales.channel, sales.item.sk;
 auto return_rank <- rank(sales.item.sk) over (partition by sales.channel order by return_ratio asc);
 auto currency_rank <- rank(sales.item.sk) over (partition by sales.channel order by currency_ratio asc);
-auto channel_label <- case
-    when sales.channel = 'WEB' then 'web'
-    when sales.channel = 'CATALOG' then 'catalog'
-    when sales.channel = 'STORE' then 'store'
-    else null
-end;
+auto channel_label <- lower(sales.channel);
 auto return_ratio <- return_qty::numeric(15,4) / sale_qty::numeric(15,4);
 auto currency_ratio <- return_amt::numeric(15,4) / sale_paid::numeric(15,4);
 

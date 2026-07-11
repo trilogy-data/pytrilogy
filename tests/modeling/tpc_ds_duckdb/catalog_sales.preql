@@ -1,7 +1,12 @@
 # For cross-channel questions, prefer `all_sales` (combines this with store_sales and web_sales).
-# Catalog channel sales info at (item, order_number) grain: quantity,
-# sales / list / wholesale / extended prices, discount and coupon amounts,
-# net paid (with and without tax), net profit, and sold vs ship dates.
+# Catalog channel sales AND returns at (item, order_number) grain — the single
+# model for all catalog-channel analysis, including returns-only questions.
+# Sales: quantity, sales / list / wholesale / extended prices, discount and
+# coupon amounts, net paid (with and without tax), net profit, and sold vs
+# ship dates. Returns (NULL on lines never returned): is_returned flag, refund
+# amount / quantity / tax / fee / ship cost / refunded cash / reversed charge /
+# store credit / net loss, plus return date/time/customer/refund-customer/
+# call-center/catalog-page/reason/demographics/addresses.
 
 import std.money;
 
@@ -9,18 +14,33 @@ import item as item;
 import date as date;
 import date as ship_date;
 import date as sold_date;
+import date as return_date;
 import time as time;
+import time as return_time;
 import customer as ship_customer; # the ship-to customer's latest/current records
 import customer as billing_customer; # the bill-to customer's latest/current records
+import customer as return_customer; # the customer returning the item — use this for "returning customer"
+import customer as return_refund_customer; # the customer refunded for the return (may differ from the returning customer)
 import call_center as call_center;
+import call_center as return_call_center; # the call center that handled the return
 import catalog_page as catalog_page;
+import catalog_page as return_catalog_page; # the catalog page associated with the return
 import warehouse as warehouse;
-import customer_demographic as billing_customer_demographic; # customer demographics recorded at the time of the sale 
+import warehouse as return_warehouse; # the warehouse the item was returned to
+import customer_demographic as billing_customer_demographic; # customer demographics recorded at the time of the sale
+import customer_demographic as return_customer_demographic; # the returning customer's demographics recorded on the return
+import customer_demographic as return_refund_customer_demographic; # the refunded customer's demographics recorded on the return
 import household_demographic as bill_household_demographic; # household demographics recorded at the time of the sale
+import household_demographic as return_household_demographic; # the returning customer's household demographics recorded on the return
+import household_demographic as return_refund_household_demographic; # the refunded customer's household demographics recorded on the return
 import promotion as promotion;
 import ship_mode as ship_mode;
+import ship_mode as return_ship_mode; # the ship mode used for the return
 import address as ship_address;
 import address as bill_address;
+import address as return_address; # the address the return originated from (the returning side)
+import address as return_refund_address; # the address the refund was issued to
+import reason as return_reason;
 
 key order_number int; # Catalog order number identifying a single catalog sales transaction.
 auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day); # Number of calendar days between sold and ship dates.
@@ -43,7 +63,14 @@ properties <order_number, item.sk> (
     coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
     return_amount numeric::usd?, # Refund amount if the line was returned.
     return_net_loss numeric::usd?, # Net financial loss on the return for this line.
-    --return_quantity int?, # Units returned for this line.
+    return_quantity int?, # Units returned for this line.
+    return_tax numeric::usd?, # Sales tax refunded on the return.
+    return_amount_inc_tax numeric::usd?, # Refund amount including tax.
+    return_fee numeric::usd?, # Fee charged on the return.
+    return_ship_cost numeric::usd?, # Shipping cost associated with the return.
+    refunded_cash numeric::usd?, # Cash portion of the refund.
+    reversed_charge numeric::usd?, # Refund portion reversed on the original payment method.
+    store_credit numeric::usd?, # Refund portion issued as store credit.
     _returned_order_number int?, # The catalog_returns order number matched to this line.
     row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.sk combination).
 );
@@ -89,12 +116,34 @@ datasource catalog_sales (
 grain (item.sk, order_number)
 address memory.catalog_sales;
 
-datasource catalog_returns_inline (
+datasource catalog_returns (
+    CR_RETURNED_DATE_SK: return_date.sk, # FK to the date the item was returned.
+    CR_RETURNED_TIME_SK: return_time.sk, # FK to the time-of-day the return was processed.
     CR_ORDER_NUMBER: ~order_number,
     CR_ITEM_SK: ~item.sk,
+    CR_RETURNING_CUSTOMER_SK: ?return_customer.sk, # FK to the customer returning the item.
+    CR_REFUNDED_CUSTOMER_SK: ?return_refund_customer.sk, # FK to the customer receiving the refund (may differ from the returning customer).
+    CR_RETURNING_CDEMO_SK: ?return_customer_demographic.sk, # FK to the returning customer's demographic profile.
+    CR_REFUNDED_CDEMO_SK: ?return_refund_customer_demographic.sk, # FK to the refunded customer's demographic profile.
+    CR_RETURNING_HDEMO_SK: ?return_household_demographic.sk, # FK to the returning customer's household profile.
+    CR_REFUNDED_HDEMO_SK: ?return_refund_household_demographic.sk, # FK to the refunded customer's household profile.
+    CR_RETURNING_ADDR_SK: ?return_address.sk, # FK to the address the return originated from.
+    CR_REFUNDED_ADDR_SK: ?return_refund_address.sk, # FK to the address the refund was issued to.
+    CR_CALL_CENTER_SK: ?return_call_center.sk, # FK to the call center that handled the return.
+    CR_CATALOG_PAGE_SK: ?return_catalog_page.sk, # FK to the catalog page associated with the return.
+    CR_SHIP_MODE_SK: ?return_ship_mode.sk, # FK to the ship mode used for the return.
+    CR_WAREHOUSE_SK: ?return_warehouse.sk, # FK to the warehouse the item was returned to.
+    CR_REASON_SK: ?return_reason.sk, # FK to the return-reason code.
     CR_RETURN_AMOUNT: return_amount,
-    CR_NET_LOSS: return_net_loss,
     CR_RETURN_QUANTITY: return_quantity,
+    CR_RETURN_TAX: return_tax,
+    CR_RETURN_AMT_INC_TAX: return_amount_inc_tax,
+    CR_FEE: return_fee,
+    CR_RETURN_SHIP_COST: return_ship_cost,
+    CR_REFUNDED_CASH: refunded_cash,
+    CR_REVERSED_CHARGE: reversed_charge,
+    CR_STORE_CREDIT: store_credit,
+    CR_NET_LOSS: return_net_loss,
     CR_ORDER_NUMBER: _returned_order_number,
 )
 grain (item.sk, order_number)

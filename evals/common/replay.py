@@ -195,6 +195,71 @@ def _render_artifacts(run_dir: Path, spec: BenchmarkSpec, report: dict) -> None:
     (run_dir / "report.md").write_text(render_markdown(spec, report), encoding="utf-8")
 
 
+def _fork_dir(run_dir: Path) -> Path:
+    for n in range(1, 100):
+        cand = run_dir.parent / f"{run_dir.name}_rerun{n}"
+        if not cand.exists():
+            return cand
+    raise ReplayError(f"too many rerun forks of {run_dir.name}")
+
+
+def fork_run(run_dir: Path, log: Callable[[str], None] = print) -> Path:
+    """Copy a finished run into a fresh sibling dir so a full re-run leaves the
+    original untouched as a baseline. The spare per-worker DB copies (each a full
+    database) are skipped — a replay only reuses ``_worker_0`` and the root DB."""
+    if not (run_dir / "report.json").exists():
+        raise ReplayError(f"{run_dir.name} has no report.json (not a full eval run)")
+    dest = _fork_dir(run_dir)
+    log(f"forking {run_dir.name} -> {dest.name}")
+    shutil.copytree(
+        run_dir, dest, ignore=shutil.ignore_patterns("_worker_[1-9]*", "viewer.html")
+    )
+    return dest
+
+
+def replay_all(
+    run_dir: Path,
+    spec: BenchmarkSpec,
+    *,
+    timeout: int = DEFAULT_AGENT_TIMEOUT,
+    env_file: Path | None = None,
+    log: Callable[[str], None] = print,
+    on_progress: Callable[[int, int, int], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
+) -> dict:
+    """Replay every query in ``run_dir`` in place. The model is re-seeded once up
+    front (an edit to it should re-run) and reused for the rest. ``cancelled`` is
+    polled between queries so a stop request lands at a query boundary."""
+    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    qids = sorted(q["id"] for q in report.get("queries", []))
+    if not qids:
+        raise ReplayError(f"{run_dir.name} has no queries to replay")
+    done = 0
+    for i, qid in enumerate(qids):
+        if cancelled and cancelled():
+            log(f"cancelled after {done}/{len(qids)}")
+            break
+        if on_progress:
+            on_progress(i + 1, len(qids), qid)
+        replay_query(
+            run_dir,
+            spec,
+            qid,
+            timeout=timeout,
+            env_file=env_file,
+            refresh_model=(i == 0),
+            log=log,
+        )
+        done += 1
+    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    return {
+        "count": done,
+        "total": len(qids),
+        "pass_count": report["summary"]["pass_count"],
+        "num_queries": report["meta"]["num_queries"],
+    }
+
+
 def replay_query(
     run_dir: Path,
     spec: BenchmarkSpec,

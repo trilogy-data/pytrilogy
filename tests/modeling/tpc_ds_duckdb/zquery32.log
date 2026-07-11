@@ -1,6 +1,6 @@
 query_id = "32"
 generator = "v3"
-gen_length = 1238
+gen_length = 1262
 preql_size = 403
 comp_size = 527
 generated_sql = """
@@ -20,13 +20,10 @@ WHERE
 thoughtful as (
 SELECT
     \"catalog_sales\".\"CS_ITEM_SK\" as \"item_sk\",
-    avg(\"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_2427483520831228\"
+    avg(CASE WHEN cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date THEN \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"_virt_agg_avg_2427483520831228\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
-WHERE
-    cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
-
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
 GROUP BY
     1)
 SELECT

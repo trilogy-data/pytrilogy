@@ -1,48 +1,55 @@
 query_id = "84"
 generator = "v3"
-gen_length = 2445
-preql_size = 707
+gen_length = 2865
+preql_size = 640
 comp_size = 606
 generated_sql = """
 
 WITH 
-highfalutin as (
+thoughtful as (
 SELECT
-    \"customer_customers\".\"C_CURRENT_ADDR_SK\" as \"customer_address_sk\",
-    \"customer_customers\".\"C_CURRENT_CDEMO_SK\" as \"customer_demographics_sk\",
-    \"customer_customers\".\"C_CURRENT_HDEMO_SK\" as \"customer_household_demographic_sk\",
+    \"ss_store_returns\".\"SR_CDEMO_SK\" as \"customer_demographics_sk\",
+    coalesce(\"ss_store_returns\".\"SR_CDEMO_SK\") as \"_virt_presence_5269535758143238\"
+FROM
+    \"memory\".\"store_returns\" as \"ss_store_returns\"),
+questionable as (
+SELECT
     \"customer_customers\".\"C_CUSTOMER_ID\" as \"customer_id\",
     \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
+    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\",
+    (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) as \"ss_is_returned\",
+    coalesce(\"customer_customers\".\"C_CURRENT_CDEMO_SK\",\"ss_store_returns\".\"SR_CDEMO_SK\") as \"customer_demographics_sk\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
-WHERE
-    \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"customer_customers\".\"C_CURRENT_HDEMO_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6)
-SELECT
-    \"highfalutin\".\"customer_id\" as \"customer_id\",
-    CONCAT(coalesce(\"highfalutin\".\"customer_last_name\",''), ', ', coalesce(\"highfalutin\".\"customer_first_name\",'')) as \"customername\"
-FROM
-    \"highfalutin\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"highfalutin\".\"customer_address_sk\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"memory\".\"store_returns\" as \"returns_store_returns\" on \"highfalutin\".\"customer_demographics_sk\" = \"returns_store_returns\".\"SR_CDEMO_SK\"
-    INNER JOIN \"memory\".\"household_demographics\" as \"customer_household_demographic_household_demographics\" on \"highfalutin\".\"customer_household_demographic_sk\" = \"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"household_demographics\" as \"customer_household_demographic_household_demographics\" on \"customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"income_band\" as \"customer_household_demographic_income_band_income_band\" on \"customer_household_demographic_household_demographics\".\"HD_INCOME_BAND_SK\" = \"customer_household_demographic_income_band_income_band\".\"IB_INCOME_BAND_SK\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not distinct from \"ss_store_returns\".\"SR_CDEMO_SK\"
+    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_store_returns\".\"SR_ITEM_SK\" = \"ss_store_sales\".\"SS_ITEM_SK\" AND \"ss_store_returns\".\"SR_TICKET_NUMBER\" = \"ss_store_sales\".\"SS_TICKET_NUMBER\"
 WHERE
-    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and coalesce(\"highfalutin\".\"customer_demographics_sk\",\"returns_store_returns\".\"SR_CDEMO_SK\") is not null and coalesce(\"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\",\"highfalutin\".\"customer_household_demographic_sk\") is not null and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000 and \"returns_store_returns\".\"SR_TICKET_NUMBER\" is not null
+    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000 and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null)
+),
+abundant as (
+SELECT
+    \"thoughtful\".\"_virt_presence_5269535758143238\" as \"_virt_presence_5269535758143238\",
+    \"thoughtful\".\"customer_demographics_sk\" as \"customer_demographics_sk\"
+FROM
+    \"thoughtful\"
+WHERE
+    \"thoughtful\".\"_virt_presence_5269535758143238\" is not null
 
 GROUP BY
     1,
-    2,
-    \"returns_store_returns\".\"SR_ITEM_SK\",
-    \"returns_store_returns\".\"SR_TICKET_NUMBER\"
+    2)
+SELECT
+    \"questionable\".\"customer_id\" as \"customer_id\",
+    CONCAT(coalesce(\"questionable\".\"customer_last_name\",''), ', ', coalesce(\"questionable\".\"customer_first_name\",'')) as \"customername\"
+FROM
+    \"questionable\"
+    INNER JOIN \"abundant\" on \"questionable\".\"customer_demographics_sk\" is not distinct from \"abundant\".\"customer_demographics_sk\"
+WHERE
+    \"abundant\".\"_virt_presence_5269535758143238\" is not null and \"questionable\".\"ss_is_returned\"
+
 ORDER BY 
-    \"highfalutin\".\"customer_id\" asc nulls first
+    \"questionable\".\"customer_id\" asc nulls first
 LIMIT (100)"""

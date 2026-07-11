@@ -98,6 +98,7 @@ from trilogy.core.processing.condition_utility import (
     contains_window,
     decompose_condition,
     is_scalar_condition,
+    references_any_concept,
 )
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.query_processor import (
@@ -1018,15 +1019,32 @@ class BaseDialect:
         return f"{rendered} {order_item.order.value}"
 
     @staticmethod
-    def _scalar_order_leaves(expr: Any) -> list[BuildConcept] | None:
+    def _scalar_order_leaves(
+        expr: Any, cte: CTE | UnionCTE
+    ) -> list[BuildConcept] | None:
         """Leaf concepts of a purely scalar (concepts, scalar functions,
-        literals) expression; ``None`` if it contains an aggregate, window, or
-        any other compound node that must not be re-wrapped in an aggregate."""
+        literals) expression as it will actually render against ``cte``;
+        ``None`` if that rendering contains an aggregate, window, or any other
+        compound node that must not be re-wrapped in an aggregate. A concept
+        with no sourced column re-renders from its lineage (see
+        ``_render_concept_sql``), so its lineage is judged in its place — a
+        hidden ``grouping(x) as g`` ordered by alias renders ``grouping(x)``,
+        which is already group-scope-evaluated and must never become
+        ``MIN(grouping(x))``."""
         leaves: list[BuildConcept] = []
         stack: list[Any] = [expr]
+        seen: set[str] = set()
         while stack:
             node = stack.pop()
             if isinstance(node, BuildConcept):
+                if (
+                    node.lineage is not None
+                    and not cte.source_map.get(node.address, [])
+                    and node.address not in seen
+                ):
+                    seen.add(node.address)
+                    stack.append(node.lineage)
+                    continue
                 leaves.append(node)
             elif isinstance(node, BuildParenthetical):
                 stack.append(node.content)
@@ -1054,7 +1072,7 @@ class BaseDialect:
         ) and not self._has_local_aggregate(cte):
             return False
         group_addresses = {c.address for c in cte.group_concepts}
-        leaves = self._scalar_order_leaves(expr)
+        leaves = self._scalar_order_leaves(expr, cte)
         if leaves is None or all(c.address in group_addresses for c in leaves):
             return False
         # a re-rendered expression textually identical to a grouped one is
@@ -2452,12 +2470,25 @@ class BaseDialect:
         having: BoolExpr | None = None
         qualify: BoolExpr | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
+        # Rollup-carrier outputs render as SUM(input) in this CTE (see
+        # _render_concept_sql), so a predicate touching one is aggregated at
+        # render time and must live in HAVING even though its input column is
+        # materialized (which would otherwise mark the atom WHERE-safe scalar).
+        rollup_addresses = (
+            {concept.address for concept in cte.rollup_concepts}
+            if cte.group_to_grain
+            else set()
+        )
         if cte.condition:
             # Window predicates (rank/lag/... over) can't live in WHERE or HAVING;
             # they must be lowered to QUALIFY. Fast-path the common no-window case.
-            if not contains_window(cte.condition, materialized=materialized) and (
-                not cte.group_to_grain
-                or is_scalar_condition(cte.condition, materialized=materialized)
+            if (
+                not contains_window(cte.condition, materialized=materialized)
+                and not references_any_concept(cte.condition, rollup_addresses)
+                and (
+                    not cte.group_to_grain
+                    or is_scalar_condition(cte.condition, materialized=materialized)
+                )
             ):
                 where = cte.condition
             else:
@@ -2465,8 +2496,9 @@ class BaseDialect:
                 for x in components:
                     if contains_window(x, materialized=materialized):
                         qualify = qualify + x if qualify else x
-                    elif cte.group_to_grain and not is_scalar_condition(
-                        x, materialized=materialized
+                    elif cte.group_to_grain and (
+                        not is_scalar_condition(x, materialized=materialized)
+                        or references_any_concept(x, rollup_addresses)
                     ):
                         having = having + x if having else x
                     else:

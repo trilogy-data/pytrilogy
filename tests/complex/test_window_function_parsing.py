@@ -1,3 +1,4 @@
+import pytest
 from pytest import raises
 
 from trilogy import Dialects
@@ -16,6 +17,21 @@ from trilogy.dialect import duckdb
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
 from trilogy.parsing.exceptions import ParseError
+from trilogy.parsing.v2.lark_backend import parse_lark
+from trilogy.parsing.v2.pest_backend import parse_pest
+
+LEGACY_WINDOW_NAMES = [
+    "row_number",
+    "rank",
+    "dense_rank",
+    "lag",
+    "lead",
+    "sum",
+    "avg",
+    "max",
+    "min",
+    "count",
+]
 
 
 def test_select() -> None:
@@ -619,3 +635,58 @@ select year, diff order by year asc;
     exec.parse_text(model)
     sqls = exec.generate_sql(query)
     assert len(sqls) == 2
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+@pytest.mark.parametrize("name", LEGACY_WINDOW_NAMES)
+def test_legacy_window_name_as_concept_alias(backend, name) -> None:
+    """A concept sharing a legacy window function name must still alias:
+    `select count as n` is a reference + alias, not a window over a concept
+    named `as`."""
+    backend(f"key x int;\nauto {name} <- max(x);\nselect {name} as n;")
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+@pytest.mark.parametrize(
+    "select",
+    [
+        "select count -> n;",
+        "select count ;",
+        "select count , x;",
+        "select count\n as n;",
+        "select cast(count as int) as n;",
+    ],
+)
+def test_legacy_window_name_concept_boundaries(backend, select) -> None:
+    backend(f"key x int;\nauto count <- count(x);\n{select}")
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+@pytest.mark.parametrize(
+    "select",
+    [
+        "select count x as n;",
+        "select rank 2 x over g as n;",
+        "select lag 1 x by g desc as n;",
+        "select row_number x over g order by x desc as n;",
+    ],
+)
+def test_legacy_window_syntax_still_parses(backend, select) -> None:
+    backend(f"key x int;\nkey g int;\n{select}")
+
+
+def test_legacy_window_name_concept_execution() -> None:
+    exec = Dialects.DUCK_DB.default_executor()
+    rows = exec.execute_query("""
+key id int;
+datasource flights (
+    id: id
+)
+grain (id)
+query '''select * from (values (1),(2),(3)) as t(id)''';
+
+auto count <- count(id);
+
+select count as number_of_flights;
+""").fetchall()
+    assert rows == [(3,)]

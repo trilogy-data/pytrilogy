@@ -1,6 +1,6 @@
 query_id = "22"
 generator = "v3"
-gen_length = 1749
+gen_length = 1645
 preql_size = 589
 comp_size = 806
 generated_sql = """
@@ -10,10 +10,7 @@ highfalutin as (
 SELECT
     avg(CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
 FROM
-    \"memory\".\"customer\" as \"orders_customer_customers\"
-WHERE
-    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
-),
+    \"memory\".\"customer\" as \"orders_customer_customers\"),
 thoughtful as (
 SELECT
     \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",

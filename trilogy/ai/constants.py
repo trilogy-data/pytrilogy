@@ -46,7 +46,9 @@ Join on the full grain. When blending two FACT models, write one join clause per
 trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH union join a.order_number = b.order_number AND union join a.item.id = b.item.id.
 Matching only one key of a multi-key grain may cause duplication.
 
-Joins do NOT ever drop results; they only merge models. To filter, explicit add a condition on the element to restrict to. 
+Joins do *not restrict results*; they only enable traversal across models with those keys. To filter, explicit add a condition on the element to restrict to. 
+
+To restrict returned values, explicitly add conditions. union join x=y does not restrict the result to where x=y unless that condition is defined in the where clause.
 
 Full example: trilogy agent-info syntax example scoped-join.
 
@@ -82,8 +84,8 @@ LIMIT?
 
 If unspecified (no BY) aggregates always group to the grain of dimensions in the select, no matter where they appear in the query.
 
-
-A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. These are standalone statements, not part of a select.  
+A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. 
+These are standalone statements, not part of a select, and create their own local outputs.
 
 A rowset creates a "new" model with all concepts namespaced; `abc.def` output in a rowset called `foo` is
 referenced as `foo.abc.def`. Use joins to merge the rowset outputs back into the global namespace if needed.
@@ -104,8 +106,8 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
 - **Grouping is automatic** by the non-aggregated fields in the SELECT — never write GROUP BY. Aggregates inherit the grain of the select output list automatically, in where/select/having. 
    Use explicit grain agg(x) by <dims> as needed to override the default. 
    Use `by *` to aggregate across all data (a single row output).
-   auto x_resp <- sum(y); # responsive to query grain if you select x_resp
-   auto x_fixed <- sum(y) by *; # always a single row output, regardless of query grain
+   auto avg_credits_at_query_grain <- avg(enroll.credits); # responsive to the consuming query's grain
+   auto avg_credits_single_row <- avg(enroll.credits) by *; # explicit single-row grain, regardless of query grain
 - **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows — e.g. one output row per matching fact when the projected columns repeat — include the fact's grain keys in the select, hidden with `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
@@ -161,6 +163,7 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 ## Aggregation and grouping
 
 - Aggregates group at the query's automatic grain by default; 
+- An aggregate without an explicit `by` grain is responsive, including when defined as an `auto` concept. Its grain is determined where it is consumed, not where it is declared: `auto avg_credits <- avg(enroll.credits);` becomes per-department when selected with `enroll.department`.
 - override one aggregate's grain with inline grouping: `sum(metric) by dim1, dim2 as sum_by_dim1_dim2`.
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens — function calls, casts, arithmetic: `avg(price) by (substring(phone, 1, 2))`.
 - **Multi-level grouping** (ROLLUP / CUBE / GROUPING SETS) is a property of the WHOLE select — a clause after the select list (before `having`/`order by`/`limit`) that computes the query at multiple grain levels in one pass. It applies to EVERY aggregate in the select that has no explicit `by` grain, so there is exactly one consistent grouping:
@@ -225,17 +228,26 @@ It appears as a prefix on a select item (`~customer.id`) to flag the value as pa
   7. Logical `or`.
 - Cast with `::type`, e.g. `"2020-01-01"::date`.
 - Date parts have no quotes: `date_part(enroll.date, year)`, never `date_part(enroll.date, 'year')`. Prefer idiomatic function forms when available: `year(enroll.date)`.
+- `date_diff(start_date, end_date, unit)` computes `end_date - start_date`. Argument order matters: `date_diff('2020-01-01'::date, '2020-01-02'::date, day)` returns `1`; a shipping lag is `date_diff(sold_date, ship_date, day)`.
 - All functions take parentheses; zero-argument functions use empty ones (`current_date()`).
 - Comments use `#` only, per line. -- is NOT a comment.
 - When several columns share the same calculation, factor it into a `def` macro (invoked with `@name(...)`); for complex logic, break the query into reusable concept declarations.
 
 ## Worked examples
 
-**Reusable concepts, filtered aggregates, and dual ranks.** For names with more than 10 births in Vermont ever, find the top 10 names by total births across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho and nationally:
+**Reusable concepts, filtered aggregates, and dual ranks.** 
+For names with more than 10 births in Vermont ever, find the top 10 names by total births across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho and nationally:
 
 ```
 # break up a query by defining reusable components
+# these are macros; they will be evaluated in select context
+# and respond to that context
 auto all_births <- sum(births);
+
+# a rowset binds all_data.total_births;
+# it is isolated and if reference din a query will *not* respond to local context
+# it will be evaluated as the output of this select
+with all_data as select sum(births) as total_births;
 
 # force an explicit grain rather than the select's implicit one:
 # births by name, ignoring state

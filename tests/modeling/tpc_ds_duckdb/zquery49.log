@@ -1,7 +1,7 @@
 query_id = "49"
 generator = "v3"
-gen_length = 5479
-preql_size = 1437
+gen_length = 5331
+preql_size = 1297
 comp_size = 4352
 generated_sql = """
 
@@ -97,12 +97,7 @@ vacuous as (
 SELECT
     \"yummy\".\"return_ratio\" as \"return_ratio\",
     \"yummy\".\"sales_item_sk\" as \"sales_item_sk\",
-    CASE
-	WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN 'web'
-	WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN 'store'
-	ELSE null
-	END as \"channel_label\",
+    LOWER(\"yummy\".\"sales_channel\")  as \"channel_label\",
     rank() over (partition by \"yummy\".\"sales_channel\" order by \"yummy\".\"currency_ratio\" asc ) as \"currency_rank\",
     rank() over (partition by \"yummy\".\"sales_channel\" order by \"yummy\".\"return_ratio\" asc ) as \"return_rank\"
 FROM

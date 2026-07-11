@@ -182,6 +182,7 @@ class MergeNode(StrategyNode):
         virtual_output_concepts: List[BuildConcept] | None = None,
         existence_concepts: List[BuildConcept] | None = None,
         ordering: BuildOrderBy | None = None,
+        preserve_parents: bool = False,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -205,6 +206,11 @@ class MergeNode(StrategyNode):
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
         self.node_joins: List[NodeJoin] | None = node_joins
+        # A deliberately-assembled multi-side merge (coalescing axis, presence
+        # probe): every parent is a distinct SIDE of a declared relation, so
+        # the single-parent/duplicate collapse shortcuts must not fire — same
+        # addresses across sides are different domains, not redundancy.
+        self.preserve_parents = preserve_parents
 
         final_joins: List[NodeJoin] = []
         if self.node_joins is not None:
@@ -363,10 +369,13 @@ class MergeNode(StrategyNode):
             else:
                 merged[source.identifier] = source
 
-        # it's possible that we have more sources than we need
-        final_joins, merged = deduplicate_nodes_and_joins(
-            final_joins, merged, self.logging_prefix, self.environment
-        )
+        # it's possible that we have more sources than we need — unless every
+        # parent is a deliberate side of a coalescing relation (same addresses
+        # across sides are different domains, not redundancy)
+        if not self.preserve_parents:
+            final_joins, merged = deduplicate_nodes_and_joins(
+                final_joins, merged, self.logging_prefix, self.environment
+            )
         # early exit if we can just return the parent
         final_datasets: List[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
@@ -397,7 +406,10 @@ class MergeNode(StrategyNode):
         # (e.g. group_if_required_v2 collapsing a fan-out enrichment back to the
         # aggregate grain). Returning a parent that merely covers the output
         # *columns* would silently drop that group, so skip the short-circuits.
-        can_drop_merge = self.force_group is not True
+        # ``preserve_parents`` marks a deliberate multi-side assembly (each
+        # parent a distinct side of a coalescing relation) — a covering parent
+        # is one side's domain, never "good enough" for the unified axis.
+        can_drop_merge = self.force_group is not True and not self.preserve_parents
         if can_drop_merge and len(merged.keys()) == 1:
             final: QueryDatasource | BuildDatasource = list(merged.values())[0]
             if (
@@ -649,6 +661,22 @@ class MergeNode(StrategyNode):
             for pair in join.concept_pairs or []
             if pair.left.address != pair.right.address
         ]
+        # An authored coalescing (union/full) key group is one merged key
+        # wherever its members co-appear, but a chained group (a=b=c) can reach
+        # this node with one pairing already fused a level down — this node's
+        # own joins only name (b,c), so (a) never learns c's source. Seed the
+        # classes with the authored groups' co-present members.
+        if outer_pairs:
+            present = set(source_map.keys())
+            for (
+                member,
+                group_mates,
+            ) in self.environment.distinct_scoped_join_group_mates().items():
+                if member not in present:
+                    continue
+                outer_pairs.extend(
+                    (member, mate) for mate in group_mates if mate in present
+                )
         for key_class in _key_equivalence_classes(outer_pairs):
             combined: set[BuildDatasource | QueryDatasource | UnnestJoin] = set()
             for addr in key_class:
@@ -729,6 +757,7 @@ class MergeNode(StrategyNode):
             force_join_type=self.force_join_type,
             existence_concepts=list(self.existence_concepts),
             ordering=self.ordering,
+            preserve_parents=self.preserve_parents,
         )
 
 

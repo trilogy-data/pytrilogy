@@ -23,6 +23,7 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
+    Concept,
     ConceptRef,
     Conditional,
     Function,
@@ -192,6 +193,27 @@ def base_join_to_join(
     )
 
 
+def _pseudonym_closure(address: str, ctes: List[CTE | UnionCTE]) -> set[str]:
+    """Addresses transitively pseudonym-equivalent to ``address`` across the
+    child CTEs' output columns. Pseudonym sets on chained merged keys
+    (`a=b=c`) are pairwise, not closed — a↔b and b↔c without a↔c — so a
+    one-hop test misses the far member."""
+    edges: Dict[str, set[str]] = defaultdict(set)
+    for cte in ctes:
+        for column in cte.output_columns:
+            for pseudonym in column.pseudonyms:
+                edges[column.address].add(pseudonym)
+                edges[pseudonym].add(column.address)
+    closure = {address}
+    stack = [address]
+    while stack:
+        for neighbor in edges.get(stack.pop(), ()):
+            if neighbor not in closure:
+                closure.add(neighbor)
+                stack.append(neighbor)
+    return closure
+
+
 def generate_source_map(
     query_datasource: QueryDatasource, all_new_ctes: List[CTE | UnionCTE]
 ) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
@@ -223,6 +245,7 @@ def generate_source_map(
                 )
             # when multiple sources exist (full join key), include partials
             multi_source = len(qdv) > 1
+            closure = _pseudonym_closure(qdk, matches) if multi_source else {qdk}
             for cte in matches:
                 output_address = [
                     x.address
@@ -233,7 +256,8 @@ def generate_source_map(
                 # that outputs it under a pseudonym column (da for the merged db);
                 # accept that side so the renderer coalesces both physical columns.
                 provides_pseudonym = multi_source and any(
-                    qdk in x.pseudonyms for x in cte.output_columns
+                    x.address != qdk and x.address in closure
+                    for x in cte.output_columns
                 )
                 if (
                     qdk in output_address
@@ -740,6 +764,43 @@ def _get_query_node_v4(
     return ds
 
 
+def _authored_reference_addresses(
+    statement: SelectLineage | MultiSelectLineage,
+    environment: Environment,
+) -> set[str]:
+    """Transitive closure of AUTHOR-referenced concept addresses for this
+    select: outputs, WHERE/HAVING/ORDER BY arguments, and their lineage —
+    walked on author objects, before scoped-join canonical substitution
+    rewrites addresses. The scoped-join declarations themselves are
+    deliberately excluded: a declared relation whose far side the author
+    never references is pure domain metadata and must not force that side
+    into the plan."""
+    selects = (
+        statement.selects if isinstance(statement, MultiSelectLineage) else [statement]
+    )
+    stack: list[str] = []
+    locals_pool: dict[str, Concept] = {}
+    clauses = [statement.where_clause, statement.having_clause, statement.order_by]
+    for select in selects:
+        stack.extend(ref.address for ref in select.output_components)
+        clauses.extend([select.where_clause, select.having_clause, select.order_by])
+        locals_pool.update(select.local_concepts)
+    for clause in clauses:
+        if clause is not None:
+            stack.extend(ref.address for ref in clause.concept_arguments)
+    closure: set[str] = set()
+    while stack:
+        address = stack.pop()
+        if address in closure:
+            continue
+        closure.add(address)
+        concept = locals_pool.get(address) or environment.concepts.get(address)
+        if concept is None:
+            continue
+        stack.extend(ref.address for ref in concept.concept_arguments)
+    return closure
+
+
 def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
@@ -783,6 +844,9 @@ def get_query_node(
         canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=caches.scoped_joins,
+    )
+    build_environment.statement_authored_addresses = _authored_reference_addresses(
+        statement, environment
     )
 
     _carry_order_by_concepts(build_statement)

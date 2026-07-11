@@ -157,15 +157,25 @@ def datatype_to_field_prompt(
 
 def concepts_to_fields_prompt(environment: Environment) -> str:
     """Concise JSON concept dump for the environment, sharing the `explore`
-    command's grouped formatting: local namespaces in full declaration syntax,
-    imported namespaces collapsed to name-only lists. Builtins and the internal
-    env scaffolding are filtered out, mirroring `explore`'s defaults."""
+    command's grouped formatting: local and imported namespaces in full
+    declaration syntax, with role-played conformed dimensions deduped into one
+    combined-key entry carrying the per-role import descriptions. Builtins and
+    the internal env scaffolding are filtered out, mirroring `explore`'s
+    defaults."""
     items = [
         (addr, concept)
         for addr, concept in environment.concepts.items()
         if not addr.startswith("__") and not addr.startswith("local._env_")
     ]
-    return json.dumps(build_concepts_payload(environment, items), indent=2)
+    import_descriptions = {
+        alias: imp.description
+        for alias, imps in environment.imports.items()
+        for imp in imps
+        if imp.description
+    }
+    return json.dumps(
+        build_concepts_payload(environment, items, import_descriptions), indent=2
+    )
 
 
 def create_query_prompt(query: str, environment: Environment) -> str:

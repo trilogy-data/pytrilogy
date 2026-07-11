@@ -28,7 +28,7 @@ this one.
 
 from typing import List
 
-from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation, JoinType
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
@@ -40,6 +40,13 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import unsatisfied_optionals
+from trilogy.core.processing.node_generators.presence_probe import (
+    is_presence_probe as _is_presence_probe,
+)
+from trilogy.core.processing.node_generators.presence_probe import (
+    member_binding_datasources,
+    probe_member_address,
+)
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -209,11 +216,21 @@ def _rowset_scope_routed(concept: BuildConcept) -> bool:
     return False
 
 
-def _is_presence_probe(address: str) -> bool:
-    """Per-side presence probe minted by `Factory._coalescing_presence_probe`
-    (the null-test rewrite for coalescing join key-group members). The single
-    place the probe naming convention is interpreted."""
-    return PRESENCE_PROBE_PREFIX in address
+def _rowset_scopes(concept: BuildConcept) -> set[str]:
+    """Names of the rowsets `concept`'s value (transitively) derives from."""
+    scopes: set[str] = set()
+    stack = [concept]
+    seen: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        if isinstance(current.lineage, BuildRowsetItem):
+            scopes.add(current.lineage.rowset.name)
+            continue
+        stack.extend(current.concept_arguments)
+    return scopes
 
 
 def _local_exposure_obligations(
@@ -261,6 +278,13 @@ def _local_exposure_obligations(
             consider(environment.concepts.get(candidate_addr), producible)
     for concept in environment.concepts.values():
         if _is_presence_probe(concept.address):
+            # A probe whose member is datasource-bound (ROOT) belongs to
+            # gen_presence_probe_node's pinned scan. Its argument is the
+            # canonicalized group key, which an anchor rowset may well output
+            # — claiming it here would compute the probe on the wrong side.
+            member = probe_member_address(concept.address, environment)
+            if member is not None and member_binding_datasources(member, environment):
+                continue
             consider(concept, own)
     return out
 
@@ -761,6 +785,125 @@ def _enrich_via_derived_join_key(
     )
 
 
+def _enrich_via_group_mate_keys(
+    enrich_remaining: List[BuildConcept],
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
+    g,
+    depth: int,
+    source_concepts,
+    history: History,
+    conditions: BuildWhereClause | None,
+    node: RowsetNode,
+    coalescing_members: dict[str, set[str]],
+    producible: set[str],
+) -> StrategyNode | None:
+    """Enrich a rowset across a coalescing scoped join whose key groups expose
+    no non-rowset bridge canonical (rowset <-> rowset `union`/`full` join, q59).
+
+    Each side of such a join materializes its OWN key-group member and the
+    merge pairs the group over the shared canonical, so there is no external
+    bridge column to request — the columns to source are the OTHER side's
+    members themselves. Sourcing them pulls the other scope directly and never
+    routes back through this rowset; a mate computed from this node's own
+    outputs (LEFT-anchor substitution) would, and is declined. Returns None to
+    fall through to the bare node when a group we expose has no externally
+    sourceable mate or the other side cannot expose one — merging then would
+    drop an authored key and fan out."""
+    node_outputs = {c.address for c in node.output_concepts}
+    # Only request mates on the sides this enrichment actually sources: a mate
+    # from an UNrequested side re-enters that rowset's own generation, whose
+    # symmetric enrichment routes back through this one — unbounded on a
+    # three-way coalescing group (a=b=c). The unrequested side pairs with the
+    # group at the level that does source it.
+    needed_scopes: set[str] = set()
+    for c in enrich_remaining:
+        needed_scopes |= _rowset_scopes(c)
+    mate_groups: list[set[str]] = []
+    mates: list[BuildConcept] = []
+    for out_c in node.output_concepts:
+        group_mates = coalescing_members.get(out_c.address)
+        if not group_mates:
+            continue
+        external: list[BuildConcept] = []
+        for mate_addr in sorted(group_mates):
+            if mate_addr in node_outputs:
+                continue
+            mate = environment.concepts.get(mate_addr)
+            if mate is None:
+                continue
+            mate_inputs = {a.address for a in mate.concept_arguments}
+            if mate_inputs and mate_inputs <= producible:
+                continue
+            external.append(mate)
+        if not external:
+            return None
+        needed = [
+            m
+            for m in external
+            if not (scopes := _rowset_scopes(m)) or scopes & needed_scopes
+        ]
+        if not needed:
+            continue
+        mate_groups.append(
+            {m.address for m in needed} | {p for m in needed for p in m.pseudonyms}
+        )
+        mates.extend(needed)
+    if not mates:
+        return None
+    # A presence probe over a mate must compute inside the mate's own scope,
+    # pre-merge (`_local_exposure_obligations`): post-merge the member reads as
+    # the fused group coalesce and the probe can never be NULL. The outer loop
+    # can't request it once this merge satisfies the member, so carry it here.
+    mate_addresses = {m.address for m in mates}
+    mate_probes = [
+        c
+        for c in environment.concepts.values()
+        if _is_presence_probe(c.address)
+        and probe_member_address(c.address, environment) in mate_addresses
+    ]
+    enrich_node = source_concepts(
+        mandatory_list=unique(mates + mate_probes + enrich_remaining, "address"),
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+        conditions=conditions,
+        history=history,
+    )
+    if not enrich_node:
+        return None
+    exposed: set[str] = set()
+    for x in enrich_node.output_concepts:
+        if x.address in enrich_node.hidden_concepts:
+            continue
+        exposed.add(x.address)
+        exposed |= set(x.pseudonyms)
+    if any(not (exposed & group) for group in mate_groups):
+        return None
+    for x in list(node.output_concepts):
+        if x.address in node.hidden_concepts and x.address in coalescing_members:
+            node.unhide_output_concepts([x])
+    non_hidden = [
+        x for x in node.output_concepts if x.address not in node.hidden_concepts
+    ]
+    non_hidden_enrich = [
+        x
+        for x in enrich_node.output_concepts
+        if x.address not in enrich_node.hidden_concepts
+    ]
+    carried_probes = [
+        p for p in mate_probes if p.address in {c.address for c in non_hidden_enrich}
+    ]
+    return MergeNode(
+        input_concepts=unique(non_hidden + non_hidden_enrich, "address"),
+        output_concepts=unique(non_hidden + local_optional + carried_probes, "address"),
+        environment=environment,
+        depth=depth,
+        parents=[node, enrich_node],
+        preexisting_conditions=conditions.conditional if conditions else None,
+    )
+
+
 def _enrich_rowset_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -870,6 +1013,25 @@ def _enrich_rowset_node(
         + [canonical for _, canonical in bridge_keys]
     )
     if not possible_joins:
+        # No bridge canonical at all — the rowset<->rowset coalescing-join case:
+        # every group member is a rowset/derived column, so the only join
+        # columns are the other side's own members.
+        if relation_remaining:
+            merged = _enrich_via_group_mate_keys(
+                unique(relation_remaining + routed_cond, "address"),
+                local_optional,
+                environment,
+                g,
+                depth,
+                source_concepts,
+                history,
+                conditions if len(routed_cond) == len(cond_remaining) else None,
+                node,
+                coalescing_members,
+                producible,
+            )
+            if merged is not None:
+                return merged
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
         )

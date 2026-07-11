@@ -248,6 +248,7 @@ def resolve_join_order_v2(
     grain_size: dict[str, int] | None = None,
     full_join_keys: set[str] | None = None,
     anchor_key_nodes: set[str] | None = None,
+    authored_key_nodes: set[str] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -298,9 +299,16 @@ def resolve_join_order_v2(
         concept: [x for x in g.neighbors(concept) if x in datasources]
         for concept in concepts
     }
+    # An AUTHORED join key (scoped join / merge relation) pivots FIRST: its
+    # equality is a semantic pairing contract, not a heuristic tree edge. If a
+    # cheaper shared key (q25's item) seeds the tree instead, the sides pair on
+    # that key alone and the authored predicate lands on a leaf dimension where
+    # a preserving join NULLs the dimension instead of un-pairing the rows —
+    # silent wrong results under an unlucky order.
+    authored = authored_key_nodes or set()
     pivots = sorted(
         [x for x in pivot_map if len(pivot_map[x]) > 1],
-        key=lambda x: (len(pivot_map[x]), len(x), x),
+        key=lambda x: (x not in authored, len(pivot_map[x]), len(x), x),
     )
     solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
     eligible_left: set[str] = set()
@@ -445,6 +453,11 @@ def resolve_join_order_v2(
 def side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
     if side is None:
         return False
+    # Intrinsic nullability: the concept's own definition can yield NULL (a
+    # `?` column, a filtered value or aggregate, a no-else CASE) on any side
+    # that carries it, regardless of that side's join structure.
+    if concept.is_nullable:
+        return True
     equivalent = concept.equivalent_addresses
     if any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts):
         return True
@@ -707,6 +720,21 @@ def get_node_joins(
     anchor_key_nodes = {
         canon_node(a) for a in environment.domain_graph.left_anchor_keys()
     }
+    # Canonical keys of ROOT-member authored join groups (the property-hop
+    # family): pivot the join tree on these first so the authored equality is
+    # the pairing between the sides regardless of cheaper shared-key edges.
+    # Derived/rowset-keyed groups are deliberately excluded — their ordering
+    # rides the rowset exposure machinery, and re-seeding them spins q2-family
+    # plans. Local import: common.py imports nodes.merge_node, which imports
+    # this module.
+    from trilogy.core.processing.node_generators.common import (
+        authored_join_pair_candidates,
+    )
+
+    authored_key_nodes = {
+        canon_node(pair.canonical.address)
+        for pair in authored_join_pair_candidates(environment)
+    }
     joins = resolve_join_order_v2(
         graph,
         partials=partials,
@@ -714,6 +742,7 @@ def get_node_joins(
         grain_size=grain_size,
         full_join_keys=full_join_keys,
         anchor_key_nodes=anchor_key_nodes,
+        authored_key_nodes=authored_key_nodes,
     )
     return [
         BaseJoin(

@@ -21,6 +21,7 @@ from trilogy.core.optimizations.utils import (
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
+    condition_proves_non_null,
     condition_value_implies,
     conditions_mutually_exclusive,
     gather_windows,
@@ -46,6 +47,50 @@ def _transitively_depends_on(node: CTE | UnionCTE, target_name: str) -> bool:
         seen.add(dep.name)
         stack.extend(dep.dependency_nodes())
     return False
+
+
+def _predicate_safe_past_null_extension(
+    candidate: BuildComparison | BuildConditional | BuildParenthetical,
+    cte: CTE | UnionCTE,
+    parent_cte: CTE | UnionCTE,
+) -> bool:
+    """A predicate that NULL operands can satisfy (`x IS NULL`, null-defaulted
+    coalesce forms) may hold at this CTE precisely BECAUSE an outer join
+    null-extended the parent's columns — a presence probe's `IS NULL` is true
+    exactly on the rows the parent contributed nothing to. Evaluated inside
+    the parent it reads the parent's real rows instead and inverts meaning
+    (the parent's own probe column is never null, so the pushed filter empties
+    the parent and the outer test trivially passes for every row). Only
+    null-REJECTING predicates commute with a null-extending join: rows they
+    keep must have real parent values, so pre- and post-join filtering agree."""
+    if not isinstance(cte, CTE):
+        return True
+    null_extended = False
+    for join in cte.joins:
+        if not isinstance(join, Join):
+            continue
+        sides: list[str] = [join.right_cte.name]
+        if join.left_cte is not None:
+            sides.append(join.left_cte.name)
+        if parent_cte.name not in sides:
+            continue
+        if join.jointype is JoinType.FULL:
+            null_extended = True
+        elif (
+            join.jointype is JoinType.LEFT_OUTER
+            and join.right_cte.name == parent_cte.name
+        ):
+            null_extended = True
+        elif (
+            join.jointype is JoinType.RIGHT_OUTER
+            and join.left_cte is not None
+            and join.left_cte.name == parent_cte.name
+        ):
+            null_extended = True
+    if not null_extended:
+        return True
+    proven = condition_proves_non_null(candidate)
+    return {x.address for x in candidate.row_arguments} <= proven
 
 
 def _promotion_would_cycle(
@@ -212,6 +257,40 @@ def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
     return True
 
 
+def _predicate_safe_past_grouping(candidate, cte: CTE | UnionCTE) -> bool:
+    """True if ``candidate`` can be applied inside ``cte`` without changing any
+    aggregate it computes.
+
+    A scalar predicate lands in a grouping CTE as WHERE — a pre-aggregation row
+    filter — which preserves the aggregates only when the predicate is constant
+    within each group, so it drops whole groups: every row argument must be a
+    group key (or pseudonym of one), or a property whose keys are all group
+    keys. Anything else filters rows *inside* groups and silently changes the
+    aggregates (q81: a grain-key membership semijoin pushed into an
+    avg-by-partition group averaged only the semijoin-surviving rows).
+
+    This holds for every atom regardless of provenance: pushdown is an
+    optimization pass, so a push that changes what a group computes is a
+    semantics change, never a legal relocation. Pre-aggregation placement of a
+    WHERE is discovery's job, not this pass's.
+    """
+    if isinstance(cte, UnionCTE) or not cte.group_to_grain:
+        return True
+    if not isinstance(candidate, BuildConceptArgs):
+        return False
+    group_addrs: set[str] = set()
+    for key in cte.group_concepts:
+        group_addrs.add(key.address)
+        group_addrs.update(key.pseudonyms)
+    for arg in candidate.row_arguments:
+        if arg.address in group_addrs or set(arg.pseudonyms) & group_addrs:
+            continue
+        if arg.keys and set(arg.keys).issubset(group_addrs):
+            continue
+        return False
+    return True
+
+
 class PredicatePushdown(OptimizationRule):
     def __init__(self, having_alias: bool = False) -> None:
         super().__init__()
@@ -306,6 +385,8 @@ class PredicatePushdown(OptimizationRule):
                 x for x in branch.output_columns if x.address in non_materialized
             ]
             if any(isinstance(x.lineage, BuildWindowItem) for x in concrete):
+                return False
+            if not _predicate_safe_past_grouping(candidate, branch):
                 return False
             join_derived_addrs = {x.address for x in branch.join_derived_concepts}
             if row_conditions & join_derived_addrs:
@@ -486,6 +567,18 @@ class PredicatePushdown(OptimizationRule):
             self.debug(
                 f"CTE {parent_cte.name} computes a window whose result a pushed "
                 f"{candidate} would change (predicate not on partition keys); not pushing"
+            )
+            return False
+        if not _predicate_safe_past_grouping(candidate, parent_cte):
+            self.debug(
+                f"CTE {parent_cte.name} groups by keys that do not determine a pushed "
+                f"{candidate} (would filter rows inside groups); not pushing"
+            )
+            return False
+        if not _predicate_safe_past_null_extension(candidate, cte, parent_cte):
+            self.debug(
+                f"CTE {parent_cte.name} is null-extended by {cte.name}'s outer join "
+                f"and {candidate} is not null-rejecting; not pushing"
             )
             return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}

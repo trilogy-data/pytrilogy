@@ -1,8 +1,11 @@
 # For cross-channel questions, prefer `all_sales` (combines this with catalog_sales and web_sales).
-# Store channel sales info at (item, ticket_number) grain: quantity,
-# sales / list / wholesale / extended prices, discount and coupon amounts,
-# net paid, extended tax, net profit, and an is_returned flag plus
-# per-line refund amount / quantity / net loss for returned items.
+# Store channel sales AND returns at (item, ticket_number) grain — the single
+# model for all store-channel analysis, including returns-only questions.
+# Sales: quantity, sales / list / wholesale / extended prices, discount and
+# coupon amounts, net paid, extended tax, net profit. Returns (NULL on lines
+# never returned): is_returned flag, refund amount / quantity / tax / fee /
+# ship cost / refunded cash / reversed charge / store credit / net loss, plus
+# return date/time/store/customer/reason/demographics/address.
 #
 
 import std.money;
@@ -16,10 +19,13 @@ import customer as customer; # the customer account tied to the order
 import customer as return_customer; # the customer account tied to the return
 import promotion as promotion;
 import customer_demographic as customer_demographic; # the customer demographics recorded on this sale (the buyer's demographic profile at the time of purchase)
+import customer_demographic as return_customer_demographic; # the customer demographics recorded on the return (the returner's demographic profile at return time)
 import household_demographic as sale_household_demographic; # the household demographics recorded on this sale (the buyer's household at the time of purchase)
+import household_demographic as return_household_demographic; # the household demographics recorded on the return (the returner's household at return time)
 import store as store;
 import store as return_store;
 import address as sale_address; # the customer's address as recorded on the sale (the purchase-time address)
+import address as return_address; # the returning customer's address as recorded on the return
 import reason as return_reason;
 
 key ticket_number int; # Store-sale ticket (receipt) number identifying a single in-store transaction.
@@ -41,6 +47,13 @@ properties <ticket_number, item.sk> (
     return_amount numeric::usd?, # Refund amount if the item on this line was returned.
     return_quantity int?, # Number of units returned for this line.
     return_net_loss numeric::usd?, # Net financial loss on the return for this line.
+    return_tax numeric::usd?, # Sales tax refunded on the return.
+    return_amount_inc_tax numeric::usd?, # Refund amount including tax.
+    return_fee numeric::usd?, # Fee charged on the return.
+    return_ship_cost numeric::usd?, # Shipping cost associated with the return.
+    refunded_cash numeric::usd?, # Cash portion of the refund.
+    reversed_charge numeric::usd?, # Refund portion credited back to the payment card.
+    store_credit numeric::usd?, # Refund portion issued as store credit.
     row_counter int, # Constant 1, used for unconditional row counts.
 );
 
@@ -83,8 +96,18 @@ datasource store_returns (
     SR_RETURN_TIME_SK: return_time.sk, # FK to time-of-day the return was processed.
     SR_ITEM_SK: ~item.sk,
     SR_CUSTOMER_SK: return_customer.sk, # FK to the customer returning the item (may differ from purchaser).
+    SR_CDEMO_SK: ?return_customer_demographic.sk, # FK to the returning customer's demographic profile at return time.
+    SR_HDEMO_SK: ?return_household_demographic.sk, # FK to the returning customer's household profile at return time.
+    SR_ADDR_SK: ?return_address.sk, # FK to the returning customer's address at return time.
     SR_RETURN_AMT: return_amount,
     SR_RETURN_QUANTITY: return_quantity,
+    SR_RETURN_TAX: return_tax,
+    SR_RETURN_AMT_INC_TAX: return_amount_inc_tax,
+    SR_FEE: return_fee,
+    SR_RETURN_SHIP_COST: return_ship_cost,
+    SR_REFUNDED_CASH: refunded_cash,
+    SR_REVERSED_CHARGE: reversed_charge,
+    SR_STORE_CREDIT: store_credit,
     SR_TICKET_NUMBER: ~ticket_number,
     SR_STORE_SK: return_store.sk, # FK to the store the return was processed at.
     SR_REASON_SK: return_reason.sk, # FK to the return-reason code.

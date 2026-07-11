@@ -34,6 +34,7 @@ AdventureWorksDW2019.bak
 
 memory.db
 tests/scripts/test.db
+evals/eval_history.db
 *.wal
 
 tests/modeling/tcp_ds_duckdb/memory/

@@ -5,6 +5,7 @@ from typing import Dict, ItemsView, Never, ValuesView
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.domain_graph import DomainGraph
+from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import (
     UndefinedConceptException,
 )
@@ -53,10 +54,16 @@ class BuildEnvironmentConceptDict(dict):
                 return input[len(DEFAULT_NAMESPACE) + 1 :]
             return input
 
-        matches = difflib.get_close_matches(
-            strip_local(concept_name), [strip_local(x) for x in self.keys()]
-        )
-        return matches
+        candidates = [strip_local(x) for x in self.keys()]
+        # Hide internal names (`_`-prefixed segments) unless the reference itself
+        # uses one — mirrors EnvironmentConceptDict._find_similar_concepts.
+        if not any(seg.startswith("_") for seg in concept_name.split(".")):
+            candidates = [
+                c
+                for c in candidates
+                if not any(seg.startswith("_") for seg in c.split("."))
+            ]
+        return difflib.get_close_matches(strip_local(concept_name), candidates)
 
     def items(self) -> ItemsView[str, BuildConcept]:  # type: ignore
         return super().items()
@@ -122,6 +129,13 @@ class BuildEnvironment:
     # The scoped_* registries above are derivable from it; they remain as
     # compat shims until consumers migrate to graph queries.
     domain_graph: DomainGraph = field(default_factory=DomainGraph)
+    # Transitive closure of AUTHOR-referenced concept addresses for the select
+    # this environment was materialized for (outputs, WHERE/HAVING/ORDER BY,
+    # and their lineage) — computed on the author statement, BEFORE scoped-join
+    # canonical substitution, and deliberately excluding the scoped-join
+    # declarations themselves. None means unknown (conservative consumers
+    # treat every member as referenced). Set by `get_query_node`.
+    statement_authored_addresses: set[str] | None = None
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep
@@ -174,6 +188,45 @@ class BuildEnvironment:
                 continue
             for member in distinct:
                 out.setdefault(member, set()).update(m for m in distinct if m != member)
+        return out
+
+    def pseudonym_unsatisfiable_group_mates(self) -> dict[str, set[str]]:
+        """`distinct_scoped_join_group_mates` widened for STACK VALIDATION:
+        additionally, in SUBSET (`left`/`subset`) groups whose distinct
+        members are ALL rowset keys, a member the author REFERENCES is never
+        satisfied through a group-mate pseudonym. Its values and per-row
+        presence exist only in its own scope: counting it as found off a
+        mate drops its source from the plan entirely, stranding every
+        reference (a presence probe, a projection) as a render sentinel or
+        silently swapping in the mate's row population (q35 `subset join`
+        between rowsets). Two carve-outs keep the mechanism cases working:
+        an UNREFERENCED member stays satisfiable — it enters requests only
+        synthetically (an aggregate grain canonicalized onto the group
+        root), where the declaration is pure domain metadata and satisfying
+        it via the mate is the ruled collapse-to-referenced-side semantics —
+        and a group with a non-rowset member is exempt entirely: a bound
+        (ROOT) member resolves by binding substitution, and a
+        derived-expression key relates the sides BY materializing the key
+        and pairing it with the anchor over the pseudonym, so blocking would
+        break that machinery. Validation-only: the rowset enrichment
+        machinery consumes the narrower map, where a subset mate is a
+        satisfiable request, not an exposure obligation."""
+        out = self.distinct_scoped_join_group_mates()
+        subset_anchored = {
+            self.domain_graph.canonical(addr)
+            for addr in self.domain_graph.subset_sources()
+        }
+        authored = self.statement_authored_addresses
+        for canonical, distinct in self._distinct_scoped_join_groups():
+            if canonical not in subset_anchored:
+                continue
+            members = [self.concepts.get(m) for m in distinct]
+            if any(c is None or c.derivation != Derivation.ROWSET for c in members):
+                continue
+            unsatisfiable = {m for m in distinct if authored is None or m in authored}
+            for member in distinct:
+                if unsatisfiable - {member}:
+                    out.setdefault(member, set()).update(unsatisfiable - {member})
         return out
 
     def gen_concept_list_caches(self) -> None:

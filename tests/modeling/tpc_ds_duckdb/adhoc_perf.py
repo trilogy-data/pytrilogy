@@ -26,14 +26,12 @@ def setup_environment():
 
     env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
-import catalog_returns as catalog_returns;
 import catalog_sales as catalog_sales;
 import customer_demographic as customer_demographic;
 import customer as customer;
 import inventory as inventory;
 import item as item;
 import promotion as promotion;
-import store_returns as physical_returns;
 import store_sales as store_sales;
 import store as store;
 import time as time;

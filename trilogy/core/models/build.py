@@ -52,6 +52,7 @@ from trilogy.core.exceptions import (
     UnionOutputResolutionError,
 )
 from trilogy.core.models.author import (
+    AggregateGrouping,
     AggregateWrapper,
     AlignClause,
     AlignItem,
@@ -223,6 +224,91 @@ def is_grouping_identity(concept: BuildConcept) -> bool:
         isinstance(lineage, BuildAggregateWrapper)
         and lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
     )
+
+
+GroupingSpec = Tuple[
+    AggregateGroupingMode, Tuple[str, ...], Tuple[Tuple[str, ...], ...]
+]
+
+
+def nonstandard_grouping_spec(lineage: Any) -> GroupingSpec | None:
+    """Identity of the ROLLUP/CUBE/GROUPING SETS pass an aggregate computes in
+    (None for standard grouping or non-aggregate lineage). Aggregates sharing a
+    spec are outputs of one grouping pass; their visible dims are NOT a row
+    identity across grouping sets (a rolled-up NULL and a data NULL collide), so
+    they must co-source in that pass rather than be joined back on the dims."""
+    if not isinstance(lineage, BuildAggregateWrapper):
+        return None
+    if lineage.grouping == AggregateGroupingMode.STANDARD:
+        return None
+    return (
+        lineage.grouping,
+        tuple(c.address for c in lineage.by),
+        tuple(tuple(c.address for c in gs) for gs in lineage.grouping_sets),
+    )
+
+
+def _trace_grouping_passes(
+    concept: BuildConcept,
+) -> tuple[set[GroupingSpec], bool, bool, set[str]]:
+    """Walk ``concept``'s lineage down to grouping-pass boundaries.
+
+    Returns (specs, pointwise, windowed, root_addresses):
+    - specs: grouping passes whose outputs the lineage reads (descent stops at a
+      pass aggregate — what's below it are the pass's inputs, not outputs)
+    - pointwise: False when any path crosses a non-scalar wrapper (window,
+      filter, standard aggregate, rowset, ...) that computes OVER a pass output
+    - windowed: True when any path crosses a window item
+    - root_addresses: lineage-less leaves reached without crossing a pass"""
+    specs: set[GroupingSpec] = set()
+    pointwise = True
+    windowed = False
+    roots: set[str] = set()
+    seen: set[str] = set()
+    stack: list[BuildConcept] = [concept]
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        lineage = current.lineage
+        if lineage is None:
+            roots.add(current.address)
+            continue
+        spec = nonstandard_grouping_spec(lineage)
+        if spec is not None:
+            specs.add(spec)
+            continue
+        if isinstance(lineage, (BuildNumberingWindowItem, BuildNavigationWindowItem)):
+            windowed = True
+            pointwise = False
+        elif not isinstance(lineage, (BuildFunction, BuildParenthetical)):
+            pointwise = False
+        if isinstance(lineage, BuildConceptArgs):
+            stack.extend(lineage.concept_arguments)
+    return specs, pointwise, windowed, roots
+
+
+def colocatable_in_grouping_pass(concept: BuildConcept, spec: GroupingSpec) -> bool:
+    """True when ``concept`` is an output of grouping pass ``spec``: the pass's
+    aggregate itself (incl. grouping()/grouping_id() identity) or a pointwise
+    scalar over such outputs, grouping keys, and constants. Such a concept can
+    be emitted by the pass's grouped CTE directly instead of being recovered
+    with a join back on its nullable dims."""
+    specs, pointwise, _, roots = _trace_grouping_passes(concept)
+    if not pointwise or specs != {spec}:
+        return False
+    grouping_keys = set(spec[1]).union(*spec[2]) if spec[2] else set(spec[1])
+    return roots.issubset(grouping_keys)
+
+
+def windowed_over_grouping_pass(concept: BuildConcept, spec: GroupingSpec) -> bool:
+    """True when ``concept`` computes a window (anywhere in its lineage) over an
+    output of grouping pass ``spec``. Recovering such a sibling by joining the
+    pass output back on its visible dims collides grouping-set rows; the caller
+    must decline so the window-first path co-sources the pass instead."""
+    specs, _, windowed, _ = _trace_grouping_passes(concept)
+    return windowed and spec in specs
 
 
 def concept_is_relevant(
@@ -2009,6 +2095,17 @@ class BuildColumnAssignment:
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
 
+    @property
+    def origin_concept_address(self) -> str:
+        """The authored concept address this column physically carries —
+        `origin_address` when a scoped relation substituted the binding onto
+        its canonical, else the concept's own address."""
+        return (
+            self.origin_address
+            if self.origin_address is not None
+            else self.concept.address
+        )
+
 
 @dataclass(slots=True)
 class BuildDatasource:
@@ -2320,6 +2417,7 @@ class Factory:
         datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
         aggregate_grain: Grain | None = None,
+        select_grouping: AggregateGrouping | None = None,
     ):
         self.grain = grain or Grain()
         # Grain at which a bare (no explicit `by`) aggregate resolves, when it
@@ -2328,6 +2426,11 @@ class Factory:
         # aggregate condition must co-grain to the SELECT grain (like HAVING)
         # rather than collapsing to a global scalar. None => use `self.grain`.
         self.aggregate_grain = aggregate_grain
+        # SELECT-level `by rollup/cube/grouping sets` spec of the select whose
+        # projection scope this factory builds. Applied to every un-pinned
+        # aggregate at materialization — the select-scoped moment — so shared
+        # authoring definitions never carry (or leak) the spec.
+        self.select_grouping = select_grouping
         self.environment = environment
         # Build-scoped joins (query JOIN clauses plus environment MERGE
         # statements — the same relation declared at different scopes, resolved
@@ -2955,6 +3058,13 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             resolution_grain, self.environment
         )
+        stamped_lineage = self._apply_select_grouping_to_resolved(base, new_lineage)
+        if stamped_lineage is not new_lineage:
+            new_lineage = stamped_lineage
+            # the concept's grain is the pass's key set, not the co-grained
+            # resolution grain — e.g. a grouping() nested in a select dim would
+            # otherwise keep that dim as its grain, a circular dependency
+            final_grain = Grain(components={x.address for x in stamped_lineage.by})
 
         if new_lineage:
             build_lineage = self.build(new_lineage)
@@ -2992,6 +3102,10 @@ class Factory:
         cache_address = (
             f"{base.namespace}.{base.address}.{canonical_name}.{str(final_grain)}"
         )
+        if self.select_grouping is not None:
+            # build_cache persists across statements; a spec-stamped build of a
+            # concept must not be served to (or from) a spec-less statement
+            cache_address += f".{self._select_grouping_token()}"
         if cache_address in self.build_cache:
             return self.build_cache[cache_address]
 
@@ -3065,29 +3179,91 @@ class Factory:
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
         return self._build_aggregate_wrapper(base)
 
+    def _select_grouping_token(self) -> str:
+        spec = self.select_grouping
+        assert spec is not None
+        by = ",".join(str(x.address) for x in spec.by)
+        sets = "|".join(
+            ",".join(str(x.address) for x in grouping_set)
+            for grouping_set in spec.grouping_sets
+        )
+        return f"{spec.mode.value}:{by}:{sets}"
+
+    def _apply_select_grouping_to_resolved(
+        self, base: Concept, new_lineage: Any
+    ) -> Any:
+        """Stamp the select-level grouping spec onto a just-resolved bare
+        aggregate. ``get_select_grain_and_keys`` fills an un-pinned aggregate's
+        ``by`` from the resolution grain, so bare-ness is judged on the ORIGINAL
+        lineage: a user-pinned ``sum(x) by a, b`` stays its own standard pass.
+        Inferred-key specs (``by rollup ()``) keep the resolved grain as keys."""
+        spec = self.select_grouping
+        if spec is None or not isinstance(new_lineage, AggregateWrapper):
+            return new_lineage
+        if new_lineage.grouping != AggregateGroupingMode.STANDARD:
+            return new_lineage
+        original = (
+            base.lineage.content
+            if isinstance(base.lineage, FunctionCallWrapper)
+            else base.lineage
+        )
+        if isinstance(original, AggregateWrapper) and original.by:
+            return new_lineage
+        return AggregateWrapper(
+            function=new_lineage.function,
+            by=list(spec.by) if spec.by else list(new_lineage.by),
+            grouping=spec.mode,
+            grouping_sets=[list(g) for g in spec.grouping_sets],
+        )
+
     def _build_aggregate_wrapper(self, base: AggregateWrapper) -> BuildAggregateWrapper:
+        spec = self.select_grouping
+        grouping = base.grouping
+        grouping_sets_source = base.grouping_sets
         if not base.by:
-            agg_grain = (
-                self.aggregate_grain if self.aggregate_grain is not None else self.grain
-            )
-            by = [
-                self._build_concept(self.environment.concepts[c])
-                for c in agg_grain.component_order
-            ]
+            if spec is not None and base.grouping == AggregateGroupingMode.STANDARD:
+                # A bare aggregate materialized in this select's projection
+                # scope computes in the select's single ROLLUP/CUBE/GROUPING
+                # SETS pass; inferred-key specs (`by rollup ()`) group by the
+                # resolution grain.
+                grouping = spec.mode
+                grouping_sets_source = spec.grouping_sets
+                if spec.by:
+                    by = self._build_over_items(list(spec.by))
+                else:
+                    agg_grain = (
+                        self.aggregate_grain
+                        if self.aggregate_grain is not None
+                        else self.grain
+                    )
+                    by = [
+                        self._build_concept(self.environment.concepts[c])
+                        for c in agg_grain.component_order
+                    ]
+            else:
+                agg_grain = (
+                    self.aggregate_grain
+                    if self.aggregate_grain is not None
+                    else self.grain
+                )
+                by = [
+                    self._build_concept(self.environment.concepts[c])
+                    for c in agg_grain.component_order
+                ]
         else:
             by = self._build_over_items(list(base.by))
         grouping_sets = [
             self._build_over_items(list(grouping_set))
-            for grouping_set in base.grouping_sets
+            for grouping_set in grouping_sets_source
         ]
-        if base.grouping == AggregateGroupingMode.STANDARD:
+        if grouping == AggregateGroupingMode.STANDARD:
             by = sorted(by, key=lambda x: x.address)
 
         parent: BuildFunction = self._build_function(base.function)  # type: ignore
         return BuildAggregateWrapper(
             function=parent,
             by=by,
-            grouping=base.grouping,
+            grouping=grouping,
             grouping_sets=grouping_sets,
         )
 
@@ -3224,21 +3400,46 @@ class Factory:
                 out.append(built)
         return out
 
+    def _window_order_by_items(self, order_by: list, anchor: Any) -> list:
+        """Resolve bare (no ``by``) aggregates in a window's ORDER BY.
+
+        Under the select's grouping spec they compute in that single
+        ROLLUP/CUBE/GROUPING SETS pass (inferred-key specs stay bare and pick up
+        the resolved select grain plus the mode in ``__build_concept``);
+        otherwise the window's anchor concept defines the implicit grain.
+        Always copy — the OrderItem may belong to a shared authored definition,
+        and an in-place ``by`` leaks across statements."""
+        spec = self.select_grouping
+        out = []
+        for x in order_by:
+            expr = x.expr
+            if (
+                isinstance(expr, AggregateWrapper)
+                and not expr.by
+                and expr.grouping == AggregateGroupingMode.STANDARD
+            ):
+                if spec is not None:
+                    if spec.by:
+                        expr = AggregateWrapper(
+                            function=expr.function,
+                            by=list(spec.by),
+                            grouping=spec.mode,
+                            grouping_sets=[list(g) for g in spec.grouping_sets],
+                        )
+                elif anchor is not None:
+                    expr = AggregateWrapper(function=expr.function, by=[anchor])
+            if expr is not x.expr:
+                x = OrderItem(expr=expr, order=x.order)
+            out.append(x)
+        return out
+
     def _build_numbering_window_item(
         self, base: NumberingWindowItem
     ) -> BuildNumberingWindowItem:
         # An AggregateWrapper with empty `by` inside the order_by needs an
         # implicit grain — the rank's argument concepts define the row.
         anchor = base.arguments[0] if base.arguments else None
-        final_by = []
-        for x in base.order_by:
-            if (
-                isinstance(x.expr, AggregateWrapper)
-                and not x.expr.by
-                and anchor is not None
-            ):
-                x.expr.by = [anchor]
-            final_by.append(x)
+        final_by = self._window_order_by_items(base.order_by, anchor)
         return BuildNumberingWindowItem(
             type=base.type,
             arguments=[self._build_concept_ref(x) for x in base.arguments],
@@ -3253,15 +3454,8 @@ class Factory:
         validation = requires_concept_nesting(base.content)
         if validation:
             content, _ = self.instantiate_concept(validation)
-        final_by = []
-        for x in base.order_by:
-            if (
-                isinstance(x.expr, AggregateWrapper)
-                and not x.expr.by
-                and isinstance(content, (ConceptRef, Concept))
-            ):
-                x.expr.by = [content]
-            final_by.append(x)
+        anchor = content if isinstance(content, (ConceptRef, Concept)) else None
+        final_by = self._window_order_by_items(base.order_by, anchor)
         return BuildNavigationWindowItem(
             type=base.type,
             content=self.build(content),
@@ -3373,12 +3567,15 @@ class Factory:
         silently no-ops instead of expressing intersection (TPC-DS q59). The
         null test asks a per-ROW question ("did this side match?"), not a
         domain question, so rewrite its operand to a virt passthrough of the
-        member, materialized on the member's own rowset BEFORE the merge
-        (gen_rowset_node); it rides through the join un-fused and is NULL
-        exactly where the member's side is absent. Projecting the member is
-        untouched: that remains the coalesced group axis. The superset/anchor
-        side of a subset join is preserved (never null), so it is not eligible
-        — a null test on it is a genuine no-op."""
+        member, materialized on the member's own side BEFORE the merge — its
+        rowset body for ROWSET members (gen_rowset_node), a scan pinned to its
+        own datasource for ROOT members (gen_presence_probe_node); it rides
+        through the join un-fused and is NULL exactly where the member's side
+        is absent. Projecting the member is untouched: that remains the
+        coalesced group axis. The superset/anchor side of a subset join is
+        trusted (the declaration says every subset value matches it), so it is
+        not eligible — a null test on it is a genuine no-op; a lying subset
+        declaration is an author error (docs/subset_union_join_design.md)."""
         address = ref.address
         eligible = (
             self.domain_graph.coalescing_relation_members()
@@ -3387,7 +3584,10 @@ class Factory:
         if address not in eligible:
             return None
         member = self.environment.concepts.get(address)
-        if member is None or member.derivation != Derivation.ROWSET:
+        if member is None or member.derivation not in (
+            Derivation.ROWSET,
+            Derivation.ROOT,
+        ):
             return None
         from trilogy.parsing.common import arbitrary_to_concept
 
@@ -3405,7 +3605,12 @@ class Factory:
         )
         new = arbitrary_to_concept(probe_fn, environment=self.environment, name=name)
         built = self._build_concept(new)
-        self.local_concepts[name] = built
+        # key by ADDRESS: local_concepts propagates through the statement's
+        # build products (materialize_for_select, sub-select rebuilds), and
+        # every consumer resolves by address — a bare-name key strands the
+        # probe when a fresh factory rebuilds a lineage embedding its ref
+        # (gcat multiselect env-cleanup shape)
+        self.local_concepts[new.address] = built
         self.local_non_build_concepts[name] = new
         return new
 
@@ -3669,10 +3874,17 @@ class Factory:
         return self._build_select_lineage(base)
 
     def _build_select_lineage(self, base: SelectLineage) -> BuildSelectLineage:
+        from trilogy.core.having_normalization import normalize_select_having
         from trilogy.core.models.build import (
             BuildSelectLineage,
             Factory,
         )
+
+        # Resolve non-output HAVING references (hidden aggregate promotion,
+        # finer-dim grain-key semijoin) before building. Runs here — not at
+        # parse — so the authored statement and environment stay untouched;
+        # minted concepts ride the returned copy's local_concepts.
+        base = normalize_select_having(base, self.environment)
 
         materialized: dict[str, BuildConcept] = {}
         factory = Factory(
@@ -3684,6 +3896,7 @@ class Factory:
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=self.scoped_joins,
+            select_grouping=base.grouping,
         )
         for k, v in base.local_concepts.items():
             materialized[k] = factory.build(v)

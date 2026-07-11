@@ -1,12 +1,23 @@
 query_id = "74"
 generator = "v3"
-gen_length = 3494
+gen_length = 3974
 preql_size = 1391
 comp_size = 2151
 generated_sql = """
 
 WITH 
 thoughtful as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
+     'CATALOG'  as \"sales_channel\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\",
+    \"sales_catalog_sales_unified\".\"CS_NET_PAID\" as \"sales_net_paid\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+WHERE
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null
+
+UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
@@ -33,6 +44,9 @@ SELECT
     \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
 FROM
     \"thoughtful\"
+WHERE
+    \"thoughtful\".\"sales_channel\" in ('STORE','WEB')
+
 GROUP BY
     1,
     \"thoughtful\".\"sales_channel\"),

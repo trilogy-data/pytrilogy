@@ -92,6 +92,30 @@ def _read_events(path: Path) -> list[dict]:
     return events
 
 
+def _attribute_tool_tokens(timeline: list[dict]) -> None:
+    """Tool results carry no usage, so price them from the prompt growth they cause:
+    the next turn's prompt minus this turn's prompt+completion is what the results
+    in between added. Split proportionally by output size when a turn made several
+    calls (exact when it made one); skip non-positive deltas (history compaction)."""
+    turns = [i for i, e in enumerate(timeline) if e["role"] == "assistant"]
+    for a, b in zip(turns, turns[1:]):
+        u, nxt = timeline[a]["usage"], timeline[b]["usage"]
+        delta = nxt.get("prompt_tokens", 0) - (
+            u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)
+        )
+        tools = [e for e in timeline[a + 1 : b] if e["role"] == "tool"]
+        if delta <= 0 or not tools:
+            continue
+        sizes = [max(len(t["output"]), 1) for t in tools]
+        spent = 0
+        for t, size in zip(tools[:-1], sizes[:-1]):
+            t["tokens"] = round(delta * size / sum(sizes))
+            spent += t["tokens"]
+        tools[-1]["tokens"] = delta - spent
+        for t in tools:
+            t["exact"] = len(tools) == 1
+
+
 def parse_log(path: Path) -> dict:
     events = _read_events(path)
     meta: dict = {"task": "", "model": "", "provider": ""}
@@ -162,6 +186,7 @@ def parse_log(path: Path) -> dict:
                     "kickback": 0,
                 }
             )
+    _attribute_tool_tokens(timeline)
     derived = {
         "iterations": iterations,
         "tool_calls": tool_calls,
@@ -380,6 +405,12 @@ _HTML = r"""<!doctype html>
           border-radius:6px; padding:4px 6px; font-size:11px; cursor:pointer; }
   .fbtn:hover { color:var(--txt); }
   .fbtn.on { border-color:var(--accent); color:var(--accent); }
+  .rerun-bar { margin-top:8px; }
+  .fbtn.rerun { width:100%; }
+  .fbtn.rerun[disabled] { opacity:.6; cursor:default; }
+  .fbtn.cancel { flex:0 0 auto; border-color:var(--err); color:var(--err); margin-top:8px; width:100%; }
+  .rerun-st { font-size:11px; color:var(--muted); margin-top:5px; word-break:break-word; }
+  .rerun-st.ok { color:var(--ok); } .rerun-st.err { color:var(--err); }
   .empty { padding:14px; color:var(--muted); font-size:12px; }
   .run { padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
   .run:hover { background:var(--panel2); }
@@ -421,6 +452,10 @@ _HTML = r"""<!doctype html>
   .dot.ok { background:var(--ok); } .dot.err { background:var(--err); }
   .tool .name { font-family:ui-monospace,monospace; font-size:12.5px; color:var(--muted); }
   .out { display:none; } .out.show { display:block; }
+  .tok { font-family:ui-monospace,monospace; font-size:11px; padding:1px 6px; border-radius:10px;
+         background:rgba(139,147,167,.15); color:var(--muted); }
+  .tok.big { background:rgba(240,164,93,.18); color:#f0a45d; }
+  .tok.huge { background:rgba(248,81,73,.18); color:var(--err); }
   .usage { font-size:11px; color:var(--muted); margin-top:6px; }
   .meta { color:var(--muted); font-size:13px; margin-bottom:14px; }
   .chev { color:var(--muted); font-size:11px; margin-left:auto; }
@@ -477,6 +512,7 @@ let failOnly = false;   // sidebar filter: hide passing runs
 let served = false;   // true once runs.json answers — replay needs the server
 let replay = {running:false, qid:null, log:[], result:null, error:null};
 let replayTimer = null;
+let archiveState = {busy:false, msg:'', ok:null};   // "archive this run to history db"
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
 // Sidebar result color — mirrors the dashboard PNG (STATUS_COLORS_ALT): green=pass,
@@ -527,6 +563,17 @@ function compareHtml(run){
   return `<div class="cmp">`+col('canonical', q.canonical)+col('agent', q.candidate)+`</div>`;
 }
 
+const fmtTok = n => n < 1000 ? String(n) : (n/1000).toFixed(n < 10000 ? 1 : 0) + 'k';
+// Context cost of a tool result, from the prompt growth it caused. When one turn
+// made several calls the split is proportional to output size, so it's an estimate.
+function tokBadge(ev){
+  if(ev.tokens == null) return '';
+  const cls = ev.tokens >= 50000 ? ' huge' : ev.tokens >= 10000 ? ' big' : '';
+  const tip = ev.exact ? `${ev.tokens.toLocaleString()} tokens added to context`
+    : `~${ev.tokens.toLocaleString()} tokens (estimated: turn made multiple tool calls)`;
+  return `<span class="tok${cls}" title="${esc(tip)}">${ev.exact?'':'~'}+${fmtTok(ev.tokens)} tok</span>`;
+}
+
 const qlabel = q => 'q' + String(q).padStart(2,'0');
 // The replay bar re-renders from `replay` on every poll, so a run re-render
 // (live data refresh) never wipes an in-flight status.
@@ -540,7 +587,7 @@ function replayBarHtml(run){
   if(replay.running && mine){
     status = `<span class="rpmsg">${esc(replay.log[replay.log.length-1] || 'starting…')}</span>`;
   } else if(replay.running){
-    status = `<span class="rpmsg">busy: ${esc(qlabel(replay.qid))}</span>`;
+    status = `<span class="rpmsg">busy: ${replay.mode==='all' ? 'full rerun' : esc(qlabel(replay.qid))}</span>`;
   } else if(mine && replay.error){
     status = `<span class="rpmsg err">${esc(replay.error)}</span>`;
   } else if(mine && replay.result){
@@ -574,16 +621,45 @@ async function startReplay(qid){
   updateReplayUi();
   if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
 }
+async function startReplayAll(){
+  if(!confirm(`Rerun ALL queries in ${currentRun}?\n\n`
+    + `Copies this run to a fresh sibling dir and re-runs every query there against `
+    + `the current prompts, model and engine. The original run is left untouched.\n\n`
+    + `This is slow — one full agent run per query.`)) return;
+  replay = {running:true, mode:'all', run:currentRun, qid:null,
+            progress:{done:0,total:0,qid:null}, log:['forking…'], result:null,
+            error:null, new_run:null};
+  updateReplayUi();
+  try{
+    const r = await fetch('replay_all', {method:'POST', headers:{'Content-Type':'application/json'},
+                                         body: JSON.stringify({run: currentRun})});
+    const j = await r.json();
+    replay = r.ok ? j : {running:false, mode:'all', run:currentRun, log:[], result:null,
+                         error: j.error || ('HTTP '+r.status)};
+  }catch(e){ replay = {running:false, mode:'all', run:currentRun, log:[], result:null, error:String(e)}; }
+  updateReplayUi();
+  if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+}
+async function cancelReplay(){
+  try{ await fetch('replay_cancel', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}); }
+  catch(e){ /* the poll will reflect the stop once it lands */ }
+}
 async function pollReplay(){
   try{
     const r = await fetch('replay_status.json', {cache:'no-store'});
     if(!r.ok) return;
     const j = await r.json();
     const finished = replay.running && !j.running;
+    // A full rerun forks a new dir; follow it live so the fork populates on screen.
+    const switchTo = (j.new_run && j.new_run !== currentRun) ? j.new_run : null;
     replay = j;
+    if(switchTo){
+      currentRun = switchTo; selectedName = null; expanded = new Set(); compareOpen = false;
+      loadRuns();
+    }
     updateReplayUi();
-    if(finished){
-      clearInterval(replayTimer); replayTimer = null;
+    if(finished || switchTo){
+      if(finished){ clearInterval(replayTimer); replayTimer = null; }
       lastPayload = null;   // the run's logs + report just changed under us
       loadData(true);       // must win over any poll still in flight from mid-replay
     }
@@ -656,6 +732,7 @@ function renderRun(run, keepScroll){
       h += `<div class="turn tool"><div class="bubble">`
          + `<div class="head" data-key="${k}" onclick="toggleOut(this)">`
          + `<span class="dot ${ev.ok?'ok':'err'}"></span><span class="name">${esc(ev.name)} result</span>`
+         + tokBadge(ev)
          + `<span class="chev">▼ click to toggle</span></div>`
          + `<pre class="out${show}">${esc(ev.output)}</pre></div></div>`;
     }
@@ -709,7 +786,9 @@ function markActive(){
 // The row whose query is being replayed right now — its metrics are stale until
 // the job lands, so we pulse it instead of showing them.
 function isReplaying(run){
-  return replay.running && replay.run === currentRun && replay.qid === run.qid;
+  if(!replay.running || replay.run !== currentRun) return false;
+  const qid = replay.mode==='all' ? (replay.progress||{}).qid : replay.qid;
+  return qid != null && qid === run.qid;
 }
 const PULSE_MS = 1400;
 // Re-rendering the row restarts its animation. Offsetting the delay by where the
@@ -730,7 +809,58 @@ function renderTally(){
     + `<div class="tally-f">`
     + `<button class="fbtn${failOnly?'':' on'}" onclick="setFailOnly(false)">All ${total}</button>`
     + `<button class="fbtn${failOnly?' on':''}" onclick="setFailOnly(true)">Failing ${failing}</button>`
-    + `</div>`;
+    + `</div>` + rerunAllHtml() + archiveHtml();
+}
+// Fork the current run into a fresh sibling dir and replay every query there, so
+// the original stays a baseline. Server-only (needs the replay endpoints).
+function rerunAllHtml(){
+  if(!served) return '';
+  const on = replay.running && replay.mode==='all';
+  const dis = replay.running ? ' disabled' : '';
+  let status = '', cancel = '';
+  if(on){
+    const p = replay.progress||{};
+    const where = p.total ? `${qlabel(p.qid)} · ${p.done}/${p.total}`
+                          : (replay.log[replay.log.length-1] || 'forking…');
+    status = `<div class="rerun-st">${esc(where)}</div>`;
+    cancel = `<button class="fbtn cancel" onclick="cancelReplay()">Stop after this query</button>`;
+  } else if(replay.mode==='all' && replay.error){
+    status = `<div class="rerun-st err">${esc(replay.error)}</div>`;
+  } else if(replay.mode==='all' && replay.result){
+    const r = replay.result;
+    status = `<div class="rerun-st ok">reran ${r.count}/${r.total} · pass ${r.pass_count}/${r.num_queries}</div>`;
+  }
+  const label = on ? 'Rerunning…' : 'Rerun all → new run';
+  return `<div class="rerun-bar"><button class="fbtn rerun" onclick="startReplayAll()"${dis}>`
+       + `${esc(label)}</button>${status}${cancel}</div>`;
+}
+// Archive this run dir's summary stats into the longitudinal history db.
+// Non-destructive (files stay); the CLI cleanup script archives-then-deletes.
+function archiveHtml(){
+  if(!served) return '';
+  const dis = archiveState.busy ? ' disabled' : '';
+  const label = archiveState.busy ? 'Archiving…' : 'Archive run → history db';
+  let status = '';
+  if(archiveState.msg){
+    const cls = archiveState.ok ? ' ok' : (archiveState.ok===false ? ' err' : '');
+    status = `<div class="rerun-st${cls}">${esc(archiveState.msg)}</div>`;
+  }
+  return `<div class="rerun-bar"><button class="fbtn rerun" onclick="archiveRun()"${dis}>`
+       + `${esc(label)}</button>${status}</div>`;
+}
+async function archiveRun(){
+  if(!currentRun) return;
+  archiveState = {busy:true, msg:'archiving '+currentRun+'…', ok:null};
+  renderTally();
+  try{
+    const r = await fetch('archive', {method:'POST', headers:{'Content-Type':'application/json'},
+                                      body: JSON.stringify({run: currentRun})});
+    const j = await r.json();
+    archiveState = r.ok
+      ? {busy:false, ok:true, msg:`archived ${j.count} questions → ${j.db}`}
+      : {busy:false, ok:false, msg: j.error || ('HTTP '+r.status)};
+  }catch(e){ archiveState = {busy:false, ok:false, msg:String(e)}; }
+  renderTally();
 }
 function setFailOnly(v){ failOnly = v; renderSide(); }
 function renderSide(){
@@ -814,6 +944,7 @@ async function loadRuns(){
 function onRunChange(){
   currentRun = document.getElementById('runsel').value;
   selectedName = null; lastPayload = null; expanded = new Set(); compareOpen = false;   // reset for the new run
+  archiveState = {busy:false, msg:'', ok:null};
   loadData(true);
 }
 applyData(RUNS, false);
@@ -850,10 +981,14 @@ class ReplayJob:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._cancel = False
         self._state: dict = {
             "running": False,
+            "mode": None,
             "run": None,
             "qid": None,
+            "progress": None,
+            "new_run": None,
             "log": [],
             "result": None,
             "error": None,
@@ -874,17 +1009,50 @@ class ReplayJob:
         """Accept the job, or return why it was rejected."""
         with self._lock:
             if self._state["running"]:
-                return f"a replay is already running (q{self._state['qid']:02d})"
+                return self._busy_reason()
+            self._cancel = False
             self._state = {
                 "running": True,
+                "mode": "one",
                 "run": run_dir.name,
                 "qid": qid,
+                "progress": None,
+                "new_run": None,
                 "log": [],
                 "result": None,
                 "error": None,
             }
         threading.Thread(target=self._run, args=(run_dir, qid), daemon=True).start()
         return None
+
+    def start_all(self, run_dir: Path) -> str | None:
+        """Fork the run, then replay every query in the fork — original untouched."""
+        with self._lock:
+            if self._state["running"]:
+                return self._busy_reason()
+            self._cancel = False
+            self._state = {
+                "running": True,
+                "mode": "all",
+                "run": run_dir.name,
+                "qid": None,
+                "progress": {"done": 0, "total": 0, "qid": None},
+                "new_run": None,
+                "log": [],
+                "result": None,
+                "error": None,
+            }
+        threading.Thread(target=self._run_all, args=(run_dir,), daemon=True).start()
+        return None
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancel = True
+
+    def _busy_reason(self) -> str:
+        if self._state["mode"] == "all":
+            return "a full rerun is already running"
+        return f"a replay is already running (q{self._state['qid']:02d})"
 
     def _run(self, run_dir: Path, qid: int) -> None:
         result: dict | None = None
@@ -899,6 +1067,37 @@ class ReplayJob:
             self._log(error)
         with self._lock:
             self._state.update(running=False, result=result, error=error)
+
+    def _run_all(self, run_dir: Path) -> None:
+        result: dict | None = None
+        error: str | None = None
+        new_run: str | None = None
+        try:
+            from common import replay
+            from spec import SPEC
+
+            fork = replay.fork_run(run_dir, log=self._log)
+            new_run = fork.name
+            with self._lock:
+                self._state.update(run=new_run, new_run=new_run)
+            result = replay.replay_all(
+                fork,
+                SPEC,
+                log=self._log,
+                on_progress=self._progress,
+                cancelled=lambda: self._cancel,
+            )
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            self._log(error)
+        with self._lock:
+            self._state.update(
+                running=False, result=result, error=error, new_run=new_run
+            )
+
+    def _progress(self, done: int, total: int, qid: int) -> None:
+        with self._lock:
+            self._state["progress"] = {"done": done, "total": total, "qid": qid}
 
 
 # A cold collect() transpiles every query (tens of seconds). Serialise it so
@@ -944,6 +1143,23 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             return self.root / name
         return None
 
+    def _archive(self, run_dir: Path) -> None:
+        """Write this run's summary stats into the longitudinal history db
+        (non-destructive; the files stay). Idempotent per run."""
+        try:
+            from common import archive
+            from spec import SPEC
+
+            conn = archive.connect()
+            try:
+                count = archive.archive_run(conn, run_dir, SPEC.short_name)
+            finally:
+                conn.close()
+        except Exception as exc:
+            self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            return
+        self._json({"ok": True, "count": count, "db": archive.default_db_path().name})
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/runs.json":
@@ -966,21 +1182,35 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != "/replay":
+        path = urllib.parse.urlparse(self.path).path
+        if path not in ("/replay", "/replay_all", "/replay_cancel", "/archive"):
             self.send_error(404)
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
-            qid = int(body["qid"])
-        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
-            self._json({"error": "expected JSON body {run, qid}"}, 400)
+        except (ValueError, json.JSONDecodeError):
+            self._json({"error": "expected a JSON body"}, 400)
+            return
+        if path == "/replay_cancel":
+            self.job.cancel()
+            self._json(self.job.snapshot())
             return
         run_dir = self._resolve_run(body.get("run"))
         if run_dir is None:
             self._json({"error": f"unknown run {body.get('run')!r}"}, 400)
             return
-        rejected = self.job.start(run_dir, qid)
+        if path == "/archive":
+            self._archive(run_dir)
+            return
+        if path == "/replay_all":
+            rejected = self.job.start_all(run_dir)
+        else:
+            try:
+                rejected = self.job.start(run_dir, int(body["qid"]))
+            except (TypeError, ValueError, KeyError):
+                self._json({"error": "expected JSON body {run, qid}"}, 400)
+                return
         if rejected:
             self._json({"error": rejected}, 409)
             return

@@ -1,6 +1,6 @@
 query_id = "02"
 generator = "v3"
-gen_length = 2679
+gen_length = 2698
 preql_size = 562
 comp_size = 840
 generated_sql = """
@@ -29,15 +29,12 @@ WHERE
 questionable as (
 SELECT
     \"partsupp\".\"ps_partkey\" as \"id\",
-    min(\"partsupp\".\"ps_supplycost\") as \"min_supply_cost_in_europe\"
+    min(CASE WHEN \"supplier_nation_region_region\".\"r_name\" = 'EUROPE' THEN \"partsupp\".\"ps_supplycost\" ELSE NULL END) as \"min_supply_cost_in_europe\"
 FROM
     \"memory\".\"partsupp\" as \"partsupp\"
     INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
-WHERE
-    \"supplier_nation_region_region\".\"r_name\" = 'EUROPE'
-
 GROUP BY
     1)
 SELECT

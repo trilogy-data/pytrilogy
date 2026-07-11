@@ -3,17 +3,16 @@
 # v4 planner cross-join u_id_c off the raw scan against u_sales_c off the
 # aggregate. v3 plans it correctly (single projection over the aggregate).
 import catalog_sales as cs;
-import catalog_returns as cr;
 
 const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;
 
 rowset cr_grouped <- where
-    cr.date.date between period_start and period_end
+    cs.return_date.date between period_start and period_end
 select
-    coalesce(cr.call_center.sk, -1) as cr_cc_key,
-    sum(cr.return_amount) as cr_returns_per_cc,
-    sum(cr.net_loss) as cr_loss_per_cc,
+    coalesce(cs.return_call_center.sk, -1) as cr_cc_key,
+    sum(cs.return_amount) as cr_returns_per_cc,
+    sum(cs.return_net_loss) as cr_loss_per_cc,
 ;
 
 rowset cr_totals <- select

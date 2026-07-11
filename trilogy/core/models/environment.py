@@ -419,6 +419,13 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # Never suggest the very address being looked up (a staged placeholder for
         # it may be present in the candidate set).
         keys = [k for k in keys if k != concept_name]
+        # Hide internal names — any path segment starting with `_` (mangled
+        # per-rowset aliases like `_rs_alias`, model-private helpers) — unless
+        # the user's own reference uses one, in which case they're fair game.
+        if not any(seg.startswith("_") for seg in concept_name.split(".")):
+            keys = [
+                k for k in keys if not any(seg.startswith("_") for seg in k.split("."))
+            ]
 
         # Partial-path match: a reference that drops an intermediate namespace
         # segment (e.g. `y1999.item_id` for the real `y1999.agg.item_id`, where the
@@ -461,8 +468,17 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             for k in keys
             if k != concept_name and k.rsplit(".", 1)[-1] == leaf
         ]
-
+        # An exact leaf match means the user knows the NAME and missed the path —
+        # a stronger signal than character-level fuzz (`warehouse_count` must
+        # surface `all_orders.warehouse_count` ahead of `warehouse.county`). Rank
+        # leaf matches by whole-string similarity so, within the flood of a
+        # common leaf like `id`, the candidate closest to the full reference
+        # (e.g. the same name in a sibling namespace) still leads.
         stripped_q = strip_local(concept_name)
+        leaf_matches.sort(
+            key=lambda m: difflib.SequenceMatcher(None, stripped_q, m).ratio(),
+            reverse=True,
+        )
         stripped_keys = [strip_local(x) for x in keys]
         fuzzy = difflib.get_close_matches(stripped_q, stripped_keys)
 
@@ -481,10 +497,10 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             else []
         )
 
-        # Prefer partial-path, then same-namespace near-miss, then general fuzzy,
-        # then the same-leaf flood — de-duplicated, capped.
+        # Prefer partial-path, then same-namespace near-miss, then exact-leaf
+        # matches, then general fuzzy — de-duplicated, capped.
         out: list[str] = []
-        for m in path_matches + same_ns_fuzzy + fuzzy + leaf_matches:
+        for m in path_matches + same_ns_fuzzy + leaf_matches + fuzzy:
             if m not in out:
                 out.append(m)
         return out[:6]

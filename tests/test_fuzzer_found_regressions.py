@@ -103,7 +103,10 @@ order by grouping_level asc, level_rank asc, group_id asc nulls last;
         (1, -2, 0, 4),
         (None, 32, 1, 1),
     ]
-    assert "IS NOT DISTINCT FROM" in sql.upper()
+    # One grouping pass, no stitch join back onto the rollup (which previously
+    # had to be null-safe to keep the grand-total row).
+    assert sql.upper().count("ROLLUP") == 1
+    assert " JOIN " not in sql.upper()
 
 
 def test_named_grouping_partition_ranks_rollup_subtotals() -> None:

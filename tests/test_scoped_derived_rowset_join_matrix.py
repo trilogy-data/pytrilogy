@@ -280,9 +280,12 @@ def test_q66_derived_over_rowset_output_connects(jt: str):
     tail = Q66.format(join=f"{jt} join wh.jk = mon.jk")
     # Resolves (no DisconnectedConceptsException) exactly like the raw-column form.
     _build_sql("", tail)
-    _, raw_rows = _rows("", Q66.format(join=f"{jt} join wh.jk = mon.jk").replace(
-        "wh.reg * 2 as r", "wh.reg as r"
-    ))
+    _, raw_rows = _rows(
+        "",
+        Q66.format(join=f"{jt} join wh.jk = mon.jk").replace(
+            "wh.reg * 2 as r", "wh.reg as r"
+        ),
+    )
     _, der_rows = _rows("", tail)
     assert der_rows == [(r * 2, p) for (r, p) in raw_rows]
 

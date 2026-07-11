@@ -401,9 +401,9 @@ def test_thirty_alt(engine):
     assert len(query) < 12000, query
     assert query.count('"memory"."web_returns"') == 1, query
     assert query.count("GROUP BY") == 2, query
-    assert '"WR_RETURNING_ADDR_SK" as "web_returns_return_address_id"' not in query
+    assert '"WR_RETURNING_ADDR_SK" as "ws_return_address_id"' not in query
     assert 'LEFT OUTER JOIN "abundant"' not in query
-    assert 'web_returns_return_address_state" is not distinct from' in query
+    assert 'ws_return_address_state" is not distinct from' in query
 
 
 def test_thirty_one(engine):
@@ -676,7 +676,9 @@ def test_seventy_six(engine):
 
 
 def test_seventy_seven(engine):
-    _ = run_query(engine, 77)
+    # The stock TPC-DS query cross-joins catalog sales and return groups,
+    # inflating sales. Our reference matches all three channels by outlet.
+    _ = run_query(engine, 77, sql_override=True)
 
 
 def test_seventy_eight(engine):
@@ -713,7 +715,9 @@ def test_eighty_three(engine):
 
 def test_eighty_four(engine):
     query = run_query(engine, 84)
-    assert len(query) < 4000, query
+    # Larger after ROOT presence probes: the return-side `is not null` now
+    # rides a per-side probe CTE pinned to store_returns.
+    assert len(query) < 4600, query
 
 
 def test_eighty_five(engine_sf001):

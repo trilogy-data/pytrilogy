@@ -1,6 +1,6 @@
 query_id = "08"
 generator = "v3"
-gen_length = 2829
+gen_length = 2883
 preql_size = 7469
 comp_size = 19155
 generated_sql = """
@@ -14,7 +14,10 @@ FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
 GROUP BY
-    1),
+    1
+HAVING
+    \"zip_p_count\" > 10
+),
 quizzical as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
@@ -25,12 +28,18 @@ SELECT
     \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" is not distinct from \"customer_address_customer_address\".\"CA_ZIP\"),
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" is not distinct from \"customer_address_customer_address\".\"CA_ZIP\"
+WHERE
+    \"cheerful\".\"zip_p_count\" > 10
+),
 abundant as (
 SELECT
-    CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"questionable\".\"customer_address_zip\" ELSE NULL END as \"p_cust_zip\"
+    \"questionable\".\"customer_address_zip\" as \"p_cust_zip\"
 FROM
-    \"questionable\"),
+    \"questionable\"
+WHERE
+    \"questionable\".\"zip_p_count\" > 10
+),
 uneven as (
 SELECT
     SUBSTRING(\"abundant\".\"p_cust_zip\",1,5) as \"_virt_func_substring_4293448550966409\"

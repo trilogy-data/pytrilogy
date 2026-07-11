@@ -454,26 +454,33 @@ class CTE:
             if source and source != cte.name:
                 continue
             by_address = {col.address: col for col in cte.output_columns}
-            frontier = {
-                col.address
-                for col in cte.output_columns
-                if concept.address in col.pseudonyms
-                or col.address in concept.pseudonyms
-            }
+            # Pseudonym sets on chained merged keys (`a=b=c`) are pairwise, not
+            # closed: a and c may relate only through an ABSENT intermediate b
+            # (both list b as a pseudonym), so walk undirected pseudonym edges
+            # rather than requiring direct adjacency to a present column.
+            edges: dict[str, set[str]] = defaultdict(set)
+            for col in cte.output_columns:
+                for pseudonym in col.pseudonyms:
+                    edges[col.address].add(pseudonym)
+                    edges[pseudonym].add(col.address)
+            for pseudonym in concept.pseudonyms:
+                edges[concept.address].add(pseudonym)
+                edges[pseudonym].add(concept.address)
             seen: set[str] = set()
+            frontier = [concept.address]
             hidden_match: str | None = None
             while frontier:
                 addr = frontier.pop()
                 if addr in seen:
                     continue
                 seen.add(addr)
-                col = by_address.get(addr)
-                if col is None:
+                frontier.extend(edges.get(addr, set()) - seen)
+                match = by_address.get(addr)
+                if match is None or addr == concept.address:
                     continue
                 if addr not in cte.hidden_concepts:
-                    return col.safe_address
-                hidden_match = col.safe_address
-                frontier |= {p for p in col.pseudonyms if p not in seen}
+                    return match.safe_address
+                hidden_match = match.safe_address
             if hidden_match is not None:
                 return hidden_match
 

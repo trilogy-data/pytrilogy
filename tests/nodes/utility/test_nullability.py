@@ -267,6 +267,24 @@ auto total_nullable <- sum(qty_n);
     assert _is_nullable(env, "total_nullable")
 
 
+def test_filtered_value_nullability():
+    """A filtered value is a partial property of its base: at any grain wider
+    than the filter it null-extends, so it (and any aggregate over it) is
+    nullable even when the source is not. count stays non-null."""
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int;
+property inv_id.flag bool;
+
+auto filtered <- qty ? flag;
+auto total_filtered <- sum(qty ? flag);
+auto cnt_filtered <- count(inv_id ? flag);
+""")
+    assert _is_nullable(env, "filtered")
+    assert _is_nullable(env, "total_filtered")
+    assert not _is_nullable(env, "cnt_filtered")
+
+
 def test_window_nullability():
     env, _ = parse("""
 key inv_id int;

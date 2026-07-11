@@ -13,10 +13,11 @@ RECURSIVE_GATING_CONCEPT = "_terminal"
 
 VIRTUAL_CONCEPT_PREFIX = "_virt"
 
-# Per-side presence probes for coalescing (`full`/`union`) join key-group
-# members: a null test on a member reads the member's OWN side, not the
-# group's mandatory coalesce. Minted in Factory._coalescing_presence_probe;
-# materialized pre-merge by gen_rowset_node.
+# Per-side presence probes for coalescing (`full`/`union`) and subset join
+# key-group members: a null test on a member reads the member's OWN side, not
+# the group's mandatory coalesce. Minted in Factory._coalescing_presence_probe;
+# materialized pre-merge by gen_rowset_node (ROWSET members) or
+# gen_presence_probe_node (datasource-bound ROOT members).
 PRESENCE_PROBE_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_presence_"
 
 # Magic rowset name for an inline `from union(...) -> (...)` TVF; its outputs are

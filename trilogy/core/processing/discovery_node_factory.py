@@ -31,6 +31,11 @@ from trilogy.core.processing.node_generators import (
     gen_unnest_node,
     gen_window_node,
 )
+from trilogy.core.processing.node_generators.presence_probe import (
+    gen_coalescing_axis_node,
+    gen_presence_probe_node,
+    is_presence_probe,
+)
 from trilogy.core.processing.nodes import (
     History,
     StrategyNode,
@@ -322,6 +327,24 @@ def _generate_group_to_node(ctx: NodeGenerationContext) -> StrategyNode | None:
 
 
 def _generate_basic_node(ctx: NodeGenerationContext) -> StrategyNode | None:
+    # A presence probe over a datasource-bound (ROOT) key-group member must be
+    # computed on the member's own datasource: post-substitution the generic
+    # BASIC path can source its argument from the relation's other side, which
+    # is non-null on exactly the rows the probe must flag as absent.
+    if is_presence_probe(ctx.concept.address):
+        pinned = gen_presence_probe_node(
+            ctx.concept,
+            ctx.local_optional,
+            ctx.environment,
+            ctx.g,
+            ctx.next_depth,
+            ctx.source_concepts,
+            history=ctx.history,
+            conditions=ctx.conditions,
+        )
+        if pinned is not None:
+            ctx.log_generation("presence probe")
+            return pinned
     ctx.log_generation("basic")
     return gen_basic_node(
         ctx.concept,
@@ -516,6 +539,29 @@ def generate_node(
         conditions=conditions,
         required_concepts=required_concepts,
     )
+
+    # A bare request for a coalescing (`full`/`union`) axis is a query ABOUT
+    # the unified domain: assemble the mandatory coalesce of every member side
+    # BEFORE the single-select shortcut below satisfies it from whichever one
+    # member's table scores best. ROOT only — a ROWSET member's bare request
+    # is routinely a SIDE sub-request from the rowset exposure machinery
+    # (which must stay one-sided); statement-level rowset axis requests are
+    # intercepted at source_query_concepts instead. Requests carrying other
+    # outputs stay on the generic paths — a query touching only one side's
+    # attributes is querying that side, and forcing the traversal there is
+    # pure cost.
+    if not local_optional and concept.derivation == Derivation.ROOT:
+        axis = gen_coalescing_axis_node(
+            concept,
+            environment,
+            depth + 1,
+            g=g,
+            source_concepts=source_concepts,
+            history=history,
+        )
+        if axis is not None:
+            context.log_generation("coalescing axis")
+            return axis
 
     # Try materialized concept first
     # this is worth checking every loop iteration

@@ -678,20 +678,39 @@ select a, b, sum(x) as sx_sets by grouping sets ((a, b), (a), ());
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):
             env, output = parse_text(rollup_query, Environment())
+        # the spec lives on the select; shared lineage stays unstamped (build
+        # applies it)
+        select = output[-1]
+        assert select.grouping is not None
+        assert select.grouping.mode == AggregateGroupingMode.ROLLUP
+        assert [item.address for item in select.grouping.by] == [
+            "local.a",
+            "local.b",
+        ]
         assert env.concepts["local.sx"].lineage.grouping == (
-            AggregateGroupingMode.ROLLUP
+            AggregateGroupingMode.STANDARD
         )
-        assert "by rollup (a, b)" in str(output[-1])
+        assert "by rollup (a, b)" in str(select)
 
         with _using_backend(backend):
             env, output = parse_text(sets_query, Environment())
+        select = output[-1]
+        assert select.grouping is not None
+        assert select.grouping.mode == AggregateGroupingMode.GROUPING_SETS
+        assert [
+            [item.address for item in grouping_set]
+            for grouping_set in select.grouping.grouping_sets
+        ] == [["local.a", "local.b"], ["local.a"], []]
         assert env.concepts["local.sx_sets"].lineage.grouping == (
-            AggregateGroupingMode.GROUPING_SETS
+            AggregateGroupingMode.STANDARD
         )
-        assert "by grouping sets ((a, b), (a), ())" in str(output[-1])
+        assert "by grouping sets ((a, b), (a), ())" in str(select)
 
 
-def test_empty_rollup_and_rank_inherit_select_grain() -> None:
+def test_empty_rollup_leaves_lineage_unstamped() -> None:
+    # `by rollup ()` key inference happens at build time
+    # (test_empty_top_level_rollup_inherits_build_grain covers it); parse time
+    # only records the spec and leaves aggregate lineage pristine.
     query = """
 key a int;
 key b int;
@@ -707,11 +726,12 @@ by rollup ();
         with _using_backend(backend):
             _, output = parse_text(query, Environment())
         select = output[-1]
+        assert select.grouping is not None
+        assert select.grouping.mode == AggregateGroupingMode.ROLLUP
+        assert select.grouping.by == []
         rollup = select.local_concepts["local.sx"].lineage
-        rank = select.local_concepts["local.rk"].lineage
-        assert rollup.grouping == AggregateGroupingMode.ROLLUP
-        assert {item.address for item in rollup.by} == {"local.a", "local.b"}
-        assert {item.address for item in rank.arguments} == {"local.a", "local.b"}
+        assert rollup.grouping == AggregateGroupingMode.STANDARD
+        assert rollup.by == []
 
 
 def test_empty_top_level_rollup_inherits_build_grain() -> None:
@@ -760,7 +780,7 @@ def test_lark_parse_error_keeps_rich_error_codes() -> None:
     # swallowing lark's UnexpectedToken again, these codes disappear.
     with _using_backend(ParserBackend.LARK):
         with pytest.raises(InvalidSyntaxException, match=r"Syntax \[201\]"):
-            parse_text("key revenue float;\nSELECT revenue + 1;", Environment())
+            parse_text("key revenue float;\nSELECT revenue + 1 total;", Environment())
 
 
 def _corpus_files() -> list[Path]:

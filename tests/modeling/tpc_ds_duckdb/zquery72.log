@@ -1,7 +1,7 @@
 query_id = "72"
 generator = "v3"
-gen_length = 6217
-preql_size = 957
+gen_length = 6289
+preql_size = 986
 comp_size = 1360
 generated_sql = """
 
@@ -33,16 +33,16 @@ SELECT
     \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"inv_warehouse_name\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_catalog_sales\".\"CS_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sold_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"cs_bill_household_demographic_household_demographics\" on \"cs_catalog_sales\".\"CS_BILL_HDEMO_SK\" = \"cs_bill_household_demographic_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_billing_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
-    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\" and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\"
+    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"inv_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\"
 
 GROUP BY
     1,
@@ -57,16 +57,16 @@ SELECT
     \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"inv_warehouse_name\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
     INNER JOIN \"cheerful\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cheerful\".\"inv_item_sk\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cheerful\".\"cs_sold_date_sk\" = \"cs_sold_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"cs_bill_household_demographic_household_demographics\" on \"cheerful\".\"cs_bill_household_demographic_sk\" = \"cs_bill_household_demographic_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_billing_customer_demographic_customer_demographics\" on \"cheerful\".\"cs_billing_customer_demographic_sk\" = \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
-    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cheerful\".\"cs_ship_date_sk\" = \"cs_ship_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\" and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cheerful\".\"cs_quantity\"
+    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"inv_date_date\".\"D_YEAR\" = 1999 and \"cs_bill_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cheerful\".\"cs_quantity\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\"
 
 GROUP BY
     1,

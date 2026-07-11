@@ -7,7 +7,9 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildWhereClause,
     BuildWindowItem,
+    colocatable_in_grouping_pass,
     is_grouping_identity,
+    nonstandard_grouping_spec,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
@@ -138,6 +140,32 @@ def gen_window_node(
     if grouping_passthrough:
         parent_concepts = unique(parent_concepts + grouping_passthrough, "address")
         parent_addresses.update(x.address for x in grouping_passthrough)
+    # Sibling outputs of the same ROLLUP/CUBE/GROUPING SETS pass the window runs
+    # over (a selected co-measure, or a scalar over such measures) can only be
+    # produced inside that single grouped CTE. Recovering them afterward joins
+    # back on the visible dims, which are not a row identity across grouping
+    # sets — subtotal/total rows collide with data-NULL leaves and fan out. Feed
+    # them through the window parent so the pass co-sources them once.
+    pass_specs = {
+        spec
+        for p in parent_concepts
+        if (spec := nonstandard_grouping_spec(p.lineage)) is not None
+    }
+    if len(pass_specs) == 1:
+        pass_spec = next(iter(pass_specs))
+        pass_siblings = [
+            x
+            for x in local_optional
+            if x.address not in parent_addresses
+            and colocatable_in_grouping_pass(x, pass_spec)
+        ]
+        if pass_siblings:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} carrying grouping-pass siblings "
+                f"{[x.address for x in pass_siblings]} through window parent"
+            )
+            parent_concepts = unique(parent_concepts + pass_siblings, "address")
+            parent_addresses.update(x.address for x in pass_siblings)
     output_targets = parent_concepts + additional_outputs + [concept]
     # finally, the ones we'll need to enrich
     non_equivalent_optional = [

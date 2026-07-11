@@ -627,11 +627,28 @@ def _unaliased_select_expr(text: str, pos: int) -> str | None:
     return expr or None
 
 
-def _suggest_alias(expr: str) -> str:
+def _self_contained_parens(inner: str) -> bool:
+    depth = 0
+    for c in inner:
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def suggest_select_alias(expr: str) -> str:
     """A safe snake_case alias for an unaliased select expression. For
     `count(store_sales.ext_sales_price)` -> `ext_sales_price_count`; otherwise a
-    sanitized fallback."""
+    sanitized fallback. Also names anonymous select outputs, so the result is
+    always a valid identifier."""
     m = _FUNC_CALL_RE.match(expr)
+    # `sum(x) by (a, b)` also ends in `)` — only treat as a single function
+    # call when the parens actually wrap the remainder.
+    if m and not _self_contained_parens(m.group(2)):
+        m = None
     if m:
         func = m.group(1).lower()
         idents = _IDENT_RE.findall(m.group(2))
@@ -639,7 +656,10 @@ def _suggest_alias(expr: str) -> str:
             return f"{idents[-1]}_{func}".lower()
         return func
     sanitized = re.sub(r"[^a-zA-Z0-9]+", "_", expr).strip("_").lower()
-    return sanitized[:40] or "value"
+    sanitized = sanitized[:40] or "value"
+    if not (sanitized[0].isalpha() or sanitized[0] == "_"):
+        sanitized = f"value_{sanitized}"
+    return sanitized
 
 
 def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxException:
@@ -647,7 +667,7 @@ def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxExceptio
     if code == 201:
         expr = _unaliased_select_expr(text, pos)
         if expr is not None:
-            message += f" Here: `{expr} as {_suggest_alias(expr)}`"
+            message += f" Here: `{expr} as {suggest_select_alias(expr)}`"
     return InvalidSyntaxException(
         f"Syntax [{code}]: "
         + message

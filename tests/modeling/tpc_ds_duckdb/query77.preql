@@ -1,26 +1,25 @@
 import catalog_sales as cs;
-import catalog_returns as cr;
 import store_sales as ss;
 import web_sales as ws;
-import web_returns as wr;
 
 const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;
 
-# Catalog returns aggregated per call_center, folded to a 1-row scalar so the
-# catalog branch can broadcast (replicates the reference's `FROM cs , cr`).
-rowset cr_grouped <- where
-    cr.date.date between period_start and period_end
+rowset cs_grouped <- where
+    cs.date.date between period_start and period_end
+    and cs.call_center.sk is not null
 select
-    coalesce(cr.call_center.sk, -1) as cr_cc_key,
-    sum(cr.return_amount) as cr_returns_per_cc,
-    sum(cr.net_loss) as cr_loss_per_cc,
+    cs.call_center.sk as cs_cc_id,
+    sum(cs.ext_sales_price) as cs_sales,
+    sum(cs.net_profit) as cs_profit,
 ;
 
-rowset cr_totals <- select
-    count(cr_grouped.cr_cc_key) as cr_n_groups,
-    sum(cr_grouped.cr_returns_per_cc) as cr_total_returns,
-    sum(cr_grouped.cr_loss_per_cc) as cr_total_loss,
+rowset cr_grouped <- where
+    cs.return_date.date between period_start and period_end
+select
+    cs.return_call_center.sk as cr_cc_id,
+    sum(cs.return_amount) as cr_returns,
+    sum(cs.return_net_loss) as cr_loss,
 ;
 
 rowset ss_grouped <- where
@@ -50,11 +49,11 @@ select
 ;
 
 rowset wr_grouped <- where
-    wr.return_date.date between period_start and period_end
+    ws.return_date.date between period_start and period_end
 select
-    wr.web_page.sk as wr_wp_id,
-    sum(wr.return_amount) as wr_returns,
-    sum(wr.net_loss) as wr_loss,
+    ws.return_web_page.sk as wr_wp_id,
+    sum(ws.return_amount) as wr_returns,
+    sum(ws.return_net_loss) as wr_loss,
 ;
 
 # UNION the 3 channel branches via the relational union(...) TVF. Each arm is a
@@ -62,13 +61,14 @@ select
 # arm that needs it (vs the old multiselect where the joins lived in the outer
 # select).
 with l0_union as union(
-    (where cs.date.date between period_start and period_end
+    (where cs_grouped.cs_sales is not null
+     left join cs_grouped.cs_cc_id = cr_grouped.cr_cc_id
      select
         'catalog channel' as u_channel,
-        cs.call_center.sk as u_id,
-        sum(cs.ext_sales_price) * cr_totals.cr_n_groups::numeric(15,2) as u_sales,
-        cr_totals.cr_total_returns::numeric(15,2) as u_returns,
-        sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss::numeric(15,2) as u_profit,
+        cs_grouped.cs_cc_id as u_id,
+        cs_grouped.cs_sales::numeric(15,2) as u_sales,
+        coalesce(cr_grouped.cr_returns, 0)::numeric(15,2) as u_returns,
+        cs_grouped.cs_profit - coalesce(cr_grouped.cr_loss, 0)::numeric(15,2) as u_profit,
     ),
     # joins are row-preserving: the explicit `is not null` restricts each arm
     # to its sales side (returns-only stores/pages drop, per the reference).

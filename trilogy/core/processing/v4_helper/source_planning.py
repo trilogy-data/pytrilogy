@@ -36,6 +36,9 @@ from trilogy.core.processing.condition_utility import (
     condition_implies,
     merge_conditions,
 )
+from trilogy.core.processing.node_generators.common import (
+    inject_authored_join_key_terminals,
+)
 from trilogy.core.processing.node_generators.node_merge_node import (
     AMBIGUITY_CHECK_LIMIT,
     detect_ambiguity_and_raise,
@@ -193,9 +196,12 @@ def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
 
 def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
     return _concepts_with_grain_keys(
-        unique(
-            _requested_concepts(request) + _condition_arg_lineage_roots(request),
-            "address",
+        inject_authored_join_key_terminals(
+            unique(
+                _requested_concepts(request) + _condition_arg_lineage_roots(request),
+                "address",
+            ),
+            request.environment,
         ),
         request.environment,
     )

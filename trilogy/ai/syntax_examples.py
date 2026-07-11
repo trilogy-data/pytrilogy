@@ -175,7 +175,8 @@ order by iris.species asc;
         title="Compare a per-entity total to the group average of those totals",
         summary=(
             'the "above 1.2x the group norm" ask: inner `sum(x) by entity, group`, '
-            "outer `avg(inner) by group`, compared in HAVING with both metrics hidden via `--`"
+            "outer `avg(inner) by group`; use WHERE for the comparison when a separate "
+            "output-only filter must not narrow the benchmark"
         ),
         body="""\
 # Compare each entity's total to the GROUP AVERAGE of those per-entity totals
@@ -194,14 +195,23 @@ select
     --dept_avg_credits,
 having student_dept_credits > 1.2 * dept_avg_credits;
 
-# BENCHMARK OVER FULL POPULATION + FILTERED OUTPUT: if you also restrict the OUTPUT to a
-# subset (e.g. only customers whose home state is 'GA') but the group average must span
-# EVERY entity in the group, that output filter must NOT enter the average's input. A plain
-# `sum(x) by g` referenced in `having` gets pushed into the aggregate CTE, so a top-level
-# `where home_state = 'GA'` silently narrows the average to GA-only. Keep the benchmark
-# unfiltered: put the threshold comparison in `where` (it computes over the WHERE-unfiltered
-# input), OR compute the average in a SEPARATE rowset (no output filter) and apply the subset
-# filter only to the final selection.
+# BENCHMARK OVER FULL POPULATION + FILTERED OUTPUT: if the department average must span
+# EVERY student but the output should contain only target students (id > 103), put the aggregate
+# comparison in WHERE alongside the output-only filter. Aggregate conditions in WHERE do
+# not filter one another's inputs, so `student_id > 103` does not narrow the department
+# benchmark. Do NOT put the comparison in HAVING after the output filter; that computes a
+# target-students-only department average.
+where
+    student_dept_credits > 1.2 * dept_avg_credits
+    and enroll.student_id > 103
+select
+    enroll.student_id,
+    enroll.department,
+    student_dept_credits,
+;
+
+# For more complex boundaries, compute the full-population benchmark in a separate rowset
+# with no output filter, then apply the subset filter only in the final selection.
 """,
     ),
     SyntaxExample(

@@ -1,6 +1,6 @@
 query_id = "83"
 generator = "v3"
-gen_length = 5055
+gen_length = 5187
 preql_size = 1541
 comp_size = 2195
 generated_sql = """
@@ -82,13 +82,16 @@ GROUP BY
     coalesce(\"questionable\".\"sales_item_sk\",\"sales_item_items\".\"I_ITEM_SK\")),
 abhorrent as (
 SELECT
-    \"concerned\".\"sales_item_id\" as \"sales_item_id\"
+    \"concerned\".\"sales_item_id\" as \"sales_item_id\",
+    count(\"concerned\".\"_virt_filter_order_id_4509973400283298\") as \"wr_item_present\",
+    count(\"concerned\".\"_virt_filter_order_id_5221868426357137\") as \"sr_item_present\",
+    count(\"concerned\".\"_virt_filter_order_id_9747092284480774\") as \"cr_item_present\"
 FROM
     \"concerned\"
 GROUP BY
     1
 HAVING
-    count(\"concerned\".\"_virt_filter_order_id_5221868426357137\") > 0 and count(\"concerned\".\"_virt_filter_order_id_9747092284480774\") > 0 and count(\"concerned\".\"_virt_filter_order_id_4509973400283298\") > 0
+    \"sr_item_present\" > 0 and \"cr_item_present\" > 0 and \"wr_item_present\" > 0
 ),
 juicy as (
 SELECT
