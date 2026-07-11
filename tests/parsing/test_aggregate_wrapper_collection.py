@@ -50,7 +50,7 @@ from trilogy.core.models.author import (
     WhereClause,
 )
 from trilogy.core.models.core import DataType, ListWrapper, MapWrapper, TupleWrapper
-from trilogy.parsing.v2.select_finalize import (
+from trilogy.core.having_normalization import (
     _child_exprs,
     _collect_aggregate_wrappers,
     _collect_standard_grouping_wrappers,

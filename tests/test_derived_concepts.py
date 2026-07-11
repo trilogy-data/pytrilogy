@@ -169,10 +169,13 @@ def test_where_filter_on_scalar_output_value_is_applied():
 
 def test_filtering_having_on_unincluded_value(test_environment):
     # A scalar SELECT (no grain key) cannot anchor a post-aggregation semijoin for
-    # the finer `x > 10` predicate; the user is directed to WHERE instead.
+    # the finer `x > 10` predicate; the user is directed to WHERE instead. The
+    # semijoin routing (and so this rejection) happens at build time.
+    from trilogy import Dialects
+
     exception = False
     try:
-        env, _ = parse("""key x int;
+        Dialects.DUCK_DB.default_executor().generate_sql("""key x int;
     property x.cost float;
 
     datasource x_source (

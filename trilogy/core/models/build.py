@@ -3874,10 +3874,17 @@ class Factory:
         return self._build_select_lineage(base)
 
     def _build_select_lineage(self, base: SelectLineage) -> BuildSelectLineage:
+        from trilogy.core.having_normalization import normalize_select_having
         from trilogy.core.models.build import (
             BuildSelectLineage,
             Factory,
         )
+
+        # Resolve non-output HAVING references (hidden aggregate promotion,
+        # finer-dim grain-key semijoin) before building. Runs here — not at
+        # parse — so the authored statement and environment stay untouched;
+        # minted concepts ride the returned copy's local_concepts.
+        base = normalize_select_having(base, self.environment)
 
         materialized: dict[str, BuildConcept] = {}
         factory = Factory(

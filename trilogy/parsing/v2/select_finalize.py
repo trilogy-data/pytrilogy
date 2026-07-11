@@ -37,48 +37,51 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 from __future__ import annotations
 
 from dataclasses import replace as dc_replace
-from typing import Any, Callable, Iterable, Iterator, Mapping, NamedTuple, cast
+from typing import Any, Callable, Iterable, Mapping, NamedTuple, cast
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import (
     AggregateGroupingMode,
-    BooleanOperator,
-    ComparisonOperator,
     ConceptSource,
-    Derivation,
     FunctionClass,
     FunctionType,
     Granularity,
     Modifier,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.having_normalization import (
+    _GROUPING_FNS,
+    _aggregate_full_signature,
+    _aggregate_node_has_nested_aggregate,
+    _child_exprs,
+    _collect_condition_aggregates,
+    _collect_standard_grouping_wrappers,
+    _concept_address,
+    _is_grouping_aggregate,
+    _is_standard_grouping_aggregate,
+    _is_window_item,
+    _macro_inner_aggregate,
+    _promotion_grows_grain,
+    _render_aggregate,
+    _strip_local_namespace,
+    _substitute_condition_tree,
+    _substitute_having_aggregates,
+)
 from trilogy.core.models.author import (
     AggregateWrapper,
-    Between,
-    CaseElse,
-    CaseWhen,
-    Comparison,
     Concept,
     ConceptRef,
-    Conditional,
-    FilterItem,
     Function,
-    FunctionCallWrapper,
     Grain,
     NavigationWindowItem,
     NumberingWindowItem,
     OrderBy,
     OrderItem,
     Parenthetical,
-    ReferenceReplacements,
     RowsetItem,
-    SubselectComparison,
-    SubselectItem,
     UndefinedConcept,
     UndefinedConceptFull,
-    WhereClause,
 )
-from trilogy.core.models.core import ListWrapper, MapWrapper, TupleWrapper
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
     ConceptTransform,
@@ -86,12 +89,11 @@ from trilogy.core.statements.author import (
     PersistStatement,
     RowsetDerivationStatement,
     SelectItem,
-    SelectLineage,
     SelectStatement,
 )
-from trilogy.parsing.common import arbitrary_to_concept, row_tuple_function
+from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import RuleContext
-from trilogy.parsing.v2.semantic_state import ConceptLookup, ConceptUpdateKind
+from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
 
 
 def _merged_local_concepts(
@@ -255,89 +257,6 @@ def _calculate_grain(
     return result
 
 
-def _concept_address(c: Any, rename: Mapping[str, str] | None = None) -> str:
-    if isinstance(c, (AggregateWrapper, Function)):
-        nested = _render_aggregate(c)
-        if nested:
-            return nested
-        # A composite (non-aggregate) argument like `a || b` embeds concept refs
-        # that `rename` must reach: after `_rewrite_aliased_source_refs` rewrites a
-        # HAVING copy's inner ref to the SELECT alias while the SELECT copy keeps the
-        # source name, the two aggregate signatures only compare equal once the
-        # rename is pushed through the whole expression. Both compared sides run
-        # this, so the rendered key need only be self-consistent.
-        if isinstance(c, Function) and rename:
-            replacements: ReferenceReplacements = [
-                (src, ConceptRef(address=tgt)) for src, tgt in rename.items()
-            ]
-            return str(c.with_reference_replacement(replacements))
-    addr = c.address if isinstance(c, (ConceptRef, Concept)) else str(c)
-    return rename.get(addr, addr) if rename is not None else addr
-
-
-def _macro_inner_aggregate(node: Any) -> Any | None:
-    """If ``node`` is a ``def``-macro invocation whose body is a single aggregate
-    (``@rollup_sales()`` -> ``sum(...) by rollup ...``), return that inner
-    aggregate node, else ``None``. Lets HAVING/SELECT aggregate matching see
-    through the ``FunctionCallWrapper`` produced by macro expansion."""
-    if isinstance(node, FunctionCallWrapper):
-        inner = node.content
-        if isinstance(inner, AggregateWrapper) or (
-            isinstance(inner, Function)
-            and inner.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-        ):
-            return inner
-    return None
-
-
-def _aggregate_full_signature(
-    node: Any,
-    rename: Mapping[str, str] | None = None,
-) -> tuple[Any, tuple[str, ...], tuple[str, ...]] | None:
-    """Signature (operator, args, by) for matching aggregates across SELECT/WHERE.
-
-    ``rename`` maps pure-rename SELECT sources to their alias addresses so a
-    SELECT ``by rollup sales.channel`` and a HAVING ``by ... local.channel``
-    (which finalize rewrites to the output grain) compare equal.
-
-    Returns ``None`` for non-aggregate nodes.
-    """
-    inner = _macro_inner_aggregate(node)
-    if inner is not None:
-        return _aggregate_full_signature(inner, rename)
-    if isinstance(node, AggregateWrapper):
-        return (
-            node.function.operator,
-            tuple(_concept_address(a, rename) for a in node.function.arguments),
-            tuple(sorted(_concept_address(c, rename) for c in node.by)),
-        )
-    if isinstance(node, Function) and (
-        node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-    ):
-        return (
-            node.operator,
-            tuple(_concept_address(a, rename) for a in node.arguments),
-            (),
-        )
-    return None
-
-
-def _render_aggregate(node: Any) -> str:
-    sig = _aggregate_full_signature(node)
-    if sig is None:
-        return ""
-    op, args, by = sig
-    op_name = (op.value if hasattr(op, "value") else str(op)).lower()
-    rendered = f"{op_name}({', '.join(args)})"
-    if by:
-        rendered += f" by {', '.join(by)}"
-    return rendered
-
-
-def _strip_local_namespace(address: str) -> str:
-    return address[len("local.") :] if address.startswith("local.") else address
-
-
 def _select_aggregate_outputs(
     select: SelectStatement,
     rename: Mapping[str, str] | None = None,
@@ -497,49 +416,6 @@ def _substitute_having_derived(select: SelectStatement) -> None:
         select.having_clause.conditional = new_conditional
 
 
-def _collect_condition_aggregates(node: Any) -> list[Any]:
-    """Walk a WHERE/HAVING conditional tree and return outer aggregate nodes.
-
-    Recognizes both ``AggregateWrapper`` and bare ``Function`` calls whose operator
-    is an aggregate function. Does not descend into the inner argument expression
-    of an aggregate — nested aggregates are matched by the outer signature.
-    """
-    found: list[Any] = []
-    if isinstance(node, AggregateWrapper):
-        found.append(node)
-        return found
-    if _macro_inner_aggregate(node) is not None:
-        # `@rollup_agg()` macro wrapping a single aggregate — match as a whole.
-        found.append(node)
-        return found
-    if isinstance(node, FunctionCallWrapper):
-        found.extend(_collect_condition_aggregates(node.content))
-        for macro_arg in node.args:
-            found.extend(_collect_condition_aggregates(macro_arg))
-        return found
-    if isinstance(node, Function) and (
-        node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-    ):
-        found.append(node)
-        return found
-    if isinstance(node, Comparison):
-        found.extend(_collect_condition_aggregates(node.left))
-        found.extend(_collect_condition_aggregates(node.right))
-    elif isinstance(node, Conditional):
-        found.extend(_collect_condition_aggregates(node.left))
-        found.extend(_collect_condition_aggregates(node.right))
-    elif isinstance(node, Parenthetical):
-        found.extend(_collect_condition_aggregates(node.content))
-    elif isinstance(node, Between):
-        found.extend(_collect_condition_aggregates(node.left))
-        found.extend(_collect_condition_aggregates(node.low))
-        found.extend(_collect_condition_aggregates(node.high))
-    elif isinstance(node, Function):
-        for arg in node.arguments:
-            found.extend(_collect_condition_aggregates(arg))
-    return found
-
-
 def _validate_where_aggregate_matches_select(
     select: SelectStatement, line_no: int | None
 ) -> None:
@@ -571,150 +447,26 @@ def _validate_where_aggregate_matches_select(
         )
 
 
-def _aggregate_node_has_nested_aggregate(node: Any) -> bool:
-    """True if the aggregate node's argument expression contains another aggregate.
-
-    Nested aggregates (``avg(sum(x) by ...)``) cannot be rendered as inline SQL
-    and must be materialized via a SELECT alias.
-    """
-    if isinstance(node, AggregateWrapper):
-        args: list[Any] = list(node.function.arguments)
-    elif isinstance(node, Function) and (
-        node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-    ):
-        args = list(node.arguments)
-    else:
-        return False
-    stack: list[Any] = list(args)
-    while stack:
-        cur = stack.pop()
-        if _aggregate_full_signature(cur) is not None:
-            return True
-        if isinstance(cur, Parenthetical):
-            stack.append(cur.content)
-        elif isinstance(cur, Function):
-            stack.extend(cur.arguments)
-    return False
-
-
-def _substitute_condition_tree(node: Any, match_leaf: Any) -> Any:
-    """Walk a HAVING conditional tree, replacing any node for which
-    ``match_leaf(node)`` returns a ``ConceptRef`` with that reference. A
-    ``None`` return leaves the node to the structural recursion. Matched
-    nodes are leaves — we do not descend into their argument expressions."""
-    replacement = match_leaf(node)
-    if replacement is not None:
-        return replacement
-    if isinstance(node, Comparison):
-        # Preserve the concrete class (e.g. SubselectComparison) — a plain
-        # Comparison rebuild would strip a membership's existence semantics,
-        # leaving the HAVING set-concept to render as a bare column.
-        return type(node)(
-            left=_substitute_condition_tree(node.left, match_leaf),
-            right=_substitute_condition_tree(node.right, match_leaf),
-            operator=node.operator,
-        )
-    if isinstance(node, Conditional):
-        return Conditional(
-            left=_substitute_condition_tree(node.left, match_leaf),
-            right=_substitute_condition_tree(node.right, match_leaf),
-            operator=node.operator,
-        )
-    if isinstance(node, Parenthetical):
-        return Parenthetical(
-            content=_substitute_condition_tree(node.content, match_leaf)
-        )
-    if isinstance(node, Between):
-        return Between(
-            left=_substitute_condition_tree(node.left, match_leaf),
-            low=_substitute_condition_tree(node.low, match_leaf),
-            high=_substitute_condition_tree(node.high, match_leaf),
-        )
-    if isinstance(node, Function):
-        new_args = [_substitute_condition_tree(a, match_leaf) for a in node.arguments]
-        if all(a is b for a, b in zip(new_args, node.arguments)):
-            return node
-        replacement_fn = Function.__new__(Function)
-        replacement_fn.__dict__.update(node.__dict__)
-        replacement_fn.arguments = new_args
-        return replacement_fn
-    # A window's inner order-by/operand may itself be an aggregate that matches a
-    # SELECT alias (`rank(k) over (order by sum(x) desc)` alongside `sum(x) as t`).
-    # Descend so it's rewritten to the materialized column — otherwise the renderer
-    # re-derives the anonymous inline aggregate against a CTE that only has the
-    # projected one, emitting an INVALID_REFERENCE_BUG sentinel.
-    if isinstance(node, (NumberingWindowItem, NavigationWindowItem)):
-        new_order = [
-            OrderItem(
-                expr=_substitute_condition_tree(o.expr, match_leaf), order=o.order
-            )
-            for o in node.order_by
-        ]
-        new_over = [_substitute_condition_tree(o, match_leaf) for o in node.over]
-        order_changed = any(
-            a.expr is not b.expr for a, b in zip(new_order, node.order_by)
-        )
-        over_changed = any(a is not b for a, b in zip(new_over, node.over))
-        if isinstance(node, NumberingWindowItem):
-            new_args = [
-                _substitute_condition_tree(a, match_leaf) for a in node.arguments
-            ]
-            if not (
-                order_changed
-                or over_changed
-                or any(a is not b for a, b in zip(new_args, node.arguments))
-            ):
-                return node
-            return NumberingWindowItem(
-                type=node.type,
-                arguments=new_args,
-                order_by=new_order,
-                over=new_over,
-            )
-        new_content = _substitute_condition_tree(node.content, match_leaf)
-        if not (order_changed or over_changed or new_content is not node.content):
-            return node
-        return NavigationWindowItem(
-            type=node.type,
-            content=new_content,
-            order_by=new_order,
-            over=new_over,
-            offset=node.offset,
-        )
-    return node
-
-
-def _substitute_having_aggregates(
-    node: Any,
-    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef],
-    rename: Mapping[str, str] | None = None,
-) -> Any:
-    """Rewrite a HAVING conditional tree, replacing matched aggregates with
-    ``ConceptRef`` to the SELECT alias."""
-
-    def match(n: Any) -> ConceptRef | None:
-        sig = _aggregate_full_signature(n, rename)
-        return sig_to_ref.get(sig) if sig is not None else None
-
-    return _substitute_condition_tree(node, match)
-
-
 def _validate_having_aggregates_match_select(
-    select: SelectStatement, context: RuleContext, line_no: int | None
+    select: SelectStatement,
+    context: RuleContext,
+    allowed_addresses: set[str],
+    line_no: int | None,
 ) -> None:
-    """Reject inline HAVING aggregates whose signature is not in the SELECT.
+    """Reject inline HAVING aggregates the build layer has no resolution for.
 
-    HAVING filters rows of the post-aggregation projection, so any aggregate it
-    references must already exist in the projection (matching by operator, args,
-    and ``by`` grain). An off-grain aggregate like ``avg(sum(x) by store.id)``
-    that does not match a SELECT item has no place to be materialized at the
-    SELECT grain — the renderer would otherwise emit nested aggregates.
+    A HAVING aggregate that matches a SELECT item (by operator, args, and
+    ``by`` grain) is rewritten here to reference the alias directly. Without
+    this the renderer re-inlines the AggregateWrapper, which breaks when
+    intermediate CTEs have already aggregated away the row-level inputs.
 
-    For aggregates whose signature *does* match a SELECT alias, rewrite the
-    HAVING tree to reference the alias directly. Without this the renderer
-    re-inlines the AggregateWrapper, which breaks when intermediate CTEs have
-    already aggregated away the row-level inputs.
-    """
+    Of the rest, the build-time normalization pass
+    (``trilogy.core.having_normalization``) promotes grain-safe aggregates to
+    hidden outputs and routes finer/off-projection references through the
+    grain-key semijoin. The only unresolvable shape — rejected here, where the
+    line position is known — is an in-projection aggregate that would *grow*
+    the select grain if materialized (e.g. a nested ``avg(sum(x) by store.id)``
+    over a finer key that is itself projected)."""
     if not select.having_clause:
         return
     # A SELECT ``by rollup sales.channel`` keeps source names while finalize
@@ -723,6 +475,8 @@ def _validate_having_aggregates_match_select(
     rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
     select_aggs = _select_aggregate_outputs(select, rename)
     sig_to_alias_addr = {sig: addr for sig, addr in select_aggs}
+    base_targets: list[Any] | None = None
+    base_components: set[str] = set()
     for node in _collect_condition_aggregates(select.having_clause.conditional):
         sig = _aggregate_full_signature(node, rename)
         if sig is None or sig in sig_to_alias_addr:
@@ -730,21 +484,44 @@ def _validate_having_aggregates_match_select(
         _, _, by = sig
         # Bare aggregates without an explicit ``by`` (and without a nested
         # aggregate input) compute at the SELECT grain; the renderer can
-        # inline them safely from the same source columns. Reject only the
-        # cases the renderer can't handle inline: off-grain ``by`` clauses
-        # and nested aggregates.
+        # inline them safely from the same source columns.
         if not by and not _aggregate_node_has_nested_aggregate(node):
+            continue
+        # References outside the projection route to the build-time grain-key
+        # semijoin — the whole leaf becomes `key in (filter key where ...)`.
+        inner = _macro_inner_aggregate(node)
+        refs = (inner if inner is not None else node).concept_arguments
+        if any(
+            rename.get(ref.address, ref.address) not in allowed_addresses
+            for ref in refs
+        ):
+            continue
+        # A grain-safe (non-fanning) aggregate is promoted to a hidden output
+        # at build time.
+        concept = arbitrary_to_concept(node, context.environment)
+        if base_targets is None:
+            base_targets = [item.concept for item in select.selection]
+            base_components = Grain.from_concepts(
+                base_targets,
+                where_clause=None,
+                environment=context.environment,
+                local_concepts=select.local_concepts,
+            ).components
+        if not _promotion_grows_grain(
+            concept, base_targets, base_components, context.environment
+        ):
             continue
         rendered = _render_aggregate(node)
         raise InvalidSyntaxException(
             f"HAVING clause aggregate `{rendered}` is not in the SELECT "
-            f"projection (line {line_no}). HAVING can only filter on "
-            f"off-grain or nested aggregates that are also computed in the "
-            f"SELECT. Fix one of: (a) add it to SELECT — prefix with `--` to "
-            f"keep it out of the output rows, e.g. `select ..., --{rendered}`; "
-            f"(b) move the filter to WHERE — for an aggregate condition on a "
-            f"non-output grain, write the aggregate inline as `agg(x) by grain` "
-            f"directly in WHERE."
+            f"projection and would change the select grain if added (line "
+            f"{line_no}). HAVING can only filter on off-grain or nested "
+            f"aggregates that are also computed in the SELECT. Fix one of: "
+            f"(a) add it to SELECT — prefix with `--` to keep it out of the "
+            f"output rows, e.g. `select ..., --{rendered}`; (b) move the "
+            f"filter to WHERE — for an aggregate condition on a non-output "
+            f"grain, write the aggregate inline as `agg(x) by grain` directly "
+            f"in WHERE."
         )
     sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
     for sig, addr in sig_to_alias_addr.items():
@@ -816,9 +593,6 @@ def _rewrite_aliased_source_refs(select: SelectStatement) -> None:
         )
 
 
-_GROUPING_FNS = (FunctionType.GROUPING, FunctionType.GROUPING_ID)
-
-
 def _item_lineage(item: Any, context: RuleContext) -> Any:
     """The lineage expression behind a select item, whether it is an inline
     ``ConceptTransform`` or a by-name reference to an ``auto`` concept."""
@@ -832,98 +606,6 @@ def _item_lineage(item: Any, context: RuleContext) -> Any:
     if concept is None or isinstance(concept, (UndefinedConcept, UndefinedConceptFull)):
         return None
     return concept.lineage
-
-
-def _child_exprs(node: Any) -> Iterator[Any]:
-    """Direct child expressions of a composite ``Expr`` node — the value-bearing
-    sub-expressions an aggregate could be nested in. Covers every non-leaf member
-    of the ``Expr`` union (author.py); leaves (``ConceptRef``, scalars) yield
-    nothing. Filter/window/subselect carry their value in ``content``/``arguments``
-    only — their ``where``/``order_by`` are conditions, not part of the projected
-    value, so they are intentionally not descended here.
-
-    Keep in sync with the ``Expr`` union; ``test_aggregate_wrapper_collection``'s
-    exhaustiveness guard fails if a new composite type is added without coverage.
-    """
-    if isinstance(node, (Comparison, Conditional)):
-        yield node.left
-        yield node.right
-    elif isinstance(node, Between):
-        yield node.left
-        yield node.low
-        yield node.high
-    elif isinstance(node, Parenthetical):
-        yield node.content
-    elif isinstance(node, CaseWhen):
-        yield node.comparison
-        yield node.expr
-    elif isinstance(node, CaseElse):
-        yield node.expr
-    elif isinstance(node, AggregateWrapper):
-        yield from node.function.arguments
-    elif isinstance(node, Function):
-        yield from node.arguments
-    elif isinstance(node, FunctionCallWrapper):
-        # `def` macro expansion (`@rollup_agg(x)`): body in `content`, call args.
-        yield node.content
-        yield from node.args
-    elif isinstance(node, FilterItem):
-        yield node.content
-    elif isinstance(node, NavigationWindowItem):
-        yield node.content
-    elif isinstance(node, NumberingWindowItem):
-        yield from node.arguments
-    elif isinstance(node, SubselectItem):
-        yield node.content
-    elif isinstance(node, (TupleWrapper, ListWrapper)):
-        yield from node
-    elif isinstance(node, MapWrapper):
-        yield from node.keys()
-        yield from node.values()
-
-
-def _expression_contains_window(node: Any) -> bool:
-    if isinstance(node, (NavigationWindowItem, NumberingWindowItem)):
-        return True
-    return any(_expression_contains_window(child) for child in _child_exprs(node))
-
-
-def _window_key_addresses(node: Any) -> set[str]:
-    if isinstance(node, (NavigationWindowItem, NumberingWindowItem)):
-        refs = {
-            expr.address
-            for expr in [
-                *node.over,
-                *(item.expr for item in node.order_by),
-            ]
-            if isinstance(expr, ConceptRef)
-        }
-        if isinstance(node, NavigationWindowItem):
-            refs |= _window_key_addresses(node.content)
-        else:
-            for argument in node.arguments:
-                refs |= _window_key_addresses(argument)
-        return refs
-    return {
-        address
-        for child in _child_exprs(node)
-        for address in _window_key_addresses(child)
-    }
-
-
-def _collect_aggregate_wrappers(
-    node: Any, predicate: Callable[[Any], bool]
-) -> list[AggregateWrapper]:
-    """Every ``AggregateWrapper`` matching ``predicate`` anywhere in an expression
-    tree — so a target agg nested inside ``coalesce(...)``, a ``case``, a ``def``
-    macro, a window, a filter, etc. is still found. A matching node is returned
-    without descending into it (an aggregate won't nest a same-class aggregate)."""
-    if predicate(node):
-        return [cast(AggregateWrapper, node)]
-    found: list[AggregateWrapper] = []
-    for child in _child_exprs(node):
-        found += _collect_aggregate_wrappers(child, predicate)
-    return found
 
 
 def _select_rollup_spec(
@@ -940,28 +622,6 @@ def _select_rollup_spec(
         list(grouping.by),
         [list(g) for g in grouping.grouping_sets],
     )
-
-
-def _is_standard_grouping_aggregate(node: Any) -> bool:
-    return (
-        _is_grouping_aggregate(node) and node.grouping == AggregateGroupingMode.STANDARD
-    )
-
-
-def _is_grouping_aggregate(node: Any) -> bool:
-    return (
-        isinstance(node, AggregateWrapper) and node.function.operator in _GROUPING_FNS
-    )
-
-
-def _collect_standard_grouping_wrappers(node: Any) -> list[AggregateWrapper]:
-    """All STANDARD-mode ``grouping()``/``grouping_id()`` wrappers anywhere in an
-    expression tree (e.g. nested inside a ``case`` that derives a rollup level)."""
-    return _collect_aggregate_wrappers(node, _is_standard_grouping_aggregate)
-
-
-def _is_window_item(node: Any) -> bool:
-    return isinstance(node, (NavigationWindowItem, NumberingWindowItem))
 
 
 def _lineage_reaches(
@@ -1474,410 +1134,6 @@ def _promote_having_grouping_to_outputs(
         select.having_clause.conditional = new_conditional
 
 
-def _promotion_grows_grain(
-    concept: Concept,
-    base_targets: list[Any],
-    base_components: set[str],
-    context: RuleContext,
-) -> bool:
-    """True if adding ``concept`` as a SELECT output would enlarge the select
-    grain. A bare/coarser aggregate broadcasts one value per grain row (grain
-    unchanged); a *finer* off-grain aggregate (``agg(x) by k`` where ``k`` is
-    finer than the grain) enters the grain as itself, which would fan the output
-    out — so it must be semijoined, not promoted."""
-    combined = Grain.from_concepts(
-        base_targets + [concept],
-        where_clause=None,
-        environment=context.environment,
-        local_concepts={concept.address: concept},
-    )
-    # Resolve the candidate's own address through the seeded map; every other
-    # target is a concrete Concept or resolves via the environment, so the only
-    # possible new component beyond ``base_components`` is the candidate itself.
-    return bool(combined.components - base_components)
-
-
-def _is_single_row_rowset_scalar(
-    named: Concept,
-    concepts: ConceptLookup | Mapping[str, Concept] | None = None,
-    _seen: set[str] | None = None,
-) -> bool:
-    """True for a rowset output whose source select is grainless — it produces
-    exactly one row and so broadcasts like a scalar (``rowset r <- select
-    sum(x)/sum(y) as v``). Such an output is mis-tagged ``MULTI_ROW`` granularity
-    (and ``ROWSET`` derivation, not ``AGGREGATE``), so the plain scalar-promotion
-    gate misses it and the HAVING predicate gets misrouted into the finer-dim
-    grain-key semijoin — which silently drops rollup subtotal rows (NULL-key
-    collision) and doesn't even filter correctly on a plain grouped select.
-    Restricted to a single (non-union) ``SelectLineage``: a union of grainless
-    arms yields one row *per arm*, not a single broadcast row.
-
-    Also true for a BASIC concept derived only from single-row rowset scalars
-    (plus literals) — e.g. ``auto avg <- ov.total / ov.count``. Combining scalars
-    stays a single broadcast row, but the wrapper is ``derivation=BASIC`` (not a
-    ``RowsetItem``), so without recursing the wrapper the HAVING predicate is
-    again misrouted into the semijoin and rollup subtotals vanish. This is the
-    natural HAVING form (`having sum(x) > my_scalar`), so it must be covered.
-    Requires ``concepts`` to resolve the BASIC args (they arrive as ``ConceptRef``)."""
-    lineage = named.lineage
-    if isinstance(lineage, RowsetItem):
-        select = lineage.rowset.select
-        return isinstance(select, SelectLineage) and not select.grain.components
-    if concepts is not None and named.derivation == Derivation.BASIC:
-        args = named.concept_arguments
-        if not args:
-            return False
-        if _seen is None:
-            _seen = set()
-        if named.address in _seen:
-            return False
-        _seen.add(named.address)
-        resolved = [concepts.get(a.address) for a in args]
-        return all(
-            r is not None and _is_single_row_rowset_scalar(r, concepts, _seen)
-            for r in resolved
-        )
-    return False
-
-
-def _promote_having_aggregates_to_outputs(
-    select: SelectStatement, context: RuleContext
-) -> None:
-    """Mint a hidden SELECT output for each HAVING aggregate that is not already a
-    SELECT output, and point the HAVING reference at it.
-
-    A HAVING aggregate filters the post-aggregation rows, so it must be a
-    materialized column. Rather than force the user to add a ``--agg(x)`` hidden
-    column by hand, we add it for them. Promoting a *bare or coarser* aggregate is
-    grain-safe: it broadcasts one value per grain row, so the select grain (and
-    therefore the grain at which every projection aggregate computes) is
-    unchanged. A *finer* off-grain aggregate (``agg(x) by k`` where ``k`` is finer
-    than the select grain) would instead enter the grain as itself and fan the
-    output out, so it is skipped here (``_promotion_grows_grain``) and left for the
-    semijoin rewrite in ``_rewrite_having_finer_dims_to_membership``.
-
-    Runs before the SELECT loop so the injected outputs go through
-    ``set_select_grain`` like any other projection aggregate. ``grouping()`` is
-    handled by ``_promote_having_grouping_to_outputs`` (it needs rollup-spec
-    colocation) and is skipped here.
-    """
-    if not select.having_clause:
-        return
-    rename = {src: ref.address for src, ref in _alias_rename_map(select).items()}
-    select_aggs = _select_aggregate_outputs(select, rename)
-    existing = {sig for sig, _ in select_aggs}
-    # Grain of the explicit (pre-promotion) outputs. Promoting an aggregate is
-    # grain-safe only if its value is one-per-grain-row (a bare aggregate, or an
-    # off-grain `agg(x) by k` whose `by` is coarser than / equal to this grain).
-    # A *finer* off-grain aggregate (e.g. `count(x) by item` under a {brand}
-    # grain) would otherwise enter the grain as itself and fan the output out, so
-    # it is left for the semijoin rewrite instead of promoted.
-    base_targets = [item.concept for item in select.selection]
-    base_components = Grain.from_concepts(
-        base_targets,
-        where_clause=None,
-        environment=context.environment,
-        local_concepts=select.local_concepts,
-    ).components
-    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
-    for node in _collect_condition_aggregates(select.having_clause.conditional):
-        # Macros (`@rollup()`) and grouping indicators are materialized elsewhere;
-        # only mint plain/off-grain/nested aggregate expressions here.
-        if isinstance(node, FunctionCallWrapper) or _is_standard_grouping_aggregate(
-            node
-        ):
-            continue
-        sig = _aggregate_full_signature(node, rename)
-        if sig is None or sig in existing or sig in sig_to_ref:
-            continue
-        concept = arbitrary_to_concept(node, context.environment)
-        if _promotion_grows_grain(concept, base_targets, base_components, context):
-            continue
-        select.selection.append(
-            SelectItem(
-                content=ConceptTransform(function=node, output=concept),
-                modifiers=[Modifier.HIDDEN],
-            )
-        )
-        # Seed local_concepts so the grain calc that runs next can resolve it.
-        select.local_concepts[concept.address] = concept
-        sig_to_ref[sig] = concept.reference
-    if sig_to_ref:
-        select.having_clause.conditional = _substitute_having_aggregates(
-            select.having_clause.conditional, sig_to_ref, rename
-        )
-    # A HAVING reference to a *named* aggregate concept (`auto m <- sum(x) by k`,
-    # or a `@macro()` aggregate, used directly in HAVING) or to a scalar (a
-    # single-row rowset output like a whole-table `avg(...)`) is the same case as
-    # an inline aggregate: it must be materialized and broadcast at the select
-    # grain. It arrives as a plain ConceptRef (not an aggregate node) so the loop
-    # above misses it — add it as a hidden plain output here. Grain-safe: a metric
-    # never contributes to grain and a single-row value is constant across every
-    # row. A reference *finer* than the grain is left for the semijoin rewrite.
-    # ``is_aggregate`` is False for a macro-wrapped aggregate, so key off
-    # ``derivation`` too (and SINGLE_ROW granularity for scalars).
-    output_addrs = {c.address for c in select.output_components}
-    for ref in select.having_clause.row_arguments:
-        if ref.address in output_addrs:
-            continue
-        named = context.concepts.get(ref.address)
-        if named is None or isinstance(named, (UndefinedConcept, UndefinedConceptFull)):
-            continue
-        # Promote computed values (aggregates, macro-aggregates, windows) and
-        # scalars; leave a *finer plain dimension* to the semijoin rewrite. A
-        # window result, like an aggregate, must be materialized — semijoining it
-        # would re-derive the window inside a filter (and can recurse).
-        grain_determined = (
-            named.is_aggregate
-            or named.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
-            or named.granularity == Granularity.SINGLE_ROW
-            or _is_single_row_rowset_scalar(named, context.concepts)
-        )
-        if not grain_determined:
-            continue
-        select.selection.append(
-            SelectItem(content=named.reference, modifiers=[Modifier.HIDDEN])
-        )
-        select.local_concepts[named.address] = named
-        output_addrs.add(named.address)
-
-
-def _bare_row_refs(node: Any) -> list[ConceptRef]:
-    """Concept references of an expression reachable without crossing an
-    aggregate or window boundary — the references that must exist as row-level
-    columns of the post-aggregation result for the expression to evaluate.
-
-    A ref *inside* an aggregate/window is not one: the computed value is
-    materialized (or validated) separately and its operands are collapsed away
-    by the grouping. This is the distinction between a raw concept being an
-    operand of a selected expression and it being available at the output
-    grain — ``count(x ? dim is not null) as c`` consumes ``dim`` but does not
-    carry it through the group CTE, so a bare HAVING reference to ``dim`` still
-    needs the semijoin rewrite (q72)."""
-    if isinstance(node, ConceptRef):
-        return [node]
-    if isinstance(node, (AggregateWrapper, NavigationWindowItem, NumberingWindowItem)):
-        return []
-    if isinstance(node, Function):
-        if (
-            node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-            or node.operator in _GROUPING_FNS
-        ):
-            return []
-        out: list[ConceptRef] = []
-        for arg in node.arguments:
-            out += _bare_row_refs(arg)
-        return out
-    if isinstance(node, FunctionCallWrapper):
-        return _bare_row_refs(node.content)
-    if isinstance(node, Parenthetical):
-        return _bare_row_refs(node.content)
-    if isinstance(node, SubselectComparison):
-        # The existence RHS is sourced as an independent subselect; only the
-        # row side must resolve at the output grain.
-        return _bare_row_refs(node.left)
-    if isinstance(node, (Comparison, Conditional)):
-        return _bare_row_refs(node.left) + _bare_row_refs(node.right)
-    if isinstance(node, Between):
-        return (
-            _bare_row_refs(node.left)
-            + _bare_row_refs(node.low)
-            + _bare_row_refs(node.high)
-        )
-    if isinstance(node, CaseWhen):
-        return _bare_row_refs(node.comparison) + _bare_row_refs(node.expr)
-    if isinstance(node, CaseElse):
-        return _bare_row_refs(node.expr)
-    if isinstance(node, FilterItem):
-        return _bare_row_refs(node.content) + _bare_row_refs(node.where.conditional)
-    return []
-
-
-def _row_grain_allowed_addresses(select: SelectStatement) -> set[str]:
-    """Addresses available as row-level references of the post-aggregation
-    result: the outputs themselves plus operands of *scalar* select derivations
-    (which stay at the output grain). Operands that appear only inside a
-    selected aggregate or window are excluded — the grouping collapses them.
-    Stricter than ``alias_source_addresses``, which intentionally exposes
-    aggregate operands so an inline HAVING/ORDER BY aggregate can match its
-    projected twin."""
-    allowed = {x.address for x in select.output_components}
-    for item in select.selection:
-        if isinstance(item.content, ConceptTransform):
-            for ref in _bare_row_refs(item.content.function):
-                allowed.add(ref.address)
-    return allowed
-
-
-def _build_grain_key_membership(
-    leaf: Comparison | Between,
-    grain_keys: list[str],
-    where_clause: WhereClause | None,
-    context: RuleContext,
-    line_no: int | None,
-) -> SubselectComparison:
-    """Turn a HAVING predicate on a non-output dimension into a semijoin against
-    the select grain key(s): ``key in (filter key where <leaf>)`` for a single-key
-    grain, or the row-wise composite ``(k1, k2) in (filter k1 where <leaf>, filter
-    k2 where <leaf>)`` for a multi-key grain. The per-key filtered sets share the
-    same predicate and are sourced together, so they stay correlated (the surviving
-    key *combinations*, not the cross product).
-
-    The select's WHERE clause is AND-ed into the filter so the existence set is
-    evaluated within the same pre-aggregation universe the aggregate saw — a
-    group only survives if it has a matching row *that also passed WHERE*."""
-    if not grain_keys:
-        raise InvalidSyntaxException(
-            f"HAVING filters on a dimension outside the SELECT projection, but the "
-            f"select has no grain key to anchor a post-aggregation semijoin (line "
-            f"{line_no}). Move the filter to WHERE to filter before aggregation."
-        )
-    predicate: Any = leaf
-    if where_clause is not None:
-        predicate = Conditional(
-            left=leaf, right=where_clause.conditional, operator=BooleanOperator.AND
-        )
-    key_refs: list[ConceptRef] = []
-    filtered_refs: list[ConceptRef] = []
-    for addr in grain_keys:
-        key_concept = context.concepts.get(addr)
-        if key_concept is None or isinstance(
-            key_concept, (UndefinedConcept, UndefinedConceptFull)
-        ):
-            raise InvalidSyntaxException(
-                f"HAVING filters on a dimension outside the SELECT projection but "
-                f"the select grain key '{addr}' could not be resolved to build the "
-                f"semijoin (line {line_no}). Move the filter to WHERE instead."
-            )
-        key_ref = key_concept.reference
-        filtered = arbitrary_to_concept(
-            FilterItem(content=key_ref, where=WhereClause(conditional=predicate)),
-            context.environment,
-        )
-        context.add_virtual_concept(filtered)
-        key_refs.append(key_ref)
-        filtered_refs.append(filtered.reference)
-    if len(grain_keys) == 1:
-        left: Any = key_refs[0]
-        right: Any = filtered_refs[0]
-    else:
-        left = row_tuple_function(list(key_refs))
-        right = row_tuple_function(list(filtered_refs))
-    return SubselectComparison(left=left, right=right, operator=ComparisonOperator.IN)
-
-
-def _rewrite_having_finer_dims_to_membership(
-    select: SelectStatement,
-    context: RuleContext,
-    allowed_addresses: set[str],
-    line_no: int | None,
-) -> None:
-    """Rewrite each HAVING predicate on a dimension outside the select grain into a
-    post-aggregation semijoin ``key in (filter key where <predicate>)``.
-
-    HAVING filters *after* aggregation, so a finer-grain predicate must never
-    change the value of a select-grain aggregate — it may only decide which
-    select-grain rows survive (those that have at least one matching finer row).
-    Filtering the select grain *key* against the keys that satisfy the predicate
-    is exactly that, and — because it filters whole groups rather than rows within
-    a group — it is invariant to predicate pushdown. The membership reuses the
-    existing existence machinery, which sources the filtered set as an independent
-    subquery that never contaminates the aggregate.
-
-    A leaf needs the rewrite under either rule:
-
-    - any of its *bare* row references (outside aggregates/windows) is not
-      materialized at the output grain (``_row_grain_allowed_addresses``). The
-      broader ``allowed_addresses`` cannot decide this: it includes aggregate
-      operands, but ``sum(x ? dim = 1) as c`` consumes ``dim`` without carrying
-      it through the group CTE, so a bare HAVING ``dim`` would otherwise slip
-      through unrewritten and either get pushed pre-aggregation (silent wrong
-      result) or reach rendering with no source (INVALID_REFERENCE_BUG, q72);
-    - any reference at all (including inside a finer off-grain aggregate that
-      ``_promote_having_aggregates_to_outputs`` deliberately skipped) is outside
-      ``allowed_addresses`` — the pre-existing rule.
-    """
-    if not select.having_clause:
-        return
-    grain_keys = sorted(select.grain.components)
-    stable_grain_keys = []
-    window_keys: set[str] = set()
-    for address in grain_keys:
-        concept = select.local_concepts.get(address) or context.concepts.get(address)
-        lineage = getattr(concept, "lineage", None)
-        if isinstance(lineage, (NavigationWindowItem, NumberingWindowItem)):
-            window_keys |= _window_key_addresses(lineage)
-            continue
-        if lineage is not None and _expression_contains_window(lineage):
-            window_keys |= _window_key_addresses(lineage)
-            continue
-        stable_grain_keys.append(address)
-    stable_grain_keys.extend(sorted(window_keys - set(stable_grain_keys)))
-    if stable_grain_keys:
-        grain_keys = stable_grain_keys
-    row_grain_allowed = _row_grain_allowed_addresses(select)
-
-    def needs_membership(leaf: Any) -> bool:
-        # SubselectComparison subclasses Comparison: an existing `x in <set>`
-        # whose *row* side x is a non-output dimension is wrapped too (its
-        # row_arguments exclude the existence RHS, so only the row side counts).
-        if not isinstance(leaf, (Comparison, Between)):
-            return False
-        extra = [r for r in leaf.row_arguments if r.address not in allowed_addresses]
-        extra += [r for r in _bare_row_refs(leaf) if r.address not in row_grain_allowed]
-        if not extra:
-            return False
-        # A genuinely undefined reference is reported by the missing-ref check;
-        # don't wrap it.
-        return not any(_is_unresolved(context, r.address) for r in extra)
-
-    built_membership = False
-
-    def transform(node: Any) -> Any:
-        nonlocal built_membership
-        if isinstance(node, Conditional):
-            new_left = transform(node.left)
-            new_right = transform(node.right)
-            if new_left is node.left and new_right is node.right:
-                return node
-            return Conditional(left=new_left, right=new_right, operator=node.operator)
-        if isinstance(node, Parenthetical):
-            new_content = transform(node.content)
-            if new_content is node.content:
-                return node
-            return Parenthetical(content=new_content)
-        if needs_membership(node):
-            built_membership = True
-            return _build_grain_key_membership(
-                node, grain_keys, select.where_clause, context, line_no
-            )
-        return node
-
-    select.having_clause.conditional = transform(select.having_clause.conditional)
-
-    # The membership left side is the full select-grain key tuple, but a grain key
-    # need not be a projected output (e.g. a window's `order by`/`partition by`
-    # key that's pulled into the grain but not selected). Such a key is absent from
-    # the final CTE, so the rendered left tuple resolves to INVALID_REFERENCE_BUG.
-    # Materialize any unprojected grain key as a hidden output so it survives to the
-    # final CTE for the semijoin to reference.
-    if built_membership:
-        output_addrs = {c.address for c in select.output_components}
-        for addr in grain_keys:
-            if addr in output_addrs:
-                continue
-            key_concept = context.concepts.get(addr)
-            if key_concept is None or isinstance(
-                key_concept, (UndefinedConcept, UndefinedConceptFull)
-            ):
-                continue
-            select.selection.append(
-                SelectItem(content=key_concept.reference, modifiers=[Modifier.HIDDEN])
-            )
-            select.local_concepts[key_concept.address] = key_concept
-            output_addrs.add(key_concept.address)
-
-
 def _order_match_signature(
     node: Any, rename: Mapping[str, str]
 ) -> tuple[Any, ...] | None:
@@ -2073,70 +1329,27 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
         # alias too, so a filter on a derived output resolves to the materialized
         # column instead of re-deriving its (now-absent) inner argument.
         _substitute_having_derived(select)
-        # Rewrite a HAVING predicate on a dimension outside the select grain into a
-        # post-aggregation semijoin on the grain key, so it filters which groups
-        # survive without changing any select-grain aggregate. After this the only
-        # row references left are SELECT outputs and the grain key.
-        _rewrite_having_finer_dims_to_membership(
-            select, context, allowed_addresses, line_no
-        )
-        # The membership left side is the select grain key, which need not be a
-        # projected output — so the surviving non-output references are the grain
-        # keys. Anything else is either a typo (undefined) or a dimension we could
-        # not turn into a semijoin; report both with actionable guidance. Use
-        # row_arguments, not concept_arguments: an `x in <set>` membership's
-        # existence RHS is sourced as a subselect at plan time and need not be
-        # projected — only the row side must resolve.
-        allowed_for_having = (
-            allowed_addresses
-            | set(select.grain.components)
-            | {x.address for x in select.output_components}
-        )
-        # Bare row references (outside aggregates/windows) are held to the
-        # stricter standard the semijoin rewrite used: they must be materialized
-        # at the output grain, not merely be an operand of some selected
-        # aggregate. Anything the rewrite left bare and unmaterialized would
-        # otherwise reach planning with no backing column — pushed
-        # pre-aggregation or rendered as a missing-source sentinel (q72).
-        row_grain_allowed_for_having = _row_grain_allowed_addresses(select) | set(
-            select.grain.components
-        )
-        flagged = [
-            cref.address
-            for cref in select.having_clause.row_arguments
-            if cref.address not in allowed_for_having
-        ]
-        flagged += [
-            cref.address
-            for cref in _bare_row_refs(select.having_clause.conditional)
-            if cref.address not in row_grain_allowed_for_having
-        ]
-        undefined_refs: list[str] = []
-        unhandled_refs: list[str] = []
-        for address in flagged:
-            if _is_unresolved(context, address):
-                if address not in undefined_refs:
-                    undefined_refs.append(address)
-            elif address not in unhandled_refs:
-                unhandled_refs.append(address)
-        if undefined_refs:
-            refs = ", ".join(f"'{a}'" for a in undefined_refs)
-            verb = "is" if len(undefined_refs) == 1 else "are"
+        # Routing a resolvable non-output HAVING reference (hidden aggregate
+        # promotion, grain-key semijoin) happens at build time in
+        # ``trilogy.core.having_normalization``; here only genuinely undefined
+        # references fail, with line positions the build layer lacks.
+        undefined_in_having: list[str] = []
+        for cref in select.having_clause.concept_arguments:
+            addr = cref.address
+            if addr in select.local_concepts or addr in undefined_in_having:
+                continue
+            if _is_unresolved(context, addr):
+                undefined_in_having.append(addr)
+        if undefined_in_having:
+            refs = ", ".join(f"'{a}'" for a in undefined_in_having)
+            verb = "is" if len(undefined_in_having) == 1 else "are"
             raise SyntaxError(
                 f"HAVING references {refs}, which {verb} not defined (line "
                 f"{line_no}). Check for a typo or import the relevant concept."
             )
-        if unhandled_refs:
-            refs = ", ".join(f"'{a}'" for a in unhandled_refs)
-            snippet = ", ".join(f"--{a}" for a in unhandled_refs)
-            raise SyntaxError(
-                f"HAVING references {refs} outside the SELECT projection and could "
-                f"not be resolved as a post-aggregation filter (line {line_no}). "
-                f"Move the filter to WHERE to filter before aggregation, or add it "
-                f"to the SELECT (prefix with `--` to keep it out of the output "
-                f"rows):\n    select <your existing columns>, {snippet}"
-            )
-        _validate_having_aggregates_match_select(select, context, line_no)
+        _validate_having_aggregates_match_select(
+            select, context, allowed_addresses, line_no
+        )
     if select.order_by:
         # Resolve inline ORDER BY expressions that match a projected output
         # (windows, scalar derivations, aggregates) to that output's alias
@@ -2174,10 +1387,10 @@ def finalize_select_statement(
     # Promote any HAVING grouping() to a hidden output before the SELECT loop so
     # it materializes in the ROLLUP CTE instead of stranding downstream.
     _promote_having_grouping_to_outputs(select, context)
-    # Promote any other HAVING aggregate not already projected to a hidden output
-    # (grain-safe: metrics don't change the select grain) so HAVING can filter on
-    # it without the user adding a `--agg(x)` column by hand.
-    _promote_having_aggregates_to_outputs(select, context)
+    # Other non-output HAVING references (grain-safe aggregate promotion, the
+    # finer-dim grain-key semijoin) are resolved at build time in
+    # ``trilogy.core.having_normalization`` — validation below only rejects
+    # what the build pass cannot route.
     merged = _merged_local_concepts(select, context)
     select.grain = _calculate_grain(select, context, merged)
     output_addresses: set[str] = set()
