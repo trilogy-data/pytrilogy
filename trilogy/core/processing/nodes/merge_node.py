@@ -661,6 +661,22 @@ class MergeNode(StrategyNode):
             for pair in join.concept_pairs or []
             if pair.left.address != pair.right.address
         ]
+        # An authored coalescing (union/full) key group is one merged key
+        # wherever its members co-appear, but a chained group (a=b=c) can reach
+        # this node with one pairing already fused a level down — this node's
+        # own joins only name (b,c), so (a) never learns c's source. Seed the
+        # classes with the authored groups' co-present members.
+        if outer_pairs:
+            present = set(source_map.keys())
+            for (
+                member,
+                group_mates,
+            ) in self.environment.distinct_scoped_join_group_mates().items():
+                if member not in present:
+                    continue
+                outer_pairs.extend(
+                    (member, mate) for mate in group_mates if mate in present
+                )
         for key_class in _key_equivalence_classes(outer_pairs):
             combined: set[BuildDatasource | QueryDatasource | UnnestJoin] = set()
             for addr in key_class:

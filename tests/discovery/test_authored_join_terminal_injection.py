@@ -153,10 +153,12 @@ def test_gate_silent_for_canary_request():
     assert relevant_authored_join_pairs(request, build_env) == []
 
 
-def test_member_projected_is_noop():
-    # projecting the merged key pulls both dims into the request's datasource
-    # set, so every member is directly bound — the merged concept is already a
-    # natural shared join key and injection stays out of the way
+def test_member_projected_still_pins_hops():
+    # projecting the merged key pulls both dim scans into the request's
+    # datasource set, but the facts remain FK carriers that need their hops —
+    # members being bound on the dims alone must NOT read as "natural shared
+    # join key" (that reading left both side-paths as alternative resolutions
+    # and raised AmbiguousRelationshipResolution on the projected rollup)
     build_env = _build(TWO_FACT_MODEL, scoped_joins=SUBSET_JOIN)
     request = [
         build_env.concepts["local.a_amount"],
@@ -164,7 +166,8 @@ def test_member_projected_is_noop():
         build_env.concepts["local.a_cust_id"],
     ]
     injected = inject_authored_join_key_terminals(list(request), build_env)
-    assert {c.address for c in injected} == {c.address for c in request}
+    added = {c.address for c in injected} - {c.address for c in request}
+    assert added == {"local.a_cust_sk", "local.b_cust_sk"}
 
 
 def test_gate_silent_for_directly_bound_members():

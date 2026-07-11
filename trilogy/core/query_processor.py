@@ -192,6 +192,27 @@ def base_join_to_join(
     )
 
 
+def _pseudonym_closure(address: str, ctes: List[CTE | UnionCTE]) -> set[str]:
+    """Addresses transitively pseudonym-equivalent to ``address`` across the
+    child CTEs' output columns. Pseudonym sets on chained merged keys
+    (`a=b=c`) are pairwise, not closed — a↔b and b↔c without a↔c — so a
+    one-hop test misses the far member."""
+    edges: Dict[str, set[str]] = defaultdict(set)
+    for cte in ctes:
+        for column in cte.output_columns:
+            for pseudonym in column.pseudonyms:
+                edges[column.address].add(pseudonym)
+                edges[pseudonym].add(column.address)
+    closure = {address}
+    stack = [address]
+    while stack:
+        for neighbor in edges.get(stack.pop(), ()):
+            if neighbor not in closure:
+                closure.add(neighbor)
+                stack.append(neighbor)
+    return closure
+
+
 def generate_source_map(
     query_datasource: QueryDatasource, all_new_ctes: List[CTE | UnionCTE]
 ) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
@@ -223,6 +244,7 @@ def generate_source_map(
                 )
             # when multiple sources exist (full join key), include partials
             multi_source = len(qdv) > 1
+            closure = _pseudonym_closure(qdk, matches) if multi_source else {qdk}
             for cte in matches:
                 output_address = [
                     x.address
@@ -233,7 +255,8 @@ def generate_source_map(
                 # that outputs it under a pseudonym column (da for the merged db);
                 # accept that side so the renderer coalesces both physical columns.
                 provides_pseudonym = multi_source and any(
-                    qdk in x.pseudonyms for x in cte.output_columns
+                    x.address != qdk and x.address in closure
+                    for x in cte.output_columns
                 )
                 if (
                     qdk in output_address

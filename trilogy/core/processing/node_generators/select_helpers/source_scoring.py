@@ -258,6 +258,101 @@ def deduplicate_datasources(
     return deduplicated
 
 
+def prune_dominated_datasources(
+    datasets: list[str],
+    relevant_concepts_pre: dict[str, str],
+    g: ReferenceGraph,
+    partial_map: dict[str, list[str]],
+    authored_key_scope: set[str],
+    depth: int = 0,
+) -> list[str]:
+    """Drop datasources whose relevant-concept bindings fall entirely inside an
+    authored join pairing's key scope (canonical + member FK keys) AND are a
+    strict subset of a single peer's, with no partial advantage.
+
+    Such a source contributes no requested content; it only adds an alternative
+    side-path to the authored pairing through UNREQUESTED shared columns, which
+    re-pairs the preserving join and can null a row's own dimension enrichment
+    (the projected-authored-key NULL-group bug). The scope restriction keeps
+    ordinary fact-side FK carriers alive — a source bound to non-pair concepts
+    may bridge peers at row grain through unrequested keys (q05's
+    partial-FK-to-dim shape), a role binding sets can't see. A dominated source
+    that is the only bridge holding the kept graph together also stays
+    (connectivity guard)."""
+    if len(datasets) < 2 or not authored_key_scope:
+        return datasets
+    g_edges = set(g.edges)
+    bindings: dict[str, frozenset[str]] = {}
+    partial_bindings: dict[str, set[str]] = {}
+    for ds in datasets:
+        bindings[ds] = frozenset(
+            canonical
+            for node, canonical in relevant_concepts_pre.items()
+            if (ds, node) in g_edges or (node, ds) in g_edges
+        )
+        partial_bindings[ds] = {
+            relevant_concepts_pre[node]
+            for node in partial_map.get(ds, [])
+            if node in relevant_concepts_pre
+        }
+
+    def dominated_by(ds: str, other: str) -> bool:
+        return (
+            bindings[ds] < bindings[other]
+            and (partial_bindings[other] & bindings[ds]) <= partial_bindings[ds]
+        )
+
+    kept = list(datasets)
+    candidates = sorted(
+        (
+            ds
+            for ds in datasets
+            if bindings[ds] <= authored_key_scope
+            and any(dominated_by(ds, o) for o in datasets)
+        ),
+        key=lambda ds: (len(bindings[ds]), ds),
+    )
+    if not candidates:
+        return kept
+    keep_nodes = set(kept) | set(relevant_concepts_pre)
+    induced = nx.Graph()
+    induced.add_nodes_from(keep_nodes)
+    induced.add_edges_from(
+        (a, b) for a, b in g_edges if a in keep_nodes and b in keep_nodes
+    )
+    targets = set(relevant_concepts_pre.values())
+
+    def covers_all_targets() -> bool:
+        # mirrors the downstream single-complete-subgraph criterion: one
+        # component must reach every requested canonical through a datasource
+        for comp in nx.connected_components(induced):
+            if not any(n in bindings for n in comp):
+                continue
+            covered = {
+                relevant_concepts_pre[n] for n in comp if n in relevant_concepts_pre
+            }
+            if covered >= targets:
+                return True
+        return False
+
+    guard_active = covers_all_targets()
+    for ds in candidates:
+        if not any(dominated_by(ds, o) for o in kept if o != ds):
+            continue
+        removed_edges = [(ds, n) for n in induced.neighbors(ds)]
+        induced.remove_node(ds)
+        if guard_active and not covers_all_targets():
+            induced.add_node(ds)
+            induced.add_edges_from(removed_edges)
+            continue
+        kept.remove(ds)
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Pruned dominated datasource {ds} "
+            f"(bindings {sorted(bindings[ds])} subset of a kept peer)"
+        )
+    return kept
+
+
 def score_datasource_node(
     node: str,
     datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],

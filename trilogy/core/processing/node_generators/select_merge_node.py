@@ -39,6 +39,7 @@ from trilogy.core.processing.discovery_validation import (
     validate_stack,
 )
 from trilogy.core.processing.node_generators.common import (
+    AuthoredJoinPair,
     reinject_common_join_keys_v2,
     relevant_authored_join_pairs,
 )
@@ -63,6 +64,7 @@ from trilogy.core.processing.node_generators.select_helpers.source_scoring impor
     deduplicate_datasources,
     get_graph_partial_nodes,
     get_materialization_score,
+    prune_dominated_datasources,
     resolve_subgraphs,
     score_datasource_node,
     subgraph_is_complete,
@@ -90,8 +92,25 @@ __all__ = [
 ]
 
 
+def _authored_key_scope(
+    pairs: list["AuthoredJoinPair"], environment: BuildEnvironment
+) -> set[str]:
+    """Canonical addresses of the pairing machinery for relevant authored
+    joins: each pair's merged canonical plus both members' FK carrier keys.
+    A datasource whose relevant bindings sit entirely inside this scope is a
+    side-path carrier candidate for dominated-source pruning."""
+    scope: set[str] = set()
+    for pair in pairs:
+        scope.add(pair.canonical.address)
+        for member in (pair.left, pair.right):
+            for key_addr in member.keys or ():
+                key_concept = environment.concepts.get(key_addr)
+                scope.add(key_concept.address if key_concept is not None else key_addr)
+    return scope
+
+
 def _authored_join_pairs_enforceable(
-    all_concepts: list[BuildConcept],
+    pairs: list["AuthoredJoinPair"],
     environment: BuildEnvironment,
     relevant_datasets: list[str],
     g: ReferenceGraph,
@@ -103,7 +122,6 @@ def _authored_join_pairs_enforceable(
     relation needing a dimension hop must fall through to weak-component
     discovery (which injects the hop) rather than return a single-component
     plan that silently drops the authored equality."""
-    pairs = relevant_authored_join_pairs(all_concepts, environment)
     if not pairs:
         return True
     kept_identifiers: set[str] = set()
@@ -235,6 +253,20 @@ def create_pruned_concept_graph(
     relevant_datasets = deduplicate_datasources(
         relevant_datasets, relevant_concepts, g_edges, g.datasources, depth, partial
     )
+    authored_pairs: list[AuthoredJoinPair] = (
+        relevant_authored_join_pairs(all_concepts, environment)
+        if environment is not None
+        else []
+    )
+    if authored_pairs and environment is not None:
+        relevant_datasets = prune_dominated_datasources(
+            relevant_datasets,
+            relevant_concepts_pre,
+            g,
+            partial,
+            _authored_key_scope(authored_pairs, environment),
+            depth,
+        )
 
     keep = set(relevant_datasets)
     keep.update(relevant_concepts)
@@ -247,7 +279,7 @@ def create_pruned_concept_graph(
     reinject_common_join_keys_v2(orig_g, g, synonyms, add_joins=True)
 
     if environment is not None and not _authored_join_pairs_enforceable(
-        all_concepts, environment, relevant_datasets, g, orig_g, depth
+        authored_pairs, environment, relevant_datasets, g, orig_g, depth
     ):
         return None
 

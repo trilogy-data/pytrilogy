@@ -114,11 +114,6 @@ def _b_rows_matching(cid: str, sku: int) -> list[tuple[int, int, int, int]]:
 
 
 @pytest.mark.parametrize("join", ["union join", "subset join"])
-@pytest.mark.xfail(
-    strict=True,
-    reason="unmatched side's rows lose their own id under composite (id, sku) "
-    "pairing — evals/tpcds_agent/bug_projected_authored_key_unmatched_side_null_group.md",
-)
 def test_member_projected_two_side_rollup(tmp_path: Path, join: str):
     # member-grain rollup: both sides preserved (side-a ids ⊆ side-b domain,
     # so subset and union agree cell-for-cell here); an unmatched b row still

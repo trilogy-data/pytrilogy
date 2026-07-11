@@ -216,6 +216,23 @@ def _rowset_scope_routed(concept: BuildConcept) -> bool:
     return False
 
 
+def _rowset_scopes(concept: BuildConcept) -> set[str]:
+    """Names of the rowsets `concept`'s value (transitively) derives from."""
+    scopes: set[str] = set()
+    stack = [concept]
+    seen: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        if isinstance(current.lineage, BuildRowsetItem):
+            scopes.add(current.lineage.rowset.name)
+            continue
+        stack.extend(current.concept_arguments)
+    return scopes
+
+
 def _local_exposure_obligations(
     node: StrategyNode, environment: BuildEnvironment
 ) -> list[BuildConcept]:
@@ -794,6 +811,14 @@ def _enrich_via_group_mate_keys(
     sourceable mate or the other side cannot expose one — merging then would
     drop an authored key and fan out."""
     node_outputs = {c.address for c in node.output_concepts}
+    # Only request mates on the sides this enrichment actually sources: a mate
+    # from an UNrequested side re-enters that rowset's own generation, whose
+    # symmetric enrichment routes back through this one — unbounded on a
+    # three-way coalescing group (a=b=c). The unrequested side pairs with the
+    # group at the level that does source it.
+    needed_scopes: set[str] = set()
+    for c in enrich_remaining:
+        needed_scopes |= _rowset_scopes(c)
     mate_groups: list[set[str]] = []
     mates: list[BuildConcept] = []
     for out_c in node.output_concepts:
@@ -813,10 +838,17 @@ def _enrich_via_group_mate_keys(
             external.append(mate)
         if not external:
             return None
+        needed = [
+            m
+            for m in external
+            if not (scopes := _rowset_scopes(m)) or scopes & needed_scopes
+        ]
+        if not needed:
+            continue
         mate_groups.append(
-            {m.address for m in external} | {p for m in external for p in m.pseudonyms}
+            {m.address for m in needed} | {p for m in needed for p in m.pseudonyms}
         )
-        mates.extend(external)
+        mates.extend(needed)
     if not mates:
         return None
     # A presence probe over a mate must compute inside the mate's own scope,

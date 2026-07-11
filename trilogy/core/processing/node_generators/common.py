@@ -845,6 +845,22 @@ def _member_carriers(
     }
 
 
+def _member_needs_fk_hop(
+    member: BuildConcept, bound_by_ds: dict[str, set[str]]
+) -> bool:
+    """A request datasource binds the member's keys but not the member itself:
+    that source can only reach the member through its dimension hop, so the
+    relation still needs discovery help even if some other request datasource
+    (e.g. the dimension scan pulled in by projecting the merged key) binds the
+    member directly."""
+    keys = set(member.keys or ())
+    if not keys:
+        return False
+    return any(
+        keys <= bound and member.address not in bound for bound in bound_by_ds.values()
+    )
+
+
 def _relevant_authored_join_pairs(
     all_concepts: Sequence[BuildConcept],
     environment: BuildEnvironment,
@@ -857,9 +873,9 @@ def _relevant_authored_join_pairs(
     coverage skip, so a declared relation stays lazy unless the query actually
     relates the two sides.
 
-    Needs help: at least one member is NOT directly bound on a request
-    datasource (reachable only through its FK dimension hop). When every
-    member is a physical column of the request's own datasources (the
+    Needs help: some member is NOT directly bound on a request datasource, or
+    is bound only away from an FK carrier that must hop to reach it. When
+    every member is a physical column wherever its keys appear (the
     fact→date-spine merge, the both-facts-bind-the-sk q25 form) the merged
     concept is already a natural shared join key and injection only perturbs
     the plan (q2 date-spine regression).
@@ -889,7 +905,12 @@ def _relevant_authored_join_pairs(
         all_bound.update(bound)
     out: list[AuthoredJoinPair] = []
     for pair in candidates:
-        if pair.left.address in all_bound and pair.right.address in all_bound:
+        if (
+            pair.left.address in all_bound
+            and pair.right.address in all_bound
+            and not _member_needs_fk_hop(pair.left, bound_by_ds)
+            and not _member_needs_fk_hop(pair.right, bound_by_ds)
+        ):
             continue
         left_carriers = _member_carriers(pair.left, bound_by_ds)
         right_carriers = _member_carriers(pair.right, bound_by_ds)
