@@ -85,7 +85,7 @@ LIMIT?
 If unspecified (no BY) aggregates always group to the grain of dimensions in the select, no matter where they appear in the query.
 
 A CTE/Rowset - a named output - is defined by a select with a preceding `WITH <name> as`; reference it later as `<name>.<field>` or in a join as `<name>.<key> = other.<key>`. 
-These are standalone statements, not part of a select.  
+These are standalone statements, not part of a select, and create their own local outputs.
 
 A rowset creates a "new" model with all concepts namespaced; `abc.def` output in a rowset called `foo` is
 referenced as `foo.abc.def`. Use joins to merge the rowset outputs back into the global namespace if needed.
@@ -235,11 +235,19 @@ It appears as a prefix on a select item (`~customer.id`) to flag the value as pa
 
 ## Worked examples
 
-**Reusable concepts, filtered aggregates, and dual ranks.** For names with more than 10 births in Vermont ever, find the top 10 names by total births across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho and nationally:
+**Reusable concepts, filtered aggregates, and dual ranks.** 
+For names with more than 10 births in Vermont ever, find the top 10 names by total births across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho and nationally:
 
 ```
 # break up a query by defining reusable components
+# these are macros; they will be evaluated in select context
+# and respond to that context
 auto all_births <- sum(births);
+
+# a rowset binds all_data.total_births;
+# it is isolated and if reference din a query will *not* respond to local context
+# it will be evaluated as the output of this select
+with all_data as select sum(births) as total_births;
 
 # force an explicit grain rather than the select's implicit one:
 # births by name, ignoring state
