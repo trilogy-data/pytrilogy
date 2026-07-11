@@ -27,10 +27,10 @@ import catalog_page as catalog_page;
 import catalog_page as return_catalog_page; # the catalog page associated with the return
 import warehouse as warehouse;
 import warehouse as return_warehouse; # the warehouse the item was returned to
-import customer_demographic as billing_customer_demographic; # customer demographics recorded at the time of the sale
+import customer_demographic as pos_customer_demographic; # customer demographics recorded at the point of sale
 import customer_demographic as return_customer_demographic; # the returning customer's demographics recorded on the return
 import customer_demographic as return_refund_customer_demographic; # the refunded customer's demographics recorded on the return
-import household_demographic as bill_household_demographic; # household demographics recorded at the time of the sale
+import household_demographic as pos_household_demographic; # household demographics recorded at the point of sale
 import household_demographic as return_household_demographic; # the returning customer's household demographics recorded on the return
 import household_demographic as return_refund_household_demographic; # the refunded customer's household demographics recorded on the return
 import promotion as promotion;
@@ -89,8 +89,8 @@ datasource catalog_sales (
     CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
     CS_SHIP_ADDR_SK: ?ship_address.sk, 
     CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
-    CS_BILL_CDEMO_SK: ?billing_customer_demographic.sk,
-    CS_BILL_HDEMO_SK: ?bill_household_demographic.sk,
+    CS_BILL_CDEMO_SK: ?pos_customer_demographic.sk,
+    CS_BILL_HDEMO_SK: ?pos_household_demographic.sk,
     CS_BILL_ADDR_SK: ?bill_address.sk,
     CS_ITEM_SK: item.sk,
     CS_QUANTITY: quantity,

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent trajectories — __TITLE__</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="side">
+    <div id="sidehead">
+      <div id="runbar">
+        <label>Eval<span id="live"></span></label>
+        <select id="suitesel" onchange="onSuiteChange()"></select>
+        <label class="runlbl">Run</label>
+        <select id="runsel" onchange="onRunChange()"></select>
+        <button class="fbtn sumbtn" id="sumbtn" onclick="showSummary()">All evals summary</button>
+      </div>
+      <div id="tally"></div>
+    </div>
+    <div id="runs"></div>
+  </div>
+  <div id="main"></div>
+</div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>

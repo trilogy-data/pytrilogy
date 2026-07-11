@@ -1,27 +1,27 @@
 query_id = "18"
 generator = "v3"
-gen_length = 7104
-preql_size = 1692
+gen_length = 7066
+preql_size = 1680
 comp_size = 1593
 generated_sql = """
 
 WITH 
-cooperative as (
+abundant as (
 SELECT
     \"cs_billing_customer_customers\".\"C_BIRTH_YEAR\" as \"cs_billing_customer_birth_year\",
-    \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEP_COUNT\" as \"cs_billing_customer_demographic_dependent_count\",
     \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_sk\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEP_COUNT\" as \"cs_pos_customer_demographic_dependent_count\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cs_billing_customer_customers\" on \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"cs_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_billing_customer_address_customer_address\" on \"cs_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_billing_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_pos_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"cs_billing_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
+    \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
 ),
-uneven as (
+questionable as (
 SELECT
     \"cs_billing_customer_address_customer_address\".\"CA_COUNTRY\" as \"cs_billing_customer_address_country\",
     \"cs_billing_customer_address_customer_address\".\"CA_COUNTY\" as \"cs_billing_customer_address_county\",
@@ -40,38 +40,38 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cs_billing_customer_customers\" on \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"cs_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_billing_customer_address_customer_address\" on \"cs_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_billing_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_billing_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_pos_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"cs_billing_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_billing_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
+    \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
 ),
-questionable as (
+uneven as (
 SELECT
-    \"cooperative\".\"cs_billing_customer_birth_year\" as \"row_birth_year\",
-    \"cooperative\".\"cs_billing_customer_demographic_dependent_count\" as \"row_dep_count\",
-    \"cooperative\".\"cs_item_sk\" as \"cs_item_sk\",
-    \"cooperative\".\"cs_order_number\" as \"cs_order_number\"
+    \"abundant\".\"cs_billing_customer_birth_year\" as \"row_birth_year\",
+    \"abundant\".\"cs_item_sk\" as \"cs_item_sk\",
+    \"abundant\".\"cs_order_number\" as \"cs_order_number\",
+    \"abundant\".\"cs_pos_customer_demographic_dependent_count\" as \"row_dep_count\"
 FROM
-    \"cooperative\"),
+    \"abundant\"),
 yummy as (
 SELECT
+    \"questionable\".\"cs_billing_customer_address_country\" as \"cs_billing_customer_address_country\",
+    \"questionable\".\"cs_billing_customer_address_county\" as \"cs_billing_customer_address_county\",
+    \"questionable\".\"cs_billing_customer_address_state\" as \"cs_billing_customer_address_state\",
+    \"questionable\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
+    \"questionable\".\"cs_item_id\" as \"cs_item_id\",
     \"questionable\".\"cs_item_sk\" as \"cs_item_sk\",
+    \"questionable\".\"cs_list_price\" as \"cs_list_price\",
+    \"questionable\".\"cs_net_profit\" as \"cs_net_profit\",
     \"questionable\".\"cs_order_number\" as \"cs_order_number\",
-    \"questionable\".\"row_dep_count\" as \"row_dep_count\",
-    \"uneven\".\"cs_billing_customer_address_country\" as \"cs_billing_customer_address_country\",
-    \"uneven\".\"cs_billing_customer_address_county\" as \"cs_billing_customer_address_county\",
-    \"uneven\".\"cs_billing_customer_address_state\" as \"cs_billing_customer_address_state\",
-    \"uneven\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
-    \"uneven\".\"cs_item_id\" as \"cs_item_id\",
-    \"uneven\".\"cs_list_price\" as \"cs_list_price\",
-    \"uneven\".\"cs_net_profit\" as \"cs_net_profit\",
-    \"uneven\".\"cs_quantity\" as \"cs_quantity\",
-    \"uneven\".\"cs_sales_price\" as \"cs_sales_price\"
+    \"questionable\".\"cs_quantity\" as \"cs_quantity\",
+    \"questionable\".\"cs_sales_price\" as \"cs_sales_price\",
+    \"uneven\".\"row_dep_count\" as \"row_dep_count\"
 FROM
     \"uneven\"
     INNER JOIN \"questionable\" on \"uneven\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"),
 juicy as (
 SELECT
-    \"questionable\".\"row_birth_year\" as \"row_birth_year\",
+    \"uneven\".\"row_birth_year\" as \"row_birth_year\",
     \"yummy\".\"cs_billing_customer_address_country\" as \"cs_billing_customer_address_country\",
     \"yummy\".\"cs_billing_customer_address_county\" as \"cs_billing_customer_address_county\",
     \"yummy\".\"cs_billing_customer_address_state\" as \"cs_billing_customer_address_state\",
@@ -83,8 +83,8 @@ SELECT
     \"yummy\".\"cs_sales_price\" as \"cs_sales_price\",
     \"yummy\".\"row_dep_count\" as \"row_dep_count\"
 FROM
-    \"yummy\"
-    INNER JOIN \"questionable\" on \"yummy\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
+    \"uneven\"
+    INNER JOIN \"yummy\" on \"uneven\".\"cs_item_sk\" = \"yummy\".\"cs_item_sk\" AND \"uneven\".\"cs_order_number\" = \"yummy\".\"cs_order_number\")
 SELECT
     \"juicy\".\"cs_item_id\" as \"cs_item_id\",
     \"juicy\".\"cs_billing_customer_address_country\" as \"cs_billing_customer_address_country\",
