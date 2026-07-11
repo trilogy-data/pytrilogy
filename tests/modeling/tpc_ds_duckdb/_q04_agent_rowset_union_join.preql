@@ -1,0 +1,89 @@
+# Agent-authored q04 candidate shape (chained union joins over six per-customer
+# rowsets, two stages, HAVING semijoins). Regression corpus for
+# test_q04_generation_determinism.py: SQL generation for this shape was
+# hash-seed sensitive — a downstream join could reference an equivalence-group
+# key member its source CTE no longer projected (Binder Error on w01 cid).
+import store_sales as store;
+import catalog_sales as catalog;
+import web_sales as web;
+
+merge store.customer.sk into catalog.billing_customer.sk;
+merge store.customer.sk into web.billing_customer.sk;
+
+with s01 as
+where store.date.year = 2001
+select
+    store.customer.id as cid,
+    sum(store.profit) as val
+;
+
+with s02 as
+where store.date.year = 2002
+select
+    store.customer.id as cid,
+    store.customer.first_name as fn,
+    store.customer.last_name as ln,
+    store.customer.preferred_cust_flag as pf,
+    sum(store.profit) as val
+;
+
+with c01 as
+where catalog.sold_date.year = 2001
+select
+    catalog.billing_customer.id as cid,
+    sum(catalog.profit) as val
+;
+
+with c02 as
+where catalog.sold_date.year = 2002
+select
+    catalog.billing_customer.id as cid,
+    sum(catalog.profit) as val
+;
+
+with w01 as
+where web.date.year = 2001
+select
+    web.billing_customer.id as cid,
+    sum(web.profit) as val
+;
+
+with w02 as
+where web.date.year = 2002
+select
+    web.billing_customer.id as cid,
+    sum(web.profit) as val
+;
+
+with sc as
+select
+    s02.cid,
+    s02.fn,
+    s02.ln,
+    s02.pf,
+    s01.val as sv01,
+    s02.val as sv02,
+    c01.val as cv01,
+    c02.val as cv02
+union join s02.cid = s01.cid = c01.cid = c02.cid
+having
+    sv01 > 0 and cv01 > 0 and sv02 > 0 and cv02 > 0
+    and (cv02 / cv01) > (sv02 / sv01)
+;
+
+select
+    sc.cid as customer_id,
+    sc.fn as first_name,
+    sc.ln as last_name,
+    sc.pf as preferred_cust_flag
+union join sc.cid = w01.cid = w02.cid
+having
+    w01.val > 0 and w02.val > 0
+    and (sc.cv02 / sc.cv01) > (w02.val / w01.val)
+    and (sc.cv02 / sc.cv01) > (sc.sv02 / sc.sv01)
+order by
+    customer_id asc nulls first,
+    first_name asc nulls first,
+    last_name asc nulls first,
+    preferred_cust_flag asc nulls first
+limit 100;

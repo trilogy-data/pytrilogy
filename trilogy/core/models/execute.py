@@ -474,7 +474,10 @@ class CTE:
                 if addr in seen:
                     continue
                 seen.add(addr)
-                frontier.extend(edges.get(addr, set()) - seen)
+                # sorted: several equivalent members can match, and the first
+                # non-hidden one wins — unordered traversal makes the rendered
+                # column vary run to run.
+                frontier.extend(sorted(edges.get(addr, set()) - seen))
                 match = by_address.get(addr)
                 if match is None or addr == concept.address:
                     continue
