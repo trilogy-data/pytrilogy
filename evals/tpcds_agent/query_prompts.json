@@ -151,7 +151,7 @@
   {
     "id": 29,
     "grade": "medium",
-    "prompt": "For store sales in September 1999, matched to store returns from the same customer, item, and ticket whose return date falls between September and December 1999, matched to catalog sales by the same customer (billed) and item whose sale year is 1999, 2000, or 2001, report per (item code, item description, store code, store name) — where item code and store code are the stable business identifiers, not the surrogate keys — the total store-sale ticket quantity, the total store-return return quantity, and the total catalog-sale ticket quantity. Order by item code, item description, store code, then store name; limit 100 rows."
+    "prompt": "For store sales in September 1999, matched to store returns from the same customer sk, item sk, and ticket whose return date falls between September and December 1999, matched to catalog sales by the same customer (billed) and item whose sale year is 1999, 2000, or 2001, report per (item code, item description, store code, store name) - non sk Ids for item/store - the total store-sale ticket quantity, the total store-return return quantity, and the total catalog-sale ticket quantity. Order by item code, item description, store code, then store name; limit 100 rows."
   },
   {
     "id": 30,

@@ -29,8 +29,13 @@ jobs:
       run: |
         echo "rust-toolchain=$(pyodide config get rust_toolchain)" >> "$GITHUB_OUTPUT"
         echo "emscripten-version=$(pyodide config get emscripten_version)" >> "$GITHUB_OUTPUT"
-        # Key name depends on pyodide-build version; fall back for older releases
-        PLATFORM_VERSION=$(pyodide config get pyemscripten_platform_version 2>/dev/null || pyodide config get pyodide_abi_version)
+        # Key name depends on pyodide-build version; unsupported keys error on stdout,
+        # so try both and keep the first value that looks like a platform version.
+        PLATFORM_VERSION=$( (pyodide config get pyemscripten_platform_version 2>/dev/null; pyodide config get pyodide_abi_version 2>/dev/null) | grep -E '^[0-9]+_[0-9]+$' | head -n1)
+        if [ -z "$PLATFORM_VERSION" ]; then
+          echo "Could not resolve pyemscripten platform version from pyodide config" >&2
+          exit 1
+        fi
         echo "pyemscripten-platform-version=$PLATFORM_VERSION" >> "$GITHUB_OUTPUT"
         echo "rustflags=$(pyodide config get rustflags)" >> "$GITHUB_OUTPUT"
     - uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984  # v16
