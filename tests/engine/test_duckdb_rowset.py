@@ -952,6 +952,38 @@ order by combined.k asc;
     assert [tuple(r) for r in results] == [(1, 45), (2, 15)]
 
 
+def test_tvf_union_arm_is_set_semantic_within_arm():
+    # Each union arm is an ordinary Trilogy select — a SET at its output grain.
+    # Duplicate source rows projecting to the same arm tuple collapse before the
+    # stack (lines 5 and 6 both project to (2, 5) in the 2002 arm), exactly as
+    # in a bare `select item_id, val`; cross-arm duplicates still stack. A
+    # multiplicity-preserving stack must carry a row key or aggregate per arm.
+    # This set-dedup silently undersummed tpcds q02 (duplicate same-price sales
+    # within a (week, weekday) cell) — verdict: semantics, not a planner bug.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TVF_UNION_AGG_FIXTURE)
+    stacked = executor.execute_text("""
+with combined as union(
+    (where yr = 2001 select item_id -> k, val -> v),
+    (where yr = 2002 select item_id -> k, val -> v)
+) -> (k, v);
+select combined.k, sum(combined.v) -> total
+order by combined.k asc;
+""")[0].fetchall()
+    # arm sets: 2001 {(1,10),(1,5),(2,5)}, 2002 {(1,30),(2,5)}
+    assert [tuple(r) for r in stacked] == [(1, 45), (2, 10)]
+
+    keyed = executor.execute_text("""
+with keyed as union(
+    (where yr = 2001 select line_id -> lid, item_id -> k, val -> v),
+    (where yr = 2002 select line_id -> lid, item_id -> k, val -> v)
+) -> (lid, k, v);
+select keyed.k, sum(keyed.v) -> total
+order by keyed.k asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in keyed] == [(1, 45), (2, 15)]
+
+
 _TVF_UNION_DISJOINT_FIXTURE = """
 key line_id int;
 property line_id.kind string;

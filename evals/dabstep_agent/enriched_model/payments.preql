@@ -1,0 +1,67 @@
+# Payments fact: one row per processed transaction (2023). Joins to the
+# merchant profile by name; fee-rule matching (see fee_rule) combines
+# transaction fields (scheme, credit, ACI, intracountry) with merchant fields
+# (account type, MCC, capture delay) and the merchant's monthly volume / fraud
+# metrics derived below.
+
+import std.date;
+import std.geography;
+import merchant as merchant; # the merchant that processed this transaction
+
+key psp_reference bigint; # unique payment identifier
+
+properties psp_reference (
+    card_scheme enum<string>['GlobalCard', 'NexPay', 'SwiftCharge', 'TransactPlus'], # card scheme/network the transaction ran on
+    year enum<bigint>[2023]::year, # calendar year of the transaction
+    hour_of_day bigint, # 0-23
+    minute_of_hour bigint, # 0-59
+    day_of_year bigint, # 1-365; combine with year for the calendar date (txn_date below)
+    is_credit bool, # true = credit transaction, false = debit; credit is typically more expensive in fees
+    eur_amount float, # transaction value in EUR
+    ip_country enum<string>['BE', 'ES', 'FR', 'GR', 'IT', 'LU', 'NL', 'SE']::country, # country of the shopper's IP address
+    issuing_country enum<string>['BE', 'ES', 'FR', 'GR', 'IT', 'LU', 'NL', 'SE']::country, # country of the card-issuing bank
+    device_type enum<string>['Android', 'Linux', 'MacOS', 'Other', 'Windows', 'iOS'], # shopper device type
+    ip_address string?, # hashed shopper IP
+    email_address string?, # hashed shopper email
+    card_number string, # hashed card number
+    shopper_interaction enum<string>['Ecommerce', 'POS'], # how the shopper interacted: online or point-of-sale
+    card_bin bigint, # card bank identification number
+    has_fraudulent_dispute bool, # true when the transaction was disputed as fraudulent; fraud level = fraudulent volume / total volume
+    is_refused_by_adyen bool, # true when the processor refused the transaction
+    aci enum<string>['A', 'B', 'C', 'D', 'E', 'F', 'G'], # Authorization Characteristics Indicator — how the transaction was submitted: A Card present Non-authenticated; B Card Present Authenticated; C Tokenized card with mobile device; D Card Not Present Card On File; E Card Not Present Recurring Bill Payment; F Card Not Present 3-D Secure; G Card Not Present Non-3-D Secure.
+    acquirer_country enum<string>['FR', 'GB', 'IT', 'NL', 'US']::country, # country of the acquiring bank the transaction was routed through
+);
+
+property psp_reference.txn_date <- date_add((year::string || '-01-01')::date, day, (day_of_year - 1)::int); # calendar date of the transaction
+property psp_reference.txn_month <- month(txn_date); # natural month (1-12); fee-rule monthly windows are natural months (day 1 to last day)
+property psp_reference.intracountry <- issuing_country = acquirer_country; # domestic transaction: card issued in the same country as the acquirer. International (false) is typically more expensive.
+
+# Merchant-month metrics that fee rules constrain (natural-month windows):
+auto merchant_monthly_volume <- sum(eur_amount) by merchant.name, txn_month; # merchant's total EUR volume in the month — compare to fee_rule.monthly_volume buckets ('<100k', '100k-1m', '1m-5m', '>5m')
+auto merchant_monthly_fraud_pct <- (100 * sum(eur_amount ? has_fraudulent_dispute) by merchant.name, txn_month) / (sum(eur_amount) by merchant.name, txn_month); # merchant's monthly fraud level in % (fraudulent volume / total volume) — compare to fee_rule.monthly_fraud_level ranges; NULL when the merchant has no fraudulent volume that month
+
+root datasource payments (
+    psp_reference,
+    merchant: merchant.name,
+    card_scheme,
+    year,
+    hour_of_day,
+    minute_of_hour,
+    day_of_year,
+    is_credit,
+    eur_amount,
+    ip_country,
+    issuing_country,
+    device_type,
+    ip_address: ?ip_address,
+    email_address: ?email_address,
+    card_number,
+    shopper_interaction,
+    card_bin,
+    has_fraudulent_dispute,
+    is_refused_by_adyen,
+    aci,
+    acquirer_country,
+)
+grain (psp_reference)
+address payments;

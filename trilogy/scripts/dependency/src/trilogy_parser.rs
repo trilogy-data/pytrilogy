@@ -2,10 +2,9 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use pyo3::prelude::*;
-use pyo3::sync::GILProtected;
 use pyo3::types::{PyList, PyString, PyTuple};
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 #[derive(Parser)]
 #[grammar = "trilogy.pest"]
@@ -41,12 +40,10 @@ struct RuleInfo {
 
 // Per-Rule cache of (interned Py<PyString> name, is_token flag, is_silent flag).
 // Populated lazily — amortizes format! + rename_rule to once per unique rule.
-static RULE_INFO_CACHE: GILProtected<RefCell<Option<HashMap<Rule, RuleInfo>>>> =
-    GILProtected::new(RefCell::new(None));
+static RULE_INFO_CACHE: Mutex<Option<HashMap<Rule, RuleInfo>>> = Mutex::new(None);
 
 fn rule_info(py: Python<'_>, rule: Rule) -> (Py<PyString>, bool, bool) {
-    let cell = RULE_INFO_CACHE.get(py);
-    let mut borrowed = cell.borrow_mut();
+    let mut borrowed = RULE_INFO_CACHE.lock().unwrap();
     let map = borrowed.get_or_insert_with(HashMap::new);
     if let Some(info) = map.get(&rule) {
         return (info.name_py.clone_ref(py), info.is_token, info.is_silent);
@@ -55,7 +52,7 @@ fn rule_info(py: Python<'_>, rule: Rule) -> (Py<PyString>, bool, bool) {
     let renamed = rename_rule(&raw);
     let is_token = is_token_rule(&raw);
     let is_silent = is_token && is_silent_token_rule(&raw);
-    let name_py = PyString::intern_bound(py, renamed).unbind();
+    let name_py = PyString::intern(py, renamed).unbind();
     let cloned = name_py.clone_ref(py);
     map.insert(
         rule,
@@ -70,17 +67,15 @@ fn rule_info(py: Python<'_>, rule: Rule) -> (Py<PyString>, bool, bool) {
 
 // Interns a short `&'static str` as a cached Py<PyString>. Used for access_chain
 // rewrites that synthesize names not present in the grammar.
-static STATIC_STR_CACHE: GILProtected<RefCell<Option<HashMap<&'static str, Py<PyString>>>>> =
-    GILProtected::new(RefCell::new(None));
+static STATIC_STR_CACHE: Mutex<Option<HashMap<&'static str, Py<PyString>>>> = Mutex::new(None);
 
 fn intern_static(py: Python<'_>, s: &'static str) -> Py<PyString> {
-    let cell = STATIC_STR_CACHE.get(py);
-    let mut borrowed = cell.borrow_mut();
+    let mut borrowed = STATIC_STR_CACHE.lock().unwrap();
     let map = borrowed.get_or_insert_with(HashMap::new);
     if let Some(existing) = map.get(s) {
         return existing.clone_ref(py);
     }
-    let py_str = PyString::intern_bound(py, s).unbind();
+    let py_str = PyString::intern(py, s).unbind();
     map.insert(s, py_str.clone_ref(py));
     py_str
 }
@@ -237,7 +232,7 @@ fn make_node(
     name_py: Py<PyString>,
     list: Bound<PyList>,
     span: SpanTuple,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     let (line, column, end_line, end_column, start_pos, end_pos) = span;
     let node = PestNode {
         data_py: name_py,
@@ -255,7 +250,7 @@ fn make_node(
 // access_chain = _atom + (dot_tail | bracket_tail | dcolon_tail)*
 // Left-factored to parse _atom once. Here we rewrite the node name and shape
 // to match what the v2 hydrator (and lark grammar) expects.
-fn convert_access_chain(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<PyObject> {
+fn convert_access_chain(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<Py<PyAny>> {
     let span = span_positions(&pair, idx);
     let mut inner = pair.into_inner();
     let atom_pair = inner
@@ -295,7 +290,7 @@ fn convert_access_chain(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> Py
     if tails.len() == 1 {
         let (kind, payload) = tails.pop().unwrap();
         let name = tail_name(kind, &payload);
-        let list = PyList::empty_bound(py);
+        let list = PyList::empty(py);
         list.append(atom_py)?;
         list.append(convert_pair(py, payload, idx)?)?;
         return make_node(py, intern_static(py, name), list, span);
@@ -309,20 +304,20 @@ fn convert_access_chain(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> Py
         } else {
             "chained_access"
         };
-        let inner_list = PyList::empty_bound(py);
+        let inner_list = PyList::empty(py);
         inner_list.append(atom_py)?;
         for (_, payload) in tails.into_iter() {
             inner_list.append(convert_pair(py, payload, idx)?)?;
         }
         let inner_node = make_node(py, intern_static(py, inner_name), inner_list, span)?;
 
-        let outer_list = PyList::empty_bound(py);
+        let outer_list = PyList::empty(py);
         outer_list.append(inner_node)?;
         outer_list.append(convert_pair(py, cast_payload, idx)?)?;
         return make_node(py, intern_static(py, "fcast"), outer_list, span);
     }
 
-    let list = PyList::empty_bound(py);
+    let list = PyList::empty(py);
     list.append(atom_py)?;
     for (_, payload) in tails.into_iter() {
         list.append(convert_pair(py, payload, idx)?)?;
@@ -330,7 +325,7 @@ fn convert_access_chain(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> Py
     make_node(py, intern_static(py, "chained_access"), list, span)
 }
 
-fn convert_pair(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<PyObject> {
+fn convert_pair(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<Py<PyAny>> {
     let rule = pair.as_rule();
     if matches!(rule, Rule::access_chain) {
         return convert_access_chain(py, pair, idx);
@@ -341,7 +336,7 @@ fn convert_pair(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<P
     let (line, column, end_line, end_column, start_pos, end_pos) = span;
 
     if is_token {
-        let value_py = PyString::new_bound(py, pair.as_str()).unbind();
+        let value_py = PyString::new(py, pair.as_str()).unbind();
         let token = PestToken {
             type_name_py: name_py,
             value_py,
@@ -354,7 +349,7 @@ fn convert_pair(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<P
         };
         Ok(Py::new(py, token)?.into_any())
     } else {
-        let list = PyList::empty_bound(py);
+        let list = PyList::empty(py);
         for inner in pair.into_inner() {
             if matches!(inner.as_rule(), Rule::EOI) {
                 continue;
@@ -373,7 +368,7 @@ fn convert_pair(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<P
 /// Parse a Trilogy source text and return a duck-typed syntax tree that
 /// `trilogy.parsing.v2.syntax.syntax_from_parser` can consume unchanged.
 #[pyfunction]
-pub fn parse_trilogy_syntax(py: Python<'_>, text: &str) -> PyResult<PyObject> {
+pub fn parse_trilogy_syntax(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let idx = LineIndex::new(text);
     let mut pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e))
@@ -435,7 +430,7 @@ fn convert_access_chain_tuple<'py>(
         let (kind, payload) = tails.pop().unwrap();
         let name = tail_name(kind, &payload);
         let payload_tup = convert_pair_tuple(py, payload, idx)?;
-        let children = PyTuple::new_bound(py, [atom_tup.into_any(), payload_tup.into_any()]);
+        let children = PyTuple::new(py, [atom_tup.into_any(), payload_tup.into_any()])?;
         return make_node_tuple(py, intern_static(py, name), children, span);
     }
 
@@ -447,25 +442,25 @@ fn convert_access_chain_tuple<'py>(
         } else {
             "chained_access"
         };
-        let mut inner_items: Vec<PyObject> = Vec::with_capacity(tails.len() + 1);
+        let mut inner_items: Vec<Py<PyAny>> = Vec::with_capacity(tails.len() + 1);
         inner_items.push(atom_tup.into_any().unbind());
         for (_, payload) in tails.into_iter() {
             inner_items.push(convert_pair_tuple(py, payload, idx)?.into_any().unbind());
         }
-        let inner_children = PyTuple::new_bound(py, inner_items);
+        let inner_children = PyTuple::new(py, inner_items)?;
         let inner_node = make_node_tuple(py, intern_static(py, inner_name), inner_children, span)?;
 
         let cast_tup = convert_pair_tuple(py, cast_payload, idx)?;
-        let outer_children = PyTuple::new_bound(py, [inner_node.into_any(), cast_tup.into_any()]);
+        let outer_children = PyTuple::new(py, [inner_node.into_any(), cast_tup.into_any()])?;
         return make_node_tuple(py, intern_static(py, "fcast"), outer_children, span);
     }
 
-    let mut items: Vec<PyObject> = Vec::with_capacity(tails.len() + 1);
+    let mut items: Vec<Py<PyAny>> = Vec::with_capacity(tails.len() + 1);
     items.push(atom_tup.into_any().unbind());
     for (_, payload) in tails.into_iter() {
         items.push(convert_pair_tuple(py, payload, idx)?.into_any().unbind());
     }
-    let children = PyTuple::new_bound(py, items);
+    let children = PyTuple::new(py, items)?;
     make_node_tuple(py, intern_static(py, "chained_access"), children, span)
 }
 
@@ -476,19 +471,17 @@ fn make_node_tuple<'py>(
     span: SpanTuple,
 ) -> PyResult<Bound<'py, PyTuple>> {
     let (line, column, end_line, end_column, start_pos, end_pos) = span;
-    Ok(PyTuple::new_bound(
-        py,
-        [
-            name_py.into_any(),
-            children.into_any().unbind(),
-            line.into_py(py),
-            column.into_py(py),
-            end_line.into_py(py),
-            end_column.into_py(py),
-            start_pos.into_py(py),
-            end_pos.into_py(py),
-        ],
-    ))
+    (
+        name_py,
+        children,
+        line,
+        column,
+        end_line,
+        end_column,
+        start_pos,
+        end_pos,
+    )
+        .into_pyobject(py)
 }
 
 fn convert_pair_tuple<'py>(
@@ -506,22 +499,20 @@ fn convert_pair_tuple<'py>(
     let (line, column, end_line, end_column, start_pos, end_pos) = span;
 
     if is_token {
-        let value_py = PyString::new_bound(py, pair.as_str()).unbind();
-        Ok(PyTuple::new_bound(
-            py,
-            [
-                name_py.into_any(),
-                value_py.into_any(),
-                line.into_py(py),
-                column.into_py(py),
-                end_line.into_py(py),
-                end_column.into_py(py),
-                start_pos.into_py(py),
-                end_pos.into_py(py),
-            ],
-        ))
+        let value_py = PyString::new(py, pair.as_str()).unbind();
+        (
+            name_py,
+            value_py,
+            line,
+            column,
+            end_line,
+            end_column,
+            start_pos,
+            end_pos,
+        )
+            .into_pyobject(py)
     } else {
-        let mut items: Vec<PyObject> = Vec::new();
+        let mut items: Vec<Py<PyAny>> = Vec::new();
         for inner in pair.into_inner() {
             if matches!(inner.as_rule(), Rule::EOI) {
                 continue;
@@ -532,14 +523,14 @@ fn convert_pair_tuple<'py>(
             }
             items.push(convert_pair_tuple(py, inner, idx)?.into_any().unbind());
         }
-        let children = PyTuple::new_bound(py, items);
+        let children = PyTuple::new(py, items)?;
         make_node_tuple(py, name_py, children, span)
     }
 }
 
 /// Tuple-based parse: returns a nested PyTuple tree. Layout described above.
 #[pyfunction]
-pub fn parse_trilogy_syntax_tuple(py: Python<'_>, text: &str) -> PyResult<PyObject> {
+pub fn parse_trilogy_syntax_tuple(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let idx = LineIndex::new(text);
     let mut pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e))

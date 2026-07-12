@@ -388,7 +388,8 @@ def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
         environment=Environment(working_path=workspace),
         conf=DuckDBConfig(path=str(db_path), read_only=True),
     )
-    engine.execute_raw_sql(f"INSTALL {extension}; LOAD {extension};")
+    if extension:
+        engine.execute_raw_sql(f"INSTALL {extension}; LOAD {extension};")
     return engine
 
 

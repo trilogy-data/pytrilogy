@@ -143,9 +143,12 @@ class BuildEnvironment:
         canonical, not itself), for groups with two or more such members."""
         out: list[tuple[str, list[str]]] = []
         for canonical, members in self.scoped_join_key_groups.items():
+            # sorted: members is a set, and this order propagates through
+            # group-mate exposure into datasource output order — and from there
+            # into which group member join resolution picks as the shared key.
             distinct = [
                 member
-                for member in members
+                for member in sorted(members)
                 if (concept := self.concepts.get(member)) is not None
                 and concept.address == member
             ]

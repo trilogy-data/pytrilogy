@@ -60,6 +60,8 @@ union (row stacking)
 
 union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result. Arms match by column position (same count/order/types as outputs) and may contain full trilogy select statements (with their own filters + local joins). Usable in a rowset — with combined as union(...) -> (...) with outputs using standard rowset namespaceing <rowset_name>.<path>.
 
+Each arm is an ordinary select and DEDUPLICATES to its own output grain BEFORE stacking (cross-arm duplicates still stack). Stacking raw measure rows and aggregating OUTSIDE the union silently undersums whenever two source rows in one arm project the same tuple (two same-priced sales in one week). Either aggregate INSIDE each arm (preferred: `sum(x) as v` per the arm's dims) or pull each arm's grain key through as an extra output column so every fact row stays distinct; downstream selects can simply ignore the key column.
+
 Full example: trilogy agent-info syntax example union-stack-channels.
 
 except / intersect (set operations)
@@ -108,7 +110,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
    Use `by *` to aggregate across all data (a single row output).
    auto avg_credits_at_query_grain <- avg(enroll.credits); # responsive to the consuming query's grain
    auto avg_credits_single_row <- avg(enroll.credits) by *; # explicit single-row grain, regardless of query grain
-- **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows — e.g. one output row per matching fact when the projected columns repeat — include the fact's grain keys in the select, hidden with `--` if they shouldn't appear in the output.
+- **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows, such as one output row per matching fact when the projected columns repeat, include the fact's grain keys in the select, hidden with the PREFIX `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
 - **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`

@@ -182,17 +182,16 @@ order by iris.species asc;
 # Compare each entity's total to the GROUP AVERAGE of those per-entity totals
 # (the "above 1.2x the group norm" pattern). Give EACH grain its own `by`: the
 # inner total is per (entity, group); the outer average re-aggregates those
-# totals up to the group. Select both derived metrics hidden (`--`) so HAVING
-# can reference them while the output stays just the entity id.
+# totals up to the group. 
+# since the aggregates are in the having, both are aggregates *after* the id filter is applied
 import enrollments as enroll;
 
 auto student_dept_credits <- sum(enroll.credits) by enroll.student_id, enroll.department;
 auto dept_avg_credits <- avg(student_dept_credits) by enroll.department;
 
+where enroll.student_id > 103
 select
     enroll.student_id,
-    --student_dept_credits,
-    --dept_avg_credits,
 having student_dept_credits > 1.2 * dept_avg_credits;
 
 # BENCHMARK OVER FULL POPULATION + FILTERED OUTPUT: if the department average must span
@@ -301,12 +300,10 @@ order by enroll.year asc nulls first;
 # `union(...)` is a relational table-valued function: it STACKS the rows of TWO OR
 # MORE self-contained `select` arms, positionally (like SQL `UNION ALL`), into one
 # named result. Use it to combine CHANNELS / SOURCES / labeled populations - ONE
-# ARM PER SOURCE, and there is NO fixed arm count (this example stacks THREE). It
+# ARM PER SOURCE, to any amount. It
 # is a row STACK, NOT a key-join: arms are matched by COLUMN POSITION, so every arm
 # must project the same number of columns, in the same order and types, as the
-# trailing `-> (...)` output list. (In a real model each arm is typically a
-# DIFFERENT source/fact - e.g. store, catalog, web sales; here three subsets of one
-# model stand in for those three channels.)
+# trailing `-> (...)` output list.
 import enrollments as enroll;
 
 # IMPORTANT: each arm is an INLINE, self-contained select written directly inside
@@ -357,11 +354,16 @@ limit 100;
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
 #    `union(...)` function form - the cleanest way to stack rows from several
 #    sources.
-#  - COUNTING rows across a union/set-op: pre-aggregate the count INSIDE each arm
-#    (`sum(1) as cnt`, then `sum(cnt)` outside) — an arm's `select` dedups to its own grain,
-#    so selecting a raw per-row flag and counting it OUTSIDE undercounts. And count a
-#    GUARANTEED-non-null key, never a nullable display column: `except`/`intersect` keep
-#    all-null rows (NULL-safe), which `count(nullable_col)` then silently skips.
+#  - AGGREGATING across a union/set-op: an arm's `select` dedups to its own output
+#    grain BEFORE stacking, so stacking raw per-row values (a measure, a `1` flag)
+#    and summing/counting OUTSIDE the union silently undercounts whenever two source
+#    rows in one arm project the same tuple (e.g. two same-priced sales in a week).
+#    Pre-aggregate INSIDE each arm (`sum(sales) as v`, `sum(1) as cnt` - as this
+#    example's `count(enroll.id)` does), or pull the arm's grain key through as an
+#    extra output column so every fact row stays distinct (downstream selects can
+#    just ignore it). And count a GUARANTEED-non-null key, never a nullable display
+#    column: `except`/`intersect` keep all-null rows (NULL-safe), which
+#    `count(nullable_col)` then silently skips.
 """,
     ),
     SyntaxExample(
@@ -774,8 +776,8 @@ limit 100;
 # A self-referential EXISTS / NOT-EXISTS (e.g. "the ONLY enrollee who completed
 # a course that had more than one enrollee") becomes TWO filtered counts pinned
 # to the correlation grain, compared in `where`:
-#   count(k) by <grain> > 1            -- EXISTS another row in the group
-#   count(k ? cond) by <grain> = 1     -- NOT EXISTS another row matching cond
+#   count(k) by <grain> > 1            # EXISTS another row in the group
+#   count(k ? cond) by <grain> = 1     # NOT EXISTS another row matching cond
 #                                         (exactly one matches: the row itself)
 # An aggregate condition in `where` auto-grains to the SELECT grain (like
 # `having`). When the correlation grain DIFFERS from the select grain - as here

@@ -3,13 +3,13 @@ import catalog_sales as cs;
 # Group dim-property values by the row grain (order_number, item.sk) so they
 # aren't dedup'd by their source key before averaging.
 auto row_birth_year <- group(cs.billing_customer.birth_year) by cs.order_number, cs.item.sk;
-auto row_dep_count <- group(cs.billing_customer_demographic.dependent_count) by cs.order_number, cs.item.sk;
+auto row_dep_count <- group(cs.pos_customer_demographic.dependent_count) by cs.order_number, cs.item.sk;
 
 def rollup_avg(metric) -> avg(metric::numeric(12,2));
 
 where
-    cs.billing_customer_demographic.gender = 'F'
-    and cs.billing_customer_demographic.education_status = 'Unknown'
+    cs.pos_customer_demographic.gender = 'F'
+    and cs.pos_customer_demographic.education_status = 'Unknown'
     and cs.billing_customer.demographics.sk is not null
     and cs.billing_customer.birth_month in (1, 6, 8, 9, 12, 2)
     and cs.date.year = 1998

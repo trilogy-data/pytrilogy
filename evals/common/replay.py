@@ -67,11 +67,17 @@ def _worker_dir(workspace: Path, db_filename: str) -> Path:
     return agent_runner.prepare_worker_workspace(workspace, 0, db_filename)
 
 
-def _clear_candidates(dirs: list[Path], qid: int, ext: str) -> None:
+def _clear_candidates(
+    dirs: list[Path], spec: BenchmarkSpec, qid: int, ext: str
+) -> None:
     """A stale candidate from the prior run would be scored as this replay's
     answer if the agent writes nothing."""
     for base in dirs:
-        for name in (f"query{qid:02d}{ext}", f"query{qid}{ext}"):
+        for name in (
+            f"query{qid:02d}{ext}",
+            f"query{qid}{ext}",
+            prompts.candidate_filename(spec, qid, ext),
+        ):
             (base / name).unlink(missing_ok=True)
 
 
@@ -312,7 +318,7 @@ def replay_query(
         _refresh_model(workspace, worker, spec, category, report, log)
     task = category.build_task(spec, entry)
     (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
-    _clear_candidates([workspace, worker], qid, category.candidate_ext)
+    _clear_candidates([workspace, worker], spec, qid, category.candidate_ext)
     (run_dir / f"crash.q{qid:02d}.txt").unlink(missing_ok=True)
 
     log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
@@ -334,9 +340,10 @@ def replay_query(
             result["output"], encoding="utf-8"
         )
 
-    produced = worker / f"query{qid:02d}{category.candidate_ext}"
+    produced = worker / prompts.candidate_filename(spec, qid, category.candidate_ext)
     if produced.exists():
-        shutil.copy2(produced, workspace / produced.name)
+        destination = workspace / f"query{qid:02d}{category.candidate_ext}"
+        shutil.copy2(produced, destination)
         produced.unlink()
 
     log(

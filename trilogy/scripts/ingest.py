@@ -160,6 +160,16 @@ def _datasource_name_from_path(arg: str) -> str:
     return canonicolize_name(stem) or "source"
 
 
+def _hashable_cell(value: object) -> object:
+    """Sample cells from LIST/STRUCT columns arrive as python lists/dicts,
+    which can't go in the uniqueness set — canonicalize them recursively."""
+    if isinstance(value, list):
+        return tuple(_hashable_cell(v) for v in value)
+    if isinstance(value, dict):
+        return tuple(sorted((k, _hashable_cell(v)) for k, v in value.items()))
+    return value
+
+
 def _check_column_combination_uniqueness(
     indices: list[int], sample_rows: list[tuple]
 ) -> bool:
@@ -170,9 +180,9 @@ def _check_column_combination_uniqueness(
     for row in sample_rows:
         # For single column, use scalar value; for multiple columns, use tuple
         if len(indices) == 1:
-            value = row[indices[0]]
+            value = _hashable_cell(row[indices[0]])
         else:
-            value = tuple(row[idx] for idx in indices)
+            value = tuple(_hashable_cell(row[idx]) for idx in indices)
 
         if value in values:
             return False
@@ -380,7 +390,18 @@ def _process_column(
     if enum_type is not None:
         rich_values: list = list(enum_type.values)
     else:
-        rich_values = list({row[idx] for row in sample_rows if row[idx] is not None})
+        # Dedupe via _hashable_cell so LIST/STRUCT sample cells don't blow up
+        # the set; keep the original values for rich-type validation.
+        seen: set = set()
+        rich_values = []
+        for row in sample_rows:
+            cell = row[idx]
+            if cell is None:
+                continue
+            hashed = _hashable_cell(cell)
+            if hashed not in seen:
+                seen.add(hashed)
+                rich_values.append(cell)
     trait_import, trait_type_name = detect_rich_type(
         concept_name, trilogy_type, rich_values
     )

@@ -30,6 +30,11 @@ from trilogy.core.enums import (
     Purpose,
     WindowType,
 )
+from trilogy.core.having_normalization import (
+    _child_exprs,
+    _collect_aggregate_wrappers,
+    _collect_standard_grouping_wrappers,
+)
 from trilogy.core.models.author import (
     AggregateWrapper,
     Between,
@@ -50,11 +55,6 @@ from trilogy.core.models.author import (
     WhereClause,
 )
 from trilogy.core.models.core import DataType, ListWrapper, MapWrapper, TupleWrapper
-from trilogy.core.having_normalization import (
-    _child_exprs,
-    _collect_aggregate_wrappers,
-    _collect_standard_grouping_wrappers,
-)
 
 _DT = DataType.FLOAT
 _REF = ConceptRef(address="local.x")

@@ -17,7 +17,7 @@ property jcat.name string; # Recommended name based on that used by owner/operat
 property jcat.pl_name string; # An alternative name for the object; may indicate radar cross section or unidentified debris.
 
 property jcat.parent string; # Parent object or central body the object is attached to at the start of a phase.
-property jcat.s_date string; # Separation Date; start time for the current phase in UTC.
+property jcat.s_date date; # Separation Date; start time for the current phase in UTC.
 property jcat.primary string; # Central body for the current phase; usually Earth.
 
 property jcat.status string; # Event that ends the current phase.
@@ -40,7 +40,7 @@ property jcat.d_flag string; # Diameter estimation indication; '?' signifies gue
 property jcat.span float; # Largest dimension including all appendages, in metres; stay outside a sphere of Span diameter.
 property jcat.span_flag string; # Span estimation; '?' indicates a guess within ~20% accuracy.
 property jcat.shape string; # Approximate shape description; not a substitute for a CAD model.
-property jcat.o_date string; # Orbit Epoch Date; date format for canonical orbital data.
+property jcat.o_date date; # Orbit Epoch Date; date format for canonical orbital data.
 property jcat.perigee int; # Perigee height in km of canonical orbit; if '?', value is estimated.
 property jcat.pf string; # Indicator if the perigee is a guess; uses '?' to symbolize.
 property jcat.apogee float; # Apogee height in km; if '?', it’s an estimate.
@@ -69,7 +69,7 @@ datasource satcat (
     PLName: pl_name,
     LDate: ?launch_date,
     Parent: parent,
-    SDate: s_date,
+    SDate: ?s_date,
     Primary: primary,
     DDate: ?decom_date,
     Status: status,
@@ -92,7 +92,7 @@ datasource satcat (
     Span: span,
     SpanFlag: ?span_flag,
     Shape: shape,
-    ODate: o_date,
+    ODate: ?o_date,
     Perigee: perigee,
     PF: ?pf,
     Apogee: apogee,

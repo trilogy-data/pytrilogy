@@ -1,0 +1,14 @@
+# Acquiring banks. A transaction's acquirer country vs the card's issuing
+# country determines whether it is domestic ("intracountry") — see payments.
+
+import std.geography;
+
+key name string; # acquirer bank name, e.g. 'gringotts'
+property name.country enum<string>['FR', 'GB', 'IT', 'NL', 'US']::country_code; # country the acquirer operates in
+
+root datasource acquirer_countries (
+    acquirer: name,
+    country_code: country,
+)
+grain (name)
+address acquirer_countries;

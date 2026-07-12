@@ -4,8 +4,8 @@ import inventory as inv;
 where
     cs.sold_date.year = 1999
     and inv.date.year = 1999
-    and cs.bill_household_demographic.buy_potential = '>10000'
-    and cs.billing_customer_demographic.marital_status = 'D'
+    and cs.pos_household_demographic.buy_potential = '>10000'
+    and cs.pos_customer_demographic.marital_status = 'D'
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
     and inv.date.week_seq = cs.sold_date.week_seq
@@ -34,4 +34,3 @@ order by
     week_seq asc nulls first
 limit 100
 ;
-

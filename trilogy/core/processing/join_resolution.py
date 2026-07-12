@@ -767,7 +767,11 @@ def get_node_joins(
                         ),
                     )
                     for k, v in j.keys.items()
-                    for concept in v
+                    # sorted: v is a set, and reduce_concept_pairs prunes
+                    # greedily in input order — unordered iteration makes the
+                    # surviving pair set (and thus rendered join keys) vary run
+                    # to run.
+                    for concept in sorted(v)
                 ],
                 ds_node_map[j.right],
                 j.type,

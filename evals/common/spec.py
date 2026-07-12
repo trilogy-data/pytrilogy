@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -20,12 +21,14 @@ class BenchmarkSpec:
     """Stable slug used for cache filenames ('tpcds', 'tpch')."""
 
     duckdb_extension: str
-    """Name of the DuckDB extension to INSTALL + LOAD ('tpcds', 'tpch')."""
+    """Name of the DuckDB extension to INSTALL + LOAD ('tpcds', 'tpch').
+    Empty string = no extension (file-based benchmarks like DABstep)."""
 
     generator_sql: str
     """SQL to populate the freshly-created database. ``{sf}`` is interpolated.
     Examples: ``SELECT * FROM dsdgen(sf={sf})`` (tpcds is a lazy table fn),
-    ``CALL dbgen(sf={sf})`` (tpch is a procedural call)."""
+    ``CALL dbgen(sf={sf})`` (tpch is a procedural call). Ignored when
+    ``database_builder`` is set."""
 
     db_filename: str
     """Workspace database filename agents see ('tpcds.duckdb', 'tpch.duckdb')."""
@@ -57,6 +60,30 @@ class BenchmarkSpec:
     """Optional curated schema-markdown doc for the ``sql_schema`` no-Trilogy
     baseline. When set and the file exists, it is copied into the workspace as
     ``schema.md`` instead of auto-generating one from DuckDB introspection."""
+
+    database_builder: Callable[[], Path] | None = None
+    """When set, ``db.build_database`` delegates here instead of generating via
+    the DuckDB extension — for benchmarks whose data comes from files rather
+    than a generator (DABstep). Returns the cached db path; the builder owns
+    its own caching. Scale factor does not apply."""
+
+    doc_files: tuple[Path, ...] = ()
+    """Documentation files copied into an agent workspace (e.g. DABstep's
+    manual.md — domain knowledge the questions require but the schema doesn't
+    carry). Installed only for the categories in ``doc_categories``."""
+
+    doc_categories: tuple[str, ...] = ()
+    """Category keys whose workspaces receive ``doc_files`` (with file-read
+    enabled for the Trilogy toolset). DABstep gives the docs to the SQL
+    baselines and the auto-ingest leg but NOT to enriched — the curated model
+    is expected to carry the domain knowledge itself, so the funnel compares
+    agent+docs+db against agent+semantic-model."""
+
+    docs_preamble: str = ""
+    """Text prepended to each task prompt ON DOC-BEARING LEGS ONLY (what the
+    doc files are and that the agent should read them). Kept out of
+    query_prompts.json so docless legs don't send agents chasing files that
+    aren't in their workspace."""
 
     default_scale_factor: float = 0.01
     default_num_queries: int = 22

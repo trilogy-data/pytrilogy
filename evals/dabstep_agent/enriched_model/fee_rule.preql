@@ -1,0 +1,78 @@
+# Payment processing fee rules. A rule applies to a transaction when EVERY
+# populated field matches; the fee is then:
+#
+#     fee (EUR) = fixed_amount + rate * transaction_value / 10000
+#
+# WILDCARD SEMANTICS: a NULL scalar field means the rule applies to ALL values
+# of that field. The three set-valued dimensions (account_type, mcc, aci) live
+# in child datasources; a rule with NO rows in one of those sets is
+# unconstrained on that dimension (applies to all values).
+#
+# Matching fields and what they compare against:
+#   card_scheme          -> the transaction's card scheme
+#   is_credit            -> the transaction's credit/debit flag
+#   intracountry         -> whether the transaction is domestic
+#   aci set              -> the transaction's ACI
+#   account_type set     -> the merchant's account type
+#   mcc set              -> the merchant's merchant category code
+#   capture_delay bucket -> the merchant's capture-delay config
+#   monthly_volume       -> the merchant's total EUR volume in the natural month
+#   monthly_fraud_level  -> the merchant's fraud share in the natural month
+#                           (fraudulent volume / total volume, as a percentage)
+
+import mcc as category; # MCC lookup for the rule's allowed category codes
+
+key id int; # fee rule ID (the 'fee ID' questions ask about)
+
+properties id (
+    card_scheme enum<string>['GlobalCard', 'NexPay', 'SwiftCharge', 'TransactPlus'], # card scheme/network the fee applies to
+    capture_delay enum<string>['3-5', '<3', '>5', 'immediate', 'manual']?, # required merchant capture-delay bucket; numeric merchant configs ('1','2','7' days) fall into '<3'/'3-5'/'>5'. NULL = applies to all.
+    monthly_fraud_level enum<string>['7.2%-7.7%', '7.7%-8.3%', '<7.2%', '>8.3%']?, # required merchant monthly fraud share (fraudulent volume / total volume, in %, per natural month). NULL = applies to all.
+    monthly_volume enum<string>['100k-1m', '1m-5m', '<100k', '>5m']?, # required merchant total EUR volume in the natural month (100k = 100,000; 1m = 1,000,000). Higher volume generally means cheaper fees. NULL = applies to all.
+    is_credit bool?, # true = credit transactions only, false = debit only. NULL = applies to both.
+    fixed_amount float, # fixed EUR amount charged per transaction
+    rate int, # variable rate: fee contribution = rate * transaction_value / 10000
+    intracountry bool?, # true = domestic transactions only (issuing country == acquirer country), false = international only (typically more expensive). NULL = applies to both.
+);
+
+root datasource fees (
+    ID: id,
+    card_scheme,
+    capture_delay: ?capture_delay,
+    monthly_fraud_level: ?monthly_fraud_level,
+    monthly_volume: ?monthly_volume,
+    is_credit: ?is_credit,
+    fixed_amount,
+    rate,
+    intracountry: ?intracountry,
+)
+grain (id)
+address fees;
+
+# --- set-valued match dimensions (empty set = applies to all) ---------------
+
+key account_type enum<string>['D', 'F', 'H', 'R', 'S']; # merchant account type the rule is restricted to (R Retail, D Digital, H Hospitality, F Franchise, S SaaS, O Other). A rule with NO rows here applies to ALL account types.
+
+datasource fee_account_types (
+    fee_id: ~id,
+    account_type,
+)
+grain (id, account_type)
+address fee_account_types;
+
+# Allowed merchant category codes. A rule with NO rows here applies to ALL MCCs.
+datasource fee_merchant_category_codes (
+    fee_id: ~id,
+    mcc: category.code,
+)
+grain (id, category.code)
+address fee_merchant_category_codes;
+
+key aci enum<string>['A', 'B', 'C', 'D', 'E', 'F', 'G']; # transaction ACI the rule is restricted to (see payments.aci for code meanings). A rule with NO rows here applies to ALL ACIs.
+
+datasource fee_acis (
+    fee_id: ~id,
+    aci,
+)
+grain (id, aci)
+address fee_acis;
