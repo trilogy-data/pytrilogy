@@ -1028,8 +1028,24 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
+        # Same rowset cycle guard as the main constraint pass above: a
+        # condition concept DERIVED from a rowset (a bare aggregate over a
+        # rowset handle, co-grained to the select grain) already sits above
+        # that rowset; constraining it back onto a mandatory output owned by
+        # the same rowset forms a rowset→condition→rowset cycle that kills
+        # the topological concept-set pass.
+        src_lineage_ancestor_rowsets = {
+            attrs[a].rowset_name
+            for a in nx.ancestors(graph, src)
+            if attrs[a].rowset_name
+        }
         for dst in mandatory_blank_ids:
             if dst not in graph.nodes or graph.has_edge(src, dst):
+                continue
+            if (
+                attrs[dst].rowset_name
+                and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
+            ):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)
     return graph, attrs, edges
