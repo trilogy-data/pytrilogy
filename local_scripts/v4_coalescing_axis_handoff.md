@@ -1,5 +1,12 @@
 # Handoff: port coalescing-axis + per-side probe materialization to v4
 
+> **STATUS 2026-07-12 (session 2): LARGELY DONE.** 13/23 family cells + 20
+> collateral fixed; v4 sweep 177 → 145 with 0 new failures (v3 5403/0). See
+> the session-2 entry at the top of `v4_audit.md` for the mechanism map and
+> the ~10 residual rowset-flavored cells (cast/concat derived keys, bare
+> rowset-axis projection, filtered_rowset_anchor, mixed anchors, subset
+> property null test) folded into the next rowset-pair key-carry session.
+
 Target for the first post-#598 parity session. Scope: one mechanism, worth
 ~20–25 correctness failures out of the ~177 tracked in `v4_audit.md` (07-12
 section). Do this before the rowset key-carry family — it is fully

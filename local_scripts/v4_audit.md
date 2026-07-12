@@ -1,5 +1,59 @@
 # v4 compatibility audit (last refreshed 2026-07-12, post rebase onto main)
 
+## ✅ 2026-07-12 (session 2) — coalescing-axis + per-side probe pinning ported; v4 sweep 177 → 145
+
+Ported the v3 presence mechanisms into v4 (commits 880ab9f56, d68b36e96,
+c22e7e436). Verified honestly: full v3 sweep **5403 passed / 0 failed**; full
+v4 sweep **145 failed** vs the regenerated 177 baseline — **33 fixed, 0 new**
+(the one apparent new, `faa/test_llm.py::test_llm_execution`, passes in
+isolation; LLM suite-order flake). Baseline regenerated at e003ea154 and
+matched 177 exactly, so the diff is trustworthy.
+
+Mechanism map (all v4-only modules):
+- **Probes → ROOT** (`pinned_probe_addresses`, concept_graph.py): a ds-bound
+  member's probe classifies as root-like (lineage still walked), rides into
+  `plan_source`, and the #598 bridge gate (`_datasource_renders_probe`) pins it
+  per side. This alone fixed the q97 presence-count and not-null+measure cells.
+- **Bare coalescing axis** (`_plan_coalescing_axis`, source_planning.py):
+  requests that are exactly axis members reuse v3 `gen_coalescing_axis_node`
+  via a v4 search adapter.
+- **Rowset-member probes = boundary obligations**: stage-1 tags them with the
+  member's rowset (`ConceptAttrs.rowset_name`), `_assign_groups` routes tagged
+  nodes to the rowset rule, `resolve_rowset` materializes probe + member
+  handle (hidden) on the boundary; probe-only contracts recover the boundary
+  through the member.
+- **Condition placement**: probe/member-key atoms never host at a rowset
+  boundary (only meaningful above the completion merge); when boundary hosts
+  were stripped or no main-lineage host remains → FINAL, whose assembly joins
+  the probe's producer back KEYED (concept-set pass exposes the probe's
+  lineage key next to a FINAL-demanded probe) and dedups explicitly post-join.
+- **Boundary subset partials**: rowset↔rowset subset-source handles marked
+  partial (v3 `scoped_partial`) → anchor-LEFT + coalesced-axis rendering fell
+  out of existing partial-driven join typing; FINAL clears ROWSET-handle
+  partials the merge completes via group-mates. Mixed root↔rowset relations
+  deliberately excluded (conflicting-filter year-over-year join), and raw
+  ds-bound members keep their deliberate no-complete-source error
+  (union-reproject clean-error cells).
+- **plan_source fallback**: a no-new-concepts multi-datasource bridge is a
+  DEAD-LAST resort (`BridgePlan.full_cover_fallback`) — rescues the two-rowset
+  body (`st as store` under `merge st into store_id`) without pre-empting
+  direct plans (q64 join hoist / two_merge compaction / stocks locks).
+- **partition_roots**: PROPERTY roots FD-connect to their KEY root in the
+  output-convergence component check — `select cust_id as x, cname as y` was a
+  CARTESIAN under v4 (untracked wrong-rows bug). Keys never FD-connect to keys
+  (count(user_id) must read users, not the posts FK domain — test_show lock).
+- Also: `_scoped_joins_for_rowset` applied to v4 nested-select builds;
+  `_concepts_in_graph` skips bridge nodes unresolvable in this scope
+  (cross-scope alias variants); ROWSET groups exempt from parent-based
+  `satisfiable_outputs` pruning (gen_rowset ignores group-graph parents).
+
+Still open in these families (~10, all rowset-flavored — fold into the
+rowset-pair key-carry session): coalescing_presence cast/concat derived keys
+(the Bug-1 recursion family), bare_member_projection over rowsets,
+filtered_rowset_anchor ×3, mixed root/rowset anchors ×2 (now keyed-join +
+dedup but boundary demands a hidden inner grain key — `Missing source
+reference to local.cname` variant), subset property null test ×1.
+
 ## 🔄 2026-07-12 — REBASED onto main (new join engine, author→build moves, PRs #592–#597)
 
 Branch rebased onto latest main (22 commits replayed; backup at
