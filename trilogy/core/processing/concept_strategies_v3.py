@@ -20,7 +20,6 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
-    concept_is_row_scalar,
     decompose_condition,
 )
 from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
@@ -195,13 +194,6 @@ def initialize_loop_context(
                 and x.granularity == Granularity.SINGLE_ROW
             )
             and x.address in conditions.row_arguments
-            # a pure row-scalar output (e.g. a concat label) in the WHERE is a
-            # plain row filter: it must NOT force evaluation at this level, or
-            # sibling windows/aggregates are built over the unfiltered universe
-            # (a rank would come back as the global rank). Pushdown handles it;
-            # the circular-routing guard in get_loop_iteration_targets keeps it
-            # out of its own build.
-            and not concept_is_row_scalar(x)
         ]
         # A filter-only rowset output (referenced in the WHERE but not selected)
         # must eventually be injected because its opaque lineage cannot be rebuilt
