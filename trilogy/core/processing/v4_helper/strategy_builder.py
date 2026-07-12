@@ -29,6 +29,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildGrain,
     BuildWhereClause,
+    LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
@@ -1993,6 +1994,41 @@ def _hide_final_only_grain_keys(
     node.rebuild_cache()
 
 
+def _clear_groupmate_completed_partials(
+    node: StrategyNode, environment: BuildEnvironment
+) -> None:
+    """Un-mark a scoped-join key the merge itself completes.
+
+    A subset-side member (`subset join a.store = b.store`, a ⊆ b) is partial on
+    its own contributor — it spans only the subset domain — but this merge pairs
+    it with its complete group-mate via the authored equality, so the merged
+    relation spans the anchor's domain and the key renders as the coalesced
+    group axis (v3's completion-merge behavior). Leaving it partial trips the
+    final no-complete-source guard for a value that is in fact complete here."""
+    if not node.partial_concepts or not environment.scoped_join_key_groups:
+        return
+    complete_outputs: set[str] = set()
+    for parent in node.parents:
+        parent_partial = {c.address for c in parent.partial_concepts}
+        complete_outputs |= {
+            c.address
+            for c in parent.output_concepts
+            if c.address not in parent_partial
+        }
+    keep: list[BuildConcept] = []
+    for concept in node.partial_concepts:
+        mates: set[str] = set()
+        for canonical, members in environment.scoped_join_key_groups.items():
+            if concept.address in members or concept.address == canonical:
+                mates |= (members | {canonical}) - {concept.address}
+        if mates & complete_outputs:
+            continue
+        keep.append(concept)
+    if len(keep) != len(node.partial_concepts):
+        node.partial_concepts = keep
+        node.partial_lcl = LooseBuildConceptList(concepts=keep)
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -2304,6 +2340,7 @@ def _assemble_final_node(
         conditions=final_conditions.conditional if final_conditions else None,
         hidden_concepts=hidden or None,
     )
+    _clear_groupmate_completed_partials(merged, environment)
     # Dedup the assembled merge to the requested output grain (mirrors v3's
     # group_if_required_v2 and the single-contributor path above). A contributor
     # left whole at a finer row grain — e.g. a root scan kept at {store,wh,product}
@@ -2436,11 +2473,16 @@ def build_strategy_node(
         # supply the root's primary scan columns. Pruning by parent outputs
         # there strips every requested column and the root never builds —
         # leaving the consumer with `INVALID_REFERENCE_BUG` against the
-        # missing concepts (q11).
+        # missing concepts (q11). A ROWSET boundary likewise sources from its
+        # own recursively-planned inner select (`gen_rowset` ignores parents);
+        # pruning it by a constraint-edge sibling silently dropped a handle the
+        # sibling happened not to pseudonym-cover (subset anchor null test:
+        # `a.amt` vanished from the SELECT).
         if derivation not in (
             Derivation.ROOT,
             Derivation.UNION,
             Derivation.UNNEST,
+            Derivation.ROWSET,
         ):
             outputs = satisfiable_outputs(outputs, parents)
             if not outputs:

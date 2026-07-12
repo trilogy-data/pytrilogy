@@ -54,7 +54,14 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.node_generators.multiselect_node import extra_align_joins
-from trilogy.core.processing.node_generators.rowset_node import _interpose_limit_node
+from trilogy.core.processing.node_generators.presence_probe import (
+    is_presence_probe,
+    probe_member_address,
+)
+from trilogy.core.processing.node_generators.rowset_node import (
+    _interpose_limit_node,
+    _scoped_joins_for_rowset,
+)
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -153,6 +160,7 @@ def _factory_for_history(history: "V4History") -> Factory:
 def _build_nested_select(
     select: SelectLineage | MultiSelectLineage,
     history: "V4History",
+    exclude_derived: list[str] | None = None,
 ) -> tuple[
     BuildSelectLineage | BuildMultiSelectLineage,
     BuildEnvironment,
@@ -167,13 +175,21 @@ def _build_nested_select(
     env (so the graph bridges the two datasources) -- otherwise the body builds
     with no join, its datasources come back as separate components, and the
     read-back raises a misleading DisconnectedConceptsException for a join that is
-    in fact present inside the rowset (surfaced on enriched TPC-DS q64)."""
+    in fact present inside the rowset (surfaced on enriched TPC-DS q64).
+
+    ``exclude_derived`` carries a rowset body's own derived concepts: an OUTER
+    query-scoped join referencing them (``subset join a.store = b.store``)
+    relates this rowset's output to its sibling and must not be applied inside
+    the body's independent scope (v3's `_scoped_joins_for_rowset`) — the body
+    would canonicalize its own output onto the cross-rowset group and source it
+    back through itself."""
     author_env = history.base_environment
     caches = history.build_caches
     nested_scoped = select.scoped_joins if isinstance(select, SelectLineage) else []
-    scoped_joins = caches.scoped_joins + [
-        j for j in nested_scoped if j not in caches.scoped_joins
-    ]
+    outer_scoped = _scoped_joins_for_rowset(
+        caches.scoped_joins, exclude_derived or []
+    )
+    scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(author_env)
     factory = Factory(
@@ -515,12 +531,27 @@ def resolve_rowset(
     normal group rather than asserting."""
     rowset_outputs = [o for o in outputs if isinstance(o.lineage, BuildRowsetItem)]
     if not rowset_outputs:
+        # A probe-only demand (the presence-count shape: the boundary's sole
+        # contract output is a member's presence probe): recover the boundary
+        # through the probe's member handle, which the obligation pass below
+        # then materializes alongside the probe.
+        for concept in outputs:
+            if not is_presence_probe(concept.address):
+                continue
+            member_addr = probe_member_address(concept.address, environment)
+            member = environment.concepts.get(member_addr) if member_addr else None
+            if member is not None and isinstance(member.lineage, BuildRowsetItem):
+                rowset_outputs = [member]
+                break
+    if not rowset_outputs:
         return None
     lineage = rowset_outputs[0].lineage
     assert isinstance(lineage, BuildRowsetItem)
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
-    built, inner_env, inner_where = _build_nested_select(select, history)
+    built, inner_env, inner_where = _build_nested_select(
+        select, history, exclude_derived=lineage.rowset.derived_concepts
+    )
     inner_g = generate_graph(inner_env)
 
     # The inner select is its own resolution scope; if its required concepts span
@@ -674,6 +705,45 @@ def resolve_rowset(
                     inputs.append(arm_concept)
                     hidden.add(arm_concept.address)
 
+    # OBLIGATION (v3 `_local_exposure_obligations`): a presence probe over one
+    # of this rowset's handles must be computed HERE, pre-merge — post-merge
+    # the member reads as the fused group coalesce, never NULL. The probe is a
+    # BASIC over the handle, so it renders inline in the boundary SELECT once
+    # its member handle is materialized; expose the member as a hidden output
+    # when the outer query didn't demand it directly.
+    handle_addrs = {h.address for h in handles}
+    for probe in outputs:
+        if probe.address in handle_addrs or not is_presence_probe(probe.address):
+            continue
+        member_addr = probe_member_address(probe.address, environment)
+        if member_addr is None or member_addr not in derived:
+            continue
+        member_handle = environment.concepts.get(member_addr)
+        if member_handle is None:
+            continue
+        if member_addr not in handle_addrs and isinstance(
+            member_handle.lineage, BuildRowsetItem
+        ):
+            if member_handle.lineage.content.address not in produced:
+                continue
+            handles.append(member_handle)
+            inputs.append(produced[member_handle.lineage.content.address])
+            handle_addrs.add(member_addr)
+            hidden.add(member_addr)
+        handles.append(probe)
+        handle_addrs.add(probe.address)
+
+    # A handle that is a declared-subset SOURCE (`subset join rs.k = anchor.k`)
+    # spans only the subset side's domain: mark it partial so join resolution
+    # anchors the complete side and LEFT-joins this boundary (v3's
+    # `scoped_partial` in `_collect_advertised_outputs`) instead of INNER-
+    # narrowing the anchor to the intersection.
+    subset_sources = environment.domain_graph.subset_sources()
+    scoped_partial = [
+        h
+        for h in handles
+        if h.address in subset_sources and isinstance(h.lineage, BuildRowsetItem)
+    ]
     boundary: StrategyNode = SelectNode(
         output_concepts=handles,
         input_concepts=inputs,
@@ -681,9 +751,17 @@ def resolve_rowset(
         environment=inner_env,
         # Grain over the outer handles (mirrors v3 `gen_rowset_node`): lets the
         # FINAL merge join two rowsets on their shared/pseudonym grain key
-        # instead of cross-joining when the boundary exposes no grain.
-        grain=BuildGrain.from_concepts([h for h in handles if h.address not in hidden]),
+        # instead of cross-joining when the boundary exposes no grain. Probes
+        # are per-key presence markers, not part of the boundary's row grain.
+        grain=BuildGrain.from_concepts(
+            [
+                h
+                for h in handles
+                if h.address not in hidden and not is_presence_probe(h.address)
+            ]
+        ),
         hidden_concepts=hidden,
+        partial_concepts=scoped_partial,
     )
     # A filter the group graph injected at this boundary is a consumer-side
     # predicate over the rowset's rows — e.g. a multiselect arm's per-arm

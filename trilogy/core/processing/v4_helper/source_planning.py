@@ -46,6 +46,8 @@ from trilogy.core.processing.node_generators.node_merge_node import (
     extract_concept,
 )
 from trilogy.core.processing.node_generators.presence_probe import (
+    coalescing_axis_group,
+    gen_coalescing_axis_node,
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
@@ -107,11 +109,21 @@ def _concept_node_grain_addresses(node: str) -> set[str]:
 def _concepts_in_graph(
     graph: ReferenceGraph, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    return [
-        extract_concept(_concept_node_address(node), environment)
-        for node in graph.nodes
-        if node.startswith("c~")
-    ]
+    """Resolve every concept node the bridge kept to this environment's
+    concepts. A Steiner solution can traverse a lineage-bridge node for a
+    derived variant minted in ANOTHER build scope (e.g. a rowset body's
+    `alias(...)` key built under different scoped joins, reachable through the
+    handle's pseudonym web but never registered here). Such a node proves
+    connectivity but cannot be requested or planned in this environment —
+    resolve what this scope knows and drop the rest."""
+    out: list[BuildConcept] = []
+    for node in graph.nodes:
+        if not node.startswith("c~"):
+            continue
+        concept = environment.canonical_concepts.get(_concept_node_address(node))
+        if concept is not None:
+            out.append(concept)
+    return out
 
 
 def _condition_row_concepts(
@@ -284,8 +296,18 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             # otherwise fall through to the full table, since the partial is
             # rejected by the strict attempt and the full condition disconnects
             # the partial's join partner from the graph (q geography exact-match).
+            # A multi-datasource graph that covers the full request is likewise
+            # a genuine connector even when it adds no new concept — the join
+            # key was simply already requested (`st as store` under `merge st
+            # into store_id`: sales ⋈ stores on the requested store_id).
+            # Rejecting it here let a later filter_downstream=False pass hand
+            # back a single-scan graph whose "connectivity" ran through another
+            # build scope's rowset-handle pseudonym web, silently dropping the
+            # dimension table.
+            bridged_addresses = {c.address for c in bridged}
             if (
-                ({c.address for c in bridged} - requested)
+                (bridged_addresses - requested)
+                or (len(graph.datasources) > 1 and requested <= bridged_addresses)
                 or _has_union_datasource(graph)
                 or _graph_has_condition_matched_partial(
                     graph, request.conditions, request.environment
@@ -1194,6 +1216,77 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
     )
 
 
+def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
+    """Bare projection of a coalescing (`full`/`union`) axis: the unified axis
+    is the union of member domains, so no single member's scan may satisfy it —
+    assemble the mandatory coalesce of every member side (v3's
+    `gen_coalescing_axis_node`, reused with a v4 recursion adapter for unbound
+    members).
+
+    Deliberately narrow, mirroring the v3 trigger: fires only when EVERY
+    requested concept (outputs and filter columns alike) is a key of one
+    coalescing group. A request carrying any other column is querying a side or
+    already forces the member scans into the bridge, where probe pinning and
+    partial-driven join typing assemble the axis population natively."""
+    env = request.environment
+    requested = _requested_concepts(request)
+    canonicals: set[str] = set()
+    allowed: set[str] = set()
+    for concept in requested:
+        found = coalescing_axis_group(concept.address, env)
+        if found is None:
+            return None
+        canonical, group = found
+        canonicals.add(canonical)
+        allowed |= {canonical, *group}
+    if len(canonicals) != 1 or any(c.address not in allowed for c in requested):
+        return None
+
+    from trilogy.core.processing.concept_strategies_v4 import (
+        V4History,
+        search_concepts,
+    )
+
+    def _v4_member_source(
+        mandatory_list: list[BuildConcept],
+        environment: BuildEnvironment,
+        g: ReferenceGraph,
+        depth: int,
+        history: History,
+        conditions: BuildWhereClause | None = None,
+    ) -> StrategyNode | None:
+        info = search_concepts(
+            mandatory_list=mandatory_list,
+            history=cast(V4History, history),
+            environment=environment,
+            depth=depth,
+            g=g,
+            conditions=[conditions] if conditions else [],
+        )
+        return info.strategy_node
+
+    key_concept = env.concepts.get(next(iter(canonicals)))
+    if key_concept is None:
+        return None
+    axis = gen_coalescing_axis_node(
+        key_concept,
+        env,
+        request.depth + 1,
+        g=request.graph,
+        source_concepts=_v4_member_source,
+        history=request.history,
+    )
+    if axis is None or request.conditions is None:
+        return axis
+    return SelectNode(
+        output_concepts=list(axis.output_concepts),
+        input_concepts=list(axis.output_concepts),
+        environment=env,
+        parents=[axis],
+        conditions=request.conditions.conditional,
+    )
+
+
 def plan_source(request: SourceRequest) -> StrategyNode | None:
     """Source ROOT-level concepts through one v4 path.
 
@@ -1201,6 +1294,9 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     are split but the graph can prove connector concepts, source each expanded
     component directly and merge them under a v4 node.
     """
+    axis = _plan_coalescing_axis(request)
+    if axis is not None:
+        return axis
     complete_where = _plan_complete_where_source(request)
     if complete_where is not None:
         return complete_where

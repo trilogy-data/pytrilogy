@@ -14,6 +14,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.discovery_utility import _output_is_rootless
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .constants import FINAL_NODE_ID, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
@@ -307,6 +308,7 @@ def plan_condition_placements(
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
+    scoped_join_member_addresses: frozenset[str] = frozenset(),
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
     d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == DepthLabel.D0}
@@ -352,6 +354,27 @@ def plan_condition_placements(
                 lineage_ancestors_graph,
                 buckets,
             )
+            # A presence probe's null test is only meaningful ABOVE the merge
+            # that null-extends it: hosting it at the member's own rowset
+            # boundary reads the probe one-sided (never NULL for `is not
+            # null`, all-NULL for `is null` — the anti-join filters the wrong
+            # side). Drop boundary hosts; the atom lands at FINAL (or a ROOT
+            # group, whose plan itself contains the completion merge). The
+            # same applies to a scoped-join KEY-GROUP MEMBER itself: a member
+            # reference reads as the coalesced group axis, which only exists
+            # post-merge (v3 renders `WHERE coalesce(b_store, a_store) is not
+            # null` at the final select) — filtering one boundary by its own
+            # key both no-ops locally and perturbs the anchor-LEFT join shape.
+            if any(
+                is_presence_probe(addr) or addr in scoped_join_member_addresses
+                for addr in row_inputs
+            ):
+                candidates = [
+                    gid
+                    for gid in candidates
+                    if buckets.get(gid) is None
+                    or buckets[gid].derivation != Derivation.ROWSET
+                ]
             # An atom referencing an aggregate OUTPUT is a post-aggregation
             # predicate: it may only be hosted at that aggregate's producer
             # group (HAVING) or downstream of it. An upstream scan can carry

@@ -35,6 +35,11 @@ from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.node_generators.common import (
     _walk_aggregate_grain_inputs,
 )
+from trilogy.core.processing.node_generators.presence_probe import (
+    is_presence_probe,
+    member_binding_datasources,
+    probe_member_address,
+)
 
 from .constants import (
     ROW_SHAPE_BARRIER_DERIVATIONS,
@@ -79,7 +84,9 @@ def _effective_label(
 
     A concept in `materialized_roots` is sourced directly from a datasource
     that materializes it (a precomputed/summary table), so it behaves as a
-    ROOT input here even though its lineage is derived."""
+    ROOT input here even though its lineage is derived. The set also carries
+    pinned presence probes (see `pinned_probe_addresses`), which are computed
+    on their member's own scan and share it between phases the same way."""
     if concept.address in materialized_roots or concept.derivation == Derivation.ROOT:
         return _scope_and_phase(label)[0]
     return label
@@ -106,6 +113,30 @@ def classify_depth(
     ):
         return DepthLabel.D0
     return DepthLabel.STAR
+
+
+def pinned_probe_addresses(environment: BuildEnvironment) -> frozenset[str]:
+    """Presence probes over datasource-bound (ROOT) key-group members.
+
+    Such a probe pins side identity: it must be computed on a scan that
+    physically carries the member's authored column, never derived generically
+    (the complement side binds the same canonical and is non-NULL exactly where
+    the probe must read NULL). Classifying them as root-like sends them into
+    the ROOT scan bucket, so `plan_source` sees them in the datasource request
+    and the bridge's `_datasource_renders_probe` gate pins each to its member's
+    own scan — mirroring v3's `gen_presence_probe_node`. Rowset-member probes
+    (no binding datasource) keep the BASIC path: their value is computed inside
+    the member's rowset body."""
+    out: set[str] = set()
+    if not environment.scoped_join_key_groups:
+        return frozenset()
+    for concept in environment.concepts.values():
+        if not is_presence_probe(concept.address):
+            continue
+        member = probe_member_address(concept.address, environment)
+        if member is not None and member_binding_datasources(member, environment):
+            out.add(concept.address)
+    return frozenset(out)
 
 
 def _lineage_args(
@@ -441,6 +472,7 @@ def _add_concept(
     label: str = "",
     materialized_roots: frozenset[str] = frozenset(),
     datasource_addresses: frozenset[str] = frozenset(),
+    pinned_probes: frozenset[str] = frozenset(),
 ) -> None:
     """Walk lineage from a concept toward its roots, under a fixed label.
 
@@ -453,7 +485,13 @@ def _add_concept(
 
     A concept in `materialized_roots` is treated as a ROOT leaf: its lineage is
     not walked (a datasource materializes it directly), and its node carries
-    `derivation=ROOT` so the group graph buckets it into a datasource scan."""
+    `derivation=ROOT` so the group graph buckets it into a datasource scan.
+
+    A concept in `pinned_probes` (a presence probe over a datasource-bound
+    key-group member) also carries `derivation=ROOT` — it must be computed on
+    its member's own scan, so it belongs in the ROOT bucket where `plan_source`
+    pins it per side — but its lineage IS walked: the probe's argument is the
+    group's axis key, which the plan still needs as the join spine."""
     alternatives = _alternative_origins(concept, environment, datasource_addresses)
     use_hub = len(alternatives) >= 2
     if not use_hub:
@@ -463,8 +501,10 @@ def _add_concept(
         origin = _resolve_pseudonym_origin(concept, environment, datasource_addresses)
         if origin is not None:
             concept = origin
+    root_like = materialized_roots | pinned_probes
     is_materialized_root = concept.address in materialized_roots
-    eff_label = _effective_label(concept, label, materialized_roots)
+    is_pinned_probe = concept.address in pinned_probes
+    eff_label = _effective_label(concept, label, root_like)
     nid = node_id(eff_label, concept.address)
     if nid in graph:
         return
@@ -488,6 +528,19 @@ def _add_concept(
     rowset_name = None
     if isinstance(concept.lineage, BuildRowsetItem):
         rowset_name = concept.lineage.rowset.name
+    elif is_presence_probe(concept.address):
+        # A presence probe over a ROWSET member has no datasource to pin to —
+        # its value must be computed INSIDE the member's rowset boundary,
+        # pre-merge (post-merge the member reads as the fused group coalesce,
+        # never NULL). Tag it with the member's rowset so the rowset grouping
+        # rule buckets it into that boundary and `resolve_rowset` discharges it
+        # as an obligation output (v3's `_local_exposure_obligations`).
+        member = probe_member_address(concept.address, environment)
+        member_concept = environment.concepts.get(member) if member else None
+        if member_concept is not None and isinstance(
+            member_concept.lineage, BuildRowsetItem
+        ):
+            rowset_name = member_concept.lineage.rowset.name
     is_rename = (
         isinstance(concept.lineage, BuildFunction)
         and concept.lineage.operator == FunctionType.ALIAS
@@ -497,10 +550,14 @@ def _add_concept(
     attrs[nid] = ConceptAttrs(
         address=concept.address,
         label=eff_label,
-        derivation=Derivation.ROOT if is_materialized_root else concept.derivation,
+        derivation=(
+            Derivation.ROOT
+            if (is_materialized_root or is_pinned_probe)
+            else concept.derivation
+        ),
         purpose=concept.purpose,
         granularity=concept.granularity,
-        depth_label=classify_depth(concept, eff_label, materialized_roots),
+        depth_label=classify_depth(concept, eff_label, root_like),
         grain_components=out_grain,
         grouping_mode=grouping_mode,
         rowset_name=rowset_name,
@@ -545,9 +602,10 @@ def _add_concept(
                 label,
                 materialized_roots,
                 datasource_addresses,
+                pinned_probes,
             )
             origin_nid = node_id(
-                _effective_label(origin, label, materialized_roots), origin.address
+                _effective_label(origin, label, root_like), origin.address
             )
             add_edge(
                 graph,
@@ -587,8 +645,9 @@ def _add_concept(
             label,
             materialized_roots,
             datasource_addresses,
+            pinned_probes,
         )
-        upstream_label = _effective_label(upstream, label, materialized_roots)
+        upstream_label = _effective_label(upstream, label, root_like)
         add_edge(
             graph,
             edges,
@@ -826,6 +885,8 @@ def build_concept_graph(
     datasource_addresses = frozenset(
         c.address for ds in environment.datasources.values() for c in ds.output_concepts
     )
+    pinned_probes = pinned_probe_addresses(environment)
+    root_like = materialized_roots | pinned_probes
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
         _add_concept(
@@ -836,6 +897,7 @@ def build_concept_graph(
             attrs,
             materialized_roots=materialized_roots,
             datasource_addresses=datasource_addresses,
+            pinned_probes=pinned_probes,
         )
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so we never
@@ -852,6 +914,7 @@ def build_concept_graph(
                 label=_condition_label(""),
                 materialized_roots=materialized_roots,
                 datasource_addresses=datasource_addresses,
+                pinned_probes=pinned_probes,
             )
 
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
@@ -895,14 +958,14 @@ def build_concept_graph(
     # from the losing-arm prune.
     sink_ids: set[str] = set()
     for c in mandatory_list:
-        sid = node_id(_effective_label(c, "", materialized_roots), c.address)
+        sid = node_id(_effective_label(c, "", root_like), c.address)
         if sid in graph:
             sink_ids.add(sid)
     for clause in conditions:
         for cc in clause.concept_arguments:
             resolved = environment.concepts.get(cc.address, cc) or cc
             sid = node_id(
-                _effective_label(resolved, _condition_label(""), materialized_roots),
+                _effective_label(resolved, _condition_label(""), root_like),
                 resolved.address,
             )
             if sid in graph:
@@ -983,6 +1046,20 @@ def build_concept_graph(
                     and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
                 ):
                     continue
+                # A rowset-member presence probe is computed inside ITS member's
+                # boundary and its null test only applies above the completion
+                # merge (FINAL). Constraining it onto ANOTHER rowset's boundary
+                # would force that independent scope to consume a value it
+                # cannot see, polluting its output contract (the b-side
+                # boundary "output" the a-side's probe and lost its own
+                # handles).
+                if (
+                    attrs[src].rowset_name
+                    and attrs[src].rowset_name != attrs[dst].rowset_name
+                    and is_presence_probe(attrs[src].address)
+                    and attrs[dst].derivation == Derivation.ROWSET
+                ):
+                    continue
                 # A lineage edge already present src→dst is left as-is; the
                 # constraint ordering it would carry is implied by the lineage.
                 if not graph.has_edge(src, dst):
@@ -1045,6 +1122,16 @@ def build_concept_graph(
             if (
                 attrs[dst].rowset_name
                 and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
+            ):
+                continue
+            # Same cross-boundary probe guard as the main constraint pass: a
+            # rowset-member probe's null test lands at FINAL, never inside a
+            # sibling rowset's independent scope.
+            if (
+                attrs[src].rowset_name
+                and attrs[src].rowset_name != attrs[dst].rowset_name
+                and is_presence_probe(attrs[src].address)
+                and attrs[dst].derivation == Derivation.ROWSET
             ):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)

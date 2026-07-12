@@ -301,7 +301,12 @@ def _assign_groups(
     by_derivation: dict[Derivation, list[tuple[str, ConceptAttrs]]] = defaultdict(list)
     for node in concept_graph.nodes:
         a = concept_attrs[node]
-        by_derivation[a.derivation].append((node, a))
+        # A non-ROWSET node tagged with a rowset (a presence probe over a
+        # rowset member) is an obligation of that rowset's boundary: route it
+        # to the rowset rule so it buckets with the boundary group and
+        # `resolve_rowset` materializes it pre-merge.
+        derivation = Derivation.ROWSET if a.rowset_name is not None else a.derivation
+        by_derivation[derivation].append((node, a))
 
     primary_group: dict[str, str] = {}
     buckets: dict[str, GroupBucket] = {}
@@ -804,11 +809,17 @@ def _inject_conditions(
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
+    scoped_join_member_addresses: frozenset[str] = frozenset(),
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
     placements = plan_condition_placements(
-        group_graph, group_edges, buckets, conditions, mandatory_list
+        group_graph,
+        group_edges,
+        buckets,
+        conditions,
+        mandatory_list,
+        scoped_join_member_addresses,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -1770,8 +1781,23 @@ def build_group_graph(
                 buckets,
                 mandatory_list,
             )
+    scoped_join_member_addresses = (
+        frozenset(
+            addr
+            for canonical, members in environment.scoped_join_key_groups.items()
+            for addr in (canonical, *members)
+        )
+        if environment is not None
+        else frozenset()
+    )
     condition_group_ids = _inject_conditions(
-        group_graph, group_edges, attrs, buckets, conditions, mandatory_list
+        group_graph,
+        group_edges,
+        attrs,
+        buckets,
+        conditions,
+        mandatory_list,
+        scoped_join_member_addresses,
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,
