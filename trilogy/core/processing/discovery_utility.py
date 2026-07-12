@@ -1227,6 +1227,7 @@ def get_loop_iteration_targets(
     # flag first; the condition is applied at this level's completion instead.
     # (An aggregate grouped *by* a derived row-arg is fine — it isn't the
     # row-arg itself, so it never matches here and keeps normal pushdown.)
+    condition_input_priority = False
     if (
         conditions
         and priority_concept.derivation not in ROOT_DERIVATIONS
@@ -1237,6 +1238,7 @@ def get_loop_iteration_targets(
             f"is a derived condition input; not routing the condition into its build"
         )
         conditions = None
+        condition_input_priority = True
 
     # A single-row rowset scalar (e.g. `rowset stats <- select avg(x) as v`)
     # is its own scope: the outer WHERE only reaches inside if it constrains a
@@ -1263,4 +1265,40 @@ def get_loop_iteration_targets(
         candidates=local_all,
         exhausted=attempted,
     )
+    # This build runs condition-free (the priority IS a condition input), so a
+    # pushdown target (window/aggregate needing the WHERE inside its sourcing)
+    # must not ride along as an optional — it would be sourced unfiltered and
+    # marked found (e.g. a rank computed over the unfiltered universe). Defer
+    # it to its own iteration, where the condition routes into its build.
+    if condition_input_priority and pushdown_targets:
+        pushdown_addresses = {c.address for c in pushdown_targets}
+        deferred = [x for x in optional if x.address in pushdown_addresses]
+        if deferred:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} deferring pushdown targets "
+                f"{[c.address for c in deferred]} out of condition-free build of {priority_concept.address}"
+            )
+            optional = [x for x in optional if x.address not in pushdown_addresses]
+            # keep this build's own inputs and keys visible: stack connectivity
+            # ignores hidden outputs, so without them the deferred target's
+            # node would have no shared concept to join back on
+            existing = {x.address for x in optional}
+            join_surface = list(
+                priority_concept.lineage.concept_arguments
+                if priority_concept.lineage
+                else []
+            )
+            if environment and priority_concept.keys:
+                join_surface += [
+                    environment.concepts[k]
+                    for k in priority_concept.keys
+                    if k in environment.concepts
+                ]
+            for parent in join_surface:
+                if (
+                    parent.address not in existing
+                    and parent.address != priority_concept.address
+                ):
+                    optional.append(parent)
+                    existing.add(parent.address)
     return priority_concept, optional, conditions

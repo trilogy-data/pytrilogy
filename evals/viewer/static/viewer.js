@@ -17,8 +17,11 @@ let compareOpen = false;     // side-by-side canonical vs agent query panel (per
 let compareView = 'src';     // 'src' (preql/sql source) or 'sql' (rendered SQL)
 let failOnly = false;        // sidebar filter: hide passing runs
 let served = false;          // true once suites.json answers — replay/summary need the server
-let replay = {running:false, suite:null, run:null, qid:null, log:[], result:null, error:null};
+let replays = {running:false, jobs:[]};  // /replay_status.json snapshot; jobs run in parallel
 let replayTimer = null;
+let rrConc = 2;                 // rerun-all parallelism (UI selector)
+let localErrors = {};           // rejected replay POSTs, keyed suite|run|qid
+let followedForks = new Set();  // rerun-all job ids whose fork we've already jumped to
 let archiveState = {busy:false, msg:'', ok:null};   // "archive this run to history db"
 
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -87,28 +90,52 @@ function tokBadge(ev){
 
 // ---------- replay ----------
 const qlabel = q => 'q' + String(q).padStart(2,'0');
-// The replay bar re-renders from `replay` on every poll, so a run re-render
-// (live data refresh) never wipes an in-flight status.
+const jobKey = (s,r,q) => `${s}|${r}|${q}`;
+const runningJobs = () => replays.jobs.filter(j=>j.running);
+// Latest job for one query of the current suite+run: running first, else newest.
+function jobFor(qid){
+  const match = j => j.mode==='one' && j.suite===currentSuite && j.run===currentRun && j.qid===qid;
+  return runningJobs().find(match) || [...replays.jobs].reverse().find(match) || null;
+}
+// The rerun-all job for the tally bar: the running one (at most one exists),
+// else the newest finished one that produced or targeted the run on screen.
+function allJob(){
+  const running = runningJobs().find(j=>j.mode==='all');
+  if(running) return running;
+  return [...replays.jobs].reverse().find(j => j.mode==='all' && j.suite===currentSuite
+    && (j.run===currentRun || j.new_run===currentRun)) || null;
+}
+// Drop optimistic placeholders (id null) after a rejected POST.
+function dropPlaceholders(){
+  const jobs = replays.jobs.filter(j=>j.id!=null);
+  replays = {running: jobs.some(j=>j.running), jobs};
+}
+// The replay bar re-renders from `replays` on every poll, so a run re-render
+// (live data refresh) never wipes an in-flight status. Replays run in parallel:
+// only this query's own job (or a full rerun on this run) disables its button.
 function replayBarHtml(run){
   if(!served || !run.replayable) return '';
-  // Scope status to this suite+dir+query: a job elsewhere is just "busy".
-  const mine = replay.qid === run.qid && replay.run === currentRun && replay.suite === currentSuite;
-  const label = (replay.running && mine) ? 'Replaying…' : 'Replay ' + qlabel(run.qid);
-  const dis = replay.running ? ' disabled' : '';
+  const job = jobFor(run.qid);
+  const all = runningJobs().find(j=>j.mode==='all');
+  const mine = !!(job && job.running);
+  const blocked = mine || !!(all && all.suite===currentSuite
+    && (all.run===currentRun || all.new_run===currentRun));
+  const label = mine ? 'Replaying…' : 'Replay ' + qlabel(run.qid);
+  const localErr = localErrors[jobKey(currentSuite, currentRun, run.qid)];
   let status = '';
-  if(replay.running && mine){
-    status = `<span class="rpmsg">${esc(replay.log[replay.log.length-1] || 'starting…')}</span>`;
-  } else if(replay.running){
-    status = `<span class="rpmsg">busy: ${replay.mode==='all' ? 'full rerun' : esc(qlabel(replay.qid))}</span>`;
-  } else if(mine && replay.error){
-    status = `<span class="rpmsg err">${esc(replay.error)}</span>`;
-  } else if(mine && replay.result){
-    const r = replay.result;
+  if(mine){
+    status = `<span class="rpmsg">${esc(job.log[job.log.length-1] || 'starting…')}</span>`;
+  } else if(localErr){
+    status = `<span class="rpmsg err">${esc(localErr)}</span>`;
+  } else if(job && job.error){
+    status = `<span class="rpmsg err">${esc(job.error)}</span>`;
+  } else if(job && job.result){
+    const r = job.result;
     status = `<span class="rpmsg ok">${esc(r.prev_status||'absent')} → ${esc(r.status)}`
            + ` · ${r.iterations} iters · ${r.duration_seconds}s`
            + ` · pass ${r.pass_count}/${r.num_queries}</span>`;
   }
-  return `<button class="cmpbtn" onclick="startReplay(${run.qid})"${dis}>${esc(label)}</button>${status}`;
+  return `<button class="cmpbtn" onclick="startReplay(${run.qid})"${blocked?' disabled':''}>${esc(label)}</button>${status}`;
 }
 function updateReplayBar(){
   const el = document.getElementById('rpbar'), run = RUNS.find(r=>r.name===selectedName);
@@ -117,43 +144,56 @@ function updateReplayBar(){
 // Replay state drives both the bar and the sidebar pulse; the 4s data poll is
 // too coarse to start/stop the pulse on its own.
 function updateReplayUi(){ updateReplayBar(); renderSide(); }
+function ensureReplayTimer(){
+  if(replays.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+}
 async function startReplay(qid){
   if(!confirm(`Replay ${qlabel(qid)} in ${currentRun}?\n\n`
     + `Re-seeds the semantic model, then re-runs the agent against the current `
     + `prompt and engine.\n\nOVERWRITES this query's trajectory, candidate query `
     + `and report entry. The current trajectory is not recoverable.`)) return;
-  replay = {running:true, suite:currentSuite, run:currentRun, qid, log:['submitting…'], result:null, error:null};
+  const key = jobKey(currentSuite, currentRun, qid);
+  delete localErrors[key];
+  // Optimistic placeholder until the server's snapshot answers.
+  replays = {running:true, jobs:[...replays.jobs,
+    {id:null, running:true, mode:'one', suite:currentSuite, run:currentRun, qid,
+     progress:null, new_run:null, log:['submitting…'], result:null, error:null}]};
   updateReplayUi();
   try{
     const r = await fetch('replay', {method:'POST', headers:{'Content-Type':'application/json'},
                                      body: JSON.stringify({suite: currentSuite, run: currentRun, qid})});
     const j = await r.json();
-    replay = r.ok ? j : {running:false, suite:currentSuite, run:currentRun, qid, log:[], result:null, error: j.error || ('HTTP '+r.status)};
-  }catch(e){ replay = {running:false, suite:currentSuite, run:currentRun, qid, log:[], result:null, error:String(e)}; }
+    if(r.ok) replays = j;
+    else{ dropPlaceholders(); localErrors[key] = j.error || ('HTTP '+r.status); }
+  }catch(e){ dropPlaceholders(); localErrors[key] = String(e); }
   updateReplayUi();
-  if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+  ensureReplayTimer();
 }
 async function startReplayAll(){
   if(!confirm(`Rerun ALL queries in ${currentRun}?\n\n`
     + `Copies this run to a fresh sibling dir and re-runs every query there against `
-    + `the current prompts, model and engine. The original run is left untouched.\n\n`
-    + `This is slow — one full agent run per query.`)) return;
-  replay = {running:true, mode:'all', suite:currentSuite, run:currentRun, qid:null,
-            progress:{done:0,total:0,qid:null}, log:['forking…'], result:null,
-            error:null, new_run:null};
+    + `the current prompts, model and engine (${rrConc} at a time). The original run `
+    + `is left untouched.\n\nThis is slow — one full agent run per query.`)) return;
+  const key = jobKey(currentSuite, currentRun, 'all');
+  delete localErrors[key];
+  replays = {running:true, jobs:[...replays.jobs,
+    {id:null, running:true, mode:'all', suite:currentSuite, run:currentRun, qid:null,
+     progress:{done:0,total:0,qid:null,active:[]}, new_run:null, log:['forking…'],
+     result:null, error:null}]};
   updateReplayUi();
   try{
     const r = await fetch('replay_all', {method:'POST', headers:{'Content-Type':'application/json'},
-                                         body: JSON.stringify({suite: currentSuite, run: currentRun})});
+      body: JSON.stringify({suite: currentSuite, run: currentRun, concurrency: rrConc})});
     const j = await r.json();
-    replay = r.ok ? j : {running:false, mode:'all', suite:currentSuite, run:currentRun, log:[], result:null,
-                         error: j.error || ('HTTP '+r.status)};
-  }catch(e){ replay = {running:false, mode:'all', suite:currentSuite, run:currentRun, log:[], result:null, error:String(e)}; }
+    if(r.ok) replays = j;
+    else{ dropPlaceholders(); localErrors[key] = j.error || ('HTTP '+r.status); }
+  }catch(e){ dropPlaceholders(); localErrors[key] = String(e); }
   updateReplayUi();
-  if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+  ensureReplayTimer();
 }
-async function cancelReplay(){
-  try{ await fetch('replay_cancel', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}); }
+async function cancelReplay(id){
+  const body = id!=null ? JSON.stringify({id}) : '{}';
+  try{ await fetch('replay_cancel', {method:'POST', headers:{'Content-Type':'application/json'}, body}); }
   catch(e){ /* the poll will reflect the stop once it lands */ }
 }
 async function pollReplay(){
@@ -161,31 +201,40 @@ async function pollReplay(){
     const r = await fetch('replay_status.json', {cache:'no-store'});
     if(!r.ok) return;
     const j = await r.json();
-    const finished = replay.running && !j.running;
+    const nowRunning = new Set(j.jobs.filter(x=>x.running).map(x=>x.id));
+    const finished = runningJobs().some(x=>x.id!=null && !nowRunning.has(x.id));
+    replays = j;
     // A full rerun forks a new dir; follow it live (within its suite) so the
-    // fork populates on screen.
-    const switchTo = (j.new_run && j.suite === currentSuite && j.new_run !== currentRun) ? j.new_run : null;
-    replay = j;
-    if(switchTo){
-      currentRun = switchTo; selectedName = null; expanded = new Set(); compareOpen = false;
-      loadSuites();
+    // fork populates on screen — once per job, so later navigation sticks.
+    const fork = j.jobs.find(x => x.mode==='all' && x.new_run
+                                  && x.suite===currentSuite && !followedForks.has(x.id));
+    let switched = false;
+    if(fork){
+      followedForks.add(fork.id);
+      if(fork.new_run !== currentRun){
+        currentRun = fork.new_run; selectedName = null; expanded = new Set(); compareOpen = false;
+        switched = true;
+        loadSuites();
+      }
     }
     updateReplayUi();
-    if(finished || switchTo){
-      if(finished){ clearInterval(replayTimer); replayTimer = null; }
+    if(!j.running && replayTimer){ clearInterval(replayTimer); replayTimer = null; }
+    if(finished || switched){
       lastPayload = null;   // the run's logs + report just changed under us
       loadData(true);       // must win over any poll still in flight from mid-replay
     }
   }catch(e){ clearInterval(replayTimer); replayTimer = null; }
 }
-// A page reload mid-replay should re-attach to the running job, not lose it.
+// A page reload mid-replay should re-attach to the running jobs, not lose them.
 async function initReplay(){
   try{
     const r = await fetch('replay_status.json', {cache:'no-store'});
     if(!r.ok) return;
-    replay = await r.json();
+    replays = await r.json();
+    // Forks from before this page load are history, not something to jump to.
+    for(const j of replays.jobs) if(!j.running && j.new_run != null) followedForks.add(j.id);
     updateReplayUi();
-    if(replay.running && !replayTimer) replayTimer = setInterval(pollReplay, 1500);
+    ensureReplayTimer();
   }catch(e){ /* static file — no replay */ }
 }
 
@@ -300,12 +349,18 @@ function markActive(){
   const sb = document.getElementById('sumbtn');
   if(sb) sb.classList.toggle('on', view==='summary');
 }
-// The row whose query is being replayed right now — its metrics are stale until
-// the job lands, so we pulse it instead of showing them.
+// Rows whose queries are being replayed right now — their metrics are stale
+// until the jobs land, so we pulse them instead of showing them.
 function isReplaying(run){
-  if(!replay.running || replay.suite !== currentSuite || replay.run !== currentRun) return false;
-  const qid = replay.mode==='all' ? (replay.progress||{}).qid : replay.qid;
-  return qid != null && qid === run.qid;
+  for(const j of runningJobs()){
+    if(j.suite !== currentSuite || (j.run !== currentRun && j.new_run !== currentRun)) continue;
+    if(j.mode === 'all'){
+      const p = j.progress || {};
+      const act = (p.active && p.active.length) ? p.active : (p.qid != null ? [p.qid] : []);
+      if(act.includes(run.qid)) return true;
+    } else if(j.qid === run.qid) return true;
+  }
+  return false;
 }
 const PULSE_MS = 1400;
 // Re-rendering the row restarts its animation. Offsetting the delay by where the
@@ -332,24 +387,32 @@ function renderTally(){
 // the original stays a baseline. Server-only (needs the replay endpoints).
 function rerunAllHtml(){
   if(!served) return '';
-  const on = replay.running && replay.mode==='all';
-  const dis = replay.running ? ' disabled' : '';
+  const job = allJob();
+  const on = !!(job && job.running);
+  const localErr = localErrors[jobKey(currentSuite, currentRun, 'all')];
   let status = '', cancel = '';
   if(on){
-    const p = replay.progress||{};
-    const where = p.total ? `${qlabel(p.qid)} · ${p.done}/${p.total}`
-                          : (replay.log[replay.log.length-1] || 'forking…');
+    const p = job.progress||{};
+    const act = (p.active||[]).map(qlabel).join(' ');
+    const where = p.total ? `${act || (p.qid!=null ? qlabel(p.qid) : '')} · ${p.done}/${p.total}`
+                          : (job.log[job.log.length-1] || 'forking…');
     status = `<div class="rerun-st">${esc(where)}</div>`;
-    cancel = `<button class="fbtn cancel" onclick="cancelReplay()">Stop after this query</button>`;
-  } else if(replay.mode==='all' && replay.error){
-    status = `<div class="rerun-st err">${esc(replay.error)}</div>`;
-  } else if(replay.mode==='all' && replay.result){
-    const r = replay.result;
-    status = `<div class="rerun-st ok">reran ${r.count}/${r.total} · pass ${r.pass_count}/${r.num_queries}</div>`;
+    cancel = `<button class="fbtn cancel" onclick="cancelReplay(${job.id})">Finish in-flight, then stop</button>`;
+  } else if(localErr){
+    status = `<div class="rerun-st err">${esc(localErr)}</div>`;
+  } else if(job && job.error){
+    status = `<div class="rerun-st err">${esc(job.error)}</div>`;
+  } else if(job && job.result){
+    const r = job.result;
+    const errs = r.errors ? ` · ${r.errors} errored` : '';
+    status = `<div class="rerun-st ok">reran ${r.count}/${r.total}${errs} · pass ${r.pass_count}/${r.num_queries}</div>`;
   }
   const label = on ? 'Rerunning…' : 'Rerun all → new run';
-  return `<div class="rerun-bar"><button class="fbtn rerun" onclick="startReplayAll()"${dis}>`
-       + `${esc(label)}</button>${status}${cancel}</div>`;
+  const conc = on ? '' : ` <select class="cmpsel" title="parallel agents" onchange="rrConc=+this.value">`
+    + [1,2,4].map(n=>`<option value="${n}"${n===rrConc?' selected':''}>${n}×</option>`).join('')
+    + `</select>`;
+  return `<div class="rerun-bar"><button class="fbtn rerun" onclick="startReplayAll()"${on?' disabled':''}>`
+       + `${esc(label)}</button>${conc}${status}${cancel}</div>`;
 }
 // Archive this run dir's summary stats into the longitudinal history db.
 // Non-destructive (files stay); the CLI cleanup script archives-then-deletes.

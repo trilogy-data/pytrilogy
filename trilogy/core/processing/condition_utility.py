@@ -259,6 +259,30 @@ def is_scalar_condition(
     return True
 
 
+def concept_is_row_scalar(concept: BuildConcept) -> bool:
+    """True when the concept and its entire upstream closure are row-grain
+    scalars (ROOT/CONSTANT/BASIC) — no aggregate, window, filter, unnest, or
+    other grain-changing derivation anywhere in the lineage. A WHERE atom over
+    such a concept is a plain row filter whose placement is not semantic, so it
+    can (and must) be pushed below windows/aggregates. Distinct from
+    ``is_scalar_condition``, which routes WHERE-vs-HAVING and treats windows as
+    scalar."""
+    stack = [concept]
+    seen: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        if current.derivation in (Derivation.ROOT, Derivation.CONSTANT):
+            continue
+        if current.derivation != Derivation.BASIC:
+            return False
+        if current.lineage:
+            stack.extend(current.lineage.concept_arguments)
+    return True
+
+
 def gather_windows(
     element: Any, materialized: set[str] | None = None
 ) -> list[BuildWindowItem]:
