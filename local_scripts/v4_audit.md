@@ -9,7 +9,13 @@ new test families (`tests/join_matrix/`, rowset matrices, presence probes,
 rules from #596) that were only ever validated on v3 — the honest post-rebase
 v4 sweep was **201 failed / 5130 passed** (v3: 3 failed, all fixed same day).
 
-Fixed forward so far (2026-07-12), v4 sweep 201 → 186 → (placement fixes pending resweep):
+Fixed forward so far (2026-07-12), v4 sweep **201 → 177** (5154 passed; zero
+new failures vs the post-rebase baseline). v3 sweep green (5402/1, the 1 fixed
+same day). Placement refinements after the first pass: pin only GLOBAL
+(all_rows-grain) post-aggregation values, and only when EVERY atom input is
+one — a grained pair (`web_total > store_total`) keeps its keyed join host,
+and a mixed atom (`account_balance > avg_bal by *`, TPC-H q22) hosts on the
+row group with the global CTE joined in.
 
 - **Presence probes (ROOT members)**: v4 computed the `_virt_presence_*` probe
   on BOTH sides of a scoped relation (post-substitution both scans carry the
