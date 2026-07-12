@@ -40,7 +40,7 @@ datasource organizations (
     Longitude: ?longitude,
     Latitude: ?latitude,
     Error: error,
-    Parent: parent,
+    Parent: ?parent,
     ShortEName: short_e_name,
     EName: e_name,
     UName: u_name,

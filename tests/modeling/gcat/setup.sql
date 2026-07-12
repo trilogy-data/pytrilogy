@@ -2,77 +2,142 @@ INSTALL httpfs;
 
 LOAD httpfs;
 
-CREATE OR REPLACE TABLE launch_info AS 
-SELECT 
-    trim(Launch_Tag) Launch_Tag,
-    Launch_JD,
-    Launch_Date,
-    LV_Type,
-    Variant,
-    Flight_ID,
-    Flight,
-    Mission,
-    FlightCode,
-    Platform,
-    Launch_Site,
-    Launch_Pad,
-    Ascent_Site,
-    Ascent_Pad,
-    Apogee,
-    Apoflag,
-    Range,
-    RangeFlag,
-    Dest,
-    OrbPay::float OrbPay,
-    Agency,
-    split(Agency, '/')[1] FirstAgency,
-    LaunchCode,
-    FailCode,
-    "Group",
-    Category,
-    LTCite,
-    Cite,
-    Notes
-FROM read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/launch_cleaned.tsv',
-sample_size=-1);
+-- Tables mirror the parquet files published to GCS by
+-- https://github.com/greenmtnboy/space_reporting (the source for the
+-- trilogy-public-models gcat_space model), aliased back to the original
+-- GCAT TSV column names these test models bind to. Flag columns dropped
+-- upstream are NULL-filled.
 
-CREATE OR REPLACE TABLE platform_info as
-SELECT * 
-from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/platforms.cleaned.tsv',
-sample_size=-1);
+CREATE OR REPLACE TABLE launch_info AS
+SELECT
+    "id" AS Launch_Tag,
+    "_launch_jd" AS Launch_JD,
+    "launch_date" AS Launch_Date,
+    "vehicle_name" AS LV_Type,
+    "vehicle_variant" AS Variant,
+    "flight_id" AS Flight_ID,
+    "flight" AS Flight,
+    "mission" AS Mission,
+    "flight_code" AS FlightCode,
+    "platform_code" AS Platform,
+    "site_key" AS Launch_Site,
+    "launch_pad" AS Launch_Pad,
+    "ascent_site" AS Ascent_Site,
+    "ascent_pad" AS Ascent_Pad,
+    "apogee" AS Apogee,
+    "apo_flag" AS Apoflag,
+    "range" AS "Range",
+    "dest" AS Dest,
+    "orb_pay" AS OrbPay,
+    "orgs" AS Agency,
+    "org_code" AS FirstAgency,
+    "_launch_code" AS LaunchCode,
+    "fail_code" AS FailCode,
+    "category" AS Category,
+    "lt_cite" AS LTCite,
+    "cite" AS Cite,
+    "notes" AS Notes
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/launch.parquet');
 
-CREATE OR REPLACE TABLE lv_info as
-SELECT * 
+CREATE OR REPLACE TABLE platform_info AS
+SELECT
+    "code" AS Code,
+    "u_code" AS UCode,
+    "state_code" AS StateCode,
+    "type" AS "Type",
+    "class" AS Class,
+    "t_start" AS TStart,
+    "t_stop" AS TStop,
+    "short_name" AS ShortName,
+    "name" AS "Name",
+    "location" AS Location,
+    "error" AS Error,
+    "parent" AS Parent,
+    "short_e_name" AS ShortEName,
+    "e_name" AS EName,
+    "v_class" AS VClass,
+    "v_class_id" AS VClassID,
+    "v_id" AS VID,
+    "u_name" AS UName
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/platform_info.parquet');
 
-from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/lv.cleaned.tsv',
-sample_size=-1);
+CREATE OR REPLACE TABLE lv_info AS
+SELECT
+    "name" AS LV_Name,
+    "family" AS LV_Family,
+    "manufacturer" AS LV_Manufacturer,
+    "variant" AS LV_Variant,
+    "alias" AS LV_Alias,
+    "min_stage" AS LV_Min_Stage,
+    "max_stage" AS LV_Max_Stage,
+    "length" AS "Length",
+    NULL::VARCHAR AS LFlag,
+    "diameter" AS Diameter,
+    NULL::VARCHAR AS DFlag,
+    "launch_mass" AS Launch_Mass,
+    NULL::VARCHAR AS MFlag,
+    "leo_capacity" AS LEO_Capacity,
+    "gto_capacity" AS GTO_Capacity,
+    "to_thrust" AS TO_Thrust,
+    "class" AS Class,
+    "apogee" AS Apogee,
+    "range" AS "Range"
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/lv_info.parquet');
 
-CREATE OR REPLACE TABLE lvs_info as
-SELECT * 
-from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/lvs.cleaned.tsv',
-sample_size=-1);
+CREATE OR REPLACE TABLE lvs_info AS
+SELECT
+    "name" AS LV_Name,
+    "variant" AS LV_Variant,
+    "stage_no" AS Stage_No,
+    "stage_name" AS Stage_Name,
+    "qualifier" AS Qualifier,
+    "dummy" AS Dummy,
+    "multiplicity" AS Multiplicity,
+    "stage_impulse" AS Stage_Impulse,
+    "stage_apogee" AS Stage_Apogee,
+    "stage_perigee" AS Stage_Perigee,
+    "perigee_qual" AS Perigee_Qual
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/lvs_info.parquet');
 
-CREATE OR REPLACE TABLE stages as
-SELECT * 
-from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/stages.cleaned.tsv',
-sample_size=-1);
+CREATE OR REPLACE TABLE stages AS
+SELECT
+    "name" AS Stage_Name,
+    "family" AS Stage_Family,
+    "stage_manufacturer" AS Stage_Manufacturer,
+    "stage_alt_name" AS Stage_Alt_Name,
+    "length" AS "Length",
+    "diameter" AS Diameter,
+    "launch_mass" AS Launch_Mass,
+    "dry_mass" AS Dry_Mass,
+    "thrust" AS Thrust,
+    "duration" AS Duration,
+    "engine_name" AS Engine,
+    "engine_count" AS NEng
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/stages.parquet');
 
 CREATE OR REPLACE TABLE engines AS
-SELECT 
-    * EXCLUDE (Fuel, isp, oxidizer), 
-    case 
-        when RTRIM(oxidizer, '?') ='NA' then '-'
-        else RTRIM(oxidizer, '?')
-    END as Oxidizer,
-    CASE 
-        WHEN name = 'Raptor SL'     THEN 350.0
-        WHEN name = 'Raptor 2 Vac'  THEN 380.0
-        WHEN name = 'Raptor 3 SL'   THEN 350.0
-        WHEN name = 'Raptor 3 Vac'  THEN 380.0
-        ELSE isp
-    END AS isp,
-    RTRIM(COALESCE(Fuel, '-'), '?') AS Fuel,
-    CASE fuel
+SELECT
+    "name" AS "Name",
+    "manufacturer" AS Manufacturer,
+    "family" AS Family,
+    "alt_name" AS Alt_name,
+    COALESCE("oxidizer", '-') AS Oxidizer,
+    COALESCE("fuel", '-') AS Fuel,
+    "mass" AS Mass,
+    NULL::VARCHAR AS MFlag,
+    "impulse" AS Impulse,
+    NULL::VARCHAR AS ImpFlag,
+    "thrust" AS Thrust,
+    NULL::VARCHAR AS TFlag,
+    "isp" AS Isp,
+    NULL::VARCHAR AS IspFlag,
+    "duration" AS Duration,
+    NULL::VARCHAR AS DurFlag,
+    "chambers" AS Chambers,
+    "date" AS "Date",
+    "usage" AS "Usage",
+    "group" AS "Group",
+    CASE COALESCE("fuel", '-')
     -- Solid Propellants (Earthy brown → tan ramp)
     WHEN 'PBAN'                     THEN '#6B361E'
     WHEN 'HTPB'                     THEN '#7A421F'
@@ -152,12 +217,12 @@ SELECT
     WHEN 'Paraffin'                 THEN '#10203A'
     WHEN 'Polyethylene'             THEN '#003366'
     WHEN 'Polyamide'                THEN '#002244'
-    
+
     -- Inert/Pressurization (purple/indigo family)
     WHEN 'N2'                       THEN '#6E61C6'
     WHEN 'Xe'                       THEN '#8679D6'
     WHEN 'Kr'                       THEN '#A095E6'
-    
+
     -- Hypergolic Fuels (Red/orange family)
     WHEN 'Hydyne'                   THEN '#6C1A1A'
     WHEN 'Aniline'                  THEN '#7C2222'
@@ -168,7 +233,7 @@ SELECT
     WHEN 'Amine'                    THEN '#D84E4E'
     WHEN 'Amine TG-02'              THEN '#E35656'
     WHEN 'Xylidiene/Trieth.'        THEN '#F04848'
-    
+
     -- Hydrocarbon Fuels (amber → gold → pale ramp)
     WHEN 'Kerosene?'                THEN '#B8860B'
     WHEN 'Kerosene'                 THEN '#C28710'
@@ -189,7 +254,7 @@ SELECT
     WHEN 'Kero RJ-1'                THEN '#FFFDF6'
     WHEN 'Kero T-1'                 THEN '#FFFEFA'
     WHEN 'Kero?'                    THEN '#FFFFFE'
-    
+
     -- Hypergolic/Hydrazine Compounds (dark → pale red/pink ramp)
     WHEN 'UDMH'                     THEN '#5A0E0E'
     WHEN 'UDMH?'                    THEN '#640F0F'
@@ -206,28 +271,28 @@ SELECT
     WHEN 'AZ-50'                    THEN '#D86B5A'
     WHEN 'UMDH'                     THEN '#E89A96'
     WHEN 'UDMH UH25'                THEN '#F6CECA'
-    
+
     -- Alcohols (soft aqua family)
     WHEN 'Alcohol'                  THEN '#AEEBE3'
     WHEN 'Ethanol'                  THEN '#87D4CC'
-    
+
     -- Cryogenic Fuels (cool blue ramp)
     WHEN 'Ammonia'                  THEN '#A8D4F2'
     WHEN 'Methane LNG'              THEN '#6FB8F2'
     WHEN 'Methane'                  THEN '#3F9DEB'
     WHEN 'Propane'                  THEN '#2C7FCE'
     WHEN 'LH2'                      THEN '#1F5FAF'
-    
+
     -- Green Propellants (greens)
     WHEN 'RL Green Prop'            THEN '#3AAE3A'
     WHEN 'NH3OHNO3 AF-M315E'        THEN '#5CC45C'
-    
+
     -- Default fallback (shouldn't be used often)
     ELSE printf(
             '#%02x%02x%02x',
-            64 + abs(hash(fuel) % 160), -- R
-            64 + abs(hash(fuel) % 160), -- G
-            64 + abs(hash(fuel) % 160)  -- B
+            64 + abs(hash(COALESCE("fuel", '-')) % 160), -- R
+            64 + abs(hash(COALESCE("fuel", '-')) % 160), -- G
+            64 + abs(hash(COALESCE("fuel", '-')) % 160)  -- B
         )
     END AS fuel_hex_color,
 CASE COALESCE("group", 'Unspecified')
@@ -259,242 +324,99 @@ ELSE printf(
 48 + abs((hash(COALESCE("group", 'Unspecified')) + 97) % 200) -- B (offset for variation)
 )
 END AS group_hex_color
-FROM read_csv_auto(
-  'https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/engines.cleaned.tsv',
-  sample_size=-1
-);
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/engine.parquet');
 
+CREATE OR REPLACE TABLE launch_sites AS
+SELECT
+    "key" AS Site,
+    "u_code" AS UCode,
+    "type" AS "Type",
+    "state_code" AS StateCode,
+    "t_start" AS TStart,
+    "t_stop" AS TStop,
+    "short_name" AS ShortName,
+    "name" AS "Name",
+    "location" AS Location,
+    "longitude",
+    "latitude",
+    "error" AS Error,
+    "parent" AS Parent,
+    "e_name" AS EName,
+    "u_name" AS UName
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/sites.parquet');
 
-CREATE OR REPLACE TABLE launch_sites as
-SELECT * 
-from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/sites.cleaned.tsv',
-sample_size=-1);
-
-CREATE OR REPLACE TABLE organizations as
-SELECT *,
-CASE statecode
-    WHEN 'EARTH' THEN '#1E90FF'
-    WHEN 'LUNA' THEN '#C0C0C0'
-    WHEN 'SSYS' THEN '#6A0DAD'
-    WHEN 'AAT' THEN '#4682B4'
-    WHEN 'RU' THEN '#0033A0'
-    WHEN 'AF' THEN '#006400'
-    WHEN 'AG' THEN '#FF0000'
-    WHEN 'AGUK' THEN '#8B0000'
-    WHEN 'AM' THEN '#FF9933'
-    WHEN 'E' THEN '#FFD700'
-    WHEN 'ANTN' THEN '#00CED1'
-    WHEN 'AO' THEN '#FF4500'
-    WHEN 'AQ' THEN '#F0F8FF'
-    WHEN 'AR' THEN '#75AADB'
-    WHEN 'ARV' THEN '#6E2E7B'
-    WHEN 'AT' THEN '#ED2939'
-    WHEN 'AU' THEN '#00843D'
-    WHEN 'AZ' THEN '#00B9E4'
-    WHEN 'B' THEN '#FFD700'
-    WHEN 'BAT' THEN '#A52A2A'
-    WHEN 'BB' THEN '#FFB612'
-    WHEN 'BBUK' THEN '#003366'
-    WHEN 'BD' THEN '#006A4E'
-    WHEN 'BG' THEN '#00966E'
-    WHEN 'BH' THEN '#FF0000'
-    WHEN 'BM' THEN '#003366'
-    WHEN 'BO' THEN '#D52B1E'
-    WHEN 'BR' THEN '#009739'
-    WHEN 'BS' THEN '#0077C8'
-    WHEN 'BT' THEN '#FF9933'
-    WHEN 'BVI' THEN '#00247D'
-    WHEN 'BW' THEN '#007A33'
-    WHEN 'BY' THEN '#FF0000'
-    WHEN 'CA' THEN '#FF0000'
-    WHEN 'ZR' THEN '#006600'
-    WHEN 'CH' THEN '#FF0000'
-    WHEN 'CI' THEN '#FF7900'
-    WHEN 'CK' THEN '#00247D'
-    WHEN 'CL' THEN '#D52B1E'
-    WHEN 'CM' THEN '#007A5E'
-    WHEN 'CN' THEN '#DE2910'
-    WHEN 'CO' THEN '#FFD100'
-    WHEN 'CR' THEN '#00247D'
-    WHEN 'CZ' THEN '#11457E'
-    WHEN 'CU' THEN '#002A8F'
-    WHEN 'CYM' THEN '#00247D'
-    WHEN 'UK' THEN '#00247D'
-    WHEN 'D' THEN '#000000'
-    WHEN 'DD' THEN '#FF0000'
-    WHEN 'DJ' THEN '#FF0000'
-    WHEN 'DK' THEN '#C60C30'
-    WHEN 'DML' THEN '#008000'
-    WHEN 'DR' THEN '#007FFF'
-    WHEN 'DX' THEN '#808080'
-    WHEN 'DZ' THEN '#006233'
-    WHEN 'EC' THEN '#FFCC00'
-    WHEN 'EE' THEN '#0072CE'
-    WHEN 'EG' THEN '#CE1126'
-    WHEN 'ET' THEN '#078930'
-    WHEN 'F' THEN '#0055A4'
-    WHEN 'FI' THEN '#003580'
-    WHEN 'GE' THEN '#D7141A'
-    WHEN 'GH' THEN '#006B3F'
-    WHEN 'GI' THEN '#C8102E'
-    WHEN 'GL' THEN '#FFFFFF'
-    WHEN 'GR' THEN '#0D5EAF'
-    WHEN 'GRD' THEN '#CE1126'
-    WHEN 'GT' THEN '#0073CF'
-    WHEN 'GU' THEN '#00247D'
-    WHEN 'GUF' THEN '#FFD700'
-    WHEN 'HR' THEN '#FF0000'
-    WHEN 'HU' THEN '#CE2939'
-    WHEN 'I' THEN '#008C45'
-    WHEN 'I-ARAB' THEN '#008000'
-    WHEN 'I-CSC' THEN '#A52A2A'
-    WHEN 'I-CSC1' THEN '#8B0000'
-    WHEN 'I-ELDO' THEN '#4682B4'
-    WHEN 'I-ESA' THEN '#003366'
-    WHEN 'I-ESRO' THEN '#6A0DAD'
-    WHEN 'I-EUM' THEN '#FFD700'
-    WHEN 'I-EU' THEN '#003399'
-    WHEN 'I-EUT' THEN '#FF0000'
-    WHEN 'I-INM' THEN '#808080'
-    WHEN 'I-INT' THEN '#00CED1'
-    WHEN 'I-ISS' THEN '#C0C0C0'
-    WHEN 'I-NATO' THEN '#0055A4'
-    WHEN 'I-RASC' THEN '#6A0DAD'
-    WHEN 'ID' THEN '#DC143C'
-    WHEN 'IE' THEN '#169B62'
-    WHEN 'IL' THEN '#0033A0'
-    WHEN 'IN' THEN '#FF9933'
-    WHEN 'IQ' THEN '#CE1126'
-    WHEN 'IR' THEN '#239F40'
-    WHEN 'IS' THEN '#003897'
-    WHEN 'J' THEN '#BC002D'
-    WHEN 'JO' THEN '#007A3D'
-    WHEN 'KE' THEN '#006600'
-    WHEN 'KI' THEN '#FF0000'
-    WHEN 'KG' THEN '#D90012'
-    WHEN 'KH' THEN '#003DA5'
-    WHEN 'KN' THEN '#FFD700'
-    WHEN 'KORS' THEN '#C60C30'
-    WHEN 'KP' THEN '#ED1C27'
-    WHEN 'KR' THEN '#003478'
-    WHEN 'KW' THEN '#007E3A'
-    WHEN 'KZ' THEN '#00A1DE'
-    WHEN 'L' THEN '#FFD700'
-    WHEN 'LA' THEN '#DC143C'
-    WHEN 'LB' THEN '#ED1C24'
-    WHEN 'LK' THEN '#FFB612'
-    WHEN 'LT' THEN '#FDB913'
-    WHEN 'LV' THEN '#9E3039'
-    WHEN 'LY' THEN '#007A3D'
-    WHEN 'MA' THEN '#C8102E'
-    WHEN 'MC' THEN '#E30613'
-    WHEN 'MD' THEN '#002B7F'
-    WHEN 'MH' THEN '#FF0000'
-    WHEN 'MN' THEN '#0033A0'
-    WHEN 'MOCN' THEN '#006600'
-    WHEN 'MR' THEN '#006233'
-    WHEN 'MT' THEN '#CE1126'
-    WHEN 'MU' THEN '#FFCC00'
-    WHEN 'MV' THEN '#D21034'
-    WHEN 'MX' THEN '#006847'
-    WHEN 'MY' THEN '#010066'
-    WHEN 'MYM' THEN '#FF0000'
-    WHEN 'N' THEN '#FFD700'
-    WHEN 'NG' THEN '#008751'
-    WHEN 'NI' THEN '#002B7F'
-    WHEN 'NL' THEN '#21468B'
-    WHEN 'NP' THEN '#DC143C'
-    WHEN 'NZ' THEN '#00247D'
-    WHEN 'NZRD' THEN '#FF0000'
-    WHEN 'OM' THEN '#D71A28'
-    WHEN 'P' THEN '#006600'
-    WHEN 'PAR' THEN '#0033A0'
-    WHEN 'PCZ' THEN '#800080'
-    WHEN 'PE' THEN '#D91023'
-    WHEN 'PG' THEN '#000000'
-    WHEN 'PK' THEN '#01411C'
-    WHEN 'PH' THEN '#0038A8'
-    WHEN 'PL' THEN '#DC143C'
-    WHEN 'PR' THEN '#002868'
-    WHEN 'PW' THEN '#0099CC'
-    WHEN 'PY' THEN '#D52B1E'
-    WHEN 'QA' THEN '#8D1B3D'
-    WHEN 'RO' THEN '#002B7F'
-    WHEN 'RW' THEN '#00A1DE'
-    WHEN 'S' THEN '#FFCD00'
-    WHEN 'SA' THEN '#006C35'
-    WHEN 'SD' THEN '#D21034'
-    WHEN 'SG' THEN '#ED2939'
-    WHEN 'SH' THEN '#00247D'
-    WHEN 'SI' THEN '#0B4EA2'
-    WHEN 'SK' THEN '#0B4EA2'
-    WHEN 'SN' THEN '#00853F'
-    WHEN 'SR' THEN '#377E3F'
-    WHEN 'SU' THEN '#CC0000'
-    WHEN 'SY' THEN '#CE1126'
-    WHEN 'T' THEN '#D71A28'
-    WHEN 'TC' THEN '#00247D'
-    WHEN 'TF' THEN '#002395'
-    WHEN 'TJ' THEN '#006600'
-    WHEN 'TM' THEN '#1C9E4B'
-    WHEN 'TN' THEN '#E70013'
-    WHEN 'TO' THEN '#C10000'
-    WHEN 'TR' THEN '#E30A17'
-    WHEN 'TTPI' THEN '#0099FF'
-    WHEN 'TW' THEN '#FE0000'
-    WHEN 'UA' THEN '#0057B7'
-    WHEN 'UAE' THEN '#00732F'
-    WHEN 'UG' THEN '#FCDC04'
-    WHEN 'UM67' THEN '#3C3B6E'
-    WHEN 'UM79' THEN '#3C3B6E'
-    WHEN 'US' THEN '#002868'
-    WHEN 'UY' THEN '#0038A8'
-    WHEN 'UZ' THEN '#1EB53A'
-    WHEN 'VA' THEN '#FFD700'
-    WHEN 'VE' THEN '#FCE300'
-    WHEN 'VN' THEN '#DA251D'
-    WHEN 'YE' THEN '#CE1126'
-    WHEN 'ZA' THEN '#007847'
-    WHEN 'ZW' THEN '#009739'
-    WHEN 'X' THEN '#666666'
-    WHEN 'HK' THEN '#DE2910'
-    WHEN 'BGN' THEN '#005BAC'
-    WHEN 'CSSR' THEN '#11457E'
-    ELSE '#808080'
-END as hex_code
-from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/orgs.cleaned.tsv',
-sample_size=-1);
+CREATE OR REPLACE TABLE organizations AS
+SELECT
+    "code" AS Code,
+    "u_code" AS UCode,
+    "state_code" AS StateCode,
+    "type" AS "Type",
+    "class" AS Class,
+    "t_start" AS TStart,
+    "t_stop" AS TStop,
+    "short_name" AS ShortName,
+    "name" AS "Name",
+    "location" AS Location,
+    "longitude" AS Longitude,
+    "latitude" AS Latitude,
+    "error" AS Error,
+    "parent" AS Parent,
+    "short_e_name" AS ShortEName,
+    "_e_name" AS EName,
+    "u_name" AS UName,
+    "color" AS hex_code
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/organizations.parquet');
 
 CREATE OR REPLACE TABLE satcat AS
 SELECT
-    * EXCLUDE (ldate, ddate),
-    CASE 
-        WHEN TRIM(REGEXP_EXTRACT(REPLACE(ldate, '?', ''), '(\d{4}\s+[A-Za-z]{3}\s+\d{1,2})', 1)) IS NOT NULL 
-             AND LENGTH(TRIM(REGEXP_EXTRACT(REPLACE(ldate, '?', ''), '(\d{4}\s+[A-Za-z]{3}\s+\d{1,2})', 1))) > 0
-        THEN STRPTIME(
-            TRIM(REGEXP_EXTRACT(REPLACE(ldate, '?', ''), '(\d{4}\s+[A-Za-z]{3}\s+\d{1,2})', 1)),
-            '%Y %b %d'
-        )
-        ELSE NULL
-    END::date AS ldate,
-    CASE 
-        WHEN TRIM(REGEXP_EXTRACT(REPLACE(ddate, '?', ''), '(\d{4}\s+[A-Za-z]{3}\s+\d{1,2})', 1)) IS NOT NULL 
-             AND LENGTH(TRIM(REGEXP_EXTRACT(REPLACE(ddate, '?', ''), '(\d{4}\s+[A-Za-z]{3}\s+\d{1,2})', 1))) > 0
-        THEN STRPTIME(
-            TRIM(REGEXP_EXTRACT(REPLACE(ddate, '?', ''), '(\d{4}\s+[A-Za-z]{3}\s+\d{1,2})', 1)),
-            '%Y %b %d'
-        )
-        ELSE NULL
-    END::date AS ddate
-FROM read_csv_auto(
-    'https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/cat/satcat.cleaned.tsv',
-    sample_size=-1
-);
+    "JCAT",
+    "Satcat",
+    "Launch_Tag",
+    "Piece",
+    "Type",
+    "Name",
+    "PLName",
+    "LDate",
+    "Parent",
+    "status_start_date" AS SDate,
+    "Primary",
+    "status_end_date" AS DDate,
+    "Status",
+    "Dest",
+    "Owner",
+    "State",
+    "Manufacturer",
+    "Bus",
+    "Motor",
+    "Mass",
+    NULL::VARCHAR AS MassFlag,
+    "DryMass",
+    NULL::VARCHAR AS DryFlag,
+    "TotMass",
+    NULL::VARCHAR AS TotFlag,
+    "Length",
+    NULL::VARCHAR AS LFlag,
+    "Diameter",
+    NULL::VARCHAR AS DFlag,
+    "Span",
+    NULL::VARCHAR AS SpanFlag,
+    "Shape",
+    "orbit_date" AS ODate,
+    "Perigee",
+    NULL::VARCHAR AS PF,
+    "Apogee",
+    NULL::VARCHAR AS AF,
+    "Inc",
+    NULL::VARCHAR AS "IF",
+    "OpOrbit",
+    "OQUAL",
+    "AltNames"
+FROM read_parquet('https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/satcat_three.parquet');
 
 
 -- OPTIMIZATION
 
-CREATE OR REPLACE TABLE fuel_dashboard_agg as 
+CREATE OR REPLACE TABLE fuel_dashboard_agg as
 SELECT
     "launch_info".Launch_Tag as launch_tag,
     "launch_info"."OrbPay" as "orb_pay",
@@ -520,4 +442,3 @@ FROM
     LEFT OUTER JOIN "stages" as "vehicle_stage_stages" on "vehicle_lvs_info"."Stage_Name" = "vehicle_stage_stages"."Stage_Name"
     FULL JOIN "engines" as "vehicle_stage_engine_engines" on "vehicle_stage_stages"."Engine" = "vehicle_stage_engine_engines"."Name"
 ;
-

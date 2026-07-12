@@ -477,7 +477,7 @@
   {
     "id": 94,
     "grade": "hard",
-    "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where - under any situation, not just the prior filters - at least one other line on the same order ships from a different warehouse and no line of that order has a web return, report the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
+    "prompt": "Identify candidate web sales where at least one other line item on the same order ships from a different warehouse and no line item has a return. For orders meeting this criteria, then further filter to where the ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', return the order count the total extended shipping cost, and the total net profit . Order by the order count; limit 100 rows."
   },
   {
     "id": 95,

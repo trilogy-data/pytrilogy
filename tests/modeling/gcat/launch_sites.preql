@@ -2,7 +2,6 @@
 import std.geography;
 
 key key string;
-property key.code string;
 property key.u_code string;
 property key.type string;
 key state_code string;
@@ -20,7 +19,6 @@ property key.u_name string;
 
 datasource launch_sites (
     Site: key,
-    Code: code,
     UCode: u_code,
     Type: type,
     StateCode: state_code,
