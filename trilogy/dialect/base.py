@@ -1147,6 +1147,7 @@ class BaseDialect:
             if rendered and BASE_INVALID not in rendered:
                 return rendered
         return None
+
     def _filter_guaranteed_by_sole_parent(
         self, lineage: BuildFilterItem, cte: CTE | UnionCTE
     ) -> bool:

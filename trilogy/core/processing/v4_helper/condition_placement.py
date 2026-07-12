@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
@@ -188,25 +189,40 @@ def _post_aggregation_producers(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
 ) -> set[str]:
-    """Producer groups of row inputs that are post-aggregation VALUES: an
-    aggregate output itself, or a derived concept (e.g. a bool BASIC wrapping
-    a `by *` aggregate) whose producer sits lineage-downstream of one. An atom
-    referencing such a value is a post-aggregation predicate — it may only be
-    hosted at the value's producer (HAVING) or downstream of it; an upstream
-    scan carrying the address as a computable member would re-render the
-    aggregate inline at the HOSTING group's grain (a `by *` global gate
-    silently becomes a per-output-grain HAVING)."""
+    """Producer groups of row inputs that are GLOBAL post-aggregation VALUES:
+    a `by *` aggregate output (grain = the abstract all_rows marker, or no
+    grain at all), or a derived concept (e.g. a bool BASIC wrapping one) whose
+    producer sits lineage-downstream of such an aggregate. An atom referencing
+    a global value is a 0/1-row gate — it may only be hosted at the value's
+    producer (HAVING) or downstream of it; an upstream scan carrying the
+    address as a computable member re-renders the aggregate inline at the
+    HOSTING group's grain, silently turning the global gate into a per-grain
+    HAVING. A GRAINED aggregate value is deliberately untouched: its keyed
+    consumers are legitimate join hosts (`web_total > store_total` joins both
+    aggregate CTEs on the shared grain)."""
+    all_rows_address = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
     lineage_only = lineage_subgraph(group_graph, group_edges)
+
+    def _is_global(gid: str) -> bool:
+        return set(buckets[gid].grain_components) <= {all_rows_address}
+
     producers: set[str] = set()
     for addr in row_inputs:
         for gid, b in buckets.items():
             if addr not in set(b.primary_members):
                 continue
-            if b.derivation in _EMITS_GROUP_BY:
+            if b.derivation in _EMITS_GROUP_BY and _is_global(gid):
                 producers.add(gid)
-            elif gid in lineage_only and any(
-                anc in buckets and buckets[anc].derivation in _EMITS_GROUP_BY
-                for anc in nx.ancestors(lineage_only, gid)
+            elif (
+                b.derivation not in _EMITS_GROUP_BY
+                and _is_global(gid)
+                and gid in lineage_only
+                and any(
+                    anc in buckets
+                    and buckets[anc].derivation in _EMITS_GROUP_BY
+                    and _is_global(anc)
+                    for anc in nx.ancestors(lineage_only, gid)
+                )
             ):
                 producers.add(gid)
             break
