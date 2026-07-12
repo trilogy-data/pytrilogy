@@ -54,6 +54,7 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.node_generators.multiselect_node import extra_align_joins
+from trilogy.core.processing.node_generators.rowset_node import _interpose_limit_node
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -565,6 +566,15 @@ def resolve_rowset(
             depth=depth,
             partial_concepts=list(inner_node.partial_concepts),
         )
+
+    # The body's LIMIT (with the ORDER BY it selects under) defines the
+    # rowset's row set; materialize it as a dedicated post-body node exactly
+    # like v3 (`_interpose_limit_node`) so outer WHEREs stay post-limit and
+    # the boundary treats the limited rows as opaque.
+    if select.limit is not None:
+        inner_node.ordering = built.order_by
+        inner_node.rebuild_cache()
+        inner_node = _interpose_limit_node(inner_node, select, inner_env, depth)
 
     # Expose the demanded handles plus any rowset-derived handle that carries a
     # PSEUDONYM — a cross-rowset merge (`merge X.a into Y.b`, q44/q54) links its

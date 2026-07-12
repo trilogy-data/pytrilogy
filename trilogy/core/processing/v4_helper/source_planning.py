@@ -45,6 +45,11 @@ from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     extract_concept,
 )
+from trilogy.core.processing.node_generators.presence_probe import (
+    is_presence_probe,
+    member_binding_datasources,
+    probe_member_address,
+)
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     covered_conditions,
 )
@@ -743,6 +748,36 @@ def _datasource_renders_derived(
     return all(_datasource_can_output(datasource, source.address) for source in roots)
 
 
+def _datasource_renders_probe(
+    datasource: BuildDatasource | BuildUnionDatasource | None,
+    address: str,
+    environment: BuildEnvironment,
+) -> bool:
+    """A presence probe pins side identity: post-substitution every key-group
+    member's binding shares the canonical address, so lineage-based checks pass
+    on BOTH sides of the scoped relation — but the probe is NULL exactly where
+    the member's side is absent, so only a scan physically carrying the
+    member's authored column (via `origin_address`) may compute it. Computing
+    it on the complement side makes the probe never-NULL and the null test a
+    silent no-op (the q84/q59 idiom). Non-probe concepts pass through.
+
+    Graph nodes carry the probe's canonical `_virt_func_*` address; the
+    `_virt_presence_*` identity (whose hash names the pinned member) lives on
+    the resolved concept's own `.address`."""
+    concept = environment.canonical_concepts.get(address)
+    probe_address = concept.address if concept is not None else address
+    if not is_presence_probe(probe_address):
+        return True
+    if not isinstance(datasource, BuildDatasource):
+        return False
+    member = probe_member_address(probe_address, environment)
+    if member is None:
+        return True
+    return datasource.name in {
+        ds.name for ds in member_binding_datasources(member, environment)
+    }
+
+
 def _original_datasource_concept_nodes(
     source_graph: ReferenceGraph,
     bridge_graph: ReferenceGraph,
@@ -753,11 +788,14 @@ def _original_datasource_concept_nodes(
     concept_nodes: list[str] = []
     if ds_node not in source_graph:
         return concept_nodes
+    ds_obj = source_graph.datasources.get(ds_node)
     for neighbor in source_graph.neighbors(ds_node):
         if not neighbor.startswith("c~"):
             continue
         address = _concept_node_address(neighbor)
         if address not in bridge_addresses or address not in environment.concepts:
+            continue
+        if not _datasource_renders_probe(ds_obj, address, environment):
             continue
         if neighbor not in bridge_graph:
             bridge_graph.add_node(neighbor)
@@ -827,8 +865,10 @@ def _local_concept_nodes_for_datasource(
                 and canonical.address in bridge_addresses
                 and _datasource_renders_derived(datasource, canonical)
             )
-            if canonical is not None and (
-                address in bridge_addresses or renders_derived_key
+            if (
+                canonical is not None
+                and (address in bridge_addresses or renders_derived_key)
+                and _datasource_renders_probe(datasource, address, environment)
             ):
                 concepts.setdefault(address, neighbor)
             queue.append(neighbor)
