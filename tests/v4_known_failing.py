@@ -320,8 +320,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/test_scoped_join.py::test_rowset_outer_join_shared_base_no_fanout": _V4_MASKED_LEAK,
     "tests/test_scoped_join_dim_bridge_outer_key.py::test_all_left_unaffected": _V4_MASKED_LEAK,
     "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles": _V4_MASKED_LEAK,
-    "tests/test_scoped_join_property_enrichment.py::test_enrich_property_off_scoped_join_key_chained": _V4_MASKED_LEAK,
-    "tests/test_scoped_join_property_enrichment.py::test_enrich_property_off_scoped_join_key_unchained_unresolvable": _V4_MASKED_LEAK,
     "tests/test_scoped_join_rowset_outer_blend.py::test_left_join_blends_two_rowset_measures": _V4_MASKED_LEAK,
     "tests/test_scoped_join_rowset_outer_blend.py::test_left_join_optional_key_projects_preserved_value": _V4_MASKED_LEAK,
     "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved": _V4_MASKED_LEAK,
