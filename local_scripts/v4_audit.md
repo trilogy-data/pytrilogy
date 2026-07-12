@@ -1,4 +1,68 @@
-# v4 compatibility audit (last refreshed 2026-07-02, post leak-fix sweep)
+# v4 compatibility audit (last refreshed 2026-07-12, post rebase onto main)
+
+## 🔄 2026-07-12 — REBASED onto main (new join engine, author→build moves, PRs #592–#597)
+
+Branch rebased onto latest main (22 commits replayed; backup at
+`backup/v4_improvements_four_pre_rebase`). Main brought a new join engine, big
+new test families (`tests/join_matrix/`, rowset matrices, presence probes,
+`subset join`/`union join` coalescing semantics, where-scalar-aggregate cograin
+rules from #596) that were only ever validated on v3 — the honest post-rebase
+v4 sweep was **201 failed / 5130 passed** (v3: 3 failed, all fixed same day).
+
+Fixed forward so far (2026-07-12), v4 sweep 201 → 186 → (placement fixes pending resweep):
+
+- **Presence probes (ROOT members)**: v4 computed the `_virt_presence_*` probe
+  on BOTH sides of a scoped relation (post-substitution both scans carry the
+  canonical), so `member is [not] null` never observed absence. Fixes:
+  `_datasource_renders_probe` gate in `source_planning.py` (resolve the graph
+  node's `_virt_func_*` canonical to the probe identity first), probe
+  `canonical_name` = own name in `build.py` (lineage hash fused per-side
+  probes). root_presence_probe simple cells fixed (8).
+- **Rowset body LIMIT**: v4 `resolve_rowset` dropped the nested select's
+  `limit`/`order by`; now interposes v3's `_interpose_limit_node` (4 tests).
+- **Post-aggregation condition placement**: backfill CONSTRAINT pass in
+  `concept_graph.py` now applies the rowset cycle guard (bare aggregate
+  co-grained over a rowset no longer kills the topo pass); atoms referencing
+  post-aggregation values host at the value's producer group or LINEAGE-only
+  descendants (`_post_aggregation_producers` in `condition_placement.py`) —
+  `by *` global gates no longer silently become per-grain HAVINGs; cross-branch
+  atoms route to FINAL_RECONVERGENCE instead of raising. cograin 7→2,
+  autograin 2→0.
+
+Still-open post-rebase families (deep, each needs a dedicated session):
+
+1. **Coalescing axis + probes over `union join`** (~20 in join_matrix:
+   coalescing_presence_matrix, union presence counts q97 shape,
+   bare-axis-projection): v4 sources the union axis from ONE member scan and
+   fuses both sides' probes; needs the v3 `gen_coalescing_axis_node` +
+   per-member pinned-scan semantics ported into the group graph (a probe/axis
+   must form its own group pinned to member-binding datasources).
+2. **Rowset-pair scoped joins / key-carry** (~30: consumption_matrix,
+   two_source_matrix rowset-* cells, subset_join_between_rowsets,
+   independent_rowset_matrix): dropped output columns + wrong rows on
+   `left/full/subset join ra.k = rb.k` between rowsets — the known
+   `_V4_ROWSET_XDS_RESIDUAL` family, now with much broader coverage from main.
+3. **Mixed aggregate+row `?` filter** (4, filter_mixed_aggregate_row_predicate):
+   optimizer splits the filter's guarantee across FINAL joins (HAVING into agg
+   parent + row atom into scans); the vestigial CASE re-renders the aggregate
+   arg row-wise (`count → CASE WHEN ... IS NOT NULL`) = wrong rows. Needs a
+   multi-parent extension of `_filter_guaranteed_by_sole_parent` OR the filter
+   group to re-render as bare content once its predicate is fully delegated.
+   (This is the documented harder `aggregate_filter_anonymous` sibling.)
+4. **where-scalar cograin leftovers** (2): HAVING-form KeyError on
+   `_virt_filter_*`, grained-select-output missing-source render.
+5. **Materialized aggregate bridge join** (4): cross-key dimension fan-out.
+6. **Union reproject subset join** (6), **rollup scoped join** (3),
+   **narrowing through limited rowset chains** (left_readback,
+   predrop_chain_narrowing): join-type narrowing claims completeness through a
+   LIMITed/filtered chain.
+7. **TPC-DS**: q14, q64 transitive-key fanout, q81 + 3 non-benchmark shapes,
+   q29 existence feeder.
+
+Note: `tests/test_scoped_join_property_enrichment.py` and
+`..._injection_through_derivation.py` were deleted upstream by main (#594);
+our v4-branching update to the former died with it — single-rowset property
+enrichment coverage now lives only in main's newer scoped-join suites.
 
 ## ⚠️ 2026-07-02 — the prior "green v4 sweep" was PARTLY BOGUS (CONFIG leak fixed)
 
