@@ -2,7 +2,7 @@
   {
     "id": 1,
     "grade": "medium",
-    "prompt": "For returns to physical stores in Tennessee in 2000, find customers whose total returns for a store were more than 1.2 times what the average customer returns for that store were in that period. Print one row per alphanumeric customer id and store_id combo that meet the criteria (so ensure a customer with two stores shows up as a duplicate), but do not show the store_id in results; order by customer id; limit 100 rows."
+    "prompt": "For returns to physical stores in Tennessee in 2000, find customers whose total returns for a store were more than 1.2 times what the average customer returns for that store were in that period under the same conditions. Print one row per alphanumeric customer id and store_id combo that meet the criteria (so ensure a customer with two stores shows up as a duplicate), but do not show the store_id in results; order by customer id; limit 100 rows."
   },
   {
     "id": 2,
@@ -75,7 +75,7 @@
   {
     "id": 14,
     "grade": "hard",
-    "prompt": "Find (brand, class, category) combination tuples for items that appear in all three channels (store sales, catalog sales, and web sales) at some point during 1999 through 2001 inclusive. For any sale matching those tuples in november 2001, aggregate the sum of quantity * list price (don't use precalculated line totals) and count of sale line items (order + item id combos) by the lowercase channel, brand_id, class_id, category_id, returning only groups where the per-channel sales total exceeds the overall average sale value (quantity times list price again) in 1999-2001 across all channels (make sure this overall average isn't filtered to just november 2001). This average sale filter must be applied *before* rolling up the result by (channel, brand, class, category) producing channel subtotals and a grand total. Report channel (lowercase), numeric brand id, numeric class id, numeric category id, total sales, and total sales line item count, ordered by those four grouping fields with nulls first; limit 100 rows."
+    "prompt": "Find (brand, class, category) combination tuples for items that appear in all three channels (store sales, catalog sales, and web sales) at some point during 1999 through 2001 inclusive. For any sale matching those tuples in november 2001, aggregate the sum of quantity * list price (don't use precalculated line totals) and count of sale line items (order + item id combos) by the lowercase channel, brand_id, class_id, category_id, returning only groups where the per-channel sales total exceeds the overall average sale value (quantity times list price again, average of non null rows of that calculation only) in 1999-2001 across all channels (make sure this overall average isn't filtered to just november 2001). This average sale filter must be applied *before* rolling up the result by (channel, brand, class, category) producing channel subtotals and a grand total. Report channel (lowercase), numeric brand id, numeric class id, numeric category id, total sales, and total sales line item count, ordered by those four grouping fields with nulls first; limit 100 rows."
   },
   {
     "id": 15,
@@ -85,7 +85,7 @@
   {
     "id": 16,
     "grade": "medium",
-    "prompt": "For catalog sales whose ship date falls between 2002-02-01 and 2002-04-02 inclusive, shipping to a directly recorded address in GA (not the customer current address) via a call center located in 'Williamson County', report the count of unique orders, the total extended ship cost, and the total net profit. Two additional filters, which are not scoped to the other conditions - restrict to orders whose line items ship from more than one warehouse (so there exists another line in the same order shipping from a different warehouse) and that have no matching catalog return on the same order number. Order by the order count desc; limit 100 rows."
+    "prompt": "For catalog sales whose ship date falls between 2002-02-01 and 2002-04-02 inclusive, shipping to a directly recorded address in GA (not the customer current address) via a call center located in 'Williamson County', report the count of unique orders, the total extended ship cost, and the total net profit. Two additional constraints - restrict to orders whose line items ship from more than one warehouse (so there exists another line in the same order shipping from a different warehouse) and that have no matching catalog return on the same order number - do NOT include the other conditions when calculation these order level constraints. Order by the order count desc; limit 100 rows."
   },
   {
     "id": 17,
@@ -95,7 +95,7 @@
   {
     "id": 18,
     "grade": "medium",
-    "prompt": "For catalog sales in the year 1998, restricted to sales where the billing customer-demographics directly on the sale show gender female and education 'Unknown', and where the customer's own birth month is one of January, February, June, August, September, or December, and where the customer's current home address state is one of MS, IN, ND, OK, NM, or VA, and the customer's own current demographic sk is not null; report the average of the following measures: ticket quantity, per-line list price, per-line coupon amount, per-line sales price, per-line net profit, customer birth year, and the dependent count from the sale's billing customer-demographics. Roll up these averages over (item code, country, state, county) in that order using the customer's current home address country, state, and county. Order by country, state, county, item code then by the grouping indicators on country, state, and county (don't show grouping indicators in output, just use for ordering - they are LAST in ordering), all order elements with nulls first; limit 100 rows."
+    "prompt": "For catalog sales in the year 1998, restricted to sales where the pos customer demographics show gender female and education 'Unknown', and where the customer's own birth month is one of January, February, June, August, September, or December, and where the customer's current home address state is one of MS, IN, ND, OK, NM, or VA, and the customer's own current demographic sk is not null; report the average of the following measures: ticket quantity, per-line list price, per-line coupon amount, per-line sales price, per-line net profit, customer birth year, and the dependent count from the sale's pos customer-demographics. All these averages need to be weighted by the line item grain. Roll up these weighted averages over (item code, country, state, county) in exactly that order using the customer's current home address country, state, and county. Order returned rows by country, state, county, item code then by the grouping indicators on country, state, and county (don't show grouping indicators in output, just use for ordering - they are LAST in ordering), all order elements with nulls first; limit 100 rows."
   },
   {
     "id": 19,

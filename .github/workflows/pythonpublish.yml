@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install maturin==1.10.2 packaging requests
+        pip install maturin==1.14.1 packaging requests
         pip install -r requirements.txt
     - name: Build for version check
       run: pip install -e .
@@ -244,6 +244,80 @@ jobs:
         name: wheels-windows-${{ matrix.target }}
         path: dist
 
+  wasm:
+    needs: version-check
+    if: needs.version-check.outputs.should_publish == 'true'
+    # Soft rollout: a wasm failure must never block a release. The wheel is
+    # published when it builds; promote by removing this once proven stable.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.14 / Pyodide 314 only. 3.13 / Pyodide 0.29 pins emscripten 4.0.9,
+        # which rejects Rust's $-mangled symbol exports (fixed in emcc 4.0.10)
+        # — Rust side modules cannot link against it.
+        python-version: ['3.14']
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install pyodide-build
+      run: pip install pyodide-build
+    - name: Sync version to Cargo.toml
+      run: python .scripts/sync_version.py
+    - name: Get pyodide config
+      id: pyodide-config
+      run: |
+        echo "rust-toolchain=$(pyodide config get rust_toolchain)" >> "$GITHUB_OUTPUT"
+        echo "emscripten-version=$(pyodide config get emscripten_version)" >> "$GITHUB_OUTPUT"
+        # Key name depends on pyodide-build version; unsupported keys error on stdout,
+        # so try both and keep the first value that looks like a platform version.
+        PLATFORM_VERSION=$( (pyodide config get pyemscripten_platform_version 2>/dev/null; pyodide config get pyodide_abi_version 2>/dev/null) | grep -E '^[0-9]+_[0-9]+$' | head -n1)
+        if [ -z "$PLATFORM_VERSION" ]; then
+          echo "Could not resolve pyemscripten platform version from pyodide config" >&2
+          exit 1
+        fi
+        echo "pyemscripten-platform-version=$PLATFORM_VERSION" >> "$GITHUB_OUTPUT"
+        echo "rustflags=$(pyodide config get rustflags)" >> "$GITHUB_OUTPUT"
+    - uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984  # v16
+      with:
+        version: ${{ steps.pyodide-config.outputs.emscripten-version }}
+    - name: Build wheel
+      uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
+      env:
+        CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS: ${{ steps.pyodide-config.outputs.rustflags }}
+        MATURIN_PYEMSCRIPTEN_PLATFORM_VERSION: ${{ steps.pyodide-config.outputs.pyemscripten-platform-version }}
+        # Fat LTO SIGILLs rustc on the emscripten target (rustc-LLVM vs emscripten-LLVM
+        # bitcode skew); disable for wasm only — native builds keep lto = true.
+        CARGO_PROFILE_RELEASE_LTO: 'off'
+      with:
+        target: wasm32-unknown-emscripten
+        args: --release --out dist --interpreter ${{ matrix.python-version }}
+        rust-toolchain: ${{ steps.pyodide-config.outputs.rust-toolchain }}
+    - name: Patch wheels with dependencies
+      run: python .scripts/patch_wheels.py dist
+    - name: Validate wheel in Pyodide venv
+      run: |
+        pyodide venv .venv-pyodide
+        .venv-pyodide/bin/pip install --find-links dist pytrilogy
+        .venv-pyodide/bin/python -c "
+        import _preql_import_resolver
+        from trilogy import parse, Dialects
+        env, stmts = parse('const x <- 5; select x + 1 -> y;')
+        assert len(stmts) == 2
+        exec = Dialects.DUCK_DB.default_executor()
+        rows = exec.execute_text('select 1+1 -> two;')[0].fetchall()
+        assert rows == [(2,)], rows
+        print('wasm wheel validated: parse + duckdb execution ok')
+        "
+    - name: Upload wheels
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      with:
+        name: wheels-wasm
+        path: dist
+
   sdist:
     needs: version-check
     if: needs.version-check.outputs.should_publish == 'true'
@@ -268,7 +342,7 @@ jobs:
         path: dist
 
   publish:
-    needs: [version-check, linux, macos, windows, sdist]
+    needs: [version-check, linux, macos, windows, wasm, sdist]
     if: needs.version-check.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     environment:
