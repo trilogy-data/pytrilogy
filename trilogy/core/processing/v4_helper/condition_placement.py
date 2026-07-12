@@ -197,9 +197,13 @@ def _post_aggregation_producers(
     producer (HAVING) or downstream of it; an upstream scan carrying the
     address as a computable member re-renders the aggregate inline at the
     HOSTING group's grain, silently turning the global gate into a per-grain
-    HAVING. A GRAINED aggregate value is deliberately untouched: its keyed
-    consumers are legitimate join hosts (`web_total > store_total` joins both
-    aggregate CTEs on the shared grain)."""
+    HAVING. Deliberately untouched: a GRAINED aggregate value (its keyed
+    consumers are legitimate join hosts — `web_total > store_total` joins both
+    aggregate CTEs on the shared grain) and a MIXED atom pairing a global
+    value with row-level inputs (`account_balance > avg_bal by *`, TPC-H q22
+    — there the host is the row group with the global CTE cross-joined in, so
+    pinning to the producer chain strands the row side). Pin only when EVERY
+    row input is a global post-aggregation value."""
     all_rows_address = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
     lineage_only = lineage_subgraph(group_graph, group_edges)
 
@@ -208,11 +212,12 @@ def _post_aggregation_producers(
 
     producers: set[str] = set()
     for addr in row_inputs:
+        producer: str | None = None
         for gid, b in buckets.items():
             if addr not in set(b.primary_members):
                 continue
             if b.derivation in _EMITS_GROUP_BY and _is_global(gid):
-                producers.add(gid)
+                producer = gid
             elif (
                 b.derivation not in _EMITS_GROUP_BY
                 and _is_global(gid)
@@ -224,8 +229,11 @@ def _post_aggregation_producers(
                     for anc in nx.ancestors(lineage_only, gid)
                 )
             ):
-                producers.add(gid)
+                producer = gid
             break
+        if producer is None:
+            return set()
+        producers.add(producer)
     return producers
 
 
