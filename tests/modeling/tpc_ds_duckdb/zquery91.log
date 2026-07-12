@@ -1,17 +1,23 @@
 query_id = "91"
-generator = "v3"
-gen_length = 2633
+generator = "v4"
+gen_length = 3312
 preql_size = 1024
 comp_size = 982
 generated_sql = """
+
+WITH 
+abundant as (
 SELECT
-    \"cs_return_call_center_call_center\".\"CC_CALL_CENTER_ID\" as \"call_center\",
-    \"cs_return_call_center_call_center\".\"CC_NAME\" as \"call_center_name\",
-    \"cs_return_call_center_call_center\".\"CC_MANAGER\" as \"manager\",
-    sum(\"cs_catalog_returns\".\"CR_NET_LOSS\") as \"returns_loss\"
+    \"cs_catalog_returns\".\"CR_ITEM_SK\" as \"cs_item_sk\",
+    \"cs_catalog_returns\".\"CR_NET_LOSS\" as \"cs_return_net_loss\",
+    \"cs_catalog_returns\".\"CR_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_return_call_center_call_center\".\"CC_CALL_CENTER_ID\" as \"cs_return_call_center_id\",
+    \"cs_return_call_center_call_center\".\"CC_MANAGER\" as \"cs_return_call_center_manager\",
+    \"cs_return_call_center_call_center\".\"CC_NAME\" as \"cs_return_call_center_name\",
+    \"cs_return_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"cs_return_customer_demographics_education_status\",
+    \"cs_return_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"cs_return_customer_demographics_marital_status\"
 FROM
-    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
+    \"memory\".\"catalog_returns\" as \"cs_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cs_return_customer_customers\" on \"cs_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" = \"cs_return_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_return_customer_address_customer_address\" on \"cs_return_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_return_customer_address_customer_address\".\"CA_ADDRESS_SK\"
@@ -20,12 +26,20 @@ FROM
     LEFT OUTER JOIN \"memory\".\"call_center\" as \"cs_return_call_center_call_center\" on \"cs_catalog_returns\".\"CR_CALL_CENTER_SK\" = \"cs_return_call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
     \"cs_return_date_date\".\"D_YEAR\" = 1998 and \"cs_return_date_date\".\"D_MOY\" = 11 and ( ( \"cs_return_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"cs_return_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' ) or ( \"cs_return_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"cs_return_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' ) ) and \"cs_return_customer_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" like 'Unknown%' and \"cs_return_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -7
-
+)
+SELECT
+    \"abundant\".\"cs_return_call_center_id\" as \"call_center\",
+    \"abundant\".\"cs_return_call_center_name\" as \"call_center_name\",
+    \"abundant\".\"cs_return_call_center_manager\" as \"manager\",
+    sum(\"abundant\".\"cs_return_net_loss\") as \"returns_loss\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"abundant\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"abundant\".\"cs_item_sk\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"abundant\".\"cs_order_number\"
 GROUP BY
     1,
     2,
     3,
-    \"cs_return_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\",
-    \"cs_return_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\"
+    \"abundant\".\"cs_return_customer_demographics_education_status\",
+    \"abundant\".\"cs_return_customer_demographics_marital_status\"
 ORDER BY 
     \"returns_loss\" desc nulls first"""

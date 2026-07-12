@@ -1,6 +1,6 @@
 query_id = "86"
-generator = "v3"
-gen_length = 2136
+generator = "v4"
+gen_length = 2132
 preql_size = 929
 comp_size = 847
 generated_sql = """
@@ -18,42 +18,42 @@ FROM
 WHERE
     \"web_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 ),
-thoughtful as (
+cooperative as (
 SELECT
     \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    CASE
-	WHEN grouping(\"cheerful\".\"web_sales_item_class\") = 0 THEN \"cheerful\".\"web_sales_item_category\"
-	ELSE null
-	END as \"partition_cat\",
-    grouping(\"cheerful\".\"web_sales_item_category\") + grouping(\"cheerful\".\"web_sales_item_class\") as \"lochierarchy\",
+    grouping(\"cheerful\".\"web_sales_item_category\") as \"g_cat\",
+    grouping(\"cheerful\".\"web_sales_item_class\") as \"g_class\",
     sum(\"cheerful\".\"web_sales_net_paid\") as \"total_sum\"
 FROM
     \"cheerful\"
 GROUP BY
     ROLLUP (1, 2)),
-cooperative as (
+questionable as (
 SELECT
-    \"thoughtful\".\"lochierarchy\" as \"lochierarchy\",
-    \"thoughtful\".\"total_sum\" as \"total_sum\",
-    \"thoughtful\".\"web_sales_item_category\" as \"web_sales_item_category\",
-    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    rank() over (partition by \"thoughtful\".\"lochierarchy\",\"thoughtful\".\"partition_cat\" order by \"thoughtful\".\"total_sum\" desc ) as \"rank_within_parent\"
-FROM
-    \"thoughtful\")
-SELECT
+    \"cooperative\".\"g_cat\" + \"cooperative\".\"g_class\" as \"lochierarchy\",
     \"cooperative\".\"total_sum\" as \"total_sum\",
-    \"cooperative\".\"web_sales_item_category\" as \"i_category\",
-    \"cooperative\".\"web_sales_item_class\" as \"i_class\",
-    \"cooperative\".\"lochierarchy\" as \"lochierarchy\",
-    \"cooperative\".\"rank_within_parent\" as \"rank_within_parent\"
+    \"cooperative\".\"web_sales_item_category\" as \"web_sales_item_category\",
+    \"cooperative\".\"web_sales_item_class\" as \"web_sales_item_class\",
+    rank() over (partition by \"cooperative\".\"g_cat\" + \"cooperative\".\"g_class\",CASE
+	WHEN \"cooperative\".\"g_class\" = 0 THEN \"cooperative\".\"web_sales_item_category\"
+	ELSE null
+	END order by \"cooperative\".\"total_sum\" desc ) as \"rank_within_parent\"
 FROM
-    \"cooperative\"
+    \"cooperative\")
+SELECT
+    \"questionable\".\"total_sum\" as \"total_sum\",
+    \"questionable\".\"web_sales_item_category\" as \"i_category\",
+    \"questionable\".\"web_sales_item_class\" as \"i_class\",
+    \"questionable\".\"lochierarchy\" as \"lochierarchy\",
+    \"questionable\".\"rank_within_parent\" as \"rank_within_parent\"
+FROM
+    \"questionable\"
 ORDER BY 
-    \"cooperative\".\"lochierarchy\" desc nulls first,
+    \"questionable\".\"lochierarchy\" desc nulls first,
     CASE
-	WHEN \"cooperative\".\"lochierarchy\" = 0 THEN \"cooperative\".\"web_sales_item_category\"
+	WHEN \"questionable\".\"lochierarchy\" = 0 THEN \"questionable\".\"web_sales_item_category\"
 	ELSE null
 	END asc nulls first,
-    \"cooperative\".\"rank_within_parent\" asc nulls first
+    \"questionable\".\"rank_within_parent\" asc nulls first
 LIMIT (100)"""

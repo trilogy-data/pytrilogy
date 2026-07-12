@@ -43,7 +43,6 @@ from trilogy.core.processing.node_generators.node_merge_node import (
     AMBIGUITY_CHECK_LIMIT,
     detect_ambiguity_and_raise,
     determine_induced_minimal_nodes,
-    extract_concept,
 )
 from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,

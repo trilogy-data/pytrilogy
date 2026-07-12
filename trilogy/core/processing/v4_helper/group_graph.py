@@ -30,6 +30,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .condition_placement import plan_condition_placements
 from .constants import (
@@ -1560,7 +1561,15 @@ def _compute_concept_sets(
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]
                 outs |= mand
-                outs |= cap_gid & final_condition_args
+                final_args_here = cap_gid & final_condition_args
+                outs |= final_args_here
+                # A FINAL-deferred presence-probe filter joins its producer
+                # back on the probe's KEY (`ord_cust` ~ the anchor's key via
+                # the scoped-join pseudonym); expose the key alongside the
+                # probe or the side input degrades to a 1=1 cross join.
+                for addr in final_args_here:
+                    if is_presence_probe(addr):
+                        outs |= lineage_parents.get(addr, set()) & cap_gid
                 if fact.grain:
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:

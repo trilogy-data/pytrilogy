@@ -1,6 +1,6 @@
 query_id = "20"
-generator = "v3"
-gen_length = 1842
+generator = "v4"
+gen_length = 2663
 preql_size = 395
 comp_size = 908
 generated_sql = """
@@ -8,39 +8,65 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
+    \"lineitem\".\"l_quantity\" as \"quantity\",
+    \"lineitem\".\"l_shipdate\" as \"ship_date\",
+    \"part_partsupp\".\"ps_availqty\" as \"part_available_quantity\",
     coalesce(\"lineitem\".\"l_partkey\",\"part_partsupp\".\"ps_partkey\") as \"part_id\",
-    coalesce(\"lineitem\".\"l_suppkey\",\"part_partsupp\".\"ps_suppkey\") as \"part_supplier_id\",
-    sum(CASE WHEN \"lineitem\".\"l_shipdate\" >= date '1994-01-01' and \"lineitem\".\"l_shipdate\" < date '1995-01-01' THEN \"lineitem\".\"l_quantity\" ELSE NULL END) as \"qty_per_partsupp_1994\"
+    coalesce(\"lineitem\".\"l_suppkey\",\"part_partsupp\".\"ps_suppkey\") as \"part_supplier_id\"
 FROM
     \"memory\".\"partsupp\" as \"part_partsupp\"
-    FULL JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_partsupp\".\"ps_partkey\" = \"lineitem\".\"l_partkey\" AND \"part_partsupp\".\"ps_suppkey\" = \"lineitem\".\"l_suppkey\"
+    FULL JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_partsupp\".\"ps_partkey\" = \"lineitem\".\"l_partkey\" AND \"part_partsupp\".\"ps_suppkey\" = \"lineitem\".\"l_suppkey\"),
+yummy as (
+SELECT
+    \"part_supplier_supplier\".\"s_suppkey\" as \"part_supplier_id\",
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\"
+FROM
+    \"memory\".\"supplier\" as \"part_supplier_supplier\"
+    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"),
+cooperative as (
+SELECT
+    \"wakeful\".\"part_id\" as \"part_id\",
+    \"wakeful\".\"part_supplier_id\" as \"part_supplier_id\",
+    sum(CASE WHEN \"wakeful\".\"ship_date\" >= date '1994-01-01' and \"wakeful\".\"ship_date\" < date '1995-01-01' THEN \"wakeful\".\"quantity\" ELSE NULL END) as \"qty_per_partsupp_1994\"
+FROM
+    \"wakeful\"
 GROUP BY
     1,
     2),
-uneven as (
+cheerful as (
 SELECT
-    \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
-    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
-    \"part_supplier_supplier\".\"s_suppkey\" as \"part_supplier_id\"
+    \"wakeful\".\"part_available_quantity\" as \"part_available_quantity\",
+    \"wakeful\".\"part_id\" as \"part_id\",
+    \"wakeful\".\"part_supplier_id\" as \"part_supplier_id\"
 FROM
-    \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
+    \"wakeful\"
+GROUP BY
+    1,
+    2,
+    3),
+juicy as (
+SELECT
+    \"yummy\".\"part_supplier_nation_name\" as \"part_supplier_nation_name\",
+    coalesce(\"cheerful\".\"part_supplier_id\",\"cooperative\".\"part_supplier_id\",\"yummy\".\"part_supplier_id\") as \"part_supplier_id\"
+FROM
+    \"cooperative\"
+    INNER JOIN \"cheerful\" on \"cooperative\".\"part_id\" = \"cheerful\".\"part_id\" AND \"cooperative\".\"part_supplier_id\" = \"cheerful\".\"part_supplier_id\"
+    INNER JOIN \"memory\".\"part\" as \"part_part\" on coalesce(\"cooperative\".\"part_id\", \"cheerful\".\"part_id\") = \"part_part\".\"p_partkey\"
+    INNER JOIN \"yummy\" on \"cooperative\".\"part_supplier_id\" = \"yummy\".\"part_supplier_id\"
 WHERE
-    UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'CANADA'
+    \"part_part\".\"p_name\" like 'forest%' and \"cheerful\".\"part_available_quantity\" > 0.5 * \"cooperative\".\"qty_per_partsupp_1994\"
 )
 SELECT
-    \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
-    \"uneven\".\"part_supplier_address\" as \"part_supplier_address\"
+    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
+    \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\"
 FROM
-    \"memory\".\"partsupp\" as \"part_partsupp\"
-    INNER JOIN \"memory\".\"part\" as \"part_part\" on \"part_partsupp\".\"ps_partkey\" = \"part_part\".\"p_partkey\"
-    INNER JOIN \"wakeful\" on \"part_partsupp\".\"ps_suppkey\" = \"wakeful\".\"part_supplier_id\" AND coalesce(\"part_partsupp\".\"ps_partkey\", \"part_part\".\"p_partkey\") = \"wakeful\".\"part_id\"
-    INNER JOIN \"uneven\" on \"part_partsupp\".\"ps_suppkey\" = \"uneven\".\"part_supplier_id\"
+    \"juicy\"
+    LEFT OUTER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"juicy\".\"part_supplier_id\" = \"part_supplier_supplier\".\"s_suppkey\"
 WHERE
-    \"part_part\".\"p_name\" like 'forest%' and \"part_partsupp\".\"ps_availqty\" > 0.5 * \"wakeful\".\"qty_per_partsupp_1994\"
+    \"juicy\".\"part_supplier_nation_name\" = 'CANADA'
 
 GROUP BY
     1,
     2
 ORDER BY 
-    \"uneven\".\"part_supplier_name\" asc"""
+    \"part_supplier_supplier\".\"s_name\" asc"""

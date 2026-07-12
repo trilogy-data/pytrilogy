@@ -6,6 +6,15 @@ comp_size = 1474
 generated_sql = """
 
 WITH 
+wakeful as (
+SELECT
+    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
+    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
+    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
+FROM
+    \"memory\".\"customer\" as \"customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),
 uneven as (
 SELECT
     \"store_sales_pos_address_customer_address\".\"CA_CITY\" as \"_bought_bought_city\",
@@ -25,43 +34,33 @@ WHERE
 GROUP BY
     1,
     2,
-    3),
-wakeful as (
-SELECT
-    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
-    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
-FROM
-    \"memory\".\"customer\" as \"customer_customers\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"),
-juicy as (
-SELECT
-    \"uneven\".\"_bought_amt\" as \"bought_amt\",
-    \"uneven\".\"_bought_bought_city\" as \"bought_bought_city\",
-    \"uneven\".\"_bought_profit\" as \"bought_profit\",
-    \"uneven\".\"store_sales_customer_sk\" as \"bought_store_sales_customer_sk\",
-    \"uneven\".\"store_sales_ticket_number\" as \"bought_store_sales_ticket_number\"
-FROM
-    \"uneven\")
+    3)
 SELECT
     \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
     \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
     \"wakeful\".\"customer_address_city\" as \"customer_address_city\",
-    \"juicy\".\"bought_bought_city\" as \"bought_bought_city\",
-    \"juicy\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
-    \"juicy\".\"bought_amt\" as \"bought_amt\",
-    \"juicy\".\"bought_profit\" as \"bought_profit\"
+    \"uneven\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"uneven\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
+    \"uneven\".\"bought_amt\" as \"bought_amt\",
+    \"uneven\".\"bought_profit\" as \"bought_profit\"
 FROM
     \"wakeful\"
-    INNER JOIN \"juicy\" on \"wakeful\".\"customer_sk\" = \"juicy\".\"bought_store_sales_customer_sk\"
+    INNER JOIN \"uneven\" on \"wakeful\".\"customer_sk\" = \"uneven\".\"bought_store_sales_customer_sk\"
 WHERE
-    \"wakeful\".\"customer_address_city\" != \"juicy\".\"bought_bought_city\"
+    \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_bought_city\"
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
 ORDER BY 
     \"wakeful\".\"customer_last_name\" asc nulls first,
     \"wakeful\".\"customer_first_name\" asc nulls first,
     \"wakeful\".\"customer_address_city\" asc nulls first,
-    \"juicy\".\"bought_bought_city\" asc nulls first,
-    \"juicy\".\"bought_store_sales_ticket_number\" asc nulls first
+    \"uneven\".\"bought_bought_city\" asc nulls first,
+    \"uneven\".\"bought_store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

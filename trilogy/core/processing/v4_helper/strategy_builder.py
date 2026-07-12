@@ -34,6 +34,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import combine_condition_atoms
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
@@ -2011,9 +2012,7 @@ def _clear_groupmate_completed_partials(
     for parent in node.parents:
         parent_partial = {c.address for c in parent.partial_concepts}
         complete_outputs |= {
-            c.address
-            for c in parent.output_concepts
-            if c.address not in parent_partial
+            c.address for c in parent.output_concepts if c.address not in parent_partial
         }
     keep: list[BuildConcept] = []
     for concept in node.partial_concepts:
@@ -2137,9 +2136,30 @@ def _assemble_final_node(
         attrs, built, per_group, mandatory_list, environment
     )
     contributing = list(per_group.keys())
+    final_probe_args = (
+        [
+            arg
+            for arg in condition_row_args(final_conditions)
+            if is_presence_probe(arg.address)
+        ]
+        if final_conditions is not None
+        else []
+    )
     if len(contributing) == 1:
         gid = contributing[0]
         sole_node = built[gid]
+        # A FINAL-deferred presence-probe filter joins its feeder back on the
+        # probe's key group. The normal path hides non-mandatory grain keys and
+        # dedups to the output grain FIRST, which strips the join key and
+        # degrades the feeder join to 1=1 — apply the condition over the raw
+        # contributor (keys intact), then dedup the filtered rows.
+        if final_probe_args:
+            conditioned = _apply_final_conditions(sole_node)
+            final_node = _group_to_grain_if_required(
+                conditioned, mandatory_list, final_contract, environment
+            )
+            _bridge_pseudonyms(final_node, per_group[gid])
+            return final_node
         # The contributing group's outputs include grain keys it exposed
         # for sibling JOINs (see `_compute_concept_sets`). At the user-
         # facing FINAL projection those keys aren't part of mandatory and

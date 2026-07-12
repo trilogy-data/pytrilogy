@@ -369,6 +369,17 @@ def partition_roots(
                 # into one scan yields an unsourceable disconnected root group
                 # (`select sum(av), sum(bv)` over two unrelated models).
                 undirected = concept_graph.to_undirected()
+                # A property root and its KEY root are FD-related even when the
+                # lineage graph never joins them (a pure two-alias projection
+                # `select cust_id as x, cname as y` has one BASIC per root and
+                # no shared consumer) — the table binding both is what relates
+                # them, and splitting them cross-joins ON 1=1 (cartesian rows).
+                node_by_addr = {data.address: node for node, data in main_items}
+                for node, data in main_items:
+                    for key_addr in data.keys:
+                        key_node = node_by_addr.get(key_addr)
+                        if key_node is not None and key_node != node:
+                            undirected.add_edge(node, key_node)
                 comp_of: dict[str, int] = {}
                 for ci, comp in enumerate(nx.connected_components(undirected)):
                     for node in comp:

@@ -1,6 +1,6 @@
 query_id = 3
-generator = "v3"
-gen_length = 2088
+generator = "v4"
+gen_length = 2876
 generated_sql = """
 
 WITH 
@@ -13,12 +13,17 @@ SELECT
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\"
+WHERE
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_date_month_of_year\" = 11 and \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_manufacturer_id\" = 128
+
 GROUP BY
     1,
     2,
     3,
     4,
-    5)
+    5,
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_date_month_of_year\",
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_manufacturer_id\")
 SELECT
     \"questionable\".\"store_sales_date_year\" as \"store_sales_date_year\",
     \"questionable\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",

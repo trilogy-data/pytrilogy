@@ -186,9 +186,7 @@ def _build_nested_select(
     author_env = history.base_environment
     caches = history.build_caches
     nested_scoped = select.scoped_joins if isinstance(select, SelectLineage) else []
-    outer_scoped = _scoped_joins_for_rowset(
-        caches.scoped_joins, exclude_derived or []
-    )
+    outer_scoped = _scoped_joins_for_rowset(caches.scoped_joins, exclude_derived or [])
     scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(author_env)

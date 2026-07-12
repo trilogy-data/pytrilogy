@@ -375,6 +375,22 @@ def plan_condition_placements(
                     if buckets.get(gid) is None
                     or buckets[gid].derivation != Derivation.ROWSET
                 ]
+                # When every remaining host is a condition-only side branch (a
+                # probe's pinned scan feeding nothing the SELECT produces —
+                # the mixed root-member-vs-rowset-anchor shape), applying the
+                # atom there filters a group FINAL never merges, silently
+                # dropping the WHERE. The filter belongs above the completion
+                # merge: route to FINAL, which pulls the probe's producer in
+                # as a keyed side input.
+                if candidates and not any(gid in main_lineage for gid in candidates):
+                    placements.append(
+                        ConditionPlacement(
+                            atom=atom,
+                            group_ids=(FINAL_NODE_ID,),
+                            reason=PlacementReason.FINAL_RECONVERGENCE,
+                        )
+                    )
+                    continue
             # An atom referencing an aggregate OUTPUT is a post-aggregation
             # predicate: it may only be hosted at that aggregate's producer
             # group (HAVING) or downstream of it. An upstream scan can carry
