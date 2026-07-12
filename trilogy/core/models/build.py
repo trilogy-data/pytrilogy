@@ -2403,6 +2403,18 @@ def scope_tagged_joins(
     ]
 
 
+def _is_cross_row_instantiation(arg: Any) -> bool:
+    """True when the virtual concept minted for ``arg`` computes across the
+    visible row set (aggregate/window/group-to), so its value differs by scope
+    and must not share an address across the WHERE/select factories. Scalar
+    functions and filter items are row-invariant — shared addresses are fine."""
+    if isinstance(arg, FunctionCallWrapper):
+        return _is_cross_row_instantiation(arg.content)
+    if isinstance(arg, (AggregateWrapper, NumberingWindowItem, NavigationWindowItem)):
+        return True
+    return isinstance(arg, Function) and arg.operator == FunctionType.GROUP
+
+
 class Factory:
 
     def __init__(
@@ -2418,8 +2430,18 @@ class Factory:
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
         aggregate_grain: Grain | None = None,
         select_grouping: AggregateGrouping | None = None,
+        virtual_scope_salt: str | None = None,
     ):
         self.grain = grain or Grain()
+        # Suffix for virtual concepts minted for CROSS-ROW expressions
+        # (aggregates/windows/group-to). The WHERE-clause factory sets this so
+        # an anonymous aggregate nested in a WHERE expression gets a DIFFERENT
+        # address than the identical expression nested in a select output —
+        # the two roles have different scopes (population gate vs
+        # WHERE-filtered projection) and one address can only carry one value.
+        # Row-invariant virtuals (scalar functions, filter items) stay
+        # unsalted: sharing them is correct and desirable.
+        self.virtual_scope_salt = virtual_scope_salt
         # Grain at which a bare (no explicit `by`) aggregate resolves, when it
         # differs from `self.grain`. Used by the WHERE-clause factory: WHERE runs
         # at row grain (`self.grain = Grain()`) for plain predicates, but an
@@ -2706,12 +2728,16 @@ class Factory:
         from trilogy.parsing.common import arbitrary_to_concept, generate_concept_name
 
         name = generate_concept_name(arg)
+        salted = bool(self.virtual_scope_salt) and _is_cross_row_instantiation(arg)
+        if salted:
+            name = f"{name}_{self.virtual_scope_salt}"
         if name in self.local_concepts and name in self.local_non_build_concepts:
             # if we already have this concept, return it
             return self.local_non_build_concepts[name], self.local_concepts[name]
         new = arbitrary_to_concept(
             arg,
             environment=self.environment,
+            name=name if salted else None,
         )
         built = self._build_concept(new)
         self.local_concepts[name] = built
@@ -3888,12 +3914,18 @@ class Factory:
             BuildSelectLineage,
             Factory,
         )
+        from trilogy.core.where_scope_normalization import (
+            normalize_select_where_scope,
+        )
 
         # Resolve non-output HAVING references (hidden aggregate promotion,
         # finer-dim grain-key semijoin) before building. Runs here — not at
         # parse — so the authored statement and environment stay untouched;
         # minted concepts ride the returned copy's local_concepts.
         base = normalize_select_having(base, self.environment)
+        # Split dual-scope WHERE references (a cross-row select output also
+        # used as a row gate) into a minted WHERE-scope twin.
+        base = normalize_select_where_scope(base, self.environment)
 
         materialized: dict[str, BuildConcept] = {}
         factory = Factory(
@@ -3907,7 +3939,26 @@ class Factory:
             scoped_joins=self.scoped_joins,
             select_grouping=base.grouping,
         )
+        # WHERE-scope twins (normalize_select_where_scope) are the local
+        # concepts referenced by the WHERE but absent from the environment.
+        # They build ONLY in the where factory (whose salt scope-splits their
+        # nested cross-row virtuals); building them here too would put a
+        # second, select-scoped variant of the same address into play.
+        where_scope_twins: set[str] = set()
+        if base.where_clause:
+            where_refs = {r.address for r in base.where_clause.row_arguments} | {
+                r.address
+                for group in base.where_clause.existence_arguments
+                for r in group
+            }
+            where_scope_twins = {
+                k
+                for k in base.local_concepts
+                if k in where_refs and k not in self.environment.concepts
+            }
         for k, v in base.local_concepts.items():
+            if k in where_scope_twins:
+                continue
             materialized[k] = factory.build(v)
         where_factory = Factory(
             grain=Grain(),
@@ -3922,7 +3973,17 @@ class Factory:
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=self.scoped_joins,
+            # cross-row virtuals in the WHERE are population-scope gates and
+            # must not share addresses with select-scope twins
+            virtual_scope_salt="wscope",
         )
+        # Build the WHERE-scope twins here so their refs resolve — in this
+        # factory, like their inline equivalents, so bare aggregates co-grain
+        # identically and nested cross-row virtuals get salted addresses.
+        for k in where_scope_twins:
+            where_factory.local_concepts[k] = where_factory.build(
+                base.local_concepts[k]
+            )
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
         )

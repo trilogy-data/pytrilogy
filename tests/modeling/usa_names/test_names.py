@@ -48,7 +48,7 @@ order by
     # Structural match: CTE names depend on a content hash and may shuffle.
     rank_pattern = re.compile(
         r'(\w+) as \(\s*SELECT\s+"(\w+)"\."names_name" as "names_name",\s*'
-        r'rank\(\) over \(order by "\2"\."_virt_agg_sum_\d+" desc \) as "name_rank"\s*'
+        r'rank\(\) over \(order by "\2"\."_virt_agg_sum_\d+(?:_wscope)?" desc \) as "name_rank"\s*'
         r'FROM\s+"\2"\)',
         re.MULTILINE,
     )
@@ -127,9 +127,9 @@ WITH\s+
 .*?[a-z_]+\s+as\s+\(
 \s*SELECT
 \s*"[^"]+"\."name"\s+as\s+"name",
-\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+"
+\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?"
 \s*FROM
 \s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
 \s*GROUP\s+BY
@@ -137,10 +137,10 @@ WITH\s+
 .*?
 WHERE
 \s*abs\(
-\s*"[^"]+"\."_virt_agg_sum_\d+"
+\s*"[^"]+"\."_virt_agg_sum_\d+(?:_wscope)?"
 \s*-\s*
-\s*"[^"]+"\."_virt_agg_sum_\d+"
-\s*\)\s*<\s*\(\s*0\.05\s*\*\s*"[^"]+"\."_virt_agg_sum_\d+"\s*\)
+\s*"[^"]+"\."_virt_agg_sum_\d+(?:_wscope)?"
+\s*\)\s*<\s*\(\s*0\.05\s*\*\s*"[^"]+"\."_virt_agg_sum_\d+(?:_wscope)?"\s*\)
 .*?
 SELECT
 \s*"[^"]+"\."state"\s+as\s+"state",
@@ -171,9 +171,9 @@ WITH\s+
 .*?[a-z_]+\s+as\s+\(
 \s*SELECT
 \s*"[^"]+"\."name"\s+as\s+"name",
-\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+"
+\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?"
 \s*FROM
 \s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
 \s*GROUP\s+BY
@@ -245,7 +245,7 @@ def test_multi_window():
     pattern = r"""[a-z]+ as \(
 SELECT
     (["a-z]+)\."name" as "name",
-    rank\(\) over \(order by \1\."_virt_agg_sum_\d+" desc \) as "all_rank"
+    rank\(\) over \(order by \1\."_virt_agg_sum_\d+(?:_wscope)?" desc \) as "all_rank"
 FROM
     \1\)"""
 

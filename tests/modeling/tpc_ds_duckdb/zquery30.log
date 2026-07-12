@@ -1,6 +1,6 @@
 query_id = "30"
 generator = "v3"
-gen_length = 6219
+gen_length = 6233
 preql_size = 1662
 comp_size = 1507
 generated_sql = """
@@ -46,7 +46,7 @@ WHERE
 abundant as (
 SELECT
     \"thoughtful\".\"ws_return_address_state\" as \"ws_return_address_state\",
-    avg(\"thoughtful\".\"customer_state_returns_2002\") as \"_virt_agg_avg_3912220044178081\"
+    avg(\"thoughtful\".\"customer_state_returns_2002\") as \"_virt_agg_avg_3912220044178081_wscope\"
 FROM
     \"thoughtful\"
 GROUP BY
@@ -88,7 +88,7 @@ FROM
     \"vacuous\"
     INNER JOIN \"abundant\" on \"vacuous\".\"ws_return_address_state\" is not distinct from \"abundant\".\"ws_return_address_state\"
 WHERE
-    \"vacuous\".\"customer_state_returns_2002\" > 1.2 * \"abundant\".\"_virt_agg_avg_3912220044178081\"
+    \"vacuous\".\"customer_state_returns_2002\" > 1.2 * \"abundant\".\"_virt_agg_avg_3912220044178081_wscope\"
 
 ORDER BY 
     \"vacuous\".\"ws_return_customer_id\" asc nulls first,
