@@ -814,6 +814,21 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return [x.reference for x in arg.by], True
     elif isinstance(arg, FunctionCallWrapper):
         return get_relevant_parent_concepts(arg.content)
+    elif isinstance(arg, Parenthetical):
+        return get_relevant_parent_concepts(arg.content)
+    elif isinstance(arg, NavigationWindowItem):
+        # A navigation window (lead/lag/...) emits one value per operand row, so
+        # an expression wrapping it lives at the operand's grain (+ partition),
+        # NOT its order-by. Flattening the order-by concept up as a grain parent
+        # of a wrapping row-op descends it to its key -- a window `order by
+        # date.week_seq` would drag the result down to date.id, finer than the
+        # window actually lives at, blocking the round-into-window merge (q2.1).
+        # The window's own grain still includes its order-by; only outer
+        # inference excludes it.
+        refs, flag = get_relevant_parent_concepts(arg.content)
+        for item in arg.over:
+            refs += get_relevant_parent_concepts(item)[0]
+        return refs, flag
     elif isinstance(arg, (Comparison, Conditional)):
         left, lflag = get_relevant_parent_concepts(arg.left)
         right, rflag = get_relevant_parent_concepts(arg.right)

@@ -14,6 +14,14 @@ from trilogy.core.processing.nodes import FilterNode, StrategyNode
 from .common import parent_outputs_needed
 
 
+def _has_concept_existence(where: BuildWhereClause) -> bool:
+    """True only for a REAL subselect arg (`x in <other column/select>`) — one
+    whose existence side carries concepts. A literal IN-list (`month in (1,2,3,4)`)
+    is also modeled as a subselect comparison but has no existence concepts, so it
+    is a plain scalar predicate safe to push into a WHERE."""
+    return any(arg for tup in (where.existence_arguments or ()) for arg in tup)
+
+
 def gen_filter(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -21,20 +29,28 @@ def gen_filter(
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,
     intrinsic_filter_pushdown: bool = True,
+    existence_source: bool = False,
 ) -> StrategyNode | None:
     """Apply a row filter over already-built parents. Filter doesn't reshape
     rows or remove columns — it just selects a subset of rows. So pass
     through every parent output as well as the filter's own primaries; any
     downstream consumer (e.g. an aggregate that needs a grain key) can then
     reach back through the filter without us having to predict its needs at
-    build time. The optimizer will prune unused columns later."""
+    build time. The optimizer will prune unused columns later.
+
+    An ``existence_source`` filter is a semijoin RHS (`pcid in store_buyers`):
+    its only consumer is the IN-subselect, which reads just the set value. Drop
+    the pass-through so the filter's own concept is the sole output — then its
+    single predicate pushes into a real WHERE (a pruned sub-query) below, instead
+    of a row-preserving CASE over carried scan columns."""
     pass_through: list[BuildConcept] = []
-    seen: set[str] = {c.address for c in outputs}
-    for parent in parents:
-        for output in parent.output_concepts:
-            if output.address not in seen:
-                pass_through.append(output)
-                seen.add(output.address)
+    seen = {c.address for c in outputs}
+    if not existence_source:
+        for parent in parents:
+            for output in parent.output_concepts:
+                if output.address not in seen:
+                    pass_through.append(output)
+                    seen.add(output.address)
     full_outputs = list(outputs) + pass_through
 
     # A filter concept's own predicate (`filter X where COND`) restricts rows
@@ -86,7 +102,7 @@ def gen_filter(
     ):
         where = next(iter(distinct.values()))
         cond = where.conditional
-        if not where.existence_arguments and is_scalar_condition(cond):
+        if not _has_concept_existence(where) and is_scalar_condition(cond):
             intrinsic_atoms = [cond]
 
     # Aggregate predicate (`filter X where count(...) by X > 1`): can't push as a
@@ -106,7 +122,7 @@ def gen_filter(
             r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE
         ]
         if (
-            not where.existence_arguments
+            not _has_concept_existence(where)
             and agg_args
             and all(r.address in parent_outputs for r in where.row_arguments)
             and all(

@@ -54,6 +54,7 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.node_generators.multiselect_node import extra_align_joins
+from trilogy.core.processing.node_generators.rowset_node import _interpose_limit_node
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -157,10 +158,32 @@ def _build_nested_select(
     BuildEnvironment,
     BuildWhereClause | None,
 ]:
-    """Build and materialize one nested select in its own build environment."""
+    """Build and materialize one nested select in its own build environment.
+
+    A nested select can carry its OWN query-scoped joins (a rowset body
+    ``with rs as inner join a.aid = b.bid select ...``) that the outer resolution
+    never saw. Those joins live on ``SelectLineage.scoped_joins`` and must be fed
+    to BOTH the factory (so the joined keys build to one canonical) and the build
+    env (so the graph bridges the two datasources) -- otherwise the body builds
+    with no join, its datasources come back as separate components, and the
+    read-back raises a misleading DisconnectedConceptsException for a join that is
+    in fact present inside the rowset (surfaced on enriched TPC-DS q64)."""
     author_env = history.base_environment
     caches = history.build_caches
-    factory = _factory_for_history(history)
+    nested_scoped = select.scoped_joins if isinstance(select, SelectLineage) else []
+    scoped_joins = caches.scoped_joins + [
+        j for j in nested_scoped if j not in caches.scoped_joins
+    ]
+    if caches.pseudonym_map is None:
+        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    factory = Factory(
+        environment=author_env,
+        build_cache=caches.build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        grain_build_cache=caches.grain_build_cache,
+        pseudonym_map=caches.pseudonym_map,
+        scoped_joins=scoped_joins,
+    )
     built: BuildSelectLineage | BuildMultiSelectLineage = factory.build(select)
     build_env = author_env.materialize_for_select(
         built.local_concepts,
@@ -169,7 +192,7 @@ def _build_nested_select(
         grain_build_cache=caches.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
-        scoped_joins=caches.scoped_joins,
+        scoped_joins=scoped_joins,
     )
     return built, build_env, built.where_clause
 
@@ -544,6 +567,15 @@ def resolve_rowset(
             partial_concepts=list(inner_node.partial_concepts),
         )
 
+    # The body's LIMIT (with the ORDER BY it selects under) defines the
+    # rowset's row set; materialize it as a dedicated post-body node exactly
+    # like v3 (`_interpose_limit_node`) so outer WHEREs stay post-limit and
+    # the boundary treats the limited rows as opaque.
+    if select.limit is not None:
+        inner_node.ordering = built.order_by
+        inner_node.rebuild_cache()
+        inner_node = _interpose_limit_node(inner_node, select, inner_env, depth)
+
     # Expose the demanded handles plus any rowset-derived handle that carries a
     # PSEUDONYM — a cross-rowset merge (`merge X.a into Y.b`, q44/q54) links its
     # two boundaries on the merged keys via the canonical-pseudonym map in
@@ -585,6 +617,44 @@ def resolve_rowset(
         seen.add(handle.address)
         handles.append(handle)
         inputs.append(produced[hlineage.content.address])
+
+    # A plain rowset's GRAIN keys (e.g. `id`) are the shared join keys back to the
+    # outer query and sibling rowsets, but they're plain roots — not
+    # `BuildRowsetItem` handles — so the loop above skips them. Expose any the inner
+    # producer supplies so they enter the boundary grain below and the FINAL merge
+    # joins on them; otherwise a shared-key rowset with no `merge into` pseudonym
+    # degrades to a `1=1` cross product -> cartesian (test_rowset_alias_name_
+    # collision: 3 rows -> 27). Mirrors v3 `gen_rowset_node` carrying the inner
+    # select's demanded output_components (`additional_relevant`). Multiselect
+    # grains are align concepts handled separately below, so scope to plain selects.
+    #
+    # Only for an UNFILTERED rowset: a WHERE/HAVING makes its key-set a proper
+    # subset of the base domain, so advertising the key would let the cover step
+    # satisfy the outer bare key FROM the filtered rowset and drop the unfiltered
+    # source (rowset_outer_addition: odd orders must survive NULL-extended via a
+    # LEFT add, not be inner-joined away). A filtered rowset stays a separate
+    # outer-added contributor.
+    #
+    # Plain ROW-projection rowsets only: an AGGREGATE rowset's grain is its
+    # grouping key, which the producer renames to the handle (`dept_totals` groups
+    # by `dept` and renders it as `_dept_totals_department`), so the raw grain key
+    # isn't a separately renderable column — exposing it makes assembly demand a
+    # `local.dept` no CTE projects (query-structure syntax example). A plain
+    # projection's grain key (`id`) IS a passthrough column, safe to expose.
+    if (
+        isinstance(built, BuildSelectLineage)
+        and built.where_clause is None
+        and built.having_clause is None
+        and not any(
+            o.derivation == Derivation.AGGREGATE for o in built.output_components
+        )
+    ):
+        handle_addrs = {h.address for h in handles}
+        for key_addr in built.grain.components:
+            if key_addr in produced and key_addr not in handle_addrs:
+                key_concept = produced[key_addr]
+                handles.append(key_concept)
+                inputs.append(key_concept)
 
     # A rowset wrapping a multiselect (q64): an aligned handle's content is the
     # multiselect concept (e.g. `s_name`), which the renderer resolves via
@@ -680,13 +750,29 @@ def _datasource_materializes(
     Matching on `ds.columns` (genuine bindings), not `output_concepts`, is
     deliberate: the latter includes merge-pseudonym-expanded entries that hide the
     real PARTIAL marker."""
-    if not _conditions_supported(ds, where, environment.concepts):
-        return False
     partial_covered = bool(
         where
         and ds.non_partial_for
         and condition_implies(where.conditional, ds.non_partial_for.conditional)
     )
+    # When the persisted population is EXACTLY the query's desired rows (the query
+    # `where` and the datasource's `non_partial_for` are mutually implied), the
+    # condition is already applied by materialization -- the datasource needs no
+    # column to re-express it. A `persist ... from select derived where cat = 1`
+    # drops the filter key (only the derived column is stored), so it can't pass
+    # `_conditions_supported`, but its baked-in population already satisfies a
+    # `... where cat = 1` query. Otherwise the datasource must express the
+    # (residual) condition itself.
+    population_is_exact = bool(
+        partial_covered
+        and where
+        and ds.non_partial_for
+        and condition_implies(ds.non_partial_for.conditional, where.conditional)
+    )
+    if not population_is_exact and not _conditions_supported(
+        ds, where, environment.concepts
+    ):
+        return False
     if ds.non_partial_for is not None and not partial_covered:
         return False
     return any(
@@ -818,6 +904,7 @@ def _build_from_graph(
         conditions,
         mandatory_list,
         datasource_columns,
+        environment=environment,
         return_merged_graph=True,
     )
     strategy_node = build_strategy_node(

@@ -1,0 +1,12 @@
+key id int;
+property id.d1 date;
+property id.d2 date;
+datasource facts ( id: id, d1: ?d1, d2: ?d2, ) grain (id) address facts;
+key s1 <- date_spine(date_add(current_date(), day, -10), current_date());
+key s2 <- date_spine(date_add(current_date(), day, -10), current_date());
+merge d1 into ~s1;
+merge d2 into ~s2;
+auto m1 <- count(id) by d1;
+auto m2 <- count(id) by d2;
+
+select s1, m1;

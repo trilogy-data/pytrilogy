@@ -1,0 +1,1032 @@
+
+WITH 
+questionable as (
+SELECT
+    CASE WHEN "date_date"."D_YEAR" in (2001,2002) THEN "date_date"."D_WEEK_SEQ" ELSE NULL END as "relevent_week_seq"
+FROM
+    "memory"."date_dim" as "catalog_sales_date_date"
+    LEFT OUTER JOIN "memory"."date_dim" as "date_date" on "catalog_sales_date_date"."D_DATE_SK" = "date_date"."D_DATE_SK"
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    "catalog_sales_catalog_sales"."CS_ITEM_SK" as "catalog_sales_item_id",
+    "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" as "catalog_sales_order_number",
+    "date_date"."D_WEEK_SEQ" as "date_week_seq",
+    "date_date"."D_YEAR" as "date_year",
+    "web_sales_web_sales"."WS_ITEM_SK" as "web_sales_item_id",
+    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number",
+    coalesce("catalog_sales_catalog_sales"."CS_SOLD_DATE_SK","date_date"."D_DATE_SK","web_sales_web_sales"."WS_SOLD_DATE_SK") as "web_sales_date_id"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    LEFT OUTER JOIN "memory"."catalog_sales" as "catalog_sales_catalog_sales" on "web_sales_web_sales"."WS_SOLD_DATE_SK" is not distinct from "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK"
+    INNER JOIN "memory"."date_dim" as "date_date" on "web_sales_web_sales"."WS_SOLD_DATE_SK" = "date_date"."D_DATE_SK"
+WHERE
+    "date_date"."D_WEEK_SEQ" in (select questionable."relevent_week_seq" from questionable where questionable."relevent_week_seq" is not null)
+),
+barracuda as (
+SELECT
+    "date_date"."D_DOW" as "date_day_of_week",
+    "date_date"."D_WEEK_SEQ" as "date_week_seq",
+    "web_sales_web_sales"."WS_EXT_SALES_PRICE" as "web_sales_ext_sales_price",
+    "web_sales_web_sales"."WS_ITEM_SK" as "web_sales_item_id",
+    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    INNER JOIN "memory"."date_dim" as "date_date" on "web_sales_web_sales"."WS_SOLD_DATE_SK" = "date_date"."D_DATE_SK"
+WHERE
+    "date_date"."D_WEEK_SEQ" in (select questionable."relevent_week_seq" from questionable where questionable."relevent_week_seq" is not null)
+),
+wakeful as (
+SELECT
+    "catalog_sales_catalog_sales"."CS_EXT_SALES_PRICE" as "catalog_sales_ext_sales_price",
+    "catalog_sales_catalog_sales"."CS_ITEM_SK" as "catalog_sales_item_id",
+    "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" as "catalog_sales_order_number",
+    "date_date"."D_DOW" as "date_day_of_week",
+    "date_date"."D_WEEK_SEQ" as "date_week_seq"
+FROM
+    "memory"."catalog_sales" as "catalog_sales_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "date_date"."D_DATE_SK"
+WHERE
+    "date_date"."D_WEEK_SEQ" in (select questionable."relevent_week_seq" from questionable where questionable."relevent_week_seq" is not null)
+),
+yummy as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_date_id" as "web_sales_date_id",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number"
+FROM
+    "thoughtful"),
+juicy as (
+SELECT
+    "yummy"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "yummy"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "yummy"."web_sales_date_id" as "date_id",
+    "yummy"."web_sales_date_id" as "web_sales_date_id",
+    "yummy"."web_sales_item_id" as "web_sales_item_id",
+    "yummy"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "yummy"."date_year" in (2001,2002) THEN "yummy"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "yummy"),
+vacuous as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("juicy"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "juicy" on "thoughtful"."catalog_sales_item_id" = "juicy"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "juicy"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "juicy"."date_id" AND "thoughtful"."web_sales_item_id" = "juicy"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "juicy"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select juicy."relevent_week_seq" from juicy where juicy."relevent_week_seq" is not null)
+),
+concerned as (
+SELECT
+    "vacuous"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "vacuous"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "vacuous"."web_sales_date_id" as "date_id",
+    "vacuous"."web_sales_date_id" as "web_sales_date_id",
+    "vacuous"."web_sales_item_id" as "web_sales_item_id",
+    "vacuous"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "vacuous"."date_year" in (2001,2002) THEN "vacuous"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "vacuous"),
+young as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("concerned"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "concerned" on "thoughtful"."catalog_sales_item_id" = "concerned"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "concerned"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "concerned"."date_id" AND "thoughtful"."web_sales_item_id" = "concerned"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "concerned"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select concerned."relevent_week_seq" from concerned where concerned."relevent_week_seq" is not null)
+),
+sparkling as (
+SELECT
+    "young"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "young"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "young"."web_sales_date_id" as "date_id",
+    "young"."web_sales_date_id" as "web_sales_date_id",
+    "young"."web_sales_item_id" as "web_sales_item_id",
+    "young"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "young"."date_year" in (2001,2002) THEN "young"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "young"),
+abhorrent as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("sparkling"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "sparkling" on "thoughtful"."catalog_sales_item_id" = "sparkling"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "sparkling"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "sparkling"."date_id" AND "thoughtful"."web_sales_item_id" = "sparkling"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "sparkling"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select sparkling."relevent_week_seq" from sparkling where sparkling."relevent_week_seq" is not null)
+),
+sweltering as (
+SELECT
+    "abhorrent"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "abhorrent"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "abhorrent"."web_sales_date_id" as "date_id",
+    "abhorrent"."web_sales_date_id" as "web_sales_date_id",
+    "abhorrent"."web_sales_item_id" as "web_sales_item_id",
+    "abhorrent"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "abhorrent"."date_year" in (2001,2002) THEN "abhorrent"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "abhorrent"),
+late as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("sweltering"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "sweltering" on "thoughtful"."catalog_sales_item_id" = "sweltering"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "sweltering"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "sweltering"."date_id" AND "thoughtful"."web_sales_item_id" = "sweltering"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "sweltering"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select sweltering."relevent_week_seq" from sweltering where sweltering."relevent_week_seq" is not null)
+),
+macho as (
+SELECT
+    "late"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "late"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "late"."web_sales_date_id" as "date_id",
+    "late"."web_sales_date_id" as "web_sales_date_id",
+    "late"."web_sales_item_id" as "web_sales_item_id",
+    "late"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "late"."date_year" in (2001,2002) THEN "late"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "late"),
+scrawny as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("macho"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "macho" on "thoughtful"."catalog_sales_item_id" = "macho"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "macho"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "macho"."date_id" AND "thoughtful"."web_sales_item_id" = "macho"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "macho"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select macho."relevent_week_seq" from macho where macho."relevent_week_seq" is not null)
+),
+friendly as (
+SELECT
+    "scrawny"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "scrawny"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "scrawny"."web_sales_date_id" as "date_id",
+    "scrawny"."web_sales_date_id" as "web_sales_date_id",
+    "scrawny"."web_sales_item_id" as "web_sales_item_id",
+    "scrawny"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "scrawny"."date_year" in (2001,2002) THEN "scrawny"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "scrawny"),
+kaput as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("friendly"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "friendly" on "thoughtful"."catalog_sales_item_id" = "friendly"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "friendly"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "friendly"."date_id" AND "thoughtful"."web_sales_item_id" = "friendly"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "friendly"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select friendly."relevent_week_seq" from friendly where friendly."relevent_week_seq" is not null)
+),
+divergent as (
+SELECT
+    "kaput"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "kaput"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "kaput"."web_sales_date_id" as "date_id",
+    "kaput"."web_sales_date_id" as "web_sales_date_id",
+    "kaput"."web_sales_item_id" as "web_sales_item_id",
+    "kaput"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "kaput"."date_year" in (2001,2002) THEN "kaput"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "kaput"),
+busy as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("divergent"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "divergent" on "thoughtful"."catalog_sales_item_id" = "divergent"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "divergent"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "divergent"."date_id" AND "thoughtful"."web_sales_item_id" = "divergent"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "divergent"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select divergent."relevent_week_seq" from divergent where divergent."relevent_week_seq" is not null)
+),
+charming as (
+SELECT
+    "busy"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "busy"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "busy"."web_sales_date_id" as "date_id",
+    "busy"."web_sales_date_id" as "web_sales_date_id",
+    "busy"."web_sales_item_id" as "web_sales_item_id",
+    "busy"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "busy"."date_year" in (2001,2002) THEN "busy"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "busy"),
+protective as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("charming"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "charming" on "thoughtful"."catalog_sales_item_id" = "charming"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "charming"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "charming"."date_id" AND "thoughtful"."web_sales_item_id" = "charming"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "charming"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select charming."relevent_week_seq" from charming where charming."relevent_week_seq" is not null)
+),
+premium as (
+SELECT
+    "protective"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "protective"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "protective"."web_sales_date_id" as "date_id",
+    "protective"."web_sales_date_id" as "web_sales_date_id",
+    "protective"."web_sales_item_id" as "web_sales_item_id",
+    "protective"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "protective"."date_year" in (2001,2002) THEN "protective"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "protective"),
+puzzled as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("premium"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "premium" on "thoughtful"."catalog_sales_item_id" = "premium"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "premium"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "premium"."date_id" AND "thoughtful"."web_sales_item_id" = "premium"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "premium"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select premium."relevent_week_seq" from premium where premium."relevent_week_seq" is not null)
+),
+waggish as (
+SELECT
+    "puzzled"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "puzzled"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "puzzled"."web_sales_date_id" as "date_id",
+    "puzzled"."web_sales_date_id" as "web_sales_date_id",
+    "puzzled"."web_sales_item_id" as "web_sales_item_id",
+    "puzzled"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "puzzled"."date_year" in (2001,2002) THEN "puzzled"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "puzzled"),
+rambunctious as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("thoughtful"."web_sales_date_id","waggish"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "waggish" on "thoughtful"."catalog_sales_item_id" = "waggish"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "waggish"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "waggish"."date_id" AND "thoughtful"."web_sales_item_id" = "waggish"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "waggish"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select waggish."relevent_week_seq" from waggish where waggish."relevent_week_seq" is not null)
+),
+puffy as (
+SELECT
+    "rambunctious"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "rambunctious"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "rambunctious"."web_sales_date_id" as "date_id",
+    "rambunctious"."web_sales_date_id" as "web_sales_date_id",
+    "rambunctious"."web_sales_item_id" as "web_sales_item_id",
+    "rambunctious"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "rambunctious"."date_year" in (2001,2002) THEN "rambunctious"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "rambunctious"),
+hard as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("puffy"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "puffy" on "thoughtful"."catalog_sales_item_id" = "puffy"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "puffy"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "puffy"."date_id" AND "thoughtful"."web_sales_item_id" = "puffy"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "puffy"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select puffy."relevent_week_seq" from puffy where puffy."relevent_week_seq" is not null)
+),
+sedate as (
+SELECT
+    "hard"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "hard"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "hard"."web_sales_date_id" as "date_id",
+    "hard"."web_sales_date_id" as "web_sales_date_id",
+    "hard"."web_sales_item_id" as "web_sales_item_id",
+    "hard"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "hard"."date_year" in (2001,2002) THEN "hard"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "hard"),
+yellow as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("sedate"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "sedate" on "thoughtful"."catalog_sales_item_id" = "sedate"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "sedate"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "sedate"."date_id" AND "thoughtful"."web_sales_item_id" = "sedate"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "sedate"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select sedate."relevent_week_seq" from sedate where sedate."relevent_week_seq" is not null)
+),
+resonant as (
+SELECT
+    "yellow"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "yellow"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "yellow"."web_sales_date_id" as "date_id",
+    "yellow"."web_sales_date_id" as "web_sales_date_id",
+    "yellow"."web_sales_item_id" as "web_sales_item_id",
+    "yellow"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "yellow"."date_year" in (2001,2002) THEN "yellow"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "yellow"),
+dapper as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("resonant"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "resonant" on "thoughtful"."catalog_sales_item_id" = "resonant"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "resonant"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "resonant"."date_id" AND "thoughtful"."web_sales_item_id" = "resonant"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "resonant"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select resonant."relevent_week_seq" from resonant where resonant."relevent_week_seq" is not null)
+),
+courageous as (
+SELECT
+    "dapper"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "dapper"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "dapper"."web_sales_date_id" as "date_id",
+    "dapper"."web_sales_date_id" as "web_sales_date_id",
+    "dapper"."web_sales_item_id" as "web_sales_item_id",
+    "dapper"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "dapper"."date_year" in (2001,2002) THEN "dapper"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "dapper"),
+vast as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("courageous"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "courageous" on "thoughtful"."catalog_sales_item_id" = "courageous"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "courageous"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "courageous"."date_id" AND "thoughtful"."web_sales_item_id" = "courageous"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "courageous"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select courageous."relevent_week_seq" from courageous where courageous."relevent_week_seq" is not null)
+),
+cool as (
+SELECT
+    "vast"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "vast"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "vast"."web_sales_date_id" as "date_id",
+    "vast"."web_sales_date_id" as "web_sales_date_id",
+    "vast"."web_sales_item_id" as "web_sales_item_id",
+    "vast"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "vast"."date_year" in (2001,2002) THEN "vast"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "vast"),
+elated as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("cool"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "cool" on "thoughtful"."catalog_sales_item_id" = "cool"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "cool"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "cool"."date_id" AND "thoughtful"."web_sales_item_id" = "cool"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "cool"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select cool."relevent_week_seq" from cool where cool."relevent_week_seq" is not null)
+),
+wary as (
+SELECT
+    "elated"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "elated"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "elated"."web_sales_date_id" as "date_id",
+    "elated"."web_sales_date_id" as "web_sales_date_id",
+    "elated"."web_sales_item_id" as "web_sales_item_id",
+    "elated"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "elated"."date_year" in (2001,2002) THEN "elated"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "elated"),
+bewildered as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("thoughtful"."web_sales_date_id","wary"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "wary" on "thoughtful"."catalog_sales_item_id" = "wary"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "wary"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "wary"."date_id" AND "thoughtful"."web_sales_item_id" = "wary"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "wary"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select wary."relevent_week_seq" from wary where wary."relevent_week_seq" is not null)
+),
+level as (
+SELECT
+    "bewildered"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "bewildered"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "bewildered"."web_sales_date_id" as "date_id",
+    "bewildered"."web_sales_date_id" as "web_sales_date_id",
+    "bewildered"."web_sales_item_id" as "web_sales_item_id",
+    "bewildered"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "bewildered"."date_year" in (2001,2002) THEN "bewildered"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "bewildered"),
+wooden as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("level"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "level" on "thoughtful"."catalog_sales_item_id" = "level"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "level"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "level"."date_id" AND "thoughtful"."web_sales_item_id" = "level"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "level"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select level."relevent_week_seq" from level where level."relevent_week_seq" is not null)
+),
+ceaseless as (
+SELECT
+    "wooden"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "wooden"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "wooden"."web_sales_date_id" as "date_id",
+    "wooden"."web_sales_date_id" as "web_sales_date_id",
+    "wooden"."web_sales_item_id" as "web_sales_item_id",
+    "wooden"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "wooden"."date_year" in (2001,2002) THEN "wooden"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "wooden"),
+tearful as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("ceaseless"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "ceaseless" on "thoughtful"."catalog_sales_item_id" = "ceaseless"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "ceaseless"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "ceaseless"."date_id" AND "thoughtful"."web_sales_item_id" = "ceaseless"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "ceaseless"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select ceaseless."relevent_week_seq" from ceaseless where ceaseless."relevent_week_seq" is not null)
+),
+cloudy as (
+SELECT
+    "tearful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "tearful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "tearful"."web_sales_date_id" as "date_id",
+    "tearful"."web_sales_date_id" as "web_sales_date_id",
+    "tearful"."web_sales_item_id" as "web_sales_item_id",
+    "tearful"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "tearful"."date_year" in (2001,2002) THEN "tearful"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "tearful"),
+gullible as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("cloudy"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "cloudy" on "thoughtful"."catalog_sales_item_id" = "cloudy"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "cloudy"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "cloudy"."date_id" AND "thoughtful"."web_sales_item_id" = "cloudy"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "cloudy"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select cloudy."relevent_week_seq" from cloudy where cloudy."relevent_week_seq" is not null)
+),
+flashy as (
+SELECT
+    "gullible"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "gullible"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "gullible"."web_sales_date_id" as "date_id",
+    "gullible"."web_sales_date_id" as "web_sales_date_id",
+    "gullible"."web_sales_item_id" as "web_sales_item_id",
+    "gullible"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "gullible"."date_year" in (2001,2002) THEN "gullible"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "gullible"),
+trite as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("flashy"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "flashy" on "thoughtful"."catalog_sales_item_id" = "flashy"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "flashy"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "flashy"."date_id" AND "thoughtful"."web_sales_item_id" = "flashy"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "flashy"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select flashy."relevent_week_seq" from flashy where flashy."relevent_week_seq" is not null)
+),
+quick as (
+SELECT
+    "trite"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "trite"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "trite"."web_sales_date_id" as "date_id",
+    "trite"."web_sales_date_id" as "web_sales_date_id",
+    "trite"."web_sales_item_id" as "web_sales_item_id",
+    "trite"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "trite"."date_year" in (2001,2002) THEN "trite"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "trite"),
+nondescript as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("quick"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "quick" on "thoughtful"."catalog_sales_item_id" = "quick"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "quick"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "quick"."date_id" AND "thoughtful"."web_sales_item_id" = "quick"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "quick"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select quick."relevent_week_seq" from quick where quick."relevent_week_seq" is not null)
+),
+round as (
+SELECT
+    "nondescript"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "nondescript"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "nondescript"."web_sales_date_id" as "date_id",
+    "nondescript"."web_sales_date_id" as "web_sales_date_id",
+    "nondescript"."web_sales_item_id" as "web_sales_item_id",
+    "nondescript"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "nondescript"."date_year" in (2001,2002) THEN "nondescript"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "nondescript"),
+slow as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("round"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "round" on "thoughtful"."catalog_sales_item_id" = "round"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "round"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "round"."date_id" AND "thoughtful"."web_sales_item_id" = "round"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "round"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select round."relevent_week_seq" from round where round."relevent_week_seq" is not null)
+),
+spiritual as (
+SELECT
+    "slow"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "slow"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "slow"."web_sales_date_id" as "date_id",
+    "slow"."web_sales_date_id" as "web_sales_date_id",
+    "slow"."web_sales_item_id" as "web_sales_item_id",
+    "slow"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "slow"."date_year" in (2001,2002) THEN "slow"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "slow"),
+brave as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("spiritual"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "spiritual" on "thoughtful"."catalog_sales_item_id" = "spiritual"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "spiritual"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "spiritual"."date_id" AND "thoughtful"."web_sales_item_id" = "spiritual"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "spiritual"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select spiritual."relevent_week_seq" from spiritual where spiritual."relevent_week_seq" is not null)
+),
+tenuous as (
+SELECT
+    "brave"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "brave"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "brave"."web_sales_date_id" as "date_id",
+    "brave"."web_sales_date_id" as "web_sales_date_id",
+    "brave"."web_sales_item_id" as "web_sales_item_id",
+    "brave"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "brave"."date_year" in (2001,2002) THEN "brave"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "brave"),
+abstracted as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("tenuous"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "tenuous" on "thoughtful"."catalog_sales_item_id" = "tenuous"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "tenuous"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "tenuous"."date_id" AND "thoughtful"."web_sales_item_id" = "tenuous"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "tenuous"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select tenuous."relevent_week_seq" from tenuous where tenuous."relevent_week_seq" is not null)
+),
+colossal as (
+SELECT
+    "abstracted"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "abstracted"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "abstracted"."web_sales_date_id" as "date_id",
+    "abstracted"."web_sales_date_id" as "web_sales_date_id",
+    "abstracted"."web_sales_item_id" as "web_sales_item_id",
+    "abstracted"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "abstracted"."date_year" in (2001,2002) THEN "abstracted"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "abstracted"),
+sloppy as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("colossal"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "colossal" on "thoughtful"."catalog_sales_item_id" = "colossal"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "colossal"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "colossal"."date_id" AND "thoughtful"."web_sales_item_id" = "colossal"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "colossal"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select colossal."relevent_week_seq" from colossal where colossal."relevent_week_seq" is not null)
+),
+obsolete as (
+SELECT
+    "sloppy"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "sloppy"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "sloppy"."web_sales_date_id" as "date_id",
+    "sloppy"."web_sales_date_id" as "web_sales_date_id",
+    "sloppy"."web_sales_item_id" as "web_sales_item_id",
+    "sloppy"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "sloppy"."date_year" in (2001,2002) THEN "sloppy"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "sloppy"),
+elegant as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("obsolete"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "obsolete" on "thoughtful"."catalog_sales_item_id" = "obsolete"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "obsolete"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "obsolete"."date_id" AND "thoughtful"."web_sales_item_id" = "obsolete"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "obsolete"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select obsolete."relevent_week_seq" from obsolete where obsolete."relevent_week_seq" is not null)
+),
+fabulous as (
+SELECT
+    "elegant"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "elegant"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "elegant"."web_sales_date_id" as "date_id",
+    "elegant"."web_sales_date_id" as "web_sales_date_id",
+    "elegant"."web_sales_item_id" as "web_sales_item_id",
+    "elegant"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "elegant"."date_year" in (2001,2002) THEN "elegant"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "elegant"),
+vivacious as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("fabulous"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "fabulous" on "thoughtful"."catalog_sales_item_id" = "fabulous"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "fabulous"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "fabulous"."date_id" AND "thoughtful"."web_sales_item_id" = "fabulous"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "fabulous"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select fabulous."relevent_week_seq" from fabulous where fabulous."relevent_week_seq" is not null)
+),
+exuberant as (
+SELECT
+    "vivacious"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "vivacious"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "vivacious"."web_sales_date_id" as "date_id",
+    "vivacious"."web_sales_date_id" as "web_sales_date_id",
+    "vivacious"."web_sales_item_id" as "web_sales_item_id",
+    "vivacious"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "vivacious"."date_year" in (2001,2002) THEN "vivacious"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "vivacious"),
+faithful as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("exuberant"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "exuberant" on "thoughtful"."catalog_sales_item_id" = "exuberant"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "exuberant"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "exuberant"."date_id" AND "thoughtful"."web_sales_item_id" = "exuberant"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "exuberant"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select exuberant."relevent_week_seq" from exuberant where exuberant."relevent_week_seq" is not null)
+),
+helpless as (
+SELECT
+    "faithful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "faithful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "faithful"."web_sales_date_id" as "date_id",
+    "faithful"."web_sales_date_id" as "web_sales_date_id",
+    "faithful"."web_sales_item_id" as "web_sales_item_id",
+    "faithful"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "faithful"."date_year" in (2001,2002) THEN "faithful"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "faithful"),
+odd as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("helpless"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "helpless" on "thoughtful"."catalog_sales_item_id" = "helpless"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "helpless"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "helpless"."date_id" AND "thoughtful"."web_sales_item_id" = "helpless"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "helpless"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select helpless."relevent_week_seq" from helpless where helpless."relevent_week_seq" is not null)
+),
+sordid as (
+SELECT
+    "odd"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "odd"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "odd"."web_sales_date_id" as "date_id",
+    "odd"."web_sales_date_id" as "web_sales_date_id",
+    "odd"."web_sales_item_id" as "web_sales_item_id",
+    "odd"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "odd"."date_year" in (2001,2002) THEN "odd"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "odd"),
+blue as (
+SELECT
+    "thoughtful"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "thoughtful"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "thoughtful"."date_week_seq" as "date_week_seq",
+    "thoughtful"."date_year" as "date_year",
+    "thoughtful"."web_sales_item_id" as "web_sales_item_id",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number",
+    coalesce("sordid"."web_sales_date_id","thoughtful"."web_sales_date_id") as "web_sales_date_id"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "sordid" on "thoughtful"."catalog_sales_item_id" = "sordid"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "sordid"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "sordid"."date_id" AND "thoughtful"."web_sales_item_id" = "sordid"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "sordid"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select sordid."relevent_week_seq" from sordid where sordid."relevent_week_seq" is not null)
+),
+imported as (
+SELECT
+    "blue"."catalog_sales_item_id" as "catalog_sales_item_id",
+    "blue"."catalog_sales_order_number" as "catalog_sales_order_number",
+    "blue"."web_sales_date_id" as "date_id",
+    "blue"."web_sales_date_id" as "web_sales_date_id",
+    "blue"."web_sales_item_id" as "web_sales_item_id",
+    "blue"."web_sales_order_number" as "web_sales_order_number",
+    CASE WHEN "blue"."date_year" in (2001,2002) THEN "blue"."date_week_seq" ELSE NULL END as "relevent_week_seq"
+FROM
+    "blue"),
+ugly as (
+SELECT
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number"
+FROM
+    "thoughtful"
+    RIGHT OUTER JOIN "imported" on "thoughtful"."catalog_sales_item_id" = "imported"."catalog_sales_item_id" AND "thoughtful"."catalog_sales_order_number" = "imported"."catalog_sales_order_number" AND "thoughtful"."web_sales_date_id" is not distinct from "imported"."date_id" AND "thoughtful"."web_sales_item_id" = "imported"."web_sales_item_id" AND "thoughtful"."web_sales_order_number" = "imported"."web_sales_order_number"
+WHERE
+    "thoughtful"."date_week_seq" in (select imported."relevent_week_seq" from imported where imported."relevent_week_seq" is not null)
+),
+ruthless as (
+SELECT
+    "ugly"."web_sales_order_number" as "web_sales_order_number"
+FROM
+    "ugly"),
+bear as (
+SELECT
+    "barracuda"."date_day_of_week" as "date_day_of_week",
+    "barracuda"."date_week_seq" as "date_week_seq",
+    "barracuda"."web_sales_ext_sales_price" as "web_sales_ext_sales_price"
+FROM
+    "barracuda"
+WHERE
+    "barracuda"."date_week_seq" in (select questionable."relevent_week_seq" from questionable where questionable."relevent_week_seq" is not null)
+
+GROUP BY
+    1,
+    2,
+    3,
+    "barracuda"."web_sales_item_id",
+    "barracuda"."web_sales_order_number"),
+deeply as (
+SELECT
+    "wakeful"."catalog_sales_ext_sales_price" as "catalog_sales_ext_sales_price",
+    "wakeful"."date_day_of_week" as "date_day_of_week",
+    "wakeful"."date_week_seq" as "date_week_seq"
+FROM
+    "wakeful"
+WHERE
+    "wakeful"."date_week_seq" in (select questionable."relevent_week_seq" from questionable where questionable."relevent_week_seq" is not null)
+
+GROUP BY
+    1,
+    2,
+    3,
+    "wakeful"."catalog_sales_item_id",
+    "wakeful"."catalog_sales_order_number"),
+cheetah as (
+SELECT
+    "bear"."date_week_seq" as "date_week_seq",
+    sum(CASE
+	WHEN "bear"."date_day_of_week" = 0 THEN "bear"."web_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_9238538473336606",
+    sum(CASE
+	WHEN "bear"."date_day_of_week" = 1 THEN "bear"."web_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_8302396398525202",
+    sum(CASE
+	WHEN "bear"."date_day_of_week" = 2 THEN "bear"."web_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_6823422966658347",
+    sum(CASE
+	WHEN "bear"."date_day_of_week" = 3 THEN "bear"."web_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_2293560889657522",
+    sum(CASE
+	WHEN "bear"."date_day_of_week" = 4 THEN "bear"."web_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_8086371301050807",
+    sum(CASE
+	WHEN "bear"."date_day_of_week" = 5 THEN "bear"."web_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_8833754379564371",
+    sum(CASE
+	WHEN "bear"."date_day_of_week" = 6 THEN "bear"."web_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_5332872165953971"
+FROM
+    "bear"
+GROUP BY
+    1),
+badger as (
+SELECT
+    "deeply"."date_week_seq" as "date_week_seq",
+    sum(CASE
+	WHEN "deeply"."date_day_of_week" = 0 THEN "deeply"."catalog_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_5446384850356435",
+    sum(CASE
+	WHEN "deeply"."date_day_of_week" = 1 THEN "deeply"."catalog_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_7224794219444244",
+    sum(CASE
+	WHEN "deeply"."date_day_of_week" = 2 THEN "deeply"."catalog_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_733654448721027",
+    sum(CASE
+	WHEN "deeply"."date_day_of_week" = 3 THEN "deeply"."catalog_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_3727603509126659",
+    sum(CASE
+	WHEN "deeply"."date_day_of_week" = 4 THEN "deeply"."catalog_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_2131371712943644",
+    sum(CASE
+	WHEN "deeply"."date_day_of_week" = 5 THEN "deeply"."catalog_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_4518379598128005",
+    sum(CASE
+	WHEN "deeply"."date_day_of_week" = 6 THEN "deeply"."catalog_sales_ext_sales_price"
+	ELSE cast(0.0 as numeric(15,2))
+	END) as "_virt_agg_sum_7662941318754865"
+FROM
+    "deeply"
+GROUP BY
+    1),
+chimpanzee as (
+SELECT
+    "badger"."date_week_seq" as "date_week_seq",
+    "cheetah"."_virt_agg_sum_2293560889657522" + "badger"."_virt_agg_sum_3727603509126659" as "wednesday_sales",
+    "cheetah"."_virt_agg_sum_5332872165953971" + "badger"."_virt_agg_sum_7662941318754865" as "saturday_sales",
+    "cheetah"."_virt_agg_sum_6823422966658347" + "badger"."_virt_agg_sum_733654448721027" as "tuesday_sales",
+    "cheetah"."_virt_agg_sum_8086371301050807" + "badger"."_virt_agg_sum_2131371712943644" as "thursday_sales",
+    "cheetah"."_virt_agg_sum_8302396398525202" + "badger"."_virt_agg_sum_7224794219444244" as "monday_sales",
+    "cheetah"."_virt_agg_sum_8833754379564371" + "badger"."_virt_agg_sum_4518379598128005" as "friday_sales",
+    "cheetah"."_virt_agg_sum_9238538473336606" + "badger"."_virt_agg_sum_5446384850356435" as "sunday_sales"
+FROM
+    "cheetah"
+    INNER JOIN "badger" on "cheetah"."date_week_seq" = "badger"."date_week_seq"),
+cobra as (
+SELECT
+    "chimpanzee"."date_week_seq" as "date_week_seq",
+    lead("chimpanzee"."friday_sales", 53) over (order by "chimpanzee"."date_week_seq" asc ) as "_virt_window_lead_6651551761445993",
+    lead("chimpanzee"."monday_sales", 53) over (order by "chimpanzee"."date_week_seq" asc ) as "_virt_window_lead_9809563217267406",
+    lead("chimpanzee"."saturday_sales", 53) over (order by "chimpanzee"."date_week_seq" asc ) as "_virt_window_lead_5767709179323528",
+    lead("chimpanzee"."sunday_sales", 53) over (order by "chimpanzee"."date_week_seq" asc ) as "_virt_window_lead_3949607449893123",
+    lead("chimpanzee"."thursday_sales", 53) over (order by "chimpanzee"."date_week_seq" asc ) as "_virt_window_lead_2497781736791521",
+    lead("chimpanzee"."tuesday_sales", 53) over (order by "chimpanzee"."date_week_seq" asc ) as "_virt_window_lead_5067641372653397",
+    lead("chimpanzee"."wednesday_sales", 53) over (order by "chimpanzee"."date_week_seq" asc ) as "_virt_window_lead_315641373767519"
+FROM
+    "chimpanzee"),
+cougar as (
+SELECT
+    "chimpanzee"."date_week_seq" as "date_week_seq",
+    "chimpanzee"."friday_sales" as "friday_sales",
+    "chimpanzee"."monday_sales" as "monday_sales",
+    "chimpanzee"."saturday_sales" as "saturday_sales",
+    "chimpanzee"."sunday_sales" as "sunday_sales",
+    "chimpanzee"."thursday_sales" as "thursday_sales",
+    "chimpanzee"."tuesday_sales" as "tuesday_sales",
+    "chimpanzee"."wednesday_sales" as "wednesday_sales",
+    "cobra"."_virt_window_lead_2497781736791521" as "_virt_window_lead_2497781736791521",
+    "cobra"."_virt_window_lead_315641373767519" as "_virt_window_lead_315641373767519",
+    "cobra"."_virt_window_lead_3949607449893123" as "_virt_window_lead_3949607449893123",
+    "cobra"."_virt_window_lead_5067641372653397" as "_virt_window_lead_5067641372653397",
+    "cobra"."_virt_window_lead_5767709179323528" as "_virt_window_lead_5767709179323528",
+    "cobra"."_virt_window_lead_6651551761445993" as "_virt_window_lead_6651551761445993",
+    "cobra"."_virt_window_lead_9809563217267406" as "_virt_window_lead_9809563217267406"
+FROM
+    "cobra"
+    INNER JOIN "chimpanzee" on "cobra"."date_week_seq" = "chimpanzee"."date_week_seq")
+SELECT
+    "cougar"."date_week_seq" as "date_week_seq",
+    round(( "cougar"."sunday_sales" ) / ("cougar"."_virt_window_lead_3949607449893123"),2) as "sunday_increase",
+    round(( "cougar"."monday_sales" ) / ("cougar"."_virt_window_lead_9809563217267406"),2) as "monday_increase",
+    round(( "cougar"."tuesday_sales" ) / ("cougar"."_virt_window_lead_5067641372653397"),2) as "tuesday_increase",
+    round(( "cougar"."wednesday_sales" ) / ("cougar"."_virt_window_lead_315641373767519"),2) as "wednesday_increase",
+    round(( "cougar"."thursday_sales" ) / ("cougar"."_virt_window_lead_2497781736791521"),2) as "thursday_increase",
+    round(( "cougar"."friday_sales" ) / ("cougar"."_virt_window_lead_6651551761445993"),2) as "friday_increase",
+    round(( "cougar"."saturday_sales" ) / ("cougar"."_virt_window_lead_5767709179323528"),2) as "saturday_increase"
+FROM
+    "cougar"
+WHERE
+    round(( "cougar"."sunday_sales" ) / ("cougar"."_virt_window_lead_3949607449893123"),2) is not null
+
+ORDER BY 
+    "cougar"."date_week_seq" asc nulls first
+LIMIT (100)

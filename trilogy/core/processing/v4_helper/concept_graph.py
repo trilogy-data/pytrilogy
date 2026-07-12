@@ -19,6 +19,7 @@ by the v3 generators (`gen_group_node`, `gen_filter_node`,
 from typing import Callable
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -140,7 +141,14 @@ def _upstream_aggregate(
     alone and the input merge cross-joins ON 1=1. Mirrors `_aggregate_input_grain`
     (which already includes it) so the graph edges and the computed input grain
     agree."""
-    base = list(_lineage_args(concept, environment))
+    # A grand-total (`by *`) aggregate's grouping key is the abstract
+    # `__preql_internal.all_rows` marker. It is a single-row cross-join marker,
+    # never a real sourced column -- demanding it forces the input scan to
+    # project `1 as __preql_internal.all_rows` and the consumer to INNER JOIN on
+    # it instead of cross-joining ON 1=1 (v3 strips it in `gen_group_node`).
+    base = [
+        c for c in _lineage_args(concept, environment) if c.name != ALL_ROWS_CONCEPT
+    ]
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
             if isinstance(arg, BuildConcept):
@@ -1020,8 +1028,24 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
+        # Same rowset cycle guard as the main constraint pass above: a
+        # condition concept DERIVED from a rowset (a bare aggregate over a
+        # rowset handle, co-grained to the select grain) already sits above
+        # that rowset; constraining it back onto a mandatory output owned by
+        # the same rowset forms a rowset→condition→rowset cycle that kills
+        # the topological concept-set pass.
+        src_lineage_ancestor_rowsets = {
+            attrs[a].rowset_name
+            for a in nx.ancestors(graph, src)
+            if attrs[a].rowset_name
+        }
         for dst in mandatory_blank_ids:
             if dst not in graph.nodes or graph.has_edge(src, dst):
+                continue
+            if (
+                attrs[dst].rowset_name
+                and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
+            ):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)
     return graph, attrs, edges

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from trilogy import Dialects
+from trilogy.constants import CONFIG
 from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
@@ -658,8 +659,17 @@ select count(sale_id) as sale_count;
     # not staged_sales_tbl (which would restrict it to year=2023).
     staged = build_executor(include_staging=True)
     sql = gen_sql(staged, filter_scalar_query)
+    # The filter-scalar avg must range over the full items dim (items_tbl), not a
+    # 2023-restricted source -- otherwise item 3 (price 100, a 2022 sale) drops
+    # and the count becomes 2. The sale_count == 1 check below is the real guard.
     assert "items_tbl" in sql, sql
-    assert "staged_sales_tbl" not in sql, sql
+    if not CONFIG.use_v4_discovery:
+        # v3 sources the outer scan from items+sales. v4 legitimately uses the
+        # pre-joined staging table for the OUTER scan (its non_partial_for matches
+        # the outer sale_year = 2023 filter) -- equivalent rows, and the avg still
+        # sources items_tbl. (v4 correctly does NOT use staging in permutation 3,
+        # where no sale_year filter makes staging incomplete.)
+        assert "staged_sales_tbl" not in sql, sql
     result = staged.execute_text(filter_scalar_query)[0].fetchall()
     assert result[0].sale_count == 1
 
@@ -843,6 +853,26 @@ having value = 2;
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     assert len(results) == 1
+
+    # The disconnected `where x = 1` is a gate (EXISTS), not a dropped filter:
+    # when the gated model has no matching row the whole (rootless) output is
+    # suppressed. A separate engine so the gate-fails datasource (`x = 5`) is the
+    # only `example` in scope.
+    gate_fails_engine = Dialects.DUCK_DB.default_executor()
+    gate_fails = """
+key x int;
+
+datasource example (
+x)
+grain (x)
+query '''
+select 5 as x''';
+
+where x = 1
+SELECT unnest([1,2,3,4]) as value, 'example' as dim
+having value = 2;
+"""
+    assert gate_fails_engine.execute_text(gate_fails)[0].fetchall() == []
 
 
 def test_filtered_aggregate_preserves_empty_groups(default_duckdb_engine: Executor):

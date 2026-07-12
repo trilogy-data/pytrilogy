@@ -1,3 +1,4 @@
+import copy
 import os
 from pathlib import Path
 
@@ -39,6 +40,25 @@ def _maybe_enable_v4_discovery():
         CONFIG.use_v4_discovery = prior
     else:
         yield
+
+
+@fixture(autouse=True)
+def _restore_global_config():
+    """Contain cross-test CONFIG leakage. CONFIG is a process-global singleton and
+    many tests toggle its planner knobs (`use_v4_discovery`, `optimizations.*`) --
+    a single test that restored to a hardcoded value instead of the prior one
+    (e.g. a `finally: CONFIG.use_v4_discovery = False`) silently ran EVERY later
+    test under the wrong planner, masking real failures under a green sweep.
+    Snapshot the mutable knobs before each test and restore after, so a leak in one
+    test can't reconfigure the planner for the next. Restores to the value at test
+    START (the session fixture's env-driven value under a v4 sweep)."""
+    prior_v4 = CONFIG.use_v4_discovery
+    prior_opts = copy.copy(CONFIG.optimizations)
+    try:
+        yield
+    finally:
+        CONFIG.use_v4_discovery = prior_v4
+        CONFIG.optimizations = prior_opts
 
 
 def pytest_collection_modifyitems(config, items):

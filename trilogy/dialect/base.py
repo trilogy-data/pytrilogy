@@ -1148,6 +1148,35 @@ class BaseDialect:
                 return rendered
         return None
 
+    def _filter_guaranteed_by_sole_parent(
+        self, lineage: BuildFilterItem, cte: CTE | UnionCTE
+    ) -> bool:
+        """A filter-item's per-row CASE is redundant when the CTE's SOLE parent
+        already guarantees the filter's predicate — e.g. predicate pushdown
+        relocated the filter's aggregate condition into a group parent's HAVING
+        and stripped the redundant copy from this consumer. A single-parent (no
+        join) projection can't NULL-pad rows, so every surviving row satisfies
+        the where; render the content bare (which then lets CollapseSingleParent
+        fold this passthrough into the group parent, matching v3's single node).
+
+        Gated to a single plain-CTE parent whose condition implies the where and
+        which supplies every column the filter references, so no row that fails
+        the predicate can reach this projection."""
+        if len(cte.parent_ctes) != 1:
+            return False
+        parent = cte.parent_ctes[0]
+        if not isinstance(parent, CTE) or parent.condition is None:
+            return False
+        where_cond = lineage.where.conditional
+        if not (
+            where_cond == parent.condition
+            or condition_implies(parent.condition, where_cond)
+        ):
+            return False
+        refs = {a.address for a in lineage.content_concept_arguments}
+        refs |= {a.address for a in lineage.where.row_arguments}
+        return all(parent.name in (cte.source_map.get(r) or []) for r in refs)
+
     def render_concept_sql(
         self,
         c: BuildConcept,
@@ -1268,11 +1297,19 @@ class BaseDialect:
                 # When the CTE's WHERE already restricts rows to those satisfying
                 # the filter's predicate (either exact match or a superset that
                 # implies it), the per-row CASE WHEN is redundant — emit just
-                # the content.
-                if cte.condition is not None and (
-                    cte.condition == c.lineage.where.conditional
-                    or condition_implies(cte.condition, c.lineage.where.conditional)
-                ):
+                # the content. Same when the CTE's SOLE parent already guarantees
+                # the predicate: predicate pushdown relocates a filter's
+                # aggregate condition into a group parent's HAVING and strips the
+                # copy here, so `cte.condition` no longer names it even though
+                # every surviving row satisfies it.
+                where_cond = c.lineage.where.conditional
+                if (
+                    cte.condition is not None
+                    and (
+                        cte.condition == where_cond
+                        or condition_implies(cte.condition, where_cond)
+                    )
+                ) or self._filter_guaranteed_by_sole_parent(c.lineage, cte):
                     rval = self.render_expr(
                         c.lineage.content, cte=cte, raise_invalid=raise_invalid
                     )

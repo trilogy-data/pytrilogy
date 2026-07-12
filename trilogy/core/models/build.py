@@ -3091,13 +3091,22 @@ class Factory:
 
         else:
             build_lineage = None
+        # A presence probe's whole point is per-SIDE identity: two probes over
+        # the same key group get identical post-substitution lineages, so a
+        # lineage-hash canonical name would fuse them (and canonical-space
+        # planning would answer both from one side). Keep the probe's own name,
+        # which embeds the probed member's hash.
         canonical_name = (
-            generate_concept_name(
-                build_lineage,
-                self.scoped_merge_sources_by_target.get(base.address),
+            base.name
+            if PRESENCE_PROBE_PREFIX in base.name
+            else (
+                generate_concept_name(
+                    build_lineage,
+                    self.scoped_merge_sources_by_target.get(base.address),
+                )
+                if build_lineage
+                else base.name
             )
-            if build_lineage
-            else base.name
         )
         cache_address = (
             f"{base.namespace}.{base.address}.{canonical_name}.{str(final_grain)}"

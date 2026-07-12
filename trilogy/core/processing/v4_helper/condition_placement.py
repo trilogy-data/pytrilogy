@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from enum import Enum
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
+from trilogy.core.processing.discovery_utility import _output_is_rootless
 
 from .constants import FINAL_NODE_ID, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
@@ -34,6 +36,7 @@ class PlacementReason(Enum):
     UPSTREAM_MOST = "upstream_most"
     FINAL_RECONVERGENCE = "final_reconvergence"
     FINAL_CROSS_GRAIN_AGGREGATE = "final_cross_grain_aggregate"
+    DISCONNECTED_GATE = "disconnected_gate"
 
 
 @dataclass(frozen=True)
@@ -104,10 +107,21 @@ def _candidate_groups(
         <= _reachable_input(gid, lineage_ancestors_graph, buckets, group_members)
     ]
     if not candidates:
-        raise ValueError(
-            f"Could not place condition atom {atom}: row inputs "
-            f"{sorted(row_inputs)} not reachable from any group."
-        )
+        # No single group (with its ancestors) covers every input, but each
+        # input may still be produced by SOME group — e.g. a rowset output
+        # compared against a bare aggregate co-grained over that same rowset
+        # (`sct.total_spent > 0.5 * max_total`): the branches only reconverge
+        # at FINAL, so return empty and let the caller route the atom there.
+        # Raise only for an input no group produces at all — that predicate
+        # would otherwise be silently dropped.
+        produced = set().union(*group_members.values()) if group_members else set()
+        missing = row_inputs - produced
+        if missing:
+            raise ValueError(
+                f"Could not place condition atom {atom}: row inputs "
+                f"{sorted(missing)} not produced by any group."
+            )
+        return []
     return [
         gid
         for gid in candidates
@@ -167,6 +181,60 @@ def _aggregate_outputs(
             for b in buckets.values()
         )
     }
+
+
+def _post_aggregation_producers(
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+) -> set[str]:
+    """Producer groups of row inputs that are GLOBAL post-aggregation VALUES:
+    a `by *` aggregate output (grain = the abstract all_rows marker, or no
+    grain at all), or a derived concept (e.g. a bool BASIC wrapping one) whose
+    producer sits lineage-downstream of such an aggregate. An atom referencing
+    a global value is a 0/1-row gate — it may only be hosted at the value's
+    producer (HAVING) or downstream of it; an upstream scan carrying the
+    address as a computable member re-renders the aggregate inline at the
+    HOSTING group's grain, silently turning the global gate into a per-grain
+    HAVING. Deliberately untouched: a GRAINED aggregate value (its keyed
+    consumers are legitimate join hosts — `web_total > store_total` joins both
+    aggregate CTEs on the shared grain) and a MIXED atom pairing a global
+    value with row-level inputs (`account_balance > avg_bal by *`, TPC-H q22
+    — there the host is the row group with the global CTE cross-joined in, so
+    pinning to the producer chain strands the row side). Pin only when EVERY
+    row input is a global post-aggregation value."""
+    all_rows_address = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
+    lineage_only = lineage_subgraph(group_graph, group_edges)
+
+    def _is_global(gid: str) -> bool:
+        return set(buckets[gid].grain_components) <= {all_rows_address}
+
+    producers: set[str] = set()
+    for addr in row_inputs:
+        producer: str | None = None
+        for gid, b in buckets.items():
+            if addr not in set(b.primary_members):
+                continue
+            if b.derivation in _EMITS_GROUP_BY and _is_global(gid):
+                producer = gid
+            elif (
+                b.derivation not in _EMITS_GROUP_BY
+                and _is_global(gid)
+                and gid in lineage_only
+                and any(
+                    anc in buckets
+                    and buckets[anc].derivation in _EMITS_GROUP_BY
+                    and _is_global(anc)
+                    for anc in nx.ancestors(lineage_only, gid)
+                )
+            ):
+                producer = gid
+            break
+        if producer is None:
+            return set()
+        producers.add(producer)
+    return producers
 
 
 def _routes_to_final_for_cross_grain_aggregates(
@@ -255,6 +323,23 @@ def plan_condition_placements(
         gid: set(b.primary_members) | set(b.secondary_members)
         for gid, b in buckets.items()
     }
+    # Every concept that is the RHS set of some membership (`x in <set>`) in this
+    # query, and the groups that PRODUCE one. A membership must never be injected
+    # on a group that produces a set: the set is a side-channel subselect that
+    # must stay unfiltered, and filtering its producer by `x in set` is
+    # self-referential (the set defines the rows it's filtered against -> the
+    # IN-RHS renders against a dangling CTE).
+    all_existence_addrs: set[str] = set()
+    for clause in conditions:
+        for atom in decompose_condition(clause.conditional):
+            all_existence_addrs |= {
+                c.address for group in atom.existence_arguments for c in group
+            }
+    existence_set_producers = {
+        gid
+        for gid, b in buckets.items()
+        if all_existence_addrs & set(b.primary_members)
+    }
     placements: list[ConditionPlacement] = []
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
@@ -267,10 +352,84 @@ def plan_condition_placements(
                 lineage_ancestors_graph,
                 buckets,
             )
+            # An atom referencing an aggregate OUTPUT is a post-aggregation
+            # predicate: it may only be hosted at that aggregate's producer
+            # group (HAVING) or downstream of it. An upstream scan can carry
+            # the address as a computable member, but hosting there re-renders
+            # the aggregate inline at the HOSTING group's grain — a `by *`
+            # global gate silently becomes a per-output-grain HAVING.
+            producer_gids = _post_aggregation_producers(
+                row_inputs, buckets, group_graph, group_edges
+            )
+            if producer_gids:
+                # LINEAGE-only descendants: a CONSTRAINT successor is the
+                # d0 consumer the gate must sit ABOVE, not a group that
+                # can evaluate the post-aggregation value.
+                lineage_only = lineage_subgraph(group_graph, group_edges)
+                allowed: set[str] | None = None
+                for gid in producer_gids:
+                    reach = {gid}
+                    if gid in lineage_only:
+                        reach |= nx.descendants(lineage_only, gid)
+                    allowed = reach if allowed is None else (allowed & reach)
+                candidates = [gid for gid in candidates if gid in (allowed or set())]
+                if not candidates:
+                    # The producers' branches only reconverge at FINAL.
+                    placements.append(
+                        ConditionPlacement(
+                            atom=atom,
+                            group_ids=(FINAL_NODE_ID,),
+                            reason=PlacementReason.FINAL_RECONVERGENCE,
+                        )
+                    )
+                    continue
             closures = _producer_closures(row_inputs, group_graph, buckets)
             restricted = [
                 gid for gid in candidates if all(gid in reach for reach in closures)
             ]
+            # A self-contained membership whose ONLY hosts are membership-set
+            # producers (output and set share one scan, so the set's producer is
+            # the sole candidate) has nowhere neutral to land -- placing it on a
+            # producer is self-referential. Route to FINAL, where each set is a
+            # subselect feeder. Memberships with a real consumer candidate (the
+            # common TPC-DS `x in <set>` over a separate output aggregate) are
+            # untouched.
+            if (
+                atom.existence_arguments
+                and restricted
+                and all(gid in existence_set_producers for gid in restricted)
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(FINAL_NODE_ID,),
+                        reason=PlacementReason.FINAL_RECONVERGENCE,
+                    )
+                )
+                continue
+            # A gate whose row inputs are only producible by groups disconnected
+            # from the mandatory outputs (e.g. `where x = 1` beside a rootless
+            # `unnest([...])`/constant output) has no covering contributor to host
+            # it -- its own root group is pruned from FINAL assembly, silently
+            # dropping the filter. Route it to FINAL, which cross-joins the gate's
+            # scan (the FINAL merge dedups to the output grain, so the gate acts as
+            # a 0/1-row EXISTS gate). Restricted to rootless outputs: a disconnected
+            # filter beside a real datasource output is a missing join and already
+            # raised at the connectivity pre-gate, so it never reaches here.
+            if (
+                mandatory_list
+                and candidates
+                and _output_is_rootless(mandatory_list)
+                and all(gid not in main_lineage for gid in candidates)
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(FINAL_NODE_ID,),
+                        reason=PlacementReason.DISCONNECTED_GATE,
+                    )
+                )
+                continue
             agg_outputs = _aggregate_outputs(row_inputs, buckets)
             if _routes_to_final_for_cross_grain_aggregates(agg_outputs, buckets):
                 placements.append(

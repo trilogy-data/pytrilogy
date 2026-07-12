@@ -38,8 +38,17 @@ def test_pipeline_skips_union_refire_when_union_dim_pushdown_disabled():
         plan = build_optimization_rule_plan()
 
     names = [phase.name for phase in plan]
-    assert names == ["predicate_pushdown.initial", "predicate_pushdown.remove"]
-    assert not any(phase.refires_after for phase in plan)
+    # merge_aggregate is disabled here (all flags off then predicate_pushdown on),
+    # so the passthrough-only cleanup phase runs after predicate pushdown removes.
+    assert names == [
+        "predicate_pushdown.initial",
+        "predicate_pushdown.remove",
+        "collapse_single_parent.passthrough_after_pushdown",
+    ]
+    # The point of this test: with union_dim_pushdown disabled, the union-triggered
+    # predicate refire is absent. (Assert the intent directly rather than "nothing
+    # refires" -- unrelated phases may legitimately carry refire triggers.)
+    assert "predicate_pushdown.after_union_dim" not in names
 
 
 def test_pipeline_runs_datasource_inlining_before_predicate_pushdown():
@@ -51,6 +60,7 @@ def test_pipeline_runs_datasource_inlining_before_predicate_pushdown():
         "inline_datasource",
         "predicate_pushdown.initial",
         "predicate_pushdown.remove",
+        "collapse_single_parent.passthrough_after_pushdown",
     ]
     by_name = {phase.name: phase for phase in plan}
     assert by_name["predicate_pushdown.initial"].depends_on == ("inline_datasource",)
@@ -70,6 +80,7 @@ def test_pipeline_runs_datasource_inlining_before_join_hoist():
         "join_hoist",
         "predicate_pushdown.initial",
         "predicate_pushdown.remove",
+        "collapse_single_parent.passthrough_after_pushdown",
     ]
     by_name = {phase.name: phase for phase in plan}
     assert by_name["join_hoist"].depends_on == ("inline_datasource",)
@@ -94,6 +105,7 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
         "union_dim_pushdown",
         "predicate_pushdown.after_union_dim",
         "predicate_pushdown.remove",
+        "collapse_single_parent.passthrough_after_pushdown",
         "upgrade_join_on_guards.final",
         "predicate_pushdown.after_final_upgrade",
     ]
@@ -131,6 +143,7 @@ def test_pipeline_refires_group_merge_after_shape_cleanup():
         "predicate_pushdown.initial",
         "predicate_pushdown.remove",
         "merge_irrelevant_group_by.after_predicate_remove",
+        "collapse_single_parent.passthrough_after_pushdown",
     ]
     assert by_name["merge_irrelevant_group_by.after_join_hoist"].refires_after == (
         "join_hoist",

@@ -1,17 +1,11 @@
 query_id = "84"
 generator = "v3"
-gen_length = 2865
+gen_length = 2659
 preql_size = 640
 comp_size = 606
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"ss_store_returns\".\"SR_CDEMO_SK\" as \"customer_demographics_sk\",
-    coalesce(\"ss_store_returns\".\"SR_CDEMO_SK\") as \"_virt_presence_5269535758143238\"
-FROM
-    \"memory\".\"store_returns\" as \"ss_store_returns\"),
 questionable as (
 SELECT
     \"customer_customers\".\"C_CUSTOMER_ID\" as \"customer_id\",
@@ -29,14 +23,14 @@ FROM
 WHERE
     \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000 and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null)
 ),
-abundant as (
+thoughtful as (
 SELECT
-    \"thoughtful\".\"_virt_presence_5269535758143238\" as \"_virt_presence_5269535758143238\",
-    \"thoughtful\".\"customer_demographics_sk\" as \"customer_demographics_sk\"
+    \"ss_store_returns\".\"SR_CDEMO_SK\" as \"customer_demographics_sk\",
+    coalesce(\"ss_store_returns\".\"SR_CDEMO_SK\") as \"_virt_presence_5269535758143238\"
 FROM
-    \"thoughtful\"
+    \"memory\".\"store_returns\" as \"ss_store_returns\"
 WHERE
-    \"thoughtful\".\"_virt_presence_5269535758143238\" is not null
+    coalesce(\"ss_store_returns\".\"SR_CDEMO_SK\") is not null
 
 GROUP BY
     1,
@@ -46,9 +40,9 @@ SELECT
     CONCAT(coalesce(\"questionable\".\"customer_last_name\",''), ', ', coalesce(\"questionable\".\"customer_first_name\",'')) as \"customername\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"customer_demographics_sk\" is not distinct from \"abundant\".\"customer_demographics_sk\"
+    INNER JOIN \"thoughtful\" on \"questionable\".\"customer_demographics_sk\" is not distinct from \"thoughtful\".\"customer_demographics_sk\"
 WHERE
-    \"abundant\".\"_virt_presence_5269535758143238\" is not null and \"questionable\".\"ss_is_returned\"
+    \"thoughtful\".\"_virt_presence_5269535758143238\" is not null and \"questionable\".\"ss_is_returned\"
 
 ORDER BY 
     \"questionable\".\"customer_id\" asc nulls first

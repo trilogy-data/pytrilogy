@@ -1,0 +1,41 @@
+"  File C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\runner.py""C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\runner.py, line "137 in , line runtestprotocol137
+ in   File runtestprotocol"
+C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\runner.py  File "", line C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\runner.py118" in , line pytest_runtest_protocol118
+ in   File pytest_runtest_protocol"
+C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_callers.py  File "", line C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_callers.py121" in , line _multicall121
+ in   File _multicall"
+C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_manager.py  File "", line C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_manager.py120" in , line _hookexec120
+ in   File _hookexec"
+C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_hooks.py  File "", line C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_hooks.py512" in , line __call__512
+ in   File __call__"
+C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py  File "", line C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py396" in , line pytest_runtestloop396
+ in   File pytest_runtestloop"
+  File C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_callers.py""C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_callers.py, line "121, line  in 121_multicall in 
+_multicall  File 
+"  File C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_manager.py""C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_manager.py, line "120, line  in 120_hookexec in 
+_hookexec  File "
+C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_hooks.py  File "", line 512 in __call__
+  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py"C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_hooks.py, line "372, line  in 512_main in 
+__call__  File 
+"  File C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py""C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py, line "318, line  in 372wrap_session in 
+_main  File 
+"  File C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py""C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py", line 318 in wrap_session
+  File , line "365C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\main.py in "pytest_cmdline_main, line 
+365  File  in "pytest_cmdline_mainC:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_callers.py
+"  File , line "121C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_callers.py in "_multicall, line 
+121  File  in "_multicallC:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_manager.py
+"  File , line "120C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_manager.py in "_hookexec, line 
+120  File  in _hookexec
+  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_hooks.py", line "512C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pluggy\_hooks.py" in , line __call__512 in 
+__call__
+  File   File ""C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\config\__init__.pyC:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\config\__init__.py"", line , line 199199 in  in main
+main  File 
+"  File C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\config\__init__.py""C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\_pytest\config\__init__.py", line , line 223223 in  in console_mainconsole_main
+
+  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pytest\__main__.py", line 9 in <module>
+  File   File ""<frozen runpy>C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pytest\__main__.py"", line , line 889 in  in _run_code<module>
+
+  File   File ""<frozen runpy><frozen runpy>"", line , line 19888 in  in _run_module_as_main_run_code
+
+  File "<frozen runpy>", line 198 in _run_module_as_main
+EXIT=0
