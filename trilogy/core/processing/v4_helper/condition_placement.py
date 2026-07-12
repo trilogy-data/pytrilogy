@@ -369,20 +369,29 @@ def plan_condition_placements(
                 is_presence_probe(addr) or addr in scoped_join_member_addresses
                 for addr in row_inputs
             ):
-                candidates = [
+                non_rowset_candidates = [
                     gid
                     for gid in candidates
                     if buckets.get(gid) is None
                     or buckets[gid].derivation != Derivation.ROWSET
                 ]
-                # When every remaining host is a condition-only side branch (a
-                # probe's pinned scan feeding nothing the SELECT produces —
-                # the mixed root-member-vs-rowset-anchor shape), applying the
-                # atom there filters a group FINAL never merges, silently
-                # dropping the WHERE. The filter belongs above the completion
-                # merge: route to FINAL, which pulls the probe's producer in
-                # as a keyed side input.
-                if candidates and not any(gid in main_lineage for gid in candidates):
+                # A member of a scoped join whose producer is a ROWSET
+                # boundary reads as the coalesced axis above the completion
+                # merge; once a boundary host is off the table the surviving
+                # candidates are downstream derivations of the OTHER side
+                # (the `fut_period.wk + 53` derived-key group), which can
+                # neither see the axis nor be pushed past their own boundary.
+                # Route straight to FINAL. Same for a probe whose only hosts
+                # are condition-only side branches (the mixed
+                # root-member-vs-rowset-anchor shape): applying the atom there
+                # filters a group FINAL never merges, silently dropping the
+                # WHERE — FINAL pulls the probe's producer in as a keyed side
+                # input instead.
+                dropped_rowset_host = len(non_rowset_candidates) != len(candidates)
+                candidates = non_rowset_candidates
+                if dropped_rowset_host or (
+                    candidates and not any(gid in main_lineage for gid in candidates)
+                ):
                     placements.append(
                         ConditionPlacement(
                             atom=atom,

@@ -91,6 +91,10 @@ class SourceRequest:
 class BridgePlan:
     concepts: list[BuildConcept]
     graph: ReferenceGraph
+    # True when the graph added no connector concept and was accepted only
+    # because it spans multiple datasources covering the full request — a
+    # last-resort join `_direct_source` should get first shot at beating.
+    full_cover_fallback: bool = False
 
 
 def _concept_node_address(node: str) -> str:
@@ -299,20 +303,23 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             # a genuine connector even when it adds no new concept — the join
             # key was simply already requested (`st as store` under `merge st
             # into store_id`: sales ⋈ stores on the requested store_id).
-            # Rejecting it here let a later filter_downstream=False pass hand
-            # back a single-scan graph whose "connectivity" ran through another
-            # build scope's rowset-handle pseudonym web, silently dropping the
-            # dimension table.
+            # Flagged as a FALLBACK: `_direct_source` gets first shot, since a
+            # request it can satisfy already had a good single plan (q64 join
+            # hoist, two_merge window compaction) — the flagged bridge only
+            # rescues requests no direct source can cover.
             bridged_addresses = {c.address for c in bridged}
             if (
                 (bridged_addresses - requested)
-                or (len(graph.datasources) > 1 and requested <= bridged_addresses)
                 or _has_union_datasource(graph)
                 or _graph_has_condition_matched_partial(
                     graph, request.conditions, request.environment
                 )
             ):
                 return BridgePlan(concepts=bridged, graph=graph)
+            if len(graph.datasources) > 1 and requested <= bridged_addresses:
+                return BridgePlan(
+                    concepts=bridged, graph=graph, full_cover_fallback=True
+                )
     return None
 
 
@@ -1303,8 +1310,17 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     if pinned_rollup is not None:
         return pinned_rollup
     requested_addresses = {c.address for c in _requested_concepts(request)}
+    fallback_bridge: tuple[BridgePlan, SourceAttempt] | None = None
     for attempt in request.source_policy.attempts:
         bridge_plan = _bridge_plan(request, attempt)
+        if bridge_plan is not None and bridge_plan.full_cover_fallback:
+            # A no-new-concepts multi-source join is a dead-last resort: any
+            # plan another path can produce (a direct source at some attempt,
+            # the unconditioned retry) wins first — see the fallback block at
+            # the bottom.
+            if fallback_bridge is None:
+                fallback_bridge = (bridge_plan, attempt)
+            bridge_plan = None
         if bridge_plan is not None:
             parents = _datasource_nodes_for_bridge(request, bridge_plan, attempt)
             if parents is not None and (
@@ -1349,4 +1365,25 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 parents=[unfiltered],
                 conditions=request.conditions.conditional,
             )
+    # Dead-last: the no-new-concepts multi-source join. Rescues a request no
+    # single source covers and no connector expansion reaches (the two-rowset
+    # body's `st as store` under `merge st into store_id`, where the joined
+    # key was itself requested) without pre-empting any plan the paths above
+    # can produce.
+    if fallback_bridge is not None:
+        plan, attempt = fallback_bridge
+        parents = _datasource_nodes_for_bridge(request, plan, attempt)
+        if parents is not None and (
+            attempt.accepts_partial
+            or _bridge_parents_cover(parents, requested_addresses)
+        ):
+            merged = _merge_component_sources(request, parents, plan.concepts)
+            if (
+                merged is not None
+                and not attempt.accepts_partial
+                and request.complete_partials
+            ):
+                merged = _complete_partial_requested(request, merged)
+            if merged is not None:
+                return merged
     return None

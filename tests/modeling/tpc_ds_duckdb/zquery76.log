@@ -1,12 +1,12 @@
 query_id = "76"
 generator = "v4"
-gen_length = 8163
+gen_length = 8095
 preql_size = 2129
 comp_size = 1708
 generated_sql = """
 
 WITH 
-puzzled as (
+puffy as (
 SELECT
     \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_sk\",
     \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
@@ -16,7 +16,7 @@ FROM
 WHERE
     \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
 ),
-sweltering as (
+macho as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
     \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_sk\",
@@ -36,7 +36,7 @@ FROM
 WHERE
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
 ),
-protective as (
+puzzled as (
 SELECT
     \"ws_date_date\".\"D_QOY\" as \"ws_date_quarter\",
     \"ws_date_date\".\"D_YEAR\" as \"ws_date_year\",
@@ -51,7 +51,7 @@ FROM
 WHERE
     \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
 ),
-sparkling as (
+abhorrent as (
 SELECT
     \"ss_date_date\".\"D_QOY\" as \"ss_date_quarter\",
     \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
@@ -81,26 +81,26 @@ FROM
 WHERE
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
 ),
-waggish as (
+hard as (
 SELECT
-    \"puzzled\".\"ws_item_sk\" as \"ws_item_sk\",
-    \"puzzled\".\"ws_order_number\" as \"ws_order_number\",
+    \"puffy\".\"ws_item_sk\" as \"ws_item_sk\",
+    \"puffy\".\"ws_order_number\" as \"ws_order_number\",
     CASE
-	WHEN \"puzzled\".\"ws_ship_customer_sk\" is null THEN 1
+	WHEN \"puffy\".\"ws_ship_customer_sk\" is null THEN 1
 	ELSE 0
 	END as \"ws_row_flag\"
 FROM
-    \"puzzled\"),
-late as (
+    \"puffy\"),
+scrawny as (
 SELECT
-    \"sweltering\".\"ss_item_sk\" as \"ss_item_sk\",
-    \"sweltering\".\"ss_ticket_number\" as \"ss_ticket_number\",
+    \"macho\".\"ss_item_sk\" as \"ss_item_sk\",
+    \"macho\".\"ss_ticket_number\" as \"ss_ticket_number\",
     CASE
-	WHEN \"sweltering\".\"ss_store_sk\" is null THEN 1
+	WHEN \"macho\".\"ss_store_sk\" is null THEN 1
 	ELSE 0
 	END as \"ss_row_flag\"
 FROM
-    \"sweltering\"),
+    \"macho\"),
 highfalutin as (
 SELECT
     \"quizzical\".\"cs_item_sk\" as \"cs_item_sk\",
@@ -111,39 +111,39 @@ SELECT
 	END as \"cs_row_flag\"
 FROM
     \"quizzical\"),
-rambunctious as (
+sedate as (
 SELECT
-    \"protective\".\"ws_date_quarter\" as \"___tvf_arm_1_d_qoy\",
-    \"protective\".\"ws_date_year\" as \"___tvf_arm_1_d_year\",
-    \"protective\".\"ws_item_category\" as \"___tvf_arm_1_i_category\",
+    \"puzzled\".\"ws_date_quarter\" as \"___tvf_arm_1_d_qoy\",
+    \"puzzled\".\"ws_date_year\" as \"___tvf_arm_1_d_year\",
+    \"puzzled\".\"ws_item_category\" as \"___tvf_arm_1_i_category\",
     :___tvf_arm_1_channel as \"___tvf_arm_1_channel\",
     :___tvf_arm_1_col_name as \"___tvf_arm_1_col_name\",
-    sum(\"protective\".\"ws_ext_sales_price\") as \"___tvf_arm_1_sales_amt\",
-    sum(\"waggish\".\"ws_row_flag\") as \"___tvf_arm_1_sales_cnt\"
+    sum(\"hard\".\"ws_row_flag\") as \"___tvf_arm_1_sales_cnt\",
+    sum(\"puzzled\".\"ws_ext_sales_price\") as \"___tvf_arm_1_sales_amt\"
 FROM
-    \"waggish\"
-    INNER JOIN \"protective\" on \"waggish\".\"ws_item_sk\" = \"protective\".\"ws_item_sk\" AND \"waggish\".\"ws_order_number\" = \"protective\".\"ws_order_number\"
+    \"hard\"
+    INNER JOIN \"puzzled\" on \"hard\".\"ws_item_sk\" = \"puzzled\".\"ws_item_sk\" AND \"hard\".\"ws_order_number\" = \"puzzled\".\"ws_order_number\"
 GROUP BY
     1,
     2,
     3),
-macho as (
+friendly as (
 SELECT
-    \"sparkling\".\"ss_date_quarter\" as \"___tvf_arm_0_d_qoy\",
-    \"sparkling\".\"ss_date_year\" as \"___tvf_arm_0_d_year\",
-    \"sparkling\".\"ss_item_category\" as \"___tvf_arm_0_i_category\",
+    \"abhorrent\".\"ss_date_quarter\" as \"___tvf_arm_0_d_qoy\",
+    \"abhorrent\".\"ss_date_year\" as \"___tvf_arm_0_d_year\",
+    \"abhorrent\".\"ss_item_category\" as \"___tvf_arm_0_i_category\",
     :___tvf_arm_0_channel as \"___tvf_arm_0_channel\",
     :___tvf_arm_0_col_name as \"___tvf_arm_0_col_name\",
-    sum(\"late\".\"ss_row_flag\") as \"___tvf_arm_0_sales_cnt\",
-    sum(\"sparkling\".\"ss_ext_sales_price\") as \"___tvf_arm_0_sales_amt\"
+    sum(\"abhorrent\".\"ss_ext_sales_price\") as \"___tvf_arm_0_sales_amt\",
+    sum(\"scrawny\".\"ss_row_flag\") as \"___tvf_arm_0_sales_cnt\"
 FROM
-    \"late\"
-    INNER JOIN \"sparkling\" on \"late\".\"ss_item_sk\" = \"sparkling\".\"ss_item_sk\" AND \"late\".\"ss_ticket_number\" = \"sparkling\".\"ss_ticket_number\"
+    \"scrawny\"
+    INNER JOIN \"abhorrent\" on \"scrawny\".\"ss_item_sk\" = \"abhorrent\".\"ss_item_sk\" AND \"scrawny\".\"ss_ticket_number\" = \"abhorrent\".\"ss_ticket_number\"
 GROUP BY
     1,
     2,
     3),
-abundant as (
+uneven as (
 SELECT
     \"cooperative\".\"cs_date_quarter\" as \"___tvf_arm_2_d_qoy\",
     \"cooperative\".\"cs_date_year\" as \"___tvf_arm_2_d_year\",
@@ -159,49 +159,49 @@ GROUP BY
     1,
     2,
     3),
-yellow as (
+courageous as (
 SELECT
-    \"abundant\".\"___tvf_arm_2_channel\" as \"_q76_results_channel\",
-    \"abundant\".\"___tvf_arm_2_col_name\" as \"_q76_results_col_name\",
-    \"abundant\".\"___tvf_arm_2_d_year\" as \"_q76_results_d_year\",
-    \"abundant\".\"___tvf_arm_2_d_qoy\" as \"_q76_results_d_qoy\",
-    \"abundant\".\"___tvf_arm_2_i_category\" as \"_q76_results_i_category\",
-    \"abundant\".\"___tvf_arm_2_sales_cnt\" as \"_q76_results_sales_cnt\",
-    \"abundant\".\"___tvf_arm_2_sales_amt\" as \"_q76_results_sales_amt\"
+    \"uneven\".\"___tvf_arm_2_channel\" as \"_q76_results_channel\",
+    \"uneven\".\"___tvf_arm_2_col_name\" as \"_q76_results_col_name\",
+    \"uneven\".\"___tvf_arm_2_d_year\" as \"_q76_results_d_year\",
+    \"uneven\".\"___tvf_arm_2_d_qoy\" as \"_q76_results_d_qoy\",
+    \"uneven\".\"___tvf_arm_2_i_category\" as \"_q76_results_i_category\",
+    \"uneven\".\"___tvf_arm_2_sales_cnt\" as \"_q76_results_sales_cnt\",
+    \"uneven\".\"___tvf_arm_2_sales_amt\" as \"_q76_results_sales_amt\"
 FROM
-    \"abundant\"
+    \"uneven\"
 UNION ALL
 SELECT
-    \"macho\".\"___tvf_arm_0_channel\" as \"_q76_results_channel\",
-    \"macho\".\"___tvf_arm_0_col_name\" as \"_q76_results_col_name\",
-    \"macho\".\"___tvf_arm_0_d_year\" as \"_q76_results_d_year\",
-    \"macho\".\"___tvf_arm_0_d_qoy\" as \"_q76_results_d_qoy\",
-    \"macho\".\"___tvf_arm_0_i_category\" as \"_q76_results_i_category\",
-    \"macho\".\"___tvf_arm_0_sales_cnt\" as \"_q76_results_sales_cnt\",
-    \"macho\".\"___tvf_arm_0_sales_amt\" as \"_q76_results_sales_amt\"
+    \"friendly\".\"___tvf_arm_0_channel\" as \"_q76_results_channel\",
+    \"friendly\".\"___tvf_arm_0_col_name\" as \"_q76_results_col_name\",
+    \"friendly\".\"___tvf_arm_0_d_year\" as \"_q76_results_d_year\",
+    \"friendly\".\"___tvf_arm_0_d_qoy\" as \"_q76_results_d_qoy\",
+    \"friendly\".\"___tvf_arm_0_i_category\" as \"_q76_results_i_category\",
+    \"friendly\".\"___tvf_arm_0_sales_cnt\" as \"_q76_results_sales_cnt\",
+    \"friendly\".\"___tvf_arm_0_sales_amt\" as \"_q76_results_sales_amt\"
 FROM
-    \"macho\"
+    \"friendly\"
 UNION ALL
 SELECT
-    \"rambunctious\".\"___tvf_arm_1_channel\" as \"_q76_results_channel\",
-    \"rambunctious\".\"___tvf_arm_1_col_name\" as \"_q76_results_col_name\",
-    \"rambunctious\".\"___tvf_arm_1_d_year\" as \"_q76_results_d_year\",
-    \"rambunctious\".\"___tvf_arm_1_d_qoy\" as \"_q76_results_d_qoy\",
-    \"rambunctious\".\"___tvf_arm_1_i_category\" as \"_q76_results_i_category\",
-    \"rambunctious\".\"___tvf_arm_1_sales_cnt\" as \"_q76_results_sales_cnt\",
-    \"rambunctious\".\"___tvf_arm_1_sales_amt\" as \"_q76_results_sales_amt\"
+    \"sedate\".\"___tvf_arm_1_channel\" as \"_q76_results_channel\",
+    \"sedate\".\"___tvf_arm_1_col_name\" as \"_q76_results_col_name\",
+    \"sedate\".\"___tvf_arm_1_d_year\" as \"_q76_results_d_year\",
+    \"sedate\".\"___tvf_arm_1_d_qoy\" as \"_q76_results_d_qoy\",
+    \"sedate\".\"___tvf_arm_1_i_category\" as \"_q76_results_i_category\",
+    \"sedate\".\"___tvf_arm_1_sales_cnt\" as \"_q76_results_sales_cnt\",
+    \"sedate\".\"___tvf_arm_1_sales_amt\" as \"_q76_results_sales_amt\"
 FROM
-    \"rambunctious\")
+    \"sedate\")
 SELECT
-    \"yellow\".\"_q76_results_channel\" as \"q76_results_channel\",
-    \"yellow\".\"_q76_results_col_name\" as \"q76_results_col_name\",
-    \"yellow\".\"_q76_results_d_year\" as \"q76_results_d_year\",
-    \"yellow\".\"_q76_results_d_qoy\" as \"q76_results_d_qoy\",
-    \"yellow\".\"_q76_results_i_category\" as \"q76_results_i_category\",
-    \"yellow\".\"_q76_results_sales_cnt\" as \"q76_results_sales_cnt\",
-    \"yellow\".\"_q76_results_sales_amt\" as \"q76_results_sales_amt\"
+    \"courageous\".\"_q76_results_channel\" as \"q76_results_channel\",
+    \"courageous\".\"_q76_results_col_name\" as \"q76_results_col_name\",
+    \"courageous\".\"_q76_results_d_year\" as \"q76_results_d_year\",
+    \"courageous\".\"_q76_results_d_qoy\" as \"q76_results_d_qoy\",
+    \"courageous\".\"_q76_results_i_category\" as \"q76_results_i_category\",
+    \"courageous\".\"_q76_results_sales_cnt\" as \"q76_results_sales_cnt\",
+    \"courageous\".\"_q76_results_sales_amt\" as \"q76_results_sales_amt\"
 FROM
-    \"yellow\"
+    \"courageous\"
 ORDER BY 
     \"q76_results_channel\" asc nulls first,
     \"q76_results_col_name\" asc nulls first,

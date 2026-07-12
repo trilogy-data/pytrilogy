@@ -2016,6 +2016,14 @@ def _clear_groupmate_completed_partials(
         }
     keep: list[BuildConcept] = []
     for concept in node.partial_concepts:
+        # Rowset handles only — the boundary-marked subset members this pass
+        # exists for. A RAW datasource-bound member left partial by its scoped
+        # declaration must keep tripping the no-complete-source guard: that is
+        # the deliberate author-facing error for `subset join s_brand = ...`
+        # over the member's only binding (union-reproject clean-error cells).
+        if concept.derivation != Derivation.ROWSET:
+            keep.append(concept)
+            continue
         mates: set[str] = set()
         for canonical, members in environment.scoped_join_key_groups.items():
             if concept.address in members or concept.address == canonical:
@@ -2155,9 +2163,31 @@ def _assemble_final_node(
         # contributor (keys intact), then dedup the filtered rows.
         if final_probe_args:
             conditioned = _apply_final_conditions(sole_node)
-            final_node = _group_to_grain_if_required(
-                conditioned, mandatory_list, final_contract, environment
-            )
+            # The feeder join reads the probe at ITS OWN row grain (the fact
+            # side of the relation), fanning the contributor out; the merge's
+            # claimed grain predates that join, so grain-satisfaction checks
+            # (including MergeNode's own rowset-output carve-out) wave the
+            # dedup through. Collapse explicitly to the requested outputs
+            # after the filter.
+            if conditioned is not sole_node and final_contract.deduplicate_to_grain:
+                targets = [
+                    o
+                    for o in conditioned.output_concepts
+                    if o.address in mandatory_addresses
+                ] or list(conditioned.output_concepts)
+                final_node: StrategyNode = GroupNode(
+                    output_concepts=targets,
+                    input_concepts=targets,
+                    environment=environment,
+                    parents=[conditioned],
+                    partial_concepts=conditioned.partial_concepts,
+                    preexisting_conditions=conditioned.preexisting_conditions,
+                    force_group=True,
+                )
+            else:
+                final_node = _group_to_grain_if_required(
+                    conditioned, mandatory_list, final_contract, environment
+                )
             _bridge_pseudonyms(final_node, per_group[gid])
             return final_node
         # The contributing group's outputs include grain keys it exposed

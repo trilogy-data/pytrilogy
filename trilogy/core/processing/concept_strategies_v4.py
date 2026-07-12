@@ -615,7 +615,10 @@ def resolve_rowset(
     # over-projecting unrelated internals — e.g. a rowset-wrapped multiselect's
     # bare align inputs (q64 `item_sk_99`, no pseudonyms) must NOT leak out, or
     # the outer FINAL has an output no parent can source.
-    produced = {o.address: o for o in inner_node.output_concepts}
+    # Usable (non-hidden) outputs only: a hidden inner column (a grain key the
+    # inner FINAL masked) has no source-map entry in the rendered CTE, so a
+    # boundary input mapped to it dangles at render time.
+    produced = {o.address: o for o in inner_node.usable_outputs}
     derived = lineage.rowset.derived_concepts
     demanded = {o.address for o in rowset_outputs}
     handle_pool = list(environment.concepts.values()) + list(
@@ -735,12 +738,29 @@ def resolve_rowset(
     # spans only the subset side's domain: mark it partial so join resolution
     # anchors the complete side and LEFT-joins this boundary (v3's
     # `scoped_partial` in `_collect_advertised_outputs`) instead of INNER-
-    # narrowing the anchor to the intersection.
+    # narrowing the anchor to the intersection. Restricted to relations whose
+    # OTHER members are also rowset handles (the rowset-pair matrix): a mixed
+    # root↔rowset relation resolves through binding substitution, and marking
+    # the rowset side there re-routed a boundary measure onto the root scan
+    # (conflicting-filter year-over-year join re-derived `cnt_2000` row-wise).
     subset_sources = environment.domain_graph.subset_sources()
+
+    def _mates_all_rowset(address: str) -> bool:
+        mates: set[str] = set()
+        for canonical, members in environment.scoped_join_key_groups.items():
+            if address in members:
+                mates |= (members | {canonical}) - {address}
+        mate_concepts = [environment.concepts.get(m) for m in mates]
+        return bool(mate_concepts) and all(
+            m is not None and m.derivation == Derivation.ROWSET for m in mate_concepts
+        )
+
     scoped_partial = [
         h
         for h in handles
-        if h.address in subset_sources and isinstance(h.lineage, BuildRowsetItem)
+        if h.address in subset_sources
+        and isinstance(h.lineage, BuildRowsetItem)
+        and _mates_all_rowset(h.address)
     ]
     boundary: StrategyNode = SelectNode(
         output_concepts=handles,

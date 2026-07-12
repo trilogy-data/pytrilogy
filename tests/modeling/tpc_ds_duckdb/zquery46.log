@@ -44,8 +44,8 @@ SELECT
     \"uneven\".\"bought_amt\" as \"bought_amt\",
     \"uneven\".\"bought_profit\" as \"bought_profit\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"uneven\" on \"wakeful\".\"customer_sk\" = \"uneven\".\"bought_store_sales_customer_sk\"
+    \"uneven\"
+    INNER JOIN \"wakeful\" on \"uneven\".\"bought_store_sales_customer_sk\" = \"wakeful\".\"customer_sk\"
 WHERE
     \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_bought_city\"
 

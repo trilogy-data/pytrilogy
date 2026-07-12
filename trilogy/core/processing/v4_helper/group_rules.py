@@ -14,7 +14,7 @@ from collections import defaultdict
 from typing import Callable
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import Derivation, Granularity, Purpose
 
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
@@ -369,13 +369,18 @@ def partition_roots(
                 # into one scan yields an unsourceable disconnected root group
                 # (`select sum(av), sum(bv)` over two unrelated models).
                 undirected = concept_graph.to_undirected()
-                # A property root and its KEY root are FD-related even when the
+                # A PROPERTY root and its KEY root are FD-related even when the
                 # lineage graph never joins them (a pure two-alias projection
                 # `select cust_id as x, cname as y` has one BASIC per root and
                 # no shared consumer) — the table binding both is what relates
                 # them, and splitting them cross-joins ON 1=1 (cartesian rows).
+                # Properties only: two KEYS related through a fact FK (user_id
+                # on posts) must NOT co-source — `count(user_id)` reads the
+                # users table, not the post FK column's deduped domain.
                 node_by_addr = {data.address: node for node, data in main_items}
                 for node, data in main_items:
+                    if data.purpose != Purpose.PROPERTY:
+                        continue
                     for key_addr in data.keys:
                         key_node = node_by_addr.get(key_addr)
                         if key_node is not None and key_node != node:
