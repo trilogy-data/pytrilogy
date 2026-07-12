@@ -607,7 +607,9 @@ def build_optimization_rule_plan(
         plan.append(
             OptimizationRulePlan(
                 name="collapse_single_parent.passthrough_after_pushdown",
-                rule_factory=lambda: CollapseSingleParent(passthrough_only=True),
+                rule_factory=lambda: CollapseSingleParent(
+                    domain_graph=domain_graph, passthrough_only=True
+                ),
                 depends_on=("predicate_pushdown.remove",),
                 reason=(
                     "collapse bare passthroughs (pushdown residue or otherwise) "

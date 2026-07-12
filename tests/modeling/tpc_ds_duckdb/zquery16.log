@@ -1,6 +1,6 @@
 query_id = "16"
 generator = "v3"
-gen_length = 3787
+gen_length = 3694
 preql_size = 629
 comp_size = 821
 generated_sql = """
@@ -36,11 +36,6 @@ GROUP BY
 HAVING
     count(\"cooperative\".\"cs_warehouse_sk\") > 1
 ),
-abundant as (
-SELECT
-    \"questionable\".\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
-FROM
-    \"questionable\"),
 thoughtful as (
 SELECT
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\"
@@ -50,7 +45,7 @@ FROM
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select cheerful.\"returned_orders\" from cheerful where cheerful.\"returned_orders\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select cheerful.\"returned_orders\" from cheerful where cheerful.\"returned_orders\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_sales\" from questionable where questionable.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
     1),
@@ -64,7 +59,7 @@ FROM
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select cheerful.\"returned_orders\" from cheerful where cheerful.\"returned_orders\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select cheerful.\"returned_orders\" from cheerful where cheerful.\"returned_orders\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_sales\" from questionable where questionable.\"multi_warehouse_sales\" is not null)
 ),
 vacuous as (
 SELECT

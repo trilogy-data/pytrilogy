@@ -85,21 +85,26 @@ def test_basic_canonical_collision_s1_arm_sources_own_physical_column():
 
 
 def test_canonical_collision_s1_arm_sources_own_physical_column():
+    import re
+
     sql = _generate("select s1, m1;")
     assert "INVALID_REFERENCE_BUG" not in sql, sql
-    # One facts scan exposing its own physical column `d1` for `s1`, never the
-    # sibling's `d2`. The single-consumer fact scan inlines into the spine merge,
-    # so the merge key `facts.d1` renders inside `coalesce(...)` (its complete
-    # domain is the spine). Rows verified in test_merge_unnest_partial_join.
-    assert sql.count('FROM\n    "facts"') == 1, sql
+    # One facts scan (any join seat) exposing its own physical column `d1` for
+    # `s1`, never the sibling's `d2`. The single-consumer fact scan inlines into
+    # the spine merge, so the merge key `facts.d1` renders inside `coalesce(...)`
+    # (its complete domain is the spine). Rows verified in
+    # test_merge_unnest_partial_join.
+    assert len(re.findall(r'(?:FROM|JOIN)\s+"facts"', sql)) == 1, sql
     assert '"facts"."d2" as "d2"' not in sql, sql
     assert 'coalesce("facts"."d1","quizzical"."s1") as "s1"' in sql, sql
 
 
 def test_canonical_collision_s2_arm_sources_own_physical_column():
+    import re
+
     sql = _generate("select s2, m2;")
     assert "INVALID_REFERENCE_BUG" not in sql, sql
-    assert sql.count('FROM\n    "facts"') == 1, sql
+    assert len(re.findall(r'(?:FROM|JOIN)\s+"facts"', sql)) == 1, sql
     assert '"facts"."d1" as "d1"' not in sql, sql
     assert 'coalesce("facts"."d2","quizzical"."s2") as "s2"' in sql, sql
 

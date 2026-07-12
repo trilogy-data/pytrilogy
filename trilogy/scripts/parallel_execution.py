@@ -545,18 +545,8 @@ def run_single_script_execution(
     row_limit: int | None = None,
 ) -> int:
     """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
-    from trilogy.scripts.common import (
-        create_executor,
-        flush_debugging_hooks,
-        handle_execution_exception,
-    )
+    from trilogy.scripts.common import create_executor
     from trilogy.scripts.display import show_execution_info
-    from trilogy.scripts.single_execution import (
-        execute_integration_mode,
-        execute_refresh_mode,
-        execute_run_mode,
-        execute_unit_mode,
-    )
 
     config_path_str = str(config.source_path) if config.source_path else None
     show_execution_info(
@@ -572,6 +562,42 @@ def run_single_script_execution(
     else:
         with safe_open(base) as raw:
             text = raw.read()
+
+    try:
+        return _dispatch_single_script_execution(
+            exec,
+            text,
+            base,
+            execution_mode,
+            debug=debug,
+            row_limit=row_limit,
+            refresh_params=refresh_params,
+        )
+    finally:
+        # The parallel path closes its executors in _execute_single; close here
+        # too so file-backed engines (e.g. duckdb) release their handles.
+        exec.close()
+
+
+def _dispatch_single_script_execution(
+    exec: Executor,
+    text: str,
+    base: StringIO | Path,
+    execution_mode: ExecutionMode,
+    debug: bool,
+    row_limit: int | None,
+    refresh_params: RefreshParams | None,
+) -> int:
+    from trilogy.scripts.common import (
+        flush_debugging_hooks,
+        handle_execution_exception,
+    )
+    from trilogy.scripts.single_execution import (
+        execute_integration_mode,
+        execute_refresh_mode,
+        execute_run_mode,
+        execute_unit_mode,
+    )
 
     try:
         if execution_mode == ExecutionMode.RUN:
