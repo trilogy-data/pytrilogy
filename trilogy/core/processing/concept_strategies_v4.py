@@ -157,10 +157,32 @@ def _build_nested_select(
     BuildEnvironment,
     BuildWhereClause | None,
 ]:
-    """Build and materialize one nested select in its own build environment."""
+    """Build and materialize one nested select in its own build environment.
+
+    A nested select can carry its OWN query-scoped joins (a rowset body
+    ``with rs as inner join a.aid = b.bid select ...``) that the outer resolution
+    never saw. Those joins live on ``SelectLineage.scoped_joins`` and must be fed
+    to BOTH the factory (so the joined keys build to one canonical) and the build
+    env (so the graph bridges the two datasources) -- otherwise the body builds
+    with no join, its datasources come back as separate components, and the
+    read-back raises a misleading DisconnectedConceptsException for a join that is
+    in fact present inside the rowset (surfaced on enriched TPC-DS q64)."""
     author_env = history.base_environment
     caches = history.build_caches
-    factory = _factory_for_history(history)
+    nested_scoped = select.scoped_joins if isinstance(select, SelectLineage) else []
+    scoped_joins = caches.scoped_joins + [
+        j for j in nested_scoped if j not in caches.scoped_joins
+    ]
+    if caches.pseudonym_map is None:
+        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    factory = Factory(
+        environment=author_env,
+        build_cache=caches.build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        grain_build_cache=caches.grain_build_cache,
+        pseudonym_map=caches.pseudonym_map,
+        scoped_joins=scoped_joins,
+    )
     built: BuildSelectLineage | BuildMultiSelectLineage = factory.build(select)
     build_env = author_env.materialize_for_select(
         built.local_concepts,
@@ -169,7 +191,7 @@ def _build_nested_select(
         grain_build_cache=caches.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
-        scoped_joins=caches.scoped_joins,
+        scoped_joins=scoped_joins,
     )
     return built, build_env, built.where_clause
 

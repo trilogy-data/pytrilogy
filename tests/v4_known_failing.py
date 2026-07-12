@@ -65,6 +65,36 @@ _TPCDS_SIZE = (
     "v4 TPC-DS verbosity: rows match the official reference but generated SQL "
     "exceeds the v3-tuned length ceiling (more CTEs / less compact)"
 )
+_V4_ROWSET_XDS_RESIDUAL = (
+    "v4 rowset cross-datasource: the scoped-join PROPAGATION into the rowset body "
+    "is FIXED 2026-07-02 (_build_nested_select now folds the nested select's own "
+    "SelectLineage.scoped_joins into the factory + build env, so a `with rs as "
+    "inner join a=b select ...` body's datasources connect). Residual, still open: "
+    "(1) an a-side PROPERTY on the join key (`a.aw as extra`) is grouped to its own "
+    "grain (drops the key) then FULL JOIN ON 1=1 -> misaligned/cartesian rows; "
+    "(2) reading the join KEY back outerly (`rs.k`) re-sources it from a base "
+    "datasource instead of the rowset's joined key column. Rowset-body grain/"
+    "key-carry issues, not scoped-join propagation."
+)
+_V4_DISJOINT_NULLSAFE = (
+    "v4 disjoint scoped-join groups (one INNER + one FULL on separate derived "
+    "keys): the derived-key INVALID_REFERENCE render is FIXED 2026-07-04 "
+    "(_datasource_renders_derived, source_planning.py), but a distinct bug remains "
+    "-- the disjoint FULL null-injects the INNER group's key into its one-sided "
+    "rows, yet that key is not marked nullable through the assembly, so the final "
+    "multi-measure merge joins on it with plain `=` instead of `IS NOT DISTINCT "
+    "FROM` and the NULL-keyed row fans into spurious all-NULL copies. Nullability-"
+    "propagation gap in the disjoint-group merge (get_modifiers, join_resolution), "
+    "NOT the derived-key render family."
+)
+_V4_ROWSET_XDS_CONTAM = (
+    "v4 rowset cross-datasource: PASSES in isolation and at file level, FAILS only "
+    "in the full multi-file sweep -- pre-existing cross-file contamination (shared "
+    "module-level executors), present on baseline too (verified 2026-07-04, NOT a "
+    "regression of the derived-key render fix). Prematurely pruned earlier; "
+    "re-tracked so the full-suite gate stays honest. Find + isolate the polluting "
+    "file, then prune."
+)
 _V4_MASKED_LEAK = (
     "v4 failure EXPOSED 2026-07-02 by fixing a CONFIG.use_v4_discovery leak "
     "(test_v4_node_generators._generate_v4_sql restored it to a hardcoded False in "
@@ -261,25 +291,30 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four": _V4_MASKED_LEAK,
     "tests/modeling/tpc_h/test_tpch_queries.py::test_four": _V4_MASKED_LEAK,
     "tests/modeling/tpc_h/test_tpch_queries.py::test_seventeen": _V4_MASKED_LEAK,
-    "tests/test_join_merge_parity.py::test_chained_equality_join_matches_pairwise": _V4_MASKED_LEAK,
-    "tests/test_join_merge_parity.py::test_chained_full_join_all_buckets": _V4_MASKED_LEAK,
-    "tests/test_join_merge_parity.py::test_disjoint_inner_and_full_groups": _V4_MASKED_LEAK,
-    "tests/test_join_merge_parity.py::test_multi_way_inner_join_merge_parity": _V4_MASKED_LEAK,
-    "tests/test_join_merge_parity.py::test_scoped_full_join_on_nonrowset_derived_key": _V4_MASKED_LEAK,
-    "tests/test_join_merge_parity.py::test_scoped_join_on_nonrowset_derived_key": _V4_MASKED_LEAK,
-    "tests/test_join_merge_parity.py::test_scoped_left_join_on_nonrowset_derived_key": _V4_MASKED_LEAK,
+    # Scoped/merge join on a DERIVED key (`da <- o.amt+1` joined to `db <-
+    # c.cost+1`) leaked INVALID_REFERENCE: the two keys collapse to one canonical
+    # merge with a variant per side, and v4's bridge assigned BOTH variants to
+    # BOTH datasource scans -- each can only render the variant sourced from its
+    # own base column, so the other rendered an unbound column. FIXED + pruned
+    # 2026-07-04: `_datasource_renders_derived` (source_planning.py) gates a BASIC
+    # merge-key's assignment to a scan on renderability (direct physical/merge-
+    # alias binding OR every ROOT lineage leaf bound), so each scan gets only its
+    # own side and the merge joins on the equivalence. Covers INNER/LEFT/FULL,
+    # 2/3/4-way, and chained equality. Isolation-verified; full v4 sweep +7 xpass,
+    # 0 regressions vs baseline.
+    "tests/test_join_merge_parity.py::test_disjoint_inner_and_full_groups": _V4_DISJOINT_NULLSAFE,
     "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain": _V4_MASKED_LEAK,
     "tests/test_parsing.py::test_circular_aliasing_inverse": _V4_MASKED_LEAK,
     "tests/test_query_processing.py::test_query_aggregation": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_propagation": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_resolves_correctly": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_outer_read_key": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_aw": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_bv": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_inner_k": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_aw": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_bv": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_matrix": _V4_MASKED_LEAK,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_propagation": _V4_ROWSET_XDS_CONTAM,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_resolves_correctly": _V4_ROWSET_XDS_RESIDUAL,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_outer_read_key": _V4_ROWSET_XDS_CONTAM,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_aw": _V4_ROWSET_XDS_RESIDUAL,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_bv": _V4_ROWSET_XDS_RESIDUAL,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_inner_k": _V4_ROWSET_XDS_RESIDUAL,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_aw": _V4_ROWSET_XDS_RESIDUAL,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_bv": _V4_ROWSET_XDS_RESIDUAL,
+    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_matrix": _V4_ROWSET_XDS_RESIDUAL,
     "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans": _V4_MASKED_LEAK,
     "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure": _V4_MASKED_LEAK,
     "tests/test_scoped_join.py::test_rowset_outer_join_shared_base_no_fanout": _V4_MASKED_LEAK,

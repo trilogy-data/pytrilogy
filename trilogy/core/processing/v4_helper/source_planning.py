@@ -714,6 +714,35 @@ def _datasource_can_output(
     )
 
 
+def _datasource_renders_derived(
+    datasource: BuildDatasource | BuildUnionDatasource | None,
+    concept: BuildConcept,
+) -> bool:
+    """Every ROOT leaf of `concept`'s lineage is an output column of `datasource`.
+
+    A scoped-merged BASIC derived key has one canonical variant per join side
+    (`da <- o.amt+1` pseudonym of `db <- c.cost+1`); only the side whose base
+    column this scan binds can compute its inline expression. The sibling scan
+    produces the other variant and the merge joins them on the pseudonym
+    equivalence -- assigning a scan the variant it cannot render emits that
+    variant's lineage against a column it lacks (INVALID_REFERENCE).
+
+    A key can also be bound to a scan directly: a derived key merged into a
+    physical column (`merge d1 into ~s1`, `s1 <- base+1`) is exposed by the
+    `facts` scan as its own `d1` column, so that scan renders it even though its
+    lineage root (`base`) lives elsewhere -- check the direct binding first."""
+    if datasource is None:
+        return False
+    if _datasource_can_output(datasource, concept.address):
+        return True
+    roots = [
+        source for source in concept.sources if source.derivation == Derivation.ROOT
+    ]
+    if not roots:
+        return True
+    return all(_datasource_can_output(datasource, source.address) for source in roots)
+
+
 def _original_datasource_concept_nodes(
     source_graph: ReferenceGraph,
     bridge_graph: ReferenceGraph,
@@ -781,22 +810,25 @@ def _local_concept_nodes_for_datasource(
                 continue
             # Bridge addresses are keyed by `.address`, but a derived concept's
             # graph node uses its `.canonical_address` (a `_virt_func_*` name) —
-            # so a derived merge key (`p_last <- split(p_name)`) bound to this
-            # datasource is missed unless we also match the node concept's
-            # `.address`. Restrict that fallback to a BASIC-derived merge key (a
-            # concept carrying pseudonyms whose own derivation is BASIC): it can
-            # be computed inline on the scan. A recursive/complex merge key
-            # (`first_parent <- recurse_edge`) must come from
-            # `_derived_connector_nodes`, not a raw scan, and a plain derived
-            # concept that merely happens to be address-named must not be pulled
-            # onto a scan it isn't bound to (regresses window/cast lookups).
+            # so a derived merge key (`da <- o.amt+1` merged/joined with
+            # `db <- c.cost+1`) is missed unless we also match the node concept's
+            # `.address`. Restrict that fallback to a BASIC-derived key this
+            # datasource can actually render (every ROOT leaf of its lineage is a
+            # bound column): a scoped-merged key exposes one variant per join side
+            # (INNER links them as pseudonyms; FULL keeps them distinct to
+            # coalesce), and only the side binding the base column may compute the
+            # inline expression -- the sibling scan supplies the other variant and
+            # the join relates them. Assigning a scan a variant it cannot render
+            # emits an unbound column (INVALID_REFERENCE); a recursive/complex
+            # merge key must instead come from `_derived_connector_nodes`.
+            renders_derived_key = (
+                canonical is not None
+                and canonical.derivation == Derivation.BASIC
+                and canonical.address in bridge_addresses
+                and _datasource_renders_derived(datasource, canonical)
+            )
             if canonical is not None and (
-                address in bridge_addresses
-                or (
-                    canonical.pseudonyms
-                    and canonical.derivation == Derivation.BASIC
-                    and canonical.address in bridge_addresses
-                )
+                address in bridge_addresses or renders_derived_key
             ):
                 concepts.setdefault(address, neighbor)
             queue.append(neighbor)
