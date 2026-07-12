@@ -86,6 +86,10 @@ selects — stacking raw measures for later aggregation requires per-arm
 aggregation or a carried key." This is theme D (idiom gap), same family as the
 q66/q84 verdicts.
 
+DONE 2026-07-11: `trilogy/ai/constants.py` (union section of RULE_PROMPT) and
+the `union-stack-channels` example NOTES in `trilogy/ai/syntax_examples.py` now
+state the within-arm dedup and both idioms (per-arm aggregation, key carry).
+
 ---
 
 Original (superseded) report follows for the record: the run, artifacts, shape,

@@ -354,11 +354,16 @@ limit 100;
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
 #    `union(...)` function form - the cleanest way to stack rows from several
 #    sources.
-#  - COUNTING rows across a union/set-op: pre-aggregate the count INSIDE each arm
-#    (`sum(1) as cnt`, then `sum(cnt)` outside) — an arm's `select` dedups to its own grain,
-#    so selecting a raw per-row flag and counting it OUTSIDE undercounts. And count a
-#    GUARANTEED-non-null key, never a nullable display column: `except`/`intersect` keep
-#    all-null rows (NULL-safe), which `count(nullable_col)` then silently skips.
+#  - AGGREGATING across a union/set-op: an arm's `select` dedups to its own output
+#    grain BEFORE stacking, so stacking raw per-row values (a measure, a `1` flag)
+#    and summing/counting OUTSIDE the union silently undercounts whenever two source
+#    rows in one arm project the same tuple (e.g. two same-priced sales in a week).
+#    Pre-aggregate INSIDE each arm (`sum(sales) as v`, `sum(1) as cnt` - as this
+#    example's `count(enroll.id)` does), or pull the arm's grain key through as an
+#    extra output column so every fact row stays distinct (downstream selects can
+#    just ignore it). And count a GUARANTEED-non-null key, never a nullable display
+#    column: `except`/`intersect` keep all-null rows (NULL-safe), which
+#    `count(nullable_col)` then silently skips.
 """,
     ),
     SyntaxExample(

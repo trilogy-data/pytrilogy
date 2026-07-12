@@ -60,6 +60,8 @@ union (row stacking)
 
 union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result. Arms match by column position (same count/order/types as outputs) and may contain full trilogy select statements (with their own filters + local joins). Usable in a rowset — with combined as union(...) -> (...) with outputs using standard rowset namespaceing <rowset_name>.<path>.
 
+Each arm is an ordinary select and DEDUPLICATES to its own output grain BEFORE stacking (cross-arm duplicates still stack). Stacking raw measure rows and aggregating OUTSIDE the union silently undersums whenever two source rows in one arm project the same tuple (two same-priced sales in one week). Either aggregate INSIDE each arm (preferred: `sum(x) as v` per the arm's dims) or pull each arm's grain key through as an extra output column so every fact row stays distinct; downstream selects can simply ignore the key column.
+
 Full example: trilogy agent-info syntax example union-stack-channels.
 
 except / intersect (set operations)
