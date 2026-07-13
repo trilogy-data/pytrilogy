@@ -636,7 +636,18 @@ def gen_merge_node(
         effective_search_conditions = None
         all_search_concepts = all_concepts
     all_search_concepts = sorted(all_search_concepts, key=lambda x: x.address)
-    break_set = set([x.address for x in all_search_concepts])
+    # Constants have no datasource edges and are purged from the search graph
+    # before pathfinding; a constant in the mandatory nodelist makes dijkstra
+    # die with NodeNotFound and kills the whole merge. Bucket them out of the
+    # connectivity search (as the root merge does) — they stay in the output
+    # list and render inline.
+    searchable_concepts = [
+        c for c in all_search_concepts if c.derivation != Derivation.CONSTANT
+    ]
+    if not searchable_concepts:
+        # pure-constant requests are the root merge's job
+        return None
+    break_set = set([x.address for x in searchable_concepts])
     # Skip condition pruning only when conditions are "owned" by a partial datasource;
     # otherwise retain normal pruning so regular WHERE conditions still gate resolution.
     base_search_conditions = (
@@ -659,7 +670,7 @@ def gen_merge_node(
     attempts = [(sc, fd) for sc in condition_attempts for fd in (True, False)]
     for resolved_search_conditions, filter_downstream in attempts:
         weak_resolve = resolve_weak_components(
-            all_search_concepts,
+            searchable_concepts,
             environment,
             g,
             filter_downstream=filter_downstream,

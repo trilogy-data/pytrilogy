@@ -307,3 +307,233 @@ def test_rowset_body_gets_dual_scope():
         "select gated.x, gated.sx;",
     )
     assert rows == AGG_EXPECTED, rows
+
+
+def test_single_row_global_aggregate_stays_shared():
+    # `sum(z) by *` is a single-row scalar: its gating is owned by the
+    # scalar-output filter path on the shared address, so no twin is minted
+    # and the pinned global value (112, over all rows) is displayed.
+    rows = _rows(
+        AGG_SCHEMA + "auto tot <- sum(z) by *;\n",
+        "where f = 1 and tot > 5 select x, tot;",
+    )
+    assert rows == [(1, 112), (2, 112)], rows
+
+
+def test_alias_chain_in_where_follows_to_aggregate():
+    # A pure-rename alias of the aggregate must behave exactly like the
+    # aggregate itself: the chain is followed to the cross-row target.
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\nauto sy <- sx;\n",
+        "where f = 1 and sy > 5 select x, sy;",
+    )
+    assert rows == AGG_EXPECTED, rows
+
+
+def test_expression_wrapped_bare_aggregate():
+    # The nested aggregate has no explicit `by`, so group-atomicity is judged
+    # against the select grain. f cuts within x groups -> twin: the gate sees
+    # population sums (13, 102), the projection recomputes over f=1 rows.
+    rows = _rows(
+        AGG_SCHEMA + "auto v <- sum(z) + x;\n",
+        "where f = 1 and v > 5 select x, v;",
+    )
+    assert rows == [(1, 3), (2, 102)], rows
+
+
+def test_window_mirrored_literal_prefix_gate():
+    # Literal-first spelling of the prefix gate: `2 >= r` mirrors to `r <= 2`.
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where 2 >= r;"
+    assert _rows(model, query) == [("B", 2), ("C", 1)]
+    assert _sql(model, query).count("rank() over") == 1
+
+
+def test_window_literal_first_eq_one_gate():
+    # `1 = r` mirrors to `r = 1` (EQ is its own mirror): still a prefix gate.
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where 1 = r;"
+    assert _rows(model, query) == [("C", 1)]
+    assert _sql(model, query).count("rank() over") == 1
+
+
+def test_window_or_gate_splits():
+    # An OR admits rows outside a prefix, so no prefix reasoning survives it;
+    # here every population rank passes, and the recompute reproduces them.
+    model = WINDOW_SCHEMA
+    query = (
+        f"select vehicle_name, {RANK} as r "
+        "where (r <= 2 or r >= 3) and vehicle_name != 'D';"
+    )
+    assert _rows(model, query) == [("A", 3), ("B", 2), ("C", 1)]
+    assert _sql(model, query).count("rank() over") == 2
+
+
+def test_window_in_gate_splits():
+    # Membership is not a prefix-selecting comparison, even when its literal
+    # set happens to be one.
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where r in (1, 2);"
+    assert _rows(model, query) == [("B", 2), ("C", 1)]
+    assert _sql(model, query).count("rank() over") == 2
+
+
+def test_window_null_gate_splits():
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where r is null;"
+    assert _rows(model, query) == []
+    assert _sql(model, query).count("rank() over") == 2
+
+
+def test_window_wrapped_target_gate_splits():
+    # The gate compares an expression OVER the rank, not the bare rank: not
+    # provably prefix-selecting, so the twin stays.
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where abs(r) <= 2;"
+    assert _rows(model, query) == [("B", 2), ("C", 1)]
+    assert _sql(model, query).count("rank() over") == 2
+
+
+def test_navigation_or_gate_splits():
+    # OR structure defeats the partition-atomicity analysis: gate on the
+    # population lead, recompute over the admitted rows (B's lead goes null).
+    model = NAV_SCHEMA
+    query = "where nxt is not null or cat = 'B' select cat, wk, nxt;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None), ("B", 1, None)]
+    assert _sql(model, query).count("lead(") == 2
+
+
+def test_navigation_boolean_literal_conjunct_splits():
+    # A bare boolean literal conjunct is neither a concept reference nor a
+    # concept-bearing predicate; the conservative answer is to split.
+    model = NAV_SCHEMA
+    query = "where true and nxt is not null select cat, wk, nxt;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None)]
+    assert _sql(model, query).count("lead(") == 2
+
+
+def test_navigation_bare_boolean_concept_conjunct_splits():
+    # A bare boolean concept conjunct keyed at row grain cuts within
+    # partitions, so the twin stays.
+    model = NAV_SCHEMA + "auto is_a <- cat = 'A';\n"
+    query = "where is_a and nxt is not null select cat, wk, nxt;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None)]
+    assert _sql(model, query).count("lead(") == 2
+
+
+def test_navigation_expression_partition_splits():
+    # Partitioned over an expression (materialized only at build time): the
+    # partition keys are not bare references, so partition-atomicity cannot be
+    # established and the twin stays.
+    model = (
+        NAV_SCHEMA
+        + "auto nxt2 <- lead(amt, 1) over (partition by upper(cat) order by wk asc);\n"
+    )
+    query = "where nxt2 is not null select cat, wk, nxt2;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None)]
+    assert _sql(model, query).count("lead(") == 2
+
+
+def test_navigation_gate_referencing_peer_splits():
+    # The target-bearing conjunct also references a row-level peer, so it is
+    # not a bare deferred gate on the computed value: gate on population lead
+    # (admits A wk1/wk2), recompute over the admitted rows.
+    model = NAV_SCHEMA
+    query = "where nxt > amt select cat, wk, nxt;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None)]
+    assert _sql(model, query).count("lead(") == 2
+
+
+GROUP_SCHEMA = """key id int;
+property id.x int;
+property id.z int;
+property id.f int;
+datasource d ( id, x, z, f ) grain (id)
+query '''select 1 as id, 1 as x, 5 as z, 1 as f
+union all select 2, 1, 5, 0
+union all select 3, 2, 50, 1''';
+"""
+
+
+def test_group_to_always_splits():
+    # Row admission reshuffles a group-to, so it always takes the twin: the
+    # gate sees population g (x=1 -> 5 fails, x=2 -> 50 passes).
+    rows = _rows(GROUP_SCHEMA, "select x, group(z) by x as g where f = 1 and g > 10;")
+    assert rows == [(2, 50)], rows
+
+
+def test_filter_item_output_in_where_stays_shared():
+    # A FilterItem is row-invariant — its value doesn't depend on which rows
+    # are visible — so the WHERE reference keeps the shared address.
+    rows = _rows(AGG_SCHEMA + "auto fz <- z ? f = 1;\n", "where fz > 5 select x, fz;")
+    assert rows == [(2, 100)], rows
+
+
+def test_twin_keeps_scalar_refs_environment_resolved():
+    # Only cross-row-bearing references are inlined into the twin; the scalar
+    # w stays a plain reference. Population v (16, 300) gates; only x=2
+    # survives and the projection recomputes there.
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\nauto w <- z * 2;\nauto v <- sx + w;\n",
+        "where f = 1 and v > 20 select x, v;",
+    )
+    assert rows == [(2, 300)], rows
+
+
+def test_population_only_refs_share_sensitivity_cache():
+    # Two population-only aggregate gates whose closures share only the
+    # non-sensitive select key x: neither is an output, so no twin.
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\nauto sf <- sum(f) by x;\n",
+        "where f = 1 and sx > 5 and sf >= 0 select x;",
+    )
+    assert rows == [(1,), (2,)], rows
+
+
+def test_duplicate_reference_inlines_once():
+    # sx appears twice in v's lineage; both occurrences inline the population
+    # aggregate (population v = 36/300 both pass; select-scope v = 6/300).
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\nauto v <- sx * 2 + sx;\n",
+        "where f = 1 and v > 30 select x, v;",
+    )
+    assert rows == [(1, 6), (2, 300)], rows
+
+
+def test_constant_universe_stays_shared():
+    # Every concept under the rank is constant/unnest-derived: row identity
+    # for such universes is regenerated rather than carried, so a twin cannot
+    # gate it (pre-existing hole shared with the inline spelling). No mint —
+    # the shared instance keeps population ranks.
+    model = (
+        "auto nums <- unnest([1,2,3,4]);\n"
+        "auto doubled <- nums * 2;\n"
+        "auto cr <- rank doubled order by doubled desc;\n"
+    )
+    query = "where cr >= 2 select doubled, cr;"
+    assert _rows(model, query) == [(2, 4), (4, 3), (6, 2)]
+    assert _sql(model, query).count("rank() over") == 1
+
+
+def test_macro_partition_key_in_where_built_twin():
+    # The twin builds in the WHERE factory, whose scope salt inspects every
+    # virtual it mints — including a def-macro call arriving as a partition
+    # key. The macro wraps a scalar, so it stays unsalted and shared.
+    model = (
+        NAV_SCHEMA
+        + "def par(c) -> upper(c);\n"
+        + "auto nxt3 <- lead(amt, 1) over (partition by @par(cat) order by wk asc);\n"
+    )
+    query = "where nxt3 is not null and amt > 5 select cat, wk, nxt3;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None)]
+    assert _sql(model, query).count("lead(") == 2
+
+
+def test_macro_wrapped_inline_where_aggregate():
+    # An inline WHERE aggregate arriving through a def-macro call still counts
+    # as a cross-row instantiation for the WHERE factory's scope salt.
+    rows = _rows(
+        AGG_SCHEMA + "def bigsum(val) -> sum(val) by x;\n",
+        "select x, sum(z) by x as sx where f = 1 and @bigsum(z) > 5;",
+    )
+    assert rows == AGG_EXPECTED, rows
