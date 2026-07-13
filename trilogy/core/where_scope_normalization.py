@@ -22,27 +22,30 @@ in twin expressions.
 from __future__ import annotations
 
 from dataclasses import replace as dc_replace
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from trilogy.core.enums import Derivation, FunctionType, Granularity
+from trilogy.core.having_normalization import _child_exprs
 from trilogy.core.models.author import (
     AggregateWrapper,
-    CaseElse,
-    CaseWhen,
-    Comparison,
     Concept,
     ConceptRef,
-    Conditional,
+    FilterItem,
     Function,
-    FunctionCallWrapper,
     NavigationWindowItem,
     NumberingWindowItem,
-    Parenthetical,
     SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
 )
 from trilogy.core.models.environment import Environment
+
+# Suffix for WHERE-scope (population-gate) virtual concept names. Shared with
+# the WHERE factory's ``virtual_scope_salt`` (build.py) so a minted twin and an
+# anonymous cross-row virtual instantiated during a WHERE build land on the
+# same address for the same expression — while never colliding with the
+# unsalted select-scope instantiation of that expression.
+WHERE_SCOPE_SALT = "wscope"
 
 _CROSS_ROW_LINEAGE_TYPES = (
     AggregateWrapper,
@@ -175,14 +178,17 @@ def _collect_cross_row_parts(
     seen: set[str],
 ) -> list[Any]:
     """Cross-row computation nodes (aggregate/window/group-to wrappers)
-    reachable in an expression tree — through scalar functions, parentheticals,
-    case branches, macro wrappers, and references to derived concepts. A
-    FilterItem is a boundary: its per-row value is row-invariant. The returned
-    wrappers drive the mint decision and the group-atomicity analysis."""
+    reachable in an expression tree — through scalar composites (via the
+    exhaustive ``_child_exprs`` walk shared with HAVING normalization) and
+    references to derived concepts. A FilterItem is a boundary: its per-row
+    value is row-invariant. The returned wrappers drive the mint decision and
+    the group-atomicity analysis."""
     if isinstance(node, _CROSS_ROW_LINEAGE_TYPES):
         return [node]
     if isinstance(node, Function) and node.operator == FunctionType.GROUP:
         return [node]
+    if isinstance(node, FilterItem):
+        return []
     if isinstance(node, ConceptRef):
         if node.address in seen:
             return []
@@ -195,30 +201,63 @@ def _collect_cross_row_parts(
         ):
             return []
         return _collect_cross_row_parts(resolved.lineage, local, environment, seen)
-    children: list[Any] = []
-    if isinstance(node, Function):
-        children = list(node.arguments)
-    elif isinstance(node, FunctionCallWrapper):
-        children = [node.content, *node.args]
-    elif isinstance(node, Parenthetical):
-        children = [node.content]
-    elif isinstance(node, CaseWhen):
-        children = [node.comparison, node.expr]
-    elif isinstance(node, CaseElse):
-        children = [node.expr]
-    elif isinstance(node, (Comparison, Conditional)):
-        children = [node.left, node.right]
     found: list[Any] = []
-    for child in children:
+    for child in _child_exprs(node):
         found.extend(_collect_cross_row_parts(child, local, environment, seen))
     return found
+
+
+def _reference_closure(
+    addresses: Iterable[str],
+    local: Mapping[str, Concept],
+    environment: Environment,
+) -> set[str]:
+    """Addresses transitively reachable from ``addresses`` through concept
+    lineages (locals shadow the environment)."""
+    stack = list(addresses)
+    closure: set[str] = set()
+    while stack:
+        address = stack.pop()
+        if address in closure:
+            continue
+        closure.add(address)
+        concept = _resolve_in(address, local, environment)
+        if concept is None or concept.lineage is None:
+            continue
+        stack.extend(r.address for r in concept.lineage.concept_arguments)
+    return closure
+
+
+def _scope_sensitive(
+    address: str,
+    local: Mapping[str, Concept],
+    environment: Environment,
+    cache: dict[str, bool],
+) -> bool:
+    """The address's value depends on which rows are visible: its lineage
+    closure holds a cross-row computation. Single-row scalars are excluded —
+    their gating is owned by the scalar-output filter path, which keys off the
+    shared address (skip gate 1)."""
+    if address in cache:
+        return cache[address]
+    cache[address] = False
+    concept = _resolve_in(address, local, environment)
+    sensitive = bool(
+        concept is not None
+        and concept.lineage is not None
+        and concept.granularity != Granularity.SINGLE_ROW
+        and _collect_cross_row_parts(concept.lineage, local, environment, set())
+    )
+    cache[address] = sensitive
+    return sensitive
 
 
 def _where_scope_lineage(
     lineage: Any,
     local: Mapping[str, Concept],
     environment: Environment,
-    seen: set[str],
+    active: set[str],
+    rewritten: dict[str, Any],
 ) -> Any:
     """WHERE-scope rewrite of a lineage: references to cross-row-bearing
     concepts are INLINED as their (recursively rewritten) lineage nodes, so a
@@ -228,12 +267,23 @@ def _where_scope_lineage(
     anonymous wrappers (which the WHERE factory's ``virtual_scope_salt``
     instantiates at scope-distinct addresses) and every remaining reference
     resolves through the environment, which grain/keys recomputation
-    requires."""
+    requires.
+
+    ``active`` guards reference cycles along the current path only;
+    ``rewritten`` memoizes finished rewrites so a concept reachable along
+    several paths (``v <- sx + m`` with ``m <- sx * 2``) inlines on every
+    path, not just the first one walked — ``with_reference_replacement`` does
+    not descend into replacement values, so a skipped ref would survive as a
+    select-scope address inside the twin."""
     replacements: list[tuple[str, Any]] = []
+    listed: set[str] = set()
     for ref in lineage.concept_arguments:
-        if ref.address in seen:
+        if ref.address in active or ref.address in listed:
             continue
-        seen.add(ref.address)
+        if ref.address in rewritten:
+            listed.add(ref.address)
+            replacements.append((ref.address, rewritten[ref.address]))
+            continue
         resolved = _resolve_in(ref.address, local, environment)
         if (
             resolved is None
@@ -243,12 +293,12 @@ def _where_scope_lineage(
             continue
         if not _collect_cross_row_parts(resolved.lineage, local, environment, set()):
             continue
-        replacements.append(
-            (
-                ref.address,
-                _where_scope_lineage(resolved.lineage, local, environment, seen),
-            )
+        inlined = _where_scope_lineage(
+            resolved.lineage, local, environment, active | {ref.address}, rewritten
         )
+        rewritten[ref.address] = inlined
+        listed.add(ref.address)
+        replacements.append((ref.address, inlined))
     if not replacements:
         return lineage
     return lineage.with_reference_replacement(replacements)  # type: ignore[arg-type]
@@ -267,16 +317,19 @@ def normalize_select_where_scope(
     minted twin, converging every spelling on the inline spelling's dual scope.
     Pure and deterministic: reruns identically per rowset body / multiselect
     arm."""
-    from trilogy.parsing.common import arbitrary_to_concept
+    from trilogy.parsing.common import arbitrary_to_concept, generate_concept_name
 
     if base.where_clause is None:
         return base
-    output_addrs = {r.address for r in base.selection}
+    select_scope = _reference_closure(
+        (r.address for r in base.selection), base.local_concepts, environment
+    )
+    sensitivity: dict[str, bool] = {}
     replacements: list[tuple[str, ConceptRef]] = []
     minted: dict[str, Concept] = {}
     handled: set[str] = set()
     for ref in base.where_clause.row_arguments:
-        if ref.address in handled or ref.address not in output_addrs:
+        if ref.address in handled:
             continue
         handled.add(ref.address)
         concept = base.local_concepts.get(ref.address) or environment.concepts.get(
@@ -290,6 +343,20 @@ def normalize_select_where_scope(
         )
         if not parts:
             continue
+        # The two roles only conflict when a scope-sensitive value is consumed
+        # on both sides of the WHERE/select boundary. Direct output identity is
+        # the common case, but a reference chain crossing the boundary in
+        # either direction (`where sx ... select sx + 1 as v` / `where v ...
+        # select sx`) shares the same address and leaks identically.
+        shared = (
+            _reference_closure([ref.address], base.local_concepts, environment)
+            & select_scope
+        )
+        if not any(
+            _scope_sensitive(a, base.local_concepts, environment, sensitivity)
+            for a in shared
+        ):
+            continue
         # Group-atomic WHEREs keep or drop whole groups of an aggregate, so its
         # two scopes coincide — keep the single shared instance. Windows always
         # split: any row admission reshuffles them.
@@ -300,9 +367,16 @@ def normalize_select_where_scope(
         if _constant_universe(target.lineage, base.local_concepts, environment):
             continue
         twin_lineage = _where_scope_lineage(
-            target.lineage, base.local_concepts, environment, {target.address}
+            target.lineage, base.local_concepts, environment, {target.address}, {}
         )
-        twin = arbitrary_to_concept(twin_lineage, environment)
+        twin = arbitrary_to_concept(
+            twin_lineage,
+            environment,
+            # scope-salted like the WHERE factory's anonymous virtuals: the
+            # identical expression nested in a select output instantiates at
+            # the unsalted hash name, and the two must never share an address
+            name=f"{generate_concept_name(twin_lineage)}_{WHERE_SCOPE_SALT}",
+        )
         minted[twin.address] = twin
         replacements.append((ref.address, twin.reference))
     if not replacements:

@@ -1,0 +1,1208 @@
+[categories] spawning parallel runs:
+   sql_bare   → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_sql_bare
+   sql_schema → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_sql_schema
+   ingest     → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_ingest
+   enriched   → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_enriched
+[sql_bare] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[sql_bare] [2/5] Category 'sql_bare': setting up workspace ...
+[sql_bare] [3/5] Running agent per query (99 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[sql_bare]   [q01] starting (worker _worker_1)
+[sql_bare]   [q02] starting (worker _worker_0)
+[enriched] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[enriched] [2/5] Category 'enriched': setting up workspace ...
+[enriched] [3/5] Running agent per query (99 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[enriched]   [q02] starting (worker _worker_0)
+[enriched]   [q01] starting (worker _worker_1)
+[sql_schema] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[sql_schema] [2/5] Category 'sql_schema': setting up workspace ...
+[sql_schema] [3/5] Running agent per query (99 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[sql_schema]   [q01] starting (worker _worker_1)
+[sql_schema]   [q02] starting (worker _worker_0)
+[ingest] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[ingest] [2/5] Category 'ingest': setting up workspace ...
+[ingest] [3/5] Running agent per query (99 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+[ingest]   [q01] starting (worker _worker_1)
+[ingest]   [q02] starting (worker _worker_0)
+[sql_schema]   [q01] done in 29s (exit 0, score=pass)
+[sql_schema]   [q03] starting (worker _worker_1)
+[sql_bare]   [q01] done in 35s (exit 0, score=pass)
+[sql_bare]   [q03] starting (worker _worker_1)
+[enriched]   [q02] done in 40s (exit 0, score=pass)
+[enriched]   [q03] starting (worker _worker_0)
+[enriched]   [q01] done in 43s (exit 0, score=fail)
+[enriched]   [q04] starting (worker _worker_1)
+[sql_schema]   [q03] done in 16s (exit 0, score=pass)
+[sql_schema]   [q04] starting (worker _worker_1)
+[sql_bare]   [q03] done in 18s (exit 0, score=pass)
+[sql_bare]   [q04] starting (worker _worker_1)
+[enriched]   [q03] done in 20s (exit 0, score=pass)
+[enriched]   [q05] starting (worker _worker_0)
+[sql_schema]   [q02] done in 80s (exit 0, score=pass)
+[sql_schema]   [q05] starting (worker _worker_0)
+[sql_bare]   [q02] done in 84s (exit 0, score=fail)
+[sql_bare]   [q05] starting (worker _worker_0)
+[enriched]   [q04] done in 69s (exit 0, score=pass)
+[sql_schema]   [q04] done in 62s (exit 0, score=pass)
+[enriched]   [q06] starting (worker _worker_1)
+[sql_schema]   [q06] starting (worker _worker_1)
+[ingest]   [q01] done in 120s (exit 0, score=pass)
+[ingest]   [q03] starting (worker _worker_1)
+[ingest]   [q02] done in 126s (exit 0, score=fail)
+[ingest]   [q04] starting (worker _worker_0)
+[sql_bare]   [q04] done in 103s (exit 0, score=pass)
+[sql_bare]   [q06] starting (worker _worker_1)
+[enriched]   [q05] done in 98s (exit 0, score=fail)
+[enriched]   [q07] starting (worker _worker_0)
+[ingest]   [q03] done in 22s (exit 0, score=pass)
+[ingest]   [q05] starting (worker _worker_1)
+[sql_schema]   [q06] done in 53s (exit 0, score=pass)
+[sql_schema]   [q07] starting (worker _worker_1)
+[enriched]   [q07] done in 30s (exit 0, score=pass)
+[enriched]   [q08] starting (worker _worker_0)
+[ingest]   [q04] done in 52s (exit 0, score=pass)
+[ingest]   [q06] starting (worker _worker_0)
+[sql_schema]   [q07] done in 36s (exit 0, score=pass)
+[sql_schema]   [q08] starting (worker _worker_1)
+[sql_bare]   [q06] done in 67s (exit 0, score=fail)
+[sql_bare]   [q07] starting (worker _worker_1)
+[sql_bare]   [q05] done in 155s (exit 0, score=pass)
+[sql_bare]   [q08] starting (worker _worker_0)
+[sql_bare]   [q07] done in 17s (exit 0, score=pass)
+[sql_bare]   [q09] starting (worker _worker_1)
+[enriched]   [q06] done in 143s (exit 0, score=pass)
+[enriched]   [q09] starting (worker _worker_1)
+[sql_bare]   [q09] done in 26s (exit 0, score=pass)
+[sql_bare]   [q10] starting (worker _worker_1)
+[enriched]   [q08] done in 87s (exit 0, score=pass)
+[enriched]   [q10] starting (worker _worker_0)
+[enriched]   [q09] done in 39s (exit 0, score=pass)
+[enriched]   [q11] starting (worker _worker_1)
+[sql_schema]   [q08] done in 96s (exit 0, score=pass)
+[sql_schema]   [q09] starting (worker _worker_1)
+[sql_schema]   [q05] done in 233s (exit 0, score=fail)
+[sql_schema]   [q10] starting (worker _worker_0)
+[sql_bare]   [q10] done in 42s (exit 0, score=pass)
+[sql_bare]   [q11] starting (worker _worker_1)
+[sql_schema]   [q09] done in 21s (exit 0, score=pass)
+[sql_schema]   [q11] starting (worker _worker_1)
+[enriched]   [q10] done in 55s (exit 0, score=pass)
+[enriched]   [q12] starting (worker _worker_0)
+[sql_schema]   [q10] done in 39s (exit 0, score=pass)
+[sql_schema]   [q12] starting (worker _worker_0)
+[sql_bare]   [q08] done in 119s (exit 0, score=pass)
+[sql_bare]   [q12] starting (worker _worker_0)
+[sql_bare]   [q11] done in 50s (exit 0, score=pass)
+[sql_bare]   [q13] starting (worker _worker_1)
+[sql_schema]   [q11] done in 50s (exit 0, score=pass)
+[sql_schema]   [q13] starting (worker _worker_1)
+[sql_schema]   [q12] done in 26s (exit 0, score=pass)
+[sql_schema]   [q14] starting (worker _worker_0)
+[enriched]   [q12] done in 36s (exit 0, score=pass)
+[enriched]   [q13] starting (worker _worker_0)
+[enriched]   [q11] done in 83s (exit 0, score=pass)
+[enriched]   [q14] starting (worker _worker_1)
+[sql_bare]   [q12] done in 31s (exit 0, score=pass)
+[sql_bare]   [q14] starting (worker _worker_0)
+[enriched]   [q13] done in 26s (exit 0, score=pass)
+[enriched]   [q15] starting (worker _worker_0)
+[sql_schema]   [q13] done in 40s (exit 0, score=pass)
+[sql_schema]   [q15] starting (worker _worker_1)
+[sql_bare]   [q13] done in 51s (exit 0, score=pass)
+[sql_bare]   [q15] starting (worker _worker_1)
+[enriched]   [q15] done in 26s (exit 0, score=pass)
+[enriched]   [q16] starting (worker _worker_0)
+[sql_bare]   [q15] done in 35s (exit 0, score=pass)
+[sql_bare]   [q16] starting (worker _worker_1)
+[sql_schema]   [q15] done in 40s (exit 0, score=pass)
+[sql_schema]   [q16] starting (worker _worker_1)
+[enriched]   [q14] done in 98s (exit 0, score=fail)
+[enriched]   [q17] starting (worker _worker_1)
+[sql_schema]   [q14] done in 103s (exit 0, score=pass)
+[sql_schema]   [q17] starting (worker _worker_0)
+[sql_bare]   [q14] done in 106s (exit 0, score=pass)
+[sql_bare]   [q17] starting (worker _worker_0)
+[enriched]   [q16] done in 65s (exit 0, score=pass)
+[enriched]   [q18] starting (worker _worker_0)
+[ingest]   [q06] done in 315s (exit 0, score=pass)
+[ingest]   [q07] starting (worker _worker_0)
+[sql_bare]   [q16] done in 60s (exit 0, score=pass)
+[sql_bare]   [q18] starting (worker _worker_1)
+[sql_schema]   [q16] done in 70s (exit 0, score=pass)
+[sql_schema]   [q18] starting (worker _worker_1)
+[sql_bare]   [q17] done in 57s (exit 0, score=pass)
+[sql_bare]   [q19] starting (worker _worker_0)
+[ingest]   [q07] done in 41s (exit 0, score=pass)
+[ingest]   [q08] starting (worker _worker_0)
+[enriched]   [q18] done in 55s (exit 0, score=pass)
+[enriched]   [q19] starting (worker _worker_0)
+[sql_bare]   [q19] done in 30s (exit 0, score=pass)
+[sql_bare]   [q20] starting (worker _worker_0)
+[enriched]   [q17] done in 102s (exit 0, score=pass)
+[enriched]   [q20] starting (worker _worker_1)
+[enriched]   [q19] done in 28s (exit 0, score=pass)
+[enriched]   [q21] starting (worker _worker_0)
+[ingest]   [q05] done in 431s (exit 0, score=pass)
+[ingest]   [q09] starting (worker _worker_1)
+[ingest]   [q08] done in 48s (exit 0, score=pass)
+[ingest]   [q10] starting (worker _worker_0)
+[sql_bare]   [q20] done in 30s (exit 0, score=fail)
+[sql_bare]   [q21] starting (worker _worker_0)
+[enriched]   [q20] done in 29s (exit 0, score=pass)
+[sql_schema]   [q17] done in 133s (exit 0, score=pass)
+[enriched]   [q22] starting (worker _worker_1)
+[sql_schema]   [q19] starting (worker _worker_0)
+[enriched]   [q21] done in 39s (exit 0, score=pass)
+[enriched]   [q23] starting (worker _worker_0)
+[ingest]   [q09] done in 41s (exit 0, score=pass)
+[ingest]   [q11] starting (worker _worker_1)
+[enriched]   [q22] done in 23s (exit 0, score=pass)
+[sql_bare]   [q18] done in 125s (exit 0, score=fail)
+[enriched]   [q24] starting (worker _worker_1)
+[sql_bare]   [q22] starting (worker _worker_1)
+[sql_schema]   [q19] done in 28s (exit 0, score=pass)
+[sql_schema]   [q20] starting (worker _worker_0)
+[sql_bare]   [q21] done in 35s (exit 0, score=pass)
+[sql_bare]   [q23] starting (worker _worker_0)
+[ingest]   [q10] done in 53s (exit 0, score=pass)
+[ingest]   [q12] starting (worker _worker_0)
+[sql_schema]   [q18] done in 135s (exit 0, score=fail)
+[sql_schema]   [q21] starting (worker _worker_1)
+[sql_bare]   [q22] done in 28s (exit 0, score=pass)
+[sql_bare]   [q24] starting (worker _worker_1)
+[ingest]   [q11] done in 42s (exit 0, score=pass)
+[ingest]   [q13] starting (worker _worker_1)
+[ingest]   [q12] done in 26s (exit 0, score=pass)
+[ingest]   [q14] starting (worker _worker_0)
+[sql_schema]   [q20] done in 47s (exit 0, score=pass)
+[sql_schema]   [q22] starting (worker _worker_0)
+[sql_schema]   [q22] done in 19s (exit 0, score=pass)
+[sql_schema]   [q23] starting (worker _worker_0)
+[ingest]   [q13] done in 38s (exit 0, score=fail)
+[ingest]   [q15] starting (worker _worker_1)
+[enriched]   [q24] done in 80s (exit 0, score=pass)
+[enriched]   [q25] starting (worker _worker_1)
+[sql_schema]   [q21] done in 67s (exit 0, score=pass)
+[sql_schema]   [q24] starting (worker _worker_1)
+[ingest]   [q15] done in 24s (exit 0, score=fail)
+[ingest]   [q16] starting (worker _worker_1)
+[sql_bare]   [q24] done in 76s (exit 0, score=pass)
+[sql_bare]   [q25] starting (worker _worker_1)
+[enriched]   [q25] done in 65s (exit 0, score=pass)
+[enriched]   [q26] starting (worker _worker_1)
+[sql_bare]   [q25] done in 47s (exit 0, score=pass)
+[ingest]   [q14] done in 103s (exit 0, score=fail)
+[sql_bare]   [q26] starting (worker _worker_1)
+[ingest]   [q17] starting (worker _worker_0)
+[sql_schema]   [q24] done in 68s (exit 0, score=pass)
+[sql_schema]   [q25] starting (worker _worker_1)
+[enriched]   [q26] done in 28s (exit 0, score=pass)
+[enriched]   [q27] starting (worker _worker_1)
+[ingest]   [q16] done in 76s (exit 0, score=fail)
+[sql_bare]   [q26] done in 27s (exit 0, score=pass)
+[ingest]   [q18] starting (worker _worker_1)
+[sql_bare]   [q27] starting (worker _worker_1)
+[sql_schema]   [q23] done in 133s (exit 0, score=fail)
+[sql_schema]   [q26] starting (worker _worker_0)
+[enriched]   [q27] done in 38s (exit 0, score=pass)
+[enriched]   [q28] starting (worker _worker_1)
+[sql_bare]   [q27] done in 57s (exit 0, score=fail)
+[sql_schema]   [q25] done in 84s (exit 0, score=pass)
+[sql_schema]   [q27] starting (worker _worker_1)
+[sql_bare]   [q28] starting (worker _worker_1)
+[enriched]   [q28] done in 29s (exit 0, score=pass)
+[enriched]   [q29] starting (worker _worker_1)
+[ingest]   [q18] done in 67s (exit 0, score=fail)
+[ingest]   [q19] starting (worker _worker_1)
+[sql_schema]   [q26] done in 62s (exit 0, score=fail)
+[sql_schema]   [q28] starting (worker _worker_0)
+[sql_bare]   [q28] done in 26s (exit 0, score=pass)
+[sql_bare]   [q29] starting (worker _worker_1)
+[ingest]   [q19] done in 36s (exit 0, score=pass)
+[ingest]   [q20] starting (worker _worker_1)
+[sql_schema]   [q27] done in 53s (exit 0, score=pass)
+[sql_schema]   [q29] starting (worker _worker_1)
+[sql_schema]   [q28] done in 31s (exit 0, score=pass)
+[sql_schema]   [q30] starting (worker _worker_0)
+[sql_bare]   [q29] done in 46s (exit 0, score=pass)
+[ingest]   [q20] done in 28s (exit 0, score=pass)
+[sql_bare]   [q30] starting (worker _worker_1)
+[ingest]   [q21] starting (worker _worker_1)
+[enriched]   [q23] done in 344s (exit 0, score=fail)
+[enriched]   [q30] starting (worker _worker_0)
+[ingest]   [q17] done in 182s (exit 0, score=fail)
+[ingest]   [q22] starting (worker _worker_0)
+[sql_schema]   [q29] done in 45s (exit 0, score=pass)
+[sql_schema]   [q31] starting (worker _worker_1)
+[sql_bare]   [q23] done in 339s (exit 0, score=fail)
+[sql_bare]   [q31] starting (worker _worker_0)
+[sql_bare]   [q30] done in 35s (exit 0, score=pass)
+[sql_bare]   [q32] starting (worker _worker_1)
+[sql_schema]   [q30] done in 57s (exit 0, score=pass)
+[sql_schema]   [q32] starting (worker _worker_0)
+[ingest]   [q21] done in 41s (exit 0, score=pass)
+[ingest]   [q23] starting (worker _worker_1)
+[ingest]   [q22] done in 22s (exit 0, score=pass)
+[ingest]   [q24] starting (worker _worker_0)
+[enriched]   [q30] done in 39s (exit 0, score=pass)
+[enriched]   [q31] starting (worker _worker_0)
+[sql_bare]   [q32] done in 29s (exit 0, score=pass)
+[sql_bare]   [q33] starting (worker _worker_1)
+[sql_schema]   [q32] done in 30s (exit 0, score=pass)
+[sql_schema]   [q33] starting (worker _worker_0)
+[sql_schema]   [q31] done in 70s (exit 0, score=fail)
+[sql_schema]   [q34] starting (worker _worker_1)
+[sql_bare]   [q33] done in 34s (exit 0, score=pass)
+[sql_bare]   [q34] starting (worker _worker_1)
+[enriched]   [q31] done in 54s (exit 0, score=pass)
+[enriched]   [q32] starting (worker _worker_0)
+[sql_schema]   [q33] done in 59s (exit 0, score=pass)
+[sql_schema]   [q35] starting (worker _worker_0)
+[sql_bare]   [q31] done in 108s (exit 0, score=fail)
+[sql_bare]   [q35] starting (worker _worker_0)
+[sql_schema]   [q34] done in 41s (exit 0, score=pass)
+[sql_schema]   [q36] starting (worker _worker_1)
+[sql_bare]   [q34] done in 44s (exit 0, score=pass)
+[sql_bare]   [q36] starting (worker _worker_1)
+[enriched]   [q32] done in 36s (exit 0, score=pass)
+[enriched]   [q33] starting (worker _worker_0)
+[enriched]   [q29] done in 232s (exit 0, score=pass)
+[enriched]   [q34] starting (worker _worker_1)
+[ingest]   [q24] done in 120s (exit 0, score=fail)
+[ingest]   [q25] starting (worker _worker_0)
+[enriched]   [q33] done in 24s (exit 0, score=pass)
+[enriched]   [q35] starting (worker _worker_0)
+[sql_bare]   [q35] done in 51s (exit 0, score=pass)
+[sql_bare]   [q37] starting (worker _worker_0)
+[sql_schema]   [q35] done in 62s (exit 0, score=pass)
+[sql_schema]   [q37] starting (worker _worker_0)
+[enriched]   [q34] done in 38s (exit 0, score=pass)
+[enriched]   [q36] starting (worker _worker_1)
+[sql_schema]   [q36] done in 63s (exit 0, score=pass)
+[sql_schema]   [q38] starting (worker _worker_1)
+[sql_bare]   [q37] done in 30s (exit 0, score=pass)
+[sql_bare]   [q38] starting (worker _worker_0)
+[enriched]   [q35] done in 49s (exit 0, score=fail)
+[enriched]   [q37] starting (worker _worker_0)
+[sql_schema]   [q37] done in 33s (exit 0, score=pass)
+[sql_schema]   [q39] starting (worker _worker_0)
+[sql_bare]   [q36] done in 90s (exit 0, score=pass)
+[sql_bare]   [q39] starting (worker _worker_1)
+[sql_schema]   [q38] done in 42s (exit 0, score=pass)
+[sql_schema]   [q40] starting (worker _worker_1)
+[enriched]   [q36] done in 44s (exit 0, score=pass)
+[enriched]   [q38] starting (worker _worker_1)
+[ingest]   [q23] done in 211s (exit 0, score=pass)
+[ingest]   [q26] starting (worker _worker_1)
+[sql_schema]   [q39] done in 40s (exit 0, score=pass)
+[sql_schema]   [q41] starting (worker _worker_0)
+[enriched]   [q37] done in 46s (exit 0, score=pass)
+[enriched]   [q39] starting (worker _worker_0)
+[sql_schema]   [q40] done in 35s (exit 0, score=pass)
+[sql_schema]   [q42] starting (worker _worker_1)
+[sql_bare]   [q39] done in 47s (exit 0, score=pass)
+[sql_bare]   [q40] starting (worker _worker_1)
+[sql_bare]   [q38] done in 65s (exit 0, score=pass)
+[sql_bare]   [q41] starting (worker _worker_0)
+[ingest]   [q26] done in 32s (exit 0, score=fail)
+[ingest]   [q27] starting (worker _worker_1)
+[sql_schema]   [q42] done in 12s (exit 0, score=pass)
+[sql_schema]   [q43] starting (worker _worker_1)
+[enriched]   [q38] done in 77s (exit 0, score=pass)
+[enriched]   [q40] starting (worker _worker_1)
+[sql_schema]   [q43] done in 36s (exit 0, score=pass)
+[sql_schema]   [q44] starting (worker _worker_1)
+[sql_bare]   [q40] done in 47s (exit 0, score=pass)
+[sql_schema]   [q41] done in 61s (exit 0, score=fail)
+[sql_schema]   [q45] starting (worker _worker_0)
+[sql_bare]   [q42] starting (worker _worker_1)
+[enriched]   [q39] done in 62s (exit 0, score=pass)
+[enriched]   [q41] starting (worker _worker_0)
+[ingest]   [q27] done in 48s (exit 0, score=fail)
+[ingest]   [q28] starting (worker _worker_1)
+[sql_bare]   [q41] done in 67s (exit 0, score=fail)
+[sql_bare]   [q43] starting (worker _worker_0)
+[sql_bare]   [q42] done in 24s (exit 0, score=pass)
+[sql_bare]   [q44] starting (worker _worker_1)
+[enriched]   [q40] done in 37s (exit 0, score=pass)
+[enriched]   [q42] starting (worker _worker_1)
+[sql_schema]   [q44] done in 36s (exit 0, score=pass)
+[sql_schema]   [q46] starting (worker _worker_1)
+[ingest]   [q28] done in 29s (exit 0, score=pass)
+[ingest]   [q29] starting (worker _worker_1)
+[sql_schema]   [q45] done in 43s (exit 0, score=fail)
+[sql_schema]   [q47] starting (worker _worker_0)
+[enriched]   [q42] done in 23s (exit 0, score=pass)
+[enriched]   [q43] starting (worker _worker_1)
+[sql_bare]   [q43] done in 35s (exit 0, score=pass)
+[sql_bare]   [q45] starting (worker _worker_0)
+[sql_bare]   [q44] done in 39s (exit 0, score=pass)
+[sql_bare]   [q46] starting (worker _worker_1)
+[sql_schema]   [q46] done in 32s (exit 0, score=pass)
+[sql_schema]   [q48] starting (worker _worker_1)
+[sql_schema]   [q47] done in 37s (exit 0, score=pass)
+[sql_schema]   [q49] starting (worker _worker_0)
+[enriched]   [q43] done in 34s (exit 0, score=pass)
+[enriched]   [q44] starting (worker _worker_1)
+[sql_bare]   [q45] done in 36s (exit 0, score=pass)
+[sql_bare]   [q47] starting (worker _worker_0)
+[sql_bare]   [q46] done in 30s (exit 0, score=pass)
+[sql_bare]   [q48] starting (worker _worker_1)
+[sql_schema]   [q48] done in 28s (exit 0, score=pass)
+[ingest]   [q25] done in 266s (exit 0, score=pass)
+[sql_schema]   [q50] starting (worker _worker_1)
+[ingest]   [q30] starting (worker _worker_0)
+[ingest]   [q29] done in 71s (exit 0, score=pass)
+[ingest]   [q31] starting (worker _worker_1)
+[sql_bare]   [q48] done in 31s (exit 0, score=pass)
+[sql_bare]   [q49] starting (worker _worker_1)
+[sql_bare]   [q47] done in 43s (exit 0, score=pass)
+[sql_bare]   [q50] starting (worker _worker_0)
+[enriched]   [q44] done in 64s (exit 0, score=pass)
+[enriched]   [q45] starting (worker _worker_1)
+[enriched]   [q41] done in 158s (exit 0, score=pass)
+[enriched]   [q46] starting (worker _worker_0)
+[sql_schema]   [q50] done in 83s (exit 0, score=pass)
+[ingest]   [q31] done in 71s (exit 0, score=fail)
+[sql_bare]   [q50] done in 41s (exit 0, score=pass)
+[sql_schema]   [q51] starting (worker _worker_1)
+[sql_bare]   [q51] starting (worker _worker_0)
+[ingest]   [q32] starting (worker _worker_1)
+[ingest]   [q30] done in 84s (exit 0, score=fail)
+[ingest]   [q33] starting (worker _worker_0)
+[enriched]   [q46] done in 28s (exit 0, score=pass)
+[enriched]   [q47] starting (worker _worker_0)
+[enriched]   [q45] done in 39s (exit 0, score=pass)
+[enriched]   [q48] starting (worker _worker_1)
+[sql_bare]   [q49] done in 75s (exit 0, score=fail)
+[sql_bare]   [q52] starting (worker _worker_1)
+[enriched]   [q48] done in 22s (exit 0, score=fail)
+[enriched]   [q49] starting (worker _worker_1)
+[ingest]   [q32] done in 39s (exit 0, score=pass)
+[sql_bare]   [q52] done in 17s (exit 0, score=pass)
+[ingest]   [q34] starting (worker _worker_1)
+[sql_bare]   [q53] starting (worker _worker_1)
+[sql_schema]   [q49] done in 165s (exit 0, score=pass)
+[sql_schema]   [q52] starting (worker _worker_0)
+[enriched]   [q47] done in 62s (exit 0, score=fail)
+[enriched]   [q50] starting (worker _worker_0)
+[ingest]   [q33] done in 71s (exit 0, score=fail)
+[ingest]   [q35] starting (worker _worker_0)
+[ingest]   [q34] done in 35s (exit 0, score=fail)
+[ingest]   [q36] starting (worker _worker_1)
+[sql_bare]   [q53] done in 39s (exit 0, score=pass)
+[sql_bare]   [q54] starting (worker _worker_1)
+[sql_schema]   [q52] done in 18s (exit 0, score=pass)
+[sql_schema]   [q53] starting (worker _worker_0)
+[sql_bare]   [q51] done in 84s (exit 0, score=fail)
+[sql_bare]   [q55] starting (worker _worker_0)
+[enriched]   [q49] done in 58s (exit 0, score=pass)
+[enriched]   [q51] starting (worker _worker_1)
+[enriched]   [q50] done in 26s (exit 0, score=fail)
+[enriched]   [q52] starting (worker _worker_0)
+[sql_bare]   [q55] done in 19s (exit 0, score=pass)
+[sql_bare]   [q56] starting (worker _worker_0)
+[sql_schema]   [q51] done in 106s (exit 0, score=pass)
+[sql_schema]   [q54] starting (worker _worker_1)
+[sql_schema]   [q53] done in 28s (exit 0, score=pass)
+[sql_schema]   [q55] starting (worker _worker_0)
+[ingest]   [q36] done in 40s (exit 0, score=pass)
+[ingest]   [q37] starting (worker _worker_1)
+[enriched]   [q52] done in 21s (exit 0, score=pass)
+[enriched]   [q53] starting (worker _worker_0)
+[sql_schema]   [q55] done in 11s (exit 0, score=pass)
+[sql_schema]   [q56] starting (worker _worker_0)
+[ingest]   [q37] done in 33s (exit 0, score=pass)
+[ingest]   [q38] starting (worker _worker_1)
+[ingest]   [q35] done in 83s (exit 0, score=pass)
+[ingest]   [q39] starting (worker _worker_0)
+[sql_bare]   [q56] done in 57s (exit 0, score=pass)
+[sql_bare]   [q57] starting (worker _worker_0)
+[enriched]   [q53] done in 44s (exit 0, score=pass)
+[enriched]   [q54] starting (worker _worker_0)
+[sql_bare]   [q54] done in 100s (exit 0, score=pass)
+[sql_bare]   [q58] starting (worker _worker_1)
+[sql_schema]   [q54] done in 78s (exit 0, score=pass)
+[sql_schema]   [q57] starting (worker _worker_1)
+[ingest]   [q38] done in 31s (exit 0, score=pass)
+[ingest]   [q40] starting (worker _worker_1)
+[enriched]   [q51] done in 102s (exit 0, score=fail)
+[enriched]   [q55] starting (worker _worker_1)
+[ingest]   [q39] done in 43s (exit 0, score=pass)
+[ingest]   [q41] starting (worker _worker_0)
+[sql_bare]   [q57] done in 41s (exit 0, score=pass)
+[sql_bare]   [q59] starting (worker _worker_0)
+[sql_schema]   [q56] done in 81s (exit 0, score=pass)
+[sql_schema]   [q58] starting (worker _worker_0)
+[enriched]   [q55] done in 21s (exit 0, score=pass)
+[enriched]   [q56] starting (worker _worker_1)
+[sql_schema]   [q57] done in 44s (exit 0, score=fail)
+[sql_schema]   [q59] starting (worker _worker_1)
+[sql_bare]   [q58] done in 49s (exit 0, score=fail)
+[sql_bare]   [q60] starting (worker _worker_1)
+[sql_schema]   [q58] done in 38s (exit 0, score=pass)
+[sql_schema]   [q60] starting (worker _worker_0)
+[enriched]   [q56] done in 29s (exit 0, score=fail)
+[enriched]   [q57] starting (worker _worker_1)
+[ingest]   [q40] done in 74s (exit 0, score=pass)
+[ingest]   [q42] starting (worker _worker_1)
+[sql_bare]   [q60] done in 33s (exit 0, score=pass)
+[sql_bare]   [q61] starting (worker _worker_1)
+[sql_bare]   [q59] done in 69s (exit 0, score=pass)
+[sql_bare]   [q62] starting (worker _worker_0)
+[ingest]   [q42] done in 22s (exit 0, score=pass)
+[sql_schema]   [q60] done in 37s (exit 0, score=pass)
+[ingest]   [q43] starting (worker _worker_1)
+[sql_schema]   [q61] starting (worker _worker_0)
+[sql_bare]   [q61] done in 24s (exit 0, score=pass)
+[sql_bare]   [q63] starting (worker _worker_1)
+[enriched]   [q57] done in 61s (exit 0, score=fail)
+[enriched]   [q58] starting (worker _worker_1)
+[enriched]   [q54] done in 150s (exit 0, score=pass)
+[enriched]   [q59] starting (worker _worker_0)
+[sql_schema]   [q61] done in 34s (exit 0, score=pass)
+[sql_schema]   [q62] starting (worker _worker_0)
+[ingest]   [q43] done in 37s (exit 0, score=pass)
+[sql_bare]   [q62] done in 47s (exit 0, score=pass)
+[ingest]   [q44] starting (worker _worker_1)
+[sql_bare]   [q64] starting (worker _worker_0)
+[sql_schema]   [q59] done in 103s (exit 0, score=pass)
+[sql_schema]   [q63] starting (worker _worker_1)
+[sql_bare]   [q63] done in 44s (exit 0, score=pass)
+[sql_bare]   [q65] starting (worker _worker_1)
+[enriched]   [q58] done in 43s (exit 0, score=pass)
+[enriched]   [q60] starting (worker _worker_1)
+[sql_schema]   [q62] done in 52s (exit 0, score=pass)
+[sql_schema]   [q64] starting (worker _worker_0)
+[sql_bare]   [q65] done in 40s (exit 0, score=pass)
+[sql_bare]   [q66] starting (worker _worker_1)
+[sql_schema]   [q63] done in 50s (exit 0, score=pass)
+[sql_schema]   [q65] starting (worker _worker_1)
+[ingest]   [q41] done in 191s (exit 0, score=fail)
+[ingest]   [q45] starting (worker _worker_0)
+[ingest]   [q44] done in 70s (exit 0, score=fail)
+[ingest]   [q46] starting (worker _worker_1)
+[enriched]   [q60] done in 38s (exit 0, score=fail)
+[enriched]   [q61] starting (worker _worker_1)
+[sql_schema]   [q65] done in 29s (exit 0, score=pass)
+[sql_schema]   [q66] starting (worker _worker_1)
+[enriched]   [q61] done in 27s (exit 0, score=pass)
+[enriched]   [q62] starting (worker _worker_1)
+[enriched]   [q62] done in 24s (exit 0, score=pass)
+[enriched]   [q63] starting (worker _worker_1)
+[ingest]   [q45] done in 63s (exit 0, score=fail)
+[ingest]   [q47] starting (worker _worker_0)
+[sql_bare]   [q66] done in 85s (exit 0, score=pass)
+[sql_bare]   [q67] starting (worker _worker_1)
+[ingest]   [q46] done in 76s (exit 0, score=fail)
+[ingest]   [q48] starting (worker _worker_1)
+[sql_schema]   [q64] done in 118s (exit 0, score=pass)
+[sql_schema]   [q67] starting (worker _worker_0)
+[sql_schema]   [q66] done in 83s (exit 0, score=pass)
+[sql_schema]   [q68] starting (worker _worker_1)
+[enriched]   [q63] done in 42s (exit 0, score=pass)
+[enriched]   [q64] starting (worker _worker_1)
+[sql_bare]   [q64] done in 189s (exit 0, score=pass)
+[sql_bare]   [q68] starting (worker _worker_0)
+[ingest]   [q48] done in 36s (exit 0, score=pass)
+[ingest]   [q49] starting (worker _worker_1)
+[sql_schema]   [q68] done in 31s (exit 0, score=pass)
+[sql_schema]   [q69] starting (worker _worker_1)
+[ingest]   [q47] done in 87s (exit 0, score=fail)
+[ingest]   [q50] starting (worker _worker_0)
+[sql_bare]   [q68] done in 39s (exit 0, score=pass)
+[sql_bare]   [q69] starting (worker _worker_0)
+[sql_schema]   [q69] done in 29s (exit 0, score=pass)
+[sql_schema]   [q70] starting (worker _worker_1)
+[sql_bare]   [q69] done in 28s (exit 0, score=pass)
+[sql_bare]   [q70] starting (worker _worker_0)
+[sql_bare]   [q67] done in 120s (exit 0, score=pass)
+[sql_bare]   [q71] starting (worker _worker_1)
+[sql_schema]   [q67] done in 107s (exit 0, score=fail)
+[sql_schema]   [q71] starting (worker _worker_0)
+[ingest]   [q49] done in 86s (exit 0, score=pass)
+[ingest]   [q51] starting (worker _worker_1)
+[sql_schema]   [q70] done in 66s (exit 0, score=pass)
+[sql_schema]   [q72] starting (worker _worker_1)
+[sql_bare]   [q70] done in 55s (exit 0, score=pass)
+[sql_bare]   [q72] starting (worker _worker_0)
+[enriched]   [q64] done in 147s (exit 0, score=pass)
+[enriched]   [q65] starting (worker _worker_1)
+[sql_schema]   [q71] done in 51s (exit 0, score=pass)
+[sql_schema]   [q73] starting (worker _worker_0)
+[sql_schema]   [q72] done in 74s (exit 0, score=pass)
+[sql_schema]   [q74] starting (worker _worker_1)
+[sql_schema]   [q73] done in 63s (exit 0, score=pass)
+[sql_schema]   [q75] starting (worker _worker_0)
+[sql_bare]   [q72] done in 96s (exit 0, score=pass)
+[sql_bare]   [q73] starting (worker _worker_0)
+[sql_schema]   [q74] done in 76s (exit 0, score=pass)
+[sql_schema]   [q76] starting (worker _worker_1)
+[sql_schema]   [q75] done in 97s (exit 0, score=pass)
+[sql_schema]   [q77] starting (worker _worker_0)
+[enriched]   [q65] done in 190s (exit 0, score=pass)
+[enriched]   [q66] starting (worker _worker_1)
+[sql_bare]   [q73] done in 131s (exit 0, score=pass)
+[sql_bare]   [q74] starting (worker _worker_0)
+[sql_schema]   [q77] done in 75s (exit 0, score=pass)
+[sql_schema]   [q78] starting (worker _worker_0)
+[ingest]   [q51] done in 314s (exit 0, score=fail)
+[ingest]   [q52] starting (worker _worker_1)
+[sql_bare]   [q74] done in 64s (exit 0, score=pass)
+[sql_schema]   [q76] done in 141s (exit 0, score=pass)
+[sql_bare]   [q75] starting (worker _worker_0)
+[sql_schema]   [q79] starting (worker _worker_1)
+[ingest]   [q50] done in 434s (exit 0, score=fail)
+[ingest]   [q53] starting (worker _worker_0)
+[sql_schema]   [q78] done in 74s (exit 0, score=pass)
+[sql_schema]   [q80] starting (worker _worker_0)
+[ingest]   [q52] done in 71s (exit 0, score=pass)
+[ingest]   [q54] starting (worker _worker_1)
+[sql_schema]   [q79] done in 49s (exit 0, score=pass)
+[sql_schema]   [q81] starting (worker _worker_1)
+[sql_bare]   [q75] done in 92s (exit 0, score=pass)
+[sql_bare]   [q76] starting (worker _worker_0)
+[ingest]   [q53] done in 101s (exit 0, score=pass)
+[ingest]   [q55] starting (worker _worker_0)
+[sql_schema]   [q81] done in 57s (exit 0, score=fail)
+[sql_schema]   [q82] starting (worker _worker_1)
+[sql_schema]   [q82] done in 52s (exit 0, score=pass)
+[sql_schema]   [q83] starting (worker _worker_1)
+[ingest]   [q55] done in 80s (exit 0, score=pass)
+[ingest]   [q56] starting (worker _worker_0)
+[sql_bare]   [q76] done in 105s (exit 0, score=pass)
+[sql_bare]   [q77] starting (worker _worker_0)
+[enriched]   [q59] done in 900s (exit -1, score=timeout)
+[enriched]   [q67] starting (worker _worker_0)
+[ingest]   [q54] done in 236s (exit 0, score=pass)
+[ingest]   [q57] starting (worker _worker_1)
+[sql_schema]   [q83] done in 123s (exit 0, score=pass)
+[enriched]   [q66] done in 423s (exit 0, score=pass)
+[sql_schema]   [q84] starting (worker _worker_1)
+[enriched]   [q68] starting (worker _worker_1)
+[sql_schema]   [q80] done in 296s (exit 0, score=fail)
+[sql_schema]   [q85] starting (worker _worker_0)
+[sql_bare]   [q77] done in 133s (exit 0, score=fail)
+[sql_bare]   [q78] starting (worker _worker_0)
+[sql_schema]   [q84] done in 69s (exit 0, score=pass)
+[sql_schema]   [q86] starting (worker _worker_1)
+[sql_schema]   [q85] done in 59s (exit 0, score=pass)
+[sql_schema]   [q87] starting (worker _worker_0)
+[enriched]   [q68] done in 91s (exit 0, score=pass)
+[enriched]   [q69] starting (worker _worker_1)
+[sql_bare]   [q78] done in 73s (exit 0, score=pass)
+[sql_bare]   [q79] starting (worker _worker_0)
+[enriched]   [q67] done in 184s (exit 0, score=pass)
+[enriched]   [q70] starting (worker _worker_0)
+[sql_bare]   [q79] done in 56s (exit 0, score=pass)
+[sql_bare]   [q80] starting (worker _worker_0)
+[sql_schema]   [q87] done in 73s (exit 0, score=pass)
+[sql_bare]   [q71] done in 900s (exit -1, score=timeout)
+[sql_bare]   [q81] starting (worker _worker_1)
+[sql_schema]   [q88] starting (worker _worker_0)
+[ingest]   [q57] done in 210s (exit 0, score=pass)
+[ingest]   [q58] starting (worker _worker_1)
+[sql_schema]   [q86] done in 103s (exit 0, score=pass)
+[sql_schema]   [q89] starting (worker _worker_1)
+[ingest]   [q56] done in 325s (exit 0, score=fail)
+[ingest]   [q59] starting (worker _worker_0)
+[sql_schema]   [q88] done in 35s (exit 0, score=pass)
+[sql_schema]   [q90] starting (worker _worker_0)
+[sql_bare]   [q81] done in 39s (exit 0, score=pass)
+[sql_bare]   [q82] starting (worker _worker_1)
+[enriched]   [q69] done in 126s (exit 0, score=pass)
+[sql_schema]   [q90] done in 23s (exit 0, score=pass)
+[sql_schema]   [q91] starting (worker _worker_0)
+[enriched]   [q71] starting (worker _worker_1)
+[enriched]   [q70] done in 116s (exit 0, score=pass)
+[enriched]   [q72] starting (worker _worker_0)
+[sql_bare]   [q82] done in 36s (exit 0, score=pass)
+[sql_bare]   [q83] starting (worker _worker_1)
+[ingest]   [q59] done in 46s (exit 0, score=fail)
+[ingest]   [q60] starting (worker _worker_0)
+[ingest]   [q58] done in 73s (exit 0, score=pass)
+[ingest]   [q61] starting (worker _worker_1)
+[sql_schema]   [q89] done in 84s (exit 0, score=pass)
+[sql_schema]   [q92] starting (worker _worker_1)
+[ingest]   [q61] done in 23s (exit 0, score=pass)
+[ingest]   [q62] starting (worker _worker_1)
+[sql_schema]   [q91] done in 52s (exit 0, score=pass)
+[sql_schema]   [q93] starting (worker _worker_0)
+[enriched]   [q71] done in 60s (exit 0, score=pass)
+[enriched]   [q73] starting (worker _worker_1)
+[sql_bare]   [q80] done in 126s (exit 0, score=fail)
+[sql_bare]   [q84] starting (worker _worker_0)
+[enriched]   [q72] done in 59s (exit 0, score=pass)
+[enriched]   [q74] starting (worker _worker_0)
+[ingest]   [q60] done in 47s (exit 0, score=fail)
+[ingest]   [q63] starting (worker _worker_0)
+[ingest]   [q62] done in 28s (exit 0, score=fail)
+[ingest]   [q64] starting (worker _worker_1)
+[sql_schema]   [q92] done in 37s (exit 0, score=pass)
+[sql_schema]   [q94] starting (worker _worker_1)
+[enriched]   [q73] done in 33s (exit 0, score=pass)
+[enriched]   [q75] starting (worker _worker_1)
+[enriched]   [q74] done in 38s (exit 0, score=pass)
+[enriched]   [q76] starting (worker _worker_0)
+[ingest]   [q63] done in 38s (exit 0, score=pass)
+[ingest]   [q65] starting (worker _worker_0)
+[sql_bare]   [q84] done in 48s (exit 0, score=pass)
+[sql_bare]   [q85] starting (worker _worker_0)
+[sql_bare]   [q83] done in 99s (exit 0, score=pass)
+[sql_bare]   [q86] starting (worker _worker_1)
+[sql_schema]   [q94] done in 46s (exit 0, score=pass)
+[sql_schema]   [q95] starting (worker _worker_1)
+[sql_schema]   [q93] done in 76s (exit 0, score=pass)
+[sql_schema]   [q96] starting (worker _worker_0)
+[sql_schema]   [q96] done in 19s (exit 0, score=pass)
+[sql_bare]   [q85] done in 35s (exit 0, score=pass)
+[sql_schema]   [q97] starting (worker _worker_0)
+[sql_bare]   [q87] starting (worker _worker_0)
+[sql_schema]   [q95] done in 30s (exit 0, score=pass)
+[sql_schema]   [q98] starting (worker _worker_1)
+[sql_bare]   [q86] done in 47s (exit 0, score=pass)
+[sql_bare]   [q88] starting (worker _worker_1)
+[enriched]   [q76] done in 56s (exit 0, score=pass)
+[enriched]   [q77] starting (worker _worker_0)
+[enriched]   [q75] done in 74s (exit 0, score=pass)
+[enriched]   [q78] starting (worker _worker_1)
+[sql_schema]   [q98] done in 25s (exit 0, score=pass)
+[sql_schema]   [q99] starting (worker _worker_1)
+[sql_bare]   [q87] done in 35s (exit 0, score=pass)
+[sql_bare]   [q89] starting (worker _worker_0)
+[ingest]   [q65] done in 82s (exit 0, score=pass)
+[ingest]   [q66] starting (worker _worker_0)
+[sql_schema]   [q97] done in 47s (exit 0, score=pass)
+[sql_bare]   [q88] done in 43s (exit 0, score=pass)
+[sql_bare]   [q90] starting (worker _worker_1)
+[sql_bare]   [q90] done in 23s (exit 0, score=pass)
+[sql_bare]   [q91] starting (worker _worker_1)
+[sql_schema]   [q99] done in 50s (exit 0, score=pass)
+[sql_schema] [4/5] Finalising scores for 99 queries ...
+[sql_schema]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_sql_schema_v2.png  (0 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_sql_schema.md)
+[sql_schema] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_sql_schema
+[sql_schema] 
+[sql_schema] # TPC-DS Agent Eval — 20260712-204358
+[sql_schema] 
+[sql_schema] - Model: `deepseek/deepseek-chat`
+[sql_schema] - Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.291
+[sql_schema] 
+[sql_schema] ## Result
+[sql_schema] 
+[sql_schema] - **Pass rate: 88/99** (89%)
+[sql_schema] - Status breakdown: {'pass': 88, 'fail': 11}
+[sql_schema] - Wall time: 3294.7s  |  Agent time: 6157.9s  |  Avg/query: 62.2s
+[sql_schema] - Agent exit code: 0
+[sql_schema] 
+[sql_schema] ## Agent harness metrics
+[sql_schema] 
+[sql_schema] - LLM iterations: 1529
+[sql_schema] - Tool calls: 1903  →  {'read_file': 104, 'run_query': 1436, 'write_file': 125, 'run_file': 135, 'return_control_to_user': 99, 'list_files': 4}
+[sql_schema] - `trilogy` subcommands: {}
+[sql_schema] - Tool success rate: 99% (1881/1903 ok)
+[sql_schema] - Tokens: 20104294 total (19613916 prompt + 490378 completion)
+[sql_schema] 
+[sql_schema] ## Tool-output sizes
+[sql_schema] 
+[sql_schema] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[sql_schema] |---|---:|---:|---:|---:|---:|
+[sql_schema] | `run_query` | 1436 | 598 | 9406 | 0 | 0% |
+[sql_schema] | `run_file` | 135 | 2454 | 9406 | 0 | 0% |
+[sql_schema] | `write_file` | 125 | 54 | 55 | 0 | 0% |
+[sql_schema] | `read_file` | 104 | 13258 | 13848 | 0 | 0% |
+[sql_schema] | `return_control_to_user` | 99 | 26 | 26 | 0 | 0% |
+[sql_schema] | `list_files` | 4 | 173 | 195 | 0 | 0% |
+[sql_schema] 
+[sql_schema] - Repeated calls (same args seen earlier in same query): {'run_query': 11, 'run_file': 34, 'write_file': 1} — total 46
+[sql_schema] 
+[sql_schema] ## Per-query
+[sql_schema] 
+[sql_schema] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[sql_schema] |------:|:-------|---------:|----------:|--------:|:-------|
+[sql_schema] | 01 | pass | 100 | 100 | 723 |  |
+[sql_schema] | 02 | pass | 53 | 53 | 1253 |  |
+[sql_schema] | 03 | pass | 89 | 89 | 436 |  |
+[sql_schema] | 04 | pass | 6 | 6 | 2600 |  |
+[sql_schema] | 05 | fail | 100 | 100 | 4176 | result set differs from reference |
+[sql_schema] | 06 | pass | 46 | 46 | 1072 |  |
+[sql_schema] | 07 | pass | 100 | 100 | 651 |  |
+[sql_schema] | 08 | pass | 5 | 5 | 3287 |  |
+[sql_schema] | 09 | pass | 1 | 1 | 1325 |  |
+[sql_schema] | 10 | pass | 6 | 6 | 1781 |  |
+[sql_schema] | 11 | pass | 90 | 90 | 1717 |  |
+[sql_schema] | 12 | pass | 100 | 100 | 1110 |  |
+[sql_schema] | 13 | pass | 1 | 1 | 1247 |  |
+[sql_schema] | 14 | pass | 100 | 100 | 3630 |  |
+[sql_schema] | 15 | pass | 100 | 100 | 561 |  |
+[sql_schema] | 16 | pass | 1 | 1 | 1217 |  |
+[sql_schema] | 17 | pass | 23 | 23 | 1443 |  |
+[sql_schema] | 18 | fail | 100 | 100 | 1337 | result set differs from reference |
+[sql_schema] | 19 | pass | 100 | 100 | 631 |  |
+[sql_schema] | 20 | pass | 100 | 100 | 802 |  |
+[sql_schema] | 21 | pass | 100 | 100 | 1612 |  |
+[sql_schema] | 22 | pass | 100 | 100 | 431 |  |
+[sql_schema] | 23 | fail | 4 | 57 | 3399 | result set differs from reference |
+[sql_schema] | 24 | pass | 1 | 1 | 1367 |  |
+[sql_schema] | 25 | pass | 1 | 1 | 1787 |  |
+[sql_schema] | 26 | fail | 100 | 100 | 706 | result set differs from reference |
+[sql_schema] | 27 | pass | 100 | 100 | 870 |  |
+[sql_schema] | 28 | pass | 1 | 1 | 4276 |  |
+[sql_schema] | 29 | pass | 1 | 1 | 1151 |  |
+[sql_schema] | 30 | pass | 100 | 100 | 1934 |  |
+[sql_schema] | 31 | fail | 44 | 44 | 1669 | result set differs from reference |
+[sql_schema] | 32 | pass | 1 | 1 | 693 |  |
+[sql_schema] | 33 | pass | 100 | 100 | 1139 |  |
+[sql_schema] | 34 | pass | 455 | 455 | 1005 |  |
+[sql_schema] | 35 | pass | 100 | 100 | 1639 |  |
+[sql_schema] | 36 | pass | 100 | 100 | 1957 |  |
+[sql_schema] | 37 | pass | 1 | 1 | 664 |  |
+[sql_schema] | 38 | pass | 1 | 1 | 1115 |  |
+[sql_schema] | 39 | pass | 243 | 243 | 1194 |  |
+[sql_schema] | 40 | pass | 100 | 100 | 809 |  |
+[sql_schema] | 41 | fail | 100 | 100 | 1155 | result set differs from reference |
+[sql_schema] | 42 | pass | 10 | 10 | 477 |  |
+[sql_schema] | 43 | pass | 6 | 6 | 817 |  |
+[sql_schema] | 44 | pass | 10 | 10 | 1055 |  |
+[sql_schema] | 45 | fail | 19 | 19 | 704 | result set differs from reference |
+[sql_schema] | 46 | pass | 100 | 100 | 1091 |  |
+[sql_schema] | 47 | pass | 100 | 100 | 1775 |  |
+[sql_schema] | 48 | pass | 1 | 1 | 995 |  |
+[sql_schema] | 49 | pass | 34 | 34 | 2812 |  |
+[sql_schema] | 50 | pass | 6 | 6 | 1358 |  |
+[sql_schema] | 51 | pass | 100 | 100 | 2496 |  |
+[sql_schema] | 52 | pass | 100 | 100 | 355 |  |
+[sql_schema] | 53 | pass | 100 | 100 | 1462 |  |
+[sql_schema] | 54 | pass | 1 | 1 | 1326 |  |
+[sql_schema] | 55 | pass | 100 | 100 | 384 |  |
+[sql_schema] | 56 | pass | 100 | 100 | 1640 |  |
+[sql_schema] | 57 | fail | 100 | 100 | 2395 | result set differs from reference |
+[sql_schema] | 58 | pass | 5 | 5 | 1984 |  |
+[sql_schema] | 59 | pass | 100 | 100 | 2136 |  |
+[sql_schema] | 60 | pass | 100 | 100 | 1698 |  |
+[sql_schema] | 61 | pass | 1 | 1 | 1082 |  |
+[sql_schema] | 62 | pass | 100 | 100 | 1157 |  |
+[sql_schema] | 63 | pass | 100 | 100 | 1208 |  |
+[sql_schema] | 64 | pass | 2 | 2 | 4530 |  |
+[sql_schema] | 65 | pass | 100 | 100 | 928 |  |
+[sql_schema] | 66 | pass | 5 | 5 | 6134 |  |
+[sql_schema] | 67 | fail | 100 | 100 | 1252 | result set differs from reference |
+[sql_schema] | 68 | pass | 100 | 100 | 1048 |  |
+[sql_schema] | 69 | pass | 100 | 100 | 1389 |  |
+[sql_schema] | 70 | pass | 3 | 3 | 1595 |  |
+[sql_schema] | 71 | pass | 1031 | 1031 | 1095 |  |
+[sql_schema] | 72 | pass | 100 | 100 | 1128 |  |
+[sql_schema] | 73 | pass | 1 | 1 | 964 |  |
+[sql_schema] | 74 | pass | 92 | 92 | 1132 |  |
+[sql_schema] | 75 | pass | 100 | 100 | 2980 |  |
+[sql_schema] | 76 | pass | 100 | 100 | 2869 |  |
+[sql_schema] | 77 | pass | 43 | 43 | 4050 |  |
+[sql_schema] | 78 | pass | 100 | 100 | 2920 |  |
+[sql_schema] | 79 | pass | 100 | 100 | 894 |  |
+[sql_schema] | 80 | fail | 100 | 100 | 3175 | result set differs from reference |
+[sql_schema] | 81 | fail | 100 | 100 | 1402 | result set differs from reference |
+[sql_schema] | 82 | pass | 2 | 2 | 487 |  |
+[sql_schema] | 83 | pass | 24 | 24 | 2401 |  |
+[sql_schema] | 84 | pass | 16 | 16 | 628 |  |
+[sql_schema] | 85 | pass | 1 | 1 | 2350 |  |
+[sql_schema] | 86 | pass | 100 | 100 | 1366 |  |
+[sql_schema] | 87 | pass | 1 | 1 | 986 |  |
+[sql_schema] | 88 | pass | 1 | 1 | 1359 |  |
+[sql_schema] | 89 | pass | 100 | 100 | 1156 |  |
+[sql_schema] | 90 | pass | 1 | 1 | 484 |  |
+[sql_schema] | 91 | pass | 2 | 2 | 925 |  |
+[sql_schema] | 92 | pass | 1 | 1 | 668 |  |
+[sql_schema] | 93 | pass | 100 | 100 | 594 |  |
+[sql_schema] | 94 | pass | 1 | 1 | 913 |  |
+[sql_schema] | 95 | pass | 1 | 1 | 929 |  |
+[sql_schema] | 96 | pass | 1 | 1 | 326 |  |
+[sql_schema] | 97 | pass | 1 | 1 | 902 |  |
+[sql_schema] | 98 | pass | 2521 | 2521 | 694 |  |
+[sql_schema] | 99 | pass | 90 | 90 | 1269 |  |
+[sql_schema] 
+[sql_schema] ## Agent final message
+[sql_schema] 
+[sql_schema] > Answer saved to answer_3498056762.sql and validated successfully. The query returns 90 rows for catalog sales shipped in year 2000 with non-null warehouse, shipping mode, and call center keys. Buckets are computed from the ship-lag in days (ship date minus sold date). NULL warehouse names sort first. All zero-bucket counts are correctly 0 (no lags >90 days in this dataset).
+[sql_schema] 
+[sql_bare]   [q89] done in 95s (exit 0, score=pass)
+[sql_bare]   [q92] starting (worker _worker_0)
+[sql_bare]   [q91] done in 57s (exit 0, score=pass)
+[sql_bare]   [q93] starting (worker _worker_1)
+[enriched]   [q78] done in 126s (exit 0, score=pass)
+[enriched]   [q79] starting (worker _worker_1)
+[ingest]   [q66] done in 115s (exit 0, score=pass)
+[ingest]   [q67] starting (worker _worker_0)
+[enriched]   [q77] done in 151s (exit 0, score=pass)
+[enriched]   [q80] starting (worker _worker_0)
+[sql_bare]   [q92] done in 41s (exit 0, score=pass)
+[sql_bare]   [q94] starting (worker _worker_0)
+[enriched]   [q79] done in 38s (exit 0, score=pass)
+[enriched]   [q81] starting (worker _worker_1)
+[sql_bare]   [q93] done in 72s (exit 0, score=pass)
+[ingest]   [q64] done in 285s (exit 0, score=fail)
+[sql_bare]   [q95] starting (worker _worker_1)
+[ingest]   [q68] starting (worker _worker_1)
+[enriched]   [q81] done in 45s (exit 0, score=pass)
+[enriched]   [q82] starting (worker _worker_1)
+[sql_bare]   [q94] done in 64s (exit 0, score=pass)
+[sql_bare]   [q96] starting (worker _worker_0)
+[ingest]   [q68] done in 35s (exit 0, score=fail)
+[ingest]   [q69] starting (worker _worker_1)
+[sql_bare]   [q96] done in 23s (exit 0, score=pass)
+[sql_bare]   [q97] starting (worker _worker_0)
+[sql_bare]   [q95] done in 54s (exit 0, score=pass)
+[sql_bare]   [q98] starting (worker _worker_1)
+[enriched]   [q80] done in 105s (exit 0, score=fail)
+[enriched]   [q83] starting (worker _worker_0)
+[enriched]   [q82] done in 41s (exit 0, score=pass)
+[enriched]   [q84] starting (worker _worker_1)
+[ingest]   [q69] done in 59s (exit 0, score=pass)
+[ingest]   [q70] starting (worker _worker_1)
+[ingest]   [q67] done in 150s (exit 0, score=fail)
+[ingest]   [q71] starting (worker _worker_0)
+[sql_bare]   [q98] done in 53s (exit 0, score=fail)
+[sql_bare]   [q99] starting (worker _worker_1)
+[enriched]   [q84] done in 57s (exit 0, score=pass)
+[enriched]   [q85] starting (worker _worker_1)
+[sql_bare]   [q97] done in 75s (exit 0, score=fail)
+[sql_bare]   [q99] done in 33s (exit 0, score=pass)
+[sql_bare] [4/5] Finalising scores for 99 queries ...
+[sql_bare]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_sql_bare_v2.png  (0 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_sql_bare.md)
+[sql_bare] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_sql_bare
+[sql_bare] 
+[sql_bare] # TPC-DS Agent Eval — 20260712-204358
+[sql_bare] 
+[sql_bare] - Model: `deepseek/deepseek-chat`
+[sql_bare] - Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.291
+[sql_bare] 
+[sql_bare] ## Result
+[sql_bare] 
+[sql_bare] - **Pass rate: 83/99** (84%)
+[sql_bare] - Status breakdown: {'pass': 83, 'fail': 15, 'timeout': 1}
+[sql_bare] - Wall time: 3572.8s  (TIMED OUT)  |  Agent time: 6846.6s  |  Avg/query: 69.2s
+[sql_bare] - Agent exit code: 1
+[sql_bare] 
+[sql_bare] ## Agent harness metrics
+[sql_bare] 
+[sql_bare] - LLM iterations: 1611
+[sql_bare] - Tool calls: 2384  →  {'run_query': 2040, 'write_file': 106, 'run_file': 114, 'return_control_to_user': 98, 'read_file': 5, 'list_files': 21}
+[sql_bare] - `trilogy` subcommands: {}
+[sql_bare] - Tool success rate: 99% (2354/2383 ok)
+[sql_bare] - Tokens: 15318824 total (14817085 prompt + 501739 completion)
+[sql_bare] 
+[sql_bare] ## Tool-output sizes
+[sql_bare] 
+[sql_bare] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[sql_bare] |---|---:|---:|---:|---:|---:|
+[sql_bare] | `run_query` | 2039 | 742 | 9468 | 0 | 0% |
+[sql_bare] | `run_file` | 114 | 2415 | 9477 | 0 | 0% |
+[sql_bare] | `write_file` | 106 | 54 | 55 | 0 | 0% |
+[sql_bare] | `return_control_to_user` | 98 | 26 | 26 | 0 | 0% |
+[sql_bare] | `list_files` | 21 | 136 | 158 | 0 | 0% |
+[sql_bare] | `read_file` | 5 | 310 | 1388 | 0 | 0% |
+[sql_bare] 
+[sql_bare] - Repeated calls (same args seen earlier in same query): {'run_query': 11, 'run_file': 16, 'write_file': 1} — total 28
+[sql_bare] 
+[sql_bare] ## Per-query
+[sql_bare] 
+[sql_bare] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[sql_bare] |------:|:-------|---------:|----------:|--------:|:-------|
+[sql_bare] | 01 | pass | 100 | 100 | 777 |  |
+[sql_bare] | 02 | fail | 53 | 53 | 1907 | result set differs from reference |
+[sql_bare] | 03 | pass | 89 | 89 | 336 |  |
+[sql_bare] | 04 | pass | 6 | 6 | 5209 |  |
+[sql_bare] | 05 | pass | 100 | 100 | 4431 |  |
+[sql_bare] | 06 | fail | 46 | 47 | 1426 | result set differs from reference |
+[sql_bare] | 07 | pass | 100 | 100 | 682 |  |
+[sql_bare] | 08 | pass | 5 | 5 | 3496 |  |
+[sql_bare] | 09 | pass | 1 | 1 | 1844 |  |
+[sql_bare] | 10 | pass | 6 | 6 | 2017 |  |
+[sql_bare] | 11 | pass | 90 | 90 | 1337 |  |
+[sql_bare] | 12 | pass | 100 | 100 | 704 |  |
+[sql_bare] | 13 | pass | 1 | 1 | 1270 |  |
+[sql_bare] | 14 | pass | 100 | 100 | 3668 |  |
+[sql_bare] | 15 | pass | 100 | 100 | 540 |  |
+[sql_bare] | 16 | pass | 1 | 1 | 1454 |  |
+[sql_bare] | 17 | pass | 23 | 23 | 1507 |  |
+[sql_bare] | 18 | fail | 100 | 100 | 1235 | result set differs from reference |
+[sql_bare] | 19 | pass | 100 | 100 | 654 |  |
+[sql_bare] | 20 | fail | 100 | 100 | 1157 | result set differs from reference |
+[sql_bare] | 21 | pass | 100 | 100 | 1051 |  |
+[sql_bare] | 22 | pass | 100 | 100 | 479 |  |
+[sql_bare] | 23 | fail | 4 | 57 | 2765 | result set differs from reference |
+[sql_bare] | 24 | pass | 1 | 1 | 1631 |  |
+[sql_bare] | 25 | pass | 1 | 1 | 1069 |  |
+[sql_bare] | 26 | pass | 100 | 100 | 671 |  |
+[sql_bare] | 27 | fail | 100 | 100 | 947 | result set differs from reference |
+[sql_bare] | 28 | pass | 1 | 1 | 3879 |  |
+[sql_bare] | 29 | pass | 1 | 1 | 1082 |  |
+[sql_bare] | 30 | pass | 100 | 100 | 1757 |  |
+[sql_bare] | 31 | fail | 44 | 45 | 1789 | result set differs from reference |
+[sql_bare] | 32 | pass | 1 | 1 | 701 |  |
+[sql_bare] | 33 | pass | 100 | 100 | 1040 |  |
+[sql_bare] | 34 | pass | 455 | 455 | 918 |  |
+[sql_bare] | 35 | pass | 100 | 100 | 1888 |  |
+[sql_bare] | 36 | pass | 100 | 100 | 1737 |  |
+[sql_bare] | 37 | pass | 1 | 1 | 575 |  |
+[sql_bare] | 38 | pass | 1 | 1 | 1131 |  |
+[sql_bare] | 39 | pass | 243 | 243 | 1319 |  |
+[sql_bare] | 40 | pass | 100 | 100 | 847 |  |
+[sql_bare] | 41 | fail | 100 | 100 | 1083 | result set differs from reference |
+[sql_bare] | 42 | pass | 10 | 10 | 435 |  |
+[sql_bare] | 43 | pass | 6 | 6 | 833 |  |
+[sql_bare] | 44 | pass | 10 | 10 | 1025 |  |
+[sql_bare] | 45 | pass | 19 | 19 | 684 |  |
+[sql_bare] | 46 | pass | 100 | 100 | 1118 |  |
+[sql_bare] | 47 | pass | 100 | 100 | 1580 |  |
+[sql_bare] | 48 | pass | 1 | 1 | 995 |  |
+[sql_bare] | 49 | fail | 34 | 34 | 3173 | result set differs from reference |
+[sql_bare] | 50 | pass | 6 | 6 | 1342 |  |
+[sql_bare] | 51 | fail | 100 | 100 | 2255 | result set differs from reference |
+[sql_bare] | 52 | pass | 100 | 100 | 429 |  |
+[sql_bare] | 53 | pass | 100 | 100 | 1391 |  |
+[sql_bare] | 54 | pass | 1 | 1 | 1648 |  |
+[sql_bare] | 55 | pass | 100 | 100 | 332 |  |
+[sql_bare] | 56 | pass | 100 | 100 | 1717 |  |
+[sql_bare] | 57 | pass | 100 | 100 | 1420 |  |
+[sql_bare] | 58 | fail | 5 | 5 | 1924 | result set differs from reference |
+[sql_bare] | 59 | pass | 100 | 100 | 2177 |  |
+[sql_bare] | 60 | pass | 100 | 100 | 1704 |  |
+[sql_bare] | 61 | pass | 1 | 1 | 923 |  |
+[sql_bare] | 62 | pass | 100 | 100 | 1271 |  |
+[sql_bare] | 63 | pass | 100 | 100 | 1207 |  |
+[sql_bare] | 64 | pass | 2 | 2 | 3729 |  |
+[sql_bare] | 65 | pass | 100 | 100 | 906 |  |
+[sql_bare] | 66 | pass | 5 | 5 | 4682 |  |
+[sql_bare] | 67 | pass | 100 | 100 | 1512 |  |
+[sql_bare] | 68 | pass | 100 | 100 | 1064 |  |
+[sql_bare] | 69 | pass | 100 | 100 | 1253 |  |
+[sql_bare] | 70 | pass | 3 | 3 | 1408 |  |
+[sql_bare] | 71 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
+[sql_bare] | 72 | pass | 100 | 100 | 1117 |  |
+[sql_bare] | 73 | pass | 1 | 1 | 962 |  |
+[sql_bare] | 74 | pass | 92 | 92 | 1203 |  |
+[sql_bare] | 75 | pass | 100 | 100 | 3316 |  |
+[sql_bare] | 76 | pass | 100 | 100 | 3128 |  |
+[sql_bare] | 77 | fail | 43 | 43 | 3203 | result set differs from reference |
+[sql_bare] | 78 | pass | 100 | 100 | 2910 |  |
+[sql_bare] | 79 | pass | 100 | 100 | 878 |  |
+[sql_bare] | 80 | fail | 100 | 100 | 2696 | result set differs from reference |
+[sql_bare] | 81 | pass | 100 | 100 | 1342 |  |
+[sql_bare] | 82 | pass | 2 | 2 | 650 |  |
+[sql_bare] | 83 | pass | 24 | 24 | 2682 |  |
+[sql_bare] | 84 | pass | 16 | 16 | 588 |  |
+[sql_bare] | 85 | pass | 1 | 1 | 1866 |  |
+[sql_bare] | 86 | pass | 100 | 100 | 1096 |  |
+[sql_bare] | 87 | pass | 1 | 1 | 1185 |  |
+[sql_bare] | 88 | pass | 1 | 1 | 1056 |  |
+[sql_bare] | 89 | pass | 100 | 100 | 1151 |  |
+[sql_bare] | 90 | pass | 1 | 1 | 488 |  |
+[sql_bare] | 91 | pass | 2 | 2 | 926 |  |
+[sql_bare] | 92 | pass | 1 | 1 | 743 |  |
+[sql_bare] | 93 | pass | 100 | 100 | 653 |  |
+[sql_bare] | 94 | pass | 1 | 1 | 805 |  |
+[sql_bare] | 95 | pass | 1 | 1 | 819 |  |
+[sql_bare] | 96 | pass | 1 | 1 | 350 |  |
+[sql_bare] | 97 | fail | 1 | 1 | 881 | result set differs from reference |
+[sql_bare] | 98 | fail | 2521 | 2521 | 707 | result set differs from reference |
+[sql_bare] | 99 | pass | 90 | 90 | 1220 |  |
+[sql_bare] 
+[sql_bare] ## Agent final message
+[sql_bare] 
+[sql_bare] > Query saved to answer_3498056762.sql and validated successfully. It returns 90 rows with all bucket columns (0 for empty buckets 91-120 and >120 since max lag is 90 days).
+[sql_bare] 
+[ingest]   [q70] done in 56s (exit 0, score=pass)
+[ingest]   [q72] starting (worker _worker_1)
+[enriched]   [q85] done in 35s (exit 0, score=pass)
+[enriched]   [q86] starting (worker _worker_1)
+[enriched]   [q83] done in 123s (exit 0, score=pass)
+[enriched]   [q87] starting (worker _worker_0)
+[ingest]   [q71] done in 89s (exit 0, score=pass)
+[ingest]   [q73] starting (worker _worker_0)
+[enriched]   [q86] done in 43s (exit 0, score=pass)
+[enriched]   [q88] starting (worker _worker_1)
+[ingest]   [q72] done in 72s (exit 0, score=fail)
+[ingest]   [q74] starting (worker _worker_1)
+[enriched]   [q87] done in 40s (exit 0, score=pass)
+[enriched]   [q89] starting (worker _worker_0)
+[enriched]   [q88] done in 41s (exit 0, score=fail)
+[enriched]   [q90] starting (worker _worker_1)
+[ingest]   [q73] done in 58s (exit 0, score=fail)
+[ingest]   [q75] starting (worker _worker_0)
+[enriched]   [q89] done in 23s (exit 0, score=pass)
+[enriched]   [q91] starting (worker _worker_0)
+[ingest]   [q74] done in 30s (exit 0, score=fail)
+[ingest]   [q76] starting (worker _worker_1)
+[enriched]   [q90] done in 23s (exit 0, score=fail)
+[enriched]   [q92] starting (worker _worker_1)
+[enriched]   [q91] done in 39s (exit 0, score=pass)
+[enriched]   [q93] starting (worker _worker_0)
+[enriched]   [q92] done in 31s (exit 0, score=fail)
+[enriched]   [q94] starting (worker _worker_1)
+[ingest]   [q76] done in 76s (exit 0, score=pass)
+[ingest]   [q77] starting (worker _worker_1)
+[enriched]   [q94] done in 64s (exit 0, score=pass)
+[enriched]   [q95] starting (worker _worker_1)
+[enriched]   [q93] done in 83s (exit 0, score=pass)
+[enriched]   [q96] starting (worker _worker_0)
+[enriched]   [q96] done in 18s (exit 0, score=pass)
+[enriched]   [q97] starting (worker _worker_0)
+[ingest]   [q75] done in 123s (exit 0, score=fail)
+[ingest]   [q78] starting (worker _worker_0)
+[enriched]   [q97] done in 39s (exit 0, score=pass)
+[enriched]   [q98] starting (worker _worker_0)
+[enriched]   [q95] done in 95s (exit 0, score=pass)
+[enriched]   [q99] starting (worker _worker_1)
+[enriched]   [q98] done in 25s (exit 0, score=pass)
+[enriched]   [q99] done in 31s (exit 0, score=pass)
+[ingest]   [q77] done in 159s (exit 0, score=pass)
+[enriched] [4/5] Finalising scores for 99 queries ...
+[enriched]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (95 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[enriched] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_enriched
+[enriched] 
+[enriched] # TPC-DS Agent Eval — 20260712-204358
+[enriched] 
+[enriched] - Model: `deepseek/deepseek-chat`
+[enriched] - Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.291
+[enriched] 
+[enriched] ## Result
+[enriched] 
+[enriched] - **Pass rate: 82/99** (83%)
+[enriched] - Status breakdown: {'fail': 16, 'pass': 82, 'timeout': 1}
+[enriched] - Wall time: 3933.7s  (TIMED OUT)  |  Agent time: 7490.6s  |  Avg/query: 75.7s
+[enriched] - Agent exit code: 1
+[enriched] 
+[enriched] ## Agent harness metrics
+[enriched] 
+[enriched] - LLM iterations: 1035
+[enriched] - Tool calls: 1220  →  {'trilogy': 1122, 'return_control_to_user': 98}
+[enriched] - `trilogy` subcommands: {'agent-info': 146, 'file': 326, 'explore': 334, 'run': 308, 'database': 4}
+[enriched] - Tool success rate: 92% (1124/1219 ok)
+[enriched] - Tokens: 28997691 total (28609075 prompt + 388616 completion)
+[enriched] 
+[enriched] ## Tool-output sizes
+[enriched] 
+[enriched] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[enriched] |---|---:|---:|---:|---:|---:|
+[enriched] | `trilogy` | 1121 | 8063 | 39692 | 0 | 0% |
+[enriched] | `return_control_to_user` | 98 | 26 | 26 | 0 | 0% |
+[enriched] 
+[enriched] - Repeated calls (same args seen earlier in same query): {'trilogy': 116} — total 116
+[enriched] 
+[enriched] ## Per-query
+[enriched] 
+[enriched] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[enriched] |------:|:-------|---------:|----------:|--------:|:-------|
+[enriched] | 01 | fail | 100 | 100 | 1520 | result set differs from reference |
+[enriched] | 02 | pass | 53 | 53 | 6137 |  |
+[enriched] | 03 | pass | 89 | 89 | 673 |  |
+[enriched] | 04 | pass | 6 | 6 | 9069 |  |
+[enriched] | 05 | fail | 100 | 100 | 11045 | result set differs from reference |
+[enriched] | 06 | pass | 46 | 46 | 4634 |  |
+[enriched] | 07 | pass | 100 | 100 | 1535 |  |
+[enriched] | 08 | pass | 5 | 5 | 2958 |  |
+[enriched] | 09 | pass | 1 | 1 | 4688 |  |
+[enriched] | 10 | pass | 6 | 6 | 4449 |  |
+[enriched] | 11 | pass | 90 | 90 | 4481 |  |
+[enriched] | 12 | pass | 100 | 100 | 3140 |  |
+[enriched] | 13 | pass | 1 | 1 | 2759 |  |
+[enriched] | 14 | fail | 100 | 100 | 7878 | result set differs from reference |
+[enriched] | 15 | pass | 100 | 100 | 1128 |  |
+[enriched] | 16 | pass | 1 | 1 | 4687 |  |
+[enriched] | 17 | pass | 23 | 23 | 6669 |  |
+[enriched] | 18 | pass | 100 | 100 | 6710 |  |
+[enriched] | 19 | pass | 100 | 100 | 1385 |  |
+[enriched] | 20 | pass | 100 | 100 | 1939 |  |
+[enriched] | 21 | pass | 100 | 100 | 1837 |  |
+[enriched] | 22 | pass | 100 | 100 | 1296 |  |
+[enriched] | 23 | fail | 4 | 52 | 8088 | result set differs from reference |
+[enriched] | 24 | pass | 1 | 1 | 4067 |  |
+[enriched] | 25 | pass | 1 | 1 | 6219 |  |
+[enriched] | 26 | pass | 100 | 100 | 1374 |  |
+[enriched] | 27 | pass | 100 | 100 | 1942 |  |
+[enriched] | 28 | pass | 1 | 1 | 5666 |  |
+[enriched] | 29 | pass | 1 | 1 | 3252 |  |
+[enriched] | 30 | pass | 100 | 100 | 11296 |  |
+[enriched] | 31 | pass | 44 | 44 | 6686 |  |
+[enriched] | 32 | pass | 1 | 1 | 2572 |  |
+[enriched] | 33 | pass | 100 | 100 | 4150 |  |
+[enriched] | 34 | pass | 455 | 455 | 2176 |  |
+[enriched] | 35 | fail | 100 | 100 | 8679 | result set differs from reference |
+[enriched] | 36 | pass | 100 | 100 | 2560 |  |
+[enriched] | 37 | pass | 1 | 1 | 1493 |  |
+[enriched] | 38 | pass | 1 | 1 | 2867 |  |
+[enriched] | 39 | pass | 243 | 243 | 7005 |  |
+[enriched] | 40 | pass | 100 | 100 | 1546 |  |
+[enriched] | 41 | pass | 100 | 100 | 1816 |  |
+[enriched] | 42 | pass | 10 | 10 | 745 |  |
+[enriched] | 43 | pass | 6 | 6 | 1426 |  |
+[enriched] | 44 | pass | 10 | 10 | 3909 |  |
+[enriched] | 45 | pass | 19 | 19 | 1963 |  |
+[enriched] | 46 | pass | 100 | 100 | 2157 |  |
+[enriched] | 47 | fail | 100 | 100 | 10867 | result set differs from reference |
+[enriched] | 48 | fail | 1 | 1 | 2049 | result set differs from reference |
+[enriched] | 49 | pass | 34 | 34 | 4993 |  |
+[enriched] | 50 | fail | 6 | 6 | 3736 | result set differs from reference |
+[enriched] | 51 | fail | 100 | 100 | 12355 | result set differs from reference |
+[enriched] | 52 | pass | 100 | 100 | 680 |  |
+[enriched] | 53 | pass | 100 | 100 | 2251 |  |
+[enriched] | 54 | pass | 1 | 1 | 3793 |  |
+[enriched] | 55 | pass | 100 | 100 | 822 |  |
+[enriched] | 56 | fail | 100 | 100 | 4122 | result set differs from reference |
+[enriched] | 57 | fail | 100 | 100 | 14903 | result set differs from reference |
+[enriched] | 58 | pass | 5 | 5 | 5066 |  |
+[enriched] | 59 | timeout | 100 | 100 | 9011 | agent timed out (was: fail) — result set differs from reference |
+[enriched] | 60 | fail | 100 | 100 | 2639 | result set differs from reference |
+[enriched] | 61 | pass | 1 | 1 | 1711 |  |
+[enriched] | 62 | pass | 100 | 100 | 3049 |  |
+[enriched] | 63 | pass | 100 | 100 | 2448 |  |
+[enriched] | 64 | pass | 2 | 2 | 16000 |  |
+[enriched] | 65 | pass | 100 | 100 | 3190 |  |
+[enriched] | 66 | pass | 5 | 5 | 11288 |  |
+[enriched] | 67 | pass | 100 | 100 | 3856 |  |
+[enriched] | 68 | pass | 100 | 100 | 2320 |  |
+[enriched] | 69 | pass | 100 | 100 | 4104 |  |
+[enriched] | 70 | pass | 3 | 3 | 2777 |  |
+[enriched] | 71 | pass | 1031 | 1031 | 4954 |  |
+[enriched] | 72 | pass | 100 | 100 | 6448 |  |
+[enriched] | 73 | pass | 1 | 1 | 2867 |  |
+[enriched] | 74 | pass | 92 | 92 | 5463 |  |
+[enriched] | 75 | pass | 100 | 100 | 6384 |  |
+[enriched] | 76 | pass | 100 | 100 | 8232 |  |
+[enriched] | 77 | pass | 43 | 43 | 14525 |  |
+[enriched] | 78 | pass | 100 | 100 | 7719 |  |
+[enriched] | 79 | pass | 100 | 100 | 1981 |  |
+[enriched] | 80 | fail | 100 | 100 | 7638 | result set differs from reference |
+[enriched] | 81 | pass | 100 | 100 | 13143 |  |
+[enriched] | 82 | pass | 2 | 2 | 2661 |  |
+[enriched] | 83 | pass | 24 | 24 | 12479 |  |
+[enriched] | 84 | pass | 16 | 16 | 3726 |  |
+[enriched] | 85 | pass | 1 | 1 | 3190 |  |
+[enriched] | 86 | pass | 100 | 100 | 1719 |  |
+[enriched] | 87 | pass | 1 | 1 | 3729 |  |
+[enriched] | 88 | fail | 1 | 1 | 3880 | result set differs from reference |
+[enriched] | 89 | pass | 100 | 100 | 5560 |  |
+[enriched] | 90 | fail | 1 | 1 | 1184 | result set differs from reference |
+[enriched] | 91 | pass | 2 | 2 | 2602 |  |
+[enriched] | 92 | fail | 1 | 1 | 1096 | result set differs from reference |
+[enriched] | 93 | pass | 100 | 100 | 1195 |  |
+[enriched] | 94 | pass | 1 | 1 | 3693 |  |
+[enriched] | 95 | pass | 1 | 1 | 3710 |  |
+[enriched] | 96 | pass | 1 | 1 | 861 |  |
+[enriched] | 97 | pass | 1 | 1 | 2687 |  |
+[enriched] | 98 | pass | 2521 | 2521 | 2151 |  |
+[enriched] | 99 | pass | 90 | 90 | 3133 |  |
+[enriched] 
+[enriched] ## Agent final message
+[enriched] 
+[enriched] > Successfully wrote and validated `answer_3498056762.preql`. The query runs cleanly against DuckDB, returns 90 rows with the requested 5 shipping-lag bucket columns (≤30, 31-60, 61-90, 91-120, >120), grouped by first-20-chars of warehouse name, ship mode type, and lowercased call center name, ordered nulls first, limit 100. All buckets report 0 (not null) when no matching line items exist.
+[enriched] 
+[ingest]   [q79] starting (worker _worker_1)
+[ingest]   [q78] done in 110s (exit 0, score=pass)
+[ingest]   [q80] starting (worker _worker_0)
+[ingest]   [q80] done in 3644s (exit -1, score=timeout)
+[ingest]   [q81] starting (worker _worker_0)
+[ingest]   [q79] done in 3655s (exit -1, score=timeout)
+[ingest]   [q82] starting (worker _worker_1)
+[ingest]   [q81] done in 14999s (exit -1, score=timeout)
+[ingest]   [q83] starting (worker _worker_0)
+[ingest]   [q82] done in 15000s (exit -1, score=timeout)
+[ingest]   [q84] starting (worker _worker_1)

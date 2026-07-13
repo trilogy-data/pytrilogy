@@ -172,6 +172,47 @@ def test_window_expression_wrapped_inline():
     assert rows == [("A", 20), ("B", 10)], rows
 
 
+def test_aggregate_where_ref_consumed_transitively_by_output():
+    # sx is not itself an output, but v = sx + 1 is: the WHERE ref still needs
+    # a population twin, or v inherits the population value of the shared sx.
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\nauto v <- sx + 1;\n",
+        "where f = 1 and sx > 5 select x, v;",
+    )
+    assert rows == [(1, 3), (2, 101)], rows
+
+
+def test_aggregate_where_ref_chain_reaches_output():
+    # The boundary crossed in the other direction: WHERE refs v (not an
+    # output) whose chain reaches the output sx.
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\nauto v <- sx + 1;\n",
+        "where f = 1 and v > 5 select x, sx;",
+    )
+    assert rows == [(1, 2), (2, 100)], rows
+
+
+def test_twin_does_not_collide_with_inline_select_virtual():
+    # The select output embeds the identical inline expression the twin is
+    # minted from; the twin's scope salt keeps their addresses distinct.
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\n",
+        "where f = 1 and sx > 5 select x, sx, (sum(z) by x) + 1 as v;",
+    )
+    assert rows == [(1, 2, 3), (2, 100, 101)], rows
+
+
+def test_diamond_reference_inlines_on_every_path():
+    # v reaches sx both directly and through m; both paths must inline the
+    # population aggregate (population v = 3*sx = {36, 300} passes > 20;
+    # select-scope v over f=1 rows = {6, 300}).
+    rows = _rows(
+        AGG_SCHEMA + "auto sx <- sum(z) by x;\nauto m <- sx * 2;\nauto v <- sx + m;\n",
+        "where f = 1 and v > 20 select x, v, sx;",
+    )
+    assert rows == [(1, 6, 2), (2, 300, 100)], rows
+
+
 def test_rowset_body_gets_dual_scope():
     # The normalization runs on every SelectLineage build, including rowset
     # bodies.

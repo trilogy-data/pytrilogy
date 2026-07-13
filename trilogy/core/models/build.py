@@ -3915,6 +3915,7 @@ class Factory:
             Factory,
         )
         from trilogy.core.where_scope_normalization import (
+            WHERE_SCOPE_SALT,
             normalize_select_where_scope,
         )
 
@@ -3975,7 +3976,7 @@ class Factory:
             scoped_joins=self.scoped_joins,
             # cross-row virtuals in the WHERE are population-scope gates and
             # must not share addresses with select-scope twins
-            virtual_scope_salt="wscope",
+            virtual_scope_salt=WHERE_SCOPE_SALT,
         )
         # Build the WHERE-scope twins here so their refs resolve — in this
         # factory, like their inline equivalents, so bare aggregates co-grain

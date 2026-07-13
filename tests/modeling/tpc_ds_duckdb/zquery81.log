@@ -1,6 +1,6 @@
 query_id = "81"
 generator = "v3"
-gen_length = 7663
+gen_length = 7915
 preql_size = 1941
 comp_size = 1459
 generated_sql = """
@@ -10,6 +10,7 @@ thoughtful as (
 SELECT
     \"cs_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cs_return_customer_sk\",
     \"cs_return_address_customer_address\".\"CA_STATE\" as \"cs_return_address_state\",
+    sum(CASE WHEN \"cs_return_date_date\".\"D_YEAR\" = 2000 and \"cs_return_address_customer_address\".\"CA_STATE\" is not null THEN \"cs_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\" ELSE NULL END) as \"_virt_agg_sum_2893965424206230_wscope\",
     sum(CASE WHEN \"cs_return_date_date\".\"D_YEAR\" = 2000 and \"cs_return_address_customer_address\".\"CA_STATE\" is not null THEN \"cs_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\" ELSE NULL END) as \"customer_state\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
@@ -49,7 +50,7 @@ WHERE
 abundant as (
 SELECT
     \"thoughtful\".\"cs_return_address_state\" as \"cs_return_address_state\",
-    avg(\"thoughtful\".\"customer_state\") as \"_virt_agg_avg_8292829790211065_wscope\"
+    avg(\"thoughtful\".\"_virt_agg_sum_2893965424206230_wscope\") as \"_virt_agg_avg_4753711405653170_wscope\"
 FROM
     \"thoughtful\"
 GROUP BY
@@ -100,7 +101,7 @@ FROM
     \"vacuous\"
     INNER JOIN \"abundant\" on \"vacuous\".\"cs_return_address_state\" is not distinct from \"abundant\".\"cs_return_address_state\"
 WHERE
-    \"vacuous\".\"customer_state\" > 1.2 * \"abundant\".\"_virt_agg_avg_8292829790211065_wscope\"
+    \"vacuous\".\"customer_state\" > 1.2 * \"abundant\".\"_virt_agg_avg_4753711405653170_wscope\"
 
 ORDER BY 
     \"vacuous\".\"cs_return_customer_id\" asc nulls first,
