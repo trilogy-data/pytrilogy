@@ -256,6 +256,48 @@ def test_window_non_prefix_gate_still_splits():
     assert _sql(model, query).count("rank() over") == 2
 
 
+NAV_SCHEMA = """key sale_id int;
+property sale_id.cat string;
+property sale_id.wk int;
+property sale_id.amt float;
+datasource facts ( sale_id, cat, wk, amt ) grain (sale_id)
+query '''select 1 as sale_id, 'A' as cat, 1 as wk, 10.0 as amt
+union all select 2, 'A', 2, 40.0
+union all select 3, 'A', 3, 80.0
+union all select 4, 'B', 1, 5.0''';
+auto nxt <- lead(amt, 1) over (partition by cat order by wk asc);
+"""
+
+
+def test_navigation_self_gate_keeps_single_instance():
+    # A gate on a lead/lag output defers to after the window — recomputing
+    # lead over rows admitted by its own value is never coherent (`is not
+    # null` would emit rows whose displayed value is null). No twin, one lead.
+    model = NAV_SCHEMA
+    query = "where nxt is not null select cat, wk, nxt;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, 80.0)]
+    assert _sql(model, query).count("lead(") == 1
+
+
+def test_navigation_gate_with_partition_peer_keeps_single_instance():
+    # cat is the partition key: the peer only drops whole partitions, which
+    # cannot reshuffle lead inside a surviving partition.
+    model = NAV_SCHEMA
+    query = "where nxt is not null and cat = 'A' select cat, wk, nxt;"
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, 80.0)]
+    assert _sql(model, query).count("lead(") == 1
+
+
+def test_navigation_gate_with_row_level_peer_still_splits():
+    # amt cuts within partitions, so the window's input population genuinely
+    # changes: gate on population lead (admits A wk1/wk2), select recomputes
+    # over the admitted rows (wk2's lead becomes null).
+    model = NAV_SCHEMA
+    query = "where nxt is not null and amt > 5 select cat, wk, nxt;"
+    assert _sql(model, query).count("lead(") == 2
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None)]
+
+
 def test_rowset_body_gets_dual_scope():
     # The normalization runs on every SelectLineage build, including rowset
     # bodies.

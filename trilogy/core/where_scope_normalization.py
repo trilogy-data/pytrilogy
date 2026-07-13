@@ -206,6 +206,45 @@ def _is_prefix_gate(leaf: Any, target_address: str) -> bool:
     return op == ComparisonOperator.EQ and right == 1
 
 
+def _target_gates_within_partition(
+    ref_address: str,
+    window: NumberingWindowItem | NavigationWindowItem,
+    base: SelectLineage,
+    environment: Environment,
+) -> list[Any] | None:
+    """If the WHERE is a pure AND tree where every conjunct NOT referencing
+    the target is constant within the window's partition (``over``) keys — so
+    row admission only drops whole partitions, never reshuffling the window's
+    rows inside a surviving partition — return the target-referencing
+    conjuncts (each of which must reference ONLY the target). Otherwise
+    None."""
+    assert base.where_clause is not None
+    if not all(isinstance(o, ConceptRef) for o in window.over):
+        return None
+    conjuncts = _and_conjuncts(base.where_clause.conditional)
+    if conjuncts is None:
+        return None
+    cover = {o.address for o in window.over}
+    gates: list[Any] = []
+    for leaf in conjuncts:
+        if isinstance(leaf, ConceptRef):
+            addresses = {leaf.address}
+        elif isinstance(leaf, ConceptArgs):
+            addresses = {r.address for r in leaf.row_arguments}
+        else:
+            return None
+        if ref_address in addresses:
+            if addresses != {ref_address}:
+                return None
+            gates.append(leaf)
+        elif not all(
+            _covered_by_grain(a, cover, base.local_concepts, environment, set())
+            for a in addresses
+        ):
+            return None
+    return gates
+
+
 def _where_is_prefix_atomic(
     ref_address: str,
     target: Concept,
@@ -215,38 +254,38 @@ def _where_is_prefix_atomic(
 ) -> bool:
     """A numbering-window gate (rank/row_number/dense_rank) keeps the single
     shared instance when the admitted rows are a prefix of the window's own
-    ordering within each partition: the target IS the bare window, the WHERE
-    is a pure AND tree, every conjunct referencing the target is
-    prefix-selecting (`<= k` / `< k` / `= 1` — the top-k and one-per-group
-    idioms), and every other conjunct is constant within the window's
-    partition (``over``) keys, so it only drops whole partitions. Then the
-    population and admitted-row values coincide and a twin would only
-    duplicate the window computation."""
-    assert base.where_clause is not None
+    ordering within each partition: the target IS the bare window, every
+    target-referencing conjunct is prefix-selecting (`<= k` / `< k` / `= 1` —
+    the top-k and one-per-group idioms), and every other conjunct only drops
+    whole partitions. Then the population and admitted-row values coincide
+    and a twin would only duplicate the window computation."""
     if target.lineage is not window:
         return False
-    if not all(isinstance(o, ConceptRef) for o in window.over):
+    gates = _target_gates_within_partition(ref_address, window, base, environment)
+    if gates is None:
         return False
-    conjuncts = _and_conjuncts(base.where_clause.conditional)
-    if conjuncts is None:
-        return False
-    cover = {o.address for o in window.over}
-    for leaf in conjuncts:
-        if isinstance(leaf, ConceptRef):
-            addresses = {leaf.address}
-        elif isinstance(leaf, ConceptArgs):
-            addresses = {r.address for r in leaf.row_arguments}
-        else:
-            return False
-        if ref_address in addresses:
-            if addresses != {ref_address} or not _is_prefix_gate(leaf, ref_address):
-                return False
-        elif not all(
-            _covered_by_grain(a, cover, base.local_concepts, environment, set())
-            for a in addresses
-        ):
-            return False
-    return True
+    return all(_is_prefix_gate(leaf, ref_address) for leaf in gates)
+
+
+def _where_is_navigation_atomic(
+    ref_address: str,
+    window: NavigationWindowItem,
+    base: SelectLineage,
+    environment: Environment,
+) -> bool:
+    """A navigation-window (lead/lag) gate keeps the single shared instance
+    when the gate cannot change the window's input population: every conjunct
+    referencing the target is a bare gate on the computed value — which
+    condition placement defers to after the window — and every other conjunct
+    only drops whole partitions. Unlike numbering windows the gate shape is
+    unrestricted: recomputing lead/lag over rows admitted by its own
+    population value is never coherent (`where ratio is not null` would emit
+    rows whose displayed ratio is null), so the population value IS the
+    output value and a twin would only duplicate the window."""
+    return (
+        _target_gates_within_partition(ref_address, window, base, environment)
+        is not None
+    )
 
 
 def _where_scopes_coincide(
@@ -258,8 +297,9 @@ def _where_scopes_coincide(
 ) -> bool:
     """The population-gate and select-scope values of every cross-row part are
     provably equal, so the WHERE can keep the single shared instance: aggregate
-    parts must be group-atomic, numbering-window parts prefix-atomic. Anything
-    else (navigation windows, group-to) splits — row admission reshuffles it."""
+    parts must be group-atomic, numbering-window parts prefix-atomic,
+    navigation-window parts partition-atomic. Group-to splits — row admission
+    reshuffles it."""
     for part in parts:
         if isinstance(part, AggregateWrapper):
             if not _where_is_group_atomic(ref_address, part, base, environment):
@@ -268,6 +308,9 @@ def _where_scopes_coincide(
             if not _where_is_prefix_atomic(
                 ref_address, target, part, base, environment
             ):
+                return False
+        elif isinstance(part, NavigationWindowItem):
+            if not _where_is_navigation_atomic(ref_address, part, base, environment):
                 return False
         else:
             return False
