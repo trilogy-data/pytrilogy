@@ -11,12 +11,17 @@ from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildParenthetical,
     BuildRowsetItem,
+    BuildSubselectComparison,
     BuildWhereClause,
+    get_concept_arguments,
+    get_concept_row_arguments,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
@@ -741,6 +746,83 @@ def _is_global_aggregate_gate(
     )
 
 
+def _collect_subselect_comparisons(node: object) -> List[BuildSubselectComparison]:
+    if isinstance(node, BuildSubselectComparison):
+        return [node]
+    if isinstance(node, BuildConditional):
+        return _collect_subselect_comparisons(
+            node.left
+        ) + _collect_subselect_comparisons(node.right)
+    if isinstance(node, BuildParenthetical):
+        return _collect_subselect_comparisons(node.content)
+    return []
+
+
+def membership_span_note(
+    conditions: "BuildWhereClause | None",
+    subgraphs: List[List[BuildConcept]],
+    environment: BuildEnvironment,
+    g: "ReferenceGraph | None" = None,
+    island_rowsets: bool = True,
+) -> str | None:
+    """When the disconnected-subgraph error is about to be raised and the WHERE
+    holds membership/existence predicates whose left side sits in one reported
+    subgraph while the right side derives from another, name them. A membership
+    semi-join only filters its left side — it never relates the two sides for
+    outputs or grouping — and its right-side concepts plan as a separate island,
+    so without this note they are absent from the reported components and the
+    error reads as if the authored predicate was silently dropped."""
+    if conditions is None or len(subgraphs) < 2:
+        return None
+    comparisons = _collect_subselect_comparisons(conditions.conditional)
+    if not comparisons:
+        return None
+    comp_of, _ = _component_map(environment, g, island_rowsets)
+
+    # mirror disconnected_components: a subgraph member's component is its FIRST
+    # mapped anchor (an aggregate's later anchors reach into its `by` keys'
+    # components and would over-claim)
+    subgraph_of_component: dict[int, int] = {}
+    for idx, group in enumerate(subgraphs):
+        for concept in group:
+            for node in _anchor_nodes(concept):
+                if node in comp_of:
+                    subgraph_of_component.setdefault(comp_of[node], idx)
+                    break
+
+    def subgraph_ids(concepts: List[BuildConcept]) -> set[int]:
+        # operands consider ALL anchors: an islanded rowset concept's own node
+        # sits in its island, but its source args tie back to a real model
+        ids = set()
+        for concept in concepts:
+            for node in _anchor_nodes(concept):
+                cid = comp_of.get(node)
+                if cid is not None and cid in subgraph_of_component:
+                    ids.add(subgraph_of_component[cid])
+        return ids
+
+    notes = []
+    for comparison in comparisons:
+        left = get_concept_row_arguments(comparison.left)
+        right = get_concept_arguments(comparison.right)
+        spans = subgraph_ids(left) | subgraph_ids(right)
+        if len(spans) < 2:
+            continue
+        render_left = ", ".join(_strip_default_namespace(c.address) for c in left)
+        render_right = ", ".join(_strip_default_namespace(c.address) for c in right)
+        notes.append(f"`({render_left}) {comparison.operator.value} ({render_right})`")
+    if not notes:
+        return None
+    rendered = "; ".join(notes)
+    return (
+        f"Note: the membership predicate(s) {rendered} span these subgraphs, but "
+        "membership only filters rows on its left side — it does not join the two "
+        "sides, so it cannot relate them for outputs or grouping. To combine "
+        "values from both sides, author a query-scoped join or a merge on shared "
+        "keys."
+    )
+
+
 def raise_if_disconnected_for(
     outputs: List[BuildConcept],
     conditions: "BuildWhereClause | None",
@@ -779,8 +861,14 @@ def raise_if_disconnected_for(
         )
     ]
     if len(subgraphs) > 1:
+        message = format_disconnected_subgraphs_error(subgraphs)
+        note = membership_span_note(
+            conditions, subgraphs, environment, g, island_rowsets
+        )
+        if note:
+            message = f"{message}\n{note}"
         raise DisconnectedConceptsException(
-            format_disconnected_subgraphs_error(subgraphs),
+            message,
             subgraphs=[[c.address for c in group] for group in subgraphs],
         )
 
@@ -840,6 +928,12 @@ def connected_equivalent_suggestions(
     return suggestions
 
 
+def _strip_default_namespace(addr: str) -> str:
+    # default namespace is implicit; keep other namespaces qualified
+    default_prefix = f"{DEFAULT_NAMESPACE}."
+    return addr[len(default_prefix) :] if addr.startswith(default_prefix) else addr
+
+
 def format_disconnected_subgraphs_error(
     subgraphs: List[List[BuildConcept]],
     environment: BuildEnvironment | None = None,
@@ -847,17 +941,15 @@ def format_disconnected_subgraphs_error(
     island_rowsets: bool = True,
     line_number: int | None = None,
 ) -> str:
-    default_prefix = f"{DEFAULT_NAMESPACE}."
-
-    def strip_default(addr: str) -> str:
-        # default namespace is implicit; keep other namespaces qualified
-        return addr[len(default_prefix) :] if addr.startswith(default_prefix) else addr
-
     def render(group: List[BuildConcept]) -> str:
         addrs = sorted(c.address for c in group)
         # drop internal _virt_* scaffolding, but keep raw if that empties a group
         cleaned = [a for a in addrs if VIRTUAL_CONCEPT_PREFIX not in a]
-        return "{" + ", ".join(strip_default(a) for a in (cleaned or addrs)) + "}"
+        return (
+            "{"
+            + ", ".join(_strip_default_namespace(a) for a in (cleaned or addrs))
+            + "}"
+        )
 
     rendered = "; ".join(render(group) for group in subgraphs)
     location = f" (statement at line {line_number})" if line_number else ""

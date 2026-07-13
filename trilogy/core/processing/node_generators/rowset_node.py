@@ -921,6 +921,25 @@ def _enrich_rowset_node(
     optionals and merges them back onto the rowset. Returns the bare rowset node
     when no enrichment is possible/required."""
     remaining = unsatisfied_optionals(local_optional, node)
+    # A subset-join member among this node's OWN outputs reads as unsatisfied
+    # (scoped_partial marks it partial), but it is partial by DECLARATION — the
+    # anchor holds the fuller group axis — not by source: no other node produces
+    # a fuller copy of a rowset-local column. Sourcing one routes to the anchor
+    # rowset, whose enrichment symmetrically requests this member back —
+    # unbounded (q59 store/offset-week join). The member is served here; the
+    # merge above pairs it with the anchor over the group pseudonym.
+    subset_members = environment.domain_graph.subset_sources()
+    if subset_members:
+        own_outputs = {x.address for x in node.output_concepts}
+        remaining = [
+            x
+            for x in remaining
+            if not (
+                x.derivation == Derivation.ROWSET
+                and x.address in subset_members
+                and x.address in own_outputs
+            )
+        ]
     # A scoped-join key-group member is NOT satisfied through its group-mate
     # pseudonym: the merge between this rowset and the enrichment side joins the
     # two physical columns, so the other side must materialize its OWN member.

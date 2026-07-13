@@ -32,6 +32,7 @@ from trilogy.core.processing.discovery_utility import (
     get_loop_iteration_targets,
     get_upstream_concepts,
     group_if_required_v2,
+    membership_span_note,
     raise_if_filter_disconnected,
 )
 from trilogy.core.processing.discovery_validation import (
@@ -759,8 +760,12 @@ def source_query_concepts(
             )
         groups = disconnected_components(environment, required, g)
         if len(groups) > 1:
+            message = format_disconnected_subgraphs_error(groups, environment, g)
+            note = membership_span_note(conditions, groups, environment, g)
+            if note:
+                message = f"{message}\n{note}"
             raise DisconnectedConceptsException(
-                format_disconnected_subgraphs_error(groups, environment, g),
+                message,
                 subgraphs=[[c.address for c in group] for group in groups],
             )
         # A FILTER output hides its `? <cond>` concepts inside its lineage, so the
