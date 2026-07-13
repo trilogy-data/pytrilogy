@@ -398,7 +398,7 @@ def _emit_results_json(
         full_row_count=results.full_row_count,
         limit_bounded=limit_bounded,
         fetch_ceiling_hit=hit_fetch_ceiling or None,
-        # factual per-computation scope report (input filters vs output
+        # factual per-computation scope report (input row filters vs output
         # filters, grouping/partitioning) — compare against the business
         # question before trusting a value that merely ran cleanly. Omitted
         # entirely when the statement computes no aggregate/window values.

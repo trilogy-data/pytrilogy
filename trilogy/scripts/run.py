@@ -133,7 +133,7 @@ def _format_import(value: str) -> str:
     default=False,
     help=(
         "Print a 'Derived value scopes' block after each result: the effective "
-        "input filters, grouping/partitioning, and post-computation filters of "
+        "input row filters, grouping/partitioning, and post-computation filters of "
         "every aggregate and window value the statement computes. JSON output "
         "always includes this data as `derived_value_scopes`."
     ),

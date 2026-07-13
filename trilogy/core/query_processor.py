@@ -1397,7 +1397,9 @@ def process_query(
     derived_value_scopes: list[DerivedValueScope] = []
     if build_lineage_sink:
         try:
-            derived_value_scopes = extract_derived_value_scopes(build_lineage_sink[0])
+            derived_value_scopes = extract_derived_value_scopes(
+                build_lineage_sink[0], environment
+            )
         except Exception as exc:
             logger.debug(f"{LOGGER_PREFIX} scope diagnostics extraction failed: {exc}")
     return ProcessedQuery(

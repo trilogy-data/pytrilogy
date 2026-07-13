@@ -84,3 +84,5 @@ evals/_repros/*
 # reviewer-corpus raw extraction pool (regenerable via `reviewer_corpus.py
 # extract`; ~22MB). The curated `labeled.jsonl` test set IS committed.
 evals/tpcds_agent/reviewer_corpus/all.jsonl
+evals/tpcds_agent/*.out
+evals/tpcds_agent/*.err

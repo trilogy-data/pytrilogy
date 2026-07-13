@@ -8,7 +8,9 @@ the Trilogy language reference, which the agent loads via `trilogy agent-info`.
 from __future__ import annotations
 
 import json
+import shutil
 from hashlib import blake2s
+from pathlib import Path
 
 from .spec import BenchmarkSpec
 
@@ -105,6 +107,36 @@ def opaque_query_id(spec: BenchmarkSpec, query_id: int) -> str:
 
 def candidate_filename(spec: BenchmarkSpec, query_id: int, extension: str) -> str:
     return f"answer_{opaque_query_id(spec, query_id)}{extension}"
+
+
+def candidate_path(
+    workspace: Path, spec: BenchmarkSpec, query_id: int, extension: str
+) -> Path:
+    return workspace / candidate_filename(spec, query_id, extension)
+
+
+def scoring_candidate_path(workspace: Path, query_id: int, extension: str) -> Path:
+    return workspace / f"query{query_id:02d}{extension}"
+
+
+def stage_candidate_for_scoring(
+    source_workspace: Path,
+    scoring_workspace: Path,
+    spec: BenchmarkSpec,
+    query_id: int,
+    extension: str,
+    *,
+    remove_source: bool = False,
+) -> Path | None:
+    source = candidate_path(source_workspace, spec, query_id, extension)
+    if not source.exists():
+        return None
+    destination = scoring_candidate_path(scoring_workspace, query_id, extension)
+    if source != destination:
+        shutil.copy2(source, destination)
+        if remove_source:
+            source.unlink()
+    return destination
 
 
 def active_prompts(spec: BenchmarkSpec) -> list[dict]:

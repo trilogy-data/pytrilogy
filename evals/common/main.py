@@ -683,14 +683,14 @@ def run(spec: BenchmarkSpec) -> int:
                 (run_dir / f"crash.q{qid:02d}.txt").write_text(
                     result["output"], encoding="utf-8"
                 )
-            produced = worker / prompts.candidate_filename(
-                spec, qid, category.candidate_ext
+            prompts.stage_candidate_for_scoring(
+                worker,
+                workspace,
+                spec,
+                qid,
+                category.candidate_ext,
+                remove_source=True,
             )
-            if produced.exists():
-                destination = workspace / f"query{qid:02d}{category.candidate_ext}"
-                if produced != destination:
-                    shutil.copy2(produced, destination)
-                    produced.unlink()
             per_query_runs[index] = result
             per_query_metrics[index] = scoring.parse_agent_log(log_path)
             if scoring_available:

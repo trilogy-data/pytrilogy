@@ -23,23 +23,23 @@ Derived value scopes
 customer_return_total
   kind: aggregate
   expression: sum(web_returns.return_amount)
-  input filters: return_date.year = 2002
+  input row filters: return_date.year = 2002
   group by: return_customer.sk, return_location.state
 
 state_average
   kind: aggregate
   expression: avg(customer_return_total)
-  input filters: return_date.year = 2002
+  input row filters: return_date.year = 2002
   input grain: return_customer.sk, return_location.state
   group by: return_location.state
 
 previous_month_total
   kind: window
   expression: lag(monthly_total)
-  input filters: sold_month between 1998-12 and 2000-01
+  input row filters: sold_month between 1998-12 and 2000-01
   partition by: category, brand, call_center
   order by: year, month
-  output filters: year = 1999
+  output row filters: year = 1999
 ```
 
 ## Motivation
@@ -63,7 +63,7 @@ should answer two questions for each cross-row computation:
 
 1. Report the planner's **effective** scope, not merely nearby authored syntax.
 2. Cover aggregates and numbering/navigation windows.
-3. Preserve the distinction between computation input filters and later output
+3. Preserve the distinction between computation input row filters and later output
    filters.
 4. Produce stable, compact text suitable for humans and language-model agents.
 5. Provide a structured representation so terminal, JSON, and agent outputs do
@@ -139,19 +139,19 @@ class DerivedValueScope:
     name: str
     kind: Literal["aggregate", "window"]
     expression: str
-    input_filters: list[str]
+    input_row_filters: list[str]
     input_grain: list[str]
     group_by: list[str]
     partition_by: list[str]
     order_by: list[ScopeOrder]
-    output_filters: list[str]
+    output_row_filters: list[str]
     input_values: list[str]
 ```
 
 The final implementation must use the project's normal typed model style; the
 shape above defines the contract, not a required class location.
 
-### `input_filters`
+### `input_row_filters`
 
 Conditions that restrict rows before the aggregate or window is evaluated.
 This must reflect effective planner placement after normalization, pushdown,
@@ -181,11 +181,15 @@ stitch.
 For windows, report the semantic partition and ordered sequence, including
 direction and null ordering when explicitly or effectively defined.
 
-### `output_filters`
+### `output_row_filters`
 
 Conditions that restrict the rows carrying the already-computed value. This
 includes a final-year filter applied after a window and qualifying conditions
 applied to an aggregate result.
+
+For a rollup, these conditions filter each already-computed rollup result row.
+They do not remove failing leaf groups before computing parent subtotal rows.
+That operation requires filtering a leaf rowset before applying the rollup.
 
 Only include a condition here when the planner can establish that it is outside
 the computation boundary. Do not classify an ambiguous condition by textual
@@ -207,13 +211,13 @@ Fields appear in this stable order:
 1. `kind`
 2. `expression`
 3. `input values`
-4. `input filters`
+4. `input row filters`
 5. `input grain`
 6. `group by` for aggregates
 7. `partition by` and `order by` for windows
-8. `output filters`
+8. `output row filters`
 
-Omit fields that are inapplicable, except `input filters`, which should render
+Omit fields that are inapplicable, except `input row filters`, which should render
 `none` when empty. Preserve authored concept names where possible, but render
 normalized conditions so semantically identical plans produce equivalent
 diagnostics.
@@ -271,8 +275,8 @@ the average's planned input.
 ### Window boundary population
 
 If December 1998 and January 2000 exist only to supply boundaries for windows,
-the window should report the full boundary range under `input filters` and the
-final `year = 1999` condition under `output filters`.
+the window should report the full boundary range under `input row filters` and the
+final `year = 1999` condition under `output row filters`.
 
 ### Same expression in WHERE and SELECT
 
@@ -291,7 +295,7 @@ its own partition/order independently.
 ### Filtered aggregate arguments
 
 For `sum(amount ? condition)`, report the condition as part of the aggregate's
-input scope or expression consistently. Prefer `input filters` when the
+input scope or expression consistently. Prefer `input row filters` when the
 condition controls row membership for the value; it must not be confused with
 a statement-level filter affecting peer values.
 

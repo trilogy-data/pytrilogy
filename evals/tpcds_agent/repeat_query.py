@@ -166,8 +166,12 @@ def main() -> int:
         with pool_lock:
             worker = pool.pop()
         try:
-            produced = worker / f"query{qid:02d}{category.candidate_ext}"
+            produced = prompts.candidate_path(worker, SPEC, qid, category.candidate_ext)
+            score_input = prompts.scoring_candidate_path(
+                worker, qid, category.candidate_ext
+            )
             produced.unlink(missing_ok=True)  # never score a prior repeat's file
+            score_input.unlink(missing_ok=True)
             log_path = out / f"agent_log.q{qid:02d}.r{rep:02d}.jsonl"
             result = agent_runner.run_agent(
                 worker,
@@ -186,6 +190,9 @@ def main() -> int:
                     result["output"], encoding="utf-8"
                 )
             wrote = produced.exists()
+            prompts.stage_candidate_for_scoring(
+                worker, worker, SPEC, qid, category.candidate_ext
+            )
             with score_lock:
                 try:
                     score = scoring.score_query(

@@ -17,17 +17,21 @@ MODEL = """
 key sale_id int;
 property sale_id.year int;
 property sale_id.state string;
+property sale_id.order_id int;
 property sale_id.customer_id int;
 property sale_id.amount float;
 property sale_id.is_web bool;
+property sale_id.is_returned bool;
 
 datasource sales (
     id: sale_id,
     yr: year,
     st: state,
+    ord: order_id,
     cust: customer_id,
     amt: amount,
     web: is_web,
+    ret: is_returned,
 )
 grain (sale_id)
 address sales;
@@ -58,16 +62,16 @@ where year = 2002;
     scope = _by_name(scopes, "total_amount")
     assert scope.kind == "aggregate"
     assert scope.expression == "sum(amount)"
-    assert scope.input_filters == ["year = 2002"]
+    assert scope.input_row_filters == ["year = 2002"]
     assert scope.group_by == ["state"]
-    assert scope.output_filters == []
+    assert scope.output_row_filters == []
 
 
 def test_scalar_aggregate_groups_by_star():
     scopes = _scopes("select sum(amount) by * as grand_total;")
     scope = _by_name(scopes, "grand_total")
     assert scope.group_by == ["*"]
-    assert scope.input_filters == []
+    assert scope.input_row_filters == []
 
 
 def test_filtered_argument_is_input_filter_not_statement_where():
@@ -78,8 +82,8 @@ select
 where year = 2002;
 """)
     scope = _by_name(scopes, "web_amount")
-    assert "year = 2002" in scope.input_filters
-    assert any("is_web" in f for f in scope.input_filters)
+    assert "year = 2002" in scope.input_row_filters
+    assert any("is_web" in f for f in scope.input_row_filters)
 
 
 def test_nested_average_reports_inner_grain_and_rowset_filter():
@@ -97,12 +101,12 @@ select
 """)
     outer = _by_name(scopes, "state_average")
     assert outer.input_values == ["customer_totals.customer_total"]
-    assert outer.input_filters == ["year = 2002"]
+    assert outer.input_row_filters == ["year = 2002"]
     assert set(outer.input_grain) == {"customer_id", "state"}
     assert outer.group_by == ["customer_totals.state"]
     inner = _by_name(scopes, "customer_totals.customer_total")
     assert inner.expression == "sum(amount)"
-    assert inner.input_filters == ["year = 2002"]
+    assert inner.input_row_filters == ["year = 2002"]
     assert set(inner.group_by) == {"customer_id", "state"}
 
 
@@ -122,26 +126,38 @@ where customer_totals.state = 'GA';
 """)
     # The outer restriction filters rows entering the average...
     outer = _by_name(scopes, "state_average")
-    assert "customer_totals.state = 'GA'" in outer.input_filters
+    assert "customer_totals.state = 'GA'" in outer.input_row_filters
     # ...but never the already-computed per-customer totals.
     inner = _by_name(scopes, "customer_totals.customer_total")
-    assert inner.input_filters == ["year = 2002"]
+    assert inner.input_row_filters == ["year = 2002"]
 
 
-def test_where_dual_scope_emits_two_entries():
+def test_where_dual_scope_emits_two_entries_with_roles():
     scopes = _scopes("""
 select
     state,
     count(sale_id) as sale_count
-where count(sale_id) > 10;
+where count(sale_id) > 10 and year = 2001;
 """)
-    filter_scope = _by_name(scopes, "sale_count (filter scope)")
-    output_scope = _by_name(scopes, "sale_count (output scope)")
+    gate = _by_name(scopes, "sale_count — used by WHERE comparison")
+    output = _by_name(scopes, "sale_count — selected output after row admission")
+    assert gate.role == "where_gate"
+    assert output.role == "selected_output"
     # population gate: unfiltered inputs, condition applies to its output
-    assert filter_scope.input_filters == []
-    assert filter_scope.output_filters == ["count(sale_id) > 10"]
-    # select output: recomputes over the WHERE-filtered rows
-    assert output_scope.input_filters == ["count(sale_id) > 10"]
+    assert gate.input_row_filters == []
+    assert gate.output_row_filters == ["count(sale_id) > 10"]
+    # select output: row filters and the computed-value admission gate are
+    # reported separately, never mixed
+    assert output.input_row_filters == ["year = 2001"]
+    assert output.admitted_by == ["count(sale_id) > 10"]
+    # schema-stable JSON: empty input_row_filters serialize rather than vanish
+    gate_payload = gate.to_dict()
+    assert gate_payload["input_row_filters"] == []
+    assert gate_payload["role"] == "where_gate"
+    # unrestricted population renders loudly
+    block = render_derived_value_scopes(scopes)
+    assert "input row filters: NONE — unrestricted population" in block
+    assert "admitted by: count(sale_id) > 10" in block
 
 
 def test_window_partition_order_and_where():
@@ -158,7 +174,7 @@ where year = 2002;
     assert rank.partition_by == ["state"]
     assert [o.render() for o in rank.order_by] == ["total_amount desc"]
     assert rank.input_values == ["total_amount"]
-    assert rank.input_filters == ["year = 2002"]
+    assert rank.input_row_filters == ["year = 2002"]
     assert set(rank.input_grain) == {"state", "year"}
 
 
@@ -184,8 +200,8 @@ select
 having total_amount > 100;
 """)
     scope = _by_name(scopes, "total_amount")
-    assert scope.input_filters == []
-    assert scope.output_filters == ["total_amount > 100"]
+    assert scope.input_row_filters == []
+    assert scope.output_row_filters == ["total_amount > 100"]
 
 
 def test_hidden_having_aggregate_is_reported():
@@ -207,8 +223,8 @@ select year, count(sale_id) as sale_count;
     assert len(queries) == 2
     first = _by_name(queries[0].derived_value_scopes, "total_amount")
     second = _by_name(queries[1].derived_value_scopes, "sale_count")
-    assert first.input_filters == ["year = 2001"]
-    assert second.input_filters == []
+    assert first.input_row_filters == ["year = 2001"]
+    assert second.input_row_filters == []
     assert second.group_by == ["year"]
 
 
@@ -218,13 +234,16 @@ def test_no_derived_values_yields_empty_report():
     assert render_derived_value_scopes(scopes) == ""
 
 
-def test_to_dict_omits_empty_fields_kind_and_ordering():
+def test_to_dict_schema_stable_without_kind_or_ordering():
     scopes = _scopes("select state, sum(amount) as total_amount;")
     payload = _by_name(scopes, "total_amount").to_dict()
     assert payload == {
         "name": "total_amount",
         "expression": "sum(amount)",
+        "role": "selected_output",
+        "input_row_filters": [],
         "group_by": ["state"],
+        "output_row_filters": [],
     }
     windowed = _scopes("""
 select
@@ -249,15 +268,155 @@ where year = 2002;
     lines = block.splitlines()
     assert lines[0] == "Derived value scopes"
     assert "total_amount" in lines
-    assert "  input filters: year = 2002" in lines
+    assert "  input row filters: year = 2002" in lines
     assert "  group by: state" in lines
     assert not any(line.startswith("  kind:") for line in lines)
 
 
-def test_render_block_omits_empty_input_filters():
+def test_render_block_flags_unrestricted_population():
     scopes = _scopes("select state, sum(amount) as total_amount;")
     block = render_derived_value_scopes(scopes)
-    assert "input filters" not in block
+    assert "input row filters: NONE — unrestricted population" in block
+
+
+def test_membership_rowset_eligibility_aggregates_reported():
+    """q95 shape: aggregates gating a membership rowset's HAVING must be
+    reported even though the outer statement consumes only a plain key."""
+    scopes = _scopes("""
+with eligible_orders as
+select
+    order_id,
+    count(customer_id) as buyer_count,
+    bool_or(is_returned) as has_return
+having
+    buyer_count > 1
+    and has_return = true;
+
+select
+    count(order_id ? order_id in eligible_orders.order_id) as eligible_order_count
+where year = 2000;
+""")
+    buyer = _by_name(scopes, "eligible_orders.buyer_count")
+    returned = _by_name(scopes, "eligible_orders.has_return")
+    for scope in (buyer, returned):
+        assert scope.role == "upstream"
+        assert scope.input_row_filters == []
+        assert scope.group_by == ["order_id"]
+        assert "buyer_count > 1" in scope.output_row_filters
+    assert buyer.expression == "count(customer_id)"
+    assert returned.expression == "bool_or(is_returned)"
+    # outer statement's WHERE never leaks into the eligibility population
+    block = render_derived_value_scopes(scopes)
+    assert "<Subselect" not in block and "<Rowset" not in block
+
+
+def test_scalar_benchmark_rowset_reported_from_having():
+    """q14 shape: a scalar benchmark consumed only by HAVING keeps its own
+    population (1999-2001), distinct from the statement's."""
+    scopes = _scopes("""
+with overall_avg as
+select
+    avg(amount) by * as avg_amount
+where year between 1999 and 2001;
+
+select
+    state,
+    sum(amount) as state_total
+where year = 2002
+having state_total > overall_avg.avg_amount;
+""")
+    benchmark = _by_name(scopes, "overall_avg.avg_amount")
+    assert benchmark.role == "upstream"
+    assert benchmark.input_row_filters == ["year between 1999 and 2001"]
+    assert benchmark.group_by == ["*"]
+    outer = _by_name(scopes, "state_total")
+    assert outer.input_row_filters == ["year = 2002"]
+    assert outer.output_row_filters == ["state_total > overall_avg.avg_amount"]
+
+
+def test_having_subselect_benchmark_owned_by_its_rowset():
+    """q14 blocker shape: the final statement consumes `filtered_groups`,
+    whose HAVING consumes `overall_avg` through an expression subselect. The
+    benchmark must be owned by overall_avg with ITS filters and scalar grain —
+    never stamped with the consumer's name, filters, or grain."""
+    scopes = _scopes("""
+with overall_avg as
+where year between 1999 and 2001
+select avg(amount) as overall_avg_val;
+
+with filtered_groups as
+where year = 2001
+select
+    state,
+    order_id,
+    sum(amount) as total_sales
+having total_sales > (select overall_avg.overall_avg_val);
+
+select
+    filtered_groups.state,
+    sum(filtered_groups.total_sales) as rollup_total;
+""")
+    benchmark = _by_name(scopes, "overall_avg.overall_avg_val")
+    assert benchmark.role == "upstream"
+    assert benchmark.input_row_filters == ["year between 1999 and 2001"]
+    assert benchmark.group_by == ["*"]
+    leaf = _by_name(scopes, "filtered_groups.total_sales")
+    assert leaf.input_row_filters == ["year = 2001"]
+    assert leaf.output_row_filters == [
+        "total_sales > (select overall_avg.overall_avg_val)"
+    ]
+    # no consumer-stamped copy of the benchmark, no opaque planner tokens
+    assert not any("_overall_avg" in s.name for s in scopes)
+    block = render_derived_value_scopes(scopes)
+    assert "<Subquery" not in block and "_subquery" not in block
+
+
+def test_nested_rowset_chain_reports_benchmark():
+    """reported aggregate -> membership rowset -> aggregate benchmark rowset:
+    every upstream computation appears with its own scope."""
+    scopes = _scopes("""
+with high_orders as
+select
+    order_id,
+    sum(amount) as order_total
+having order_total > 5;
+
+with eligible_customers as
+select
+    customer_id
+where order_id in high_orders.order_id;
+
+select
+    count(customer_id ? customer_id in eligible_customers.customer_id) as buyer_count;
+""")
+    benchmark = _by_name(scopes, "high_orders.order_total")
+    assert benchmark.role == "upstream"
+    assert benchmark.expression == "sum(amount)"
+    assert benchmark.group_by == ["order_id"]
+    assert benchmark.output_row_filters == ["order_total > 5"]
+
+
+def test_count_family_reports_argument_grain():
+    """count identity evidence: each count-family aggregate reports the
+    counted ARGUMENT's own grain under `argument_grain` — a distinct field so
+    it cannot be read as the input relation's row grain — with no correctness
+    claim. Here order_id repeats across sale lines: its identity resolves to
+    the sale_id key it is a property of."""
+    scopes = _scopes("""
+select
+    count(order_id) as order_count,
+    count(customer_id) as buyer_count,
+    sum(amount) as total_amount;
+""")
+    order_count = _by_name(scopes, "order_count")
+    assert order_count.argument_grain == ["sale_id"]
+    assert order_count.input_grain == []
+    assert _by_name(scopes, "buyer_count").argument_grain == ["sale_id"]
+    # non-count aggregates make no argument-identity claim
+    total = _by_name(scopes, "total_amount")
+    assert total.argument_grain == []
+    assert "argument_grain" not in total.to_dict()
+    assert order_count.to_dict()["argument_grain"] == ["sale_id"]
 
 
 def test_generated_sql_unchanged_by_diagnostics():
