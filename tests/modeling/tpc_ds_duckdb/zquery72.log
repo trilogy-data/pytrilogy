@@ -1,36 +1,19 @@
 query_id = "72"
-generator = "v3"
-gen_length = 6276
+generator = "v4"
+gen_length = 4825
 preql_size = 981
 comp_size = 1360
 generated_sql = """
 
 WITH 
-highfalutin as (
-SELECT
-    \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" as \"cs_pos_customer_demographic_sk\",
-    \"cs_catalog_sales\".\"CS_BILL_HDEMO_SK\" as \"cs_pos_household_demographic_sk\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"inv_item_sk\",
-    \"cs_catalog_sales\".\"CS_PROMO_SK\" as \"cs_promotion_sk\",
-    \"cs_catalog_sales\".\"CS_QUANTITY\" as \"cs_quantity\",
-    \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" as \"cs_ship_date_sk\",
-    \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"cs_sold_date_sk\"
-FROM
-    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7),
-concerned as (
+yummy as (
 SELECT
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_catalog_sales\".\"CS_PROMO_SK\" as \"cs_promotion_sk\",
     \"cs_item_items\".\"I_ITEM_DESC\" as \"cs_item_desc\",
     \"cs_sold_date_date\".\"D_WEEK_SEQ\" as \"cs_sold_date_week_seq\",
-    \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"inv_warehouse_name\"
+    \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"inv_warehouse_name\",
+    date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) as \"cs_days_to_ship\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_catalog_sales\".\"CS_ITEM_SK\"
@@ -42,37 +25,68 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"inv_date_date\".\"D_YEAR\" = 1999 and \"cs_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\"
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-juicy as (
+    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"inv_date_date\".\"D_YEAR\" = 1999 and \"cs_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\"
+),
+vacuous as (
 SELECT
-    \"cs_item_items\".\"I_ITEM_DESC\" as \"cs_item_desc\",
-    \"cs_sold_date_date\".\"D_WEEK_SEQ\" as \"cs_sold_date_week_seq\",
-    \"highfalutin\".\"cs_promotion_sk\" as \"cs_promotion_sk\",
-    \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"inv_warehouse_name\"
+    \"yummy\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"yummy\".\"cs_order_number\" as \"cs_order_number\",
+    \"yummy\".\"cs_promotion_sk\" as \"cs_promotion_sk\",
+    \"yummy\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
+    \"yummy\".\"inv_warehouse_name\" as \"inv_warehouse_name\"
 FROM
-    \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
-    INNER JOIN \"highfalutin\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"highfalutin\".\"inv_item_sk\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"highfalutin\".\"cs_sold_date_sk\" = \"cs_sold_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_pos_customer_demographic_customer_demographics\" on \"highfalutin\".\"cs_pos_customer_demographic_sk\" = \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
-    INNER JOIN \"memory\".\"household_demographics\" as \"cs_pos_household_demographic_household_demographics\" on \"highfalutin\".\"cs_pos_household_demographic_sk\" = \"cs_pos_household_demographic_household_demographics\".\"HD_DEMO_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"highfalutin\".\"cs_ship_date_sk\" = \"cs_ship_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
+    \"yummy\"
 WHERE
-    \"cs_sold_date_date\".\"D_YEAR\" = 1999 and \"inv_date_date\".\"D_YEAR\" = 1999 and \"cs_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and date_diff('day', cast(\"cs_sold_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"highfalutin\".\"cs_quantity\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sold_date_date\".\"D_WEEK_SEQ\"
-
+    \"yummy\".\"cs_days_to_ship\" > 5
+),
+sparkling as (
+SELECT
+    \"vacuous\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"vacuous\".\"cs_promotion_sk\" as \"cs_promotion_sk\",
+    \"vacuous\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
+    \"vacuous\".\"inv_warehouse_name\" as \"inv_warehouse_name\"
+FROM
+    \"vacuous\"
 GROUP BY
     1,
     2,
     3,
     4),
+concerned as (
+SELECT
+    \"vacuous\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"vacuous\".\"cs_order_number\" as \"cs_order_number\",
+    \"vacuous\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
+    \"vacuous\".\"inv_warehouse_name\" as \"inv_warehouse_name\"
+FROM
+    \"vacuous\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+abhorrent as (
+SELECT
+    \"sparkling\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"sparkling\".\"cs_item_desc\" as \"item_desc\",
+    \"sparkling\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
+    \"sparkling\".\"cs_sold_date_week_seq\" as \"week_seq\",
+    \"sparkling\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
+    \"sparkling\".\"inv_warehouse_name\" as \"warehouse_name\",
+    sum(CASE
+	WHEN \"sparkling\".\"cs_promotion_sk\" is not null THEN 1
+	ELSE 0
+	END) as \"promo\",
+    sum(CASE
+	WHEN \"sparkling\".\"cs_promotion_sk\" is null THEN 1
+	ELSE 0
+	END) as \"no_promo\"
+FROM
+    \"sparkling\"
+GROUP BY
+    1,
+    3,
+    5),
 young as (
 SELECT
     \"concerned\".\"cs_item_desc\" as \"cs_item_desc\",
@@ -84,39 +98,20 @@ FROM
 GROUP BY
     1,
     2,
-    3),
-vacuous as (
-SELECT
-    \"juicy\".\"cs_item_desc\" as \"cs_item_desc\",
-    \"juicy\".\"cs_sold_date_week_seq\" as \"cs_sold_date_week_seq\",
-    \"juicy\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
-    sum(CASE
-	WHEN \"juicy\".\"cs_promotion_sk\" is not null THEN 1
-	ELSE 0
-	END) as \"promo\",
-    sum(CASE
-	WHEN \"juicy\".\"cs_promotion_sk\" is null THEN 1
-	ELSE 0
-	END) as \"no_promo\"
-FROM
-    \"juicy\"
-GROUP BY
-    1,
-    2,
     3)
 SELECT
-    \"vacuous\".\"cs_item_desc\" as \"item_desc\",
-    \"vacuous\".\"inv_warehouse_name\" as \"warehouse_name\",
-    \"vacuous\".\"cs_sold_date_week_seq\" as \"week_seq\",
-    \"vacuous\".\"no_promo\" as \"no_promo\",
-    \"vacuous\".\"promo\" as \"promo\",
-    \"young\".\"total_cnt\" as \"total_cnt\"
+    \"abhorrent\".\"item_desc\" as \"item_desc\",
+    \"abhorrent\".\"warehouse_name\" as \"warehouse_name\",
+    \"abhorrent\".\"week_seq\" as \"week_seq\",
+    \"abhorrent\".\"no_promo\" as \"no_promo\",
+    \"abhorrent\".\"promo\" as \"promo\",
+    coalesce(\"young\".\"total_cnt\",0) as \"total_cnt\"
 FROM
-    \"young\"
-    INNER JOIN \"vacuous\" on \"young\".\"cs_item_desc\" is not distinct from \"vacuous\".\"cs_item_desc\" AND \"young\".\"cs_sold_date_week_seq\" = \"vacuous\".\"cs_sold_date_week_seq\" AND \"young\".\"inv_warehouse_name\" is not distinct from \"vacuous\".\"inv_warehouse_name\"
+    \"abhorrent\"
+    INNER JOIN \"young\" on \"abhorrent\".\"cs_item_desc\" is not distinct from \"young\".\"cs_item_desc\" AND \"abhorrent\".\"cs_sold_date_week_seq\" = \"young\".\"cs_sold_date_week_seq\" AND \"abhorrent\".\"inv_warehouse_name\" is not distinct from \"young\".\"inv_warehouse_name\"
 ORDER BY 
-    \"young\".\"total_cnt\" desc nulls first,
-    \"item_desc\" asc nulls first,
-    \"warehouse_name\" asc nulls first,
-    \"week_seq\" asc nulls first
+    coalesce(\"young\".\"total_cnt\",0) desc nulls first,
+    \"abhorrent\".\"item_desc\" asc nulls first,
+    \"abhorrent\".\"warehouse_name\" asc nulls first,
+    \"abhorrent\".\"week_seq\" asc nulls first
 LIMIT (100)"""

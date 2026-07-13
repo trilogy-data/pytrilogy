@@ -22,7 +22,7 @@ def test_llm_execution():
     # generate a query
     query = text_to_query(
         executor.environment,
-        "number of flights by month in 2005",
+        "number of flights by month in 2005; return only two columns, month and the count of flights; order by month ascending",
         Provider.OPENAI,
         "gpt-5-chat-latest",
         api_key,

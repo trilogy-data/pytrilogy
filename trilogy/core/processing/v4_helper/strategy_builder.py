@@ -29,10 +29,12 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildGrain,
     BuildWhereClause,
+    LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import combine_condition_atoms
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
@@ -1993,6 +1995,47 @@ def _hide_final_only_grain_keys(
     node.rebuild_cache()
 
 
+def _clear_groupmate_completed_partials(
+    node: StrategyNode, environment: BuildEnvironment
+) -> None:
+    """Un-mark a scoped-join key the merge itself completes.
+
+    A subset-side member (`subset join a.store = b.store`, a ⊆ b) is partial on
+    its own contributor — it spans only the subset domain — but this merge pairs
+    it with its complete group-mate via the authored equality, so the merged
+    relation spans the anchor's domain and the key renders as the coalesced
+    group axis (v3's completion-merge behavior). Leaving it partial trips the
+    final no-complete-source guard for a value that is in fact complete here."""
+    if not node.partial_concepts or not environment.scoped_join_key_groups:
+        return
+    complete_outputs: set[str] = set()
+    for parent in node.parents:
+        parent_partial = {c.address for c in parent.partial_concepts}
+        complete_outputs |= {
+            c.address for c in parent.output_concepts if c.address not in parent_partial
+        }
+    keep: list[BuildConcept] = []
+    for concept in node.partial_concepts:
+        # Rowset handles only — the boundary-marked subset members this pass
+        # exists for. A RAW datasource-bound member left partial by its scoped
+        # declaration must keep tripping the no-complete-source guard: that is
+        # the deliberate author-facing error for `subset join s_brand = ...`
+        # over the member's only binding (union-reproject clean-error cells).
+        if concept.derivation != Derivation.ROWSET:
+            keep.append(concept)
+            continue
+        mates: set[str] = set()
+        for canonical, members in environment.scoped_join_key_groups.items():
+            if concept.address in members or concept.address == canonical:
+                mates |= (members | {canonical}) - {concept.address}
+        if mates & complete_outputs:
+            continue
+        keep.append(concept)
+    if len(keep) != len(node.partial_concepts):
+        node.partial_concepts = keep
+        node.partial_lcl = LooseBuildConceptList(concepts=keep)
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -2101,9 +2144,52 @@ def _assemble_final_node(
         attrs, built, per_group, mandatory_list, environment
     )
     contributing = list(per_group.keys())
+    final_probe_args = (
+        [
+            arg
+            for arg in condition_row_args(final_conditions)
+            if is_presence_probe(arg.address)
+        ]
+        if final_conditions is not None
+        else []
+    )
     if len(contributing) == 1:
         gid = contributing[0]
         sole_node = built[gid]
+        # A FINAL-deferred presence-probe filter joins its feeder back on the
+        # probe's key group. The normal path hides non-mandatory grain keys and
+        # dedups to the output grain FIRST, which strips the join key and
+        # degrades the feeder join to 1=1 — apply the condition over the raw
+        # contributor (keys intact), then dedup the filtered rows.
+        if final_probe_args:
+            conditioned = _apply_final_conditions(sole_node)
+            # The feeder join reads the probe at ITS OWN row grain (the fact
+            # side of the relation), fanning the contributor out; the merge's
+            # claimed grain predates that join, so grain-satisfaction checks
+            # (including MergeNode's own rowset-output carve-out) wave the
+            # dedup through. Collapse explicitly to the requested outputs
+            # after the filter.
+            if conditioned is not sole_node and final_contract.deduplicate_to_grain:
+                targets = [
+                    o
+                    for o in conditioned.output_concepts
+                    if o.address in mandatory_addresses
+                ] or list(conditioned.output_concepts)
+                final_node: StrategyNode = GroupNode(
+                    output_concepts=targets,
+                    input_concepts=targets,
+                    environment=environment,
+                    parents=[conditioned],
+                    partial_concepts=conditioned.partial_concepts,
+                    preexisting_conditions=conditioned.preexisting_conditions,
+                    force_group=True,
+                )
+            else:
+                final_node = _group_to_grain_if_required(
+                    conditioned, mandatory_list, final_contract, environment
+                )
+            _bridge_pseudonyms(final_node, per_group[gid])
+            return final_node
         # The contributing group's outputs include grain keys it exposed
         # for sibling JOINs (see `_compute_concept_sets`). At the user-
         # facing FINAL projection those keys aren't part of mandatory and
@@ -2303,7 +2389,12 @@ def _assemble_final_node(
         grain=merge_grain,
         conditions=final_conditions.conditional if final_conditions else None,
         hidden_concepts=hidden or None,
+        # A bare axis-member projection's output IS the joined relation row by
+        # row (contract stage 2 set deduplicate_to_grain=False); the merge must
+        # not collapse the authored fan-out back to distinct key pairs.
+        whole_grain=not final_contract.deduplicate_to_grain,
     )
+    _clear_groupmate_completed_partials(merged, environment)
     # Dedup the assembled merge to the requested output grain (mirrors v3's
     # group_if_required_v2 and the single-contributor path above). A contributor
     # left whole at a finer row grain — e.g. a root scan kept at {store,wh,product}
@@ -2436,11 +2527,16 @@ def build_strategy_node(
         # supply the root's primary scan columns. Pruning by parent outputs
         # there strips every requested column and the root never builds —
         # leaving the consumer with `INVALID_REFERENCE_BUG` against the
-        # missing concepts (q11).
+        # missing concepts (q11). A ROWSET boundary likewise sources from its
+        # own recursively-planned inner select (`gen_rowset` ignores parents);
+        # pruning it by a constraint-edge sibling silently dropped a handle the
+        # sibling happened not to pseudonym-cover (subset anchor null test:
+        # `a.amt` vanished from the SELECT).
         if derivation not in (
             Derivation.ROOT,
             Derivation.UNION,
             Derivation.UNNEST,
+            Derivation.ROWSET,
         ):
             outputs = satisfiable_outputs(outputs, parents)
             if not outputs:

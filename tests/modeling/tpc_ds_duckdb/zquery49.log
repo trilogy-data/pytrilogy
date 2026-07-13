@@ -1,6 +1,6 @@
 query_id = "49"
-generator = "v3"
-gen_length = 5331
+generator = "v4"
+gen_length = 5710
 preql_size = 1297
 comp_size = 4352
 generated_sql = """
@@ -85,8 +85,10 @@ yummy as (
 SELECT
     \"abundant\".\"sales_item_sk\" as \"sales_item_sk\",
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
-    cast(sum(\"cheerful\".\"sales_return_amount\") as numeric(15,4)) / cast(sum(\"abundant\".\"sales_net_paid\") as numeric(15,4)) as \"currency_ratio\",
-    cast(sum(\"cheerful\".\"sales_return_quantity\") as numeric(15,4)) / cast(sum(\"abundant\".\"sales_quantity\") as numeric(15,4)) as \"return_ratio\"
+    sum(\"abundant\".\"sales_net_paid\") as \"sale_paid\",
+    sum(\"abundant\".\"sales_quantity\") as \"sale_qty\",
+    sum(\"cheerful\".\"sales_return_amount\") as \"return_amt\",
+    sum(\"cheerful\".\"sales_return_quantity\") as \"return_qty\"
 FROM
     \"abundant\"
     INNER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
@@ -95,23 +97,32 @@ GROUP BY
     2),
 vacuous as (
 SELECT
-    \"yummy\".\"return_ratio\" as \"return_ratio\",
+    \"yummy\".\"sales_channel\" as \"sales_channel\",
     \"yummy\".\"sales_item_sk\" as \"sales_item_sk\",
-    LOWER(\"yummy\".\"sales_channel\")  as \"channel_label\",
-    rank() over (partition by \"yummy\".\"sales_channel\" order by \"yummy\".\"currency_ratio\" asc ) as \"currency_rank\",
-    rank() over (partition by \"yummy\".\"sales_channel\" order by \"yummy\".\"return_ratio\" asc ) as \"return_rank\"
+    cast(\"yummy\".\"return_qty\" as numeric(15,4)) / cast(\"yummy\".\"sale_qty\" as numeric(15,4)) as \"return_ratio\",
+    rank() over (partition by \"yummy\".\"sales_channel\" order by cast(\"yummy\".\"return_amt\" as numeric(15,4)) / cast(\"yummy\".\"sale_paid\" as numeric(15,4)) asc ) as \"currency_rank\",
+    rank() over (partition by \"yummy\".\"sales_channel\" order by cast(\"yummy\".\"return_qty\" as numeric(15,4)) / cast(\"yummy\".\"sale_qty\" as numeric(15,4)) asc ) as \"return_rank\"
 FROM
-    \"yummy\")
+    \"yummy\"),
+young as (
 SELECT
-    \"vacuous\".\"channel_label\" as \"channel\",
-    \"vacuous\".\"sales_item_sk\" as \"item\",
-    \"vacuous\".\"return_ratio\" as \"return_ratio\",
+    \"vacuous\".\"currency_rank\" as \"currency_rank\",
     \"vacuous\".\"return_rank\" as \"return_rank\",
-    \"vacuous\".\"currency_rank\" as \"currency_rank\"
+    \"vacuous\".\"return_ratio\" as \"return_ratio\",
+    \"vacuous\".\"sales_item_sk\" as \"item\",
+    LOWER(\"vacuous\".\"sales_channel\")  as \"channel\"
 FROM
-    \"vacuous\"
+    \"vacuous\")
+SELECT
+    \"young\".\"channel\" as \"channel\",
+    \"young\".\"item\" as \"item\",
+    \"young\".\"return_ratio\" as \"return_ratio\",
+    \"young\".\"return_rank\" as \"return_rank\",
+    \"young\".\"currency_rank\" as \"currency_rank\"
+FROM
+    \"young\"
 WHERE
-    \"vacuous\".\"return_rank\" <= 10 or \"vacuous\".\"currency_rank\" <= 10
+    \"young\".\"return_rank\" <= 10 or \"young\".\"currency_rank\" <= 10
 
 GROUP BY
     1,
@@ -120,8 +131,8 @@ GROUP BY
     4,
     5
 ORDER BY 
-    \"channel\" asc nulls first,
-    \"vacuous\".\"return_rank\" asc nulls first,
-    \"vacuous\".\"currency_rank\" asc nulls first,
-    \"item\" asc nulls first
+    \"young\".\"channel\" asc nulls first,
+    \"young\".\"return_rank\" asc nulls first,
+    \"young\".\"currency_rank\" asc nulls first,
+    \"young\".\"item\" asc nulls first
 LIMIT (100)"""

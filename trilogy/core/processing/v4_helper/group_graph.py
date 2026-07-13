@@ -30,6 +30,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .condition_placement import plan_condition_placements
 from .constants import (
@@ -301,7 +302,12 @@ def _assign_groups(
     by_derivation: dict[Derivation, list[tuple[str, ConceptAttrs]]] = defaultdict(list)
     for node in concept_graph.nodes:
         a = concept_attrs[node]
-        by_derivation[a.derivation].append((node, a))
+        # A non-ROWSET node tagged with a rowset (a presence probe over a
+        # rowset member) is an obligation of that rowset's boundary: route it
+        # to the rowset rule so it buckets with the boundary group and
+        # `resolve_rowset` materializes it pre-merge.
+        derivation = Derivation.ROWSET if a.rowset_name is not None else a.derivation
+        by_derivation[derivation].append((node, a))
 
     primary_group: dict[str, str] = {}
     buckets: dict[str, GroupBucket] = {}
@@ -804,11 +810,17 @@ def _inject_conditions(
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
+    scoped_join_key_groups: dict[str, set[str]] | None = None,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
     placements = plan_condition_placements(
-        group_graph, group_edges, buckets, conditions, mandatory_list
+        group_graph,
+        group_edges,
+        buckets,
+        conditions,
+        mandatory_list,
+        scoped_join_key_groups,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -1032,6 +1044,15 @@ def _final_merge_grain(
     environment: BuildEnvironment | None = None,
 ) -> frozenset[str]:
     mandatory_by_address = {concept.address: concept for concept in mandatory_list}
+    scoped_members = (
+        frozenset(
+            addr
+            for canonical, members in environment.scoped_join_key_groups.items()
+            for addr in (canonical, *members)
+        )
+        if environment is not None
+        else frozenset()
+    )
     grain: set[str] = set()
     for gid in group_graph.predecessors(FINAL_NODE_ID):
         if gid not in attrs:
@@ -1042,7 +1063,20 @@ def _final_merge_grain(
         if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
             grain |= set(concept.grain.components)
         elif concept.derivation == Derivation.ROWSET:
-            grain |= _rowset_join_key_addresses(concept, mandatory_by_address)
+            # An AUTHORED relation between rowsets pins the merge to exactly
+            # the authored keys: two independently-filtered rowsets related by
+            # `union join ty.code = ny.code` must not also pair on their shared
+            # internal grain (wk pseudonyms, the common base measure) — those
+            # extra equalities silently narrow the authored fan-out
+            # (independent_rowset_matrix, q59 shape).
+            raw_keys = set(concept.keys or set())
+            if not raw_keys and concept.grain:
+                raw_keys = set(concept.grain.components)
+            authored = (raw_keys | {concept.address}) & scoped_members
+            if authored:
+                grain |= authored
+            else:
+                grain |= _rowset_join_key_addresses(concept, mandatory_by_address)
         else:
             # A BASIC rename of a rowset handle (`buyers_a.cust_id as a_cust`)
             # carries the rowset's namespaced grain key (`buyers_a.id`), which
@@ -1107,11 +1141,30 @@ def _refresh_final_contract(
                 ),
             )
         )
+    # A bare axis-member projection (every output is a member of a scoped
+    # join-key relation) has no dedup grain of its own: the output IS the
+    # joined relation row-by-row, so a same-key fan-out (two this-year weeks
+    # matching one next-year store) must survive into the result (q59 shape,
+    # independent_rowset_matrix). Deduping to the members' combined "grain"
+    # would collapse those rows to distinct key pairs.
+    scoped_members = (
+        frozenset(
+            addr
+            for canonical, members in environment.scoped_join_key_groups.items()
+            for addr in (canonical, *members)
+        )
+        if environment is not None
+        else frozenset()
+    )
+    axis_only_projection = bool(scoped_members) and all(
+        concept.address in scoped_members for concept in mandatory_list
+    )
     attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
         output_addresses=output_addresses,
         required_grain=frozenset(BuildGrain.from_concepts(mandatory_list).components),
         merge_grain=merge_grain,
         contributor_contracts=tuple(contributors),
+        deduplicate_to_grain=not axis_only_projection,
     )
 
 
@@ -1549,7 +1602,15 @@ def _compute_concept_sets(
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]
                 outs |= mand
-                outs |= cap_gid & final_condition_args
+                final_args_here = cap_gid & final_condition_args
+                outs |= final_args_here
+                # A FINAL-deferred presence-probe filter joins its producer
+                # back on the probe's KEY (`ord_cust` ~ the anchor's key via
+                # the scoped-join pseudonym); expose the key alongside the
+                # probe or the side input degrades to a 1=1 cross join.
+                for addr in final_args_here:
+                    if is_presence_probe(addr):
+                        outs |= lineage_parents.get(addr, set()) & cap_gid
                 if fact.grain:
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
@@ -1771,7 +1832,13 @@ def build_group_graph(
                 mandatory_list,
             )
     condition_group_ids = _inject_conditions(
-        group_graph, group_edges, attrs, buckets, conditions, mandatory_list
+        group_graph,
+        group_edges,
+        attrs,
+        buckets,
+        conditions,
+        mandatory_list,
+        environment.scoped_join_key_groups if environment is not None else None,
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,

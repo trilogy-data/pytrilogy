@@ -59,4 +59,4 @@ FROM
     \"memory\".\"supplier\" as \"part_supplier_supplier\"
     INNER JOIN \"cooperative\" on \"part_supplier_supplier\".\"s_suppkey\" = \"cooperative\".\"part_supplier_id\"
 ORDER BY 
-    \"cooperative\".\"part_supplier_id\" asc"""
+    \"thoughtful\".\"part_supplier_id\" asc"""

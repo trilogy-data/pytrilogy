@@ -43,9 +43,10 @@ from trilogy.core.processing.node_generators.node_merge_node import (
     AMBIGUITY_CHECK_LIMIT,
     detect_ambiguity_and_raise,
     determine_induced_minimal_nodes,
-    extract_concept,
 )
 from trilogy.core.processing.node_generators.presence_probe import (
+    coalescing_axis_group,
+    gen_coalescing_axis_node,
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
@@ -90,6 +91,10 @@ class SourceRequest:
 class BridgePlan:
     concepts: list[BuildConcept]
     graph: ReferenceGraph
+    # True when the graph added no connector concept and was accepted only
+    # because it spans multiple datasources covering the full request — a
+    # last-resort join `_direct_source` should get first shot at beating.
+    full_cover_fallback: bool = False
 
 
 def _concept_node_address(node: str) -> str:
@@ -107,11 +112,21 @@ def _concept_node_grain_addresses(node: str) -> set[str]:
 def _concepts_in_graph(
     graph: ReferenceGraph, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    return [
-        extract_concept(_concept_node_address(node), environment)
-        for node in graph.nodes
-        if node.startswith("c~")
-    ]
+    """Resolve every concept node the bridge kept to this environment's
+    concepts. A Steiner solution can traverse a lineage-bridge node for a
+    derived variant minted in ANOTHER build scope (e.g. a rowset body's
+    `alias(...)` key built under different scoped joins, reachable through the
+    handle's pseudonym web but never registered here). Such a node proves
+    connectivity but cannot be requested or planned in this environment —
+    resolve what this scope knows and drop the rest."""
+    out: list[BuildConcept] = []
+    for node in graph.nodes:
+        if not node.startswith("c~"):
+            continue
+        concept = environment.canonical_concepts.get(_concept_node_address(node))
+        if concept is not None:
+            out.append(concept)
+    return out
 
 
 def _condition_row_concepts(
@@ -284,14 +299,27 @@ def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan |
             # otherwise fall through to the full table, since the partial is
             # rejected by the strict attempt and the full condition disconnects
             # the partial's join partner from the graph (q geography exact-match).
+            # A multi-datasource graph that covers the full request is likewise
+            # a genuine connector even when it adds no new concept — the join
+            # key was simply already requested (`st as store` under `merge st
+            # into store_id`: sales ⋈ stores on the requested store_id).
+            # Flagged as a FALLBACK: `_direct_source` gets first shot, since a
+            # request it can satisfy already had a good single plan (q64 join
+            # hoist, two_merge window compaction) — the flagged bridge only
+            # rescues requests no direct source can cover.
+            bridged_addresses = {c.address for c in bridged}
             if (
-                ({c.address for c in bridged} - requested)
+                (bridged_addresses - requested)
                 or _has_union_datasource(graph)
                 or _graph_has_condition_matched_partial(
                     graph, request.conditions, request.environment
                 )
             ):
                 return BridgePlan(concepts=bridged, graph=graph)
+            if len(graph.datasources) > 1 and requested <= bridged_addresses:
+                return BridgePlan(
+                    concepts=bridged, graph=graph, full_cover_fallback=True
+                )
     return None
 
 
@@ -1194,6 +1222,77 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
     )
 
 
+def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
+    """Bare projection of a coalescing (`full`/`union`) axis: the unified axis
+    is the union of member domains, so no single member's scan may satisfy it —
+    assemble the mandatory coalesce of every member side (v3's
+    `gen_coalescing_axis_node`, reused with a v4 recursion adapter for unbound
+    members).
+
+    Deliberately narrow, mirroring the v3 trigger: fires only when EVERY
+    requested concept (outputs and filter columns alike) is a key of one
+    coalescing group. A request carrying any other column is querying a side or
+    already forces the member scans into the bridge, where probe pinning and
+    partial-driven join typing assemble the axis population natively."""
+    env = request.environment
+    requested = _requested_concepts(request)
+    canonicals: set[str] = set()
+    allowed: set[str] = set()
+    for concept in requested:
+        found = coalescing_axis_group(concept.address, env)
+        if found is None:
+            return None
+        canonical, group = found
+        canonicals.add(canonical)
+        allowed |= {canonical, *group}
+    if len(canonicals) != 1 or any(c.address not in allowed for c in requested):
+        return None
+
+    from trilogy.core.processing.concept_strategies_v4 import (
+        V4History,
+        search_concepts,
+    )
+
+    def _v4_member_source(
+        mandatory_list: list[BuildConcept],
+        environment: BuildEnvironment,
+        g: ReferenceGraph,
+        depth: int,
+        history: History,
+        conditions: BuildWhereClause | None = None,
+    ) -> StrategyNode | None:
+        info = search_concepts(
+            mandatory_list=mandatory_list,
+            history=cast(V4History, history),
+            environment=environment,
+            depth=depth,
+            g=g,
+            conditions=[conditions] if conditions else [],
+        )
+        return info.strategy_node
+
+    key_concept = env.concepts.get(next(iter(canonicals)))
+    if key_concept is None:
+        return None
+    axis = gen_coalescing_axis_node(
+        key_concept,
+        env,
+        request.depth + 1,
+        g=request.graph,
+        source_concepts=_v4_member_source,
+        history=request.history,
+    )
+    if axis is None or request.conditions is None:
+        return axis
+    return SelectNode(
+        output_concepts=list(axis.output_concepts),
+        input_concepts=list(axis.output_concepts),
+        environment=env,
+        parents=[axis],
+        conditions=request.conditions.conditional,
+    )
+
+
 def plan_source(request: SourceRequest) -> StrategyNode | None:
     """Source ROOT-level concepts through one v4 path.
 
@@ -1201,6 +1300,9 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     are split but the graph can prove connector concepts, source each expanded
     component directly and merge them under a v4 node.
     """
+    axis = _plan_coalescing_axis(request)
+    if axis is not None:
+        return axis
     complete_where = _plan_complete_where_source(request)
     if complete_where is not None:
         return complete_where
@@ -1208,8 +1310,17 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     if pinned_rollup is not None:
         return pinned_rollup
     requested_addresses = {c.address for c in _requested_concepts(request)}
+    fallback_bridge: tuple[BridgePlan, SourceAttempt] | None = None
     for attempt in request.source_policy.attempts:
         bridge_plan = _bridge_plan(request, attempt)
+        if bridge_plan is not None and bridge_plan.full_cover_fallback:
+            # A no-new-concepts multi-source join is a dead-last resort: any
+            # plan another path can produce (a direct source at some attempt,
+            # the unconditioned retry) wins first — see the fallback block at
+            # the bottom.
+            if fallback_bridge is None:
+                fallback_bridge = (bridge_plan, attempt)
+            bridge_plan = None
         if bridge_plan is not None:
             parents = _datasource_nodes_for_bridge(request, bridge_plan, attempt)
             if parents is not None and (
@@ -1254,4 +1365,25 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 parents=[unfiltered],
                 conditions=request.conditions.conditional,
             )
+    # Dead-last: the no-new-concepts multi-source join. Rescues a request no
+    # single source covers and no connector expansion reaches (the two-rowset
+    # body's `st as store` under `merge st into store_id`, where the joined
+    # key was itself requested) without pre-empting any plan the paths above
+    # can produce.
+    if fallback_bridge is not None:
+        plan, attempt = fallback_bridge
+        parents = _datasource_nodes_for_bridge(request, plan, attempt)
+        if parents is not None and (
+            attempt.accepts_partial
+            or _bridge_parents_cover(parents, requested_addresses)
+        ):
+            merged = _merge_component_sources(request, parents, plan.concepts)
+            if (
+                merged is not None
+                and not attempt.accepts_partial
+                and request.complete_partials
+            ):
+                merged = _complete_partial_requested(request, merged)
+            if merged is not None:
+                return merged
     return None
