@@ -308,9 +308,15 @@ def plan_condition_placements(
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
-    scoped_join_member_addresses: frozenset[str] = frozenset(),
+    scoped_join_key_groups: dict[str, set[str]] | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
+    scoped_join_key_groups = scoped_join_key_groups or {}
+    scoped_join_member_addresses = frozenset(
+        addr
+        for canonical, members in scoped_join_key_groups.items()
+        for addr in (canonical, *members)
+    )
     d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == DepthLabel.D0}
     d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
     main_lineage = (
@@ -342,6 +348,38 @@ def plan_condition_placements(
         for gid, b in buckets.items()
         if all_existence_addrs & set(b.primary_members)
     }
+
+    def _boundary_in_active_relation(gid: str) -> bool:
+        """True when ``gid`` is a ROWSET boundary whose scoped-relation mate is
+        also present in THIS graph — i.e. the completion merge that null-extends
+        this boundary's rows happens in this query. A WHERE atom over such a
+        boundary's outputs is a post-join predicate: hosting it at the boundary
+        pre-filters one side of a preserving relation (an `is not null`
+        intersection idiom becomes a tautology, and a filtered side breaks the
+        EQUAL-declaration narrowing evidence downstream). A boundary whose
+        relation mate is outside this scope (a nested arm reading one rowset)
+        keeps boundary hosting — no merge here can null-extend it."""
+        b = buckets.get(gid)
+        if b is None or b.derivation != Derivation.ROWSET:
+            return False
+        # the boundary's key handle can live in the axis bucket rather than in
+        # its own member list, but always names the boundary's grain
+        members = group_members.get(gid, set()) | set(b.grain_components)
+        keys = members & scoped_join_member_addresses
+        if not keys:
+            return False
+        mates: set[str] = set()
+        for canonical, group in scoped_join_key_groups.items():
+            relation = set(group) | {canonical}
+            if keys & relation:
+                mates |= relation - keys
+        if not mates:
+            return False
+        return any(
+            other_gid != gid and (mates & other_members)
+            for other_gid, other_members in group_members.items()
+        )
+
     placements: list[ConditionPlacement] = []
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
@@ -368,7 +406,7 @@ def plan_condition_placements(
             if any(
                 is_presence_probe(addr) or addr in scoped_join_member_addresses
                 for addr in row_inputs
-            ):
+            ) or any(_boundary_in_active_relation(gid) for gid in candidates):
                 non_rowset_candidates = [
                     gid
                     for gid in candidates
@@ -488,6 +526,25 @@ def plan_condition_placements(
                     )
                 )
                 continue
+            # Drop hosts sitting downstream of a d0 row-shape barrier the
+            # atom's own producers don't already consume (the same criterion
+            # `_validate_not_pushed_past_independent_barrier` enforces): a
+            # cross-boundary atom (an OR of two boundaries' presence probes)
+            # can end up with only such hosts — its correct home is FINAL,
+            # above every barrier, not a crash.
+            if restricted:
+                producer_groups = _producer_groups(row_inputs, buckets)
+                consumed_barriers: set[str] = set(producer_groups)
+                for producer in producer_groups:
+                    consumed_barriers |= nx.ancestors(group_graph, producer)
+                restricted = [
+                    gid
+                    for gid in restricted
+                    if not (
+                        (d0_group_ids & nx.ancestors(group_graph, gid))
+                        - consumed_barriers
+                    )
+                ]
             if not restricted:
                 placements.append(
                     ConditionPlacement(

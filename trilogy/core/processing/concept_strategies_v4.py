@@ -762,6 +762,48 @@ def resolve_rowset(
         and isinstance(h.lineage, BuildRowsetItem)
         and _mates_all_rowset(h.address)
     ]
+    # nullability propagates by ADDRESS between nodes, but a rowset handle is a
+    # new address wrapping its body content — map through the BuildRowsetItem
+    # content (and pseudonyms) so a `?` column's nullability survives the
+    # boundary (else a NULL rowset join key stops matching null-safely). Mirrors
+    # v3 `_build_translation_node`, but restricted to KEY-like handles (the
+    # boundary's grain and scoped-relation members): those are the handles that
+    # become join keys and need the null-safe pairing. A nullable non-key
+    # property handle stays unstamped — v4's FINAL re-pairing join would
+    # otherwise render it `is not distinct from` alongside the keys that
+    # already pair the rows (q29's item_desc, a hash-join-defeating no-op).
+    base_nullable: set[str] = set()
+    for c in inner_node.nullable_concepts:
+        base_nullable.add(c.address)
+        base_nullable.update(c.pseudonyms)
+    boundary_grain = BuildGrain.from_concepts(
+        [
+            h
+            for h in handles
+            if h.address not in hidden and not is_presence_probe(h.address)
+        ]
+    )
+    key_like = set(boundary_grain.components) | {
+        addr
+        for canonical, members in environment.scoped_join_key_groups.items()
+        for addr in (canonical, *members)
+    }
+    nullable_handles = [
+        h
+        for h in handles
+        if (h.address in key_like or (set(h.pseudonyms) & key_like))
+        and (
+            h.address in base_nullable
+            or (set(h.pseudonyms) & base_nullable)
+            or (
+                isinstance(h.lineage, BuildRowsetItem)
+                and (
+                    h.lineage.content.address in base_nullable
+                    or (set(h.lineage.content.pseudonyms) & base_nullable)
+                )
+            )
+        )
+    ]
     boundary: StrategyNode = SelectNode(
         output_concepts=handles,
         input_concepts=inputs,
@@ -771,15 +813,10 @@ def resolve_rowset(
         # FINAL merge join two rowsets on their shared/pseudonym grain key
         # instead of cross-joining when the boundary exposes no grain. Probes
         # are per-key presence markers, not part of the boundary's row grain.
-        grain=BuildGrain.from_concepts(
-            [
-                h
-                for h in handles
-                if h.address not in hidden and not is_presence_probe(h.address)
-            ]
-        ),
+        grain=boundary_grain,
         hidden_concepts=hidden,
         partial_concepts=scoped_partial,
+        nullable_concepts=nullable_handles,
     )
     # A filter the group graph injected at this boundary is a consumer-side
     # predicate over the rowset's rows — e.g. a multiselect arm's per-arm

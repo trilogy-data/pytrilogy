@@ -2389,6 +2389,10 @@ def _assemble_final_node(
         grain=merge_grain,
         conditions=final_conditions.conditional if final_conditions else None,
         hidden_concepts=hidden or None,
+        # A bare axis-member projection's output IS the joined relation row by
+        # row (contract stage 2 set deduplicate_to_grain=False); the merge must
+        # not collapse the authored fan-out back to distinct key pairs.
+        whole_grain=not final_contract.deduplicate_to_grain,
     )
     _clear_groupmate_completed_partials(merged, environment)
     # Dedup the assembled merge to the requested output grain (mirrors v3's

@@ -1,5 +1,75 @@
 # v4 compatibility audit (last refreshed 2026-07-12, post rebase onto main)
 
+## ✅ 2026-07-12 (session 3) — rowset-pair key-carry + post-join WHERE placement; v4 sweep 145 → 117
+
+Full v3 sweep **5403 passed / 0 failed**. Full v4 sweep **118 failed / 5213
+passed** at mid-session state; the one apparent new (q29 null-safe guard) was
+fixed in-session → effective **117**, verified by re-running every failing
+file + all of join_matrix against the stashed pre-change tree: **0 new
+failures** (every current failure pre-existed), q29 green, and
+`test_post_select_join_position_matches_pre` fixed as collateral. join_matrix
+overall: 38 → 13 failing. Five root-cause fixes:
+
+1. **Rowset boundary nullability** (`resolve_rowset`, concept_strategies_v4):
+   the v4 boundary SelectNode never mapped `nullable_concepts` through
+   `BuildRowsetItem` content, so a `?` key's null-safety died at the boundary
+   (`=` instead of `is not distinct from`; NULL keys stopped matching). Ported
+   v3 `_build_translation_node`'s mapping, RESTRICTED to key-like handles
+   (boundary grain components + scoped-relation members): a nullable non-key
+   property handle (q29's `item_desc`) otherwise turns v4's FINAL re-pairing
+   join null-safe alongside the keys that already pair the rows and trips the
+   q29 hash-join guard. Fixed two_source_matrix rowset-* nullable ×8.
+2. **Scan-level derived-key nullability** (`create_datasource_node`,
+   datasource_nodes — SHARED): the derived-nullable stamp (`l_key + 1` is NULL
+   where `l_key` is) only consulted nullable columns that were PROJECTED; v4's
+   narrower bridge scans dropped the stamp and `SimplifyNullSafeJoins` then
+   wrongly stripped the null-safe modifier off the intermediate join. Argument
+   columns now count whether or not projected (`all_nullable_lcl`). Fixed
+   derived-{full,union}-merge ×2. v3 sweep green (change is shared).
+3. **Post-join WHERE at relation-participating rowset boundaries**
+   (`plan_condition_placements`): an atom over a rowset boundary whose
+   scoped-relation MATE is also present in the same graph routes to FINAL
+   (FINAL_RECONVERGENCE) — boundary hosting pre-filters one side of a
+   preserving relation (`rb.tot is not null` becomes a pre-join tautology; a
+   filtered side breaks the EQUAL-declaration narrowing evidence in
+   value_set_join_upgrade, and merge_node's branch-proof downgrade then locks
+   in a wrong directional join). Boundaries whose mate is OUTSIDE the scope (a
+   nested arm reading one rowset, q64) keep boundary hosting. The signature now
+   takes `scoped_join_key_groups` (dict) instead of the flat member frozenset.
+   Fixed consumption_matrix ×10 (intersection_via_not_null ×8 +
+   post_join_where full/union-merge ×2) + 2 session-2 residuals
+   (subset_side_property_null_test_intersects,
+   mixed_rowset_member_not_null_against_root_anchor).
+4. **Bare axis-member projection keeps the joined row grain**
+   (`_refresh_final_contract` sets `deduplicate_to_grain=False` when every
+   mandatory output is a scoped-join member; `_assemble_final_node` threads it
+   as `whole_grain` on the FINAL MergeNode): `select ty.code, ny.code union
+   join ...` was GROUP-BY-collapsing the authored fan-out to distinct key
+   pairs (q59 smoking gun, independent_rowset keys_only).
+5. **Authored keys pin the rowset-pair merge grain** (`_final_merge_grain`):
+   a relation-participating ROWSET output contributes only its AUTHORED member
+   keys to the FINAL merge grain, not its full internal grain — two
+   independently-filtered rowsets under `union join ty.code = ny.code` were
+   also pairing on wk pseudonyms + the shared base measure, silently narrowing
+   the fan-out (independent_rowset with_measures). Unrelated sibling rowsets
+   (no authored relation) keep the full key-carry (rowset_alias collision
+   guard). Plus: condition placement now drops candidate hosts that sit
+   downstream of an unconsumed d0 row-shape barrier (same criterion as the
+   validator) and falls back to FINAL — the OR-of-two-boundaries'-probes atom
+   (two_subset_joins_or_of_members) was a hard ValueError.
+
+Still open (117, all pre-existing): rowset_join_base_where_matrix ×15 (rowset
+WHERE dropped at base), rowset_cross_datasource_outer_read ×9,
+duckdb_rowset ×7, rowset_offset_join_contract ×6,
+union_reproject_subset_join ×6, duckdb.py ×6, composite_matrix ×4 (derived
+full-key cells), coalescing_presence cast/concat ×4 (Bug-1 recursion family),
+materialized_aggregate_bridge ×4, filter_mixed_aggregate_row_predicate ×4,
+TPC-DS q14/q64/q81/q29-feeder + non-benchmark ×7, filtered_rowset_anchor ×3,
+rollup_scoped_join ×3, cograin ×2, and long tail. Sweep note: the harness's
+10-min background cap kills a full sweep — run detached
+(`Start-Process` → log + monitor); v4 serial sweep is slow (machine-sleep
+inflated to 5.4h wall here).
+
 ## ✅ 2026-07-12 (session 2) — coalescing-axis + per-side probe pinning ported; v4 sweep 177 → 145
 
 Ported the v3 presence mechanisms into v4 (commits 880ab9f56, d68b36e96,

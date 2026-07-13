@@ -331,6 +331,11 @@ def create_datasource_node(
     ]
 
     nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
+    # a computed output's nullability flows from its argument COLUMN's
+    # nullability whether or not that column is itself projected
+    all_nullable_lcl = CanonicalBuildConceptList(
+        concepts=[c.concept for c in datasource.columns if c.is_nullable]
+    )
     partial_is_full = bool(
         conditions
         and datasource.non_partial_for
@@ -411,7 +416,7 @@ def create_datasource_node(
                 c in nullable_lcl
                 or (
                     propagates_argument_nulls(c)
-                    and any(arg in nullable_lcl for arg in c.concept_arguments)
+                    and any(arg in all_nullable_lcl for arg in c.concept_arguments)
                 )
             )
             and not proven_non_null.intersection(
