@@ -4,38 +4,38 @@ where
     store_sales.date.year = 2001
     and (
         (
-            store_sales.customer_demographic.marital_status = 'M'
-            and store_sales.customer_demographic.education_status = 'Advanced Degree'
+            store_sales.pos_customer_demographic.marital_status = 'M'
+            and store_sales.pos_customer_demographic.education_status = 'Advanced Degree'
             and store_sales.sales_price between 100.0 and 150.0
-            and store_sales.sale_household_demographic.dependent_count = 3
+            and store_sales.pos_household_demographic.dependent_count = 3
         )
         or (
-            store_sales.customer_demographic.marital_status = 'S'
-            and store_sales.customer_demographic.education_status = 'College'
+            store_sales.pos_customer_demographic.marital_status = 'S'
+            and store_sales.pos_customer_demographic.education_status = 'College'
             and store_sales.sales_price between 50.0 and 100.0
-            and store_sales.sale_household_demographic.dependent_count = 1
+            and store_sales.pos_household_demographic.dependent_count = 1
         )
         or (
-            store_sales.customer_demographic.marital_status = 'W'
-            and store_sales.customer_demographic.education_status = '2 yr Degree'
+            store_sales.pos_customer_demographic.marital_status = 'W'
+            and store_sales.pos_customer_demographic.education_status = '2 yr Degree'
             and store_sales.sales_price between 150.0 and 200.0
-            and store_sales.sale_household_demographic.dependent_count = 1
+            and store_sales.pos_household_demographic.dependent_count = 1
         )
     )
     and (
         (
-            store_sales.sale_address.country = 'United States'
-            and store_sales.sale_address.state in ('TX', 'OH', 'TX')
+            store_sales.pos_address.country = 'United States'
+            and store_sales.pos_address.state in ('TX', 'OH', 'TX')
             and store_sales.net_profit between 100 and 200
         )
         or (
-            store_sales.sale_address.country = 'United States'
-            and store_sales.sale_address.state in ('OR', 'NM', 'KY')
+            store_sales.pos_address.country = 'United States'
+            and store_sales.pos_address.state in ('OR', 'NM', 'KY')
             and store_sales.net_profit between 150 and 300
         )
         or (
-            store_sales.sale_address.country = 'United States'
-            and store_sales.sale_address.state in ('VA', 'TX', 'MS')
+            store_sales.pos_address.country = 'United States'
+            and store_sales.pos_address.state in ('VA', 'TX', 'MS')
             and store_sales.net_profit between 50 and 250
         )
     )

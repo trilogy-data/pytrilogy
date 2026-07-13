@@ -82,14 +82,14 @@ left join cs.order_number = cr.order_number and cs.item.sk = cr.item.sk
 where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
   and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
   and ss.item.current_price between 65 and 74
-  and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
+  and ss.pos_customer_demographic.marital_status != ss.customer.demographics.marital_status
   and ss.date.year in (1999, 2000)
   and pr.return_amount is not null
 select
   ss.item.product_name, ss.item.id as item_id,
   ss.store.name as store_name, ss.store.zip as store_zip,
-  ss.sale_address.street_number as sale_street_number, ss.sale_address.street_name as sale_street_name,
-  ss.sale_address.city as sale_city, ss.sale_address.zip as sale_zip,
+  ss.pos_address.street_number as sale_street_number, ss.pos_address.street_name as sale_street_name,
+  ss.pos_address.city as sale_city, ss.pos_address.zip as sale_zip,
   ss.customer.address.street_number as cust_street_number, ss.customer.address.street_name as cust_street_name,
   ss.customer.address.city as cust_city, ss.customer.address.zip as cust_zip,
   ss.date.year as sale_year,
@@ -336,7 +336,7 @@ def test_copy_perf():
     env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_sales as catalog_sales;
-import customer_demographic as customer_demographic;
+import customer_demographic as pos_customer_demographic;
 import customer as customer;
 import inventory as inventory;
 import item as item;
@@ -362,7 +362,7 @@ def test_generate_queries_perf():
     env, _ = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_sales as catalog_sales;
-import customer_demographic as customer_demographic;
+import customer_demographic as pos_customer_demographic;
 import customer as customer;
 import inventory as inventory;
 import item as item;

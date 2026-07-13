@@ -3,15 +3,15 @@ import customer as customer;
 
 rowset bought <- where
     (
-        store_sales.sale_household_demographic.dependent_count = 4
-        or store_sales.sale_household_demographic.vehicle_count = 3
+        store_sales.pos_household_demographic.dependent_count = 4
+        or store_sales.pos_household_demographic.vehicle_count = 3
     )
     and store_sales.date.day_of_week in (6, 0)
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.city in ('Fairview', 'Midway')
 select
     store_sales.customer.sk,
-    store_sales.sale_address.city as bought_city,
+    store_sales.pos_address.city as bought_city,
     store_sales.ticket_number,
     sum(store_sales.coupon_amt) as amt,
     sum(store_sales.net_profit) as profit,

@@ -27,7 +27,7 @@ def setup_environment():
     env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_sales as catalog_sales;
-import customer_demographic as customer_demographic;
+import customer_demographic as pos_customer_demographic;
 import customer as customer;
 import inventory as inventory;
 import item as item;

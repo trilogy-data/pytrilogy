@@ -13,7 +13,7 @@ import customer as billing_customer;
 import customer as ship_customer;
 import customer as purchasing_customer;
 import promotion as promotion;
-import address as bill_address;
+import address as pos_bill_address; # billing address recorded directly on the sale at point of sale, not the customer's current home address
 import warehouse as warehouse;
 import ship_mode as ship_mode;
 
@@ -65,7 +65,7 @@ partial datasource web_sales_unified (
     WS_BILL_CUSTOMER_SK: ?billing_customer.sk,
     WS_BILL_CUSTOMER_SK: ?purchasing_customer.sk,
     WS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
-    WS_BILL_ADDR_SK: ?bill_address.sk,
+    WS_BILL_ADDR_SK: ?pos_bill_address.sk,
     WS_PROMO_SK: ?promotion.sk,
     WS_WEB_SITE_SK: ?channel_dim_id,
     WS_WEB_SITE_SK: ?return_channel_dim_id,
@@ -99,7 +99,7 @@ partial datasource catalog_sales_unified (
     CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
     CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
     CS_SHIP_CUSTOMER_SK: ?purchasing_customer.sk,
-    CS_BILL_ADDR_SK: ?bill_address.sk,
+    CS_BILL_ADDR_SK: ?pos_bill_address.sk,
     CS_PROMO_SK: ?promotion.sk,
     CS_CATALOG_PAGE_SK: ?channel_dim_id,
     CS_CALL_CENTER_SK: ?outlet_id,
@@ -132,7 +132,7 @@ partial datasource store_sales_unified (
     SS_CUSTOMER_SK: ?billing_customer.sk,
     SS_CUSTOMER_SK: ?ship_customer.sk,
     SS_CUSTOMER_SK: ?purchasing_customer.sk,
-    SS_ADDR_SK: ?bill_address.sk,
+    SS_ADDR_SK: ?pos_bill_address.sk,
     SS_PROMO_SK: ?promotion.sk,
     SS_STORE_SK: ?channel_dim_id,
     SS_STORE_SK: ?outlet_id,

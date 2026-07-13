@@ -66,6 +66,13 @@ def _rows(model: str, query: str) -> list[tuple[Any, ...]]:
     )
 
 
+def _sql(model: str, query: str) -> str:
+    env = Environment()
+    env.parse(model)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    return executor.generate_sql(query)[-1]
+
+
 def test_aggregate_select_alias_in_where_matches_inline():
     rows = _rows(AGG_SCHEMA, "select x, sum(z) by x as sx where f = 1 and sx > 5;")
     assert rows == AGG_EXPECTED, rows
@@ -211,6 +218,42 @@ def test_diamond_reference_inlines_on_every_path():
         "where f = 1 and v > 20 select x, v, sx;",
     )
     assert rows == [(1, 6, 2), (2, 300, 100)], rows
+
+
+def test_window_prefix_gate_keeps_single_instance():
+    # `r <= k` admits a prefix of the window's own ordering: recomputing over
+    # the admitted rows reproduces the population values (C1, B2), so no twin
+    # is minted and the window is computed exactly once.
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where r <= 2;"
+    assert _rows(model, query) == [("B", 2), ("C", 1)]
+    assert _sql(model, query).count("rank() over") == 1
+
+
+def test_window_eq_one_gate_keeps_single_instance():
+    model = WINDOW_SCHEMA + f"auto r <- {RANK};\n"
+    query = "where r = 1 select vehicle_name, r;"
+    assert _rows(model, query) == [("C", 1)]
+    assert _sql(model, query).count("rank() over") == 1
+
+
+def test_window_prefix_gate_with_row_level_peer_still_splits():
+    # The peer predicate cuts within the ranked entities (orb_pay is
+    # row-level), so admission is not a pure prefix and the twin is required:
+    # gate on population ranks (C1, B2 pass), select recomputes over the
+    # admitted rows (B keeps only 200.0 -> sums C=900, B=200 -> C1, B2).
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where r <= 2 and orb_pay > 100;"
+    assert _rows(model, query) == [("B", 2), ("C", 1)]
+    assert _sql(model, query).count("rank() over") == 2
+
+
+def test_window_non_prefix_gate_still_splits():
+    # `>= k` selects a suffix — recomputation genuinely reshuffles, twin stays.
+    model = WINDOW_SCHEMA
+    query = f"select vehicle_name, {RANK} as r where r >= 2;"
+    assert _rows(model, query) == WINDOW_EXPECTED
+    assert _sql(model, query).count("rank() over") == 2
 
 
 def test_rowset_body_gets_dual_scope():

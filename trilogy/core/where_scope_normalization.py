@@ -24,16 +24,26 @@ from __future__ import annotations
 from dataclasses import replace as dc_replace
 from typing import Any, Iterable, Mapping
 
-from trilogy.core.enums import Derivation, FunctionType, Granularity
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    Derivation,
+    FunctionType,
+    Granularity,
+)
 from trilogy.core.having_normalization import _child_exprs
 from trilogy.core.models.author import (
     AggregateWrapper,
+    Comparison,
     Concept,
+    ConceptArgs,
     ConceptRef,
+    Conditional,
     FilterItem,
     Function,
     NavigationWindowItem,
     NumberingWindowItem,
+    Parenthetical,
     SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
@@ -141,6 +151,127 @@ def _where_is_group_atomic(
         _covered_by_grain(ref.address, cover, base.local_concepts, environment, set())
         for ref in base.where_clause.row_arguments
     )
+
+
+# ComparisonOperator overrides __eq__ without __hash__, so no dict lookup.
+_MIRRORED_OPS = (
+    (ComparisonOperator.GT, ComparisonOperator.LT),
+    (ComparisonOperator.GTE, ComparisonOperator.LTE),
+    (ComparisonOperator.LT, ComparisonOperator.GT),
+    (ComparisonOperator.LTE, ComparisonOperator.GTE),
+)
+
+
+def _mirror_op(op: ComparisonOperator) -> ComparisonOperator:
+    for source, mirrored in _MIRRORED_OPS:
+        if op == source:
+            return mirrored
+    return op
+
+
+def _and_conjuncts(node: Any) -> list[Any] | None:
+    """Leaves of a pure-AND conditional tree, or None for any other boolean
+    structure (an OR admits rows outside a prefix, so no prefix-atomicity
+    reasoning survives it)."""
+    if isinstance(node, Parenthetical):
+        return _and_conjuncts(node.content)
+    if isinstance(node, Conditional):
+        if node.operator != BooleanOperator.AND:
+            return None
+        left = _and_conjuncts(node.left)
+        right = _and_conjuncts(node.right)
+        if left is None or right is None:
+            return None
+        return left + right
+    return [node]
+
+
+def _is_prefix_gate(leaf: Any, target_address: str) -> bool:
+    """``leaf`` admits a PREFIX of a numbering window's ordering: bare
+    ``target <= k`` / ``target < k`` / ``target = 1`` against a literal (or
+    mirrored). Every row the population ranks at or above an admitted row is
+    also admitted, so recomputing the window over the admitted rows reproduces
+    the population values row-for-row."""
+    if type(leaf) is not Comparison:
+        return False
+    left, right, op = leaf.left, leaf.right, leaf.operator
+    if isinstance(right, ConceptRef) and not isinstance(left, ConceptRef):
+        left, right, op = right, left, _mirror_op(op)
+    if not (isinstance(left, ConceptRef) and left.address == target_address):
+        return False
+    if not isinstance(right, (int, float)):
+        return False
+    if op in (ComparisonOperator.LT, ComparisonOperator.LTE):
+        return True
+    return op == ComparisonOperator.EQ and right == 1
+
+
+def _where_is_prefix_atomic(
+    ref_address: str,
+    target: Concept,
+    window: NumberingWindowItem,
+    base: SelectLineage,
+    environment: Environment,
+) -> bool:
+    """A numbering-window gate (rank/row_number/dense_rank) keeps the single
+    shared instance when the admitted rows are a prefix of the window's own
+    ordering within each partition: the target IS the bare window, the WHERE
+    is a pure AND tree, every conjunct referencing the target is
+    prefix-selecting (`<= k` / `< k` / `= 1` — the top-k and one-per-group
+    idioms), and every other conjunct is constant within the window's
+    partition (``over``) keys, so it only drops whole partitions. Then the
+    population and admitted-row values coincide and a twin would only
+    duplicate the window computation."""
+    assert base.where_clause is not None
+    if target.lineage is not window:
+        return False
+    if not all(isinstance(o, ConceptRef) for o in window.over):
+        return False
+    conjuncts = _and_conjuncts(base.where_clause.conditional)
+    if conjuncts is None:
+        return False
+    cover = {o.address for o in window.over}
+    for leaf in conjuncts:
+        if isinstance(leaf, ConceptRef):
+            addresses = {leaf.address}
+        elif isinstance(leaf, ConceptArgs):
+            addresses = {r.address for r in leaf.row_arguments}
+        else:
+            return False
+        if ref_address in addresses:
+            if addresses != {ref_address} or not _is_prefix_gate(leaf, ref_address):
+                return False
+        elif not all(
+            _covered_by_grain(a, cover, base.local_concepts, environment, set())
+            for a in addresses
+        ):
+            return False
+    return True
+
+
+def _where_scopes_coincide(
+    ref_address: str,
+    target: Concept,
+    parts: list[Any],
+    base: SelectLineage,
+    environment: Environment,
+) -> bool:
+    """The population-gate and select-scope values of every cross-row part are
+    provably equal, so the WHERE can keep the single shared instance: aggregate
+    parts must be group-atomic, numbering-window parts prefix-atomic. Anything
+    else (navigation windows, group-to) splits — row admission reshuffles it."""
+    for part in parts:
+        if isinstance(part, AggregateWrapper):
+            if not _where_is_group_atomic(ref_address, part, base, environment):
+                return False
+        elif isinstance(part, NumberingWindowItem):
+            if not _where_is_prefix_atomic(
+                ref_address, target, part, base, environment
+            ):
+                return False
+        else:
+            return False
+    return True
 
 
 def _constant_universe(
@@ -357,12 +488,7 @@ def normalize_select_where_scope(
             for a in shared
         ):
             continue
-        # Group-atomic WHEREs keep or drop whole groups of an aggregate, so its
-        # two scopes coincide — keep the single shared instance. Windows always
-        # split: any row admission reshuffles them.
-        if all(isinstance(p, AggregateWrapper) for p in parts) and all(
-            _where_is_group_atomic(ref.address, p, base, environment) for p in parts
-        ):
+        if _where_scopes_coincide(ref.address, target, parts, base, environment):
             continue
         if _constant_universe(target.lineage, base.local_concepts, environment):
             continue
