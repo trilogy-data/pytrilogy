@@ -11,7 +11,13 @@ from enum import Enum
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
+from trilogy.core.exceptions import DisconnectedConceptsException
+from trilogy.core.models.build import (
+    BoolExpr,
+    BuildConcept,
+    BuildRowsetItem,
+    BuildWhereClause,
+)
 from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.discovery_utility import _output_is_rootless
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
@@ -45,6 +51,33 @@ class ConditionPlacement:
     atom: BoolExpr
     group_ids: tuple[str, ...]
     reason: PlacementReason
+
+
+def _output_rowset_body_condition_addresses(
+    mandatory_list: list[BuildConcept],
+) -> set[str]:
+    """Row-arg addresses of the WHERE/HAVING clauses inside every rowset body
+    reachable from the mandatory outputs. An outer WHERE over one of these is a
+    restatement the rowset scope already consumes (q44: outer `store.sk = 1`
+    over two rowsets whose bodies filter `store.sk = 1`) — not a missing join."""
+    addrs: set[str] = set()
+    seen: set[str] = set()
+    stack = list(mandatory_list)
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        lineage = concept.lineage
+        if isinstance(lineage, BuildRowsetItem):
+            select = lineage.rowset.select
+            for clause in (select.where_clause, select.having_clause):
+                if clause is not None:
+                    addrs |= {a.address for a in clause.row_arguments}
+        for arg in concept.concept_arguments:
+            if isinstance(arg, BuildConcept):
+                stack.append(arg)
+    return addrs
 
 
 def main_lineage_groups(
@@ -516,6 +549,36 @@ def plan_condition_placements(
                     )
                 )
                 continue
+            # A row atom whose EVERY candidate host lies outside the main
+            # lineage (with real datasource outputs — the rootless case became
+            # a FINAL EXISTS gate above) has no host FINAL assembly will keep:
+            # the condition-only group covers no mandatory output, so it is
+            # pruned and the WHERE silently vanishes (`where year = 2001` over
+            # rowset outputs that never expose year). No join relates the
+            # gate's rows to the outputs — v3's rowset islanding diagnoses the
+            # same shape as disconnected; raise the same typed error. EXEMPT an
+            # atom the output rowsets' own bodies already filter on (q44's
+            # outer `store.sk = 1` restates both rowsets' WHERE): that scope
+            # consumes the concept, so this is a redundant restatement, not a
+            # missing join — placement proceeds and the drop is harmless.
+            if (
+                mandatory_list
+                and candidates
+                and not atom.existence_arguments
+                and all(gid not in main_lineage for gid in candidates)
+                and not row_inputs
+                <= _output_rowset_body_condition_addresses(mandatory_list)
+            ):
+                input_addrs = sorted(row_inputs)
+                output_addrs = sorted({c.address for c in mandatory_list})
+                raise DisconnectedConceptsException(
+                    f"WHERE input(s) {input_addrs} cannot be related to the "
+                    f"query outputs {output_addrs}: no join or merge connects "
+                    "the filter's source to any output-producing source. Add a "
+                    "join/merge relating them, or select a concept from the "
+                    "filter's model.",
+                    subgraphs=[output_addrs, input_addrs],
+                )
             agg_outputs = _aggregate_outputs(row_inputs, buckets)
             if _routes_to_final_for_cross_grain_aggregates(agg_outputs, buckets):
                 placements.append(

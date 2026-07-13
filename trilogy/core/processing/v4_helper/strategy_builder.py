@@ -2156,6 +2156,11 @@ def _assemble_final_node(
     if len(contributing) == 1:
         gid = contributing[0]
         sole_node = built[gid]
+        # A sole contributor can CONTAIN the completion merge (the ratio BASIC
+        # over `subset join a.wk = b.wk` pairs both boundaries internally), so
+        # the subset-side key it carries is complete here even though the
+        # multi-contributor clearing at the FINAL merge never runs.
+        _clear_groupmate_completed_partials(sole_node, environment)
         # A FINAL-deferred presence-probe filter joins its feeder back on the
         # probe's key group. The normal path hides non-mandatory grain keys and
         # dedups to the output grain FIRST, which strips the join key and

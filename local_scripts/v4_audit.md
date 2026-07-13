@@ -1,4 +1,92 @@
-# v4 compatibility audit (last refreshed 2026-07-12, post rebase onto main)
+# v4 compatibility audit (last refreshed 2026-07-13)
+
+## ✅ 2026-07-13 — rowset base-WHERE contract + derived relation-member obligation; v4 sweep = 140 (0 new)
+
+rowset_join_base_where_matrix 15 → 0, composite_matrix derived cells 4 → 0
+(pruned from join_matrix `V4_FAILING`), coalescing_presence cast ×2 → 0
+(pruned), rowset_offset `narrows_to_anchor` ×2 → 0. Verified no-new on the
+full 27-file rowset/scoped collateral set (31 remaining fails all pre-existed)
+and v3 fully green on the same set + join_matrix (669 passed).
+
+**Sweep accounting:** full v4 sweep now **140 failed / 5473 passed** — NOT
+comparable to session 3's 117: that count predates #599 ("Where Scoping"),
+whose two new test files (`test_window_where_pushdown_matrix` ×28 +
+`test_where_select_dual_scope` ×24 = 52) fail identically on the pre-change
+tree (verified via stash) and were never in any family map. Those two files
+are the largest open family and the natural next session. No-new evidence: a
+first post-change sweep (141) was re-diffed against a second after the q44
+refinement (140 = 141 − q44, zero new entrants), and every other failing file
+was pre/post diffed at file level (0 new). Three root causes fixed:
+
+1. **Base-model WHERE silently dropped over rowset outputs**
+   (`plan_condition_placements`, condition_placement.py): `where year = 2001
+   select cur_period.wk, cur_period.amt` — the atom hosted UPSTREAM_MOST on a
+   condition-only ROOT group outside the main lineage; FINAL assembly keeps
+   only output-covering groups, so the gate group was pruned and the filter
+   vanished (returned unfiltered rows). v3's rowset islanding calls this
+   disconnected; the v4 pre-gate runs `island_rowsets=False` ("let discovery
+   decide") but discovery never decided. Now: a row atom (no existence args)
+   whose EVERY candidate host is outside `main_lineage_groups` raises
+   `DisconnectedConceptsException` (the rootless-output case still routes to
+   the FINAL EXISTS gate first, unchanged). Fixed the 12
+   `test_rowset_join_base_where_not_dropped` cells + single-rowset.
+   REFINEMENT (found via full-sweep diff): TPC-DS q44's outer `where
+   ss.store.sk = 1` over two rowsets RESTATES both rowset bodies' own WHERE —
+   under suite contamination its atom's hosts all classify out-of-lineage and
+   the raise killed a query that plans fine (only in multi-file runs; passes
+   isolated). Exempt an atom whose row inputs are all condition row-args of
+   the output rowsets' bodies (`_output_rowset_body_condition_addresses`):
+   that scope already consumes the concept, so the outer restatement dropping
+   is the historic, harmless behavior. `year = 2001` (not in any body) still
+   raises.
+2. **Subset-side partial not cleared on the sole-contributor FINAL path**
+   (`_assemble_final_node`, strategy_builder.py): `subset join cur.wk =
+   fut.wk` baseline raised UnresolvableQueryException — the completion merge
+   lived INSIDE the single covering contributor (the ratio BASIC), and
+   `_clear_groupmate_completed_partials` only ran on the multi-contributor
+   merge. Now also runs on the sole contributor (its parents expose the
+   complete group-mate).
+3. **Derived relation members never materialized for rowset pairs**
+   (`resolve_rowset`, concept_strategies_v4.py): `union join cur.wk + 53 =
+   fut.wk` between two rowsets cross-joined ON 1=1 (4×4 cartesian) — the
+   `_virt_func_add_*` member had no producer group, so the boundaries shared
+   no join key and column pruning then dropped the authored side's key too.
+   New OBLIGATION: a derived member whose every lineage arg is a handle of
+   this boundary materializes (non-hidden — hidden outputs can't serve as
+   merge join keys) at its own side's boundary. Three gates, each learned the
+   hard way: (a) OUTER (full/union, `outer_relation_keys`) relations or a
+   directional relation's SUBSET-SOURCE member only — an anchor-side derived
+   key resolves through the scoped-merge collapse (substitution into the
+   other side's grain + downstream projection), and materializing it too
+   displaces that path, widening authored LEFT to FULL
+   (scoped_derived_rowset_join_matrix); (b) skip when
+   `environment.concepts[member].address != member` — the collapse
+   substituted this member to the other side's derivation and owns it; (c)
+   skip `BuildRowsetItem` members (real handles ride the demanded path).
+   Fixed both union-derived ctl cells, all 4 tracked composite FULL cells
+   (incl. mixed-anchor LEFT-composes-to-FULL), coalescing_presence
+   cast-single ×2, offset_join_narrows_to_anchor ×2.
+
+Residual in these files (pre-existing): scoped_derived exp_rows1
+(`agg.period = fut.period + 53` LEFT renders FULL — directional-narrowing
+family, same bucket as filtered_rowset_anchor ×3), rowset_cross_datasource ×9,
+rowset_generation_matrix ×3, offset_join condition/execution ×4,
+membership_existence ×2, multi_where ×2, expression_keys ×2,
+multi_partial_anchor ×2, cograin ×2.
+
+Open families by sweep count (140): where-scoping #599 ×52 (window_where
+_pushdown_matrix 28 + where_select_dual_scope 24 — NEXT), rowset_cross
+_datasource ×9, duckdb_rowset ×7, union_reproject ×6, duckdb.py ×6,
+filter_mixed_aggregate ×4, materialized_aggregate_bridge ×4, TPC-DS
+q14/q64/q81 + non-benchmark ×3 + q29-feeder, offset_join ×4, rollup_scoped
+×3, generation_matrix ×3, filter_bare_aggregate_content_grain ×3,
+union_join_rowset_grain ×3, + long tail.
+
+Session hazard worth knowing: `git stash pop` FAILED SILENTLY twice
+mid-session (TPC-DS runs dirty checked-in zquery*.log files → pop conflicts;
+`2>$null` ate the error), so several "post-change" checks ran the PRE tree
+and made the q44 regression look like a flake. Verify pops; `git checkout --
+tests/modeling` before stashing.
 
 ## ✅ 2026-07-12 (session 3) — rowset-pair key-carry + post-join WHERE placement; v4 sweep 145 → 117
 

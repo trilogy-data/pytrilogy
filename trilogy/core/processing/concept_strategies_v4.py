@@ -734,6 +734,44 @@ def resolve_rowset(
         handles.append(probe)
         handle_addrs.add(probe.address)
 
+    # OBLIGATION: a DERIVED relation member (`union join cur.wk + 53 = fut.wk`)
+    # is a BASIC over THIS boundary's handles with no producer group of its own
+    # — materialize it here so the completion merge can pair it with its
+    # authored mate instead of cross-joining ON 1=1 (v3 bundles the derived key
+    # into the rowset body select). OUTER (full/union) relations only: a
+    # directional (left/subset) relation resolves through the scoped-merge
+    # collapse, which substitutes the derived key into the other side's grain
+    # and computes it in a downstream projection — materializing it here too
+    # displaces that path and widens the authored LEFT to FULL
+    # (scoped_derived_rowset_join_matrix). A directional relation's SUBSET
+    # SOURCE member is the exception: it pairs by its own value (`left join
+    # ta.s = nb.s and nb.w = ta.w + 52`, mixed anchors composing to FULL), so
+    # its own side still materializes it. Side identity is structural: every
+    # lineage arg must already be a handle of this boundary.
+    outer_relation_keys = environment.domain_graph.outer_relation_keys()
+    subset_source_members = environment.domain_graph.subset_sources()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        outer_relation = canonical in outer_relation_keys
+        for member_addr in {canonical, *members}:
+            if not outer_relation and member_addr not in subset_source_members:
+                continue
+            if member_addr in handle_addrs or is_presence_probe(member_addr):
+                continue
+            member_concept = environment.concepts.get(member_addr)
+            if (
+                member_concept is None
+                # address mismatch = the scoped-merge collapse substituted this
+                # member to the other side's derivation; that path owns it
+                or member_concept.address != member_addr
+                or member_concept.lineage is None
+                or isinstance(member_concept.lineage, BuildRowsetItem)
+            ):
+                continue
+            arg_addrs = {a.address for a in member_concept.concept_arguments}
+            if arg_addrs and arg_addrs <= handle_addrs:
+                handles.append(member_concept)
+                handle_addrs.add(member_addr)
+
     # A handle that is a declared-subset SOURCE (`subset join rs.k = anchor.k`)
     # spans only the subset side's domain: mark it partial so join resolution
     # anchors the complete side and LEFT-joins this boundary (v3's
