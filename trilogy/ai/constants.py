@@ -113,7 +113,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
    To weight a related dimension property once per fact row before aggregating it, first project it to the fact grain with `group`: `auto row_birth_year <- group(enroll.student.birth_year) by enroll.student_id, enroll.course_id; auto avg_birth_year <- avg(row_birth_year);`. Directly averaging the dimension property can retain its native entity grain instead of fact-row weighting.
 - **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows, such as one output row per matching fact when the projected columns repeat, include the fact's grain keys in the select, hidden with the PREFIX `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
-- **No subselects.** "Filter the fact by an attribute of a related entity" means reach across the import chain with a dot-path in WHERE:
+- **One-column expression subqueries are supported.** Use `(select ...)` only where a scalar value or membership set is expected, and project exactly one column. This does not add SQL-style `FROM (SELECT ...)` table subqueries. For ordinary related-entity filters, prefer the direct dot-path:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
 - **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
