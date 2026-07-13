@@ -293,48 +293,6 @@ default:
    into the single-entity FD dim bucket + sourced in the fresh root projection, so
    `web_returns` scans once (was a second GA-spine scan) — see
    `v4_dimension_projection_rejoin_handoff.md`. **q2.1/q2.2 both
-   FIXED + pruned** (the last genuine length regressions): see
-   `v4_verbosity_handoff.md` — q2.2 via the window/round merge, q2.1 via the
-   navigation-window grain-inference fix that made its named-intermediate round BASIC
-   land at `date.week_seq` so the same merge fires.
-   - **q10 FIXED + pruned 2026-06-27 (8308 → 6412, under the 7000 ceiling).** Root cause
-     was co-bucketed semijoin-RHS buyer-set filters (`pcid in store_buyers` /
-     `webcat_buyers`): their defining fact columns (`channel`, `date.year`) sat in the
-     shared ROOT and dragged the customer-dimension projection (demographics) onto the
-     fact. Fix (this round): isolate each existence-source filter as its own discovery —
-     `_prune_existence_exclusive_roots` (group_graph) drops the existence-only roots from
-     the shared ROOT, `partition_filters_by_signature` (group_rules) gives each
-     semijoin-RHS filter a solo bucket, and `gen_filter` (filter.py) drops the
-     pass-through for an `existence_source` filter so its single predicate pushes into a
-     real WHERE. The dimension now sources standalone (`customer ⋈ demographics ⋈
-     address`), matching v3.
-   - **q23 FIXED + pruned 2026-06-27 (8515 → 8107, under the 8500 ceiling).** The q16
-     all-ROOT input-grain normalization (a correctness floor) is now skipped when the
-     parents already emit one row per input-grain key
-     (`_parents_already_at_input_grain` in strategy_builder — the "true parent-row-grain
-     signal" the floor deferred to). The q16 floor itself is unchanged: a finer fact-line
-     scan still gets regrouped before aggregation.
-   - **q73/q81 FIXED + pruned 2026-06-27** (q73 5220→2741, q81 9163→6410): single-entity
-     FD dimension-cluster split + condition-aware feeder drop + a PASSTHROUGH-mode
-     collapse rerun. See `project_v4_dimension_rejoin_root_cause`.
-   - **q94 FIXED + pruned 2026-06-27 (5271 → 3508, under the 5000 ceiling).** Root cause
-     was the per-consumer ROOT re-slice in `strategy_builder.parent_for_consumer`:
-     a `count(distinct order_number)` aggregate re-derived the entire conditioned
-     `web_sales ⋈ ship_address ⋈ ship_date ⋈ web_site` join (the dim joins are pinned by
-     the WHERE, so nothing could be pruned) just to read `order_number`. Fix: build the
-     narrow slice speculatively but adopt it ONLY when `_leaf_datasource_ids(sliced) <
-     _leaf_datasource_ids(node)` (it strictly drops a join); else share the already-built
-     ROOT and let column projection narrow it. **Also dropped q10 10208 → 8308** as a free
-     side effect (same shared-ROOT shape). Full sweep 0 failed; rows byte-identical.
-   - **q2.1 catastrophic blowup FIXED 2026-06-26 (60696 → 10231, −83%).** Was a 9.6× self-
-     referential membership-filter blowup (a distinct bug class, not ordinary verbosity);
-     now ordinary ~1.4× verbosity (13 CTEs, down from 75). Fix: `_CleanFeederCache` in
-     `strategy_builder.py` re-sources a self-referential `IN`-set feeder STANDALONE instead
-     of deep-copying the conditioned subtree (which had fired 15015× → 60696 chars). Rows
-     unchanged; tpc_ds failure set net-zero; membership family green. Detail in
-     `v4_verbosity_handoff.md` "*** q2.1 ***". Still over the 7500 ceiling (8747 real-
-     fixture) — the residual is shared passthrough-projection bloat (q2.2 at 8856). Use
-     `local_scripts/v4_real_size.py` (real fixture) over `v4_size_compare` (proxy over-reports).
 2. **Cosmetic shape-assert tests — 10 `_INLINE` + 5 `_MODELING`.** Rows match, the SQL
    string differs. To flip the default each must be conditioned on
    `CONFIG.use_v4_discovery` or accepted. Mechanical, not risky.
