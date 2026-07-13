@@ -209,6 +209,23 @@ select
     student_dept_credits,
 ;
 
+# SCOPED INPUT POPULATION: when the totals and their group average must use only
+# rows from a specific period, bind that condition inside the inner aggregate.
+# A separate output-only filter still belongs in the final WHERE and does not
+# narrow the rows feeding either aggregate.
+auto student_dept_credits_2024 <- sum(enroll.credits ? enroll.year = 2024)
+    by enroll.student_id, enroll.department;
+auto dept_avg_credits_2024 <- avg(student_dept_credits_2024) by enroll.department;
+
+where
+    student_dept_credits_2024 > 1.2 * dept_avg_credits_2024
+    and enroll.student_id > 103
+select
+    enroll.student_id,
+    enroll.department,
+    student_dept_credits_2024,
+;
+
 # For more complex boundaries, compute the full-population benchmark in a separate rowset
 # with no output filter, then apply the subset filter only in the final selection.
 """,

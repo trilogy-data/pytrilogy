@@ -105,10 +105,13 @@ def test_where_aggregate_input_not_filtered_by_where():
     # group x=1 has rows (z=2,f=1),(z=10,f=0). The WHERE aggregate sees BOTH rows
     # (input unfiltered: sum=12 > 5 -> group survives); the SELECT aggregate sees
     # only f=1 (sum=2). A having-equivalent would have dropped x=1 (filtered sum 2).
+    # The aliased spelling is normalized to the same dual-scope shape (the WHERE
+    # reference becomes a minted population-scope twin), so both agree — see
+    # tests/test_where_select_dual_scope.py.
     inline = _rows("where f = 1 and sum(z) by x > 5 select x, sum(z) as v;")
     alias = _rows("select x, sum(z) by x as sx where f = 1 and sx > 5;")
     assert inline == [(1, 2), (2, 100)], inline
-    assert alias == [(1, 12), (2, 100)], alias
+    assert alias == [(1, 2), (2, 100)], alias
 
 
 def test_where_aggregate_matching_select_output_executes():

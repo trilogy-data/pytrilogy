@@ -52,6 +52,12 @@ def _engine():
         ),
         # membership: cats where val>=25 -> {2}; id with cat in {2} -> id 3
         ("select id where cat in (select cat -> c where val >= 25);", [(3,)]),
+        # rowset-qualified concepts resolve inside the subquery body
+        (
+            "with rs as select id, val where val >= 20;"
+            "select id where id in (select rs.id) order by id asc;",
+            [(2,), (3,)],
+        ),
     ],
 )
 def test_subquery_execution(backend, query, expected):
@@ -62,8 +68,10 @@ def test_multi_output_subquery_rejected(backend):
     query = (
         "select sum(val) -> total having total > (select max(val) -> a, min(val) -> b);"
     )
-    with pytest.raises(HydrationError, match="exactly one column"):
+    with pytest.raises(HydrationError, match="exactly one column") as excinfo:
         _engine().generate_sql(query)
+    meta = excinfo.value.diagnostic.meta
+    assert meta is not None and meta.line is not None
 
 
 def test_scalar_subquery_round_trips(backend):

@@ -23,6 +23,7 @@ import dataclasses
 import json
 import os
 import shutil
+import threading
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +37,20 @@ from .spec import BenchmarkSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_AGENT_TIMEOUT = 900
+
+# Parallel replays into one run dir serialise around the shared pieces — the
+# workspace model refresh, scoring against the root DB, and the report.json
+# read-modify-write — while the agent runs (the long part) overlap, each in
+# its own ``_worker_N`` copy.
+_RUN_LOCKS: dict[str, threading.Lock] = {}
+_RUN_LOCKS_GUARD = threading.Lock()
+# The dashboard render uses matplotlib, which is not thread-safe.
+_RENDER_LOCK = threading.Lock()
+
+
+def _run_lock(run_dir: Path) -> threading.Lock:
+    with _RUN_LOCKS_GUARD:
+        return _RUN_LOCKS.setdefault(str(run_dir.resolve()), threading.Lock())
 
 
 class ReplayError(RuntimeError):
@@ -55,16 +70,18 @@ def _resolve_category(report: dict) -> Category:
     return get_category(key)
 
 
-def _worker_dir(workspace: Path, db_filename: str) -> Path:
+def _worker_dir(workspace: Path, db_filename: str, worker: int = 0) -> Path:
     """Reuse the run's own worker copy so the agent sees the same trilogy.toml
     (iteration budget, tool gating) the original run used — a rebuilt toml would
-    silently re-derive those from defaults and make the replay non-comparable."""
-    worker = workspace / "_worker_0"
-    if (worker / "trilogy.toml").exists() and (worker / db_filename).exists():
-        return worker
+    silently re-derive those from defaults and make the replay non-comparable.
+    Higher indices are materialised on demand so parallel replays don't contend
+    on one DuckDB (exclusive file lock)."""
+    worker_dir = workspace / f"_worker_{worker}"
+    if (worker_dir / "trilogy.toml").exists() and (worker_dir / db_filename).exists():
+        return worker_dir
     if not (workspace / "trilogy.toml").exists():
         raise ReplayError(f"no trilogy.toml in {workspace} — workspace was cleaned")
-    return agent_runner.prepare_worker_workspace(workspace, 0, db_filename)
+    return agent_runner.prepare_worker_workspace(workspace, worker, db_filename)
 
 
 def _clear_candidates(
@@ -107,7 +124,7 @@ def _sync_worker_model(workspace: Path, worker: Path) -> None:
 
 def _refresh_model(
     workspace: Path,
-    worker: Path,
+    workers: list[Path],
     spec: BenchmarkSpec,
     category: Category,
     report: dict,
@@ -130,7 +147,8 @@ def _refresh_model(
             f"model refresh failed (exit {setup['exit_code']}): "
             f"{(setup.get('stderr') or '')[:300]}"
         )
-    _sync_worker_model(workspace, worker)
+    for worker in workers:
+        _sync_worker_model(workspace, worker)
     detail = (setup.get("stdout") or "").strip().splitlines()
     if detail:
         log(f"  {detail[-1][:120]}")
@@ -223,44 +241,119 @@ def fork_run(run_dir: Path, log: Callable[[str], None] = print) -> Path:
     return dest
 
 
+def _replay_worker_loop(
+    run_dir: Path,
+    spec: BenchmarkSpec,
+    worker: int,
+    timeout: int,
+    env_file: Path | None,
+    log: Callable[[str], None],
+    state: dict,
+    state_lock: threading.Lock,
+    on_progress: Callable[[int, int, list[int]], None] | None,
+    cancelled: Callable[[], bool] | None,
+) -> None:
+    """Pull queries off the shared list until it drains (or a cancel lands).
+    One query's failure is logged and counted, not fatal to the sweep."""
+
+    def _progress() -> None:
+        if on_progress:
+            on_progress(state["done"], state["total"], list(state["active"]))
+
+    while True:
+        with state_lock:
+            if not state["pending"] or (cancelled and cancelled()):
+                return
+            qid = state["pending"].pop(0)
+            state["active"].append(qid)
+            _progress()
+        try:
+            replay_query(
+                run_dir,
+                spec,
+                qid,
+                timeout=timeout,
+                env_file=env_file,
+                refresh_model=False,
+                worker=worker,
+                log=log,
+            )
+        except Exception as exc:
+            with state_lock:
+                state["errors"] += 1
+            log(f"q{qid:02d}: replay failed - {type(exc).__name__}: {exc}")
+        finally:
+            with state_lock:
+                state["active"].remove(qid)
+                state["done"] += 1
+                _progress()
+
+
 def replay_all(
     run_dir: Path,
     spec: BenchmarkSpec,
     *,
     timeout: int = DEFAULT_AGENT_TIMEOUT,
     env_file: Path | None = None,
+    concurrency: int = 1,
     log: Callable[[str], None] = print,
-    on_progress: Callable[[int, int, int], None] | None = None,
+    on_progress: Callable[[int, int, list[int]], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
 ) -> dict:
-    """Replay every query in ``run_dir`` in place. The model is re-seeded once up
-    front (an edit to it should re-run) and reused for the rest. ``cancelled`` is
-    polled between queries so a stop request lands at a query boundary."""
+    """Replay every query in ``run_dir`` in place, up to ``concurrency`` at a
+    time (each in its own ``_worker_N`` copy). The model is re-seeded once up
+    front (an edit to it should re-run) and reused for the rest. ``cancelled``
+    is polled between queries, so a stop request lets in-flight queries finish
+    and starts no new ones."""
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     qids = sorted(q["id"] for q in report.get("queries", []))
     if not qids:
         raise ReplayError(f"{run_dir.name} has no queries to replay")
-    done = 0
-    for i, qid in enumerate(qids):
-        if cancelled and cancelled():
-            log(f"cancelled after {done}/{len(qids)}")
-            break
-        if on_progress:
-            on_progress(i + 1, len(qids), qid)
-        replay_query(
-            run_dir,
-            spec,
-            qid,
-            timeout=timeout,
-            env_file=env_file,
-            refresh_model=(i == 0),
-            log=log,
+    workers = max(1, min(concurrency, len(qids)))
+    workspace = run_dir / "workspace"
+    category = _resolve_category(report)
+    with _run_lock(run_dir):
+        dirs = [_worker_dir(workspace, spec.db_filename, i) for i in range(workers)]
+        _refresh_model(workspace, dirs, spec, category, report, log)
+
+    state: dict = {
+        "pending": list(qids),
+        "active": [],
+        "done": 0,
+        "errors": 0,
+        "total": len(qids),
+    }
+    state_lock = threading.Lock()
+    threads = [
+        threading.Thread(
+            target=_replay_worker_loop,
+            args=(
+                run_dir,
+                spec,
+                i,
+                timeout,
+                env_file,
+                log,
+                state,
+                state_lock,
+                on_progress,
+                cancelled,
+            ),
+            daemon=True,
         )
-        done += 1
+        for i in range(workers)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if cancelled and cancelled() and state["done"] < len(qids):
+        log(f"cancelled after {state['done']}/{len(qids)}")
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     return {
-        "count": done,
+        "count": state["done"],
         "total": len(qids),
+        "errors": state["errors"],
         "pass_count": report["summary"]["pass_count"],
         "num_queries": report["meta"]["num_queries"],
     }
@@ -274,59 +367,68 @@ def replay_query(
     timeout: int = DEFAULT_AGENT_TIMEOUT,
     env_file: Path | None = None,
     refresh_model: bool = True,
+    worker: int = 0,
     log: Callable[[str], None] = print,
 ) -> dict:
     """Re-run ``qid`` in ``run_dir`` and splice the result over the old one.
 
     ``refresh_model`` re-seeds the workspace model first, so a fix to the curated
     .preql model lands in the replay; pass False to re-run against the model
-    exactly as the original run saw it.
+    exactly as the original run saw it. ``worker`` picks the ``_worker_N`` copy
+    the agent runs in — give concurrent replays distinct indices so they don't
+    share a database; the shared phases (model refresh, scoring, report splice)
+    are serialised per run dir.
 
     Returns a summary dict of what changed. Raises :class:`ReplayError` when the
     run dir lacks what a replay needs (report, workspace, database)."""
     report_path = run_dir / "report.json"
     if not report_path.exists():
         raise ReplayError(f"{run_dir.name} has no report.json (not a full eval run)")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    lock = _run_lock(run_dir)
 
-    workspace = run_dir / "workspace"
-    workspace_db = workspace / spec.db_filename
-    if not workspace_db.exists():
-        raise ReplayError(
-            f"no {spec.db_filename} in {workspace} — workspace was cleaned"
-        )
+    with lock:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
 
-    category = _resolve_category(report)
-    meta = report["meta"]
-    provider, model = meta["provider"], meta["model"]
+        workspace = run_dir / "workspace"
+        workspace_db = workspace / spec.db_filename
+        if not workspace_db.exists():
+            raise ReplayError(
+                f"no {spec.db_filename} in {workspace} — workspace was cleaned"
+            )
 
-    load_env(env_file or REPO_ROOT / ".env.secrets")
-    api_env = PROVIDER_ENV.get(provider)
-    if not api_env or not os.environ.get(api_env):
-        raise ReplayError(f"{api_env or provider} API key is not set")
+        category = _resolve_category(report)
+        meta = report["meta"]
+        provider, model = meta["provider"], meta["model"]
 
-    # Re-read the prompt catalog so an edited question is what actually re-runs.
-    entry = next((p for p in prompts.active_prompts(spec) if p["id"] == qid), None)
-    if entry is None:
-        raise ReplayError(f"q{qid:02d} is not an active prompt in {spec.prompts_file}")
+        load_env(env_file or REPO_ROOT / ".env.secrets")
+        api_env = PROVIDER_ENV.get(provider)
+        if not api_env or not os.environ.get(api_env):
+            raise ReplayError(f"{api_env or provider} API key is not set")
 
-    prev = next((q for q in report.get("queries", []) if q["id"] == qid), None)
-    prev_status = prev["status"] if prev else None
+        # Re-read the prompt catalog so an edited question is what actually re-runs.
+        entry = next((p for p in prompts.active_prompts(spec) if p["id"] == qid), None)
+        if entry is None:
+            raise ReplayError(
+                f"q{qid:02d} is not an active prompt in {spec.prompts_file}"
+            )
 
-    worker = _worker_dir(workspace, spec.db_filename)
-    if refresh_model:
-        _refresh_model(workspace, worker, spec, category, report, log)
-    task = category.build_task(spec, entry)
-    (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
-    _clear_candidates([workspace, worker], spec, qid, category.candidate_ext)
-    (run_dir / f"crash.q{qid:02d}.txt").unlink(missing_ok=True)
+        prev = next((q for q in report.get("queries", []) if q["id"] == qid), None)
+        prev_status = prev["status"] if prev else None
+
+        worker_dir = _worker_dir(workspace, spec.db_filename, worker)
+        if refresh_model:
+            _refresh_model(workspace, [worker_dir], spec, category, report, log)
+        task = category.build_task(spec, entry)
+        (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
+        _clear_candidates([workspace, worker_dir], spec, qid, category.candidate_ext)
+        (run_dir / f"crash.q{qid:02d}.txt").unlink(missing_ok=True)
 
     log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
     log(
         f"q{qid:02d}: running agent ({provider}/{model}, was {prev_status or 'absent'})"
     )
     result = agent_runner.run_agent(
-        worker,
+        worker_dir,
         log_path,
         provider,
         model,
@@ -340,12 +442,6 @@ def replay_query(
             result["output"], encoding="utf-8"
         )
 
-    produced = worker / prompts.candidate_filename(spec, qid, category.candidate_ext)
-    if produced.exists():
-        destination = workspace / f"query{qid:02d}{category.candidate_ext}"
-        shutil.copy2(produced, destination)
-        produced.unlink()
-
     log(
         f"q{qid:02d}: agent exit={result['exit_code']} "
         f"in {result['duration']:.0f}s - scoring"
@@ -356,62 +452,81 @@ def replay_query(
         if spec.references_dir and spec.references_dir.exists()
         else None
     )
-    try:
-        score = scoring.score_query_timed(
-            workspace_db,
-            workspace,
-            qid,
-            spec.duckdb_extension,
-            SCORE_TIMEOUT,
-            params=entry.get("params"),
-            custom_refs_dir=refs,
-        )
-    except Exception as exc:
-        score = scoring.QueryResult(
-            id=qid, status="error", detail=f"replay-score: {type(exc).__name__}: {exc}"
-        )
     timed_out = result.get("timed_out", False)
     exit_code = result.get("exit_code", 0)
-    score = scoring.apply_timeout(score, timed_out)
-    score = scoring.apply_exhausted(score, exit_code, timed_out)
-    score = scoring.apply_crash(score, exit_code, timed_out)
 
-    report["per_query_metrics"] = _upsert(
-        _metrics_rows(report, run_dir), {"id": qid, **scoring.metrics_to_dict(metrics)}
-    )
-    report["queries"] = _upsert(
-        report.get("queries", []), {**dataclasses.asdict(score), "source": "this_run"}
-    )
-    report["per_query"] = _upsert(
-        report.get("per_query", []),
-        {
-            "id": qid,
-            "exit_code": exit_code,
-            "timed_out": timed_out,
-            "duration_seconds": round(result["duration"], 1),
-            "source": "this_run",
-        },
-    )
-    _mark_fresh(report, qid)
-    _reaggregate(report)
-    report.setdefault("replays", []).append(
-        {
-            "id": qid,
-            "timestamp": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
-            "prev_status": prev_status,
-            "status": score.status,
-            "trilogy_version": meta.get("trilogy_version"),
-        }
-    )
-    _render_artifacts(run_dir, spec, report)
-
-    try:
-        _, events = analyze_run.load_run_spliced(run_dir)
-        analyze_run.render(
-            report, events, spec.charts_dir / f"dashboard_{category.key}_v2.png"
+    with lock:
+        produced = worker_dir / prompts.candidate_filename(
+            spec, qid, category.candidate_ext
         )
-    except Exception as exc:
-        log(f"  dashboard render skipped: {type(exc).__name__}: {exc}")
+        if produced.exists():
+            destination = workspace / f"query{qid:02d}{category.candidate_ext}"
+            shutil.copy2(produced, destination)
+            produced.unlink()
+
+        try:
+            score = scoring.score_query_timed(
+                workspace_db,
+                workspace,
+                qid,
+                spec.duckdb_extension,
+                SCORE_TIMEOUT,
+                params=entry.get("params"),
+                custom_refs_dir=refs,
+            )
+        except Exception as exc:
+            score = scoring.QueryResult(
+                id=qid,
+                status="error",
+                detail=f"replay-score: {type(exc).__name__}: {exc}",
+            )
+        score = scoring.apply_timeout(score, timed_out)
+        score = scoring.apply_exhausted(score, exit_code, timed_out)
+        score = scoring.apply_crash(score, exit_code, timed_out)
+
+        # Re-read: a parallel replay of another query may have spliced its own
+        # result since our snapshot above; splicing into that snapshot would
+        # silently drop it.
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        report["per_query_metrics"] = _upsert(
+            _metrics_rows(report, run_dir),
+            {"id": qid, **scoring.metrics_to_dict(metrics)},
+        )
+        report["queries"] = _upsert(
+            report.get("queries", []),
+            {**dataclasses.asdict(score), "source": "this_run"},
+        )
+        report["per_query"] = _upsert(
+            report.get("per_query", []),
+            {
+                "id": qid,
+                "exit_code": exit_code,
+                "timed_out": timed_out,
+                "duration_seconds": round(result["duration"], 1),
+                "source": "this_run",
+            },
+        )
+        _mark_fresh(report, qid)
+        _reaggregate(report)
+        report.setdefault("replays", []).append(
+            {
+                "id": qid,
+                "timestamp": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
+                "prev_status": prev_status,
+                "status": score.status,
+                "trilogy_version": meta.get("trilogy_version"),
+            }
+        )
+        _render_artifacts(run_dir, spec, report)
+
+        try:
+            _, events = analyze_run.load_run_spliced(run_dir)
+            with _RENDER_LOCK:
+                analyze_run.render(
+                    report, events, spec.charts_dir / f"dashboard_{category.key}_v2.png"
+                )
+        except Exception as exc:
+            log(f"  dashboard render skipped: {type(exc).__name__}: {exc}")
 
     # ASCII only: this goes to a console that may be cp1252 (Windows).
     log(

@@ -1,9 +1,9 @@
 import store_sales as store_sales;
 
 where
-    store_sales.customer_demographic.gender = 'M'
-    and store_sales.customer_demographic.marital_status = 'S'
-    and store_sales.customer_demographic.education_status = 'College'
+    store_sales.pos_customer_demographic.gender = 'M'
+    and store_sales.pos_customer_demographic.marital_status = 'S'
+    and store_sales.pos_customer_demographic.education_status = 'College'
     and store_sales.date.year = 2002
     and store_sales.store.state = 'TN'
 select

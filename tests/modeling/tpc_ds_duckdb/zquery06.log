@@ -1,6 +1,6 @@
 query_id = "06"
 generator = "v3"
-gen_length = 2312
+gen_length = 2326
 preql_size = 609
 comp_size = 654
 generated_sql = """
@@ -24,7 +24,7 @@ WHERE
 questionable as (
 SELECT
     \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
-    avg(\"store_sales_item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_2054483076469165\"
+    avg(\"store_sales_item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_2054483076469165_wscope\"
 FROM
     \"memory\".\"item\" as \"store_sales_item_items\"
 WHERE
@@ -39,7 +39,7 @@ FROM
     \"cooperative\"
     INNER JOIN \"questionable\" on \"cooperative\".\"store_sales_item_category\" is not distinct from \"questionable\".\"store_sales_item_category\"
 WHERE
-    \"cooperative\".\"store_sales_item_current_price\" > 1.2 * \"questionable\".\"_virt_agg_avg_2054483076469165\"
+    \"cooperative\".\"store_sales_item_current_price\" > 1.2 * \"questionable\".\"_virt_agg_avg_2054483076469165_wscope\"
 
 GROUP BY
     1

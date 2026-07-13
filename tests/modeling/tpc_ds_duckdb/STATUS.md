@@ -77,7 +77,7 @@ exercising different planner paths — they share an SQL reference.)
   then sum it on the outside.
 - **Aggregates dropped by trilogy's grain inference need explicit `by` (q79).**
   Pin per-aggregate grain with `sum(...) by store_sales.ticket_number,
-  store_sales.customer.id, store_sales.sale_address.id, store_sales.store.city`.
+  store_sales.customer.id, store_sales.pos_address.id, store_sales.store.city`.
 - **Inner-join enforcement against a dimension requires an explicit
   predicate (q53, q48).** The reference SQL has `AND ss_store_sk = s_store_sk`
   which silently filters store_sales rows where the store row is missing.

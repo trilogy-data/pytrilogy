@@ -1,72 +1,81 @@
 query_id = "87"
 generator = "v3"
-gen_length = 2498
-preql_size = 1202
+gen_length = 3441
+preql_size = 1085
 comp_size = 1163
 generated_sql = """
 
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-     'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\"
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
+    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
+    cast(\"store_sales_date_date\".\"D_DATE\" as date) as \"store_sales_date_date\"
 FROM
-    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-     'STORE'  as \"sales_channel\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-     'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\"
-FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-cooperative as (
-SELECT
-    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
-    \"thoughtful\".\"sales_channel\" as \"sales_channel\",
-    \"thoughtful\".\"sales_date_sk\" as \"sales_date_sk\"
-FROM
-    \"thoughtful\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
+
 GROUP BY
     1,
     2,
     3),
-abundant as (
+uneven as (
 SELECT
-    sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
-	ELSE 0
-	END) as \"catalog_in_window\",
-    sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
-	ELSE 0
-	END) as \"store_in_window\",
-    sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
-	ELSE 0
-	END) as \"web_in_window\"
+    \"catalog_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"catalog_sales_billing_customer_first_name\",
+    \"catalog_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"catalog_sales_billing_customer_last_name\",
+    cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) as \"catalog_sales_sold_date_date\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cooperative\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sold_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_sold_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"catalog_sales_billing_customer_customers\" on \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"catalog_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
+    \"catalog_sales_sold_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
-    \"sales_billing_customer_customers\".\"C_FIRST_NAME\",
-    \"sales_billing_customer_customers\".\"C_LAST_NAME\",
-    cast(\"sales_date_date\".\"D_DATE\" as date))
+    1,
+    2,
+    3),
+young as (
 SELECT
-    sum(CASE
-	WHEN \"abundant\".\"store_in_window\" > 0 and \"abundant\".\"catalog_in_window\" = 0 and \"abundant\".\"web_in_window\" = 0 THEN 1
-	ELSE 0
-	END) as \"cnt\"
+    \"web_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"web_sales_billing_customer_first_name\",
+    \"web_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"web_sales_billing_customer_last_name\",
+    cast(\"web_sales_date_date\".\"D_DATE\" as date) as \"web_sales_date_date\"
 FROM
-    \"abundant\""""
+    \"memory\".\"web_sales\" as \"web_sales_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"web_sales_billing_customer_customers\" on \"web_sales_web_sales\".\"WS_BILL_CUSTOMER_SK\" = \"web_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"web_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"web_sales_web_sales\".\"WS_BILL_CUSTOMER_SK\" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
+abhorrent as (
+SELECT
+    \"cheerful\".\"store_sales_customer_last_name\" as \"_tvf_union_last_name\",
+    \"cheerful\".\"store_sales_customer_first_name\" as \"_tvf_union_first_name\",
+    \"cheerful\".\"store_sales_date_date\" as \"_tvf_union_sale_date\"
+FROM
+    \"cheerful\"
+EXCEPT
+SELECT
+    \"uneven\".\"catalog_sales_billing_customer_last_name\" as \"_tvf_union_last_name\",
+    \"uneven\".\"catalog_sales_billing_customer_first_name\" as \"_tvf_union_first_name\",
+    \"uneven\".\"catalog_sales_sold_date_date\" as \"_tvf_union_sale_date\"
+FROM
+    \"uneven\"
+EXCEPT
+SELECT
+    \"young\".\"web_sales_billing_customer_last_name\" as \"_tvf_union_last_name\",
+    \"young\".\"web_sales_billing_customer_first_name\" as \"_tvf_union_first_name\",
+    \"young\".\"web_sales_date_date\" as \"_tvf_union_sale_date\"
+FROM
+    \"young\")
+SELECT
+    count(\"abhorrent\".\"_tvf_union_sale_date\") as \"cnt\"
+FROM
+    \"abhorrent\""""

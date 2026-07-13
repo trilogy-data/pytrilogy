@@ -37,7 +37,7 @@ import promotion as promotion;
 import ship_mode as ship_mode;
 import ship_mode as return_ship_mode; # the ship mode used for the return
 import address as ship_address;
-import address as bill_address;
+import address as pos_bill_address; # billing address recorded directly on the catalog sale at point of sale
 import address as return_address; # the address the return originated from (the returning side)
 import address as return_refund_address; # the address the refund was issued to
 import reason as return_reason;
@@ -91,7 +91,7 @@ datasource catalog_sales (
     CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
     CS_BILL_CDEMO_SK: ?pos_customer_demographic.sk,
     CS_BILL_HDEMO_SK: ?pos_household_demographic.sk,
-    CS_BILL_ADDR_SK: ?bill_address.sk,
+    CS_BILL_ADDR_SK: ?pos_bill_address.sk,
     CS_ITEM_SK: item.sk,
     CS_QUANTITY: quantity,
     CS_LIST_PRICE: list_price,

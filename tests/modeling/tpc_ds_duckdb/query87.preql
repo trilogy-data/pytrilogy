@@ -1,42 +1,36 @@
-import all_sales as sales;
+import store_sales as store_sales;
+import catalog_sales as catalog_sales;
+import web_sales as web_sales;
 
-# For each (customer.last_name, customer.first_name, date.date) tuple,
-# count rows present in each channel within month_seq 1200..1211.
-auto store_in_window <- sum(
-    case
-        when sales.channel = 'STORE'
-        and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.billing_customer.sk is not null then 1
-        else 0
-    end
-)
-    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
-auto catalog_in_window <- sum(
-    case
-        when sales.channel = 'CATALOG'
-        and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.billing_customer.sk is not null then 1
-        else 0
-    end
-)
-    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
-auto web_in_window <- sum(
-    case
-        when sales.channel = 'WEB'
-        and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.billing_customer.sk is not null then 1
-        else 0
-    end
-)
-    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
-
-where
-    sales.date.month_seq between 1200 and 1200 + 11
+from except(
+    (
+        where
+            store_sales.date.month_seq between 1200 and 1211
+            and store_sales.customer.sk is not null
+        select
+            store_sales.customer.last_name,
+            store_sales.customer.first_name,
+            store_sales.date.date
+    ),
+    (
+        where
+            catalog_sales.sold_date.month_seq between 1200 and 1211
+            and catalog_sales.billing_customer.sk is not null
+        select
+            catalog_sales.billing_customer.last_name,
+            catalog_sales.billing_customer.first_name,
+            catalog_sales.sold_date.date
+    ),
+    (
+        where
+            web_sales.date.month_seq between 1200 and 1211
+            and web_sales.billing_customer.sk is not null
+        select
+            web_sales.billing_customer.last_name,
+            web_sales.billing_customer.first_name,
+            web_sales.date.date
+    )
+) -> (last_name, first_name, sale_date)
 select
-    sum(
-            case
-                when store_in_window > 0 and catalog_in_window = 0 and web_in_window = 0 then 1
-                else 0
-            end
-        ) as cnt,
+    count(sale_date) as cnt
 ;

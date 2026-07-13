@@ -6,7 +6,7 @@ where
     sales.item.id in music_item_ids
     and sales.date.year = 1998
     and sales.date.month_of_year = 9
-    and sales.bill_address.gmt_offset = -5
+    and sales.pos_bill_address.gmt_offset = -5
 select
     sales.item.id,
     sum(sales.ext_sales_price) as total_sales,

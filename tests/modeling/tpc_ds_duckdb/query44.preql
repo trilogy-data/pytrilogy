@@ -4,7 +4,7 @@ import store_sales as ss;
 # Pre-compute in a filtered `with` block so trilogy emits
 # `WHERE SS_ADDR_SK IS NULL` instead of `avg(CASE WHEN SS_ADDR_SK IS NULL THEN ...)`.
 rowset addr_null_threshold <- where
-    ss.store.sk = 1 and ss.sale_address.sk is null
+    ss.store.sk = 1 and ss.pos_address.sk is null
 select
     avg(ss.net_profit) as threshold,
 ;

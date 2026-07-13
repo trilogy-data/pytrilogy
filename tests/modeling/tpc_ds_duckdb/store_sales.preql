@@ -18,13 +18,13 @@ import time as return_time;
 import customer as customer; # the customer account tied to the order
 import customer as return_customer; # the customer account tied to the return
 import promotion as promotion;
-import customer_demographic as customer_demographic; # the customer demographics recorded on this sale (the buyer's demographic profile at the time of purchase)
+import customer_demographic as pos_customer_demographic; # the customer demographics recorded on this sale (the buyer's demographic profile at the time of purchase)
 import customer_demographic as return_customer_demographic; # the customer demographics recorded on the return (the returner's demographic profile at return time)
-import household_demographic as sale_household_demographic; # the household demographics recorded on this sale (the buyer's household at the time of purchase)
+import household_demographic as pos_household_demographic; # the household demographics recorded on this sale (the buyer's household at the time of purchase)
 import household_demographic as return_household_demographic; # the household demographics recorded on the return (the returner's household at return time)
 import store as store;
 import store as return_store;
-import address as sale_address; # the customer's address as recorded on the sale (the purchase-time address)
+import address as pos_address; # the customer's address as recorded on the sale (the purchase-time address)
 import address as return_address; # the returning customer's address as recorded on the return
 import reason as return_reason;
 
@@ -68,8 +68,8 @@ datasource store_sales (
     SS_SOLD_DATE_SK: ?date.sk, # FK to date the sale occurred (optional in source data).
     SS_SOLD_TIME_SK: ?time.sk, # FK to time-of-day the sale occurred.
     SS_CUSTOMER_SK: ?customer.sk, # FK to the purchasing customer (optional — anonymous sales allowed).
-    SS_CDEMO_SK: ?customer_demographic.sk, # FK to the customer's demographic profile at time of sale.
-    SS_HDEMO_SK: ?sale_household_demographic.sk, # FK to the customer's household profile at time of sale.
+    SS_CDEMO_SK: ?pos_customer_demographic.sk, # FK to the customer's demographic profile at time of sale.
+    SS_HDEMO_SK: ?pos_household_demographic.sk, # FK to the customer's household profile at time of sale.
     SS_TICKET_NUMBER: ticket_number,
     SS_ITEM_SK: item.sk, # FK to the item sold.
     SS_SALES_PRICE: sales_price,
@@ -86,7 +86,7 @@ datasource store_sales (
     SS_NET_PAID: net_paid,
     SS_EXT_TAX: ext_tax,
     SS_WHOLESALE_COST: wholesale_cost,
-    SS_ADDR_SK: ?sale_address.sk, # FK to the customer's address at time of sale.
+    SS_ADDR_SK: ?pos_address.sk, # FK to the customer's address at time of sale.
 )
 grain (item.sk, ticket_number)
 address memory.store_sales;

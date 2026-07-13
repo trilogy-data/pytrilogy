@@ -21,6 +21,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
+    concept_is_row_scalar,
     preserved_non_partial_conditions,
 )
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
@@ -1227,6 +1228,7 @@ def get_loop_iteration_targets(
     # flag first; the condition is applied at this level's completion instead.
     # (An aggregate grouped *by* a derived row-arg is fine — it isn't the
     # row-arg itself, so it never matches here and keeps normal pushdown.)
+    condition_input_row_scalar_priority = False
     if (
         conditions
         and priority_concept.derivation not in ROOT_DERIVATIONS
@@ -1235,6 +1237,9 @@ def get_loop_iteration_targets(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
             f"is a derived condition input; not routing the condition into its build"
+        )
+        condition_input_row_scalar_priority = all(
+            concept_is_row_scalar(c) for c in conditions.row_arguments
         )
         conditions = None
 
@@ -1263,4 +1268,50 @@ def get_loop_iteration_targets(
         candidates=local_all,
         exhausted=attempted,
     )
+    # This build runs condition-free (the priority IS a condition input), so a
+    # pushdown target (window/aggregate needing the WHERE inside its sourcing)
+    # must not ride along as an optional — it would be sourced unfiltered and
+    # marked found (e.g. a rank computed over the unfiltered universe). Defer
+    # it to its own iteration, where the condition routes into its build.
+    # Two gates: (1) every WHERE row arg is row-scalar, so the condition is an
+    # unambiguous row filter that belongs inside the target's sourcing; (2)
+    # only WINDOW/AGGREGATE targets — a FILTER item is an author-scoped row
+    # intent whose statement-WHERE interaction composes at this level's
+    # completion instead (deferring q05's per-channel filtered measures
+    # co-sourced the other channel's date beside each fact and fanned out).
+    if condition_input_row_scalar_priority and pushdown_targets:
+        pushdown_addresses = {
+            c.address
+            for c in pushdown_targets
+            if c.derivation in (Derivation.WINDOW, Derivation.AGGREGATE)
+        }
+        deferred = [x for x in optional if x.address in pushdown_addresses]
+        if deferred:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} deferring pushdown targets "
+                f"{[c.address for c in deferred]} out of condition-free build of {priority_concept.address}"
+            )
+            optional = [x for x in optional if x.address not in pushdown_addresses]
+            # keep this build's own inputs and keys visible: stack connectivity
+            # ignores hidden outputs, so without them the deferred target's
+            # node would have no shared concept to join back on
+            existing = {x.address for x in optional}
+            join_surface = list(
+                priority_concept.lineage.concept_arguments
+                if priority_concept.lineage
+                else []
+            )
+            if environment and priority_concept.keys:
+                join_surface += [
+                    environment.concepts[k]
+                    for k in priority_concept.keys
+                    if k in environment.concepts
+                ]
+            for parent in join_surface:
+                if (
+                    parent.address not in existing
+                    and parent.address != priority_concept.address
+                ):
+                    optional.append(parent)
+                    existing.add(parent.address)
     return priority_concept, optional, conditions

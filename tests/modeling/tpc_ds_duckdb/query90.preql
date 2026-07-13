@@ -4,7 +4,7 @@ auto amc <- sum(ws.row_counter ? ws.time.hour between 8 and 9);
 auto pmc <- sum(ws.row_counter ? ws.time.hour between 19 and 20);
 
 where
-    ws.ship_household_demographic.dependent_count = 6
+    ws.pos_ship_household_demographic.dependent_count = 6
     and ws.web_page.char_count between 5000 and 5200
     and ws.time.hour in (8, 9, 19, 20)
 select

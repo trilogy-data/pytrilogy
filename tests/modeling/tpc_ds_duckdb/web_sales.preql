@@ -34,9 +34,9 @@ import promotion as promotion;
 import warehouse as warehouse;
 import ship_mode as ship_mode;
 import address as ship_address;
-import address as bill_address;
-import household_demographic as ship_household_demographic; # household demographics recorded on the sale at point of sale (ship-to)
-import household_demographic as bill_household_demographic; # household demographics recorded on the sale at point of sale (bill-to)
+import address as pos_bill_address; # billing address recorded directly on the web sale at point of sale
+import household_demographic as pos_ship_household_demographic; # household demographics recorded on the sale at point of sale (ship-to)
+import household_demographic as pos_bill_household_demographic; # household demographics recorded on the sale at point of sale (bill-to)
 
 key order_number int; # Web order number identifying a single web sales transaction.
 --key return_order_number int; # Web order number on the returns side, for return-only queries.
@@ -96,11 +96,11 @@ datasource web_sales (
     WS_PROMO_SK: ?promotion.sk, # FK to the promotion applied to the line, if any.
     WS_WAREHOUSE_SK: ?warehouse.sk, # FK to the warehouse fulfilling the order.
     WS_SHIP_ADDR_SK: ?ship_address.sk, # FK to the shipping address.
-    WS_BILL_ADDR_SK: ?bill_address.sk, # FK to the billing address.
+    WS_BILL_ADDR_SK: ?pos_bill_address.sk, # FK to the billing address.
     WS_SHIP_MODE_SK: ?ship_mode.sk, # FK to the ship-mode used for the order.
     WS_EXT_DISCOUNT_AMT: ext_discount_amount,
-    WS_SHIP_HDEMO_SK: ?ship_household_demographic.sk, # FK to the ship-to customer's household profile.
-    WS_BILL_HDEMO_SK: ?bill_household_demographic.sk, # FK to the bill-to customer's household profile.
+    WS_SHIP_HDEMO_SK: ?pos_ship_household_demographic.sk, # FK to the ship-to customer's household profile.
+    WS_BILL_HDEMO_SK: ?pos_bill_household_demographic.sk, # FK to the bill-to customer's household profile.
     WS_NET_PAID: net_paid,
     WS_LIST_PRICE: list_price,
 )
