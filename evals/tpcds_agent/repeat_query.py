@@ -61,6 +61,13 @@ def _build_argparser() -> argparse.ArgumentParser:
         help="force tool_choice=required every turn (no plain-text reasoning). "
         "Default is tool_choice: auto; pass this to A/B the old forced-tool behavior.",
     )
+    p.add_argument(
+        "--scope-diagnostics",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="expose derived-value scopes to the agent; pass "
+        "--no-scope-diagnostics for a clean baseline",
+    )
     p.add_argument("--output-dir", type=Path, default=None)
     p.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env.secrets")
     return p
@@ -171,6 +178,7 @@ def main() -> int:
                 args.timeout,
                 "quiet",
                 toolset=category.harness,
+                scope_diagnostics=args.scope_diagnostics,
             )
             metrics = scoring.parse_agent_log(log_path)
             if result.get("exit_code", 0) != 0 and result.get("output"):
@@ -239,6 +247,7 @@ def main() -> int:
             "scale_factor": args.scale_factor,
             "max_iterations": args.max_iterations,
             "mode": category.key,
+            "scope_diagnostics": args.scope_diagnostics,
             "trilogy_version": _trilogy_version(),
         },
         "summary": summary,

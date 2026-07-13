@@ -70,6 +70,7 @@ def get_agent_instructions(
     include_todo: bool = True,
     include_database: bool = True,
     include_file_read: bool = True,
+    include_scope_diagnostics: bool = True,
 ) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
@@ -88,8 +89,23 @@ Available tools:
       ["database", "describe", "<table>"] — show a table's columns and types."""
     base += """
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
-      under raw/) for every table in the database, in one step.
-    * Run a Trilogy script: ["run", "<path.preql>"].
+      under raw/) for every table in the database, in one step."""
+    if include_scope_diagnostics:
+        base += """
+    * Run a Trilogy script: ["run", "<path.preql>"]. Each result carries
+      `derived_value_scopes`: for every aggregate/window value, the effective
+      `input_filters` (conditions restricting rows BEFORE the value computed),
+      grouping/partitioning, and `output_filters` (applied to the computed
+      result). Absent `input_filters` means the value computed over the
+      UNRESTRICTED population. ALWAYS check the scopes against the question's
+      intent before accepting a result — a query that runs cleanly can still
+      compute a value over the wrong population (note: a WHERE that references
+      an aggregate/window gates rows by its unfiltered population value, by
+      design)."""
+    else:
+        base += """
+    * Run a Trilogy script: ["run", "<path.preql>"]."""
+    base += """
     * ["explore", "<path.preql>"] is the canonical "what concepts can I query
       from this file?" tool. Imported references chain in — exploring the
       fact file (e.g. `sales.preql`) ALSO lists all dimensions it
@@ -697,13 +713,20 @@ def agent(
             has_schema_md=(Path.cwd() / "schema.md").exists()
         )
     else:
+        include_scope_diagnostics = os.environ.get(
+            "TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1"
+        ).lower() not in ("0", "false", "no", "off")
         excluded_tool_names: set[str] = set()
         if actual_quiet:
             excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
         if cfg.disable_todo:
             excluded_tool_names.add(TODO_TOOL.name)
         tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
-        if cfg.allow_database_introspection and cfg.allow_file_read:
+        if (
+            cfg.allow_database_introspection
+            and cfg.allow_file_read
+            and include_scope_diagnostics
+        ):
             if actual_quiet and cfg.disable_todo:
                 system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
             elif actual_quiet:
@@ -719,6 +742,7 @@ def agent(
                 include_todo=not cfg.disable_todo,
                 include_database=cfg.allow_database_introspection,
                 include_file_read=cfg.allow_file_read,
+                include_scope_diagnostics=include_scope_diagnostics,
             )
 
     log_path: Path | None = None

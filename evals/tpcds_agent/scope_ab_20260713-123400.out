@@ -1,0 +1,434 @@
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (8 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q14] starting (worker _worker_1)
+  [q30] starting (worker _worker_0)
+  [q30] done in 28s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q47] done in 82s (exit 0, score=pass)
+  [q57] starting (worker _worker_0)
+  [q57] done in 61s (exit 0, score=fail)
+  [q81] starting (worker _worker_0)
+  [q14] done in 238s (exit 0, score=pass)
+  [q92] starting (worker _worker_1)
+  [q81] done in 69s (exit 0, score=pass)
+  [q94] starting (worker _worker_0)
+  [q92] done in 49s (exit 0, score=pass)
+  [q95] starting (worker _worker_1)
+  [q94] done in 49s (exit 0, score=fail)
+  [q95] done in 56s (exit 0, score=pass)
+[4/5] Finalising scores for 8 queries ...
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (11 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\scope_ab_20260713-123400_baseline_1
+
+# TPC-DS Agent Eval — 20260713-163400
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 8  |  Trilogy: 0.3.292
+
+## Result
+
+- **Pass rate: 6/8** (75%)
+- Status breakdown: {'pass': 6, 'fail': 2}
+- Wall time: 350.3s  |  Agent time: 632.6s  |  Avg/query: 79.1s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 108
+- Tool calls: 117  →  {'trilogy': 109, 'return_control_to_user': 8}
+- `trilogy` subcommands: {'agent-info': 20, 'file': 33, 'explore': 34, 'run': 21, 'database': 1}
+- Tool success rate: 91% (106/117 ok)
+- Tokens: 3203608 total (3163809 prompt + 39799 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 109 | 7456 | 39848 | 0 | 0% |
+| `return_control_to_user` | 8 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 13} — total 13
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 14 | pass | 100 | 100 | 7065 |  |
+| 30 | pass | 100 | 100 | 11294 |  |
+| 47 | pass | 100 | 100 | 5432 |  |
+| 57 | fail | 100 | 100 | 7594 | result set differs from reference |
+| 81 | pass | 100 | 100 | 12214 |  |
+| 92 | pass | 1 | 1 | 1289 |  |
+| 94 | fail | 1 | 1 | 4373 | result set differs from reference |
+| 95 | pass | 1 | 1 | 3808 |  |
+
+## Agent final message
+
+> Wrote and validated answer_569612608.preql. Query ran cleanly with 1 result row: 68 eligible orders, total extended ship cost 100,592.32, total net profit -18,202.90.
+
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (8 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q30] starting (worker _worker_0)
+  [q14] starting (worker _worker_1)
+  [q30] done in 83s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q47] done in 67s (exit 0, score=pass)
+  [q57] starting (worker _worker_0)
+  [q14] done in 191s (exit 0, score=fail)
+  [q81] starting (worker _worker_1)
+  [q57] done in 60s (exit 0, score=pass)
+  [q92] starting (worker _worker_0)
+  [q81] done in 36s (exit 0, score=pass)
+  [q94] starting (worker _worker_1)
+  [q92] done in 79s (exit 0, score=pass)
+  [q95] starting (worker _worker_0)
+  [q94] done in 98s (exit 0, score=pass)
+  [q95] done in 59s (exit 0, score=fail)
+[4/5] Finalising scores for 8 queries ...
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (6 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\scope_ab_20260713-123400_treatment_1
+
+# TPC-DS Agent Eval — 20260713-163953
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 8  |  Trilogy: 0.3.292
+
+## Result
+
+- **Pass rate: 6/8** (75%)
+- Status breakdown: {'fail': 2, 'pass': 6}
+- Wall time: 358.2s  |  Agent time: 672.6s  |  Avg/query: 84.1s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 87
+- Tool calls: 97  →  {'trilogy': 89, 'return_control_to_user': 8}
+- `trilogy` subcommands: {'agent-info': 15, 'file': 25, 'explore': 31, 'run': 18}
+- Tool success rate: 94% (91/97 ok)
+- Tokens: 2035690 total (2003127 prompt + 32563 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 89 | 8120 | 39848 | 0 | 0% |
+| `return_control_to_user` | 8 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 8} — total 8
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 14 | fail | 100 | 100 | 9835 | result set differs from reference |
+| 30 | pass | 100 | 100 | 11015 |  |
+| 47 | pass | 100 | 100 | 5129 |  |
+| 57 | pass | 100 | 100 | 10909 |  |
+| 81 | pass | 100 | 100 | 13793 |  |
+| 92 | pass | 1 | 1 | 1259 |  |
+| 94 | pass | 1 | 1 | 5245 |  |
+| 95 | fail | 1 | 1 | 4374 | result set differs from reference |
+
+## Agent final message
+
+> Query written to answer_569612608.preql and executed successfully. Results: 70 distinct eligible orders, $113,071.62 total extended shipping cost, -$46,539.88 total net profit.
+
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (8 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q14] starting (worker _worker_1)
+  [q30] starting (worker _worker_0)
+  [q30] done in 44s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q47] done in 32s (exit 0, score=fail)
+  [q57] starting (worker _worker_0)
+  [q57] done in 29s (exit 0, score=pass)
+  [q81] starting (worker _worker_0)
+  [q81] done in 42s (exit 0, score=pass)
+  [q92] starting (worker _worker_0)
+  [q92] done in 41s (exit 0, score=fail)
+  [q94] starting (worker _worker_0)
+  [q94] done in 148s (exit 0, score=pass)
+  [q95] starting (worker _worker_0)
+  [q14] done in 372s (exit 0, score=fail)
+  [q95] done in 114s (exit 0, score=pass)
+[4/5] Finalising scores for 8 queries ...
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (11 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\scope_ab_20260713-123400_baseline_2
+
+# TPC-DS Agent Eval — 20260713-164553
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 8  |  Trilogy: 0.3.292
+
+## Result
+
+- **Pass rate: 5/8** (62%)
+- Status breakdown: {'fail': 3, 'pass': 5}
+- Wall time: 469.0s  |  Agent time: 823.4s  |  Avg/query: 102.9s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 116
+- Tool calls: 125  →  {'trilogy': 117, 'return_control_to_user': 8}
+- `trilogy` subcommands: {'agent-info': 15, 'file': 28, 'explore': 34, 'run': 38, 'database': 2}
+- Tool success rate: 91% (114/125 ok)
+- Tokens: 4023678 total (3984707 prompt + 38971 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 117 | 7159 | 39848 | 0 | 0% |
+| `return_control_to_user` | 8 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 9} — total 9
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 14 | fail | 100 | 100 | 15333 | result set differs from reference |
+| 30 | pass | 100 | 100 | 11060 |  |
+| 47 | fail | 100 | 100 | 13563 | result set differs from reference |
+| 57 | pass | 100 | 100 | 8890 |  |
+| 81 | pass | 100 | 100 | 8333 |  |
+| 92 | fail | 1 | 1 | 1264 | result set differs from reference |
+| 94 | pass | 1 | 1 | 3846 |  |
+| 95 | pass | 1 | 1 | 3643 |  |
+
+## Agent final message
+
+> Query file `answer_569612608.preql` has been written and validated. Results: 68 distinct eligible orders, total ext ship cost = 100592.32, total net profit = -18202.90.
+
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (8 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q14] starting (worker _worker_1)
+  [q30] starting (worker _worker_0)
+  [q30] done in 120s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q47] done in 59s (exit 0, score=pass)
+  [q57] starting (worker _worker_0)
+  [q14] done in 214s (exit 0, score=pass)
+  [q81] starting (worker _worker_1)
+  [q57] done in 69s (exit 0, score=pass)
+  [q92] starting (worker _worker_0)
+  [q81] done in 69s (exit 0, score=pass)
+  [q94] starting (worker _worker_1)
+  [q92] done in 44s (exit 0, score=pass)
+  [q95] starting (worker _worker_0)
+  [q95] done in 97s (exit 0, score=pass)
+  [q94] done in 130s (exit 0, score=pass)
+[4/5] Finalising scores for 8 queries ...
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (18 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\scope_ab_20260713-123400_treatment_2
+
+# TPC-DS Agent Eval — 20260713-165344
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 8  |  Trilogy: 0.3.292
+
+## Result
+
+- **Pass rate: 8/8** (100%)
+- Status breakdown: {'pass': 8}
+- Wall time: 422.0s  |  Agent time: 800.7s  |  Avg/query: 100.1s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 140
+- Tool calls: 142  →  {'trilogy': 134, 'return_control_to_user': 8}
+- `trilogy` subcommands: {'agent-info': 13, 'file': 30, 'explore': 36, 'run': 53, 'database': 2}
+- Tool success rate: 87% (124/142 ok)
+- Tokens: 4476514 total (4428663 prompt + 47851 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 134 | 6491 | 39848 | 0 | 0% |
+| `return_control_to_user` | 8 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 15} — total 15
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 14 | pass | 100 | 100 | 8046 |  |
+| 30 | pass | 100 | 100 | 6326 |  |
+| 47 | pass | 100 | 100 | 6571 |  |
+| 57 | pass | 100 | 100 | 7095 |  |
+| 81 | pass | 100 | 100 | 7635 |  |
+| 92 | pass | 1 | 1 | 1265 |  |
+| 94 | pass | 1 | 1 | 3738 |  |
+| 95 | pass | 1 | 1 | 3643 |  |
+
+## Agent final message
+
+> Answer written to answer_569612608.preql and verified with `trilogy run`. Result: 1 row with order_count=68, total_ext_ship_cost=100592.32, total_net_profit=-18202.90. 
+> 
+> The query:
+> 1. Defines `eligible_orders` as a rowset that identifies web orders with >1 warehouse AND at least one return, with NO report filters applied.
+> 2. Then queries web_sales lines filtered by ship date 1999-02-01 to 1999-04-02, shipping-address state='IL', web-site company='pri', AND membership in eligible_orders.
+> 3. Aggregates at the full-result grain: count_distinct orders, sum(ext_ship_cost), sum(net_profit).
+
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (8 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q14] starting (worker _worker_1)
+  [q30] starting (worker _worker_0)
+  [q30] done in 65s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q47] done in 88s (exit 0, score=fail)
+  [q57] starting (worker _worker_0)
+  [q57] done in 64s (exit 0, score=pass)
+  [q81] starting (worker _worker_0)
+  [q14] done in 242s (exit 0, score=fail)
+  [q92] starting (worker _worker_1)
+  [q81] done in 84s (exit 0, score=pass)
+  [q94] starting (worker _worker_0)
+  [q92] done in 108s (exit 0, score=pass)
+  [q95] starting (worker _worker_1)
+  [q95] done in 87s (exit 0, score=pass)
+  [q94] done in 158s (exit 0, score=fail)
+[4/5] Finalising scores for 8 queries ...
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (15 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\scope_ab_20260713-123400_baseline_3
+
+# TPC-DS Agent Eval — 20260713-170049
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 8  |  Trilogy: 0.3.292
+
+## Result
+
+- **Pass rate: 5/8** (62%)
+- Status breakdown: {'fail': 3, 'pass': 5}
+- Wall time: 472.2s  |  Agent time: 896.7s  |  Avg/query: 112.1s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 134
+- Tool calls: 140  →  {'trilogy': 132, 'return_control_to_user': 8}
+- `trilogy` subcommands: {'agent-info': 15, 'file': 41, 'explore': 28, 'run': 46, 'database': 2}
+- Tool success rate: 89% (125/140 ok)
+- Tokens: 4286929 total (4239870 prompt + 47059 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 132 | 6548 | 39848 | 0 | 0% |
+| `return_control_to_user` | 8 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 19} — total 19
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 14 | fail | 100 | 100 | 9741 | result set differs from reference |
+| 30 | pass | 100 | 100 | 10825 |  |
+| 47 | fail | 100 | 100 | 10061 | result set differs from reference |
+| 57 | pass | 100 | 100 | 5483 |  |
+| 81 | pass | 100 | 100 | 12059 |  |
+| 92 | pass | 1 | 1 | 1399 |  |
+| 94 | fail | 1 | 1 | 4914 | result set differs from reference |
+| 95 | pass | 1 | 1 | 3793 |  |
+
+## Agent final message
+
+> Query written to answer_569612608.preql and executed successfully.
+> 
+> **Result:** 68 distinct eligible orders, total extended shipping cost = 100,592.32, total net profit = -18,202.90.
+> 
+> **Logic:**
+> 1. `eligible_orders` rowset evaluates ALL web sales lines per order (no date/state/company filters) to find orders using >1 warehouse AND having ≥1 web return.
+> 2. The outer query then filters those eligible orders' lines to only those with ship date 1999-02-01→1999-04-02, shipping state 'IL', and web-site company 'pri', then aggregates the counts/costs/profits.
+
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (8 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q14] starting (worker _worker_1)
+  [q30] starting (worker _worker_0)
+  [q30] done in 84s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q47] done in 67s (exit 0, score=pass)
+  [q57] starting (worker _worker_0)
+  [q14] done in 207s (exit 0, score=fail)
+  [q81] starting (worker _worker_1)
+  [q57] done in 50s (exit 0, score=pass)
+  [q92] starting (worker _worker_0)
+  [q81] done in 43s (exit 0, score=pass)
+  [q94] starting (worker _worker_1)
+  [q92] done in 47s (exit 0, score=pass)
+  [q95] starting (worker _worker_0)
+  [q95] done in 70s (exit 0, score=fail)
+  [q94] done in 135s (exit 0, score=pass)
+[4/5] Finalising scores for 8 queries ...
+  wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (16 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\scope_ab_20260713-123400_treatment_3
+
+# TPC-DS Agent Eval — 20260713-170844
+
+- Model: `deepseek/deepseek-chat`
+- Scale factor: 1  |  Queries: 8  |  Trilogy: 0.3.292
+
+## Result
+
+- **Pass rate: 6/8** (75%)
+- Status breakdown: {'fail': 2, 'pass': 6}
+- Wall time: 393.1s  |  Agent time: 702.8s  |  Avg/query: 87.8s
+- Agent exit code: 0
+
+## Agent harness metrics
+
+- LLM iterations: 137
+- Tool calls: 139  →  {'trilogy': 131, 'return_control_to_user': 8}
+- `trilogy` subcommands: {'agent-info': 20, 'file': 31, 'explore': 32, 'run': 48}
+- Tool success rate: 88% (123/139 ok)
+- Tokens: 4075508 total (4037976 prompt + 37532 completion)
+
+## Tool-output sizes
+
+| Tool | calls | avg chars | max chars | truncated | trunc-rate |
+|---|---:|---:|---:|---:|---:|
+| `trilogy` | 131 | 6326 | 39848 | 0 | 0% |
+| `return_control_to_user` | 8 | 26 | 26 | 0 | 0% |
+
+- Repeated calls (same args seen earlier in same query): {'trilogy': 10} — total 10
+
+## Per-query
+
+| Query | Status | Ref rows | Cand rows | SQL len | Detail |
+|------:|:-------|---------:|----------:|--------:|:-------|
+| 14 | fail | 100 | 100 | 11069 | result set differs from reference |
+| 30 | pass | 100 | 100 | 5674 |  |
+| 47 | pass | 100 | 100 | 5756 |  |
+| 57 | pass | 100 | 100 | 5771 |  |
+| 81 | pass | 100 | 100 | 13196 |  |
+| 92 | pass | 1 | 1 | 2369 |  |
+| 94 | pass | 1 | 1 | 3678 |  |
+| 95 | fail | 1 | 1 | 4453 | result set differs from reference |
+
+## Agent final message
+
+> Wrote `answer_569612608.preql` and validated it with `trilogy run`. Query ran cleanly, returning 1 row with 70 eligible orders, $113,071.62 total extended shipping cost, and -$46,539.88 total net profit. The approach: (1) a rowset identifies eligible orders using *all* lines (count_distinct warehouse.sk > 1 AND bool_or is_returned = true, with no ship-date/state/company filters), then (2) the main query filters those orders' lines by the report criteria (ship_date 1999-02-01 to 1999-04-02, state=IL, company='pri') before aggregating.
+
+[1/5] Building TPC-DS DuckDB (sf=1) ...
+[2/5] Category 'enriched': setting up workspace ...
+[3/5] Running agent per query (8 queries, fresh context each, concurrency=2) — deepseek/deepseek-chat ...
+  [q14] starting (worker _worker_1)
+  [q30] starting (worker _worker_0)
+  [q30] done in 32s (exit 0, score=pass)
+  [q47] starting (worker _worker_0)
+  [q47] done in 36s (exit 0, score=pass)
+  [q57] starting (worker _worker_0)

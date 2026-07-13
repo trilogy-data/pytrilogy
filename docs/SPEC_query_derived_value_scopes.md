@@ -1,6 +1,8 @@
 # Specification: derived-value scope diagnostics
 
-**Status:** proposed. **Audience:** query planner, CLI, and agent-tool owners.
+**Status:** MVP implemented (`trilogy/core/scope_diagnostics.py`; CLI `run
+--scope`; JSON/agent default-on). **Audience:** query planner, CLI, and
+agent-tool owners.
 
 ## Summary
 

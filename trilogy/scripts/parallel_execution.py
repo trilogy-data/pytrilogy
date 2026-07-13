@@ -543,6 +543,7 @@ def run_single_script_execution(
     refresh_params: RefreshParams | None = None,
     debug_file: str | None = None,
     row_limit: int | None = None,
+    show_scopes: bool = False,
 ) -> int:
     """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
     from trilogy.scripts.common import create_executor
@@ -572,6 +573,7 @@ def run_single_script_execution(
             debug=debug,
             row_limit=row_limit,
             refresh_params=refresh_params,
+            show_scopes=show_scopes,
         )
     finally:
         # The parallel path closes its executors in _execute_single; close here
@@ -587,6 +589,7 @@ def _dispatch_single_script_execution(
     debug: bool,
     row_limit: int | None,
     refresh_params: RefreshParams | None,
+    show_scopes: bool = False,
 ) -> int:
     from trilogy.scripts.common import (
         flush_debugging_hooks,
@@ -605,7 +608,11 @@ def _dispatch_single_script_execution(
                 text, root=base if isinstance(base, Path) else None
             )
             execute_run_mode(
-                exec, queries, row_limit=row_limit, definitions=definitions
+                exec,
+                queries,
+                row_limit=row_limit,
+                definitions=definitions,
+                show_scopes=show_scopes,
             )
         elif execution_mode == ExecutionMode.INTEGRATION:
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
@@ -724,6 +731,7 @@ def run_parallel_execution(
             refresh_params=cli_params.refresh_params,
             debug_file=cli_params.debug_file,
             row_limit=cli_params.row_limit,
+            show_scopes=cli_params.show_scopes,
         )
         # For refresh mode: skipped=1 if nothing was refreshed, successful=1 otherwise
         if execution_mode == ExecutionMode.REFRESH:

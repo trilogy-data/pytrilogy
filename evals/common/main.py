@@ -184,6 +184,13 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "todo OFF (fewer tools/less context for short single-query tasks; no "
         "effect on the SQL toolset, which has no todo). Pass this to A/B it.",
     )
+    parser.add_argument(
+        "--scope-diagnostics",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="expose derived-value scope diagnostics to Trilogy agents; pass "
+        "--no-scope-diagnostics for a clean baseline",
+    )
     return parser
 
 
@@ -667,6 +674,7 @@ def run(spec: BenchmarkSpec) -> int:
                 args.timeout,
                 monitor_mode,
                 toolset=category.harness,
+                scope_diagnostics=args.scope_diagnostics,
             )
             result["id"] = qid
             # Persist the subprocess stdout/stderr on a non-zero exit — it holds

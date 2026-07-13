@@ -42,6 +42,7 @@ from trilogy.scripts.display_execution import (  # noqa: F401
     print_chart_terminal,
     print_results_table,
     show_debug_mode,
+    show_derived_value_scopes,
     show_environment_params,
     show_execution_info,
     show_execution_start,

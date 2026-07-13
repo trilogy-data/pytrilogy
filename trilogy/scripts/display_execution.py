@@ -1,5 +1,6 @@
 """Display helpers for single-script execution output."""
 
+import os
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -397,6 +398,17 @@ def _emit_results_json(
         full_row_count=results.full_row_count,
         limit_bounded=limit_bounded,
         fetch_ceiling_hit=hit_fetch_ceiling or None,
+        # factual per-computation scope report (input filters vs output
+        # filters, grouping/partitioning) — compare against the business
+        # question before trusting a value that merely ran cleanly. Omitted
+        # entirely when the statement computes no aggregate/window values.
+        derived_value_scopes=(
+            [s.to_dict() for s in results.derived_value_scopes]
+            if results.derived_value_scopes
+            and os.environ.get("TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1").lower()
+            not in ("0", "false", "no", "off")
+            else None
+        ),
     )
 
 
@@ -417,6 +429,26 @@ def print_results_table(
         _print_rich_table(results.rows, headers=results.columns, row_limit=cap)
     else:
         _print_fallback_table(results.rows, results.columns, row_limit=cap)
+
+
+def show_derived_value_scopes(results: ResultSet) -> None:
+    """Render the derived-value scope block after a result table (rich mode
+    only — JSON mode carries the same data on the ``result`` event)."""
+    if is_json_mode():
+        return
+    if not results.derived_value_scopes:
+        return
+    from trilogy.core.scope_diagnostics import render_derived_value_scopes
+
+    block = render_derived_value_scopes(results.derived_value_scopes)
+    if not block:
+        return
+    if _core.RICH_AVAILABLE and _core.console is not None:
+        header, _, body = block.partition("\n")
+        _core.console.print(f"[{_core.HEADER_BLUE}]{header}[/{_core.HEADER_BLUE}]")
+        _core.console.print(body.strip("\n"), style="dim", highlight=False)
+    else:
+        echo(block)
 
 
 def print_chart_terminal(
