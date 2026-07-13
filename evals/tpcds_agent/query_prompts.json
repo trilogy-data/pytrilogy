@@ -32,7 +32,7 @@
   {
     "id": 7,
     "grade": "easy",
-    "prompt": "For store sales in the year 2000, report the average quantity, average list price, average coupon amount, and average sales price for each item. Filter by the customer-demographic profile recorded on the sale itself (the one linked directly to the sale, NOT the customer's current demographic profile reached through the customer chain): male, single, 'College' education. Also restrict to promotions where the email channel flag is 'N' or the event channel flag is 'N' (at this scale factor these flags are always 'N', so the clause matches every promotion). Order by item code (the item's business identifier); limit 100 rows."
+    "prompt": "For store sales in the year 2000, report the average quantity, average list price, average coupon amount, and average sales price for each item. Filter by the point-of-sale customer-demographic profile recorded directly on the sale (`pos_customer_demographic`, not the customer's current demographic profile): male, single, 'College' education. Also restrict to promotions where the email channel flag is 'N' or the event channel flag is 'N' (at this scale factor these flags are always 'N', so the clause matches every promotion). Order by item code (the item's business identifier); limit 100 rows."
   },
   {
     "id": 8,
@@ -246,7 +246,7 @@
   {
     "id": 48,
     "grade": "medium",
-    "prompt": "For store sales in year 2000, report the total store-sale quantity. Use the customer-demographic record linked directly to the sale (not the customer's current one). Restrict to sales matching BOTH of two independent conditions. Condition 1 (demographic + unit price, where 'unit price' means the per-unit sales price actually charged, not the list price) — any one of: (a) married with '4 yr Degree' and unit price between 100 and 150; (b) divorced with '2 yr Degree' and price between 50 and 100; (c) single with 'College' and price between 150 and 200. Condition 2 (billing address + net profit) — any one of: (a) United States in CO, OH, or TX with net profit between 0 and 2000; (b) US in OR, MN, or KY with net profit between 150 and 3000; (c) US in VA, CA, or MS with net profit between 50 and 25000. The demographic and address conditions are evaluated as two separate OR-groups joined by AND (any demographic option may pair with any address option), not as three fixed bundles. Return a single total quantity value."
+    "prompt": "For store sales in year 2000, report total store-sale quantity using the point-of-sale customer demographic and point-of-sale address recorded directly on the sale (`pos_customer_demographic` and `pos_address`), not the customer's current demographic or home address. Restrict to sales matching BOTH independent conditions. Condition 1 (POS demographic + per-unit sales price) — any one of: (a) married with '4 yr Degree' and price 100-150; (b) divorced with '2 yr Degree' and price 50-100; (c) single with 'College' and price 150-200. Condition 2 (POS address + net profit) — any one of: (a) United States in CO, OH, or TX with net profit 0-2000; (b) US in OR, MN, or KY with net profit 150-3000; (c) US in VA, CA, or MS with net profit 50-25000. Evaluate these as two separate OR-groups joined by AND, so any demographic option may pair with any address option. Return one total quantity value."
   },
   {
     "id": 49,
@@ -286,7 +286,7 @@
   {
     "id": 56,
     "grade": "medium",
-    "prompt": "For sales across all channels in February 2001 to sales billing addresses with GMT offset -5, for items whos item codes have any item variant with the color 'slate', 'blanched', or 'burnished', sum the extended sales price. Report item code and the combined total. Only item codes that actually have a matching sale in this period and region appear; do not pad the result with item codes that had no such sale, and do not add any minimum-total filter. Order by total then item code, both with nulls first; limit 100 rows."
+    "prompt": "For sales across all channels in February 2001 whose point-of-sale billing address (`pos_bill_address`, not the billing customer's current home address) has GMT offset -5, for item codes having any item variant colored 'slate', 'blanched', or 'burnished', sum extended sales price. Report item code and the combined total. Only item codes that actually have a matching sale in this period and region appear; do not pad the result with item codes that had no such sale, and do not add any minimum-total filter. Order by total then item code, both with nulls first; limit 100 rows."
   },
   {
     "id": 57,
@@ -306,7 +306,7 @@
   {
     "id": 60,
     "grade": "medium",
-    "prompt": "For sales across all channels in September 1998 to billing addresses with a GMT offset of -5, for items whose item code matches the item code of any item in the 'Music' category, sum the extended sales price. Report item code and the combined total. Order by item code then total, both with nulls first; limit 100 rows."
+    "prompt": "For sales across all channels in September 1998 whose point-of-sale billing address (`pos_bill_address`, not the billing customer's current home address) has GMT offset -5, for items whose item code matches the code of any item variant in the 'Music' category, sum extended sales price. Report item code and the combined total. Order by item code then total, both with nulls first; limit 100 rows."
   },
   {
     "id": 61,
@@ -447,7 +447,7 @@
     "id": 88,
     "grade": "hard",
     "comment": "Eight half-hour-bucket counts with three dependent/vehicle-count demographic combinations at store 'ese'. Gradeable at scale factor >= 1 (the eval default), where store name 'ese' is present; absent at sf=0.01. Same scale artifact as query 96.",
-    "prompt": "For store sales at the store named 'ese', to the household recorded on the sale (the sale-time household demographic, not the customer's current one) where the dependent count and vehicle count satisfy one of these three combinations â€” dependent count of 4 with vehicle count no more than 6, dependent count of 2 with vehicle count no more than 4, or dependent count of 0 with vehicle count no more than 2 â€” produce eight separate counts of qualifying sales bucketed by the half-hour of the sold time: 8:30-9:00, 9:00-9:30, 9:30-10:00, 10:00-10:30, 10:30-11:00, 11:00-11:30, 11:30-12:00, and 12:00-12:30. Output one row with the eight counts as separate columns."
+    "prompt": "For store sales at the store named 'ese', use the point-of-sale household demographic recorded directly on the sale (`pos_household_demographic`, not the customer's current household). Keep lines where dependent count and vehicle count satisfy one of: dependent count 4 with vehicles no more than 6; dependent count 2 with vehicles no more than 4; or dependent count 0 with vehicles no more than 2. Produce eight separate counts of qualifying sale lines bucketed by sold time: 8:30-9:00, 9:00-9:30, 9:30-10:00, 10:00-10:30, 10:30-11:00, 11:00-11:30, 11:30-12:00, and 12:00-12:30. Output one row with the eight line counts as separate columns."
   },
   {
     "id": 89,
@@ -457,7 +457,7 @@
   {
     "id": 90,
     "grade": "medium",
-    "prompt": "Count web sale lines for ship-to households (the household demographics recorded on the web sale) with a dependent count of 6, on web pages whose character count is between 5000 and 5200, where the sale's sold time falls in the morning hours 8 through 9. Count the same population where the sold time falls in the evening hours 19 through 20. Return a single column only: the morning count divided by the evening count as a decimal ratio (null when the evening count is zero). Order by the ratio; limit 100 rows."
+    "prompt": "Count web-sale lines using the point-of-sale ship-to household demographic recorded directly on the web sale (`pos_ship_household_demographic`, not the shipping customer's current household). Require dependent count 6 and web-page character count between 5000 and 5200. Count morning lines whose sold hour is 8 or 9 and evening lines whose sold hour is 19 or 20. Return one column: morning line count divided by evening line count as a decimal ratio, null when the evening denominator is zero. Order by the ratio; limit 100 rows."
   },
   {
     "id": 91,

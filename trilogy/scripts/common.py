@@ -671,6 +671,7 @@ def handle_execution_exception(
         UndefinedConceptException,
         UnresolvableQueryException,
     )
+    from trilogy.parsing.v2.model import HydrationError
 
     location = f" in {source}" if source else ""
     # Syntax/validation errors carry actionable, user-facing guidance; label them
@@ -680,6 +681,16 @@ def handle_execution_exception(
         # An undefined concept is an authoring mistake; use `.message` to avoid
         # the `(self, message)` tuple repr that `str(e)` produces.
         print_error(f"Syntax error{location}: {e.message}")
+    elif isinstance(e, HydrationError):
+        # An authored constraint caught during hydration; the diagnostic carries
+        # the source position, so surface it rather than dropping it.
+        meta = e.diagnostic.meta
+        span = (
+            f" (line {meta.line}, column {meta.column})"
+            if meta is not None and meta.line is not None
+            else ""
+        )
+        print_error(f"Syntax error{location}: {e.diagnostic.message}{span}")
     elif isinstance(e, (SyntaxError, InvalidSyntaxException)):
         print_error(f"Syntax error{location}: {e}")
     elif isinstance(e, (DisconnectedConceptsException, UnresolvableQueryException)):

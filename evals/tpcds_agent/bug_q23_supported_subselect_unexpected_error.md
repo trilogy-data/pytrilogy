@@ -1,5 +1,25 @@
 # Bug: q23 supported subselect reaches `Unexpected error`
 
+**Status: FIXED 2026-07-12.** `handle_execution_exception` now classifies
+`HydrationError` as `Syntax error` and surfaces the diagnostic's source
+location (`trilogy/scripts/common.py`); the raise site's message now includes
+the one-column correction (`trilogy/parsing/v2/rules/rowset_rules.py`).
+Output is now:
+
+```text
+Syntax error in stdin: a `(select ...)` subquery used as a scalar value or
+membership set must select exactly one column; project only the key/value
+consumed by the outer expression (line 2, column 23)
+```
+
+Regression coverage: `tests/engine/test_duckdb_subquery.py` (one-column
+scalar/membership/rowset-qualified succeed; multi-column raises a structured
+error with location, both backends) and
+`tests/scripts/test_trilogy.py::test_multi_column_subquery_reported_as_syntax_error`
+(CLI labels it `Syntax error` with location, never `Unexpected error`).
+The agent-guide contradiction was already resolved in `trilogy/ai/constants.py`
+(one-column expression subqueries documented as supported).
+
 ## Summary
 
 The enriched q23 trajectory used Trilogy's supported `(select ...)` subquery

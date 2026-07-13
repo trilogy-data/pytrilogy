@@ -662,6 +662,32 @@ def test_function_argument_type_reported_as_type_error():
             assert "Syntax error" not in output, output
 
 
+def test_multi_column_subquery_reported_as_syntax_error():
+    # A two-column `(select ...)` subquery is a fixable author mistake; the
+    # harness must label it a "Syntax error" with a source location, not the
+    # "Unexpected error" catch-all.
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    "key id int; property id.val int; "
+                    "datasource t (id: id, val: val) grain (id) "
+                    "query '''select 1 as id, 10 as val'''; "
+                    "select id where id in (select id -> a, val -> b);",
+                    "duckdb",
+                ],
+            )
+            assert result.exit_code == 1
+            output = " ".join(strip_ansi(result.output).split())
+            assert "Syntax error" in output, output
+            assert "exactly one column" in output, output
+            assert "(line 1, column" in output, output
+            assert "Unexpected error" not in output, output
+
+
 def test_empty_unit():
     path = Path(__file__).parent / "validate_directory" / "empty.preql"
     runner = CliRunner()

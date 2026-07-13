@@ -1237,3 +1237,151 @@
 [ingest]   [q96] done in 184s (exit 0, score=fail)
 [ingest]   [q99] starting (worker _worker_1)
 [ingest]   [q98] done in 29s (exit 0, score=pass)
+[ingest]   [q99] done in 91s (exit 0, score=pass)
+[ingest] [4/5] Finalising scores for 99 queries ...
+[ingest]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_ingest_v2.png  (191 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_ingest.md)
+[ingest] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260712-204357_ingest
+[ingest] 
+[ingest] # TPC-DS Agent Eval — 20260712-204358
+[ingest] 
+[ingest] - Model: `deepseek/deepseek-chat`
+[ingest] - Scale factor: 1  |  Queries: 99  |  Trilogy: 0.3.291
+[ingest] 
+[ingest] ## Result
+[ingest] 
+[ingest] - **Pass rate: 57/99** (58%)
+[ingest] - Status breakdown: {'pass': 57, 'fail': 38, 'timeout': 4}
+[ingest] - Wall time: 23842.3s  (TIMED OUT)  |  Agent time: 47176.0s  |  Avg/query: 476.5s
+[ingest] - Agent exit code: 1
+[ingest] 
+[ingest] ## Agent harness metrics
+[ingest] 
+[ingest] - LLM iterations: 1429
+[ingest] - Tool calls: 1750  →  {'trilogy': 1654, 'return_control_to_user': 95, 'strilogy': 1}
+[ingest] - `trilogy` subcommands: {'agent-info': 157, 'file': 445, 'explore': 524, 'database': 13, 'run': 512}
+[ingest] - Tool success rate: 89% (1558/1750 ok)
+[ingest] - Tokens: 46588368 total (46062086 prompt + 526282 completion)
+[ingest] 
+[ingest] ## Tool-output sizes
+[ingest] 
+[ingest] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[ingest] |---|---:|---:|---:|---:|---:|
+[ingest] | `trilogy` | 1654 | 5285 | 39848 | 0 | 0% |
+[ingest] | `return_control_to_user` | 95 | 26 | 26 | 0 | 0% |
+[ingest] | `strilogy` | 1 | 88 | 88 | 0 | 0% |
+[ingest] 
+[ingest] - Repeated calls (same args seen earlier in same query): {'trilogy': 207} — total 207
+[ingest] 
+[ingest] ## Per-query
+[ingest] 
+[ingest] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[ingest] |------:|:-------|---------:|----------:|--------:|:-------|
+[ingest] | 01 | pass | 100 | 100 | 1365 |  |
+[ingest] | 02 | fail | 53 | 53 | 10520 | result set differs from reference |
+[ingest] | 03 | pass | 89 | 89 | 817 |  |
+[ingest] | 04 | pass | 6 | 6 | 14547 |  |
+[ingest] | 05 | pass | 100 | 100 | 16337 |  |
+[ingest] | 06 | pass | 46 | 46 | 5805 |  |
+[ingest] | 07 | pass | 100 | 100 | 1573 |  |
+[ingest] | 08 | pass | 5 | 5 | 2536 |  |
+[ingest] | 09 | pass | 1 | 1 | 4700 |  |
+[ingest] | 10 | pass | 6 | 6 | 7579 |  |
+[ingest] | 11 | pass | 90 | 90 | 6989 |  |
+[ingest] | 12 | pass | 100 | 100 | 2059 |  |
+[ingest] | 13 | fail | 1 | 1 | 3021 | result set differs from reference |
+[ingest] | 14 | fail | 100 | 100 | 14875 | result set differs from reference |
+[ingest] | 15 | fail | 100 | 100 | 1167 | result set differs from reference |
+[ingest] | 16 | fail | 1 | 1 | 4050 | result set differs from reference |
+[ingest] | 17 | fail | 23 | 29 | 10383 | result set differs from reference |
+[ingest] | 18 | fail | 100 | 100 | 7931 | result set differs from reference |
+[ingest] | 19 | pass | 100 | 100 | 1377 |  |
+[ingest] | 20 | pass | 100 | 100 | 1969 |  |
+[ingest] | 21 | pass | 100 | 100 | 2181 |  |
+[ingest] | 22 | pass | 100 | 100 | 1246 |  |
+[ingest] | 23 | pass | 4 | 4 | 7407 |  |
+[ingest] | 24 | fail | 1 | 6 | 3651 | result set differs from reference |
+[ingest] | 25 | pass | 1 | 1 | 28158 |  |
+[ingest] | 26 | fail | 100 | 100 | 1346 | result set differs from reference |
+[ingest] | 27 | fail | 100 | 100 | 2083 | result set differs from reference |
+[ingest] | 28 | pass | 1 | 1 | 6801 |  |
+[ingest] | 29 | pass | 1 | 1 | 7248 |  |
+[ingest] | 30 | fail | 100 | 100 | 7851 | result set differs from reference |
+[ingest] | 31 | fail | 44 | 48 | 6469 | result set differs from reference |
+[ingest] | 32 | pass | 1 | 1 | 1365 |  |
+[ingest] | 33 | fail | 100 | 100 | 5459 | result set differs from reference |
+[ingest] | 34 | fail | 455 | 554 | 2325 | result set differs from reference |
+[ingest] | 35 | pass | 100 | 100 | 11855 |  |
+[ingest] | 36 | pass | 100 | 100 | 2391 |  |
+[ingest] | 37 | pass | 1 | 1 | 1332 |  |
+[ingest] | 38 | pass | 1 | 1 | 4364 |  |
+[ingest] | 39 | pass | 243 | 243 | 5488 |  |
+[ingest] | 40 | pass | 100 | 100 | 1593 |  |
+[ingest] | 41 | fail | 100 | 100 | 2384 | result set differs from reference |
+[ingest] | 42 | pass | 10 | 10 | 896 |  |
+[ingest] | 43 | pass | 6 | 6 | 1558 |  |
+[ingest] | 44 | fail | 10 | 10 | 5312 | result set differs from reference |
+[ingest] | 45 | fail | 19 | 19 | 1734 | result set differs from reference |
+[ingest] | 46 | fail | 100 | 100 | 2462 | result set differs from reference |
+[ingest] | 47 | fail | 100 | 100 | 9897 | result set differs from reference |
+[ingest] | 48 | pass | 1 | 1 | 1975 |  |
+[ingest] | 49 | pass | 34 | 34 | 8699 |  |
+[ingest] | 50 | fail | 6 | 6 | 3974 | result set differs from reference |
+[ingest] | 51 | fail | 100 | 100 | 8471 | result set differs from reference |
+[ingest] | 52 | pass | 100 | 100 | 871 |  |
+[ingest] | 53 | pass | 100 | 100 | 2982 |  |
+[ingest] | 54 | pass | 1 | 1 | 4535 |  |
+[ingest] | 55 | pass | 100 | 100 | 843 |  |
+[ingest] | 56 | fail | 100 | 100 | 4844 | result set differs from reference |
+[ingest] | 57 | pass | 100 | 100 | 6980 |  |
+[ingest] | 58 | pass | 5 | 5 | 4061 |  |
+[ingest] | 59 | fail | 100 | 100 | 10863 | result set differs from reference |
+[ingest] | 60 | fail | 100 | 100 | 5259 | result set differs from reference |
+[ingest] | 61 | pass | 1 | 1 | 1566 |  |
+[ingest] | 62 | fail | 100 | 100 | 2678 | result set differs from reference |
+[ingest] | 63 | pass | 100 | 100 | 2704 |  |
+[ingest] | 64 | fail | 2 | 460 | 25809 | result set differs from reference |
+[ingest] | 65 | pass | 100 | 100 | 2750 |  |
+[ingest] | 66 | pass | 5 | 5 | 13356 |  |
+[ingest] | 67 | fail | 100 | 100 | 3529 | result set differs from reference |
+[ingest] | 68 | fail | 100 | 100 | 1914 | result set differs from reference |
+[ingest] | 69 | pass | 100 | 100 | 6649 |  |
+[ingest] | 70 | pass | 3 | 3 | 2973 |  |
+[ingest] | 71 | pass | 1031 | 1031 | 6616 |  |
+[ingest] | 72 | fail | 100 | 100 | 3382 | result set differs from reference |
+[ingest] | 73 | fail | 1 | 1327 | 3611 | result set differs from reference |
+[ingest] | 74 | fail | 92 | 93 | 7586 | result set differs from reference |
+[ingest] | 75 | fail | 100 | 100 | 12440 | result set differs from reference |
+[ingest] | 76 | pass | 100 | 100 | 10377 |  |
+[ingest] | 77 | pass | 43 | 43 | 9874 |  |
+[ingest] | 78 | pass | 100 | 100 | 10950 |  |
+[ingest] | 79 | timeout | 100 | 100 | 1810 | agent timed out (was: fail) — result set differs from reference |
+[ingest] | 80 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
+[ingest] | 81 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
+[ingest] | 82 | timeout | 0 | 0 | 0 | agent timed out (was: missing) — no query file produced |
+[ingest] | 83 | pass | 24 | 24 | 4874 |  |
+[ingest] | 84 | fail | 16 | 100 | 3232 | result set differs from reference |
+[ingest] | 85 | pass | 1 | 1 | 3461 |  |
+[ingest] | 86 | pass | 100 | 100 | 1880 |  |
+[ingest] | 87 | fail | 1 | 1 | 4981 | result set differs from reference |
+[ingest] | 88 | fail | 1 | 1 | 3701 | result set differs from reference |
+[ingest] | 89 | pass | 100 | 100 | 5065 |  |
+[ingest] | 90 | fail | 1 | 1 | 1659 | result set differs from reference |
+[ingest] | 91 | fail | 2 | 1 | 2403 | result set differs from reference |
+[ingest] | 92 | pass | 1 | 1 | 1312 |  |
+[ingest] | 93 | pass | 100 | 100 | 1185 |  |
+[ingest] | 94 | pass | 1 | 1 | 4039 |  |
+[ingest] | 95 | pass | 1 | 1 | 3697 |  |
+[ingest] | 96 | fail | 1 | 1 | 1334 | result set differs from reference |
+[ingest] | 97 | pass | 1 | 1 | 4261 |  |
+[ingest] | 98 | pass | 2521 | 2521 | 2009 |  |
+[ingest] | 99 | pass | 90 | 90 | 3108 |  |
+[ingest] 
+[ingest] ## Agent final message
+[ingest] 
+[ingest] > Query written to answer_3498056762.preql and validated successfully. The query imports catalog_sales, filters for ship year 2000 with non-null warehouse/ship_mode/call_center surrogate keys, buckets shipping lag into 5 ranges, and groups by warehouse name (20 chars), shipping mode type, and lowercased call center name. 90 rows returned (within 100 limit), with 0 reported for empty 91-120 and >120 buckets.
+[ingest] 
+[categories] sql_bare leg exit=0
+[categories] sql_schema leg exit=0
+[categories] ingest leg exit=0
+[categories] enriched leg exit=0
+[categories] wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\funnel_v2.png and C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\funnel.md

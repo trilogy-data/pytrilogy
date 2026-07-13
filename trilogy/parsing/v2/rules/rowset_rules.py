@@ -86,7 +86,9 @@ def scalar_subquery(
     if not isinstance(select, SelectStatement) or len(select.output_components) != 1:
         raise fail(
             node,
-            "a `(select ...)` subquery must select exactly one column",
+            "a `(select ...)` subquery used as a scalar value or membership set "
+            "must select exactly one column; project only the key/value consumed "
+            "by the outer expression",
         )
     output = RowsetDerivationStatement(
         name=name,
