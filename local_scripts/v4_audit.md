@@ -1,5 +1,103 @@
 # v4 compatibility audit (last refreshed 2026-07-13)
 
+## ✅ 2026-07-13 (session 3) — rowset_cross_datasource family cleared (9 → 0); v4 sweep 87 → 74 (0 new)
+
+All 9 open failures in `test_rowset_cross_datasource_outer_read.py` fixed
+(subordinate coalesced-key readback ×7 + intersection-key readback ×2), plus
+one latent wrong-rows bug found and fixed beyond the tests (outer WHERE atom
+silently dropped/pre-applied around a preserving read-back relation — new lock
+`test_rowset_key_read_back_aligns_with_source_null_property`, runs both
+planners). Collateral verified: join_matrix 297/0 (+7 xfail), TPC-DS v4 back
+to exactly the 6 pre-existing fails (a q72 wrong-rows regression from the
+first placement generalization was caught by the TPC-DS battery and fixed
+with the successor gate below), tests/core/processing 415/2 (both
+pre-existing disconnected_e2e), where-scoping files 121/1 (pre-existing twin
+residual), full rowset/scoped collateral = pre-existing set only, mypy/ruff/
+black clean. v3 spot-set green (449 passed on the sensitive files).
+
+Five root causes fixed (all v4-only):
+
+1. **Shared build caches leak across scoped-join scopes**
+   (`_build_nested_select`): BuildCaches are keyed on address identity, which
+   is wrong when a rowset BODY carries its own scoped joins — the outer
+   resolution's cached build of the join key (no pseudonym link to its body
+   mate) was reused inside the body, detaching the inner aggregate from its
+   grouping key (global count + FULL JOIN 1=1, count=3 vs 1). Fresh caches
+   when the body adds joins the outer never saw. The CONVERSE case (outer
+   joins excluded via `exclude_derived`) must KEEP the shared caches —
+   boundary pairing reads the outer join's pseudonym stamps off them
+   (subset_presence_probe regressed under a `!=` comparison; `any extra`
+   is the correct trigger).
+2. **Coalesced handle content not produced** (`resolve_rowset`): a
+   `subset/union/full` body collapses the authored key onto the canonical, so
+   a demanded handle's content (`a.aid`) had no produced entry → key dropped,
+   render sentinel. Re-expose the content on the inner producer via the
+   produced canonical's pseudonyms (port of v3 `_expose_coalesced_key_sources`).
+3. **ROOT split can't see scoped-collapsed keys** (`group_rules` +
+   `ConceptAttrs.pseudonyms` new field): the property→key co-source edge
+   matched `data.keys` by address only; with `left join a.aid = b.bid` the
+   b-side property's key (b.bid) exists only as a pseudonym of a.aid → the two
+   sides split into disconnected ROOT buckets and the body's WHERE vanished
+   (intersection_k returned 3 rows). Pseudonym-aware key_node fallback.
+4. **Preserving-relation WHERE placement generalized beyond rowset
+   boundaries** (`condition_placement`): `_boundary_in_active_relation` →
+   `_group_in_active_relation`. An atom whose host is one SIDE of a
+   statement-scoped relation whose mate lives in a different group must not
+   pre-filter (the completion merge re-admits filtered rows NULL-extended).
+   THREE hard-won gates: (a) statement-scoped relations only for non-rowset
+   groups — a global `merge` is an INNER identity, and gating on it floated a
+   rowset body's WHERE above its aggregate (subset_presence_probe 450 = both
+   years summed); (b) own-side identity via member KEYS only, never
+   pseudonyms — a boundary key's pseudonym IS the other side, and counting it
+   empties `mates` (the gate silently self-disables); (c) non-rowset flagged
+   hosts leave the candidate pool QUIETLY (survivors still win; empty pool
+   falls through to the FINAL_RECONVERGENCE tail) — routing straight to FINAL
+   sent q72's pre-aggregation atoms (`inv.date.year = 1999`) above the
+   aggregation = wrong counts. Also requires the flagged group's ONLY
+   group-graph successor to be FINAL (its rows must BE final-merge rows).
+   Mate detection sees through enrichment properties (a group hosting only
+   `a.aw` relates via a.aw's key a.aid — `group_relatable` = members ∪
+   member-keys ∪ member-pseudonyms; own-side = members ∪ member-keys).
+5. **plan_source's carried-args contract** (`_fresh_final_root_projection` +
+   `_assemble_final_node`): `_conditions_met` counts a conditioned request
+   COMPLETE when the plan merely CARRIES the condition args (v3's discovery
+   loop applies the WHERE after; v4's FINAL re-slice has no such step) — wrap
+   the fresh projection in a conditioned SelectNode unless the plan provably
+   implies it (`condition_implies`). And a filter-only FINAL condition arg a
+   contributor already supplies now rides the merge as a HIDDEN input —
+   otherwise the merge WHERE references a column it never carried and join
+   resolution re-joins the producer as a second, PRE-filtered sibling.
+
+Pruned from `v4_known_failing.py` (isolation + in-suite verified):
+join_propagation, outer_read_key, left_k_aw, the stale `readback_inner_k`
+(test renamed intersection_k), scoped_join shared_base_no_fanout,
+outer_blend ×2, three_source star + two_source. Still open in-family:
+FULL-body readback cells ×5 + `resolves_correctly` (a-side property
+key-carry — `_V4_ROWSET_XDS_RESIDUAL`).
+
+**Full v4 sweep: 74 failed / 5549 passed** (was 87/5526), 14 xpassed, 82
+errors = the usual clickhouse-environmental. Every one of the 74 maps to a
+pre-existing family in the 87 list — **0 new**. The 13 fixed:
+rowset_cross_datasource ×9, scoped_join_cross_rowset_multi_where ×2,
+rowset_generation_matrix ×1 (3→2), join_merge_parity ×1 (disjoint null-safe,
+fixed as collateral). Failure list snapshot:
+`local_scripts/v4_sweep_0713_s3_failures.txt`.
+
+**Open families by sweep count (74):** duckdb_rowset ×7, duckdb.py ×6,
+union_reproject ×6, TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder,
+or_membership, q64-correlated), filter_mixed_aggregate ×4,
+materialized_aggregate_bridge ×4, offset_join ×4, rollup_scoped ×3,
+filter_bare_aggregate_content_grain ×3, union_join_rowset_grain ×3,
+generation_matrix ×2, cograin ×2, multi_partial_anchor ×2, expression_keys
+×2, membership_existence ×2, pushdown_partitioned ×2,
+cross_rowset_join_rowset_as_set ×2, subquery ×2, disconnected_e2e messages
+×2, + singles (syntax_examples rollup, rowset_body_limit, scoped_derived
+exp_rows1, collapse_basic_into_group, union_bare_aggregate, setops,
+orderby_derived_expr, constant_def_macro, membership_having,
+twin_keeps_scalar_refs). Largest next target: duckdb_rowset ×7
+(composite union-join rowset aggregate grouping) or duckdb.py ×6
+(grouping/rollup builds + constant-filter shapes).
+
 ## ✅ 2026-07-13 (session 2) — where-scoping #599 family ported to v4; v4 sweep 140 → 87 (0 new)
 
 The #599 dual-scope contract (WHERE cross-row references gate at POPULATION

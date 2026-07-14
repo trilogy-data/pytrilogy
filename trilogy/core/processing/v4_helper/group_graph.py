@@ -828,6 +828,20 @@ def _materialize_group_graph(
     return group_graph, attrs, group_edges
 
 
+def _statement_relation_addresses(environment: BuildEnvironment) -> frozenset[str]:
+    """Endpoints of query-scoped (STATEMENT) join declarations — the relations
+    whose completion merge can null-extend a side in this query. Global
+    `merge` identities are excluded: they pair INNER and never null-extend."""
+    from trilogy.core.domain_graph import EdgeScope
+
+    return frozenset(
+        addr
+        for e in environment.domain_graph.edges
+        if e.scope is EdgeScope.STATEMENT
+        for addr in (e.source, e.target)
+    )
+
+
 def _inject_conditions(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -836,6 +850,8 @@ def _inject_conditions(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     scoped_join_key_groups: dict[str, set[str]] | None = None,
+    concept_attrs: dict[str, ConceptAttrs] | None = None,
+    statement_relation_addresses: frozenset[str] = frozenset(),
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
@@ -846,6 +862,8 @@ def _inject_conditions(
         conditions,
         mandatory_list,
         scoped_join_key_groups,
+        concept_attrs,
+        statement_relation_addresses,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -1911,6 +1929,12 @@ def build_group_graph(
         conditions,
         mandatory_list,
         environment.scoped_join_key_groups if environment is not None else None,
+        concept_attrs,
+        (
+            _statement_relation_addresses(environment)
+            if environment is not None
+            else frozenset()
+        ),
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,

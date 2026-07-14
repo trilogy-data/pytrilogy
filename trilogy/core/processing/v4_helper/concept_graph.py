@@ -567,6 +567,7 @@ def _add_concept(
             else _aggregate_input_grain(concept, environment, out_grain)
         ),
         keys=frozenset(concept.keys or set()),
+        pseudonyms=frozenset(concept.pseudonyms),
         is_rename=is_rename,
     )
 

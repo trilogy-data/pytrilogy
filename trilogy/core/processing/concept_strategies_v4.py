@@ -63,6 +63,7 @@ from trilogy.core.processing.node_generators.rowset_node import (
     _scoped_joins_for_rowset,
 )
 from trilogy.core.processing.nodes import (
+    BuildCaches,
     History,
     MergeNode,
     SelectNode,
@@ -190,6 +191,21 @@ def _build_nested_select(
     scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    # The shared build caches are keyed on address/grain identity alone, which
+    # is only correct while every build in the resolution applies the SAME
+    # scoped joins — a join changes what an address builds to (canonical
+    # collapse + pseudonym stamping). When this body carries its OWN joins the
+    # outer resolution never saw, entries the outer scope cached are wrong
+    # here (an outer-built join key comes back with no pseudonym link to its
+    # body mate, so the inner aggregate detaches from its grouping key and
+    # FINAL cross-joins ON 1=1); build this scope with fresh caches. The
+    # converse (outer joins EXCLUDED here via `exclude_derived`) keeps the
+    # shared caches: boundary pairing reads the outer join's pseudonym stamps
+    # off them (subset_presence_probe rowset pairs).
+    if any(j not in caches.scoped_joins for j in scoped_joins):
+        caches = BuildCaches(
+            pseudonym_map=caches.pseudonym_map, scoped_joins=scoped_joins
+        )
     factory = Factory(
         environment=author_env,
         build_cache=caches.build_cache,
@@ -619,6 +635,30 @@ def resolve_rowset(
     # inner FINAL masked) has no source-map entry in the rendered CTE, so a
     # boundary input mapped to it dangles at render time.
     produced = {o.address: o for o in inner_node.usable_outputs}
+    # A coalescing scoped join (`full`/`subset`/`union`) collapses the join-key
+    # group (`a.aid = b.bid`) onto ONE canonical body column, leaving the
+    # authored side only as a pseudonym of that canonical — so a demanded
+    # handle's content (`a.aid`) has no produced entry of its own. Re-expose
+    # the content on the inner producer (sourced off the canonical column via
+    # the pseudonym) so the boundary can materialize the handle; mirrors v3
+    # `_expose_coalesced_key_sources`.
+    produced_by_pseudonym: dict[str, BuildConcept] = {}
+    for out in produced.values():
+        for pseudonym in out.pseudonyms:
+            produced_by_pseudonym.setdefault(pseudonym, out)
+    coalesced_contents: list[BuildConcept] = []
+    for demanded_handle in outputs:
+        dlineage = demanded_handle.lineage
+        if not isinstance(dlineage, BuildRowsetItem):
+            continue
+        content = dlineage.content
+        if content.address in produced or content.address not in produced_by_pseudonym:
+            continue
+        if content.address not in {c.address for c in coalesced_contents}:
+            coalesced_contents.append(content)
+    if coalesced_contents:
+        inner_node.add_output_concepts(coalesced_contents)
+        produced.update({c.address: c for c in coalesced_contents})
     derived = lineage.rowset.derived_concepts
     demanded = {o.address for o in rowset_outputs}
     handle_pool = list(environment.concepts.values()) + list(

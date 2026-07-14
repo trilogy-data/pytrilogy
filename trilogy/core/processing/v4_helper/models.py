@@ -119,6 +119,10 @@ class ConceptAttrs:
     rowset_name: str | None = None
     aggregate_input_grain: frozenset[str] = frozenset()
     keys: frozenset[str] = frozenset()
+    # Addresses this concept answers for under another identity (scoped-join
+    # canonical collapse, `merge into`): lets grouping relate a property root
+    # to its key root when the key was collapsed onto a different address.
+    pseudonyms: frozenset[str] = frozenset()
     # True for a pure rename (``alias(...)`` lineage) — a pseudonym of its
     # source. The renderer resolves it transparently to the source column, so
     # it must not be folded into a rollup group like a genuine transform dim.
@@ -197,6 +201,7 @@ def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
         rowset_name=a.rowset_name,
         aggregate_input_grain=a.aggregate_input_grain,
         keys=a.keys,
+        pseudonyms=a.pseudonyms,
         is_rename=a.is_rename,
         existence_only=a.existence_only,
     )

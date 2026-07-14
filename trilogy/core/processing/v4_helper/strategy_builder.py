@@ -33,7 +33,10 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
-from trilogy.core.processing.condition_utility import combine_condition_atoms
+from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    condition_implies,
+)
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.nodes import (
     FilterNode,
@@ -45,6 +48,7 @@ from trilogy.core.processing.nodes import (
     WindowNode,
 )
 from trilogy.core.processing.v4_node_generators import build_node
+from trilogy.utility import unique
 
 from .condition_injection import (
     ConditionSources,
@@ -1643,7 +1647,7 @@ def _fresh_final_root_projection(
     projected = _projection_root_concepts(concepts, environment)
     if not projected:
         return None
-    return plan_source(
+    node = plan_source(
         SourceRequest(
             outputs=projected,
             environment=environment,
@@ -1652,6 +1656,24 @@ def _fresh_final_root_projection(
             conditions=conditions,
             source_policy=source_policy,
         )
+    )
+    if node is None or conditions is None:
+        return node
+    # plan_source validates a conditioned request as COMPLETE when the plan
+    # merely CARRIES the condition's row args (v3's discovery loop applies the
+    # WHERE afterward; see `_conditions_met`'s found-addresses clause). This
+    # re-slice has no such after-step, so an unapplied condition silently
+    # vanishes (a NULL-enrichment row rides the FINAL merge back in). Wrap
+    # unless the plan provably applies it.
+    for existing in (node.conditions, node.preexisting_conditions):
+        if existing is not None and condition_implies(existing, conditions.conditional):
+            return node
+    return SelectNode(
+        output_concepts=node.output_concepts,
+        input_concepts=node.output_concepts,
+        environment=environment,
+        parents=[node],
+        conditions=conditions.conditional,
     )
 
 
@@ -2370,11 +2392,27 @@ def _assemble_final_node(
     arg_nodes, arg_concepts = _filter_arg_parents(
         group_graph, built, filter_only_addrs - available
     )
-    parents = parents + arg_nodes
-    merge_inputs = outputs + [
-        c for c in arg_concepts if c.address not in {o.address for o in outputs}
+    # A filter-only arg a contributor ALREADY supplies (`rs.sa is not null`
+    # beside a boundary outputting rs.sa) must ride the merge as a hidden
+    # input — otherwise the merge's WHERE references a column it never
+    # carried and join resolution re-joins the producer as a second,
+    # PRE-filtered sibling (a preserving relation then re-admits the
+    # filtered rows).
+    supplied_filter_args = [
+        o
+        for p in parents
+        for o in p.output_concepts
+        if o.address in (filter_only_addrs & available)
+        and o.address not in p.hidden_concepts
     ]
-    hidden = {c.address for c in arg_concepts} - mandatory_addresses
+    parents = parents + arg_nodes
+    merge_inputs = unique(
+        outputs + arg_concepts + supplied_filter_args,
+        "address",
+    )
+    hidden = {
+        c.address for c in (*arg_concepts, *supplied_filter_args)
+    } - mandatory_addresses
     # A non-grouping dimension contributor only supplies FD attributes; if it
     # sits at a finer (row-level) grain it must not widen the merge grain, or it
     # fans the aggregate out (e.g. q81: customer-dims joined through

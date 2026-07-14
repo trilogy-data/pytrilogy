@@ -24,7 +24,7 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 
 from .constants import FINAL_NODE_ID, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
-from .models import GroupBucket
+from .models import ConceptAttrs, GroupBucket
 
 ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 
@@ -394,6 +394,8 @@ def plan_condition_placements(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     scoped_join_key_groups: dict[str, set[str]] | None = None,
+    concept_attrs: dict[str, ConceptAttrs] | None = None,
+    statement_relation_addresses: frozenset[str] = frozenset(),
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
     scoped_join_key_groups = scoped_join_key_groups or {}
@@ -416,6 +418,29 @@ def plan_condition_placements(
         gid: set(b.primary_members) | set(b.secondary_members)
         for gid, b in buckets.items()
     }
+    # Addresses a group can pair a relation on beyond its listed members: the
+    # KEYS of its members (a group hosting only `a.aw` still joins on a.aw's
+    # key `a.aid` — assembly carries it). `group_relatable` additionally folds
+    # in member pseudonyms (a collapsed scoped-join mate answers under the
+    # canonical address) — safe for LOCATING a relation mate, but NOT for a
+    # group's own relation-side identity: a boundary key's pseudonym IS the
+    # other side, and counting it would swallow the whole relation (empty
+    # mates) and misclassify the boundary as self-contained.
+    attrs_by_address: dict[str, ConceptAttrs] = {}
+    for ca in (concept_attrs or {}).values():
+        attrs_by_address.setdefault(ca.address, ca)
+    group_own_keys: dict[str, set[str]] = {}
+    group_relatable: dict[str, set[str]] = {}
+    for gid, members in group_members.items():
+        own = set(members)
+        relatable = set(members)
+        for member in members:
+            member_attrs = attrs_by_address.get(member)
+            if member_attrs is not None:
+                own |= set(member_attrs.keys)
+                relatable |= set(member_attrs.keys) | set(member_attrs.pseudonyms)
+        group_own_keys[gid] = own
+        group_relatable[gid] = relatable
     # Every concept that is the RHS set of some membership (`x in <set>`) in this
     # query, and the groups that PRODUCE one. A membership must never be injected
     # on a group that produces a set: the set is a side-channel subselect that
@@ -434,35 +459,70 @@ def plan_condition_placements(
         if all_existence_addrs & set(b.primary_members)
     }
 
-    def _boundary_in_active_relation(gid: str) -> bool:
-        """True when ``gid`` is a ROWSET boundary whose scoped-relation mate is
-        also present in THIS graph — i.e. the completion merge that null-extends
-        this boundary's rows happens in this query. A WHERE atom over such a
-        boundary's outputs is a post-join predicate: hosting it at the boundary
-        pre-filters one side of a preserving relation (an `is not null`
-        intersection idiom becomes a tautology, and a filtered side breaks the
-        EQUAL-declaration narrowing evidence downstream). A boundary whose
+    def _group_in_active_relation(gid: str) -> bool:
+        """True when ``gid`` is one SIDE of a scoped relation whose mate lives
+        in a DIFFERENT group of THIS graph — i.e. the completion merge that
+        null-extends this group's rows happens above it in this query. A WHERE
+        atom over such a group's outputs is a post-join predicate: hosting it
+        at the group pre-filters one side of a preserving relation (an `is not
+        null` intersection idiom becomes a tautology, a filtered side breaks
+        the EQUAL-declaration narrowing evidence downstream, and a preserved
+        anchor re-admits the filtered rows NULL-extended). A group whose
         relation mate is outside this scope (a nested arm reading one rowset)
-        keeps boundary hosting — no merge here can null-extend it."""
+        or INSIDE itself (a single ROOT scan covering the whole join) keeps
+        local hosting — its own SELECT applies the WHERE post-join."""
         b = buckets.get(gid)
-        if b is None or b.derivation != Derivation.ROWSET:
+        if b is None:
             return False
-        # the boundary's key handle can live in the axis bucket rather than in
-        # its own member list, but always names the boundary's grain
-        members = group_members.get(gid, set()) | set(b.grain_components)
+        # A non-ROWSET group only defers when its rows flow STRAIGHT to the
+        # FINAL merge — that merge is then the relation's completion merge and
+        # the atom is genuinely post-join. A group feeding any intermediate
+        # consumer (q72: the inv scan feeding a joined aggregation) must keep
+        # local hosting: its atoms are pre-aggregation predicates, and a
+        # FINAL-deferred copy would filter aggregated rows instead of input
+        # rows.
+        if b.derivation != Derivation.ROWSET and any(
+            succ != FINAL_NODE_ID for succ in group_graph.successors(gid)
+        ):
+            return False
+        # a ROWSET boundary's key handle can live in the axis bucket rather
+        # than its own member list, but always names the boundary's grain; a
+        # plain group participates through a member's key (`a.aw` keyed by
+        # relation member `a.aid`). Own-side identity deliberately excludes
+        # pseudonyms — see `group_own_keys` — and for a ROWSET boundary also
+        # excludes member KEYS: a handle's key resolves through the OUTER
+        # scoped join's canonical (the mate's address), which would swallow
+        # the relation and un-flag the boundary (q64 second-fact join hoist).
+        if b.derivation == Derivation.ROWSET:
+            members = group_members.get(gid, set()) | set(b.grain_components)
+        else:
+            members = group_own_keys.get(gid, set()) | set(b.grain_components)
         keys = members & scoped_join_member_addresses
         if not keys:
             return False
         mates: set[str] = set()
         for canonical, group in scoped_join_key_groups.items():
             relation = set(group) | {canonical}
-            if keys & relation:
-                mates |= relation - keys
+            if not (keys & relation):
+                continue
+            # A non-ROWSET group only counts as a preserved SIDE of a
+            # STATEMENT-scoped join: a global `merge` is an identity
+            # declaration (INNER pairing, no null-extension), so pre-filtering
+            # a scan that shares a merged key is sound — and required, or a
+            # rowset body's own WHERE floats above its aggregate. Rowset
+            # boundaries keep the wider criterion (cross-rowset `merge X.a
+            # into Y.b` completion merges are global-scoped yet preserving).
+            if b.derivation != Derivation.ROWSET and not (
+                relation & statement_relation_addresses
+            ):
+                continue
+            mates |= relation - keys
+        mates -= keys
         if not mates:
             return False
         return any(
-            other_gid != gid and (mates & other_members)
-            for other_gid, other_members in group_members.items()
+            other_gid != gid and (mates & other_relatable)
+            for other_gid, other_relatable in group_relatable.items()
         )
 
     placements: list[ConditionPlacement] = []
@@ -488,10 +548,28 @@ def plan_condition_placements(
             # post-merge (v3 renders `WHERE coalesce(b_store, a_store) is not
             # null` at the final select) — filtering one boundary by its own
             # key both no-ops locally and perturbs the anchor-LEFT join shape.
+            active_relation_hosts = {
+                gid for gid in candidates if _group_in_active_relation(gid)
+            }
+            # A flagged NON-rowset host (a FINAL contributor that is one side
+            # of an active preserving relation — the aligns read-back's
+            # enrichment scan) leaves the pool quietly: any surviving upstream
+            # host still wins (its SELECT applies the WHERE pre-merge within
+            # the pipeline, q72), and when nothing survives the tail routes
+            # the atom to FINAL.
+            candidates = [
+                gid
+                for gid in candidates
+                if gid not in active_relation_hosts
+                or (
+                    buckets.get(gid) is not None
+                    and buckets[gid].derivation == Derivation.ROWSET
+                )
+            ]
             if any(
                 is_presence_probe(addr) or addr in scoped_join_member_addresses
                 for addr in row_inputs
-            ) or any(_boundary_in_active_relation(gid) for gid in candidates):
+            ) or any(gid in active_relation_hosts for gid in candidates):
                 non_rowset_candidates = [
                     gid
                     for gid in candidates

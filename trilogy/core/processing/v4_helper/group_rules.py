@@ -378,11 +378,20 @@ def partition_roots(
                 # on posts) must NOT co-source — `count(user_id)` reads the
                 # users table, not the post FK column's deduped domain.
                 node_by_addr = {data.address: node for node, data in main_items}
+                # A key collapsed onto another identity (scoped join `left join
+                # a.aid = b.bid`, `merge into`) is present under the canonical
+                # address only; the mate's pseudonyms declare the identity.
+                node_by_pseudonym: dict[str, str] = {}
+                for node, data in main_items:
+                    for pseudonym in data.pseudonyms:
+                        node_by_pseudonym.setdefault(pseudonym, node)
                 for node, data in main_items:
                     if data.purpose != Purpose.PROPERTY:
                         continue
                     for key_addr in data.keys:
-                        key_node = node_by_addr.get(key_addr)
+                        key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(
+                            key_addr
+                        )
                         if key_node is not None and key_node != node:
                             undirected.add_edge(node, key_node)
                 comp_of: dict[str, int] = {}

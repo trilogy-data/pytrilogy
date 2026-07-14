@@ -172,6 +172,35 @@ order by rs.k;
     assert [tuple(r) for r in rows] == [(1, 1000.0), (2, 2000.0)]
 
 
+def test_rowset_key_read_back_aligns_with_source_null_property(models: Path):
+    # Same shape as above but aid 1's `aw` is NULL: BOTH outer WHERE atoms are
+    # post-join predicates over the preserving read-back relation. Pre-filtering
+    # the enrichment side re-admits aid 1 NULL-extended through the completion
+    # merge (rows [(1, None), (2, ...)]); pre-filtering the rowset side re-admits
+    # aid 3. Only post-join application yields v3's [(2, 2000.0)].
+    eng = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=models)
+    )
+    eng.execute_raw_sql("create table a_tbl (i int, v double, w double)")
+    eng.execute_raw_sql("insert into a_tbl values (1,10,NULL),(2,20,2000),(3,30,3000)")
+    eng.execute_raw_sql("create table b_tbl (i int, v double)")
+    eng.execute_raw_sql("insert into b_tbl values (1,100),(2,200),(4,400)")
+    rows = eng.execute_query("""
+import a as a;
+import b as b;
+with rs as
+where a.aid in b.bid
+select a.aid as k, sum(a.av) as sa;
+
+
+where a.aw is not null and rs.sa is not null
+select rs.k, a.aw
+left join rs.k = a.aid
+order by rs.k;
+""").fetchall()
+    assert [tuple(r) for r in rows] == [(2, 2000.0)]
+
+
 # --- Read-back matrix: project the rowset key (`a.aid as k`) under each internal
 # scoped-join type, alongside nothing / a count / a SOURCE-side property (a.aw,
 # keyed by the join source a.aid) / a CANONICAL-side property (b.bv, keyed by the
