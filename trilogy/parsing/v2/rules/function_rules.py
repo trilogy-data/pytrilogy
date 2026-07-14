@@ -185,6 +185,46 @@ def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
     return root
 
 
+# ASCII unit/record separators: control characters, so they cannot collide with a
+# cast value. The NULL sentinel must differ from the empty string, or ('', NULL)
+# and (NULL, '') would hash alike.
+GRAIN_SEPARATOR = "\x1f"
+GRAIN_NULL_SENTINEL = "\x1e"
+
+
+def fgrain(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> Function:
+    """``grain(a, b, ...)`` - a hash of the key tuple, at the tuple's grain.
+
+    Desugars to ``hash(concat_ws(sep, coalesce(cast(a as string), sentinel), ...))``
+    so every dialect's own spelling of those primitives is inherited. Two properties
+    are load-bearing: the hash is TOTAL (a NULL member still yields a value, so
+    ``count()`` never skips a combination) and INJECTIVE (so ``count(grain(...))``
+    equals ``count_distinct(grain(...))``). Counting the combinations then falls out
+    of the standard rule that an aggregate's population is the distinct grain of its
+    arguments - no planner support is needed. Every argument is referenced in the
+    emitted SQL, which is what keeps the tuple columns from being pruned out of the
+    GROUP BY that does the deduping.
+    """
+    args = hydrated_children(node, hydrate)
+    if len(args) < 2:
+        raise fail(node, "grain() needs at least two keys - grain(a, b).")
+    factory = context.function_factory
+    parts: list[Any] = [GRAIN_SEPARATOR]
+    for arg in args:
+        as_string = factory.create_function([arg, DataType.STRING], FunctionType.CAST)
+        parts.append(
+            factory.create_function(
+                [as_string, GRAIN_NULL_SENTINEL], FunctionType.COALESCE
+            )
+        )
+    joined = factory.create_function(parts, FunctionType.CONCAT_WS)
+    return factory.create_function([joined, "md5"], FunctionType.HASH)
+
+
 # --- Table-driven simple function handler ---
 
 
@@ -1065,6 +1105,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.FREGEXP_EXTRACT: fregexp_extract,
     SyntaxNodeKind.FARRAY_SORT: farray_sort,
     SyntaxNodeKind.FCAST: fcast,
+    SyntaxNodeKind.FGRAIN: fgrain,
     SyntaxNodeKind.FCURRENT_DATE: fcurrent_constant,
     SyntaxNodeKind.FCURRENT_DATETIME: fcurrent_constant,
     SyntaxNodeKind.FCURRENT_TIMESTAMP: fcurrent_constant,

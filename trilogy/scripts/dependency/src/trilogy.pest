@@ -663,6 +663,8 @@ fcast = { ^"cast" ~ "(" ~ expr ~ ^"as" ~ (data_type | IDENTIFIER) ~ ")" }
 // =============================================================================
 concat      = { ^"concat" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 concat_ws   = { ^"concat_ws" ~ "(" ~ expr ~ "," ~ expr ~ ("," ~ expr)* ~ ")" }
+// two or more keys: a one-key grain is just the key itself
+fgrain      = { ^"grain" ~ "(" ~ expr ~ ("," ~ expr)+ ~ ")" }
 fcoalesce   = { ^"coalesce" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fgreatest   = { ^"greatest" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fleast      = { ^"least" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
@@ -678,7 +680,7 @@ fnullif      = { ^"nullif" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 frecurse_edge = { ^"recurse_edge" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 
 _generic_functions = _{
-    fcast | fcase_simple | fcase | concat_ws | concat | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
+    fcast | fcase_simple | fcase | concat_ws | concat | fgrain | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
 }
 
 // =============================================================================

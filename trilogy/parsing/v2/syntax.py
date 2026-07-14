@@ -115,6 +115,7 @@ class SyntaxNodeKind(str, Enum):
     FBOOL = "fbool"
     CONCAT = "concat"
     CONCAT_WS = "concat_ws"
+    FGRAIN = "fgrain"
     FCOALESCE = "fcoalesce"
     FGREATEST = "fgreatest"
     FLEAST = "fleast"
@@ -455,6 +456,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "fbool": SyntaxNodeKind.FBOOL,
     "concat": SyntaxNodeKind.CONCAT,
     "concat_ws": SyntaxNodeKind.CONCAT_WS,
+    "fgrain": SyntaxNodeKind.FGRAIN,
     "fcoalesce": SyntaxNodeKind.FCOALESCE,
     "fgreatest": SyntaxNodeKind.FGREATEST,
     "fleast": SyntaxNodeKind.FLEAST,

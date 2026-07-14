@@ -1,7 +1,45 @@
 # Feature handoff — `grain(a, b, c)`: a total grain marker, so `count()` can count combinations
 
-Status: PROPOSED (owner-designed 2026-07-14). Motivation is empirical — see "Why".
-Related: `handoff_framework_bugs_20260714.md` (q87, q14).
+**Status: LANDED 2026-07-14.** Tests: `tests/engine/test_grain_function.py`.
+Motivation is empirical — see "Why". Related: `handoff_framework_bugs_20260714.md` (q87, q14).
+
+## What shipped (differs from the design below in one important way)
+
+`grain()` is **pure syntactic sugar** — a parse-time desugar, NOT a new `FunctionType`:
+
+```
+grain(a, b, c)  ->  hash(concat_ws(<US>, coalesce(cast(a as string), <RS>), ...), 'md5')
+```
+
+Built from the EXISTING `CAST` / `COALESCE` / `CONCAT_WS` / `HASH` function types, so every dialect's
+own spelling is inherited and **no dialect code was written at all**. One hydrator
+(`parsing/v2/rules/function_rules.py fgrain`), one `SyntaxNodeKind`, and a grammar rule in each
+backend (lark + pest; pest needed a `maturin develop` rebuild). No planner work — counting the
+combinations falls out of the standard rule that an aggregate's population is the distinct grain of
+its arguments.
+
+**Semantics, as verified against DuckDB (`test_grain_function.py`):**
+
+| spelling | means | over a `rid`-grained table with 7 rows / 5 distinct name-date combos |
+|---|---|---|
+| `count(grain(a, b))` | **rows** of the population (the `count(*)` replacement) | 7 |
+| `count_distinct(grain(a, b))` | **distinct combinations** | 5 |
+| `count(<nullable property>)` | rows where it is non-null — **the q87 bug** | 3 |
+
+These two are NOT interchangeable, and the difference is deliberate: a property's grain IS the grain
+of its defining key (unchanged, documented semantics), so if the tuple is COARSER than the population
+the row count and the combination count legitimately differ. **They coincide in both motivating
+cases** — q14's args ARE the fact's grain keys (157,093 lines) and q87's rowset grain IS the 3-tuple
+(47,298) — which is why either spelling answers those questions. When in doubt about "distinct
+combinations", use `count_distinct(grain(...))`; it is right regardless of population grain.
+
+An earlier draft proposed a first-class `FunctionType.GRAIN` that would DECLARE its grain to be its
+arguments (forcing a dedupe even when the args are properties of a finer key). **Rejected by owner:
+the grain of a property is the grain of its key — do not change that semantics.**
+
+---
+
+## Original design notes (retained for context)
 
 **Supersedes an earlier multi-arg-`count(a,b,c)` proposal, which was scrapped**: it needed a new
 aggregate FunctionType, an arity special-case in `count`, a bespoke NULL rule that contradicted

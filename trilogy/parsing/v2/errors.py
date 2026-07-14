@@ -92,7 +92,11 @@ ERROR_CODES: dict[int, str] = {
         "count its key (`count(customer.id)`). It MUST be a key, and one that is "
         "not nullable: `count(x)` skips rows where `x` is NULL, so counting a "
         "nullable property (a name, a date, any optional field) silently "
-        "undercounts. For any other aggregate, pass the column you mean, e.g. "
+        "undercounts. When the grain takes SEVERAL keys, name them with `grain(...)`: "
+        "`count(grain(order_id, item.id))` counts order+item combinations, and "
+        "`count_distinct(grain(first_name, last_name, sale_date))` counts distinct "
+        "combinations - `grain()` is never NULL, so combinations with a missing "
+        "member still count. For any other aggregate, pass the column you mean, e.g. "
         "`sum(store_sales.ext_sales_price)`."
     ),
     224: (

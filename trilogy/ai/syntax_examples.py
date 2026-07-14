@@ -103,8 +103,8 @@ limit 100;
         title="Filtered aggregate - aggregate only the rows matching a condition",
         summary=(
             "`sum(x ? cond)` / `count(x ? cond)` aggregate just the matching rows; "
-            "to COUNT ROWS count the unique grain/row key, not a non-unique sub-key; "
-            "`by <grain>` pins the aggregate's grain"
+            "to COUNT ROWS count the unique grain/row key, or `count(grain(k1, k2))` "
+            "when several keys identify it; `by <grain>` pins the aggregate's grain"
         ),
         body="""\
 # `?` is a local filter - a filter that applies only to the prior expression-
@@ -124,6 +124,14 @@ order by iris.species asc;
 # row key (often named `row_key`), NOT a non-unique sub-key. e.g. counting line
 # items by `count(line_number ? cond)` collapses to the number of distinct line
 # numbers (1..7) and undercounts - use `count(row_key ? cond)`.
+
+# COMPOSITE GRAIN: when SEVERAL keys together identify the thing you are counting,
+# name them with `grain(...)` instead of picking one:
+#   count(grain(sales.order_id, sales.item_id))                 # order+item lines
+#   count_distinct(grain(cust.first_name, cust.last_name, sales.date))
+# `grain(...)` is NEVER NULL, so a combination with a missing member (a customer
+# with no last name) still counts - whereas `count(last_name)` silently drops it.
+# It composes with `?` like any expression: count(grain(a, b) ? cond).
 """,
     ),
     SyntaxExample(
