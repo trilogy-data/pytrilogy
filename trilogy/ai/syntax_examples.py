@@ -226,6 +226,16 @@ select
     student_dept_credits_2024,
 ;
 
+# HIDDEN GROUP KEY: if the requested output is one row per (student, department)
+# but displays only student_id, keep department in the select with the `--`
+# PREFIX. Otherwise identical displayed student rows are deduplicated and the
+# required per-department row grain is lost.
+where student_dept_credits_2024 > 1.2 * dept_avg_credits_2024
+select
+    enroll.student_id,
+    --enroll.department,
+;
+
 # For more complex boundaries, compute the full-population benchmark in a separate rowset
 # with no output filter, then apply the subset filter only in the final selection.
 """,
@@ -372,7 +382,8 @@ limit 100;
 #    `union(...)` function form - the cleanest way to stack rows from several
 #    sources.
 #  - AGGREGATING across a union/set-op: an arm's `select` dedups to its own output
-#    grain BEFORE stacking, so stacking raw per-row values (a measure, a `1` flag)
+#    grain BEFORE stacking (all selects are select distinct), 
+#    so stacking raw per-row values (a measure, a `1` flag)
 #    and summing/counting OUTSIDE the union silently undercounts whenever two source
 #    rows in one arm project the same tuple (e.g. two same-priced sales in a week).
 #    Pre-aggregate INSIDE each arm (`sum(sales) as v`, `sum(1) as cnt` - as this
@@ -493,9 +504,11 @@ order by completed_by.dept asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
-# (3) SELF-PAIR across two periods/sets (period-over-period) - the PREFERRED shape
+# (3) SELF-PAIR across two periods/sets (period-over-period) - a useful shape
 # for "this year vs last year": build one rowset per period (each aggregated to
-# the SAME keys), then join them on those keys.
+# the SAME keys), filter to restrict to output to one side or the other
+# in having clause.
+
 rowset y2020 <- where enroll.year = 2020 select enroll.department as dept, count(enroll.id) as cnt;
 rowset y2021 <- where enroll.year = 2021 select enroll.department as dept, count(enroll.id) as cnt;
 
@@ -505,6 +518,7 @@ select
     y2021.cnt as cnt_2021,
     y2021.cnt - y2020.cnt as yoy_diff,
 union join y2020.dept = y2021.dept
+having y2021.cnt is not null
 order by yoy_diff desc nulls first
 limit 100;
 
@@ -681,11 +695,10 @@ select
          else enroll.department end as department,
     case when grouping(enroll.course) = 1 then 'all courses'
          else enroll.course end as course,
-    sum(enroll.credits) as total_credits,
-    --grouping(enroll.department) + grouping(enroll.course) as _level
+    sum(enroll.credits) as total_credits
 by rollup (enroll.department, enroll.course)
 having total_credits > 0
-order by _level asc, department asc nulls first, course asc nulls first
+order by department asc nulls first, course asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
@@ -693,9 +706,16 @@ limit 100;
 #  - CLAUSE ORDER matches SQL: the `by rollup (…)` grouping clause comes BEFORE
 #    `having` (select list -> by rollup -> having -> order by -> limit). The
 #    HAVING filters EVERY grouping level - subtotal and grand-total rows too.
-#  - SORT BY LEVEL (leaves, then subtotals, then grand total): ORDER BY cannot
-#    compute a fresh aggregate, so PROJECT the level (`grouping(a) + grouping(b)`)
-#    as a HIDDEN (`--`) column and sort by its alias - `_level` above.
+#  - SORT: use EXACTLY the sort the question asks for. Rollup rows are ordinary rows
+#    and sort with everything else (their rolled-up dimensions are NULL, hence
+#    `nulls first`/`nulls last` decides where they land). Sorting by LEVEL is OPTIONAL
+#    and only when you actually want leaves/subtotals/totals grouped together: ORDER BY
+#    cannot compute a fresh aggregate, so PROJECT the level (`grouping(a) + grouping(b)`)
+#    as a HIDDEN (`--`) column and sort by its alias:
+#        --grouping(enroll.department) + grouping(enroll.course) as _level
+#        order by _level asc, department asc nulls first
+#    Do NOT add `_level` to a sort the question already specified - a leading sort key
+#    changes WHICH rows survive a `limit`, so it can silently drop the totals.
 #  - COMPOSITE measures just work: `sum(a) - sum(b) as net` rolls up BOTH operands
 #    to the same levels because the `by rollup (…)` clause covers the whole select.
 #    To zero-fill a measure, wrap it: `coalesce(sum(a), 0) as a`.

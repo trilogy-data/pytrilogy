@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import shutil
@@ -63,9 +64,11 @@ def _force_utf8_stdio() -> None:
     """Survive redirection on Windows, where stdout defaults to cp1252 and
     chokes on non-ASCII in the feed and report."""
     for stream in (sys.stdout, sys.stderr):
+        if not isinstance(stream, io.TextIOWrapper):
+            continue
         try:
             stream.reconfigure(encoding="utf-8")
-        except (AttributeError, ValueError):
+        except ValueError:
             pass
 
 
@@ -491,7 +494,9 @@ def run(spec: BenchmarkSpec) -> int:
         return 2
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    run_dir = args.output_dir or (spec.results_dir / timestamp)
+    # Absolute: agent subprocesses run with cwd set to their per-worker workspace
+    # copy, so a relative run dir would resolve to a path that doesn't exist there.
+    run_dir = (args.output_dir or (spec.results_dir / timestamp)).resolve()
     workspace = run_dir / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     print(f"[1/5] Building {spec.name} DuckDB (sf={args.scale_factor:g}) ...")
@@ -696,7 +701,7 @@ def run(spec: BenchmarkSpec) -> int:
             if scoring_available:
                 try:
                     with scoring_lock:
-                        per_query_scores[index] = scoring.score_query_timed(
+                        score = scoring.score_query_timed(
                             workspace_db,
                             workspace,
                             qid,
@@ -706,25 +711,20 @@ def run(spec: BenchmarkSpec) -> int:
                             custom_refs_dir=references_dir,
                         )
                 except Exception as exc:
-                    per_query_scores[index] = scoring.QueryResult(
+                    score = scoring.QueryResult(
                         id=qid,
                         status="error",
                         detail=f"inline-score: {type(exc).__name__}: {exc}",
                     )
-                per_query_scores[index] = scoring.apply_timeout(
-                    per_query_scores[index], result.get("timed_out", False)
-                )
-                per_query_scores[index] = scoring.apply_exhausted(
-                    per_query_scores[index],
-                    result.get("exit_code", 0),
-                    result.get("timed_out", False),
-                )
+                timed_out = result.get("timed_out", False)
+                exit_code = result.get("exit_code", 0)
+                score = scoring.apply_timeout(score, timed_out)
+                score = scoring.apply_exhausted(score, exit_code, timed_out)
                 per_query_scores[index] = scoring.apply_crash(
-                    per_query_scores[index],
-                    result.get("exit_code", 0),
-                    result.get("timed_out", False),
+                    score, exit_code, timed_out
                 )
-            status = per_query_scores[index].status if per_query_scores[index] else "?"
+            scored = per_query_scores[index]
+            status = scored.status if scored else "?"
             print(
                 f"  [q{qid:02d}] done in {result['duration']:.0f}s"
                 f" (exit {result['exit_code']}, score={status})",
@@ -768,7 +768,7 @@ def run(spec: BenchmarkSpec) -> int:
             if per_query_scores[i] is None:
                 try:
                     with scoring_lock:
-                        per_query_scores[i] = scoring.score_query_timed(
+                        score = scoring.score_query_timed(
                             workspace_db,
                             workspace,
                             entry["id"],
@@ -778,37 +778,17 @@ def run(spec: BenchmarkSpec) -> int:
                             custom_refs_dir=references_dir,
                         )
                 except Exception as exc:
-                    per_query_scores[i] = scoring.QueryResult(
+                    score = scoring.QueryResult(
                         id=entry["id"],
                         status="error",
                         detail=f"backfill-score: {type(exc).__name__}: {exc}",
                     )
-                per_query_scores[i] = scoring.apply_timeout(
-                    per_query_scores[i],
-                    (
-                        per_query_runs[i].get("timed_out", False)
-                        if per_query_runs[i]
-                        else False
-                    ),
-                )
-                per_query_scores[i] = scoring.apply_exhausted(
-                    per_query_scores[i],
-                    (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
-                    (
-                        per_query_runs[i].get("timed_out", False)
-                        if per_query_runs[i]
-                        else False
-                    ),
-                )
-                per_query_scores[i] = scoring.apply_crash(
-                    per_query_scores[i],
-                    (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
-                    (
-                        per_query_runs[i].get("timed_out", False)
-                        if per_query_runs[i]
-                        else False
-                    ),
-                )
+                run = per_query_runs[i]
+                timed_out = run.get("timed_out", False) if run else False
+                exit_code = run.get("exit_code", 0) if run else 0
+                score = scoring.apply_timeout(score, timed_out)
+                score = scoring.apply_exhausted(score, exit_code, timed_out)
+                per_query_scores[i] = scoring.apply_crash(score, exit_code, timed_out)
         query_results = [
             (
                 s

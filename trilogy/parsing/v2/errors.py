@@ -87,10 +87,12 @@ ERROR_CODES: dict[int, str] = {
     223: (
         "`*` is not a valid argument - Trilogy has no `*` row-marker, so "
         "`count(*)` / `sum(*)` don't parse. To count rows at the query grain, "
-        "count a key field: `count(<key>)` (counts are already distinct) - e.g. "
-        "`count(store_sales.id)`; to count a related dimension's rows, count its "
-        "key (`count(customer.id)`). For any other aggregate, pass the column you "
-        "mean, e.g. `sum(store_sales.ext_sales_price)`."
+        "count a NON-NULLABLE key field - e.g. `count(store_sales.id)`; to count a "
+        "related dimension's rows, count its key (`count(customer.id)`). WARNING: "
+        "`count(x)` skips rows where `x` is NULL, so counting a nullable column "
+        "(a name, a date, any optional property) silently undercounts - always "
+        "count a key. For any other aggregate, pass the column you mean, e.g. "
+        "`sum(store_sales.ext_sales_price)`."
     ),
     224: (
         "Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is "
