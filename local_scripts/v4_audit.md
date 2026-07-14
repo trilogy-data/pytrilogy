@@ -7,23 +7,26 @@ below.
 
 ## Current state (after 2026-07-14 session 2)
 
-**Baseline full v4 sweep (pre-session-2, commit 9f5a5c8dc): 67 failed /
-5558 passed**, 12 xpassed, 82 errors (all clickhouse-environmental, ignore).
-Session 2 cleared union_reproject ×6 + rollup_scoped 3→2 with zero new
-targeted-collateral failures → expected next sweep ≈ 60. A post-session
-detached sweep should confirm.
+**Full v4 sweep (post session 2, commit b285fc2d0): 59 failed / 5566
+passed**, 12 xpassed, 82 errors (all clickhouse-environmental, ignore).
+Log: `local_scripts/v4_sweep_0714_s2.log`. Verified against the 67-baseline:
+every failure maps to a pre-existing family, ZERO new. −8 net: union_reproject
+×6, rollup_scoped `two_key_subset_join_no_rollup_builds`, cograin
+`having_bare_max` sibling.
 
-**Open families (from the 67, minus session 2 fixes):** duckdb.py ×6
-(**NEXT**), TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder, or_membership,
+**Open families by sweep count (59):** duckdb.py ×6 (**NEXT** —
+where_on_constant ×2, grouping-rollup builds ×3, filtered_constant_aggregate),
+TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder, or_membership,
 q64-correlated), filter_mixed_aggregate ×4, materialized_aggregate_bridge ×4,
 offset_join ×4, duckdb_rowset residual ×3 (order_by_measure q83 + composite
 stddev/variance keys-3 ×2), filter_bare_aggregate_content_grain ×3,
 rollup_scoped ×2 (three_key_executes, two_key_partial_builds),
-generation_matrix ×2, cograin ×2, multi_partial_anchor ×2, expression_keys
-×2, membership_existence ×2, pushdown_partitioned ×2,
+generation_matrix ×2, multi_partial_anchor ×2, expression_keys ×2,
+membership_existence ×2, pushdown_partitioned ×2,
 cross_rowset_join_rowset_as_set ×2, subquery ×2, disconnected_e2e messages
-×2, + singles (syntax_examples rollup, rowset_body_limit, scoped_derived
-exp_rows1, collapse_basic_into_group, union_bare_aggregate, setops,
+×2, cograin ×1 (having_bare_max_matches_where), + singles (syntax_examples
+rollup, rowset_body_limit, scoped_derived exp_rows1,
+collapse_basic_into_group, union_bare_aggregate, setops,
 orderby_derived_expr, constant_def_macro, membership_having,
 twin_keeps_scalar_refs).
 
