@@ -18,6 +18,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildWhereClause,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.discovery_utility import _output_is_rootless
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
@@ -396,6 +397,7 @@ def plan_condition_placements(
     scoped_join_key_groups: dict[str, set[str]] | None = None,
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
+    environment: BuildEnvironment | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
     scoped_join_key_groups = scoped_join_key_groups or {}
@@ -495,6 +497,22 @@ def plan_condition_placements(
         # the relation and un-flag the boundary (q64 second-fact join hoist).
         if b.derivation == Derivation.ROWSET:
             members = group_members.get(gid, set()) | set(b.grain_components)
+            # A boundary participates through its member HANDLE even when the
+            # select never demands it (`union join return_demos.demo_id =
+            # c_demo` selecting only grain keys): the handle lives on this
+            # boundary by namespace, and the completion merge still
+            # null-extends these rows.
+            boundary_namespaces = {
+                member.rpartition(".")[0]
+                for member in members
+                if (ca := attrs_by_address.get(member)) is not None
+                and ca.derivation == Derivation.ROWSET
+            }
+            members |= {
+                addr
+                for addr in scoped_join_member_addresses
+                if addr.rpartition(".")[0] in boundary_namespaces
+            }
         else:
             members = group_own_keys.get(gid, set()) | set(b.grain_components)
         keys = members & scoped_join_member_addresses
@@ -520,6 +538,21 @@ def plan_condition_placements(
         mates -= keys
         if not mates:
             return False
+        # A ROOT mate (`c_demo`) is often not itself a member of any group —
+        # the pairing scan carries it as an FD attribute of a member's key
+        # (customers hosts c_name keyed by c_id; c_demo's key is c_id). Let a
+        # ROWSET boundary locate such a mate through the mate's keys; an
+        # undemanded mate has no ConceptAttrs, so fall back to the environment.
+        if b.derivation == Derivation.ROWSET:
+            for mate in list(mates):
+                mate_attrs = attrs_by_address.get(mate)
+                if mate_attrs is not None:
+                    mates |= set(mate_attrs.keys)
+                elif environment is not None:
+                    mate_concept = environment.concepts.get(mate)
+                    if mate_concept is not None and mate_concept.keys:
+                        mates |= set(mate_concept.keys)
+            mates -= keys
         return any(
             other_gid != gid and (mates & other_relatable)
             for other_gid, other_relatable in group_relatable.items()

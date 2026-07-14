@@ -1,4 +1,160 @@
-# v4 compatibility audit (last refreshed 2026-07-13)
+# v4 compatibility audit (last refreshed 2026-07-14)
+
+Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
+2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
+this file and in the project memory. Standing lessons from that era are kept
+below.
+
+## Current state (after 2026-07-13 session 3)
+
+**Full v4 sweep: 74 failed / 5549 passed**, 14 xpassed, 82 errors (all
+clickhouse-environmental, ignore). v3 full sweep green.
+
+**Open families by sweep count (74):** duckdb_rowset ×7 (**NEXT — in progress
+2026-07-14**), duckdb.py ×6, union_reproject ×6, TPC-DS ×6 (q14,
+q64-transitive, q81, q29-feeder, or_membership, q64-correlated),
+filter_mixed_aggregate ×4, materialized_aggregate_bridge ×4, offset_join ×4,
+rollup_scoped ×3, filter_bare_aggregate_content_grain ×3,
+union_join_rowset_grain ×3, generation_matrix ×2, cograin ×2,
+multi_partial_anchor ×2, expression_keys ×2, membership_existence ×2,
+pushdown_partitioned ×2, cross_rowset_join_rowset_as_set ×2, subquery ×2,
+disconnected_e2e messages ×2, + singles (syntax_examples rollup,
+rowset_body_limit, scoped_derived exp_rows1, collapse_basic_into_group,
+union_bare_aggregate, setops, orderby_derived_expr, constant_def_macro,
+membership_having, twin_keeps_scalar_refs).
+
+duckdb_rowset ×7 (regenerated 2026-07-14):
+- `test_order_by_measure_through_nested_rowset_join_groups` (q83 shape)
+- `test_top_n_rank_filter_over_inline_aggregate_in_rowset` (q70 shape)
+- `test_composite_union_join_rowset_two_pass_aggregate_groups[stddev/variance-2/3]` (q17 shape, ×4)
+- `test_composite_union_join_rowset_simple_aggregate_still_groups[count]`
+Plus the separate union_join_rowset_grain ×3
+(`test_rowset_join_{no_grain_outputs_dedups,hidden_grain_outputs_preserve_fanout,visible_grain_outputs_preserve_fanout}`).
+
+## How to verify (the rules)
+
+- The authoritative skip list is `tests/v4_known_failing.py`; reclassify with
+  `python local_scripts/v4_classify.py` when changing planner behavior. The
+  classifier runs listed tests in ISOLATION (pessimistic — some pass in-suite)
+  and exits non-zero on a label ESCALATION.
+- **A full v4 sweep is the parity gate.** A safe prune needs the entry passing
+  in isolation AND in-suite:
+
+  ```bash
+  TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
+  ```
+
+- The harness's 10-min background cap kills a full sweep — run detached
+  (`Start-Process` → log + monitor). Never run v3+v4 sweeps concurrently
+  (duckdb hard-crash).
+- TPC-DS runs dirty checked-in zquery*.log files; `git stash pop` can conflict
+  SILENTLY and leave "post-change" checks running the PRE tree. Verify pops;
+  `git checkout -- tests/modeling` before stashing.
+- Placement changes near preserving relations MUST run the TPC-DS battery —
+  q72 is the sole regression signal for pre-aggregation atom hosting.
+- Full repo checks after repo-wide changes: `ruff check . --fix`,
+  `mypy trilogy`, `black .`.
+
+## Standing lessons (earned 2026-06 → 2026-07)
+
+- **Green shape-only sweep ≠ row parity.** Several tracked tests assert SQL
+  shape and never execute; a green sweep once masked a cartesian-product
+  wrong-rows bug (`rowset_alias`). Never condition a shape-only v4 test green
+  without executing rows.
+- **Isolation failures can be untracked.** Some tests crash alone but pass via
+  suite ordering and aren't in `v4_known_failing.py`. Run suspect families in
+  isolation before believing a family is closed.
+- **CONFIG leaks poison sweeps.** `CONFIG.use_v4_discovery` is a process-global
+  singleton; a test restoring it to a hardcoded value once silently ran most of
+  every "v4" sweep under v3 (~77 masked failures). The conftest autouse
+  snapshot/restore of `use_v4_discovery` + `optimizations` guards this now.
+- **Timeouts are runaways, not size issues.** Investigate the SQL for cross
+  joins and soft cross joins (join on non-unique key before aggregating).
+- All TPC-DS `_TPCDS_SIZE` ceiling work is CLOSED (q2.1/q2.2, q10, q23, q30.alt,
+  q47/q57, q73, q81, q94 all fixed + pruned by 2026-06-30).
+
+## Diagnostics: `local_scripts/discovery_v4.py`
+
+Primary graph/strategy harness — use before eyeballing SQL:
+
+```bash
+.venv/Scripts/python.exe local_scripts/discovery_v4.py --query 81 --diagnostics --diagnostics-dir local_scripts/v4_diagnostics --no-sql
+.venv/Scripts/python.exe local_scripts/discovery_v4.py --query query30-alt.preql --diagnostics --diagnostics-dir local_scripts/v4_diagnostics --no-sql
+```
+
+Outputs: `<stem>.png` (concept graph), `<stem>_groups[_reordered].png` (group
+graphs), `v4_diagnostics/<stem>_diagnostics.json` (machine-readable),
+`<stem>_groups[_merged].md` (group attrs/IO/contracts incl. `__final__`),
+`<stem>_strategy.md` (materialized StrategyNode tree). Fast loop: check
+`__final__` merge grain/contracts → search strategy for repeated datasources →
+use the JSON for scripted comparisons. Real-fixture size numbers come from
+`local_scripts/v4_real_size.py` (the `v4_size_compare` proxy skips inlining and
+reads high).
+
+## ✅ 2026-07-14 — duckdb_rowset 7 → 2 + union_join_rowset_grain 3 → 0 (scoped-relation axis at FINAL)
+
+test_duckdb_rowset.py 7 → 2 (top_n_rank, composite stddev/variance keys≤2,
+count), test_duckdb_union_join_rowset_grain.py 3 → 0. Collateral: join_matrix
+297/0 (+7 xfail), TPC-DS v4 = the 6 pre-existing only (q72 intact),
+tests/core/processing + where-scoping = pre-existing 3, full rowset/scoped
+collateral = pre-existing 16 only, v3 green on the touched files, mypy/ruff/
+black clean. Five root causes fixed (all v4-only):
+
+1. **Condition-arg feeder hides its grain key** (`_resolve_condition_sources`,
+   concept_strategies_v4): the standalone feeder plan for a HAVING/WHERE row
+   arg (rank window) hides its own grain keys at its FINAL layer (non-mandatory
+   there), and hidden outputs are invisible to downstream join inference — the
+   merge back onto the consumer cross-joined (rank<=5 over 6 states = 30
+   rows). Un-hide feeder outputs the consumer also carries; keyless (`by *`)
+   feeders still cross-join.
+2. **Mixed root↔rowset relation axis never in FINAL merge grain**
+   (`_final_merge_grain`, group_graph): `union join return_demos.demo_id =
+   c_demo` with neither member an output → no join key declared → FULL JOIN
+   1=1 cartesian. The authored members ARE the axis: added whenever a member
+   lives on a FINAL rowset boundary and another contributor exists.
+3. **Boundary WHERE not deferred for mixed relations**
+   (`_group_in_active_relation`, condition_placement): a rowset boundary
+   participates through its member HANDLE even when undemanded (namespace
+   match), and a ROOT mate (`c_demo`, not any group's member) is located
+   through the mate's keys (env fallback for undemanded mates —
+   `plan_condition_placements` now takes `environment`). Without this the
+   boundary pre-filtered one side of the preserving relation and the
+   completion merge re-admitted the rows NULL-extended (carol leak).
+4. **FINAL feeder join keys physically materialized** (strategy_builder +
+   `_compute_concept_sets`): a ROWSET group feeding a FINAL-deferred filter
+   exposes its scoped member handles (stage 2, not cap-gated — the boundary
+   owns its handles); `_apply_final_conditions` widens contributor+feeders
+   with the relation axis; the sole-contributor path takes the probe-style
+   raw-first branch for relation-paired feeders; `_widen_merge_join_keys`
+   learned to widen a pure-passthrough dedup GroupNode (widen the inner scan,
+   then the group — v3's `quizzical` groups by c_demo, c_name; force_group
+   irrelevant since the group being widened does the dedup).
+5. **Aggregate grain under statement-scoped joins** (`concept_graph`,
+   stage 1): a no-`by` aggregate whose inputs ride a STATEMENT-scoped
+   preserving relation computes per coalesced-axis row, not per its authored
+   dimension grain (v3 renders it at the joined relation grain via the
+   grain-match formulas; outer select dedups). `grain_components` widened by
+   `aggregate_input_grain ∩ statement-scoped relation members`
+   (`_statement_scoped_relation_members`; global `merge` identities excluded).
+   Fixed composite stddev/variance keys≤2 + count-still-groups. HARD-WON
+   GATE: only DIMENSION-grained aggregates widen — an empty/all_rows grain
+   (q97 presence counts `sum(case when probe...)`) stays ONE total row over
+   the joined relation; the ungated version regressed TPC-DS q97.1/q97.2 +
+   coalescing_presence_matrix ×4 (caught by the battery, fixed same
+   session).
+
+Still open in-family (3): composite keys-3 ×2 (`union join quantity =
+return_quantity` — the substitution collapse lets the SALES scan answer for
+`r_filtered.return_quantity`, so the count reads its own quantity instead of
+the joined return-side value: needs coalescing-axis side-ownership when the
+aggregate arg IS a relation member) + `order_by_measure_through_nested_
+rowset_join_groups` (nested cross-rowset boundary render: Missing source
+reference to inner body columns — different family, q83 shape).
+
+Also pruned from `v4_known_failing.py` (xpassed in-suite + verified in
+isolation): duckdb_rowset `tvf_union_arm_local_join` +
+`scoped_left_join_coalesce_keeps_unmatched`. Classifier run clean (exit 0,
+no escalations).
 
 ## ✅ 2026-07-13 (session 3) — rowset_cross_datasource family cleared (9 → 0); v4 sweep 87 → 74 (0 new)
 
@@ -75,838 +231,86 @@ outer_blend ×2, three_source star + two_source. Still open in-family:
 FULL-body readback cells ×5 + `resolves_correctly` (a-side property
 key-carry — `_V4_ROWSET_XDS_RESIDUAL`).
 
-**Full v4 sweep: 74 failed / 5549 passed** (was 87/5526), 14 xpassed, 82
-errors = the usual clickhouse-environmental. Every one of the 74 maps to a
-pre-existing family in the 87 list — **0 new**. The 13 fixed:
-rowset_cross_datasource ×9, scoped_join_cross_rowset_multi_where ×2,
-rowset_generation_matrix ×1 (3→2), join_merge_parity ×1 (disjoint null-safe,
-fixed as collateral). Failure list snapshot:
-`local_scripts/v4_sweep_0713_s3_failures.txt`.
-
-**Open families by sweep count (74):** duckdb_rowset ×7, duckdb.py ×6,
-union_reproject ×6, TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder,
-or_membership, q64-correlated), filter_mixed_aggregate ×4,
-materialized_aggregate_bridge ×4, offset_join ×4, rollup_scoped ×3,
-filter_bare_aggregate_content_grain ×3, union_join_rowset_grain ×3,
-generation_matrix ×2, cograin ×2, multi_partial_anchor ×2, expression_keys
-×2, membership_existence ×2, pushdown_partitioned ×2,
-cross_rowset_join_rowset_as_set ×2, subquery ×2, disconnected_e2e messages
-×2, + singles (syntax_examples rollup, rowset_body_limit, scoped_derived
-exp_rows1, collapse_basic_into_group, union_bare_aggregate, setops,
-orderby_derived_expr, constant_def_macro, membership_having,
-twin_keeps_scalar_refs). Largest next target: duckdb_rowset ×7
-(composite union-join rowset aggregate grouping) or duckdb.py ×6
-(grouping/rollup builds + constant-filter shapes).
-
-## ✅ 2026-07-13 (session 2) — where-scoping #599 family ported to v4; v4 sweep 140 → 87 (0 new)
+## ✅ 2026-07-13 (session 2) — where-scoping #599 ported; v4 sweep 140 → 87 (0 new)
 
 The #599 dual-scope contract (WHERE cross-row references gate at POPULATION
-scope, ignoring clause peers; select outputs recompute over admitted rows) is
-now honored by v4 discovery. `test_window_where_pushdown_matrix` 28 → 0,
-`test_where_select_dual_scope` 24 → 1. Full v4 sweep **87 failed / 5526
-passed** (was 140): 53 net fixed, **0 new** — every current failure was
-pre/post checked (34 failing files re-run on the stashed pre-change tree;
-the 4 candidates that only fail with full-suite ordering — syntax_examples
-rollup, disconnected_components_e2e messages ×2, constant_through_def_macro —
-all fail on the PRE tree in isolation too). Collateral gates all green: full
-v3 sweep **5685 passed / 0 failed** (the shared author.py grain change is
-clean), TPC-DS v3 156/0, TPC-DS v4 back to exactly the 6 pre-existing fails
-(q14, q64-transitive, q81, q29-feeder, or_membership, q64_correlated),
-join_matrix 297/0 (+7 xfail), tests/core/processing 417/0. Mid-battery the
-first TPC-DS v4 run caught TWO real regressions (q05 rollup totals, q74 +1
-NULL row) — both root-caused and fixed with narrower gates before the final
-sweep (see #1 and #4 below).
+scope; select outputs recompute over admitted rows) is now honored by v4.
+`test_window_where_pushdown_matrix` 28 → 0, `test_where_select_dual_scope`
+24 → 1. Full v3 sweep 5685/0 (shared author.py grain change clean); TPC-DS v4
+back to the 6 pre-existing fails. Six root causes (condensed; all v4-only
+except #5):
 
-Six root causes fixed (all v4-only except #5):
-
-1. **d1-scan filter propagation violated population scope**
-   (`_propagate_raw_filters_to_d1_roots`, group_graph.py): main-root row atoms
-   were copied onto the pristine `root_d1` scan feeding WHERE-referenced
-   cross-row calcs whenever one table carried both (its q44 rationale was
-   obsoleted when #596 re-authored q44 with a `?`-bound filter). Now gated on
-   GROUP-ATOMICITY (mirrors `_where_is_group_atomic`): propagate only when
-   every row arg is FD-determined by EVERY downstream d1 aggregate's grouping
-   grain — whole groups drop, population value provably unchanged. q74 NEEDS
-   the atomic case (`billing_customer.sk is not null`, sk = the aggregates'
-   by-key): without it the NULL-sk population group rides the final merge into
-   a spurious all-NULL row (93 vs 92 rows). Any downstream d1 WINDOW/GROUP_TO
-   blocks propagation entirely (window atomicity = partition-key containment,
-   not visible on buckets). Fixed the aggregate dual-scope cells (~20).
-2. **WINDOW groups couldn't host pre-window filters** (condition_placement +
-   strategy_builder + the silent drop in gen_window): placement now lets a
-   WINDOW group host atoms not referencing its own outputs; the strategy
-   builder peels injected conditions into a pre-window SelectNode wrapper
-   (same pattern as aggregates — gen_window's WindowNode has no conditions
-   slot and was folding them into `preexisting_conditions`, i.e. DROPPING
-   them). Fixed all row-grain window cells and the nav-gate splits (the
-   `twin is not null` gate now applies below the select-scope lead/lag via
-   the d1 twin CONSTRAINT parent joined at row grain).
-3. **Derived filter-arg lineage split across root buckets** (group_graph):
-   `_pre_aggregate_filter_args` now expands each WHERE row arg through its
-   lineage closure so `_split_root_dimension_clusters` can't peel one ROOT
-   input of a derived filter arg (concat label: `vehicle_name` peeled to a
-   dim bucket stranded `vehicle_variant` → INVALID_REFERENCE). Also
-   `_synthetic_dimension_regraft_parent` skips D1 groups — their real input
-   demand only lands when atoms are injected AFTER the regraft, so the
-   synthetic bucket froze out the condition's lineage columns.
-4. **FINAL coverage completion** (condition_placement,
-   `PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR`): after choosing
-   upstream-most hosts, if a select-phase group producing a mandatory output
-   is NOT downstream of any host AND can expose the atom's inputs, the atom
-   is ALSO placed at FINAL — an unfiltered sibling projection (label beside a
-   name-grain window) otherwise joins FINAL on a coarser key and fans
-   filtered rows back out (v3 re-applies the WHERE at the final select).
-   SKIPPED under ROLLUP/CUBE/GROUPING SETS (bucket discriminator `grp:`):
-   rollup rows NULL-inject dims, and the re-applied WHERE deleted q05's
-   subtotal/grand-total rows. Row-identity-keyed contributors are naturally
-   pinned by the join and skip via the exposure gate.
+1. **d1-scan filter propagation gated on GROUP-ATOMICITY**
+   (`_propagate_raw_filters_to_d1_roots`): propagate main-root row atoms to
+   the pristine d1 scan only when every row arg is FD-determined by EVERY
+   downstream d1 aggregate's grouping grain (q74 NEEDS the atomic case;
+   non-atomic propagation violates population scope). WINDOW/GROUP_TO
+   downstream blocks propagation entirely.
+2. **WINDOW groups host pre-window filters**: placement lets a WINDOW group
+   host atoms not referencing its own outputs; strategy builder peels injected
+   conditions into a pre-window SelectNode wrapper (gen_window was silently
+   DROPPING them into `preexisting_conditions`).
+3. **Derived filter-arg lineage closure** (`_pre_aggregate_filter_args`):
+   expand WHERE row args through lineage so `_split_root_dimension_clusters`
+   can't strand one ROOT input of a derived arg; synthetic regraft skips D1
+   groups.
+4. **FINAL coverage completion** (`PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR`):
+   re-place the atom at FINAL when a mandatory-output group is not downstream
+   of any host and can expose the atom's inputs. SKIPPED under
+   ROLLUP/CUBE/GROUPING SETS (q05 totals).
 5. **Shared BASIC grain fix** (author.py `get_select_grain_and_keys`): a BASIC
-   mixing by-aggregates with row scalars (`v <- sum(z) by x + w`) collapsed
-   its grain to the aggregates' by-keys ({x}), losing the row scalar's
-   identity. New `_non_aggregate_row_refs` walk (stops at aggregate
-   boundaries) unions the row-scalar peers' keys → grain {id}. Validated by
-   the full v3 sweep; v4 buckets by grain, so the wrong grain made the twin's
-   gate group join back on x (group key) instead of row identity.
-6. **Grouping-parent bridge keys** (`_refresh_input_contracts`): a
-   non-grouping consumer pairing a GROUPING row parent (population aggregate
-   at grain G) with row-grain siblings declares G in `preserve_keys` so the
-   sibling projections keep the join bridge instead of degrading to 1=1.
+   mixing by-aggregates with row scalars keeps the row scalars' key identity
+   in its grain (`_non_aggregate_row_refs` walk).
+6. **Grouping-parent bridge keys** (`_refresh_input_contracts`): declare the
+   GROUPING parent's grain G in `preserve_keys` so row-grain siblings keep the
+   join bridge instead of degrading to 1=1.
 
-**Still open in-family (1):** `test_twin_keeps_scalar_refs_environment_resolved`
-— the twin `v_wscope = population-sx + row-scalar w` merge still cross-joins
-ON 1=1: `_satisfy_parent_projection_contract` (strategy_builder) conflates
-"available from the shared scan" (`parent_output_addresses` = parent-of-parent
-availability) with "provided by the sibling" when excluding projection-grain
-keys from `fd_needed`, so the row side's carried x gets stripped by the
-`_wrap_for_grain` path and `_widen_merge_join_keys` can't re-widen a GroupNode.
-Fixing it needs that function to use actual sibling-node outputs — a broader
-reshape-heuristic change (q81/q30/q10/q76 tuned) deferred to its own session.
+Still open in-family: `test_twin_keeps_scalar_refs_environment_resolved` —
+`_satisfy_parent_projection_contract` conflates parent-of-parent availability
+with sibling-provided when excluding projection-grain keys from `fd_needed`;
+fixing needs actual sibling-node outputs (broader reshape-heuristic change,
+q81/q30/q10/q76 tuned) — its own session.
 
-**Open families by sweep count (87):** rowset_cross_datasource ×9,
-duckdb_rowset ×7, union_reproject ×6, duckdb.py ×6, TPC-DS
-q14/q64/q81/q29-feeder + non-benchmark ×2, filter_mixed_aggregate ×4,
-materialized_aggregate_bridge ×4, offset_join ×4, generation_matrix ×3,
-filter_bare_aggregate_content_grain ×3, union_join_rowset_grain ×3,
-rollup_scoped ×3, cograin ×2, multi_partial_anchor ×2, expression_keys ×2,
-multi_where ×2, membership_existence ×2, pushdown_partitioned ×2,
-cross_rowset_join_rowset_as_set ×2, subquery ×2, disconnected_e2e messages
-×2, + singles (syntax_examples rollup, rowset_body_limit, join_merge_parity,
-scoped_derived exp_rows1, collapse_basic_into_group, union_bare_aggregate,
-setops, orderby_derived_expr, constant_def_macro, membership_having,
-twin_keeps_scalar_refs). Largest next target: the rowset_cross_datasource
-family (×9, tracked since the config-leak era).
+## ✅ 2026-07-13 (session 1) — rowset base-WHERE contract + derived relation-member obligation; sweep → 140 (0 new)
 
-## ✅ 2026-07-13 — rowset base-WHERE contract + derived relation-member obligation; v4 sweep = 140 (0 new)
-
-rowset_join_base_where_matrix 15 → 0, composite_matrix derived cells 4 → 0
-(pruned from join_matrix `V4_FAILING`), coalescing_presence cast ×2 → 0
-(pruned), rowset_offset `narrows_to_anchor` ×2 → 0. Verified no-new on the
-full 27-file rowset/scoped collateral set (31 remaining fails all pre-existed)
-and v3 fully green on the same set + join_matrix (669 passed).
-
-**Sweep accounting:** full v4 sweep now **140 failed / 5473 passed** — NOT
-comparable to session 3's 117: that count predates #599 ("Where Scoping"),
-whose two new test files (`test_window_where_pushdown_matrix` ×28 +
-`test_where_select_dual_scope` ×24 = 52) fail identically on the pre-change
-tree (verified via stash) and were never in any family map. Those two files
-are the largest open family and the natural next session. No-new evidence: a
-first post-change sweep (141) was re-diffed against a second after the q44
-refinement (140 = 141 − q44, zero new entrants), and every other failing file
-was pre/post diffed at file level (0 new). Three root causes fixed:
+rowset_join_base_where_matrix 15 → 0, composite_matrix derived cells 4 → 0,
+coalescing_presence cast ×2 → 0, rowset_offset narrows_to_anchor ×2 → 0.
+Three root causes (condensed):
 
 1. **Base-model WHERE silently dropped over rowset outputs**
-   (`plan_condition_placements`, condition_placement.py): `where year = 2001
-   select cur_period.wk, cur_period.amt` — the atom hosted UPSTREAM_MOST on a
-   condition-only ROOT group outside the main lineage; FINAL assembly keeps
-   only output-covering groups, so the gate group was pruned and the filter
-   vanished (returned unfiltered rows). v3's rowset islanding calls this
-   disconnected; the v4 pre-gate runs `island_rowsets=False` ("let discovery
-   decide") but discovery never decided. Now: a row atom (no existence args)
-   whose EVERY candidate host is outside `main_lineage_groups` raises
-   `DisconnectedConceptsException` (the rootless-output case still routes to
-   the FINAL EXISTS gate first, unchanged). Fixed the 12
-   `test_rowset_join_base_where_not_dropped` cells + single-rowset.
-   REFINEMENT (found via full-sweep diff): TPC-DS q44's outer `where
-   ss.store.sk = 1` over two rowsets RESTATES both rowset bodies' own WHERE —
-   under suite contamination its atom's hosts all classify out-of-lineage and
-   the raise killed a query that plans fine (only in multi-file runs; passes
-   isolated). Exempt an atom whose row inputs are all condition row-args of
-   the output rowsets' bodies (`_output_rowset_body_condition_addresses`):
-   that scope already consumes the concept, so the outer restatement dropping
-   is the historic, harmless behavior. `year = 2001` (not in any body) still
-   raises.
-2. **Subset-side partial not cleared on the sole-contributor FINAL path**
-   (`_assemble_final_node`, strategy_builder.py): `subset join cur.wk =
-   fut.wk` baseline raised UnresolvableQueryException — the completion merge
-   lived INSIDE the single covering contributor (the ratio BASIC), and
-   `_clear_groupmate_completed_partials` only ran on the multi-contributor
-   merge. Now also runs on the sole contributor (its parents expose the
-   complete group-mate).
-3. **Derived relation members never materialized for rowset pairs**
-   (`resolve_rowset`, concept_strategies_v4.py): `union join cur.wk + 53 =
-   fut.wk` between two rowsets cross-joined ON 1=1 (4×4 cartesian) — the
-   `_virt_func_add_*` member had no producer group, so the boundaries shared
-   no join key and column pruning then dropped the authored side's key too.
-   New OBLIGATION: a derived member whose every lineage arg is a handle of
-   this boundary materializes (non-hidden — hidden outputs can't serve as
-   merge join keys) at its own side's boundary. Three gates, each learned the
-   hard way: (a) OUTER (full/union, `outer_relation_keys`) relations or a
-   directional relation's SUBSET-SOURCE member only — an anchor-side derived
-   key resolves through the scoped-merge collapse (substitution into the
-   other side's grain + downstream projection), and materializing it too
-   displaces that path, widening authored LEFT to FULL
-   (scoped_derived_rowset_join_matrix); (b) skip when
-   `environment.concepts[member].address != member` — the collapse
-   substituted this member to the other side's derivation and owns it; (c)
-   skip `BuildRowsetItem` members (real handles ride the demanded path).
-   Fixed both union-derived ctl cells, all 4 tracked composite FULL cells
-   (incl. mixed-anchor LEFT-composes-to-FULL), coalescing_presence
-   cast-single ×2, offset_join_narrows_to_anchor ×2.
-
-Residual in these files (pre-existing): scoped_derived exp_rows1
-(`agg.period = fut.period + 53` LEFT renders FULL — directional-narrowing
-family, same bucket as filtered_rowset_anchor ×3), rowset_cross_datasource ×9,
-rowset_generation_matrix ×3, offset_join condition/execution ×4,
-membership_existence ×2, multi_where ×2, expression_keys ×2,
-multi_partial_anchor ×2, cograin ×2.
-
-Open families by sweep count (140): where-scoping #599 ×52 (window_where
-_pushdown_matrix 28 + where_select_dual_scope 24 — NEXT), rowset_cross
-_datasource ×9, duckdb_rowset ×7, union_reproject ×6, duckdb.py ×6,
-filter_mixed_aggregate ×4, materialized_aggregate_bridge ×4, TPC-DS
-q14/q64/q81 + non-benchmark ×3 + q29-feeder, offset_join ×4, rollup_scoped
-×3, generation_matrix ×3, filter_bare_aggregate_content_grain ×3,
-union_join_rowset_grain ×3, + long tail.
-
-Session hazard worth knowing: `git stash pop` FAILED SILENTLY twice
-mid-session (TPC-DS runs dirty checked-in zquery*.log files → pop conflicts;
-`2>$null` ate the error), so several "post-change" checks ran the PRE tree
-and made the q44 regression look like a flake. Verify pops; `git checkout --
-tests/modeling` before stashing.
-
-## ✅ 2026-07-12 (session 3) — rowset-pair key-carry + post-join WHERE placement; v4 sweep 145 → 117
-
-Full v3 sweep **5403 passed / 0 failed**. Full v4 sweep **118 failed / 5213
-passed** at mid-session state; the one apparent new (q29 null-safe guard) was
-fixed in-session → effective **117**, verified by re-running every failing
-file + all of join_matrix against the stashed pre-change tree: **0 new
-failures** (every current failure pre-existed), q29 green, and
-`test_post_select_join_position_matches_pre` fixed as collateral. join_matrix
-overall: 38 → 13 failing. Five root-cause fixes:
-
-1. **Rowset boundary nullability** (`resolve_rowset`, concept_strategies_v4):
-   the v4 boundary SelectNode never mapped `nullable_concepts` through
-   `BuildRowsetItem` content, so a `?` key's null-safety died at the boundary
-   (`=` instead of `is not distinct from`; NULL keys stopped matching). Ported
-   v3 `_build_translation_node`'s mapping, RESTRICTED to key-like handles
-   (boundary grain components + scoped-relation members): a nullable non-key
-   property handle (q29's `item_desc`) otherwise turns v4's FINAL re-pairing
-   join null-safe alongside the keys that already pair the rows and trips the
-   q29 hash-join guard. Fixed two_source_matrix rowset-* nullable ×8.
-2. **Scan-level derived-key nullability** (`create_datasource_node`,
-   datasource_nodes — SHARED): the derived-nullable stamp (`l_key + 1` is NULL
-   where `l_key` is) only consulted nullable columns that were PROJECTED; v4's
-   narrower bridge scans dropped the stamp and `SimplifyNullSafeJoins` then
-   wrongly stripped the null-safe modifier off the intermediate join. Argument
-   columns now count whether or not projected (`all_nullable_lcl`). Fixed
-   derived-{full,union}-merge ×2. v3 sweep green (change is shared).
-3. **Post-join WHERE at relation-participating rowset boundaries**
-   (`plan_condition_placements`): an atom over a rowset boundary whose
-   scoped-relation MATE is also present in the same graph routes to FINAL
-   (FINAL_RECONVERGENCE) — boundary hosting pre-filters one side of a
-   preserving relation (`rb.tot is not null` becomes a pre-join tautology; a
-   filtered side breaks the EQUAL-declaration narrowing evidence in
-   value_set_join_upgrade, and merge_node's branch-proof downgrade then locks
-   in a wrong directional join). Boundaries whose mate is OUTSIDE the scope (a
-   nested arm reading one rowset, q64) keep boundary hosting. The signature now
-   takes `scoped_join_key_groups` (dict) instead of the flat member frozenset.
-   Fixed consumption_matrix ×10 (intersection_via_not_null ×8 +
-   post_join_where full/union-merge ×2) + 2 session-2 residuals
-   (subset_side_property_null_test_intersects,
-   mixed_rowset_member_not_null_against_root_anchor).
-4. **Bare axis-member projection keeps the joined row grain**
-   (`_refresh_final_contract` sets `deduplicate_to_grain=False` when every
-   mandatory output is a scoped-join member; `_assemble_final_node` threads it
-   as `whole_grain` on the FINAL MergeNode): `select ty.code, ny.code union
-   join ...` was GROUP-BY-collapsing the authored fan-out to distinct key
-   pairs (q59 smoking gun, independent_rowset keys_only).
-5. **Authored keys pin the rowset-pair merge grain** (`_final_merge_grain`):
-   a relation-participating ROWSET output contributes only its AUTHORED member
-   keys to the FINAL merge grain, not its full internal grain — two
-   independently-filtered rowsets under `union join ty.code = ny.code` were
-   also pairing on wk pseudonyms + the shared base measure, silently narrowing
-   the fan-out (independent_rowset with_measures). Unrelated sibling rowsets
-   (no authored relation) keep the full key-carry (rowset_alias collision
-   guard). Plus: condition placement now drops candidate hosts that sit
-   downstream of an unconsumed d0 row-shape barrier (same criterion as the
-   validator) and falls back to FINAL — the OR-of-two-boundaries'-probes atom
-   (two_subset_joins_or_of_members) was a hard ValueError.
-
-Still open (117, all pre-existing): rowset_join_base_where_matrix ×15 (rowset
-WHERE dropped at base), rowset_cross_datasource_outer_read ×9,
-duckdb_rowset ×7, rowset_offset_join_contract ×6,
-union_reproject_subset_join ×6, duckdb.py ×6, composite_matrix ×4 (derived
-full-key cells), coalescing_presence cast/concat ×4 (Bug-1 recursion family),
-materialized_aggregate_bridge ×4, filter_mixed_aggregate_row_predicate ×4,
-TPC-DS q14/q64/q81/q29-feeder + non-benchmark ×7, filtered_rowset_anchor ×3,
-rollup_scoped_join ×3, cograin ×2, and long tail. Sweep note: the harness's
-10-min background cap kills a full sweep — run detached
-(`Start-Process` → log + monitor); v4 serial sweep is slow (machine-sleep
-inflated to 5.4h wall here).
-
-## ✅ 2026-07-12 (session 2) — coalescing-axis + per-side probe pinning ported; v4 sweep 177 → 145
-
-Ported the v3 presence mechanisms into v4 (commits 880ab9f56, d68b36e96,
-c22e7e436). Verified honestly: full v3 sweep **5403 passed / 0 failed**; full
-v4 sweep **145 failed** vs the regenerated 177 baseline — **33 fixed, 0 new**
-(the one apparent new, `faa/test_llm.py::test_llm_execution`, passes in
-isolation; LLM suite-order flake). Baseline regenerated at e003ea154 and
-matched 177 exactly, so the diff is trustworthy.
-
-Mechanism map (all v4-only modules):
-- **Probes → ROOT** (`pinned_probe_addresses`, concept_graph.py): a ds-bound
-  member's probe classifies as root-like (lineage still walked), rides into
-  `plan_source`, and the #598 bridge gate (`_datasource_renders_probe`) pins it
-  per side. This alone fixed the q97 presence-count and not-null+measure cells.
-- **Bare coalescing axis** (`_plan_coalescing_axis`, source_planning.py):
-  requests that are exactly axis members reuse v3 `gen_coalescing_axis_node`
-  via a v4 search adapter.
-- **Rowset-member probes = boundary obligations**: stage-1 tags them with the
-  member's rowset (`ConceptAttrs.rowset_name`), `_assign_groups` routes tagged
-  nodes to the rowset rule, `resolve_rowset` materializes probe + member
-  handle (hidden) on the boundary; probe-only contracts recover the boundary
-  through the member.
-- **Condition placement**: probe/member-key atoms never host at a rowset
-  boundary (only meaningful above the completion merge); when boundary hosts
-  were stripped or no main-lineage host remains → FINAL, whose assembly joins
-  the probe's producer back KEYED (concept-set pass exposes the probe's
-  lineage key next to a FINAL-demanded probe) and dedups explicitly post-join.
-- **Boundary subset partials**: rowset↔rowset subset-source handles marked
-  partial (v3 `scoped_partial`) → anchor-LEFT + coalesced-axis rendering fell
-  out of existing partial-driven join typing; FINAL clears ROWSET-handle
-  partials the merge completes via group-mates. Mixed root↔rowset relations
-  deliberately excluded (conflicting-filter year-over-year join), and raw
-  ds-bound members keep their deliberate no-complete-source error
-  (union-reproject clean-error cells).
-- **plan_source fallback**: a no-new-concepts multi-datasource bridge is a
-  DEAD-LAST resort (`BridgePlan.full_cover_fallback`) — rescues the two-rowset
-  body (`st as store` under `merge st into store_id`) without pre-empting
-  direct plans (q64 join hoist / two_merge compaction / stocks locks).
-- **partition_roots**: PROPERTY roots FD-connect to their KEY root in the
-  output-convergence component check — `select cust_id as x, cname as y` was a
-  CARTESIAN under v4 (untracked wrong-rows bug). Keys never FD-connect to keys
-  (count(user_id) must read users, not the posts FK domain — test_show lock).
-- Also: `_scoped_joins_for_rowset` applied to v4 nested-select builds;
-  `_concepts_in_graph` skips bridge nodes unresolvable in this scope
-  (cross-scope alias variants); ROWSET groups exempt from parent-based
-  `satisfiable_outputs` pruning (gen_rowset ignores group-graph parents).
-
-Still open in these families (~10, all rowset-flavored — fold into the
-rowset-pair key-carry session): coalescing_presence cast/concat derived keys
-(the Bug-1 recursion family), bare_member_projection over rowsets,
-filtered_rowset_anchor ×3, mixed root/rowset anchors ×2 (now keyed-join +
-dedup but boundary demands a hidden inner grain key — `Missing source
-reference to local.cname` variant), subset property null test ×1.
-
-## 🔄 2026-07-12 — REBASED onto main (new join engine, author→build moves, PRs #592–#597)
-
-Branch rebased onto latest main (22 commits replayed; backup at
-`backup/v4_improvements_four_pre_rebase`). Main brought a new join engine, big
-new test families (`tests/join_matrix/`, rowset matrices, presence probes,
-`subset join`/`union join` coalescing semantics, where-scalar-aggregate cograin
-rules from #596) that were only ever validated on v3 — the honest post-rebase
-v4 sweep was **201 failed / 5130 passed** (v3: 3 failed, all fixed same day).
-
-Fixed forward so far (2026-07-12), v4 sweep **201 → 177** (5154 passed; zero
-new failures vs the post-rebase baseline). v3 sweep green (5402/1, the 1 fixed
-same day). Placement refinements after the first pass: pin only GLOBAL
-(all_rows-grain) post-aggregation values, and only when EVERY atom input is
-one — a grained pair (`web_total > store_total`) keeps its keyed join host,
-and a mixed atom (`account_balance > avg_bal by *`, TPC-H q22) hosts on the
-row group with the global CTE joined in.
-
-- **Presence probes (ROOT members)**: v4 computed the `_virt_presence_*` probe
-  on BOTH sides of a scoped relation (post-substitution both scans carry the
-  canonical), so `member is [not] null` never observed absence. Fixes:
-  `_datasource_renders_probe` gate in `source_planning.py` (resolve the graph
-  node's `_virt_func_*` canonical to the probe identity first), probe
-  `canonical_name` = own name in `build.py` (lineage hash fused per-side
-  probes). root_presence_probe simple cells fixed (8).
-- **Rowset body LIMIT**: v4 `resolve_rowset` dropped the nested select's
-  `limit`/`order by`; now interposes v3's `_interpose_limit_node` (4 tests).
-- **Post-aggregation condition placement**: backfill CONSTRAINT pass in
-  `concept_graph.py` now applies the rowset cycle guard (bare aggregate
-  co-grained over a rowset no longer kills the topo pass); atoms referencing
-  post-aggregation values host at the value's producer group or LINEAGE-only
-  descendants (`_post_aggregation_producers` in `condition_placement.py`) —
-  `by *` global gates no longer silently become per-grain HAVINGs; cross-branch
-  atoms route to FINAL_RECONVERGENCE instead of raising. cograin 7→2,
-  autograin 2→0.
-
-Still-open post-rebase families (deep, each needs a dedicated session):
-
-1. **Coalescing axis + probes over `union join`** (~20 in join_matrix:
-   coalescing_presence_matrix, union presence counts q97 shape,
-   bare-axis-projection): v4 sources the union axis from ONE member scan and
-   fuses both sides' probes; needs the v3 `gen_coalescing_axis_node` +
-   per-member pinned-scan semantics ported into the group graph (a probe/axis
-   must form its own group pinned to member-binding datasources).
-2. **Rowset-pair scoped joins / key-carry** (~30: consumption_matrix,
-   two_source_matrix rowset-* cells, subset_join_between_rowsets,
-   independent_rowset_matrix): dropped output columns + wrong rows on
-   `left/full/subset join ra.k = rb.k` between rowsets — the known
-   `_V4_ROWSET_XDS_RESIDUAL` family, now with much broader coverage from main.
-3. **Mixed aggregate+row `?` filter** (4, filter_mixed_aggregate_row_predicate):
-   optimizer splits the filter's guarantee across FINAL joins (HAVING into agg
-   parent + row atom into scans); the vestigial CASE re-renders the aggregate
-   arg row-wise (`count → CASE WHEN ... IS NOT NULL`) = wrong rows. Needs a
-   multi-parent extension of `_filter_guaranteed_by_sole_parent` OR the filter
-   group to re-render as bare content once its predicate is fully delegated.
-   (This is the documented harder `aggregate_filter_anonymous` sibling.)
-4. **where-scalar cograin leftovers** (2): HAVING-form KeyError on
-   `_virt_filter_*`, grained-select-output missing-source render.
-5. **Materialized aggregate bridge join** (4): cross-key dimension fan-out.
-6. **Union reproject subset join** (6), **rollup scoped join** (3),
-   **narrowing through limited rowset chains** (left_readback,
-   predrop_chain_narrowing): join-type narrowing claims completeness through a
-   LIMITed/filtered chain.
-7. **TPC-DS**: q14, q64 transitive-key fanout, q81 + 3 non-benchmark shapes,
-   q29 existence feeder.
-
-Note: `tests/test_scoped_join_property_enrichment.py` and
-`..._injection_through_derivation.py` were deleted upstream by main (#594);
-our v4-branching update to the former died with it — single-rowset property
-enrichment coverage now lives only in main's newer scoped-join suites.
-
-## ⚠️ 2026-07-02 — the prior "green v4 sweep" was PARTLY BOGUS (CONFIG leak fixed)
-
-Every previous "0 failed" full v4 sweep under-counted failures. `_generate_v4_sql`
-(tests/core/processing/test_v4_node_generators.py) restored
-`CONFIG.use_v4_discovery` to a HARDCODED `False` in a `finally` (not the prior
-value). CONFIG is a process-global singleton and that file sorts early, so from
-that point on the ENTIRE rest of each sweep silently ran under **v3** — later "v4"
-tests validated v3 SQL, passing v3-shape assertions and hiding real v4 failures.
-Fixed: (1) that `finally` restores `prior`; (2) `conftest._restore_global_config`
-(function-scoped autouse) snapshots+restores `use_v4_discovery` + `optimizations`
-around every test. The FIRST honest v4 sweep then surfaced **~77 real failures**
-(previously masked), now tracked in `v4_known_failing.py` under `_V4_MASKED_LEAK`
-(64 nodeids) pending per-family triage. Dominant families: rowset-cross-datasource
-outer read (~18-24) and scoped-join outer key (~20). **v4 is substantially farther
-from parity than earlier sections of this file claim** — treat the "~8 tracked /
-near-parity" framing below as pre-leak-fix and stale.
-
-This file is the current handoff for v4 discovery work. The authoritative skip list is
-`tests/v4_known_failing.py`; reclassify with `python local_scripts/v4_classify.py`
-when changing planner behavior. The classifier buckets SIZE separately from SHAPE, runs
-each test worst-of-N (`V4_CLASSIFY_REPEATS`, default 3) to hedge transient cross-run
-variance in the parallel harness, and **exits non-zero on a label ESCALATION** — an
-observed bucket more severe than the `v4_known_failing.py` reason allows (e.g. a CRASH
-under `_TPCDS_SIZE`). The classifier runs each test in ISOLATION, which is *pessimistic*:
-many entries that fail alone pass in the full suite. So it only re-checks listed tests
-and can't confirm a prune by itself — **a full v4 sweep is the parity gate**, and a safe
-prune needs the entry passing in isolation AND in-suite:
-
-```bash
-TRILOGY_V4_DISCOVERY=1 pytest -m "not adventureworks_execution" -q
-```
-
-## Distance to swapping v4 on by default
-
-**Short answer (REVISED 2026-06-28): farther than previously stated. A measurement
-audit of the "cosmetic shape-assert" bucket found it was mostly mislabeled — it
-contains ONE verified wrong-rows bug, ~7 real verbosity regressions, and ~5
-structural/join-semantics diffs. Only ~2 of the 15 were genuinely cosmetic. The
-prior "no wrong-rows" claim was an artifact of shape-only tests that never execute.**
-
-### 2026-06-28 measurement audit of the _INLINE/_MODELING bucket
-
-Each entry was generated under both planners (`CONFIG.use_v4_discovery` False/True),
-compared on length + JOIN/CTE counts, and where join-type differed, EXECUTED on
-synthetic data to diff rows. Findings:
-
-- **WRONG ROWS (1): `test_rowset_alias_name_collision` — FIXED 2026-06-28.** v4 had
-  dropped the shared `id` join key and emitted `FULL JOIN ... on 1=1` -> cartesian
-  (verified 3 rows -> 27), masked because the test only asserts SQL shape. Fix:
-  `resolve_rowset` exposes a plain unfiltered NON-aggregate rowset's grain key, and
-  `_final_merge_grain`/`_group_final_grain_contribution` (group_graph) resolve the
-  rowset-namespaced key (`buyers_a.id`) through `BuildRowsetItem.content` to the
-  shared base (`local.id`) so the FINAL merge INNER-joins on it. Gated to unfiltered
-  (a filtered rowset's key is a subset -> would break `rowset_outer_addition`'s
-  LEFT-add) and non-aggregate (an aggregate's grain key is a renamed grouping
-  column, not a renderable passthrough -> would break the `query-structure` syntax
-  example). Rows now match; executing guard at `local_scripts/v4_evals/cases/
-  rowset_alias_collision.preql`; shape test dual-conditioned; pruned from
-  `v4_known_failing.py`. Full v4 sweep clean (lone residual is an environmental
-  snowflake/permission flake on q21, passes in isolation). **Lesson stands: a green
-  shape-only sweep is necessary but NOT sufficient — verify rows by executing.**
-- **VERBOSITY (7): rows match, v4 materially longer.** `test_select_literal...`
-  (117->294, constant not inlined -> cross join), `test_aggregate_filter_uses_having`
-  (272->522, +CASE WHEN), `test_bound_conversion_existence_presto` (1022->1249),
-  `test_in_subselect_with_inlined_datasource` (source not inlined), `usa_names::
-  test_aggregate_filter_anonymous` (+70%), `rowset_arithmetic` (6290->8747, +39%),
-  `two_merge` (merge=False 9->11 CTEs). Several are the SAME passthrough-not-inlined
-  family as q2.1/q2.2 — fixing that lever likely clears multiple at once.
-- **STRUCTURE (5): rows match on consistent data, plan differs.** `tpc_h::adhoc07`
-  (INNER->RIGHT/FULL outer, rows VERIFIED MATCH at sf=0.01), `stocks::provider_name`
-  (drops join, FULL vs LEFT OUTER+INNER; matches on consistent data, diverges on
-  orphan rows), `test_persist_with_where` (persisted source not reused, recomputes
-  CASE), `filter_scalar...staging` (sources staged table where v3 doesn't; ROWS
-  UNVERIFIED), `nested_greatest` (no group-by CTE for multi_wm; v3-shape guard).
-- **Genuinely cosmetic (2): `ncaa::adhoc07`** (+3%, same join) and
-  **`test_aggregate_of_aggregate`** (already passes under v4 in isolation).
-
-Reasons in `tests/v4_known_failing.py` were re-bucketed (`_V4_WRONG_ROWS`,
-`_V4_VERBOSITY`, `_V4_STRUCTURE`) to stop these reading as cosmetic. NEXT: fix the
-wrong-rows bug; verify rows for `filter_scalar...staging`; attack the
-passthrough-not-inlined family (overlaps q2.1).
-
-### (Prior, now-superseded framing)
-**What's left is plan verbosity on ~8 TPC-DS queries plus a batch of cosmetic
-shape-assert tests. Correctness is there.** — FALSE per the audit above; kept for
-context.
-
-v4 discovery is still off by default (`CONFIG.use_v4_discovery = False`). As of 2026-06-27
-the full sweep is **0 failed** (re-run twice to rule out parallel-harness flake) and the
-classifier reports **0 CRASH / 0 escalations**. All the crashes that were open on
-2026-06-25 are fixed (existence-source `RecursionError` family, q2.1 union
-`BinderException`, `test_filter_constant` invalid-ref). What remains before flipping the
-default:
-
-1. **Plan verbosity — NO `_TPCDS_SIZE` tests remain.** q30.alt FIXED + pruned
-   2026-06-30 (the last one): a filter-only post-aggregate GA arg is now peeled
-   into the single-entity FD dim bucket + sourced in the fresh root projection, so
-   `web_returns` scans once (was a second GA-spine scan) — see
-   `v4_dimension_projection_rejoin_handoff.md`. **q2.1/q2.2 both
-2. **Cosmetic shape-assert tests — 10 `_INLINE` + 5 `_MODELING`.** Rows match, the SQL
-   string differs. To flip the default each must be conditioned on
-   `CONFIG.use_v4_discovery` or accepted. Mechanical, not risky.
-
-## Correctness: at parity (full sweep 2026-06-27)
-
-Latest full v4 sweep (`TRILOGY_V4_DISCOVERY=1`, all tests minus adventureworks):
-
-**4289 passed, 20 skipped, 6 xfailed, 18 xpassed, 82 errors — 0 failed (8m).**
-
-- **0 failed in the SWEEP, but that is not row-parity.** The sweep being green means
-  no *listed-as-passing* test regressed — it does NOT mean v4 rows are correct, because
-  several tracked entries assert SQL shape only and never execute. The 2026-06-28 audit
-  found `test_rowset_alias_name_collision` returns a cartesian product (wrong rows)
-  despite a green sweep. Treat "0 failed" as a regression gate, not a correctness proof.
-  The default-planner (v3) sweep is also green (exit 0).
-- The **82 errors** are all `tests/engine/test_clickhouse_server.py` — clickhouse.cloud
-  connection errors, environmental (no local server). Ignore.
-- **18 xpassed / 6 xfailed** are tracked `v4_known_failing.py` entries. NB the full suite
-  is *more* favorable than isolation. Prune only entries that pass in BOTH (see below);
-  the rest pass only with full-suite ordering and would flip red if run alone.
-
-## 2026-06-30 — self-referential membership CRASH fixed (was an UNTRACKED v4 gap)
-
-`tests/optimization/test_pushdown_optimization.py::test_dual_existence_filter_no_cycle`
-(and the single-membership variant) **crashed under v4 in isolation** (`Missing
-source map entry for local.a_buyers`) but was NOT in `v4_known_failing.py` — it
-only passed via full-suite ordering, so the "0 failed" sweep masked it. A membership
-`x in y` whose set `y` is derived from the same scan as the output was injected on
-`y`'s own producer group (self-referential → the IN-RHS rendered against a dangling
-CTE), because the shared scan is a d1-root excluded from condition candidates.
-Three-part fix:
-
-1. **`condition_placement.plan_condition_placements`** — when EVERY candidate for a
-   membership atom is itself a membership-set producer, route the atom to FINAL
-   (narrow: ordinary TPC-DS `x in <set>` over a separate output aggregate has a real
-   consumer candidate and is untouched — verified net-zero on a full sweep).
-2. **`_assemble_final_node` / `_apply_final_conditions`** (strategy_builder) — wire
-   existence feeders for a FINAL-deferred membership (`_attach_existence_sources`
-   runs BEFORE assembly and never saw the FINAL node), via `feeder_cache` threaded in.
-3. Re-dedup the conditioned single-contributor result to the output grain (the
-   contributor carries an extra grain key only so the IN-set subselect can read it,
-   so filtered rows still duplicate at the output grain).
-
-Lock: `test_self_referential_membership_filter` + `test_dual_existence_filter_no_cycle`
-(both execute rows, pass under v3 + v4). Full v4 sweep clean (4301 passed, 0 real
-failures; lone fail was a live-Gemini flake that passes on retry). **Caveat: the
-rowset-cross-datasource isolation failures (`test_rowset_cross_datasource_outer_read`,
-`test_scoped_join_rowset_outer_blend`) are ALSO untracked and fail in isolation but
-pass in-suite — same masking pattern; verify before flipping the default.**
-
-## 2026-06-30 — q30.alt dimension-rejoin FIXED + pruned (LAST size-ceiling miss)
-
-The only remaining `_TPCDS_SIZE` entry is gone. q30.alt emitted a SECOND
-`web_returns` fact scan (`cooperative`) just to apply the post-aggregate GA filter
-`billing_customer.address.state = 'GA'` (FD by `billing_customer.id`). v3 folds
-that filter into `wakeful` (the `customer ⋈ customer_address` dim scan that also
-sources the output dims). Two coupled changes:
-
-1. `_split_root_dimension_clusters` + `_post_aggregate_filter_args` (group_graph):
-   also peel a filter-only POST-aggregate (HAVING) arg into the single-entity FD
-   dim bucket. Faithful because a HAVING dim arg filters the OUTPUT after
-   aggregation (does not perturb the full-population `avg`); the
-   `pre_aggregate_filter_args` gate keeps a pre-aggregate WHERE arg on the fact.
-2. `_assemble_final_node` is_root block (strategy_builder): source a peeled
-   filter-only bucket member in the fresh root projection so
-   `_root_atoms_satisfiable_from` keeps its atom and plan_source joins the dim
-   table. Restricted to `_members_of(gid)` (a broader version regressed
-   q46/q59/q64/global-agg-filter).
-
-Result 6193 → 6112, `web_returns`==1, GROUP BY==2 (matches v3 `wakeful` shape).
-Full v4 sweep 4304 passed / 0 failed; q30 + q30.alt pass under v3 + v4; mypy/ruff/
-black clean. See `v4_dimension_projection_rejoin_handoff.md`. **No `_TPCDS_SIZE`
-entries remain** — the size-ceiling gating work is done.
-
-## 2026-06-30 — `select_literal` verbosity FIXED + pruned
-
-`_fold_constant_parents` (strategy_builder): a constant-only FINAL contributor got
-its own CTE + `FULL JOIN on 1=1` (294 vs v3's 117); now a constant folds into a
-non-constant sibling's projection (constants render inline anywhere), matching v3.
-Pruned `test_select_literal_is_rendered_with_aggregate_projection`.
-
-## Current tracked state (re-bucketed 2026-06-28 — NOT all cosmetic)
-
-`tests/v4_known_failing.py` tracks **7 entries**. Pruned 2026-06-26: q02, q47, q57, q76,
-`test_non_nullable_null_guard`. Pruned 2026-06-27: q73, q81, q94, q10, q23. q2.2 pruned
-2026-06-28. `rowset_alias` (wrong-rows), q2.1, and `rowset_arithmetic` pruned 2026-06-29.
-`select_literal` (constant fold), q30.alt (dimension-rejoin GA-spine), both `_INLINE`
-entries (ncaa::adhoc07 dual-conditioned; aggregate_of_aggregate stale), and
-`aggregate_filter_uses_having` (filter-item CASE-WHEN-after-HAVING-pushdown) pruned
-2026-06-30. `in_subselect_with_inlined_datasource` (existence-source pushdown/inline
-interaction — was a correctness bug, not verbosity) and `two_merge_aggregate`
-(passthrough-after-pushdown residue, merge_aggregate=False branch) pruned 2026-07-01.
-The remaining 7 — NO size-ceiling and NO cosmetic entries left, all VERBOSITY or STRUCTURE:
-
-| bucket | count | meaning |
-| --- | --- | --- |
-| `_V4_VERBOSITY` | 2 | rows match, v4 materially longer (measured). Real regressions. |
-| `_V4_STRUCTURE` | 3 | rows match on consistent data; join-type/source/shape differs. |
-| `_INLINE` | 0 | both pruned 2026-06-30 (ncaa dual-conditioned; aggregate_of_aggregate stale). |
-| `_CRASH_INVALID_REF` | 0 | (unused — reserved string; no entries reference it). |
-| `_TPCDS_SIZE` | 0 | q30.alt pruned 2026-06-30 — **no size-ceiling entries remain**. |
-
-The `rowset_alias` wrong-rows correctness bug is FIXED (cartesian product → INNER
-join on the shared grain key; rows verified 3=3). The last genuine **length**
-regression (q2.1) and the last size-ceiling miss (q30.alt) are FIXED. Open themes
-are now exactly two: (1) the remaining `_V4_VERBOSITY` family (2 left:
-`bound_conversion_existence_presto` — partially improved 2026-07-01 (grand-total
-all_rows join now `on 1=1`; residual is the derive-in-scan `wakeful` layer) — and
-`aggregate_filter_anonymous` — a harder conditional-aggregate HAVING shape), and
-(2) `_V4_STRUCTURE` join/source diffs to verify for row impact.
-
-### 2026-07-01 — disconnected raw-column gate FIXED (was UNTRACKED)
-
-`test_filter_constant_unrelated` (`where x = 1 SELECT unnest([1,2,3,4]) as value,
-'example' as dim`) raised `DisconnectedConceptsException` under v4 in isolation —
-an UNTRACKED failure (passed in-suite via ordering). Traced end-to-end: `x` IS
-sourced (a `grp:root:root:∅` ROOT group) and `x=1` IS placed on it, but
-`_assemble_final_node` keeps only groups covering a mandatory output, so the gate
-group is pruned and the filter silently vanishes. Fix (v4): (1)
-`discovery_utility._output_is_rootless` lets the connectivity pre-gate pass a
-disconnected condition-only subgraph when every output is rootless (constant /
-single-row / literal-generator like `unnest([...])`); a disconnected filter beside
-a real datasource output still raises (missing-join diagnostic kept). (2)
-`condition_placement` routes the disconnected gate atom to FINAL
-(`PlacementReason.DISCONNECTED_GATE`) so it cross-joins the gate scan and the merge
-dedups to the output grain — a 0/1-row EXISTS gate matching v3. Gate-fails (`x=5`)
-→ 0 rows (filter genuinely applied, not dropped); test now asserts both. Full v4
-sweep 4313 passed / 0 real fail (lone fail = live-Gemini flake); v3 sweep 4318 / 0
-real fail (lone fail = live-OpenAI flake).
-
-Also FIXED the 2 untracked siblings found while here: `test_aggregate_filter` /
-`test_aggregate_filter_short_syntax` (usa_names). NOT hard — v4's rows are identical
-to v3 (same aggs-by-name, same `WHERE abs(...)` on materialized aggs, same final
-projection); v4 just emits the base `usa_names` scan as ONE shared CTE (reused by
-the aggregate + the filtered join) where v3 duplicates it inline (arguably better).
-The regex over-specified CTE ordering (pinned the aggregate CTE as FIRST); a leading
-`.*?` now tolerates a preceding CTE. Test-only; passes v3 + v4 in isolation. The
-tracked `test_aggregate_filter_anonymous` remains the genuinely-hard sibling
-(HAVING vs CASE+downstream-WHERE duplication).
-
-### 2026-07-01 — filter_scalar staging: ROWS VERIFIED, test conditioned + pruned (_V4_STRUCTURE)
-
-`test_filter_scalar_aggregate_not_restricted_by_staging`: executed all 4
-permutations under v4 — rows CORRECT everywhere. The filter-scalar `avg(price) by
-category` ranges over the full items table in v4 (sale_count == 1, not 2 — a
-2023-restricted avg would give 2), so the bug the test guards is absent. v4 also
-sources the OUTER scan from the pre-joined staging table (its `non_partial_for`
-matches the outer `sale_year=2023`), which is equivalent + correct; and v4
-correctly AVOIDS staging in permutation 3 (no year filter → staging incomplete).
-The over-broad P2 `staged not in sql` shape assertion (conflated "avg restricted"
-with "staging used at all") is now gated on the v3 planner; the `sale_count` row
-check is the real guard and holds under both. Not a v4 bug — a valid alternative
-plan. Test-only change (no source), pruned.
-
-### 2026-07-01 — persist-with-where partial-source reuse FIXED + pruned (_V4_STRUCTURE)
-
-`test_persist_with_where`: v4 recomputed a `CASE` from the base table instead of
-reading the persisted `upper_name` datasource. The persist
-(`... from select test_upper_case_2 where category_id = 1`) stores only the
-derived column (no `category_id`), so `_datasource_materializes` ->
-`_conditions_supported` rejected it (can't re-express `category_id = 1`), even
-though its `non_partial_for = category_id = 1` already bakes in that exact
-population. Fix: `_datasource_materializes` (concept_strategies_v4, v4-only) skips
-`_conditions_supported` when the query `where` and the ds `non_partial_for` are
-mutually implied (population == desired rows). v4 now reads `upper_name` (no CASE,
-no `category_id`), matching v3. Full v4 sweep clean; v4-only change.
-
-### 2026-07-01 — two_merge (merge_aggregate=False) passthrough residue FIXED + pruned
-
-`test_two_merge_aggregate_compacts_inline_window_query` merge_aggregate=False was
-v4 11 vs v3 9 CTEs (the merge_aggregate=True branch always passed, 5==5). v4
-models the semijoin membership (`date.week_seq in relevent_week_seq`) as a JOIN
-node; predicate pushdown relocates it to the fact scan's WHERE subselect, leaving
-a bare single-parent passthrough SELECT (v3 applies the filter in-scan, never
-materializing the node). `CollapseSingleParent` PASSTHROUGH mode would fold it,
-but the whole rule is gated on `merge_aggregate` (off in this test), and the
-planner's `_elide_passthrough_tree` runs pre-pushdown when the node still has a
-real join. Fix: `passthrough_only` param on `CollapseSingleParent` + a new
-`collapse_single_parent.passthrough_after_pushdown` plan phase (the `elif not
-merge_aggregate` branch of `.after_pushdown`). Near-zero blast radius — only this
-one test sets merge_aggregate=False; the default path is unchanged. v4 now 9==v3.
-
-### 2026-07-01 — grand-total (`by *`) aggregate now cross-joins ON 1=1 (partial: bound_conversion)
-
-v4 was materializing the abstract `__preql_internal.all_rows` grand-total marker
-as a REAL column: the input scan emitted `1 as __preql_internal_all_rows`, the
-aggregate CTE emitted it too, and the consumer joined `INNER JOIN ... on
-all_rows = all_rows` instead of v3's `on 1=1`. Root cause: `_upstream_aggregate`
-(concept_graph) demands the aggregate's `by` concepts via
-`BuildAggregateWrapper.concept_arguments = function.concept_arguments + self.by`,
-which includes `all_rows` — v3 explicitly strips `ALL_ROWS_CONCEPT` in
-`gen_group_node`. Fix: `_upstream_aggregate` drops `ALL_ROWS_CONCEPT` from the
-demanded concepts (v4-only; provably equivalent since all_rows=1 on both sides ⟺
-1=1). `bound_conversion_existence_presto` 1249→1094; constant column gone, join
-now `on 1=1`. Broad win for ANY grand-total aggregate join. Full v4 sweep 4309/0.
-Regression-locked (this is the SECOND time this sourcing regressed):
-`test_grand_total_aggregate_cross_joins_not_all_rows` (test_bound_conversion_
-existence.py) asserts no `__preql_internal_all_rows` column + `on 1=1`,
-parametrized over BOTH planners; fails on the pre-fix v4 tree, passes after.
-
-**NOT pruned:** the entry asserts a SQL fragment referencing
-`"quizzical"."date_converted"`, but v4 still differs from v3 by an extra `wakeful`
-grouping CTE + a `highfalutin` projection layer — v4 keeps the base key
-(`date_string`) and RE-DERIVES `date_converted` rather than computing the cast in
-the scan projection like v3. That residual is the separate passthrough/derive-in-
-scan family (the hard residual), untouched here.
-
-### 2026-07-01 — in_subselect existence-source pushdown/inline bug FIXED
-
-`test_in_subselect_with_inlined_datasource` was mis-bucketed as verbosity — it was
-a CORRECTNESS bug (invalid SQL). For `where it.price > 5 and it.item_id in
-cs.item_id`, v4 applied the membership TWICE: on the items ROOT (referencing a
-DANGLING `cs_catalog_sales` CTE = the un-inlined `cs_item_id` alias) AND on the
-FINAL node (correctly inlined). Root cause is a SHARED optimizer-ordering bug:
-`inline_datasource` runs BEFORE `predicate_pushdown` and folds the membership's
-subselect source into the child; pushdown then tries to promote that membership
-onto the child's parent, but the inlined source has no dependency CTE to re-hang —
-so it writes a `source_map` entry with no backing dependency (dangling) and the
-child copy isn't cleanly removed. The raw planner and pushdown-alone are both
-correct; only the combination breaks. Fix: `_check_parent` (predicate_pushdown)
-vetoes the push when an existence source is inlined into the child (a `source_map`
-entry with no promotable dependency). v4 now applies the membership once, inlined,
-valid. Shared optimizer; v3 sweep 4317/0 and v4 sweep 4308/0 both clean.
-
-### 2026-06-30 — aggregate_filter HAVING CASE-WHEN verbosity FIXED
-
-`filter X where count(...) > N` rendered a redundant `CASE WHEN count > N THEN X
-ELSE NULL` in v4 (522 vs v3's 272). Root cause is shared, not v4-specific:
-`_push_having_into_group_parent` (predicate_pushdown) relocates the aggregate
-predicate into the group parent's HAVING and STRIPS the copy from the filter
-consumer, so `cte.condition` no longer names it and the renderer's existing
-bare-render check (base.py:1046, keyed on `cte.condition`) missed it — reverting
-the filter-item to CASE WHEN. Fix: `_filter_guaranteed_by_sole_parent` (base.py)
-also renders content bare when the CTE's SOLE (non-join, can't NULL-pad) parent's
-condition implies the filter's where — exactly the pushdown's own safety
-invariant. v4 522→442 (bare `order_id`, HAVING kept). Shared renderer change; v3
-sweep 4317/0 and v4 sweep 4307/0 both clean.
-
-## Size / verbosity analysis (2026-06-25)
-
-### Core diagnostic tool: `local_scripts/discovery_v4.py`
-
-Use `discovery_v4.py` as the primary graph/strategy diagnostic harness before making
-size fixes. It already renders the v4 concept graph, merged group graph, and final
-reordered group graph; the `--diagnostics` mode also writes searchable sidecars for
-the planner contracts and materialized strategy tree.
-
-```bash
-.venv/Scripts/python.exe local_scripts/discovery_v4.py --query 81 --diagnostics --diagnostics-dir local_scripts/v4_diagnostics --no-sql
-.venv/Scripts/python.exe local_scripts/discovery_v4.py --query query30-alt.preql --diagnostics --diagnostics-dir local_scripts/v4_diagnostics --no-sql
-```
-
-Outputs:
-
-- `local_scripts/<stem>.png` - concept graph.
-- `local_scripts/<stem>_groups.png` - merged group graph.
-- `local_scripts/<stem>_groups_reordered.png` - final group graph after reordering.
-- `local_scripts/v4_diagnostics/<stem>_diagnostics.json` - machine-readable concepts,
-  groups, edges, contracts, and strategy nodes.
-- `local_scripts/v4_diagnostics/<stem>_groups.md` - group attrs, IO, edge kinds,
-  input contracts, and FINAL contract.
-- `local_scripts/v4_diagnostics/<stem>_groups_merged.md` - same for the merged group
-  graph.
-- `local_scripts/v4_diagnostics/<stem>_strategy.md` - materialized `StrategyNode`
-  tree with datasource choices and repeated parent reuse marked.
-
-Read these before eyeballing SQL. Fast loop:
-
-1. Inspect `__final__` in `<stem>_groups.md` to see merge grain and contributor
-   contracts.
-2. Search `<stem>_strategy.md` for repeated datasources or unexpected fact tables.
-3. Use `<stem>_diagnostics.json` for scripted summaries when comparing two queries
-   or checking whether a fix changed contracts vs only physical assembly.
-
-Goal: v4 should produce **equal-or-less** verbose SQL than v3. The `_TPCDS_SIZE`
-entries are queries where v4's rows are correct but the SQL is longer (more CTEs /
-less compact) than v3's, tripping the per-test `assert len(query) < ceiling`.
-
-Measure the v3-vs-v4 *relative* gap with `python -m local_scripts.v4_size_compare`
-(generation-only). **Caveat:** that harness builds a minimal `Environment` with no
-DB attached, so it does NOT apply datasource inlining — its absolute lengths run
-higher than the real tests, which use the `engine` fixture (DB imported, small
-sources inlined; `test_two` even asserts the raw `"memory"."store_sales"` is gone).
-So a query can read "over ceiling" in the proxy yet PASS its actual test (q23, q94).
-Trust the `test` column for pass/fail; use the proxy lengths only for v3-vs-v4 deltas.
-
-### Measurements 
-
-Trust real-fixture numbers from
-`local_scripts/v4_real_size.py` instead. **Current real-fixture v3/v4 (2026-06-27),
-`OVER` = fails its test:**
-
-| q | ceiling | v3 | v4 | status |
-| --- | ---: | ---: | ---: | :--- |
-| 10 | 7000 | 6420 | 6412 | PASS (pruned) |
-| 2.1 | 7500 | 6290 | 7276 | PASS (pruned 2026-06-29) |
-| 2.2 | 7500 | 6290 | 7276 | PASS (pruned) |
-| 30.alt | 12000 | 7152 | 6112 | PASS (pruned 2026-06-30) |
-| 73 | 3000 | 2701 | 2741 | PASS (pruned) |
-| 81 | 8000 | 7465 | 6410 | PASS (pruned) |
-| 23 | 8500 | 8037 | 8107 | PASS (pruned) |
-| 94 | 5000 | 3452 | 3153 | PASS (pruned) |
-
-**Genuinely failing now (0):** q30.alt FIXED 2026-06-30 (6193 → 6112,
-`web_returns`==1, GROUP BY==2): the second `web_returns` GA-spine scan for the
-filter-only post-aggregate `address.state` filter is eliminated — the HAVING arg
-is peeled into the single-entity FD dim bucket and sourced in the fresh root
-projection, matching v3's `wakeful`. See
-`v4_dimension_projection_rejoin_handoff.md`. q2.1 FIXED 2026-06-29 (8747 →
-7276): the named `*_sales` intermediate made the round() BASIC infer date.id
-grain (the window's `order by date.week_seq` flattened up as a grain parent and
-descended to its key), skipping the same-grain window merge that fixed q2.2.
-Three-part fix — (1) navigation-window order-by excluded from a wrapping
-expression's grain inference (`_get_relevant_parent_concepts` in parsing/common +
-`_row_grain_concept_refs` in author), (2) subset-nest cycle guard
-(`_feeds_extra_signature_group` in group_rules) so the `*_sales` window-feeder
-and `*_increase` window-consumer don't merge into one cycling bucket, (3)
-partial-spine window absorb in `_merge_basic_into_window_parent`. Pruned q2.1 +
-rowset_arithmetic (same family). Both full sweeps clean.
-
-
-### Remaining size shapes — next targets (updated 2026-06-30)
-
-**ALL size-ceiling tests are fixed and pruned** (q47, q57, q73, q81, q10, q23,
-q94, q2.1, q2.2, and now q30.alt). The passthrough/window family (q2.1/q2.2) and
-the dimension-rejoin family (q73/q81/q10/q94/q30.alt) are both closed. No
-`_TPCDS_SIZE` entries remain. Next gating work for the default flip is the
-`_V4_VERBOSITY` (4) + `_V4_STRUCTURE` (5) non-benchmark entries and conditioning
-the cosmetic shape-asserts on `CONFIG.use_v4_discovery`.
+   (`plan_condition_placements`): a row atom whose EVERY candidate host is
+   outside `main_lineage_groups` now raises DisconnectedConcepts (was: gate
+   group pruned at FINAL assembly → filter vanished). EXEMPTION: an atom whose
+   row inputs are all condition row-args of the output rowsets' bodies (q44
+   outer WHERE restating both bodies' filters) — historic harmless drop.
+2. **Subset-side partial cleared on the sole-contributor FINAL path**
+   (`_assemble_final_node`): `_clear_groupmate_completed_partials` also runs
+   on a single covering contributor.
+3. **Derived relation members materialize for rowset pairs**
+   (`resolve_rowset`): a derived member (`cur.wk + 53`) whose every lineage
+   arg is a handle of this boundary materializes NON-HIDDEN at its own side.
+   Gates: outer relations / subset-source member only (anchor-side derived
+   keys resolve through the scoped-merge collapse — materializing displaces
+   it, widening LEFT→FULL); skip when the collapse substituted the member
+   (`environment.concepts[member].address != member`); skip BuildRowsetItem
+   handles.
+
+## ✅ 2026-07-12 (sessions 1–3, condensed) — rebase onto new-join-engine main + rowset-pair port; 201 → 145
+
+Branch rebased onto main (new join engine, join_matrix + rowset matrices +
+presence probes + #596 cograin rules — all validated only on v3). Honest
+post-rebase v4 sweep 201 → 177 (presence-probe side identity via
+`_datasource_renders_probe` + probe `canonical_name`; rowset body
+LIMIT interposed; post-aggregation condition placement w/ cograin fixes)
+→ 145 (coalescing-axis port: probes→ROOT ride the bridge pin, rowset-member
+probes as boundary obligations, probe/member atoms → FINAL keyed feeder,
+rowset↔rowset subset partials → anchor-LEFT+coalesce, full-cover bridge
+dead-last, partition_roots PROPERTY→KEY FD-connect)
+→ 117 (session 3, rowset-pair key-carry: boundary nullability restricted to
+key-like handles (q29 guard), derived-nullable stamp counts unprojected arg
+columns (shared — v3 green), post-join WHERE→FINAL when the relation mate is
+in-graph, axis-only projection keeps whole_grain, authored keys pin the
+rowset-pair merge grain).
 
 ## Phase boundary contract
 
@@ -969,17 +373,3 @@ Still-watch areas:
 - Rowset, recursive, aggregate, window, and group-to concepts remain row-shape
   barriers. Fixes should preserve them as materialized boundaries rather than
   decomposing their roots into another phase.
-
-## Next cleanup loop
-
-1. Size/shape (the gating work): **DONE** — all `_TPCDS_SIZE` entries fixed and
-   pruned (q2.1/q2.2 passthrough-folding + inliner, q30.alt dimension-rejoin).
-   Remaining verbosity/structure work is the non-benchmark `_V4_VERBOSITY` (4) +
-   `_V4_STRUCTURE` (5) entries.
-2. Condition the `_INLINE`/`_MODELING` shape-assert tests on `CONFIG.use_v4_discovery`
-   so they pass under both planners (prerequisite for flipping the default).
-3. Re-run `local_scripts/v4_classify.py` after any planner change, and a full v4
-   sweep before claiming parity (the classifier only re-checks listed tests, so it is
-   blind to regressions in newly added tests).
-4. Keep new Stage 3 heuristics behind contract-driven tests: if materialization needs
-   a key or projection grain, Stage 2 should declare it first.

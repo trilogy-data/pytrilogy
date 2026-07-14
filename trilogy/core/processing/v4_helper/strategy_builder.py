@@ -1078,6 +1078,37 @@ def _parents_already_at_input_grain(
     return True
 
 
+def _widen_passthrough_group(
+    group: StrategyNode, join_key_concepts: list[BuildConcept]
+) -> None:
+    group_outputs = {o.address for o in group.output_concepts}
+    for concept in join_key_concepts:
+        if concept.address in group_outputs:
+            continue
+        for inner in group.parents:
+            # `force_group` on the inner scan is fine here — the wrapping
+            # GroupNode being widened performs the dedup either way.
+            if not isinstance(inner, (SelectNode, MergeNode)):
+                continue
+            available = parent_output_addresses(inner)
+            ds = getattr(inner, "datasource", None)
+            if isinstance(ds, BuildDatasource):
+                available |= {c.address for c in ds.output_concepts}
+            already = concept.address in {o.address for o in inner.output_concepts}
+            if not already and not concept_satisfiable(concept, available):
+                continue
+            if not already:
+                widen_projection(
+                    inner,
+                    [concept],
+                    input_candidates=_row_lineage_closure(concept),
+                    available_addresses=available,
+                )
+            widen_projection(group, [concept], input_candidates=[concept])
+            group_outputs.add(concept.address)
+            break
+
+
 def _widen_merge_join_keys(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -1097,6 +1128,19 @@ def _widen_merge_join_keys(
             join_key_concepts.append(join_key)
 
     for parent in parents:
+        # A pure dedup GroupNode (every output rides through from its parents;
+        # nothing aggregated locally — force_group dedups included) can safely
+        # carry a declared join key: the key joins its parents' row stream, and
+        # the dedup grain widens with it (v3's shape — `quizzical` groups by
+        # c_demo, c_name). Widen the inner scan first, then the group's own
+        # projection.
+        if isinstance(parent, GroupNode):
+            inner_available = parent_output_addresses(parent)
+            if parent.parents and all(
+                o.address in inner_available for o in parent.output_concepts
+            ):
+                _widen_passthrough_group(parent, join_key_concepts)
+            continue
         if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
             continue
         available = parent_output_addresses(parent)
@@ -2126,6 +2170,23 @@ def _assemble_final_node(
             if ex_concepts
             else []
         )
+        # A feeder that participates in a scoped relation must join back on
+        # the relation axis, not cross-join: widen the contributor (and the
+        # feeder) with the authored members each side can render — a leaf
+        # scan picks up the mate (`c_demo`) it binds, the boundary its member
+        # handle. Feeders with no relation stay hidden cross-join inputs.
+        if arg_nodes and environment.scoped_join_key_groups:
+            relation_keys: set[str] = set()
+            for feeder in arg_nodes:
+                feeder_outs = {o.address for o in feeder.output_concepts}
+                for canonical, members in environment.scoped_join_key_groups.items():
+                    relation = {canonical, *members}
+                    if feeder_outs & relation:
+                        relation_keys |= relation
+            if relation_keys:
+                _widen_merge_join_keys(
+                    [node, *arg_nodes], environment, frozenset(relation_keys)
+                )
         sources = ConditionSources(
             row_concepts=row_concepts + arg_concepts,
             row_parents=arg_nodes,
@@ -2187,8 +2248,28 @@ def _assemble_final_node(
         # probe's key group. The normal path hides non-mandatory grain keys and
         # dedups to the output grain FIRST, which strips the join key and
         # degrades the feeder join to 1=1 — apply the condition over the raw
-        # contributor (keys intact), then dedup the filtered rows.
-        if final_probe_args:
+        # contributor (keys intact), then dedup the filtered rows. Same path
+        # for a feeder that participates in a scoped relation with this
+        # contributor (`where return_demos.r_ticket is not null` over a
+        # `union join return_demos.demo_id = c_demo` selecting only c_name):
+        # its join back rides the relation axis, which only the raw
+        # contributor can still widen to.
+        relation_paired_feeders = False
+        if final_conditions is not None and environment.scoped_join_key_groups:
+            sole_avail = {o.address for o in sole_node.output_concepts}
+            feeder_nodes, _ = _filter_arg_parents(
+                group_graph, built, filter_only_addrs - sole_avail
+            )
+            scoped_addrs = {
+                addr
+                for canonical, members in environment.scoped_join_key_groups.items()
+                for addr in (canonical, *members)
+            }
+            relation_paired_feeders = any(
+                {o.address for o in feeder.output_concepts} & scoped_addrs
+                for feeder in feeder_nodes
+            )
+        if final_probe_args or relation_paired_feeders:
             conditioned = _apply_final_conditions(sole_node)
             # The feeder join reads the probe at ITS OWN row grain (the fact
             # side of the relation), fanning the contributor out; the merge's

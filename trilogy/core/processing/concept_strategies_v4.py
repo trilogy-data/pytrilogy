@@ -455,8 +455,21 @@ def _resolve_condition_sources(
                 "Could not resolve condition row arguments "
                 f"{[c.address for c in row_args]}"
             )
+        feeder = row_info.strategy_node
+        # The standalone feeder plan hides its own grain keys at its FINAL
+        # layer (non-mandatory there), but hidden outputs are invisible to
+        # downstream join inference — the merge back onto `node` degrades to
+        # a cartesian. Un-hide any key the consumer also carries so the pair
+        # joins keyed (a keyless feeder, e.g. a `by *` global, still
+        # cross-joins).
+        shared_hidden = {
+            o.address for o in feeder.output_concepts if o.address in produced_addrs
+        } & set(feeder.hidden_concepts)
+        if shared_hidden:
+            feeder.hidden_concepts = set(feeder.hidden_concepts) - shared_hidden
+            feeder.rebuild_cache()
         sources.row_concepts = row_args
-        sources.row_parents.append(row_info.strategy_node)
+        sources.row_parents.append(feeder)
 
     seen_existence_addrs: set[str] = set()
     seen_parent_ids: set[int] = set()

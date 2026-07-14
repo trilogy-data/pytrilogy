@@ -852,6 +852,7 @@ def _inject_conditions(
     scoped_join_key_groups: dict[str, set[str]] | None = None,
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
+    environment: BuildEnvironment | None = None,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
@@ -864,6 +865,7 @@ def _inject_conditions(
         scoped_join_key_groups,
         concept_attrs,
         statement_relation_addresses,
+        environment,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -1159,6 +1161,31 @@ def _final_merge_grain(
                 resolved = _resolve_rowset_key(key_address, environment)
                 if resolved != key_address:
                     grain.add(resolved)
+    # A mixed root↔rowset relation (`union join return_demos.demo_id = c_demo`)
+    # whose members are not outputs never enters the grain through the loops
+    # above — the rowset boundary and the mate's contributor then share no
+    # declared join key and the FINAL merge cross-joins ON 1=1. The authored
+    # members ARE the join axis: add them whenever a member lives on a FINAL
+    # rowset boundary and another contributor exists to pair with.
+    if environment is not None and environment.scoped_join_key_groups:
+        finals = [
+            gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
+        ]
+        rowset_namespaces: set[str] = set()
+        for gid in finals:
+            if attrs[gid].derivation == Derivation.ROWSET:
+                for member in attrs[gid].members:
+                    namespace, _, _ = member.rpartition(".")
+                    if namespace:
+                        rowset_namespaces.add(namespace)
+        if len(finals) > 1 and rowset_namespaces:
+            for canonical, members in environment.scoped_join_key_groups.items():
+                relation_addrs = {canonical, *members}
+                if any(
+                    addr.rpartition(".")[0] in rowset_namespaces
+                    for addr in relation_addrs
+                ):
+                    grain |= relation_addrs
     return frozenset(grain)
 
 
@@ -1583,6 +1610,7 @@ def _compute_concept_sets(
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
+    scoped_join_member_addresses: frozenset[str] = frozenset(),
 ) -> None:
     """Per-group input/output/hidden concept sets.
 
@@ -1701,6 +1729,21 @@ def _compute_concept_sets(
                 for addr in final_args_here:
                     if is_presence_probe(addr):
                         outs |= lineage_parents.get(addr, set()) & cap_gid
+                # Same shape for a ROWSET boundary feeding a FINAL-deferred
+                # filter (`where return_demos.r_ticket is not null` over a
+                # `union join return_demos.demo_id = c_demo`): the feeder must
+                # join back on the relation axis, so expose the boundary's own
+                # scoped member handles. Not cap-gated — the boundary always
+                # materializes its authored handles from its body.
+                if final_args_here and fact.derivation == Derivation.ROWSET:
+                    boundary_namespaces = {
+                        addr.rpartition(".")[0] for addr in fact.primary
+                    }
+                    outs |= {
+                        member
+                        for member in scoped_join_member_addresses
+                        if member.rpartition(".")[0] in boundary_namespaces
+                    }
                 if fact.grain:
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
@@ -1935,6 +1978,7 @@ def build_group_graph(
             if environment is not None
             else frozenset()
         ),
+        environment,
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,
@@ -1956,6 +2000,17 @@ def build_group_graph(
             concept_attrs,
             buckets,
             mandatory_list,
+            scoped_join_member_addresses=(
+                frozenset(
+                    addr
+                    for canonical, members in (
+                        environment.scoped_join_key_groups or {}
+                    ).items()
+                    for addr in (canonical, *members)
+                )
+                if environment is not None
+                else frozenset()
+            ),
         )
         _refresh_input_contracts(
             group_graph, group_edges, attrs, concept_attrs, concept_edges

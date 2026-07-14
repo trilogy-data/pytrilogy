@@ -334,6 +334,29 @@ def node_id(label: str, address: str) -> str:
     return f"[{label}]{address}" if label else address
 
 
+def _statement_scoped_relation_members(environment: BuildEnvironment) -> frozenset[str]:
+    """All addresses of scoped-join relations declared at STATEMENT scope
+    (query-level `union/left/full/subset join a = b`). Global `merge`
+    identities are excluded — they pair INNER and never redefine row
+    identity."""
+    from trilogy.core.domain_graph import EdgeScope
+
+    if not environment.scoped_join_key_groups:
+        return frozenset()
+    statement_addrs = {
+        addr
+        for e in environment.domain_graph.edges
+        if e.scope is EdgeScope.STATEMENT
+        for addr in (e.source, e.target)
+    }
+    out: set[str] = set()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        relation = {canonical, *members}
+        if relation & statement_addrs:
+            out |= relation
+    return frozenset(out)
+
+
 def _aggregate_input_grain(
     concept: BuildConcept, environment: BuildEnvironment, out_grain: frozenset[str]
 ) -> frozenset[str]:
@@ -546,6 +569,34 @@ def _add_concept(
         and concept.lineage.operator == FunctionType.ALIAS
     )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+    aggregate_input_grain = (
+        frozenset()
+        if is_materialized_root
+        else _aggregate_input_grain(concept, environment, out_grain)
+    )
+    # Under a STATEMENT-scoped preserving join (`union join ticket =
+    # r_filtered.r_ticket`), row identity is the coalesced relation axis: an
+    # aggregate whose inputs ride the relation computes per axis row, not per
+    # its authored dimension grain (v3 renders it at the joined relation's
+    # grain via the grain-match formulas; the outer select then dedups).
+    # Widen the grouping grain by the relation members its inputs carry.
+    # Global `merge` identities pair INNER 1:1 and are excluded, as are
+    # GLOBAL aggregates (empty/all_rows grain — the q97 presence counts stay
+    # one total row over the joined relation, never per-axis).
+    dimension_grain = {
+        addr for addr in out_grain if not addr.endswith(f".{ALL_ROWS_CONCEPT}")
+    }
+    if (
+        not is_materialized_root
+        and concept.derivation == Derivation.AGGREGATE
+        and aggregate_input_grain
+        and dimension_grain
+    ):
+        axis_members = aggregate_input_grain & _statement_scoped_relation_members(
+            environment
+        )
+        if axis_members:
+            out_grain |= axis_members
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(
         address=concept.address,
@@ -561,11 +612,7 @@ def _add_concept(
         grain_components=out_grain,
         grouping_mode=grouping_mode,
         rowset_name=rowset_name,
-        aggregate_input_grain=(
-            frozenset()
-            if is_materialized_root
-            else _aggregate_input_grain(concept, environment, out_grain)
-        ),
+        aggregate_input_grain=aggregate_input_grain,
         keys=frozenset(concept.keys or set()),
         pseudonyms=frozenset(concept.pseudonyms),
         is_rename=is_rename,

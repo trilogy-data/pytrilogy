@@ -271,8 +271,6 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/engine/test_duckdb.py::test_derived_membership_existence": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion": _V4_MASKED_LEAK,
-    "tests/engine/test_duckdb_rowset.py::test_scoped_left_join_coalesce_keeps_unmatched": _V4_MASKED_LEAK,
-    "tests/engine/test_duckdb_rowset.py::test_tvf_union_arm_local_join": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb_rowset.py::test_tvf_union_order_by_grouped_away_column": _V4_MASKED_LEAK,
     "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_aggregated": _V4_MASKED_LEAK,
     "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_in_tvf": _V4_MASKED_LEAK,
