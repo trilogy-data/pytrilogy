@@ -28,11 +28,6 @@ from .models import GroupBucket
 
 ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 
-_CANNOT_HOST_OWN_OUTPUT: set[Derivation] = {
-    Derivation.WINDOW,
-    Derivation.UNNEST,
-}
-
 _EMITS_GROUP_BY: set[Derivation] = {
     Derivation.AGGREGATE,
     Derivation.GROUP_TO,
@@ -44,6 +39,7 @@ class PlacementReason(Enum):
     FINAL_RECONVERGENCE = "final_reconvergence"
     FINAL_CROSS_GRAIN_AGGREGATE = "final_cross_grain_aggregate"
     DISCONNECTED_GATE = "disconnected_gate"
+    FINAL_UNCOVERED_CONTRIBUTOR = "final_uncovered_contributor"
 
 
 @dataclass(frozen=True)
@@ -156,12 +152,23 @@ def _candidate_groups(
                 f"{sorted(missing)} not produced by any group."
             )
         return []
-    return [
-        gid
-        for gid in candidates
-        if buckets.get(gid) is None
-        or buckets[gid].derivation not in _CANNOT_HOST_OWN_OUTPUT
-    ]
+    hosts: list[str] = []
+    for gid in candidates:
+        bucket = buckets.get(gid)
+        if bucket is None:
+            hosts.append(gid)
+            continue
+        if bucket.derivation == Derivation.UNNEST:
+            continue
+        # A WINDOW group can host an atom as a pre-window input filter (the
+        # strategy builder peels it into a wrapper below the window), but an
+        # atom over the window's OWN output has no pre-window rendering.
+        if bucket.derivation == Derivation.WINDOW and (
+            row_inputs & set(bucket.primary_members)
+        ):
+            continue
+        hosts.append(gid)
+    return hosts
 
 
 def _producer_closures(
@@ -312,6 +319,51 @@ def _choose_groups(
     if main_cands:
         return tuple(main_cands)
     return tuple(candidates)
+
+
+def _uncovered_exposing_output_contributor(
+    chosen_groups: tuple[str, ...],
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    group_graph: nx.DiGraph,
+    mandatory_addrs: set[str],
+) -> bool:
+    """Whether some select-phase group producing a mandatory output sits outside
+    the chosen hosts' downstream cover AND can expose every atom input — i.e. an
+    unfiltered projection of the same row universe re-enters the FINAL merge.
+
+    Hosting an atom at its upstream-most candidate filters that branch, but a
+    sibling output projection (`vehicle_label` beside a name-grain window) joins
+    FINAL on a coarser key and fans the filtered rows back out to the unfiltered
+    universe — v3 re-applies the WHERE on the final select. Only trip when the
+    uncovered group can expose the inputs (else the FINAL WHERE would reference
+    an unsourced concept; an uncovered contributor keyed 1:1 by row identity is
+    pinned by the join and needs no re-filter — its groups can't expose derived
+    condition inputs and skip here). Condition-phase (d1) groups are population
+    scope and never receive row atoms.
+
+    Skipped entirely under non-standard grouping (ROLLUP/CUBE/GROUPING SETS,
+    carried in the bucket discriminator): those groups NULL-inject rolled-up
+    dims on subtotal rows, and a WHERE re-applied above the merge would drop
+    every subtotal (q05 lost its rollup totals)."""
+    if any(b.discriminator.startswith("grp:") for b in buckets.values()):
+        return False
+    covered: set[str] = set(chosen_groups)
+    for gid in chosen_groups:
+        covered |= nx.descendants(group_graph, gid)
+    uncovered_exposing = False
+    for gid, b in buckets.items():
+        if gid in covered:
+            continue
+        if b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH):
+            continue
+        members = set(b.primary_members) | set(b.secondary_members)
+        if not (members & mandatory_addrs):
+            continue
+        if row_inputs <= members:
+            uncovered_exposing = True
+            break
+    return uncovered_exposing
 
 
 def _validate_not_pushed_past_independent_barrier(
@@ -634,4 +686,22 @@ def plan_condition_placements(
                     reason=PlacementReason.UPSTREAM_MOST,
                 )
             )
+            if (
+                mandatory_list
+                and not atom.existence_arguments
+                and _uncovered_exposing_output_contributor(
+                    chosen_groups,
+                    row_inputs,
+                    buckets,
+                    group_graph,
+                    {c.address for c in mandatory_list},
+                )
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(FINAL_NODE_ID,),
+                        reason=PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR,
+                    )
+                )
     return placements

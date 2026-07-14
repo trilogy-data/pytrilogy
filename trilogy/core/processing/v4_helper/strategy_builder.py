@@ -2561,8 +2561,16 @@ def build_strategy_node(
         # sources off the CTE that emits the WHERE — if we attach the
         # existence parent to a different node, the IN's right-hand side
         # has no source CTE and we emit INVALID_REFERENCE_BUG.
+        # WINDOW gets the same peel: WindowNode has no `conditions` slot (its
+        # generator folds them into `preexisting_conditions`, silently dropping
+        # the filter), and WHERE-before-window is exactly the required
+        # semantics — the window computes over the filtered rows.
         condition_host_node: StrategyNode | None = None
-        if injected is not None and derivation in _AGGREGATING_DERIVATIONS and parents:
+        if (
+            injected is not None
+            and derivation in (*_AGGREGATING_DERIVATIONS, Derivation.WINDOW)
+            and parents
+        ):
             parent_output_by_addr = {
                 output.address: output
                 for parent in parents

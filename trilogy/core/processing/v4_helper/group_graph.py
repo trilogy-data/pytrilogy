@@ -418,12 +418,36 @@ def _finest_determining_key(
     return finest[0] if len(finest) == 1 else None
 
 
+def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
+    """The arg's address plus every address reachable through its lineage — a
+    derived filter arg (``vehicle_label <- concat(name, '-', variant)``) needs
+    its ROOT inputs co-located wherever the filter is evaluated."""
+    closure: set[str] = set()
+    stack: list[BuildConcept] = [arg]
+    while stack:
+        concept = stack.pop()
+        if concept.address in closure:
+            continue
+        closure.add(concept.address)
+        if concept.lineage is not None:
+            stack.extend(
+                c
+                for c in concept.lineage.concept_arguments
+                if isinstance(c, BuildConcept)
+            )
+    return closure
+
+
 def _pre_aggregate_filter_args(
     conditions: list[BuildWhereClause],
 ) -> frozenset[str]:
     """Row-arg addresses of WHERE clauses that contain NO aggregate term — pure
     pre-aggregate filters that narrow the rows feeding an aggregate (q98's
     ``item.category in (...)``, which also bounds the class-total window).
+    Expanded through each arg's lineage closure: a derived filter arg's ROOT
+    inputs must stay on the fact scan too, or the group hosting the filter
+    cannot render the derived expression (a concat label filter with
+    ``vehicle_name`` peeled to a dim bucket strands ``vehicle_variant``).
 
     A clause that DOES carry an aggregate is a HAVING-style post-aggregate filter
     (q81's ``customer_state > scaled_state and address.state = 'GA'``): its dim
@@ -436,7 +460,8 @@ def _pre_aggregate_filter_args(
             arg.derivation == Derivation.AGGREGATE for arg in clause.concept_arguments
         ):
             continue
-        args |= {arg.address for arg in clause.row_arguments}
+        for arg in clause.row_arguments:
+            args |= _row_arg_lineage_closure(arg)
     return frozenset(args)
 
 
@@ -871,25 +896,29 @@ def _propagate_raw_filters_to_d1_roots(
     datasource_columns: list[frozenset[str]],
 ) -> set[str]:
     """A `root_d1` bucket is a pristine DUPLICATE of a main fact scan, split off
-    so a d1 calc reads rows untouched by *sibling* WHERE atoms. That split is
-    right when the d1 calc is a separate population:
+    so a d1 calc reads rows untouched by *sibling* WHERE atoms — a
+    WHERE-referenced cross-row computation gates at POPULATION scope, ignoring
+    its peers in the clause (the #599 dual-scope contract; `where f = 1 and
+    sum(z) by x > 5` gates on the unfiltered sums).
 
-    - a SEMIJOIN source — `week_seq in relevent_week_seq` (q02): the source
-      spans all channels, so the outer `sales_channel in (...)` must not narrow
-      it (and propagating there also cycles the CTE graph, since the existence
-      source feeds back into the main stream);
-    - an aggregate over a DIFFERENT table than the filter — `avg(item.price) by
-      category` filtered on `sales.date` (q06): the average is over the item
-      dimension, which the sales-grain date filter never touches.
+    The exception is a GROUP-ATOMIC atom: one whose every row arg is
+    functionally determined by the grouping grain of EVERY cross-row d1
+    aggregate reading the scan. Such an atom keeps or drops whole groups, so
+    the population and filtered values coincide — and NOT propagating it leaks
+    physical artifacts: q74's `billing_customer.sk is not null` (sk is the
+    aggregates' by-key) left a NULL-sk population group that rode the final
+    merge into a spurious all-NULL output row. Mirrors
+    `_where_is_group_atomic` in where_scope_normalization.
 
-    But when the d1 aggregate reads the SAME fact the filter applies to —
-    `avg(ss.net_profit) by item` under `ss.store.id = 1` (q44) — the filter
-    belongs on its input too, or the avg covers the wrong population. So copy a
-    main root's atoms (all raw root-column filters by construction) onto a
-    `root_d1` only when (a) root_d1 feeds no existence source and (b) some
-    single datasource carries BOTH the atom's columns and all of root_d1's scan
-    columns — i.e. the filter and the aggregate genuinely share one table.
-    Returns the root_d1 gids that gained atoms."""
+    Additional gates, each still required: (a) root_d1 feeds no existence
+    source (`week_seq in relevent_week_seq`, q02 — propagating cycles the CTE
+    graph); (b) some single datasource carries BOTH the atom's columns and
+    root_d1's scan columns (an item-dim avg is never narrowed by a sales-grain
+    date filter, q06); (c) a `?`-virtual-filter-scoped predicate is the user's
+    per-aggregate selector and stays off the shared scan (q21); (d) a d1
+    WINDOW/GROUP_TO downstream blocks propagation entirely — atomicity for a
+    window is partition-key containment, and partition keys are not visible on
+    the bucket. Returns the root_d1 gids that gained atoms."""
     existence_sources = {u for u, _ in edges_of_kind(group_edges, EdgeKind.EXISTENCE)}
     d1_roots = [
         gid
@@ -908,6 +937,19 @@ def _propagate_raw_filters_to_d1_roots(
     for d1_gid in d1_roots:
         reach = nx.descendants(group_graph, d1_gid) | {d1_gid}
         if reach & existence_sources:
+            continue
+        cross_row_grains: list[set[str]] = []
+        blocked = False
+        for desc in reach - {d1_gid}:
+            desc_attrs = attrs.get(desc)
+            if desc_attrs is None or desc_attrs.depth_label != DepthLabel.D1:
+                continue
+            if desc_attrs.derivation in (Derivation.WINDOW, Derivation.GROUP_TO):
+                blocked = True
+                break
+            if desc_attrs.derivation == Derivation.AGGREGATE:
+                cross_row_grains.append(set(desc_attrs.grain_components))
+        if blocked:
             continue
         d1_members = set(attrs[d1_gid].primary_members)
         # The datasource that supplies the MOST of root_d1's inputs is the table
@@ -940,6 +982,16 @@ def _propagate_raw_filters_to_d1_roots(
                 # per-aggregate; propagating it to the shared scan would narrow a
                 # sibling aggregate that omits it (q21).
                 if row_args and row_args <= filter_scoped:
+                    continue
+                # Group-atomicity: every row arg FD by every downstream d1
+                # aggregate's grouping grain, so whole groups drop and the
+                # population value is unchanged. A non-atomic peer must never
+                # narrow a population gate's input (dual-scope contract).
+                if not all(
+                    _fd_on_key(concept_attrs, arg, grain)
+                    for grain in cross_row_grains
+                    for arg in row_args
+                ):
                     continue
                 if atom not in attrs[d1_gid].condition_atoms:
                     attrs[d1_gid].condition_atoms.append(atom)
@@ -1291,6 +1343,24 @@ def _refresh_input_contracts(
         bridge_keys = _shared_row_parent_join_keys(
             group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
+        # A non-grouping consumer pairing a GROUPING row parent (a population
+        # aggregate at grain G) with row-grain siblings joins them ON G — the
+        # aggregate's value repeats per G-group across the row stream (`sum(z)
+        # by x + w`: the sum CTE pairs to the w rows on x). Declare G so the
+        # sibling projections keep the bridge instead of degrading to 1=1.
+        grouping_parent_grain: set[str] = set()
+        if attrs[gid].derivation not in GROUPING_DERIVATIONS:
+            row_parents = [
+                pred
+                for pred in group_graph.predecessors(gid)
+                if pred != FINAL_NODE_ID
+                and pred in attrs
+                and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
+            ]
+            if len(row_parents) >= 2:
+                for pred in row_parents:
+                    if attrs[pred].derivation in GROUPING_DERIVATIONS:
+                        grouping_parent_grain |= set(attrs[pred].grain_components)
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
             if pred == FINAL_NODE_ID or pred not in attrs:
@@ -1307,7 +1377,9 @@ def _refresh_input_contracts(
                     required_outputs=required_outputs,
                     required_grain=frozenset() if is_existence else required_grain,
                     preserve_keys=(
-                        frozenset() if is_existence else required_grain | bridge_keys
+                        frozenset()
+                        if is_existence
+                        else required_grain | bridge_keys | grouping_parent_grain
                     ),
                     channel=(
                         InputChannel.EXISTENCE
@@ -1984,6 +2056,12 @@ def _synthetic_dimension_regraft_parent(
     current = attrs[gid]
     if current.derivation != Derivation.BASIC:
         return None
+    # A condition-phase (d1) group's real input demand only lands when atoms
+    # are injected AFTER this regraft runs; a synthetic bucket built from its
+    # pre-injection inputs freezes out the lineage columns the condition's
+    # derived arg needs (concat-label WHERE: `vehicle_variant` stranded).
+    if current.depth_label == DepthLabel.D1:
+        return None
     key = set(current.grain_components)
     if not key:
         return None
@@ -2098,8 +2176,8 @@ def _merge_basic_into_window_parent(
 
     The post-window filter (`x is not null`) needs no handling here: it has not
     been injected yet (this runs before `_inject_conditions`), and placement
-    refuses to host a filter on a window group's own output
-    (`_CANNOT_HOST_OWN_OUTPUT`), so it defers to FINAL exactly as v3 emits it."""
+    refuses to host a filter on a window group's own output, so it defers to
+    FINAL exactly as v3 emits it."""
     changed = False
     for gid in list(group_graph.nodes):
         if gid == FINAL_NODE_ID:

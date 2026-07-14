@@ -1,5 +1,103 @@
 # v4 compatibility audit (last refreshed 2026-07-13)
 
+## ✅ 2026-07-13 (session 2) — where-scoping #599 family ported to v4; v4 sweep 140 → 87 (0 new)
+
+The #599 dual-scope contract (WHERE cross-row references gate at POPULATION
+scope, ignoring clause peers; select outputs recompute over admitted rows) is
+now honored by v4 discovery. `test_window_where_pushdown_matrix` 28 → 0,
+`test_where_select_dual_scope` 24 → 1. Full v4 sweep **87 failed / 5526
+passed** (was 140): 53 net fixed, **0 new** — every current failure was
+pre/post checked (34 failing files re-run on the stashed pre-change tree;
+the 4 candidates that only fail with full-suite ordering — syntax_examples
+rollup, disconnected_components_e2e messages ×2, constant_through_def_macro —
+all fail on the PRE tree in isolation too). Collateral gates all green: full
+v3 sweep **5685 passed / 0 failed** (the shared author.py grain change is
+clean), TPC-DS v3 156/0, TPC-DS v4 back to exactly the 6 pre-existing fails
+(q14, q64-transitive, q81, q29-feeder, or_membership, q64_correlated),
+join_matrix 297/0 (+7 xfail), tests/core/processing 417/0. Mid-battery the
+first TPC-DS v4 run caught TWO real regressions (q05 rollup totals, q74 +1
+NULL row) — both root-caused and fixed with narrower gates before the final
+sweep (see #1 and #4 below).
+
+Six root causes fixed (all v4-only except #5):
+
+1. **d1-scan filter propagation violated population scope**
+   (`_propagate_raw_filters_to_d1_roots`, group_graph.py): main-root row atoms
+   were copied onto the pristine `root_d1` scan feeding WHERE-referenced
+   cross-row calcs whenever one table carried both (its q44 rationale was
+   obsoleted when #596 re-authored q44 with a `?`-bound filter). Now gated on
+   GROUP-ATOMICITY (mirrors `_where_is_group_atomic`): propagate only when
+   every row arg is FD-determined by EVERY downstream d1 aggregate's grouping
+   grain — whole groups drop, population value provably unchanged. q74 NEEDS
+   the atomic case (`billing_customer.sk is not null`, sk = the aggregates'
+   by-key): without it the NULL-sk population group rides the final merge into
+   a spurious all-NULL row (93 vs 92 rows). Any downstream d1 WINDOW/GROUP_TO
+   blocks propagation entirely (window atomicity = partition-key containment,
+   not visible on buckets). Fixed the aggregate dual-scope cells (~20).
+2. **WINDOW groups couldn't host pre-window filters** (condition_placement +
+   strategy_builder + the silent drop in gen_window): placement now lets a
+   WINDOW group host atoms not referencing its own outputs; the strategy
+   builder peels injected conditions into a pre-window SelectNode wrapper
+   (same pattern as aggregates — gen_window's WindowNode has no conditions
+   slot and was folding them into `preexisting_conditions`, i.e. DROPPING
+   them). Fixed all row-grain window cells and the nav-gate splits (the
+   `twin is not null` gate now applies below the select-scope lead/lag via
+   the d1 twin CONSTRAINT parent joined at row grain).
+3. **Derived filter-arg lineage split across root buckets** (group_graph):
+   `_pre_aggregate_filter_args` now expands each WHERE row arg through its
+   lineage closure so `_split_root_dimension_clusters` can't peel one ROOT
+   input of a derived filter arg (concat label: `vehicle_name` peeled to a
+   dim bucket stranded `vehicle_variant` → INVALID_REFERENCE). Also
+   `_synthetic_dimension_regraft_parent` skips D1 groups — their real input
+   demand only lands when atoms are injected AFTER the regraft, so the
+   synthetic bucket froze out the condition's lineage columns.
+4. **FINAL coverage completion** (condition_placement,
+   `PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR`): after choosing
+   upstream-most hosts, if a select-phase group producing a mandatory output
+   is NOT downstream of any host AND can expose the atom's inputs, the atom
+   is ALSO placed at FINAL — an unfiltered sibling projection (label beside a
+   name-grain window) otherwise joins FINAL on a coarser key and fans
+   filtered rows back out (v3 re-applies the WHERE at the final select).
+   SKIPPED under ROLLUP/CUBE/GROUPING SETS (bucket discriminator `grp:`):
+   rollup rows NULL-inject dims, and the re-applied WHERE deleted q05's
+   subtotal/grand-total rows. Row-identity-keyed contributors are naturally
+   pinned by the join and skip via the exposure gate.
+5. **Shared BASIC grain fix** (author.py `get_select_grain_and_keys`): a BASIC
+   mixing by-aggregates with row scalars (`v <- sum(z) by x + w`) collapsed
+   its grain to the aggregates' by-keys ({x}), losing the row scalar's
+   identity. New `_non_aggregate_row_refs` walk (stops at aggregate
+   boundaries) unions the row-scalar peers' keys → grain {id}. Validated by
+   the full v3 sweep; v4 buckets by grain, so the wrong grain made the twin's
+   gate group join back on x (group key) instead of row identity.
+6. **Grouping-parent bridge keys** (`_refresh_input_contracts`): a
+   non-grouping consumer pairing a GROUPING row parent (population aggregate
+   at grain G) with row-grain siblings declares G in `preserve_keys` so the
+   sibling projections keep the join bridge instead of degrading to 1=1.
+
+**Still open in-family (1):** `test_twin_keeps_scalar_refs_environment_resolved`
+— the twin `v_wscope = population-sx + row-scalar w` merge still cross-joins
+ON 1=1: `_satisfy_parent_projection_contract` (strategy_builder) conflates
+"available from the shared scan" (`parent_output_addresses` = parent-of-parent
+availability) with "provided by the sibling" when excluding projection-grain
+keys from `fd_needed`, so the row side's carried x gets stripped by the
+`_wrap_for_grain` path and `_widen_merge_join_keys` can't re-widen a GroupNode.
+Fixing it needs that function to use actual sibling-node outputs — a broader
+reshape-heuristic change (q81/q30/q10/q76 tuned) deferred to its own session.
+
+**Open families by sweep count (87):** rowset_cross_datasource ×9,
+duckdb_rowset ×7, union_reproject ×6, duckdb.py ×6, TPC-DS
+q14/q64/q81/q29-feeder + non-benchmark ×2, filter_mixed_aggregate ×4,
+materialized_aggregate_bridge ×4, offset_join ×4, generation_matrix ×3,
+filter_bare_aggregate_content_grain ×3, union_join_rowset_grain ×3,
+rollup_scoped ×3, cograin ×2, multi_partial_anchor ×2, expression_keys ×2,
+multi_where ×2, membership_existence ×2, pushdown_partitioned ×2,
+cross_rowset_join_rowset_as_set ×2, subquery ×2, disconnected_e2e messages
+×2, + singles (syntax_examples rollup, rowset_body_limit, join_merge_parity,
+scoped_derived exp_rows1, collapse_basic_into_group, union_bare_aggregate,
+setops, orderby_derived_expr, constant_def_macro, membership_having,
+twin_keeps_scalar_refs). Largest next target: the rowset_cross_datasource
+family (×9, tracked since the config-leak era).
+
 ## ✅ 2026-07-13 — rowset base-WHERE contract + derived relation-member obligation; v4 sweep = 140 (0 new)
 
 rowset_join_base_where_matrix 15 → 0, composite_matrix derived cells 4 → 0
