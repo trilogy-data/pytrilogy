@@ -2061,6 +2061,24 @@ def _hide_final_only_grain_keys(
     node.rebuild_cache()
 
 
+def _subtree_applies_conditions(node: StrategyNode, where: BuildWhereClause) -> bool:
+    """Whether some node in this subtree already applies (implies) `where`.
+
+    A FINAL-deferred atom can be double-placed at a lower host (the aggregate
+    group's pre-filter wrapper). Re-applying it on a sole contributor is at
+    best redundant; for a ROLLUP contributor it is destructive — the feeder
+    re-join pairs on grouping keys the ROLLUP NULLs at subtotal rows, so the
+    subtotal/total rows drop (union_reproject rollup cell)."""
+    stack: list[StrategyNode] = [node]
+    while stack:
+        current = stack.pop()
+        for applied in (current.conditions, current.preexisting_conditions):
+            if applied is not None and condition_implies(applied, where.conditional):
+                return True
+        stack.extend(current.parents)
+    return False
+
+
 def _clear_groupmate_completed_partials(
     node: StrategyNode, environment: BuildEnvironment
 ) -> None:
@@ -2071,12 +2089,20 @@ def _clear_groupmate_completed_partials(
     it with its complete group-mate via the authored equality, so the merged
     relation spans the anchor's domain and the key renders as the coalesced
     group axis (v3's completion-merge behavior). Leaving it partial trips the
-    final no-complete-source guard for a value that is in fact complete here."""
+    final no-complete-source guard for a value that is in fact complete here.
+
+    A relation whose anchor members are ABSENT from the plan entirely (the
+    query never references the anchor side, so it was never sourced) is pure
+    domain metadata: the subset side's own domain IS the output domain, and
+    its partial clears too (v3 collapses to the subset side alone —
+    union_reproject rowset-LHS cells)."""
     if not node.partial_concepts or not environment.scoped_join_key_groups:
         return
     complete_outputs: set[str] = set()
+    all_outputs: set[str] = set()
     for parent in node.parents:
         parent_partial = {c.address for c in parent.partial_concepts}
+        all_outputs |= {c.address for c in parent.output_concepts}
         complete_outputs |= {
             c.address for c in parent.output_concepts if c.address not in parent_partial
         }
@@ -2094,7 +2120,7 @@ def _clear_groupmate_completed_partials(
         for canonical, members in environment.scoped_join_key_groups.items():
             if concept.address in members or concept.address == canonical:
                 mates |= (members | {canonical}) - {concept.address}
-        if mates & complete_outputs:
+        if mates and (mates & complete_outputs or not mates & all_outputs):
             continue
         keep.append(concept)
     if len(keep) != len(node.partial_concepts):
@@ -2254,8 +2280,50 @@ def _assemble_final_node(
         # `union join return_demos.demo_id = c_demo` selecting only c_name):
         # its join back rides the relation axis, which only the raw
         # contributor can still widen to.
+        final_already_applied = final_conditions is not None and (
+            _subtree_applies_conditions(sole_node, final_conditions)
+        )
+        # A ROLLUP contributor NULLs its grouping keys on subtotal rows, so any
+        # FINAL application above it (feeder re-join on those keys, or a plain
+        # WHERE over the merged output) drops every subtotal. Row conditions
+        # are population-scope: push them onto the aggregate's INPUT stream —
+        # which already carries the relation axis and the condition args —
+        # mirroring the build loop's pre-filter wrapper (and v3, which filters
+        # before the ROLLUP GROUP BY).
+        if (
+            final_conditions is not None
+            and not final_already_applied
+            # Non-standard grouping is carried in the group id via the bucket
+            # discriminator (`grp:rollup` / `grp:cube` / `grp:grouping_sets`).
+            and ":grp:" in gid
+            and sole_node.parents
+            and not final_conditions.existence_arguments
+        ):
+            row_args = condition_row_args(final_conditions)
+            parent_output_by_addr = {
+                output.address: output
+                for parent in sole_node.parents
+                for output in parent.output_concepts
+            }
+            if all(arg.address in parent_output_by_addr for arg in row_args):
+                parent_outputs = list(parent_output_by_addr.values())
+                sole_node.parents = [
+                    SelectNode(
+                        input_concepts=parent_outputs,
+                        output_concepts=parent_outputs,
+                        environment=environment,
+                        parents=list(sole_node.parents),
+                        conditions=final_conditions.conditional,
+                    )
+                ]
+                sole_node.rebuild_cache()
+                final_already_applied = True
         relation_paired_feeders = False
-        if final_conditions is not None and environment.scoped_join_key_groups:
+        if (
+            final_conditions is not None
+            and not final_already_applied
+            and environment.scoped_join_key_groups
+        ):
             sole_avail = {o.address for o in sole_node.output_concepts}
             feeder_nodes, _ = _filter_arg_parents(
                 group_graph, built, filter_only_addrs - sole_avail
@@ -2330,7 +2398,9 @@ def _assemble_final_node(
         # merged key under a sibling alias the user didn't write. Bridge last, so
         # the hidden bridge concepts can't perturb the grain decision above.
         _bridge_pseudonyms(final_node, per_group[gid])
-        conditioned = _apply_final_conditions(final_node)
+        conditioned = (
+            final_node if final_already_applied else _apply_final_conditions(final_node)
+        )
         if conditioned is final_node:
             return conditioned
         # Applying a FINAL-deferred condition can wrap the contributor in a node
@@ -2569,6 +2639,19 @@ def build_strategy_node(
         if not output_addrs and not hidden_addrs:
             output_addrs = (*a.primary_members, *a.secondary_members)
         select_addrs = (*output_addrs, *hidden_addrs)
+        if derivation == Derivation.ROWSET:
+            # A boundary group's outputs can carry ANOTHER rowset's handles
+            # (a deferred WHERE's args exposed through a scoped relation).
+            # `resolve_rowset` plans the rowset of the first handle it sees —
+            # order this group's OWN handles (its primary members) first so a
+            # foreign condition-arg handle can't hijack the boundary
+            # (union_reproject filtered cell: the nov_data group planned the
+            # cross_channel body and dropped the measure).
+            primary = set(a.primary_members)
+            select_addrs = (
+                *(addr for addr in select_addrs if addr in primary),
+                *(addr for addr in select_addrs if addr not in primary),
+            )
         outputs = [
             c
             for addr in select_addrs

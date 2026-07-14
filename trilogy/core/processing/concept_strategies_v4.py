@@ -874,6 +874,21 @@ def resolve_rowset(
             if h.address not in hidden and not is_presence_probe(h.address)
         ]
     )
+    # A multiselect/union boundary's rows are at the FULL align grain even
+    # when only a subset of its outputs is demanded (`subset join x =
+    # all_combos.b` never projects `ch`): the projection does NOT dedup, so
+    # stamping the demanded subset as the grain overclaims uniqueness and a
+    # downstream aggregate elides its GROUP BY over the per-arm fan
+    # (union_reproject direct-RHS: sum fanned to two rows of 10 instead of
+    # re-aggregating to 20). Stamp the grain over every align output instead.
+    if isinstance(built, BuildMultiSelectLineage):
+        full_handles = [
+            handle_concept
+            for addr in sorted(derived)
+            if (handle_concept := environment.concepts.get(addr)) is not None
+        ]
+        if full_handles:
+            boundary_grain = BuildGrain.from_concepts(full_handles)
     key_like = set(boundary_grain.components) | {
         addr
         for canonical, members in environment.scoped_join_key_groups.items()

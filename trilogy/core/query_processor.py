@@ -27,7 +27,9 @@ from trilogy.core.models.author import (
     ConceptRef,
     Conditional,
     Function,
+    HavingClause,
     MultiSelectLineage,
+    OrderBy,
     RowsetItem,
     SelectLineage,
     WhereClause,
@@ -771,6 +773,7 @@ def _get_query_node_v4(
 def _authored_reference_addresses(
     statement: SelectLineage | MultiSelectLineage,
     environment: Environment,
+    include_where: bool = True,
 ) -> set[str]:
     """Transitive closure of AUTHOR-referenced concept addresses for this
     select: outputs, WHERE/HAVING/ORDER BY arguments, and their lineage —
@@ -778,16 +781,25 @@ def _authored_reference_addresses(
     rewrites addresses. The scoped-join declarations themselves are
     deliberately excluded: a declared relation whose far side the author
     never references is pure domain metadata and must not force that side
-    into the plan."""
+    into the plan. `include_where=False` drops the WHERE clauses — the
+    outputs-only closure distinguishes row-stream contributors from
+    population-scope (condition) references."""
     selects = (
         statement.selects if isinstance(statement, MultiSelectLineage) else [statement]
     )
     stack: list[str] = []
     locals_pool: dict[str, Concept] = {}
-    clauses = [statement.where_clause, statement.having_clause, statement.order_by]
+    clauses: list[WhereClause | HavingClause | OrderBy | None] = [
+        statement.having_clause,
+        statement.order_by,
+    ]
+    if include_where:
+        clauses.append(statement.where_clause)
     for select in selects:
         stack.extend(ref.address for ref in select.output_components)
-        clauses.extend([select.where_clause, select.having_clause, select.order_by])
+        clauses.extend([select.having_clause, select.order_by])
+        if include_where:
+            clauses.append(select.where_clause)
         locals_pool.update(select.local_concepts)
     for clause in clauses:
         if clause is not None:
@@ -856,6 +868,9 @@ def get_query_node(
     )
     build_environment.statement_authored_addresses = _authored_reference_addresses(
         statement, environment
+    )
+    build_environment.statement_output_addresses = _authored_reference_addresses(
+        statement, environment, include_where=False
     )
 
     _carry_order_by_concepts(build_statement)

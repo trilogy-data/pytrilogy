@@ -1,35 +1,31 @@
-# v4 compatibility audit (last refreshed 2026-07-14)
+# v4 compatibility audit (last refreshed 2026-07-14, session 2)
 
 Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
 this file and in the project memory. Standing lessons from that era are kept
 below.
 
-## Current state (after 2026-07-13 session 3)
+## Current state (after 2026-07-14 session 2)
 
-**Full v4 sweep: 74 failed / 5549 passed**, 14 xpassed, 82 errors (all
-clickhouse-environmental, ignore). v3 full sweep green.
+**Baseline full v4 sweep (pre-session-2, commit 9f5a5c8dc): 67 failed /
+5558 passed**, 12 xpassed, 82 errors (all clickhouse-environmental, ignore).
+Session 2 cleared union_reproject ×6 + rollup_scoped 3→2 with zero new
+targeted-collateral failures → expected next sweep ≈ 60. A post-session
+detached sweep should confirm.
 
-**Open families by sweep count (74):** duckdb_rowset ×7 (**NEXT — in progress
-2026-07-14**), duckdb.py ×6, union_reproject ×6, TPC-DS ×6 (q14,
-q64-transitive, q81, q29-feeder, or_membership, q64-correlated),
-filter_mixed_aggregate ×4, materialized_aggregate_bridge ×4, offset_join ×4,
-rollup_scoped ×3, filter_bare_aggregate_content_grain ×3,
-union_join_rowset_grain ×3, generation_matrix ×2, cograin ×2,
-multi_partial_anchor ×2, expression_keys ×2, membership_existence ×2,
-pushdown_partitioned ×2, cross_rowset_join_rowset_as_set ×2, subquery ×2,
-disconnected_e2e messages ×2, + singles (syntax_examples rollup,
-rowset_body_limit, scoped_derived exp_rows1, collapse_basic_into_group,
-union_bare_aggregate, setops, orderby_derived_expr, constant_def_macro,
-membership_having, twin_keeps_scalar_refs).
-
-duckdb_rowset ×7 (regenerated 2026-07-14):
-- `test_order_by_measure_through_nested_rowset_join_groups` (q83 shape)
-- `test_top_n_rank_filter_over_inline_aggregate_in_rowset` (q70 shape)
-- `test_composite_union_join_rowset_two_pass_aggregate_groups[stddev/variance-2/3]` (q17 shape, ×4)
-- `test_composite_union_join_rowset_simple_aggregate_still_groups[count]`
-Plus the separate union_join_rowset_grain ×3
-(`test_rowset_join_{no_grain_outputs_dedups,hidden_grain_outputs_preserve_fanout,visible_grain_outputs_preserve_fanout}`).
+**Open families (from the 67, minus session 2 fixes):** duckdb.py ×6
+(**NEXT**), TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder, or_membership,
+q64-correlated), filter_mixed_aggregate ×4, materialized_aggregate_bridge ×4,
+offset_join ×4, duckdb_rowset residual ×3 (order_by_measure q83 + composite
+stddev/variance keys-3 ×2), filter_bare_aggregate_content_grain ×3,
+rollup_scoped ×2 (three_key_executes, two_key_partial_builds),
+generation_matrix ×2, cograin ×2, multi_partial_anchor ×2, expression_keys
+×2, membership_existence ×2, pushdown_partitioned ×2,
+cross_rowset_join_rowset_as_set ×2, subquery ×2, disconnected_e2e messages
+×2, + singles (syntax_examples rollup, rowset_body_limit, scoped_derived
+exp_rows1, collapse_basic_into_group, union_bare_aggregate, setops,
+orderby_derived_expr, constant_def_macro, membership_having,
+twin_keeps_scalar_refs).
 
 ## How to verify (the rules)
 
@@ -90,6 +86,70 @@ graphs), `v4_diagnostics/<stem>_diagnostics.json` (machine-readable),
 use the JSON for scripted comparisons. Real-fixture size numbers come from
 `local_scripts/v4_real_size.py` (the `v4_size_compare` proxy skips inlining and
 reads high).
+
+## ✅ 2026-07-14 (session 2) — union_reproject family 10/10 (q14 composite subset join onto union-reprojected rowset)
+
+test_duckdb_union_reproject_subset_join.py 6 → 0 (all 10 pass). Bonus:
+rollup_scoped `two_key_subset_join_no_rollup_builds` now passes (3 → 2 in
+that family). Collateral verified at baseline: join_matrix 297/0 (+7 xfail),
+TPC-DS battery = the pre-existing 6 only, tests/core/processing +
+where-scoping = pre-existing 3, rowset/scoped collateral = pre-existing set,
+duckdb_rowset = the 3 residuals, mypy/ruff/black clean. Six root causes
+(v4-only except the inert `statement_output_addresses` plumbing):
+
+1. **Aggregate demand drags in an undemanded subset anchor** (concept_graph):
+   `subset join nov.k = qualifying.k` canonicalizes nov handles to
+   Grain<qualifying.k>; `_walk_aggregate_grain_inputs`' ROWSET branch then
+   demands qualifying.* as the aggregate's row identity and the anchor union
+   rowset becomes a real FINAL contributor (RHS-anchored LEFT + FULL rejoin =
+   arm fanout + NULL-extended anchor-only rows). Fix:
+   `_walk_scoped_aggregate_grain_inputs` + `_aggregate_authored_grain`
+   redirect canonicalized grain keys back to the walked handle's OWN rowset
+   members / the authored `by` keys. THREE hard-won gates on
+   `_collapsible_anchor`: (a) plain-SelectLineage anchors only — a
+   union/multiselect anchor participates for real at its multi-arm grain
+   (direct-RHS cell: fanout + NULL-extension pinned); (b) identity-path mates
+   only (address preserved; a substituted member is owned by the substitution
+   plan); (c) OUTPUT-authored anchors never redirect — new
+   `statement_output_addresses` (outputs-only closure, WHERE excluded): a
+   WHERE-only reference is population-scope d1 demand, but an output-side
+   reference makes the anchor a first-class contributor whose canonical
+   co-grain siblings must keep sharing (redirecting broke the twin-rollup
+   zip's same-key narrowing — `composite_both_plain_left_join_stays_left`
+   rendered FULL).
+2. **Undemanded-anchor subset partial never clears**
+   (`_clear_groupmate_completed_partials`): with the anchor absent from the
+   plan the subset-side stamps survived to the final no-complete-source guard
+   (UnresolvableQueryException). Clear when a relation's mates are absent
+   from ALL parents' outputs (pure domain metadata — v3 collapses to the
+   subset side alone); the mate-completed clearing is unchanged.
+3. **Foreign condition-arg handle hijacks a boundary group**
+   (strategy_builder): a ROWSET group's outputs can carry ANOTHER rowset's
+   handles (deferred WHERE args exposed through the relation);
+   `resolve_rowset` plans the rowset of the FIRST BuildRowsetItem in the
+   outputs list, so the nov_data group planned the cross_channel body and the
+   measure silently vanished (`_cover_groups_for_mandatory` skips uncovered
+   mandatory concepts QUIETLY — watch this seam). Fix: order the group's own
+   PRIMARY members first.
+4. **FINAL feeder re-join destroys ROLLUP subtotals** (sole-contributor
+   path): a FINAL-deferred row condition on a ROLLUP contributor re-joined
+   the feeder on grouping keys the ROLLUP NULLs at subtotal rows. Fix: push
+   the condition onto the aggregate's INPUT stream (the axis merge already
+   carries the args) via a pre-filter SelectNode wrapper — non-standard
+   grouping detected by the `:grp:` bucket discriminator in the gid
+   (`rollup_concepts` is EMPTY on the built GroupNode; don't trust it).
+   Plus `_subtree_applies_conditions` guard to skip re-application when a
+   lower host already implies the WHERE.
+5. **Union boundary grain overclaims uniqueness** (`resolve_rowset`): a
+   multiselect/union boundary projecting a SUBSET of its align outputs (`ch`
+   never demanded) stamped the demanded subset as its grain; the downstream
+   aggregate then elided its GROUP BY over the per-arm fan (sum fanned to two
+   rows of 10 instead of re-aggregating to 20). Stamp the grain over EVERY
+   align output.
+6. `statement_output_addresses` (build_environment + query_processor):
+   outputs-only authored closure alongside `statement_authored_addresses`,
+   `include_where=False` param on `_authored_reference_addresses`. Shared
+   file but v3 behavior unchanged (new field only read by v4).
 
 ## ✅ 2026-07-14 — duckdb_rowset 7 → 2 + union_join_rowset_grain 3 → 0 (scoped-relation axis at FINAL)
 

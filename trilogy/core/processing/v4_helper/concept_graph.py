@@ -21,6 +21,7 @@ from typing import Callable
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -157,6 +158,151 @@ def _upstream_default(
     return _lineage_args(concept, environment)
 
 
+def _relation_mates(address: str, environment: BuildEnvironment) -> set[str]:
+    """The other members of every scoped-join relation `address` belongs to."""
+    mates: set[str] = set()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        if address == canonical:
+            mates |= members
+        elif address in members:
+            mates |= (members | {canonical}) - {address}
+    return mates
+
+
+def _collapsible_anchor(concept: BuildConcept, environment: BuildEnvironment) -> bool:
+    """An anchor member eligible for the grain-identity redirect: a handle of
+    a plain reprojection rowset (single SelectLineage body) the statement
+    never references outside the join declaration. A union / multiselect
+    anchor (`subset join x = all_combos.b`) participates for real at its own
+    multi-arm grain — its outputs span arms, so the relation axis carries
+    multiplicity a reprojection at key grain cannot (pinned by the
+    union_reproject direct-RHS cell: fan-out + NULL-extension expected). An
+    OUTPUT-authored anchor (any of its handles in the select closure —
+    the outputs-only closure excludes the join declarations and WHERE) is a
+    first-class row contributor whose canonical co-grain siblings must keep
+    sharing (redirecting breaks same-key zip narrowing, both-plain LEFT
+    control)."""
+    lineage = concept.lineage
+    if not (
+        isinstance(lineage, BuildRowsetItem)
+        and isinstance(lineage.rowset.select, SelectLineage)
+    ):
+        return False
+    rowset_name = lineage.rowset.name
+    for addr in environment.statement_output_addresses or ():
+        authored = environment.concepts.get(addr)
+        if (
+            authored is not None
+            and isinstance(authored.lineage, BuildRowsetItem)
+            and authored.lineage.rowset.name == rowset_name
+        ):
+            return False
+    return True
+
+
+def _rowset_local_grain_identity(
+    grain_concept: BuildConcept,
+    rowset_name: str,
+    environment: BuildEnvironment,
+    keep_rowsets: frozenset[str],
+) -> BuildConcept:
+    """Map a rowset handle's grain key back to the handle's OWN rowset member
+    when the scoped-merge canonicalization re-grained it onto the relation's
+    other side (`subset join nov_data.k = qualifying.k` leaves nov_data
+    handles at Grain<qualifying.k>). Demanding the canonical would drag the
+    anchor rowset in as a real row contributor even when the query never
+    references it (union_reproject family); the row identity of a rowset
+    handle is its rowset's grain expressed in its own handles. Only an
+    identity-path mate redirects — a substituted member (address mismatch)
+    is owned by the substitution plan and its canonical stays demanded.
+    `keep_rowsets` names anchor rowsets the consuming aggregate already
+    groups BY: those are first-class row contributors whose canonical the
+    co-grain siblings must keep sharing (redirecting breaks the zip's
+    same-key narrowing evidence — both-plain LEFT control cell)."""
+    lineage = grain_concept.lineage
+    if isinstance(lineage, BuildRowsetItem) and lineage.rowset.name == rowset_name:
+        return grain_concept
+    if not _collapsible_anchor(grain_concept, environment):
+        return grain_concept
+    if isinstance(lineage, BuildRowsetItem) and lineage.rowset.name in keep_rowsets:
+        return grain_concept
+    for mate in sorted(_relation_mates(grain_concept.address, environment)):
+        mate_concept = environment.concepts.get(mate)
+        if (
+            mate_concept is not None
+            and mate_concept.address == mate
+            and isinstance(mate_concept.lineage, BuildRowsetItem)
+            and mate_concept.lineage.rowset.name == rowset_name
+        ):
+            return mate_concept
+    return grain_concept
+
+
+def _aggregate_by_rowsets(aggregate: BuildConcept) -> frozenset[str]:
+    """Rowset names the aggregate's authored `by` keys belong to."""
+    lineage = aggregate.lineage
+    if not isinstance(lineage, BuildAggregateWrapper):
+        return frozenset()
+    return frozenset(
+        by.lineage.rowset.name
+        for by in lineage.by
+        if isinstance(by.lineage, BuildRowsetItem)
+    )
+
+
+def _walk_scoped_aggregate_grain_inputs(
+    aggregate: BuildConcept, concept: BuildConcept, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """`_walk_aggregate_grain_inputs`, with a rowset handle's grain keys
+    redirected to its own rowset members (see `_rowset_local_grain_identity`)."""
+    inputs = _walk_aggregate_grain_inputs(concept, environment)
+    lineage = concept.lineage
+    if not inputs or not isinstance(lineage, BuildRowsetItem):
+        return inputs
+    if not environment.scoped_join_key_groups:
+        return inputs
+    keep_rowsets = _aggregate_by_rowsets(aggregate) - {lineage.rowset.name}
+    return [
+        _rowset_local_grain_identity(c, lineage.rowset.name, environment, keep_rowsets)
+        for c in inputs
+    ]
+
+
+def _aggregate_authored_grain(
+    concept: BuildConcept, out_grain: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """Redirect an aggregate's grain component the scoped-merge
+    canonicalization moved onto the relation's other side back to the
+    aggregate's own authored `by` key. `sum(x) by nov_data.k` under
+    `subset join nov_data.k = qualifying.k` builds with
+    Grain<qualifying.k> even though its `by` args stay `nov_data.k` (the
+    identity path keeps both addresses alive); grouping the bucket on the
+    canonical demands the anchor rowset as a real input. A SUBSTITUTED `by`
+    arg already reads as the canonical itself, so a participating relation
+    (union direct-join) keeps its coalesced-axis grain."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildAggregateWrapper):
+        return out_grain
+    by_addrs = {c.address for c in lineage.by}
+    if not by_addrs:
+        return out_grain
+    redirected: set[str] = set()
+    for g in out_grain:
+        if g in by_addrs:
+            redirected.add(g)
+            continue
+        chosen = g
+        g_concept = environment.concepts.get(g)
+        if g_concept is not None and _collapsible_anchor(g_concept, environment):
+            for mate in sorted(_relation_mates(g, environment) & by_addrs):
+                mate_concept = environment.concepts.get(mate)
+                if mate_concept is not None and mate_concept.address == mate:
+                    chosen = mate
+                    break
+        redirected.add(chosen)
+    return frozenset(redirected)
+
+
 def _upstream_aggregate(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
@@ -183,7 +329,9 @@ def _upstream_aggregate(
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
             if isinstance(arg, BuildConcept):
-                grain_inputs = _walk_aggregate_grain_inputs(arg, environment)
+                grain_inputs = _walk_scoped_aggregate_grain_inputs(
+                    concept, arg, environment
+                )
                 if grain_inputs:
                     base.extend(grain_inputs)
                 elif arg.derivation == Derivation.AGGREGATE and arg.grain:
@@ -393,7 +541,9 @@ def _aggregate_input_grain(
         else:
             continue
         for sub in sub_args:
-            grain_inputs = _walk_aggregate_grain_inputs(sub, environment)
+            grain_inputs = _walk_scoped_aggregate_grain_inputs(
+                concept, sub, environment
+            )
             if grain_inputs:
                 input_grain.update(c.address for c in grain_inputs)
             elif sub.grain:
@@ -569,6 +719,12 @@ def _add_concept(
         and concept.lineage.operator == FunctionType.ALIAS
     )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+    if (
+        not is_materialized_root
+        and concept.derivation == Derivation.AGGREGATE
+        and environment.scoped_join_key_groups
+    ):
+        out_grain = _aggregate_authored_grain(concept, out_grain, environment)
     aggregate_input_grain = (
         frozenset()
         if is_materialized_root
