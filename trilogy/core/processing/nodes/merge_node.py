@@ -39,6 +39,15 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
+def _abstract_output_grain(parent: StrategyNode, environment: BuildEnvironment) -> bool:
+    """A parent whose outputs sit at abstract grain is a single-row (`by *`)
+    aggregate: it has no join key and must be broadcast via a keyless FULL
+    join. Injecting a scoped-join key would re-grain it to that key, and the
+    renderer's grain-match collapse would then silently strip the aggregate
+    function (q23)."""
+    return BuildGrain.from_concepts(parent.output_concepts, environment).abstract
+
+
 def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
     if isinstance(source, QueryDatasource):
         return bool(source.condition) or any(
@@ -329,6 +338,8 @@ class MergeNode(StrategyNode):
         if not group_mates or self.node_joins is not None:
             return
         for parent in self.parents:
+            if _abstract_output_grain(parent, self.environment):
+                continue
             outputs = {c.address for c in parent.output_concepts}
             changed = False
             for member in group_mates:

@@ -7,9 +7,16 @@ auto cross_channel_count <- count_distinct(sales.channel)
 
 # cross_tuples: (brand_id, class_id, category_id) tuples sold in all 3 channels
 # during 1999-2001. Equivalent to the reference's 3-way INTERSECT on
-# (i_brand_id, i_class_id, i_category_id) across store/catalog/web sales.
+# (i_brand_id, i_class_id, i_category_id) across store/catalog/web sales. The
+# NULL-component exclusions mirror the reference's `item, cross_items where
+# i_brand_id = brand_id and ...` inner joins, which can never match a NULL key
+# part — trilogy tuple membership is identity matching (NULL = NULL), so the
+# set must exclude them explicitly.
 rowset cross_tuples <- where
     sales.date.year between 1999 and 2001
+    and sales.item.brand_id is not null
+    and sales.item.class_id is not null
+    and sales.item.category_id is not null
 select
     sales.item.brand_id as ci_brand_id,
     sales.item.class_id as ci_class_id,

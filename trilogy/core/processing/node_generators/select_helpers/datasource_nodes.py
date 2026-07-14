@@ -17,6 +17,7 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
     CanonicalBuildConceptList,
+    union_unhealed_partial_addresses,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
@@ -490,47 +491,9 @@ def create_union_datasource_candidate(
         force_group = force_group or fg
         if fg:
             group_source_count = max(group_source_count, 1)
-    # Intrinsic column-level partials (``~col``, captured at parse time) carry
-    # over by default — the column is missing values relative to its universe
-    # and the union doesn't necessarily repair that. Two cases DO repair it:
-    #
-    #   1. The intrinsic concept itself is the union's discriminator. The
-    #      siblings' ``complete_where`` clauses partition that concept; the
-    #      union covers the universe of the concept directly. (e.g. enum
-    #      union over ``~category`` with each branch ``complete where
-    #      category = '<value>'``.)
-    #
-    #   2. The union's discriminator is a property/key whose owner is the
-    #      intrinsic concept — i.e., every value of the intrinsic concept has
-    #      a determined discriminator value. Covering every discriminator
-    #      value therefore covers every intrinsic-concept value. (e.g.
-    #      ``~order_id`` with each branch ``complete where order_date <= X``
-    #      / ``> X``: every order has a date, dates are partitioned, so all
-    #      orders are covered.)
-    #
-    # Intrinsic partials that fail both checks survive — e.g. ``~order_id``
-    # on returns: ``complete where sales_channel = 'X'`` covers all channels
-    # but not all orders, so order_id stays partial.
-    intrinsic_addrs: set[str] = set()
-    discriminator_addrs: set[str] = set()
-    for child, _ in effective:
-        intrinsic_addrs |= child.column_level_partial_addresses
-        if child.non_partial_for is not None:
-            discriminator_addrs.update(
-                c.address for c in child.non_partial_for.concept_arguments
-            )
-    if intrinsic_addrs and discriminator_addrs:
-        intrinsic_addrs -= discriminator_addrs
-        for addr in list(intrinsic_addrs):
-            for disc_addr in discriminator_addrs:
-                disc_concept = environment.concepts.get(disc_addr)
-                if (
-                    disc_concept is not None
-                    and disc_concept.keys
-                    and addr in disc_concept.keys
-                ):
-                    intrinsic_addrs.discard(addr)
-                    break
+    # Computed over the condition-filtered branches, not the full child list —
+    # a dropped branch can't contribute (or heal) partiality.
+    intrinsic_addrs = union_unhealed_partial_addresses(child for child, _ in effective)
     union_partials: list[BuildConcept] = (
         [c for c in all_concepts if c.address in intrinsic_addrs]
         if intrinsic_addrs

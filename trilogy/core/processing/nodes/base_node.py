@@ -535,6 +535,14 @@ class StrategyNode:
             return self.resolution_cache
         qds = self._resolve()
         self.resolution_cache = qds
+        # Nullability computed at resolve time (join-analysis null-extension in
+        # MergeNode, ROLLUP NULL-padding in GroupNode) is stamped onto the
+        # QueryDatasource; downstream nodes read the StrategyNode attribute
+        # (get_all_parent_nullable at construction, the rowset translation's
+        # rename mapping). Sync it back or that nullability is erased at this
+        # boundary and downstream joins render a plain `=` on a null-extended
+        # column, silently deleting rows (q51, q86 rowset variant).
+        self.nullable_concepts = list(qds.nullable_concepts)
         return qds
 
     def copy(self) -> "StrategyNode":
@@ -643,5 +651,9 @@ class WhereSafetyNode(StrategyNode):
 
             # actually build the node
             parent.rebuild_cache()
-            return parent.resolve()
+            resolved = parent.resolve()
+            # mirror the base resolve() nullability sync — downstream nodes
+            # read THIS node's attribute
+            self.nullable_concepts = list(resolved.nullable_concepts)
+            return resolved
         return super().resolve()

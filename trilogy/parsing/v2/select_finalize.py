@@ -796,6 +796,10 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
     # next to a fresh aggregate would emit as a bare, ungrouped column in the
     # ROLLUP CTE. Re-aggregate the passthroughs, or raise.
     _apply_grouping_to_passthroughs(select, context, spec, carried)
+    # After passthrough validation — the injected flags are themselves
+    # spec-carrying aggregates and would otherwise mask the keys-only /
+    # non-additive-passthrough errors above.
+    _inject_grouping_identity_outputs(select, context)
 
 
 _REAGGREGABLE_OPERATORS = {FunctionType.SUM, FunctionType.COUNT}
@@ -1042,6 +1046,77 @@ def _existing_grouping_outputs(
         if isinstance(fn, AggregateWrapper) and _is_grouping_aggregate(fn):
             results.setdefault(_grouping_arg_key(fn), item.content.output.reference)
     return results
+
+
+def _inject_grouping_identity_outputs(
+    select: SelectStatement, context: RuleContext
+) -> None:
+    """Project a hidden ``grouping(key)`` flag for every grouping key of a
+    ``by rollup/cube/grouping sets`` select.
+
+    A grouping pass's row identity is (grouping keys + grouping-flag vector):
+    the padded NULLs make the grand-total, a NULL-key subtotal, and a genuine
+    NULL-key detail row collide on the visible dims alone. Materializing the
+    flags as hidden outputs makes them part of the select grain, so every
+    downstream consumer — join-backs between sibling window branches, rowset
+    boundaries — keys rollup rows on a true identity instead of fanning the
+    collided rows out (q86). Wrappers are left un-stamped: the build factory
+    applies the select's grouping spec to every un-pinned aggregate."""
+    from trilogy.core.functions import FunctionFactory
+
+    grouping = select.grouping
+    if grouping is None:
+        return
+    keys: list[Any] = list(grouping.by)
+    for grouping_set in grouping.grouping_sets:
+        keys.extend(grouping_set)
+    if not keys:
+        return
+    reuse = _existing_grouping_outputs(select)
+    factory = FunctionFactory(context.environment)
+    seen: set[tuple[Any, tuple[str, ...]]] = set()
+    for key in keys:
+        if not isinstance(key, ConceptRef):
+            continue
+        wrapper = AggregateWrapper(
+            function=factory.create_function([key], FunctionType.GROUPING)
+        )
+        arg_key = _grouping_arg_key(wrapper)
+        if arg_key in seen or arg_key in reuse:
+            continue
+        seen.add(arg_key)
+        concept = arbitrary_to_concept(wrapper, context.environment)
+        select.selection.append(
+            SelectItem(
+                content=ConceptTransform(function=wrapper, output=concept),
+                modifiers=[Modifier.HIDDEN],
+            )
+        )
+        select.local_concepts[concept.address] = concept
+
+
+def _extend_grain_with_grouping_identity(
+    select: SelectStatement, grain: Grain
+) -> Grain:
+    """Under a grouping spec the visible dims are not a row identity (rollup
+    NULL-padding collides subtotal/total rows with genuine NULL-key rows); the
+    projected grouping() flags — including the injected hidden ones — complete
+    it, so fold them into the select grain."""
+    if select.grouping is None:
+        return grain
+    flag_addresses = [
+        ref.address
+        for ref in _existing_grouping_outputs(select).values()
+        if ref.address not in grain.components
+    ]
+    if not flag_addresses:
+        return grain
+    ordered = list(grain.component_order) + flag_addresses
+    return Grain(
+        components=set(ordered),
+        component_order=ordered,
+        where_clause=grain.where_clause,
+    )
 
 
 def _substitute_window_grouping_outputs(select: SelectStatement) -> None:
@@ -1392,7 +1467,9 @@ def finalize_select_statement(
     # ``trilogy.core.having_normalization`` — validation below only rejects
     # what the build pass cannot route.
     merged = _merged_local_concepts(select, context)
-    select.grain = _calculate_grain(select, context, merged)
+    select.grain = _extend_grain_with_grouping_identity(
+        select, _calculate_grain(select, context, merged)
+    )
     output_addresses: set[str] = set()
     line_no = select.meta.line_number if select.meta else None
     # Accumulate every undefined reference (across SELECT / WHERE / ORDER BY)
@@ -1503,7 +1580,9 @@ def finalize_select_statement(
         )
     if undefined:
         raise_collected_undefined(context, undefined)
-    select.grain = _calculate_grain(select, context, merged)
+    select.grain = _extend_grain_with_grouping_identity(
+        select, _calculate_grain(select, context, merged)
+    )
     _validate_syntax(select, context)
 
 

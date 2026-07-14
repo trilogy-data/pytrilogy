@@ -103,6 +103,11 @@ def gen_window_node(
         f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {[x.address for x in parent_concepts]} and optional {local_optional}"
     )
 
+    base_pass_specs = {
+        spec
+        for p in parent_concepts
+        if (spec := nonstandard_grouping_spec(p.lineage)) is not None
+    }
     additional_outputs = []
     additional_parent_concepts: list[BuildConcept] = []
     for x in local_optional:
@@ -111,12 +116,24 @@ def gen_window_node(
         assert isinstance(x.lineage, WINDOW_TYPES)
         parents = resolve_window_parent_concepts(x, environment, depth)
 
-        matched = {
-            p.address for p in parents
-        } == parent_addresses or equivalent_window_parent_grain(
-            parents,
-            parent_grain,
-            environment,
+        # Sibling windows over the same ROLLUP/CUBE/GROUPING SETS pass compute
+        # in this node even when their partition specs differ. Correctness no
+        # longer depends on it (the pass's grain carries its grouping() flags,
+        # so a join-back keys on true row identity — q86), but a single pass
+        # beats materializing the rollup once per partition spec and joining.
+        x_pass_specs = {
+            spec
+            for p in parents
+            if (spec := nonstandard_grouping_spec(p.lineage)) is not None
+        }
+        matched = (
+            {p.address for p in parents} == parent_addresses
+            or equivalent_window_parent_grain(
+                parents,
+                parent_grain,
+                environment,
+            )
+            or (bool(base_pass_specs) and base_pass_specs == x_pass_specs)
         )
         if matched:
             logger.info(
@@ -200,9 +217,10 @@ def gen_window_node(
             if x.address not in [y.address for y in parent_node.output_concepts]
         ]
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable, missing {missing}"
+            f"{padding(depth)}{LOGGER_PREFIX} window node parents resolved but missing "
+            f"{[x.address for x in missing]}; treating as unresolvable"
         )
-        raise SyntaxError
+        return None
     _window_node = WindowNode(
         input_concepts=parent_concepts,
         output_concepts=output_targets,

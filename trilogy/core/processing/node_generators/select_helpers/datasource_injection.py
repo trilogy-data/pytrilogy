@@ -119,6 +119,12 @@ def _best_enum_union(
         signature = frozenset(overlap - merge_key_addr)
         if not signature:
             continue
+        # Members MAY disagree on intrinsic (~) partiality of a shared column
+        # (a "mixed-family" combo, e.g. web_sales + catalog/store_returns).
+        # Such a union is a legitimate per-channel provider of columns it binds
+        # complete (q05: a web return's return-site lives on web_sales), and
+        # union partial propagation keeps its ~-partial keys from ever outranking
+        # a pure family that binds them complete (q14) — so don't reject it here.
 
         score = sum(_datasource_score(ds) for ds in combo_list)
         existing = best_per_overlap.get(signature)

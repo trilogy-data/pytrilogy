@@ -26,7 +26,7 @@ from trilogy.constants import (
     Rendering,
     logger,
 )
-from trilogy.core.constants import UNNEST_NAME
+from trilogy.core.constants import ALL_ROWS_CONCEPT, UNNEST_NAME
 from trilogy.core.enums import (
     AddressType,
     AggregateGroupingMode,
@@ -224,6 +224,21 @@ def _needs_arithmetic_parentheses(
 AGGREGATE_ITEMS = (BuildAggregateWrapper,)
 FUNCTION_ITEMS = (BuildFunction,)
 PARENTHETICAL_ITEMS = (BuildParenthetical,)
+
+
+def _aggregate_collapse_safe(cte: "CTE | UnionCTE", agg: BuildAggregateWrapper) -> bool:
+    """The not-grouping grain-match collapse (`agg(x)` -> single-row formula)
+    is unsafe in exactly one shape: an abstract (`by *`) aggregate rendered
+    into a CTE carrying real grain components. A global aggregate belongs in a
+    single-row CTE; a keyed CTE means the plan re-grained it (e.g. a join key
+    injected into its group node) and the collapse silently turns the global
+    value into each row's own (q23). Keyed aggregates stay collapsible: a
+    by-grain listing properties functionally determined by the CTE's keys
+    reduces to the CTE grain (#572), and authored scoped-join keys
+    legitimately extend a keyed aggregate's partition (the composite
+    union-join cells in tests/engine/test_duckdb_rowset.py)."""
+    agg_by_abstract = all(p.address.endswith(ALL_ROWS_CONCEPT) for p in agg.by)
+    return not agg_by_abstract or cte.grain.abstract
 
 
 def _is_build_row_tuple(x: Any) -> bool:
@@ -1357,9 +1372,20 @@ class BaseDialect:
                 ]
                 if cte.group_to_grain:
                     rval = self.FUNCTION_MAP[c.lineage.function.operator](args, [])
-                else:
-                    # EXPERIMENT: guard removed, unconditional collapse
+                elif _aggregate_collapse_safe(cte, c.lineage):
+                    # at (or beyond) the aggregate's grain: agg(x) == x (the
+                    # single-row collapse formula per operator).
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args, [])}"
+                else:
+                    # A global (`by *`) aggregate in a keyed, non-grouping CTE:
+                    # the collapse would silently turn it into identity (q23 —
+                    # every row's "global max" became its own value). Fail
+                    # loudly instead.
+                    rval = INVALID_REFERENCE_STRING(
+                        f"global (by *) aggregate {c.address} rendered in CTE "
+                        f"{cte.name} at keyed grain {cte.grain}",
+                        "AGG_GRAIN_MISMATCH",
+                    )
             elif (
                 isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.UNION
@@ -1646,10 +1672,18 @@ class BaseDialect:
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
-        """Render row-wise membership `(a, b) in (set.a, set.b)` as a multi-column
-        existence subquery: `(a, b) IN (select x, y from cte where x is not null
-        and y is not null)`. All right components share one existence CTE."""
-        left_sql = ", ".join(
+        """Render row-wise membership `(a, b) in (set.a, set.b)` as a null-safe
+        existence subquery: `exists (select 1 from cte where x is not distinct
+        from a and y is not distinct from b)` (`not exists` for NOT IN).
+
+        Composite membership is row *identity* matching — a NULL component
+        matches a NULL component — for authored tuples and the engine-generated
+        HAVING grain-key semijoin alike. SQL row-`IN` is NULL-unsafe (`(1,
+        NULL) IN (select 1, NULL)` is NULL, never TRUE), so the IN form would
+        silently delete every NULL-keyed group (q11/q59). A model that needs
+        SQL parity filters NULL components out of the set explicitly (see
+        tpc_ds query14). All right components share one existence CTE."""
+        left_sql = [
             self.render_expr(
                 a,
                 cte=cte,
@@ -1658,10 +1692,9 @@ class BaseDialect:
                 materialized_addresses=materialized_addresses,
             )
             for a in left.arguments
-        )
+        ]
         from_clauses: set[str] = set()
         cols: list[str] = []
-        null_cols: list[str] = []
         for rc in right.arguments:
             if isinstance(rc, BuildConcept):
                 from_clause, col_ref = self._resolve_existence_column(
@@ -1669,12 +1702,11 @@ class BaseDialect:
                 )
                 from_clauses.add(from_clause)
                 cols.append(col_ref)
-                null_cols.append(col_ref)
                 continue
             # expression operand (cast/concat over sourced columns): resolve
-            # each referenced concept to pin the existence FROM and null guards,
-            # then render the expression with its column refs substituted by
-            # those resolutions (the host CTE's own source map can't see them)
+            # each referenced concept to pin the existence FROM, then render
+            # the expression with its column refs substituted by those
+            # resolutions (the host CTE's own source map can't see them)
             concepts = (
                 list(rc.concept_arguments) if isinstance(rc, BuildFunction) else []
             )
@@ -1684,7 +1716,6 @@ class BaseDialect:
                     inner, cte, cte_map, raise_invalid
                 )
                 from_clauses.add(from_clause)
-                null_cols.append(col_ref)
                 overrides[inner.address] = col_ref
             prior = self._existence_ref_overrides
             self._existence_ref_overrides = {**prior, **overrides}
@@ -1715,12 +1746,24 @@ class BaseDialect:
                 "composite membership expression operands are not supported "
                 "against an inlined datasource; materialize the source as a CTE"
             )
-        select_list = ", ".join(cols)
-        not_null = " and ".join(f"{c} is not null" for c in null_cols)
-        return (
-            f"({left_sql}) {operator.value} "
-            f"(select {select_list} from {from_clause} where {not_null})"
+        if len(cols) != len(left_sql):
+            raise ValueError(
+                f"composite membership arity mismatch: {len(left_sql)} row "
+                f"components vs {len(cols)} set components"
+            )
+        if operator == ComparisonOperator.IN:
+            prefix = ""
+        elif operator == ComparisonOperator.NOT_IN:
+            prefix = "not "
+        else:
+            raise ValueError(
+                f"composite membership only supports IN/NOT IN, got {operator}"
+            )
+        pairs = " and ".join(
+            self.NULL_WRAPPER(col, lval, [Modifier.NULLABLE])
+            for col, lval in zip(cols, left_sql)
         )
+        return f"{prefix}exists (select 1 from {from_clause} where {pairs})"
 
     def _render_expression_membership_subselect(
         self,

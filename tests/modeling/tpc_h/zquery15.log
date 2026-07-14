@@ -56,7 +56,7 @@ SELECT
     \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
     \"cooperative\".\"supplier_rev\" as \"total_revenue\"
 FROM
-    \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"cooperative\" on \"part_supplier_supplier\".\"s_suppkey\" = \"cooperative\".\"part_supplier_id\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"cooperative\".\"part_supplier_id\" = \"part_supplier_supplier\".\"s_suppkey\"
 ORDER BY 
     \"thoughtful\".\"part_supplier_id\" asc"""

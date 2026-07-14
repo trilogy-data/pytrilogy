@@ -31,6 +31,15 @@ Fix as one piece of work; patching them individually will just move the bug.
 | q51 | drops rows | nullability **erased** across MergeNode → plain `=` on a null-extended column |
 | q86 | **duplicates** rows | null-safe `=` applied to rollup keys that are not unique |
 
+> **REGRESSION EVIDENCE for the in-flight membership rewrite (2026-07-14, from the q14 owner):**
+> canonical `test_fourteen` now fails on the shared tree (+534 rows: 675768855.12/156101 vs
+> oracle-exact 673409655.64/155567). The only q14 SQL diff vs HEAD is the tuple-`IN` →
+> null-safe-`EXISTS` rewrite, and the old form's subquery carried `is not null` guards the new
+> `IS NOT DISTINCT FROM` form drops — so NULL-attribute item rows now MATCH NULL tuples in the
+> membership set. Executing HEAD's generated SQL gives the oracle-exact total; the tree's gives
+> the wrong one. Null-SAFE must not mean null-MATCHING for membership: a tuple with a NULL
+> component should stay excluded (SQL `IN` semantics), while non-NULL tuples become matchable.
+
 ### q11 / q59 — HAVING semijoin deletes NULL-keyed rows (SILENT)
 
 `having_normalization.py:796 build_grain_key_membership()` builds a semijoin over ALL
@@ -89,6 +98,19 @@ detail rows all key as `(NULL, NULL, NULL)`, so null-safe equality fans them 3x3
 
 ## Priority 2 — q23: global aggregate renders with NO aggregate function (SILENT)
 
+> **FIXED 2026-07-14** (branch `agent-scope-feedback`). Two-layer fix: (1)
+> `merge_node.py _inject_scoped_join_key_exposure` now skips abstract-grain
+> parents (`_abstract_output_grain`) — a `by *` aggregate has no join key and is
+> broadcast via keyless FULL join; (2) the `EXPERIMENT` unconditional collapse in
+> `dialect/base.py` is replaced by `_aggregate_collapse_safe`: a global (`by *`)
+> aggregate rendered into a keyed non-grouping CTE is now a loud
+> `INVALID_REFERENCE_BUG_AGG_GRAIN_MISMATCH` (strict mode raises), never a silent
+> identity. Keyed aggregates keep the collapse (#572 FD case and the designed
+> union-join partition extension both depend on it). Matrix:
+> `tests/join_matrix/test_global_aggregate_broadcast_matrix.py` (trigger matrix
+> cells A–G + loud-not-silent backstop). The q23 prompt store-channel defect is
+> also fixed in `query_prompts.json`.
+
 The worst one. `agg(x) by *` (ROOT/global) in a SELECT carrying an authored `union join`
 emits SQL containing **zero `max(` / `count(`** and no GROUP BY — the "global max" is
 FULL-JOINed back on the join key, so every row's global max is its own value. Runs clean,
@@ -120,6 +142,16 @@ Chain:
 ---
 
 ## Priority 3 — q14: union partiality erased → clean query reads the WRONG TABLES (SILENT)
+
+> **STATUS: FIXED 2026-07-14.** `union_unhealed_partial_addresses` in `core/models/build.py`
+> (shared by `BuildUnionDatasource.partial_concepts`, `_structural_partial_concepts`, and
+> `create_union_datasource_candidate`). Matrix tests (8 shapes × both lexical name orders) in
+> `tests/engine/test_enum_unions.py`. Verified on real all_sales sf=1: `count(s.order_id)` =
+> 240,000. **Fix direction #4 below is WRONG — attempted and reverted**: the mixed group is the
+> legitimate per-channel provider of `return_channel_dim_id` (web return-site lives on web_sales);
+> rejecting it re-paired q05's return-dim join onto `channel` alone → deterministic 3 GiB OOM in
+> canonical `test_five`. Partial propagation alone already keeps the mixed union from outranking
+> the pure sales union (its keys stay `~`-partial), while leaving it available as q05's FK bridge.
 
 ### The invariant (this is the spec the code violates)
 
@@ -203,17 +235,39 @@ That last row is the proof: **the outcome is decided by lexical datasource-name 
 
 ## Priority 4 — loud but real
 
-* **q11, 4-way `union join a=b=c=d`**: generates 16 CTEs with repeated FULL JOINs of the
-  same CTEs and payload columns leaking into join keys (`w01_fname is not distinct from
-  …`); OOM'd twice at 25.0 GiB / 433s. The 2026-07-10 three-way coalescing-chain fix does
-  NOT extend to 4 members (its own lesson — "take the CLOSURE of pairwise pseudonym
-  sets" — appears not to have been applied at 4).
-* **q11, HAVING leaves chain O(n²) semijoins**: 7 leaves → last CTE carries 6 nested
-  tuple-INs, 23 KB of SQL.
-* **q51, unactionable error**: bare `raise SyntaxError` at
-  `node_generators/window_node.py:205` surfaces to the user as
-  **`"Syntax error in answer.preql: None"`** — a syntax-shaped message for a PLANNER
-  failure, with no location and no cause. Burned ~6 of the agent's 41 turns.
+> **STATUS: all three FIXED 2026-07-14** (branch `agent-scope-feedback`). Verified
+> end-to-end: the agent's q11 msg-19 query (the exact 25 GiB OOM) now executes in
+> **0.6s under a 4 GB cap and byte-matches the 90-row reference** (jointly with the
+> priority-1 membership work on this branch).
+
+* **q11, 4-way `union join a=b=c=d`** — the closure hypothesis was WRONG: a bare 4-way
+  union join plans clean (3 FULL JOINs, no payload keys). The explosion was (a) the
+  O(n²) semijoin chain below, and (b) `CTE.__add__` (`core/models/execute.py`) merging
+  two copies of one logical CTE by `unique_id` — joins to the SAME right CTE whose
+  pair sets differ by one redundant column both survive, rendering a row-multiplying
+  duplicate `FULL JOIN "abhorrent"`. Fixed: `coalesce_duplicate_joins` merges
+  same-(type, left, right) joins into one carrying the union of the pairs.
+  Test: `tests/test_coalesce_duplicate_cte_joins.py`. Payload columns in join keys
+  remain (rowset outputs are grain members, and the pairs now render null-safe —
+  harmless in all observed cases; prune via FD closure only if it resurfaces).
+* **q11, HAVING leaves chain O(n²) semijoins** — mechanism: `get_query_node` folds all
+  HAVING memberships onto the final node; `PredicatePushdown` then pushes each
+  membership atom into every eligible parent INCLUDING the sibling membership feeder
+  CTEs (the j<k triangular order falls out of `_promotion_would_cycle`). Semantically
+  redundant (the final AND already intersects), quadratically expensive. Fixed: never
+  push an existence-bearing atom into a CTE serving as an existence feeder of the same
+  consumer (`predicate_pushdown.py`). A/B on the synthetic 4-way mirror: 15 feeder
+  cross-refs / 22.9 KB → 0 / 14.8 KB. Test:
+  `tests/optimization/test_existence_feeder_pushdown.py`.
+* **q51, unactionable error** — the bare `raise SyntaxError` in
+  `node_generators/window_node.py` (window parents resolved but missing concepts, e.g.
+  windows over the coalesced keys of a union-join rowset) now returns `None` like its
+  sibling branch, so discovery finishes and surfaces a standard
+  `DisconnectedConceptsException` naming sourced vs. unresolved concepts ("Resolution
+  error", not "Syntax error: None"). Test:
+  `tests/test_window_missing_parent_diagnostic.py`. The underlying planner gap (window
+  parent drops `wd.item_sk`) still exists — the QUERY still fails, but loudly and
+  actionably; it is the same union-join family as priority 1.
 
 ---
 

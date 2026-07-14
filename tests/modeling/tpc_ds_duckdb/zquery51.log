@@ -99,8 +99,8 @@ FROM
     \"yummy\"
     INNER JOIN \"abundant\" on \"yummy\".\"sales_date_date\" is not distinct from \"abundant\".\"sales_date_date\" AND \"yummy\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\")
 SELECT
-    \"juicy\".\"sales_item_sk\" as \"item_sk\",
-    \"juicy\".\"sales_date_date\" as \"d_date\",
+    \"uneven\".\"sales_item_sk\" as \"item_sk\",
+    \"uneven\".\"sales_date_date\" as \"d_date\",
     CASE
 	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"juicy\".\"web_cume\"
 	ELSE null

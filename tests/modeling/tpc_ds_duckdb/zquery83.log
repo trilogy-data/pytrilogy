@@ -53,9 +53,10 @@ SELECT
     sum(CASE WHEN \"questionable\".\"sales_channel\" = 'STORE' THEN \"questionable\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
     sum(CASE WHEN \"questionable\".\"sales_channel\" = 'WEB' THEN \"questionable\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\"
 FROM
-    \"memory\".\"item\" as \"sales_item_items\"
-    FULL JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_sk\"
+    \"juicy\"
+    FULL JOIN \"questionable\" on \"juicy\".\"sales_channel\" = \"questionable\".\"sales_channel\" AND \"juicy\".\"sales_item_sk\" = \"questionable\".\"sales_item_sk\" AND \"juicy\".\"sales_order_id\" = \"questionable\".\"sales_order_id\"
     RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_sk\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"juicy\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"sales_return_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null)
 

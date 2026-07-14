@@ -139,7 +139,7 @@ def test_finer_grain_aggregate_having_renders_semijoin():
         "having count(sale_id) by item_id >= 2;"
     )
     # filtered as a grain-key semijoin, never promoted to a fan-out output
-    assert " in (select" in sql
+    assert "exists (select" in sql
     assert "invalid_reference_bug" not in sql
 
 
@@ -193,7 +193,7 @@ def test_finer_dim_having_differs_from_where():
 
 def test_finer_dim_having_renders_membership():
     sql = _sql("select brand_id, sum(quantity) as total having class_id = 3;")
-    assert " in (select" in sql
+    assert "exists (select" in sql
     assert "invalid_reference_bug" not in sql
 
 

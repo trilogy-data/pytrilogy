@@ -158,10 +158,11 @@ datasource sales (sale_id, brand, class, amount)
 """
 
 
-def test_inline_aggregate_in_order_by_raises():
-    """An inline aggregate in ORDER BY that isn't a SELECT output is rejected —
-    aggregates can't be computed in the ordering scope. `grouping()` is the
-    motivating case (Bug B3): it must be projected and ordered by alias."""
+def test_inline_grouping_in_order_by_resolves_to_injected_flag():
+    """`order by grouping(col)` on a rollup select resolves against the
+    auto-injected hidden grouping() outputs (the flags every rollup select
+    carries as row identity) instead of demanding a manual projection — the
+    former Bug B3 rejection case, now the documented behavior."""
     engine = Dialects.DUCK_DB.default_executor()
     engine.execute_text(_ROLLUP_GROUPING_MODEL)
     text = """
@@ -171,8 +172,25 @@ by rollup (brand, class)
 having total > overall.overall_avg
 order by grouping(brand) desc, grouping(class) desc, brand nulls first;
 """
-    with raises(Exception, match="ORDER BY contains aggregate"):
-        engine.generate_sql(text)
+    rows = [tuple(r) for r in engine.execute_text(text)[-1].fetchall()]
+    # overall_avg = 40: grand total 160, B subtotal 130, B/Y detail 100 survive,
+    # ordered grand-total -> subtotal -> detail by the grouping flags.
+    assert [(r[0], r[1], float(r[2])) for r in rows] == [
+        (None, None, 160.0),
+        ("B", None, 130.0),
+        ("B", "Y", 100.0),
+    ]
+
+
+def test_inline_non_grouping_aggregate_in_order_by_still_raises():
+    """A non-grouping inline aggregate in ORDER BY that isn't a SELECT output
+    stays rejected — aggregates can't be computed in the ordering scope."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    with raises(Exception, match="ORDER BY"):
+        engine.generate_sql(
+            "select brand, sum(amount) as total order by count(sale_id) desc;"
+        )
 
 
 def test_projected_grouping_in_rollup_orders_by_alias():

@@ -4,6 +4,7 @@ import copy
 import hashlib
 from dataclasses import dataclass
 from dataclasses import field as dc_field
+from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from functools import cached_property
 from typing import (
@@ -761,7 +762,9 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         return hash(repr(self))
 
     def with_reference_replacement(self, replacements: ReferenceReplacements):
-        return self.__class__(
+        # dc_replace so any subclass fields survive the copy
+        return dc_replace(
+            self,
             left=(
                 self.left.with_reference_replacement(replacements)
                 if isinstance(self.left, ReferenceReplaceable)
@@ -772,11 +775,11 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                 if isinstance(self.right, ReferenceReplaceable)
                 else self.right
             ),
-            operator=self.operator,
         )
 
     def with_namespace(self, namespace: str):
-        return self.__class__(
+        return dc_replace(
+            self,
             left=(
                 self.left.with_namespace(namespace)
                 if isinstance(self.left, Namespaced)
@@ -787,7 +790,6 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                 if isinstance(self.right, Namespaced)
                 else self.right
             ),
-            operator=self.operator,
         )
 
     @property
@@ -1268,7 +1270,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             return new_lineage, self.grain, keys
         if grain.components and isinstance(new_lineage, Function) and self.is_aggregate:
             aggregate_grain_components = cast(
-                List[ConceptRef | Concept], _grain_concept_refs(grain, environment)
+                List[ConceptRef | Concept],
+                _aggregate_pinnable_grain_refs(grain, environment),
             )
             new_lineage = AggregateWrapper(
                 function=new_lineage, by=aggregate_grain_components
@@ -1278,7 +1281,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
             if pin_bare_aggregates:
                 wrapper_grain_components = cast(
-                    List[ConceptRef | Concept], _grain_concept_refs(grain, environment)
+                    List[ConceptRef | Concept],
+                    _aggregate_pinnable_grain_refs(grain, environment),
                 )
                 new_lineage = AggregateWrapper(
                     function=new_lineage.function,
@@ -2307,7 +2311,41 @@ def _by_item_with_reference_replacement(item, replacements):
 
 
 def _grain_concept_refs(grain: "Grain", environment: Environment) -> list[ConceptRef]:
-    return [environment.concepts[c].reference for c in grain.component_order]
+    out: list[ConceptRef] = []
+    for address in grain.component_order:
+        concept = environment.concepts.get(address)
+        if concept is None:
+            # A select-local virtual (an injected grouping() flag) lives only
+            # in the select's local scope; it is grain-relevant downstream but
+            # is not a pinnable dimension here.
+            continue
+        out.append(concept.reference)
+    return out
+
+
+def _aggregate_pinnable_grain_refs(
+    grain: "Grain", environment: Environment
+) -> list[ConceptRef]:
+    """Grain components usable as a bare aggregate's pinned ``by`` dims.
+
+    A grouping-set identity (``grouping()``/``grouping_id()``) is an *output*
+    of its grouping pass, not a grouping dimension: it enters the select grain
+    as row identity (rollup NULL-padding makes the visible dims non-unique),
+    but pinning sibling aggregates by it is circular — flag A's ``by`` would
+    contain flag B and vice versa (build RecursionError)."""
+    out: list[ConceptRef] = []
+    for address in grain.component_order:
+        concept = environment.concepts.get(address)
+        if concept is None:
+            continue
+        lineage = concept.lineage
+        if isinstance(lineage, AggregateWrapper) and lineage.function.operator in (
+            FunctionType.GROUPING,
+            FunctionType.GROUPING_ID,
+        ):
+            continue
+        out.append(concept.reference)
+    return out
 
 
 def _row_grain_concept_refs(expr) -> list["ConceptRef"]:

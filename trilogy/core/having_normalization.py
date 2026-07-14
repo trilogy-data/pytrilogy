@@ -797,12 +797,13 @@ class _HavingNormalization:
         self, leaf: Comparison | Between, grain_keys: list[str]
     ) -> SubselectComparison:
         """Turn a HAVING predicate on a non-output dimension into a semijoin
-        against the select grain key(s): ``key in (filter key where <leaf>)``
-        for a single-key grain, or the row-wise composite ``(k1, k2) in (filter
-        k1 where <leaf>, filter k2 where <leaf>)`` for a multi-key grain. The
-        per-key filtered sets share the same predicate and are sourced
-        together, so they stay correlated (the surviving key *combinations*,
-        not the cross product).
+        against the select grain key(s): the row-wise composite ``(k1, k2) in
+        (filter k1 where <leaf>, filter k2 where <leaf>)``. The per-key
+        filtered sets share the same predicate and are sourced together, so
+        they stay correlated (the surviving key *combinations*, not the cross
+        product). Always the ROW_TUPLE form — even for a single-key grain — so
+        rendering is null-safe row identity matching; a scalar ``key IN
+        (select ...)`` deletes any group whose key is NULL (q11/q59).
 
         The select's WHERE clause is AND-ed into the filter so the existence
         set is evaluated within the same pre-aggregation universe the aggregate
@@ -845,12 +846,8 @@ class _HavingNormalization:
             self.local_concepts[filtered.address] = filtered
             key_refs.append(key_ref)
             filtered_refs.append(filtered.reference)
-        if len(grain_keys) == 1:
-            left: Any = key_refs[0]
-            right: Any = filtered_refs[0]
-        else:
-            left = row_tuple_function(list(key_refs))
-            right = row_tuple_function(list(filtered_refs))
+        left = row_tuple_function(list(key_refs))
+        right = row_tuple_function(list(filtered_refs))
         return SubselectComparison(
             left=left, right=right, operator=ComparisonOperator.IN
         )
