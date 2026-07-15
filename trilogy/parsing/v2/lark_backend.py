@@ -20,6 +20,7 @@ from trilogy.parsing.v2.errors import (
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
+    misplaced_join_candidate,
 )
 from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
 from trilogy.utility import safe_open
@@ -185,6 +186,15 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     join_pos = detect_clause_after_join(text, pos)
     if join_pos is not None:
         raise create_syntax_error(220, join_pos, text)
+
+    # 226: a WELL-FORMED query-scoped join in the wrong place (standalone, or
+    # before the `where`). Confirm the key is fine by probing the clause alone;
+    # a malformed key falls through to 225.
+    misplaced = misplaced_join_candidate(text, pos)
+    if misplaced is not None and _lark_parses(
+        f"select 1 as trilogy_join_probe {misplaced[1]};"
+    ):
+        raise create_syntax_error(226, misplaced[0], text)
 
     # 225: a query-scoped join with a missing/malformed key expression.
     join_key_pos = detect_join_missing_key(text, pos)

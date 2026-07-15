@@ -395,19 +395,6 @@ class MergeNode(StrategyNode):
         merge_output_addresses = {c.address for c in self.output_concepts}
         existence_addr_set = {c.address for c in self.existence_concepts}
 
-        # A coalescing (union/full) join key member is provided by every side of
-        # the relation (the join coalesces it), so when one is ALSO output by a
-        # presence/filter side (a HAVING semijoin feeder), that side's copy is
-        # redundant — the genuine row sources carry the key. Count how many
-        # merged parents output each such member; those provided by more than
-        # one are redundant on any single side.
-        coalescing_members = self.environment.domain_graph.coalescing_relation_members()
-        key_provider_counts: dict[str, int] = {}
-        for src in final_datasets:
-            for addr in {c.address for c in src.output_concepts} & coalescing_members:
-                key_provider_counts[addr] = key_provider_counts.get(addr, 0) + 1
-        redundant_coalescing_keys = {a for a, n in key_provider_counts.items() if n > 1}
-
         def _is_existence_only(x: QueryDatasource | BuildDatasource) -> bool:
             out_addrs = {y.address for y in x.output_concepts}
             if not out_addrs & existence_addr_set:
@@ -417,16 +404,11 @@ class MergeNode(StrategyNode):
             # incidental extra columns (e.g. a membership rowset's other
             # measures) are unused here and must not promote it to a joined row
             # source — doing so leaves it dangling in the FROM (it has no join
-            # key, only a subselect) yet feeding the SELECT list. A redundantly-
-            # provided coalescing key member is likewise incidental: promoting a
-            # filter side to a row source on its account makes join inference pair
-            # a key column the side never projects under the canonical name (the
-            # merge output uses the group canonical while the side projects its
-            # own member) — a dangling merge column DuckDB rejects.
+            # key, only a subselect) yet feeding the SELECT list.
             return all(
                 a in existence_addr_set
                 for a in out_addrs
-                if a in merge_output_addresses and a not in redundant_coalescing_keys
+                if a in merge_output_addresses
             )
 
         existence_final = [x for x in final_datasets if _is_existence_only(x)]

@@ -16,10 +16,10 @@ from trilogy.parsing.v2.errors import (
     detect_group_by,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
-    misplaced_join_candidate,
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
+    misplaced_join_candidate,
 )
 from trilogy.parsing.v2.syntax import (
     LARK_NODE_KIND,
