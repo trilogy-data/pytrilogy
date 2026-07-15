@@ -247,3 +247,66 @@ def test_grain_under_dimension_filter_normalizes_before_count_in_sql():
     normalize_cte, _, count_cte = sql.partition("count(md5")
     assert "group by" in normalize_cte
     assert "date_sk" in normalize_cte and "item_sk" in normalize_cte
+
+
+def test_grain_count_equals_count_distinct_under_dimension_filter():
+    """grain()'s hash is injective+total, so count(grain(...)) must equal
+    count_distinct(grain(...)) even once the dimension filter forces the join
+    that used to defeat normalization."""
+    executor = make_star_executor()
+    assert rows(
+        executor,
+        "where yr = 2000 select item_sk, "
+        "count(grain(item_id, item_desc, date_sk)) as c, "
+        "count_distinct(grain(item_id, item_desc, date_sk)) as cd order by item_sk;",
+    ) == [(10, 2, 2), (20, 1, 1)]
+
+
+def test_grain_inline_derived_expression_under_dimension_filter():
+    """The handoff's exact shape: a derived expression (substring) inline in
+    grain(), not a pre-bound property. Its row identity is still item_sk, so the
+    tuple grain stays (item_sk, date_sk) and the count dedupes to distinct
+    dates."""
+    executor = make_star_executor()
+    assert rows(
+        executor,
+        "where yr = 2000 select item_sk, "
+        "count(grain(item_id, substring(item_desc, 1, 30), date_sk)) as c "
+        "order by item_sk asc;",
+    ) == [(10, 2), (20, 1)]
+
+
+def test_grain_count_alongside_ordinary_aggregate_of_different_grain():
+    """Regression guard for the regroup: a co-located sum(qty) needs raw
+    ticket-line rows while count(grain(...)) needs the (item_sk, date_sk) tuple.
+    Forcing the merge regroup must not collapse the fact rows the sum depends on
+    — item 10 keeps its 4-line qty sum (20) while the count still dedupes to 2
+    dates."""
+    executor = make_star_executor()
+    assert rows(
+        executor,
+        "where yr = 2000 select item_sk, sum(qty) as q, "
+        "count(grain(item_id, item_desc, date_sk)) as c order by item_sk asc;",
+    ) == [(10, 20, 2), (20, 10, 1)]
+
+
+def test_grain_normalizes_under_fact_local_filter():
+    """A fact-local filter (no dimension join) takes a different sourcing path;
+    the tuple must still dedupe to distinct dates per item."""
+    executor = make_star_executor()
+    assert rows(
+        executor,
+        "where qty > 0 select item_sk, "
+        "count(grain(item_id, item_desc, date_sk)) as c order by item_sk asc;",
+    ) == [(10, 2), (20, 1)]
+
+
+def test_grain_global_count_under_dimension_filter():
+    """`by *` global aggregate over grain(): the whole (item, date) tuple
+    population deduped across all items — 3 distinct pairs — even under the
+    dimension filter."""
+    executor = make_star_executor()
+    assert rows(
+        executor,
+        "where yr = 2000 select count(grain(item_id, item_desc, date_sk)) as c;",
+    ) == [(3,)]
