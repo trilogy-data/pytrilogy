@@ -7,10 +7,11 @@ below.
 
 ## Current state (after 2026-07-15 session 4)
 
-**Expected ~48 failed** (52 − 4) pending the confirming full sweep
-(`local_scripts/v4_sweep_0715_s4.log`, running). Session 4 fixed 4 across two
-seams, verified regression-free in discovery + non-modeling message suites +
-TPC-DS battery (the pre-existing 6 only). Session-3 baseline was 52/5573
+**Full v4 sweep (session 4): 48 failed / 5578 passed**, 12 xpassed, 82 errors
+(clickhouse-environmental, ignore). Log: `local_scripts/v4_sweep_0715_s4.log`.
+Diffed against the session-3 52-set: −4 net, ZERO new/regressions. Fixed exactly:
+disconnected_e2e message ×2, `test_mixed_aggregate_and_row_predicate_filter`,
+`test_mixed_filter_over_materialized_aggregate`. Session-3 baseline was 52/5573
 (`v4_sweep_0714_s3.log`); session-3 fix (commit 6750520cd) cleared duckdb.py ×6
 + syntax_examples rollup and touched env_processor.py, strategy_builder.py,
 basic.py.
@@ -23,7 +24,7 @@ Session-4 fixes:
    `test_message_includes_failing_statement_line`,
    `test_message_suggests_connected_nested_equivalent`) — see session-4 entry.
 
-**Open families by sweep count (~48):** materialized_aggregate_bridge ×3
+**Open families by sweep count (48):** materialized_aggregate_bridge ×3
 (inline_equivalent, joins_cross_key_dimension, where_form_matches_filter_form —
 all the customer_summary cross-key/where-form shape), filter_mixed_aggregate ×3
 (**NEXT candidates** — optional_preserves_non_qualifying [needs row-preserving
