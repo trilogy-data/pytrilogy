@@ -1,6 +1,8 @@
-# Bespoke model for analyze catalog sales, store sales, and store returns as a unit.
+# Bespoke model to analyze catalog sales, store sales, and store returns as a unit.
 # As catalog sales are returned to stores, used for specific analysis
 # of patterns across these 3 datasets; unsuitable for other purposes.
+# Has a unified customer representing sales customer, return customer, and catalog billing customer
+# together
 # activity across all three tables can be queried as one model. Exposes
 # store quantity / net_profit, store return quantity / amount / net_loss,
 # and catalog quantity / net_profit.
