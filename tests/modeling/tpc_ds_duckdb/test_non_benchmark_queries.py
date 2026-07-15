@@ -487,8 +487,9 @@ limit 100;
 """
     sql = engine.generate_sql(query)[-1]
     assert "INVALID_REFERENCE_BUG" not in sql, sql
-    # the membership feeders must resolve to real, declared CTEs
-    referenced = set(re.findall(r"in \(select (\w+)\.", sql))
+    # the membership feeders must resolve to real, declared CTEs. Membership
+    # renders as a NULL-matching existence check: `exists (select 1 from <cte> ...)`.
+    referenced = set(re.findall(r"exists \(select 1 from (\w+)\b", sql))
     declared = set(re.findall(r"(\w+) as \(", sql))
     assert referenced, sql
     assert referenced <= declared, f"dangling membership CTEs: {referenced - declared}"
@@ -827,12 +828,14 @@ def _assert_having_membership_subselect_valid(query: str) -> None:
     """A HAVING `x in <set>` must source its existence subselect from a real
     producer CTE present in the WITH list — not a dangling reference. The HAVING
     application routes through `append_existence_check` (mirroring the WHERE
-    path), so the predicate's subselect is wired regardless of node shape."""
+    path), so the predicate's subselect is wired regardless of node shape.
+    Membership renders as a NULL-matching existence check:
+    `exists (select 1 from <cte> ...)`."""
     env = Environment(working_path=working_path)
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert "INVALID_REFERENCE_BUG" not in sql, sql
     defined_ctes = set(re.findall(r"\n(\w+) as \(", sql))
-    referenced = re.search(r"in \(select (\w+)\.", sql)
+    referenced = re.search(r"exists \(select 1 from (\w+)\b", sql)
     assert referenced is not None, sql
     assert referenced.group(1) in defined_ctes, sql
 
