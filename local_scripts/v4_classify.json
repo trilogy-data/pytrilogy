@@ -1,8 +1,8 @@
 [
   {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
     "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
@@ -10,9 +10,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
     "bucket": "SHAPE",
-    "detail": "AssertionError:",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
     "expected": [
       "SHAPE"
     ],
@@ -90,17 +90,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_non_correlated",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 2 disconnected subgraphs: {const}; {top3}.",
+    "node": "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by",
+    "node": "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_non_correlated",
     "bucket": "CRASH",
-    "detail": "_duckdb.BinderException: Binder Error: column \"channel\" must appear in the GROUP BY clause or must be part of an aggregate function.",
+    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 2 disconnected subgraphs: {const}; {top3}.",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -146,17 +146,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_row_grain",
+    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_in_tvf",
     "bucket": "ROWS",
-    "detail": "AssertionError: assert [('ep100', De...'11.0')), ...] == [('ep100', 11...ep300', 55.0)]",
+    "detail": "AssertionError: assert [('ep100', De...cimal('7.0'))] == [('ep100', 51... ('zzz', 7.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_in_tvf",
+    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_row_grain",
     "bucket": "ROWS",
-    "detail": "AssertionError: assert [('ep100', De...cimal('7.0'))] == [('ep100', 51... ('zzz', 7.0)]",
+    "detail": "AssertionError: assert [('ep100', De...'11.0')), ...] == [('ep100', 11...ep300', 55.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -186,6 +186,14 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
+    "bucket": "ROWS",
+    "detail": "AssertionError: (1282, 1223)",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order",
     "bucket": "ROWS",
     "detail": "assert 6 == 5",
@@ -197,14 +205,6 @@
     "node": "tests/modeling/stocks/test_stocks.py::test_import",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['holdings.profitable<Purpose.PROPERTY>Derivation.BASIC>', 'holdings.return<Purpose.PROPERTY>Der",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
-    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
-    "bucket": "ROWS",
-    "detail": "AssertionError: (1282, 1223)",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -242,6 +242,14 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
+    "bucket": "XPASS",
+    "detail": "",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['ss.item.sk<Purpose.KEY>Derivation.ROOT>', 'ss.store.sk<Purpose.KEY>Derivation.ROOT>', 'ss.pos_",
@@ -253,14 +261,6 @@
     "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_four",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.DisconnectedConceptsException: WHERE input(s) ['order.date'] cannot be related to the query outputs ['local.order_count', 'order.priority']: no join or merge connects the filte",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
-    "bucket": "XPASS",
-    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -362,17 +362,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles",
-    "bucket": "CRASH",
-    "detail": "",
+    "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_all_left_unaffected",
+    "bucket": "ROWS",
+    "detail": "AssertionError: assert [('A001', 'Al...cimal('3.0'))] == [('A001', 'Al...', None, 4.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_all_left_unaffected",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert [('A001', 'Al... (None, None)] == [('A001', 'Al...', None, 4.0)]",
+    "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles",
+    "bucket": "CRASH",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false

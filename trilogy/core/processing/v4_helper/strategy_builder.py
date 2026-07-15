@@ -504,6 +504,26 @@ def _feeder_conditions_implied(
     return all(atom in sibling for atom in feeder)
 
 
+def _nonstandard_grouping_key_addresses(
+    environment: BuildEnvironment, attrs: dict[str, GroupAttrs], gid: str
+) -> set[str]:
+    """Grouping-key addresses of this group's non-standard (ROLLUP/CUBE/
+    GROUPING SETS) aggregate members, across the `by` spec and every grouping
+    set."""
+    out: set[str] = set()
+    for addr in attrs[gid].primary_members:
+        concept = _concept_at(environment, addr)
+        if (
+            concept is not None
+            and isinstance(concept.lineage, BuildAggregateWrapper)
+            and concept.lineage.grouping != AggregateGroupingMode.STANDARD
+        ):
+            out |= {b.address for b in concept.lineage.by}
+            for grouping_set in concept.lineage.grouping_sets:
+                out |= {b.address for b in grouping_set}
+    return out
+
+
 def _parent_nodes_for(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -567,6 +587,9 @@ def _parent_nodes_for(
                 if (concept := _concept_at(environment, addr)) is not None
             ]
         )
+        nonstandard_key_addresses = _nonstandard_grouping_key_addresses(
+            environment, attrs, gid
+        )
         while True:
             expanded: list[tuple[str, StrategyNode]] = []
             changed = False
@@ -595,6 +618,12 @@ def _parent_nodes_for(
                     and set(attrs[pgid].primary_members).issubset(
                         inline_input_addresses
                     )
+                    # A derived key of THIS group's ROLLUP/CUBE/GROUPING SETS
+                    # spec must stay materialized by its own projection:
+                    # folding it re-renders the key inline from its source
+                    # columns, and grouping(<key>) then names an expression the
+                    # GROUP BY clause doesn't (q80/q14 invalid-SQL hazard).
+                    and not (pgid_outputs & nonstandard_key_addresses)
                     and node.conditions is None
                     and not node.force_group
                     and not node.existence_concepts
@@ -1990,6 +2019,17 @@ def _group_to_grain_if_required(
         if concept.address in final_contract.output_addresses
     ]
     if isinstance(node, (GroupNode, WindowNode)) or node.force_group:
+        return node
+    # A non-standard-grouping (ROLLUP/CUBE/GROUPING SETS) contributor's rows are
+    # already final-shape: subtotal/total rows are distinct outputs, so a dedup
+    # to the requested grain re-aggregates them away (and a grouping()-derived
+    # dim can't be re-grouped outside its grouping set). Flat passthrough,
+    # mirroring v3.
+    if any(
+        isinstance(o.lineage, BuildAggregateWrapper)
+        and o.lineage.grouping != AggregateGroupingMode.STANDARD
+        for o in node.output_concepts
+    ):
         return node
     if (
         check_if_group_required(

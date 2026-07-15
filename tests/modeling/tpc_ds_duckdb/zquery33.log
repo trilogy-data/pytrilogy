@@ -63,21 +63,10 @@ WHERE
 ),
 juicy as (
 SELECT
-    \"questionable\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
-    \"questionable\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\"
+    \"questionable\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
+    sum(\"questionable\".\"sales_ext_sales_price\") as \"total_sales\"
 FROM
     \"questionable\"
-GROUP BY
-    1,
-    2,
-    \"questionable\".\"sales_channel\",
-    \"questionable\".\"sales_item_sk\",
-    \"questionable\".\"sales_order_id\")
-SELECT
-    \"juicy\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
-    sum(\"juicy\".\"sales_ext_sales_price\") as \"total_sales\"
-FROM
-    \"juicy\"
 GROUP BY
     1
 ORDER BY 

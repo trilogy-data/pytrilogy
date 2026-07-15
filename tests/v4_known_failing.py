@@ -267,7 +267,9 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/discovery/test_global_avg_filter_group_fanout.py::test_global_avg_filter_does_not_fan_out_group": _V4_MASKED_LEAK,
     "tests/discovery/test_outer_where_pushes_into_global_agg.py::test_outer_where_pushes_into_global_agg_with_post_agg_filter": _V4_MASKED_LEAK,
     "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_non_correlated": _V4_MASKED_LEAK,
-    "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by": _V4_MASKED_LEAK,
+    # test_composite_rollup_aggregate_keeps_group_by pruned 2026-07-14 s3
+    # (isolation + in-suite verified): fixed by the non-standard-grouping
+    # parent-fold gate + rollup FINAL passthrough in strategy_builder.
     "tests/engine/test_duckdb.py::test_derived_membership_existence": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion": _V4_MASKED_LEAK,

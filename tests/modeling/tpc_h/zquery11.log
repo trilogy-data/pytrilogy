@@ -1,6 +1,6 @@
 query_id = "11"
-generator = "v3"
-gen_length = 2065
+generator = "v4"
+gen_length = 1959
 preql_size = 360
 comp_size = 581
 generated_sql = """
@@ -38,24 +38,24 @@ FROM
     \"thoughtful\"),
 abundant as (
 SELECT
-    \"cheerful\".\"available_quantity\" as \"available_quantity\",
-    \"cheerful\".\"id\" as \"id\",
-    \"cheerful\".\"supplier_nation_name\" as \"supplier_nation_name\",
-    \"cheerful\".\"supply_cost\" as \"supply_cost\",
-    \"questionable\".\"_virt_agg_sum_7056827604753688_wscope\" as \"_virt_agg_sum_7056827604753688_wscope\"
+    \"questionable\".\"_virt_agg_sum_7056827604753688_wscope\" as \"_virt_agg_sum_7056827604753688_wscope\",
+    \"questionable\".\"id\" as \"id\",
+    sum(\"thoughtful\".\"supply_cost\" * \"thoughtful\".\"_virt_filter_available_quantity_5442867613516720\") as \"total_value\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"questionable\" on \"cheerful\".\"id\" = \"questionable\".\"id\")
+    \"thoughtful\"
+    INNER JOIN \"questionable\" on \"thoughtful\".\"id\" = \"questionable\".\"id\"
+    FULL JOIN \"cooperative\" on 1=1
+GROUP BY
+    1,
+    2)
 SELECT
     \"abundant\".\"id\" as \"id\",
-    sum(\"abundant\".\"supply_cost\" * CASE WHEN \"abundant\".\"supplier_nation_name\" = 'GERMANY' THEN \"abundant\".\"available_quantity\" ELSE NULL END) as \"total_value\"
+    \"abundant\".\"total_value\" as \"total_value\"
 FROM
     \"abundant\"
     INNER JOIN \"cooperative\" on 1=1
 WHERE
     \"abundant\".\"_virt_agg_sum_7056827604753688_wscope\" > \"cooperative\".\"germany_total_value\" * 0.0001
 
-GROUP BY
-    1
 ORDER BY 
     \"total_value\" desc"""

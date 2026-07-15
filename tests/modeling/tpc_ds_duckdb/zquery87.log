@@ -6,7 +6,7 @@ comp_size = 1163
 generated_sql = """
 
 WITH 
-cheerful as (
+wakeful as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
@@ -20,9 +20,8 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3),
-uneven as (
+    2),
+questionable as (
 SELECT
     \"catalog_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"catalog_sales_billing_customer_first_name\",
     \"catalog_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"catalog_sales_billing_customer_last_name\",
@@ -36,9 +35,8 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3),
-young as (
+    2),
+concerned as (
 SELECT
     \"web_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"web_sales_billing_customer_first_name\",
     \"web_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"web_sales_billing_customer_last_name\",
@@ -52,29 +50,43 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3),
+    2),
 abhorrent as (
 SELECT
     \"cheerful\".\"store_sales_customer_last_name\" as \"_tvf_union_last_name\",
     \"cheerful\".\"store_sales_customer_first_name\" as \"_tvf_union_first_name\",
     \"cheerful\".\"store_sales_sale_date_date\" as \"_tvf_union_sale_date\"
 FROM
-    \"cheerful\"
+    \"wakeful\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"wakeful\".\"store_sales_date_sk\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"wakeful\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"wakeful\".\"store_sales_customer_sk\" is not null
+
 EXCEPT
 SELECT
     \"uneven\".\"catalog_sales_billing_customer_last_name\" as \"_tvf_union_last_name\",
     \"uneven\".\"catalog_sales_billing_customer_first_name\" as \"_tvf_union_first_name\",
     \"uneven\".\"catalog_sales_sale_date_date\" as \"_tvf_union_sale_date\"
 FROM
-    \"uneven\"
+    \"questionable\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sold_date_date\" on \"questionable\".\"catalog_sales_sold_date_sk\" = \"catalog_sales_sold_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"catalog_sales_billing_customer_customers\" on \"questionable\".\"catalog_sales_billing_customer_sk\" = \"catalog_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"catalog_sales_sold_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"questionable\".\"catalog_sales_billing_customer_sk\" is not null
+
 EXCEPT
 SELECT
     \"young\".\"web_sales_billing_customer_last_name\" as \"_tvf_union_last_name\",
     \"young\".\"web_sales_billing_customer_first_name\" as \"_tvf_union_first_name\",
     \"young\".\"web_sales_sale_date_date\" as \"_tvf_union_sale_date\"
 FROM
-    \"young\")
+    \"concerned\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"concerned\".\"web_sales_date_sk\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"web_sales_billing_customer_customers\" on \"concerned\".\"web_sales_billing_customer_sk\" = \"web_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"web_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"concerned\".\"web_sales_billing_customer_sk\" is not null
+)
 SELECT
     count(\"abhorrent\".\"_tvf_union_sale_date\") as \"cnt\"
 FROM
