@@ -87,3 +87,4 @@ evals/tpcds_agent/reviewer_corpus/all.jsonl
 evals/tpcds_agent/*.out
 evals/tpcds_agent/diag*md
 evals/tpcds_agent/*.err
+evals/tpcds_agent/*.log
