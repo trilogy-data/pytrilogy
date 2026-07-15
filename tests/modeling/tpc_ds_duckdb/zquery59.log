@@ -1,6 +1,6 @@
 query_id = "59"
 generator = "v3"
-gen_length = 5821
+gen_length = 6037
 preql_size = 2218
 comp_size = 2234
 generated_sql = """
@@ -38,12 +38,8 @@ GROUP BY
 questionable as (
 SELECT
     \"cooperative\".\"ss_store_sk\" as \"ss_store_sk\",
-    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
-    max(CASE
-	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1212 AND 1223 THEN 1
-	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1224 AND 1235 THEN 2
-	ELSE 0
-	END) as \"year_flag\"
+    \"ss_date_date\".\"D_MONTH_SEQ\" as \"ss_date_month_seq\",
+    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\"
 FROM
     \"cooperative\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cooperative\".\"ss_date_sk\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -52,10 +48,26 @@ WHERE
 
 GROUP BY
     1,
+    2,
+    3,
+    \"cooperative\".\"ss_date_sk\"),
+abundant as (
+SELECT
+    \"questionable\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
+    \"questionable\".\"ss_store_sk\" as \"ss_store_sk\",
+    max(CASE
+	WHEN \"questionable\".\"ss_date_month_seq\" BETWEEN 1212 AND 1223 THEN 1
+	WHEN \"questionable\".\"ss_date_month_seq\" BETWEEN 1224 AND 1235 THEN 2
+	ELSE 0
+	END) as \"year_flag\"
+FROM
+    \"questionable\"
+GROUP BY
+    1,
     2),
 uneven as (
 SELECT
-    \"questionable\".\"year_flag\" as \"year_flag\",
+    \"abundant\".\"year_flag\" as \"year_flag\",
     \"wakeful\".\"fri_sales\" as \"fri_sales\",
     \"wakeful\".\"mon_sales\" as \"mon_sales\",
     \"wakeful\".\"sat_sales\" as \"sat_sales\",
@@ -66,36 +78,36 @@ SELECT
     \"wakeful\".\"tue_sales\" as \"tue_sales\",
     \"wakeful\".\"wed_sales\" as \"wed_sales\",
     lead(\"wakeful\".\"fri_sales\", 1) over (partition by \"wakeful\".\"ss_store_sk\",\"wakeful\".\"ss_date_week_seq\" - (CASE
-	WHEN \"questionable\".\"year_flag\" = 2 THEN 52
+	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
 	ELSE 0
-	END) order by \"questionable\".\"year_flag\" asc ) as \"_virt_window_lead_1809457397450112\",
+	END) order by \"abundant\".\"year_flag\" asc ) as \"_virt_window_lead_1809457397450112\",
     lead(\"wakeful\".\"mon_sales\", 1) over (partition by \"wakeful\".\"ss_store_sk\",\"wakeful\".\"ss_date_week_seq\" - (CASE
-	WHEN \"questionable\".\"year_flag\" = 2 THEN 52
+	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
 	ELSE 0
-	END) order by \"questionable\".\"year_flag\" asc ) as \"_virt_window_lead_8658219107244510\",
+	END) order by \"abundant\".\"year_flag\" asc ) as \"_virt_window_lead_8658219107244510\",
     lead(\"wakeful\".\"sat_sales\", 1) over (partition by \"wakeful\".\"ss_store_sk\",\"wakeful\".\"ss_date_week_seq\" - (CASE
-	WHEN \"questionable\".\"year_flag\" = 2 THEN 52
+	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
 	ELSE 0
-	END) order by \"questionable\".\"year_flag\" asc ) as \"_virt_window_lead_6629245994596889\",
+	END) order by \"abundant\".\"year_flag\" asc ) as \"_virt_window_lead_6629245994596889\",
     lead(\"wakeful\".\"sun_sales\", 1) over (partition by \"wakeful\".\"ss_store_sk\",\"wakeful\".\"ss_date_week_seq\" - (CASE
-	WHEN \"questionable\".\"year_flag\" = 2 THEN 52
+	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
 	ELSE 0
-	END) order by \"questionable\".\"year_flag\" asc ) as \"_virt_window_lead_6256435185087398\",
+	END) order by \"abundant\".\"year_flag\" asc ) as \"_virt_window_lead_6256435185087398\",
     lead(\"wakeful\".\"thu_sales\", 1) over (partition by \"wakeful\".\"ss_store_sk\",\"wakeful\".\"ss_date_week_seq\" - (CASE
-	WHEN \"questionable\".\"year_flag\" = 2 THEN 52
+	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
 	ELSE 0
-	END) order by \"questionable\".\"year_flag\" asc ) as \"_virt_window_lead_5418231592854511\",
+	END) order by \"abundant\".\"year_flag\" asc ) as \"_virt_window_lead_5418231592854511\",
     lead(\"wakeful\".\"tue_sales\", 1) over (partition by \"wakeful\".\"ss_store_sk\",\"wakeful\".\"ss_date_week_seq\" - (CASE
-	WHEN \"questionable\".\"year_flag\" = 2 THEN 52
+	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
 	ELSE 0
-	END) order by \"questionable\".\"year_flag\" asc ) as \"_virt_window_lead_8482854723108958\",
+	END) order by \"abundant\".\"year_flag\" asc ) as \"_virt_window_lead_8482854723108958\",
     lead(\"wakeful\".\"wed_sales\", 1) over (partition by \"wakeful\".\"ss_store_sk\",\"wakeful\".\"ss_date_week_seq\" - (CASE
-	WHEN \"questionable\".\"year_flag\" = 2 THEN 52
+	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
 	ELSE 0
-	END) order by \"questionable\".\"year_flag\" asc ) as \"_virt_window_lead_5213256031737291\"
+	END) order by \"abundant\".\"year_flag\" asc ) as \"_virt_window_lead_5213256031737291\"
 FROM
-    \"questionable\"
-    INNER JOIN \"wakeful\" on \"questionable\".\"ss_date_week_seq\" = \"wakeful\".\"ss_date_week_seq\" AND \"questionable\".\"ss_store_sk\" = \"wakeful\".\"ss_store_sk\")
+    \"abundant\"
+    INNER JOIN \"wakeful\" on \"abundant\".\"ss_date_week_seq\" = \"wakeful\".\"ss_date_week_seq\" AND \"abundant\".\"ss_store_sk\" = \"wakeful\".\"ss_store_sk\")
 SELECT
     \"ss_store_store\".\"S_STORE_NAME\" as \"s_store_name1\",
     \"ss_store_store\".\"S_STORE_ID\" as \"s_store_id1\",

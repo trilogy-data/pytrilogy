@@ -394,10 +394,20 @@ class MergeNode(StrategyNode):
 
         merge_output_addresses = {c.address for c in self.output_concepts}
         existence_addr_set = {c.address for c in self.existence_concepts}
+        # The coalescing (union/full) key members of this build. A semijoin
+        # feeder (a HAVING-membership existence source) is keyed on one of these
+        # when its probe filters the coalesced key itself; that key on the feeder
+        # is then incidental (the genuine union sides carry it), see below.
+        coalescing_members = self.environment.domain_graph.coalescing_relation_members()
+        existence_key_by_addr: dict[str, set[str]] = {
+            c.address: {k for k in (c.keys or set()) if k in coalescing_members}
+            for c in self.existence_concepts
+        }
 
         def _is_existence_only(x: QueryDatasource | BuildDatasource) -> bool:
             out_addrs = {y.address for y in x.output_concepts}
-            if not out_addrs & existence_addr_set:
+            provided_existence = out_addrs & existence_addr_set
+            if not provided_existence:
                 return False
             # Existence-only if every concept it provides that this merge
             # actually emits as a row output is an existence concept. A source's
@@ -405,8 +415,21 @@ class MergeNode(StrategyNode):
             # measures) are unused here and must not promote it to a joined row
             # source — doing so leaves it dangling in the FROM (it has no join
             # key, only a subselect) yet feeding the SELECT list.
+            #
+            # A coalescing key member the feeder exposes only because it is the
+            # KEY of its OWN semijoin probe (a HAVING `... is not null` over the
+            # coalesced key) is likewise incidental: the genuine union sides
+            # carry the coalesced key and the feeder reaches its rows through the
+            # EXISTS subselect, not a row join. Promoting it to a row source pairs
+            # a key column the side never projects under the group canonical — a
+            # dangling merge column. (A feeder exposing OTHER coalescing keys, not
+            # its probe key, is a real bridge row source and stays a join
+            # candidate: q04's chained union join over per-customer rowsets.)
+            probe_keys: set[str] = set()
+            for addr in provided_existence:
+                probe_keys |= existence_key_by_addr.get(addr, set())
             return all(
-                a in existence_addr_set
+                a in existence_addr_set or a in probe_keys
                 for a in out_addrs
                 if a in merge_output_addresses
             )

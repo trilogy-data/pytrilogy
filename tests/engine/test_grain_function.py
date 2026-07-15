@@ -1,6 +1,5 @@
-import pytest
-
 from trilogy import Dialects, Environment
+from trilogy.core.processing.node_generators.group_node import get_aggregate_grain
 
 DDL = """
 key rid int;
@@ -186,18 +185,13 @@ def test_grain_over_imported_keys_dedupes_without_filter():
     ) == [(10, 2), (20, 1)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="OPEN: WHERE filter on a joined dimension property drops the "
-    "composite-grain normalization; count(grain(...)) counts physical fact rows. "
-    "See handoff_q23_grain_function_imported_keys_skip_input_normalization.md",
-)
 def test_grain_over_imported_keys_dedupes_under_dimension_filter():
     """A WHERE filter on a joined dimension property must not defeat grain()
     normalization: count(grain(...)) counts distinct declared-grain tuples, not
-    physical fact rows. The bug returned (10, 4), (20, 2) — the raw ticket-line
-    counts — because the composite-grain group was dropped once the fact joined
-    the filtered date CTE."""
+    physical fact rows. Regression: the filter forced the fact to join the
+    filtered date CTE, and the fact's composite-grain group was deferred past
+    that merge and then silently dropped, so the count ran over ticket lines
+    (10 -> 4, 20 -> 2)."""
     executor = make_star_executor()
     assert rows(
         executor,
@@ -207,12 +201,6 @@ def test_grain_over_imported_keys_dedupes_under_dimension_filter():
     ) == [(10, 2), (20, 1)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="OPEN: same normalization drop as above, expressed as the q23 "
-    "HAVING-in-rowset shape. See handoff_q23_grain_function_imported_keys_"
-    "skip_input_normalization.md",
-)
 def test_grain_over_imported_keys_having_under_dimension_filter():
     """The q23 shape: the count feeds a HAVING inside a rowset. Only item 10
     exceeds one distinct date; counting physical rows wrongly admits item 20."""
@@ -224,3 +212,38 @@ def test_grain_over_imported_keys_having_under_dimension_filter():
         "select frequent.item_sk order by frequent.item_sk asc;"
     )
     assert rows(executor, query) == [(10,)]
+
+
+def test_grain_aggregate_input_grain_carries_composite_keys():
+    """Non-result guard: the dedup depends on the aggregate's INPUT grain, so
+    assert it at the model level rather than only through a row count. The
+    count's argument tuple must resolve to the composite (item_sk, date_sk)
+    grain — item_id/item_desc are 1:1 properties of item_sk — independent of any
+    WHERE or sourcing. If this drifts, every count(grain(...)) silently
+    mis-dedupes."""
+    env = Environment()
+    env.parse(STAR_DDL)
+    env.parse("select item_sk, count(grain(item_id, item_desc, date_sk)) as c;")
+    benv = env.materialize_for_select()
+    c = benv.concepts["local.c"]
+    assert c.is_aggregate
+    assert set(get_aggregate_grain(c, benv).components) == {
+        "local.item_sk",
+        "local.date_sk",
+    }
+
+
+def test_grain_under_dimension_filter_normalizes_before_count_in_sql():
+    """Non-result guard on the generated plan: a normalization GROUP BY at the
+    composite grain must exist BEFORE the outer count, else duplicate fact rows
+    inflate it. Asserts the date key is grouped alongside the item key (so the
+    tuple is deduped) rather than the count running straight over the fact
+    scan."""
+    executor = make_star_executor()
+    sql = executor.generate_sql(
+        "where yr = 2000 "
+        "select item_sk, count(grain(item_id, item_desc, date_sk)) as c;"
+    )[-1].lower()
+    normalize_cte, _, count_cte = sql.partition("count(md5")
+    assert "group by" in normalize_cte
+    assert "date_sk" in normalize_cte and "item_sk" in normalize_cte

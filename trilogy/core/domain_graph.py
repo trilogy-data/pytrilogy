@@ -418,7 +418,9 @@ class DomainGraph:
                     frontier.append(nxt)
         return False
 
-    def _declared_incomparable(self, left: str, right: str, rep: dict[str, str]) -> bool:
+    def _declared_incomparable(
+        self, left: str, right: str, rep: dict[str, str]
+    ) -> bool:
         """A DECLARED ∦ edge directly between the two operands' ≡-classes."""
         left_class, right_class = rep.get(left, left), rep.get(right, right)
         for edge in self.edges:

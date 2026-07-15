@@ -141,6 +141,7 @@ def finalize_select_node(
             f"{padding(depth)}{LOGGER_PREFIX} deferring source group until "
             "single grouped source merge can resolve grain."
         )
+        candidate.node.group_deferred = True
     return candidate.node
 
 

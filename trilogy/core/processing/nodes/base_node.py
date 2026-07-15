@@ -221,6 +221,10 @@ class StrategyNode:
         self._refine_nullable_for_conditions()
         self.grain = grain
         self.force_group = force_group
+        # Set when this source's own group was deferred past a merge (so a
+        # pushed WHERE could apply post-join); the merge must regroup to its
+        # output grain or the deferred normalization is silently lost.
+        self.group_deferred = False
         self.tainted = False
         self.hidden_concepts = hidden_concepts or set()
         self.existence_concepts = existence_concepts or []
