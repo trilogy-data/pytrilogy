@@ -1,56 +1,98 @@
-# v4 compatibility audit (last refreshed 2026-07-15, session 5)
+# v4 compatibility audit (last refreshed 2026-07-15, session 6)
 
 Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
 this file and in the project memory. Standing lessons from that era are kept
 below.
 
-## Current state (after 2026-07-15 session 5)
+## Current state (after 2026-07-15 session 6)
 
-**Full v4 sweep (session 5): 46 failed / 5580 passed**, 12 xpassed, 82 errors
-(clickhouse-environmental, ignore). Log: `local_scripts/v4_sweep_0715_s5.log`.
-Diffed against the session-4 48-set: −2 net, ZERO new/regressions. Fixed exactly:
-`test_sole_output_filter_has_no_null_group`,
-`test_filter_with_optional_preserves_non_qualifying_rows` (both in
-test_filter_mixed_aggregate_row_predicate.py). One filter-family residual left:
-`test_mixed_filter_matches_where_form` (the where-form `1=1` cross join, the
-shared hard nut — see below). Session-4 baseline was 48/5578
-(`v4_sweep_0715_s4.log`).
+**Full v4 sweep (session 6): 43 failed / 5583 passed**, 14 xpassed, 82 errors
+(clickhouse-environmental, ignore). Log: `local_scripts/v4_sweep_0715_s6.log`.
+Diffed against the session-5 46-set: −3 net, ZERO new/regressions. Fixed exactly:
+`test_materialized_aggregate_joins_cross_key_dimension`,
+`test_inline_equivalent_of_materialized_aggregate` (test_materialized_aggregate_bridge_join.py)
+and `test_mixed_filter_matches_where_form` (test_filter_mixed_aggregate_row_predicate.py).
+materialized_aggregate_bridge is now ×1 (only `where_form_matches_filter_form`
+left). Session-5 baseline was 46/5580 (`v4_sweep_0715_s5.log`).
 
-Session-5 fix (single v4-only change, filter.py):
-1. **Filter WHERE-push governed by predicate grain vs sibling grain** (+2) —
-   see session-5 entry.
+Session-6 fix (single v4-only change, strategy_builder.py):
+1. **ROOT-contributor bridge join key kept by membership, not FD** (+3) — see
+   session-6 entry.
 
-**Open families by sweep count (46):** materialized_aggregate_bridge ×3
-(inline_equivalent, joins_cross_key_dimension, where_form_matches_filter_form —
-all the customer_summary cross-key/where-form shape), filter_mixed_aggregate ×1
-(mixed_filter_matches_where_form — the `1=1` cross join: customer-grain agg ↔
-product-grain dim not bridged through the orders fact; **the remaining NEXT
-candidate, shared with materialized_aggregate_bridge**), offset_join ×4, TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder,
-or_membership, q64-correlated), filter_bare_aggregate_content_grain ×3,
-duckdb_rowset residual ×3 (order_by_measure q83 + composite stddev/variance
-keys-3 ×2), rollup_scoped ×2 (three_key_executes, two_key_partial_builds),
-generation_matrix ×2, multi_partial_anchor ×2, expression_keys ×2,
-membership_existence ×2, pushdown_partitioned ×2, cross_rowset_join_rowset_as_set
-×2, subquery ×2, + singles (rowset_body_limit, scoped_derived exp_rows1,
-collapse_basic_into_group, union_bare_aggregate, setops, orderby_derived_expr,
-constant_def_macro, membership_having, where_select_dual_scope, cograin
+**Open families by sweep count (43):** materialized_aggregate_bridge ×1
+(where_form_matches_filter_form — the WHERE-form dual-scope nut, see below),
+offset_join ×4, TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder, or_membership,
+q64-correlated), filter_bare_aggregate_content_grain ×3, duckdb_rowset residual
+×3 (order_by_measure q83 + composite stddev/variance keys-3 ×2), rollup_scoped ×2
+(three_key_executes, two_key_partial_builds), generation_matrix ×2,
+multi_partial_anchor ×2, expression_keys ×2, membership_existence ×2,
+pushdown_partitioned ×2, cross_rowset_join_rowset_as_set ×2, subquery ×2, +
+singles (rowset_body_limit, scoped_derived exp_rows1, collapse_basic_into_group,
+union_bare_aggregate, setops, orderby_derived_expr, constant_def_macro,
+membership_having, where_select_dual_scope, cograin
 having_bare_max_matches_where, twin_keeps_scalar_refs).
 
-**The where-form `1=1` cross join is the shared hard nut** across the two
-filter families: `select customer_id where count(...) by customer_id > 1 and
-product_name='Mouse'` joins the customer-grain aggregate CTE to the
-product-grain dim CTE `ON 1=1` (no bridge key found) — the join must route
-customer→order→product through the orders fact. Still blocks
-`mixed_filter_matches_where_form` and the materialized cross-key tests. NOTE: the
-FILTER form of the same shape (`... ? ... as filtered`) DOES bridge correctly in
-v4 (the filter concept forces the fact join); only the top-level WHERE form
-degrades to `1=1`. v3 solves the WHERE form by materializing the fact's
-(customer, product) pairs as a standalone CTE (`wakeful`) and joining the
-product dim + customer agg onto it — v4's group_graph never builds that
-fact-bridge node. This is a source-graph/join-inference gap in how a top-level
-WHERE row-arg at a foreign grain (product_name) gets connected to the output
-grain (customer); it is NOT in filter.py.
+**The WHERE-form dual-scope is the remaining bridge nut** (NEXT candidate):
+`select customer_id where customer_order_count > 1 and product_name='Mouse'`
+(`test_materialized_where_form_matches_filter_form`). The plain-SELECT and FILTER
+forms of the same cross-key bridge now work (session 6). The WHERE form still
+fails because the two WHERE atoms need SEPARATE population scopes: v3 sources the
+materialized `customer_order_count > 1` STANDALONE (from customer_summary, at
+total-count population scope) and the `product_name='Mouse'` row atom through the
+orders fact bridge (`highfalutin` = orders GROUP BY customer_id, product_id ⋈
+products WHERE Mouse), then joins the two on customer_id. v4 instead pre-filters
+`product_name='Mouse'` into the orders scan and recomputes count over Mouse-only
+rows (wrong scope) — and drops order_id so the HAVING renders
+`count(INVALID_REFERENCE_BUG<...order_id>)`. This is #599 dual-scope + the
+materialized-bridge interaction (aggregate-condition population scope must not
+inherit a sibling row atom's filter); it is NOT the same `1=1` shape the
+plain/filter forms had (those are fixed). A proper standalone session.
+
+## ✅ 2026-07-15 (session 6) — ROOT-contributor bridge join key kept by membership (+3)
+
+Single v4-only change in `strategy_builder.py` (`_relevant_root_preserve_keys` +
+its one caller in `_assemble_final_node`). Sweep 46→43, ZERO regressions;
+materialized_aggregate_bridge 3→1 (only the WHERE-form left); mypy/ruff/black
+clean; not in `v4_known_failing.py` (plain failures, nothing to prune).
+
+Shape: `select customer_id, product_name, customer_order_count` where
+`customer_order_count = count(order_id) by customer_id` and the customer_summary
+metric is datasource-materialized. customer_id and product_name are many-to-many,
+connected ONLY through the orders fact. v4's concept_graph correctly built one
+ROOT group with members `{customer_id, order_id, product_name}` (the bridge —
+order_id links customer_id↔product_id). But FINAL assembly rendered
+`quizzical (count by customer) FULL JOIN wakeful (products) ON 1=1` — a cartesian
+customer×product (extra (102,Laptop) etc.).
+
+Root cause: `_cover_groups_for_mandatory` assigns customer_id to the aggregate
+contributor (more downstream), leaving the ROOT contributor with only
+product_name. The bridge join key customer_id is supposed to ride back onto the
+ROOT via `preserve_keys` (= merge_grain), but `_relevant_root_preserve_keys`
+dropped it: it keeps a preserve key only if the key is a projected output OR
+FD-determines one. customer_id does NOT functionally determine product_name (it's
+a many-to-many bridge, not an FD), so it was discarded → no shared join key →
+`ON 1=1`.
+
+Fix: keep a preserve key that the ROOT group carries as its OWN member
+(`attrs[gid]` primary/secondary members, threaded in as `member_addresses`).
+Membership IS the bridge signal — concept_graph only placed customer_id beside
+product_name in one ROOT bucket because a shared finer member (order_id)
+connects them (`_split_root_dimension_clusters` would have split them into
+separate buckets otherwise). With customer_id kept, `_projection_root_concepts`
+pulls product_id (product_name's key), plan_source bridges orders⋈products →
+(customer_id, order_id, product_id, product_name), `_wrap_for_grain` keeps it
+WHOLE (product_name is not FD by the {customer_id} merge grain → the "keep whole"
+guard fires), the merge joins the aggregate on customer_id, and the FINAL dedup
+collapses order rows to the (customer_id, product_id) output grain. No merge-grain
+widening needed — required_grain already carried product_id and the final dedup
+did the rest.
+
+Also fixed the FILTER form of the same bridge
+(`test_mixed_filter_matches_where_form`, filter file) as collateral — its filter
+concept forces the same ROOT bridge, which now keeps its key. The WHERE form
+(`test_materialized_where_form_matches_filter_form`) is a DIFFERENT, harder shape
+(dual-scope, see Current state) and remains open.
 
 ## ✅ 2026-07-15 (session 5) — filter WHERE-push governed by predicate grain vs sibling grain (+2)
 

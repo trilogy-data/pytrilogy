@@ -1965,6 +1965,7 @@ def _relevant_root_preserve_keys(
     environment: BuildEnvironment,
     output_concepts: list[BuildConcept],
     preserve_keys: frozenset[str],
+    member_addresses: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     if not preserve_keys:
         return frozenset()
@@ -1972,6 +1973,16 @@ def _relevant_root_preserve_keys(
     relevant: set[str] = set()
     for key in preserve_keys:
         if key in output_addresses:
+            relevant.add(key)
+            continue
+        # A key the ROOT group itself carries as a member is a genuine BRIDGE
+        # join key even when it doesn't FD-determine any output: the group put
+        # this key beside the output because a shared finer member (the fact's
+        # order_id) connects them (`customer_id` beside `product_name`, bridged
+        # through orders). Keeping it lets the root scan emit the connecting
+        # pairs and join the sibling aggregate on it, instead of the merge
+        # cross-joining ON 1=1.
+        if key in member_addresses:
             relevant.add(key)
             continue
         if any(
@@ -2482,7 +2493,10 @@ def _assemble_final_node(
         group_concepts = list(per_group[gid])
         if is_root:
             preserve_keys = _relevant_root_preserve_keys(
-                environment, group_concepts, preserve_keys
+                environment,
+                group_concepts,
+                preserve_keys,
+                frozenset(_members_of(attrs, gid)),
             )
         projection_grain = (
             final_merge_grain if is_root else contributor_contract.projection_grain
