@@ -43,6 +43,7 @@ from trilogy.core.processing.discovery_validation import (
 )
 from trilogy.core.processing.node_generators.presence_probe import (
     gen_coalescing_axis_node,
+    is_presence_probe,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -486,9 +487,24 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in context.stack]} in merge node"
         )
+        # A presence probe a parent materialized on its own side (a coalescing
+        # member's null marker) must survive this merge: the outer WHERE reads it
+        # post-merge, and omitting it forces recomputation off the fused key,
+        # never NULL (TPC-DS q35). Carry every parent-exposed probe up.
+        non_virtual_addresses = {c.address for c in non_virtual}
+        probe_carry = unique(
+            [
+                c
+                for node in context.stack
+                for c in node.usable_outputs
+                if is_presence_probe(c.address)
+                and c.address not in non_virtual_addresses
+            ],
+            "address",
+        )
         output = MergeNode(
-            input_concepts=non_virtual,
-            output_concepts=non_virtual,
+            input_concepts=non_virtual + probe_carry,
+            output_concepts=non_virtual + probe_carry,
             environment=context.environment,
             parents=context.stack,
             depth=context.depth,

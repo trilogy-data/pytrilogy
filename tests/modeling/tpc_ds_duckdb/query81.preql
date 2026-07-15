@@ -10,7 +10,7 @@ auto scaled_state <- 1.2 * avg(customer_state) by cs.return_address.state;
 
 where
     customer_state > scaled_state
-    and cs.return_customer.address.state = 'GA'
+    and cs.return_customer.current_address.state = 'GA'
     and cs.return_address.state is not null
 select
     --cs.return_customer.sk,
@@ -18,34 +18,34 @@ select
     cs.return_customer.salutation,
     cs.return_customer.first_name,
     cs.return_customer.last_name,
-    cs.return_customer.address.street_number,
-    cs.return_customer.address.street_name,
-    cs.return_customer.address.street_type,
-    cs.return_customer.address.suite_number,
-    cs.return_customer.address.city,
-    cs.return_customer.address.county,
-    cs.return_customer.address.state,
-    cs.return_customer.address.zip,
-    cs.return_customer.address.country,
-    cs.return_customer.address.gmt_offset,
-    cs.return_customer.address.location_type,
+    cs.return_customer.current_address.street_number,
+    cs.return_customer.current_address.street_name,
+    cs.return_customer.current_address.street_type,
+    cs.return_customer.current_address.suite_number,
+    cs.return_customer.current_address.city,
+    cs.return_customer.current_address.county,
+    cs.return_customer.current_address.state,
+    cs.return_customer.current_address.zip,
+    cs.return_customer.current_address.country,
+    cs.return_customer.current_address.gmt_offset,
+    cs.return_customer.current_address.location_type,
     customer_state,
 order by
     cs.return_customer.id asc nulls first,
     cs.return_customer.salutation asc nulls first,
     cs.return_customer.first_name asc nulls first,
     cs.return_customer.last_name asc nulls first,
-    cs.return_customer.address.street_number asc nulls first,
-    cs.return_customer.address.street_name asc nulls first,
-    cs.return_customer.address.street_type asc nulls first,
-    cs.return_customer.address.suite_number asc nulls first,
-    cs.return_customer.address.city asc nulls first,
-    cs.return_customer.address.county asc nulls first,
-    cs.return_customer.address.state asc nulls first,
-    cs.return_customer.address.zip asc nulls first,
-    cs.return_customer.address.country asc nulls first,
-    cs.return_customer.address.gmt_offset asc nulls first,
-    cs.return_customer.address.location_type asc nulls first,
+    cs.return_customer.current_address.street_number asc nulls first,
+    cs.return_customer.current_address.street_name asc nulls first,
+    cs.return_customer.current_address.street_type asc nulls first,
+    cs.return_customer.current_address.suite_number asc nulls first,
+    cs.return_customer.current_address.city asc nulls first,
+    cs.return_customer.current_address.county asc nulls first,
+    cs.return_customer.current_address.state asc nulls first,
+    cs.return_customer.current_address.zip asc nulls first,
+    cs.return_customer.current_address.country asc nulls first,
+    cs.return_customer.current_address.gmt_offset asc nulls first,
+    cs.return_customer.current_address.location_type asc nulls first,
     customer_state asc nulls first
 limit 100
 ;

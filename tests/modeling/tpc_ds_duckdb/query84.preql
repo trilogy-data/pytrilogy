@@ -3,13 +3,13 @@ import store_sales as ss;
 
 # sr_cdemo_sk = cd_demo_sk in the reference; cross-table value join.
 where
-    customer.address.city = 'Edgewood'
+    customer.current_address.city = 'Edgewood'
     and ss.return_customer_demographic.sk is not null
-    # and customer.household_demographic.sk is not null
-    and customer.household_demographic.income_band.lower_bound >= 38128
-    and customer.household_demographic.income_band.upper_bound <= 38128 + 50000
+    # and customer.current_household_demographics.sk is not null
+    and customer.current_household_demographics.income_band.lower_bound >= 38128
+    and customer.current_household_demographics.income_band.upper_bound <= 38128 + 50000
     and ss.is_returned
-left join customer.demographics.sk = ss.return_customer_demographic.sk
+left join customer.current_demographics.sk = ss.return_customer_demographic.sk
 select
     --customer.sk,
     customer.id,

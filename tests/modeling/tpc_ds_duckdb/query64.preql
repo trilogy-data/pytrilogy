@@ -31,7 +31,7 @@ and ss.item.current_price between 65 and 74
 and ss.customer.sk is not null
 and ss.store.sk is not null
 and ss.pos_address.sk is not null
-and ss.customer.address.sk is not null;
+and ss.customer.current_address.sk is not null;
 
 # Row-grain projection for each year — sk keys only, no descriptive text. Both
 # marital_status columns are selected so the outer aggregate can apply the
@@ -44,7 +44,7 @@ select
     ss.item.sk,
     ss.store.sk,
     ss.pos_address.sk,
-    ss.customer.address.sk,
+    ss.customer.current_address.sk,
     ss.date.year,
     ss.customer.first_sales_date.year,
     ss.customer.first_shipto_date.year,
@@ -52,7 +52,7 @@ select
     ss.list_price,
     ss.coupon_amt,
     ss.pos_customer_demographic.marital_status,
-    ss.customer.demographics.marital_status,
+    ss.customer.current_demographics.marital_status,
 ;
 
 rowset ss_rows_00 <- where
@@ -66,18 +66,18 @@ select
     ss.list_price,
     ss.coupon_amt,
     ss.pos_customer_demographic.marital_status,
-    ss.customer.demographics.marital_status,
+    ss.customer.current_demographics.marital_status,
 ;
 
 # Per-year aggregates on sk keys. The marital-status inequality is applied here
 # (not in year_row_filter) per the perf note above.
 rowset agg_99 <- where
-    ss_rows_99.ss.pos_customer_demographic.marital_status != ss_rows_99.ss.customer.demographics.marital_status
+    ss_rows_99.ss.pos_customer_demographic.marital_status != ss_rows_99.ss.customer.current_demographics.marital_status
 select
     ss_rows_99.ss.item.sk as item_sk_99,
     ss_rows_99.ss.store.sk as store_sk_99,
     ss_rows_99.ss.pos_address.sk as b_addr_99,
-    ss_rows_99.ss.customer.address.sk as c_addr_99,
+    ss_rows_99.ss.customer.current_address.sk as c_addr_99,
     ss_rows_99.ss.date.year as syear_99,
     ss_rows_99.ss.customer.first_sales_date.year as fsyear_99,
     ss_rows_99.ss.customer.first_shipto_date.year as s2year_99,
@@ -88,7 +88,7 @@ select
 ;
 
 rowset agg_00 <- where
-    ss_rows_00.ss.pos_customer_demographic.marital_status != ss_rows_00.ss.customer.demographics.marital_status
+    ss_rows_00.ss.pos_customer_demographic.marital_status != ss_rows_00.ss.customer.current_demographics.marital_status
 select
     ss_rows_00.ss.item.sk as item_sk_00,
     ss_rows_00.ss.store.sk as store_sk_00,
@@ -108,12 +108,12 @@ where
 full join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.sk
 full join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.sk
 full join agg_99.b_addr_99 = ss.pos_address.sk
-full join agg_99.c_addr_99 = ss.customer.address.sk
+full join agg_99.c_addr_99 = ss.customer.current_address.sk
 select
     --ss.item.sk,
     --ss.store.sk,
     --ss.pos_address.sk,
-    --ss.customer.address.sk,
+    --ss.customer.current_address.sk,
     ss.item.product_name as p_name,
     ss.store.name as s_name,
     ss.store.zip as s_zip,
@@ -121,10 +121,10 @@ select
     ss.pos_address.street_name as b_str,
     ss.pos_address.city as b_city,
     ss.pos_address.zip as b_zip,
-    ss.customer.address.street_number as c_sn,
-    ss.customer.address.street_name as c_str,
-    ss.customer.address.city as c_city,
-    ss.customer.address.zip as c_zip,
+    ss.customer.current_address.street_number as c_sn,
+    ss.customer.current_address.street_name as c_str,
+    ss.customer.current_address.city as c_city,
+    ss.customer.current_address.zip as c_zip,
     agg_99.syear_99,
     agg_99.cnt_99,
     agg_99.s1_99,

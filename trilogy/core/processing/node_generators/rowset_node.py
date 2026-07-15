@@ -1092,10 +1092,20 @@ def _enrich_rowset_node(
         for x in enrich_node.output_concepts
         if x.address not in enrich_node.hidden_concepts
     ]
+    # A presence probe the enrichment sourced (a coalescing member's own-side
+    # null marker) is computed pre-merge and read post-merge; dropping it forces
+    # the outer condition to recompute it off the fused coalesced key, never NULL
+    # (TPC-DS q35: multiple member probes in one statement). Carry it up.
+    non_hidden_addresses = {c.address for c in non_hidden}
+    carried_probes = [
+        x
+        for x in non_hidden_enrich
+        if _is_presence_probe(x.address) and x.address not in non_hidden_addresses
+    ]
 
     return MergeNode(
         input_concepts=non_hidden + non_hidden_enrich,
-        output_concepts=non_hidden + local_optional,
+        output_concepts=non_hidden + local_optional + carried_probes,
         environment=environment,
         depth=depth,
         parents=[

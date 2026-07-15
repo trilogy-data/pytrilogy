@@ -6,14 +6,14 @@ where
     and store_sales.date.month_of_year = 1
     and store_sales.item.current_price > 1.2 * avg(store_sales.item.current_price) by store_sales.item.category
     and store_sales.billing_customer.id is not null
-    and store_sales.billing_customer.address.id is not null
+    and store_sales.billing_customer.current_address.id is not null
 select
-    store_sales.billing_customer.address.state,
+    store_sales.billing_customer.current_address.state,
     store_sales.line_item_count
 having
     store_sales.line_item_count >= 10
 
 order by
     store_sales.line_item_count asc nulls first,
-    store_sales.billing_customer.address.state asc nulls first
+    store_sales.billing_customer.current_address.state asc nulls first
 ;

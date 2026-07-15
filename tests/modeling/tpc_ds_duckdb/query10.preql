@@ -17,30 +17,30 @@ auto webcat_buyers <- sales.purchasing_customer.sk ?
 where
     sales.purchasing_customer.sk in store_buyers
     and sales.purchasing_customer.sk in webcat_buyers
-    and sales.purchasing_customer.address.county in ('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', 'La Porte County')
-    and sales.purchasing_customer.demographics.gender is not null
+    and sales.purchasing_customer.current_address.county in ('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', 'La Porte County')
+    and sales.purchasing_customer.current_demographics.gender is not null
 select
-    sales.purchasing_customer.demographics.gender,
-    sales.purchasing_customer.demographics.marital_status,
-    sales.purchasing_customer.demographics.education_status,
+    sales.purchasing_customer.current_demographics.gender,
+    sales.purchasing_customer.current_demographics.marital_status,
+    sales.purchasing_customer.current_demographics.education_status,
     count(sales.purchasing_customer.sk) as cnt1,
-    sales.purchasing_customer.demographics.purchase_estimate,
+    sales.purchasing_customer.current_demographics.purchase_estimate,
     count(sales.purchasing_customer.sk) as cnt2,
-    sales.purchasing_customer.demographics.credit_rating,
+    sales.purchasing_customer.current_demographics.credit_rating,
     count(sales.purchasing_customer.sk) as cnt3,
-    sales.purchasing_customer.demographics.dependent_count,
+    sales.purchasing_customer.current_demographics.dependent_count,
     count(sales.purchasing_customer.sk) as cnt4,
-    sales.purchasing_customer.demographics.employed_dependent_count,
+    sales.purchasing_customer.current_demographics.employed_dependent_count,
     count(sales.purchasing_customer.sk) as cnt5,
-    sales.purchasing_customer.demographics.college_dependent_count,
+    sales.purchasing_customer.current_demographics.college_dependent_count,
     count(sales.purchasing_customer.sk) as cnt6,
 order by
-    sales.purchasing_customer.demographics.gender asc,
-    sales.purchasing_customer.demographics.marital_status asc,
-    sales.purchasing_customer.demographics.education_status asc,
-    sales.purchasing_customer.demographics.purchase_estimate asc,
-    sales.purchasing_customer.demographics.credit_rating asc,
-    sales.purchasing_customer.demographics.dependent_count asc,
-    sales.purchasing_customer.demographics.employed_dependent_count asc,
-    sales.purchasing_customer.demographics.college_dependent_count asc
+    sales.purchasing_customer.current_demographics.gender asc,
+    sales.purchasing_customer.current_demographics.marital_status asc,
+    sales.purchasing_customer.current_demographics.education_status asc,
+    sales.purchasing_customer.current_demographics.purchase_estimate asc,
+    sales.purchasing_customer.current_demographics.credit_rating asc,
+    sales.purchasing_customer.current_demographics.dependent_count asc,
+    sales.purchasing_customer.current_demographics.employed_dependent_count asc,
+    sales.purchasing_customer.current_demographics.college_dependent_count asc
 ;

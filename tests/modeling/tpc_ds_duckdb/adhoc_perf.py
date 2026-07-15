@@ -452,9 +452,9 @@ import web_sales as web_sales;
 
     auto zips <- substring(cast(zips_pre as string),1,5);
 
-    auto zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y')  by customer.address.zip;
+    auto zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y')  by customer.current_address.zip;
 
-    auto p_cust_zip <- filter customer.address.zip where zip_p_count  > 10;
+    auto p_cust_zip <- filter customer.current_address.zip where zip_p_count  > 10;
 
     auto final_zips <-substring(filter zips where zips in substring(p_cust_zip, 1,5),1,2);
 

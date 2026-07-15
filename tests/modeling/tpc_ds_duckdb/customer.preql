@@ -4,9 +4,9 @@
 import std.date;
 import std.geography;
 
-import customer_demographic as demographics; # the customer's current demographic profile (C_CURRENT_CDEMO_SK)
-import household_demographic as household_demographic; # the customer's current household demographic profile (C_CURRENT_HDEMO_SK)
-import address as address; # the customer's current home address (C_CURRENT_ADDR_SK)
+import customer_demographic as current_demographics; # the customer's current customer-demographic record (C_CURRENT_CDEMO_SK)
+import household_demographic as current_household_demographics; # the customer's current household-demographic record (C_CURRENT_HDEMO_SK)
+import address as current_address; # the customer's current address record (C_CURRENT_ADDR_SK)
 import date as first_sales_date;
 import date as first_shipto_date;
 
@@ -35,9 +35,9 @@ datasource customers (
     C_CUSTOMER_ID: id,
     C_LAST_NAME: last_name,
     C_FIRST_NAME: first_name,
-    C_CURRENT_ADDR_SK: address.sk,
-    C_CURRENT_CDEMO_SK: ?demographics.sk,
-    C_CURRENT_HDEMO_SK: ?household_demographic.sk,
+    C_CURRENT_ADDR_SK: current_address.sk,
+    C_CURRENT_CDEMO_SK: ?current_demographics.sk,
+    C_CURRENT_HDEMO_SK: ?current_household_demographics.sk,
     C_FIRST_SALES_DATE_SK: ?first_sales_date.sk,
     C_FIRST_SHIPTO_DATE_SK: ?first_shipto_date.sk,
     C_PREFERRED_CUST_FLAG: preferred_cust_flag,

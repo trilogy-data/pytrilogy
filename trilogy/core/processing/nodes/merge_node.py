@@ -527,7 +527,7 @@ class MergeNode(StrategyNode):
             # legitimately spans rows outside the filter, so the outer join must
             # keep them: the column is non-null in the filtered branch but not
             # complete there. (A column complete on one branch and merely absent
-            # from the rest, e.g. q81's dimension `...address.state`, still
+            # from the rest,  still
             # forces INNER — it isn't partial anywhere.)
             complete_addresses: set[str] = set()
             partial_addresses: set[str] = set()

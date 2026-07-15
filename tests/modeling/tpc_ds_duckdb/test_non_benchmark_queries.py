@@ -33,10 +33,10 @@ import store_sales as store_sales;
 with ranked_states as
 select 
     store_sales.customer.first_name,
-    store_sales.customer.address.state,
+    store_sales.customer.current_address.state,
     rank store_sales.customer.first_name 
-        over store_sales.customer.address.state 
-        order by  sum(store_sales.sales_price) by store_sales.customer.first_name, store_sales.customer.address.state desc 
+        over store_sales.customer.current_address.state
+        order by  sum(store_sales.sales_price) by store_sales.customer.first_name, store_sales.customer.current_address.state desc
     -> sales_rank;
 
 select 
@@ -82,7 +82,7 @@ left join cs.order_number = cr.order_number and cs.item.sk = cr.item.sk
 where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
   and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
   and ss.item.current_price between 65 and 74
-  and ss.pos_customer_demographic.marital_status != ss.customer.demographics.marital_status
+  and ss.pos_customer_demographic.marital_status != ss.customer.current_demographics.marital_status
   and ss.date.year in (1999, 2000)
   and pr.return_amount is not null
 select
@@ -90,8 +90,8 @@ select
   ss.store.name as store_name, ss.store.zip as store_zip,
   ss.pos_address.street_number as sale_street_number, ss.pos_address.street_name as sale_street_name,
   ss.pos_address.city as sale_city, ss.pos_address.zip as sale_zip,
-  ss.customer.address.street_number as cust_street_number, ss.customer.address.street_name as cust_street_name,
-  ss.customer.address.city as cust_city, ss.customer.address.zip as cust_zip,
+  ss.customer.current_address.street_number as cust_street_number, ss.customer.current_address.street_name as cust_street_name,
+  ss.customer.current_address.city as cust_city, ss.customer.current_address.zip as cust_zip,
   ss.date.year as sale_year,
   ss.customer.first_sales_date.year as first_sales_year,
   ss.customer.first_shipto_date.year as first_shipto_year,
@@ -936,7 +936,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
 
 def test_unified_model_customer_address_cross_cte_join(engine):
     # Bug (enriched q6): grouping/filtering by a 2-hop
-    # `<role>_customer.address.<prop>` on the unified `all_sales` model. The
+    # `<role>_customer.current_address.<prop>` on the unified `all_sales` model. The
     # customer->address FK key (C_CURRENT_ADDR_SK) is materialized by the grouped
     # parent CTE, but datasource inlining left the raw customer table inlined-but-
     # dangling, so the address join's ON referenced the customer alias from a
@@ -946,9 +946,9 @@ def test_unified_model_customer_address_cross_cte_join(engine):
         query = f"""
 import all_sales as sales;
 where sales.date.year = 2001
-  and sales.{role}.address.id is not null
+  and sales.{role}.current_address.id is not null
 select
-    sales.{role}.address.state as state,
+    sales.{role}.current_address.state as state,
     count(sales.item.id) as n
 limit 100;
 """
@@ -1109,7 +1109,7 @@ where
     ss.date.year = 2001
     and ss.date.month_of_year = 1
     and ss.item.category is not null
-    and ss.customer.address.id is not null
+    and ss.customer.current_address.id is not null
 order by
     ratio desc
 limit 10;

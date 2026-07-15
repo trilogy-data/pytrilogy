@@ -2,9 +2,9 @@ import store_sales as store_sales;
 
 where
     store_sales.store.market = 8
-    and store_sales.customer.birth_country != upper(store_sales.customer.address.country)
+    and store_sales.customer.birth_country != upper(store_sales.customer.current_address.country)
     and store_sales.is_returned is True
-    and store_sales.store.zip = store_sales.customer.address.zip
+    and store_sales.store.zip = store_sales.customer.current_address.zip
 select
     store_sales.customer.last_name,
     store_sales.customer.first_name,
