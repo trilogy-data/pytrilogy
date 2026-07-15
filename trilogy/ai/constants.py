@@ -16,7 +16,7 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 
 | Goal | Use |
 |---|---|
-| Typical query | no select, no merge, all fields accessed through dot-paths |
+| Typical query | no select, no merge, no join, all fields accessed through dot-paths |
 | Blend two models on shared keys inside one query | scoped `subset\|union join` (the default) |
 | Make a connection universal to all queries in a file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
@@ -24,6 +24,11 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 | Rows present in every source (set intersection) | `intersect(...)` |
 
 ### Query-scoped join (the default)
+
+A typical fact will have dimensions already merged in, and no joins are needed.
+
+In complex cases - primarily joining fact models or a rowset output - you will want to use a query scoped join to tell the planner which keys it can join on; you are not explicitly defining a join, just allowing a path
+to traverse the models to be used in the query generation.
 
 subset|union join <a> = <b> [= <c>] blends concepts or expressions (from any source - models, rowsets etc) inside one SELECT by DECLARING how their value domains relate. A join declares DOMAIN knowledge, never row intent:
 

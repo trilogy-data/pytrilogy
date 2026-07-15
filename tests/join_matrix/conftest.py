@@ -28,6 +28,10 @@ _MULTI_PROBE = (
     "v4 multi-probe coalescing carry not ported: a second member presence probe "
     "re-derives off the fused key (v3 fix = retain_presence_probes, TPC-DS q35)"
 )
+_OFFSET_ROWSET = (
+    "v4 aggregate-rowset offset join: subset-side projected member key resolves "
+    "only from partial sources (q59 shape; v3 fix = _enrich_rowset_node)"
+)
 
 V4_FAILING: dict[str, str] = {
     "test_coalescing_presence_matrix.py::test_presence_union_cast_single": _AXIS_RECURSION,
@@ -46,6 +50,7 @@ V4_FAILING: dict[str, str] = {
     "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_key_only": _MULTI_PROBE,
     "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_join_order_swapped": _MULTI_PROBE,
     "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_with_property_and_aggregate": _MULTI_PROBE,
+    "test_aggregate_rowset_offset_join.py::test_offset_join_between_aggregate_rowsets_plans_on_authored_keys": _OFFSET_ROWSET,
 }
 
 

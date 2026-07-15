@@ -421,14 +421,30 @@ def _unhide_referenced_body_locals(
     its source map, so the wrapper can't source the rowset output and re-derives
     it from lineage against the already-grouped parent (raw operands gone) →
     INVALID_REFERENCE_BUG. Un-hide any body local that backs a relevant rowset
-    concept so it materializes in the body's grouping CTE."""
+    concept so it materializes in the body's grouping CTE.
+
+    A coalescing scoped join (`union`/`full`/`subset`) in the body collapses the
+    referenced content (`sa.item_sk`) onto ONE canonical output (`ci.item_sk`),
+    leaving the content only as that canonical's *pseudonym*; the canonical is
+    itself hidden when only the collapsed side was projected. Match on pseudonyms
+    too so the body still projects the coalesced key column — otherwise a
+    downstream `rowset.<collapsed key>` reference has no source (q64)."""
     referenced_body_locals = {
         item.lineage.content.address
         for item in advertised
         if isinstance(item.lineage, BuildRowsetItem)
     }
-    if referenced_body_locals & base_node.hidden_concepts:
-        base_node.hidden_concepts = base_node.hidden_concepts - referenced_body_locals
+    to_unhide = {
+        c.address
+        for c in base_node.output_concepts
+        if c.address in base_node.hidden_concepts
+        and (
+            c.address in referenced_body_locals
+            or (set(c.pseudonyms) & referenced_body_locals)
+        )
+    }
+    if to_unhide:
+        base_node.hidden_concepts = base_node.hidden_concepts - to_unhide
         base_node.rebuild_cache()
 
 

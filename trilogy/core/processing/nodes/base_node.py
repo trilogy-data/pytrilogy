@@ -542,7 +542,9 @@ class StrategyNode:
         # rename mapping). Sync it back or that nullability is erased at this
         # boundary and downstream joins render a plain `=` on a null-extended
         # column, silently deleting rows (q51, q86 rowset variant).
-        self.nullable_concepts = list(qds.nullable_concepts)
+        self.nullable_concepts = unique(
+            self.nullable_concepts + list(qds.nullable_concepts), "address"
+        )
         return qds
 
     def copy(self) -> "StrategyNode":

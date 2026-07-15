@@ -53,9 +53,17 @@ query '''
 select 1 r, 2 c
 ''';
 
+key mrid int;
+property mrid.m_cust int;
+datasource mobile_fact (r: mrid, c: m_cust) grain (mrid)
+query '''
+select 1 r, 3 c
+''';
+
 with s as select s_cust as sk;
 with w as select w_cust as wk;
 with c as select k_cust as ck;
+with m as select m_cust as mk;
 """
 
 
@@ -148,3 +156,20 @@ def test_two_member_or_unions(tmp_path: Path):
         "where s.sk is not null or w.wk is not null;",
     )
     assert rows == [(1,), (2,), (3,)]
+
+
+def test_four_member_nested_and_or(tmp_path: Path):
+    # Four probes over one group, two OR clauses AND-ed: the carry is
+    # N-agnostic (each probe made sticky independently). mobile={3}, so
+    # (store OR web) AND (catalog OR mobile) = {1,2,3} & {2,3} = {2,3}.
+    rows = _run(
+        tmp_path,
+        "select cust_id "
+        "union join s.sk = cust_id "
+        "union join w.wk = cust_id "
+        "union join c.ck = cust_id "
+        "union join m.mk = cust_id "
+        "where (s.sk is not null or w.wk is not null) "
+        "  and (c.ck is not null or m.mk is not null);",
+    )
+    assert rows == [(2,), (3,)]

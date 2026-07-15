@@ -58,4 +58,4 @@ WHERE
 GROUP BY
     1
 ORDER BY 
-    \"abundant\".\"total_value\" desc"""
+    \"total_value\" desc"""
