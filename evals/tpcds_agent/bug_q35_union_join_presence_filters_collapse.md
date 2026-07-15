@@ -1,6 +1,6 @@
 # q35: `union join` collapses side-presence filters onto the coalesced key
 
-**Status:** OPEN  
+**Status:** FIXED 2026-07-14 (v3 default; v4 discovery port pending)  
 **Classification:** FRAMEWORK BUG (silent wrong result)  
 **Run:** `evals/tpcds_agent/results/20260714_200120_enriched`  
 **Impact:** q35 fails scoring with 100 candidate rows versus 100 reference rows;
@@ -231,6 +231,41 @@ with join declarations reordered. Inspect generated SQL to assert:
 
 The existing rowset presence-probe and scoped-union regression suites are the
 natural home for the minimized case.
+
+## Root cause and fix (2026-07-14)
+
+The per-side probe mechanism was sound: each `member is [not] null` test is
+rewritten to a `_virt_presence_*` probe (`Factory._coalescing_presence_probe`)
+and materialized on the member's own rowset body pre-merge
+(`_local_exposure_obligations`). The defect was purely in **preserving** those
+probe columns as the plan re-projects them.
+
+A probe is never a projected output (it is a WHERE input), so every node that
+narrows its outputs to the requested set dropped it:
+
+- `group_if_required_v2` (`discovery_utility.py`) computed `targets` from the
+  requested `final` set only, stripping the probe — and the probe-less node was
+  then cached in discovery history and reused;
+- the completion merge (`generate_loop_completion`) and the rowset enrichment
+  merge (`_enrich_rowset_node`) output only their requested/anchor columns.
+
+With the probe gone, a *second* member null test in the same statement re-derived
+`coalesce(member)` off the fused coalesced key (never NULL) and silently
+no-op'd — so exactly one side pinned and the rest were admitted unconditionally.
+A single probe worked (nothing else competed for the axis), which is why the
+two-source presence tests passed and this needed ≥2 probes to surface.
+
+Fix: one invariant — *a presence probe a parent exposes is sticky through any
+re-projection, merge, or regroup* — enforced by a single helper
+`retain_presence_probes` (`presence_probe.py`) called at the three narrowing
+sites above. It is functionally determined by its member key, so carrying it
+through a regroup is safe.
+
+Regression test: `tests/join_matrix/test_multi_probe_coalescing.py` (the
+`store AND (web OR catalog)` shape, key-only / join-order-swapped /
++property+aggregate, plus two-member AND/OR, oracle-checked against the
+membership form). The v4 discovery planner does not yet port this carry; those
+cells are non-strict xfails in `tests/join_matrix/conftest.py`.
 
 ## Workaround
 

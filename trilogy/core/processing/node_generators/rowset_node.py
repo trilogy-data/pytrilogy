@@ -46,6 +46,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.node_generators.presence_probe import (
     member_binding_datasources,
     probe_member_address,
+    retain_presence_probes,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -1093,19 +1094,13 @@ def _enrich_rowset_node(
         if x.address not in enrich_node.hidden_concepts
     ]
     # A presence probe the enrichment sourced (a coalescing member's own-side
-    # null marker) is computed pre-merge and read post-merge; dropping it forces
-    # the outer condition to recompute it off the fused coalesced key, never NULL
-    # (TPC-DS q35: multiple member probes in one statement). Carry it up.
-    non_hidden_addresses = {c.address for c in non_hidden}
-    carried_probes = [
-        x
-        for x in non_hidden_enrich
-        if _is_presence_probe(x.address) and x.address not in non_hidden_addresses
-    ]
-
+    # null marker) is read post-merge by the outer WHERE; dropping it forces
+    # recomputation off the fused coalesced key, never NULL (TPC-DS q35).
     return MergeNode(
         input_concepts=non_hidden + non_hidden_enrich,
-        output_concepts=non_hidden + local_optional + carried_probes,
+        output_concepts=retain_presence_probes(
+            non_hidden + local_optional, non_hidden_enrich
+        ),
         environment=environment,
         depth=depth,
         parents=[

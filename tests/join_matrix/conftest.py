@@ -24,6 +24,10 @@ _COMPOSITE_FULL = "v4 composite-key FULL cells with a derived key member"
 _FILTERED_ANCHOR = "v4 filtered-rowset-anchor directional narrowing not ported"
 _STITCH = "v4 nullable-measure stitch re-sources one side through the other"
 _PREDROP = "v4 predrop chain narrowing: aggregate-consumer cell"
+_MULTI_PROBE = (
+    "v4 multi-probe coalescing carry not ported: a second member presence probe "
+    "re-derives off the fused key (v3 fix = retain_presence_probes, TPC-DS q35)"
+)
 
 V4_FAILING: dict[str, str] = {
     "test_coalescing_presence_matrix.py::test_presence_union_cast_single": _AXIS_RECURSION,
@@ -39,6 +43,9 @@ V4_FAILING: dict[str, str] = {
     "test_filtered_rowset_anchor.py::test_explicit_is_not_null_matches_directional": _FILTERED_ANCHOR,
     "test_nullable_measure_stitch_keys.py::test_nullable_measure_rows_survive_stitch": _STITCH,
     "test_predrop_chain_narrowing.py::test_predrop_chain_cell[aggregate_consumer]": _PREDROP,
+    "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_key_only": _MULTI_PROBE,
+    "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_join_order_swapped": _MULTI_PROBE,
+    "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_with_property_and_aggregate": _MULTI_PROBE,
 }
 
 

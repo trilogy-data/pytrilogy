@@ -1,11 +1,6 @@
 from typing import TYPE_CHECKING, List
 
-from trilogy.constants import (
-    DEFAULT_NAMESPACE,
-    PRESENCE_PROBE_PREFIX,
-    VIRTUAL_CONCEPT_PREFIX,
-    logger,
-)
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -260,21 +255,25 @@ def group_if_required_v2(
     where_injected: set[str] | None = None,
     depth: int = 0,
 ):
+    # local import: presence_probe -> basic_node -> discovery_utility cycles
+    from trilogy.core.processing.node_generators.presence_probe import (
+        retain_presence_probes,
+    )
+
     where_injected = where_injected or set()
     final_addresses = {x.address for x in final}
-    targets = [
-        x
-        for x in root.output_concepts
-        # A presence probe a parent materialized on its own side (a coalescing
-        # member's null marker, computed pre-merge) is never in `final` — it is a
-        # WHERE input, not a projected output. Stripping it here bakes a
-        # probe-less node into the discovery cache, so a later member null test
-        # re-derives off the coalesced key (never NULL) — TPC-DS q35. Retain it;
-        # it is functionally determined by its member key, so a regroup is safe.
-        if x.address in final_addresses
-        or any(c in final_addresses for c in x.pseudonyms)
-        or PRESENCE_PROBE_PREFIX in x.address
-    ]
+    # Presence probes are never in `final` (a probe is a WHERE input, not a
+    # projected output); retain_presence_probes keeps them so this regroup does
+    # not bake a probe-less node into the discovery cache (TPC-DS q35).
+    targets = retain_presence_probes(
+        [
+            x
+            for x in root.output_concepts
+            if x.address in final_addresses
+            or any(c in final_addresses for c in x.pseudonyms)
+        ],
+        root.output_concepts,
+    )
     # A multiselect align outer is a pure FULL JOIN of pre-aggregated arms at the
     # align-key grain and must never regroup: Keyed off the concrete
     # node type (the multiselect generator emits a MultiSelectMergeNode

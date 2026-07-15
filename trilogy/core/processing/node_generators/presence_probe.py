@@ -18,6 +18,29 @@ def is_presence_probe(address: str) -> bool:
     return PRESENCE_PROBE_PREFIX in address
 
 
+def retain_presence_probes(base: list[BuildConcept], candidates) -> list[BuildConcept]:
+    """`base` plus any presence probe among `candidates` it does not already
+    carry (by address).
+
+    The invariant: a probe is computed on a coalescing member's own side
+    pre-merge and read by the outer WHERE post-merge, so every node that
+    re-projects, merges, or groups its parents' outputs must keep the probes
+    those parents expose — else a member null test re-derives off the fused
+    coalesced key (never NULL) and silently no-ops (TPC-DS q35). Single home for
+    the "probes are sticky through merges/groups" rule so each output-narrowing
+    site enforces it identically."""
+    have = {c.address for c in base}
+    extra = unique(
+        [
+            c
+            for c in candidates
+            if is_presence_probe(c.address) and c.address not in have
+        ],
+        "address",
+    )
+    return base + extra if extra else base
+
+
 def probe_member_address(
     probe_address: str, environment: BuildEnvironment
 ) -> str | None:
