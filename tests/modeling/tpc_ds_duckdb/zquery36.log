@@ -1,6 +1,6 @@
 query_id = "36"
-generator = "v4"
-gen_length = 2350
+generator = "v3"
+gen_length = 2572
 preql_size = 974
 comp_size = 1844
 generated_sql = """
@@ -20,28 +20,36 @@ FROM
 WHERE
     \"ss_date_date\".\"D_YEAR\" = 2001 and \"ss_store_store\".\"S_STATE\" = 'TN'
 ),
-questionable as (
+cooperative as (
 SELECT
     \"thoughtful\".\"ss_item_category\" as \"ss_item_category\",
     \"thoughtful\".\"ss_item_class\" as \"ss_item_class\",
-    grouping(\"thoughtful\".\"ss_item_category\") as \"g_cat\",
-    grouping(\"thoughtful\".\"ss_item_class\") as \"g_class\",
-    sum(\"thoughtful\".\"ss_ext_sales_price\") as \"sales_sum\",
-    sum(\"thoughtful\".\"ss_net_profit\") as \"profit_sum\"
+    CASE
+	WHEN grouping(\"thoughtful\".\"ss_item_class\") = 0 THEN \"thoughtful\".\"ss_item_category\"
+	ELSE null
+	END as \"partition_cat\",
+    cast(sum(\"thoughtful\".\"ss_net_profit\") as numeric(15,4)) / cast(sum(\"thoughtful\".\"ss_ext_sales_price\") as numeric(15,4)) as \"gross_margin\",
+    grouping(\"thoughtful\".\"ss_item_category\") + grouping(\"thoughtful\".\"ss_item_class\") as \"lochierarchy\"
 FROM
     \"thoughtful\"
 GROUP BY
     ROLLUP (1, 2)),
+questionable as (
+SELECT
+    \"cooperative\".\"gross_margin\" as \"gross_margin\",
+    \"cooperative\".\"lochierarchy\" as \"lochierarchy\",
+    \"cooperative\".\"partition_cat\" as \"partition_cat\",
+    \"cooperative\".\"ss_item_category\" as \"ss_item_category\",
+    \"cooperative\".\"ss_item_class\" as \"ss_item_class\"
+FROM
+    \"cooperative\"),
 abundant as (
 SELECT
-    \"questionable\".\"g_cat\" + \"questionable\".\"g_class\" as \"lochierarchy\",
+    \"questionable\".\"gross_margin\" as \"gross_margin\",
+    \"questionable\".\"lochierarchy\" as \"lochierarchy\",
     \"questionable\".\"ss_item_category\" as \"ss_item_category\",
     \"questionable\".\"ss_item_class\" as \"ss_item_class\",
-    cast(\"questionable\".\"profit_sum\" as numeric(15,4)) / cast(\"questionable\".\"sales_sum\" as numeric(15,4)) as \"gross_margin\",
-    rank() over (partition by \"questionable\".\"g_cat\" + \"questionable\".\"g_class\",CASE
-	WHEN \"questionable\".\"g_class\" = 0 THEN \"questionable\".\"ss_item_category\"
-	ELSE null
-	END order by cast(\"questionable\".\"profit_sum\" as numeric(15,4)) / cast(\"questionable\".\"sales_sum\" as numeric(15,4)) asc ) as \"rank_within_parent\"
+    rank() over (partition by \"questionable\".\"lochierarchy\",\"questionable\".\"partition_cat\" order by \"questionable\".\"gross_margin\" asc ) as \"rank_within_parent\"
 FROM
     \"questionable\")
 SELECT

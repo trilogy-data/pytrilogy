@@ -1,11 +1,21 @@
 query_id = "83"
-generator = "v4"
-gen_length = 4789
+generator = "v3"
+gen_length = 6907
 preql_size = 1541
 comp_size = 2195
 generated_sql = """
 
 WITH 
+quizzical as (
+SELECT
+    \"date_date\".\"D_WEEK_SEQ\" as \"target_week_seqs\"
+FROM
+    \"memory\".\"date_dim\" as \"date_date\"
+WHERE
+    (date '2000-06-30' is not distinct from cast(\"date_date\".\"D_DATE\" as date) or date '2000-09-27' is not distinct from cast(\"date_date\".\"D_DATE\" as date) or date '2000-11-17' is not distinct from cast(\"date_date\".\"D_DATE\" as date))
+
+GROUP BY
+    1),
 questionable as (
 SELECT
      'CATALOG'  as \"sales_channel\",
@@ -33,25 +43,33 @@ SELECT
     \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
-quizzical as (
+juicy as (
 SELECT
-    \"date_date\".\"D_WEEK_SEQ\" as \"target_week_seqs\"
+     'CATALOG'  as \"sales_channel\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
-    \"memory\".\"date_dim\" as \"date_date\"
-WHERE
-    cast(\"date_date\".\"D_DATE\" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17')
-
-GROUP BY
-    1),
-yummy as (
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+UNION ALL
+SELECT
+     'STORE'  as \"sales_channel\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+     'WEB'  as \"sales_channel\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+sweltering as (
 SELECT
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\",
-    count(CASE WHEN \"questionable\".\"sales_channel\" = 'CATALOG' THEN \"questionable\".\"sales_order_id\" ELSE NULL END) as \"cr_item_present\",
-    count(CASE WHEN \"questionable\".\"sales_channel\" = 'STORE' THEN \"questionable\".\"sales_order_id\" ELSE NULL END) as \"sr_item_present\",
-    count(CASE WHEN \"questionable\".\"sales_channel\" = 'WEB' THEN \"questionable\".\"sales_order_id\" ELSE NULL END) as \"wr_item_present\",
-    sum(CASE WHEN \"questionable\".\"sales_channel\" = 'CATALOG' THEN \"questionable\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
-    sum(CASE WHEN \"questionable\".\"sales_channel\" = 'STORE' THEN \"questionable\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
-    sum(CASE WHEN \"questionable\".\"sales_channel\" = 'WEB' THEN \"questionable\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\"
+    CASE WHEN coalesce(\"juicy\".\"sales_channel\",\"questionable\".\"sales_channel\") = 'CATALOG' THEN coalesce(\"juicy\".\"sales_order_id\",\"questionable\".\"sales_order_id\") ELSE NULL END as \"_virt_filter_order_id_9747092284480774\",
+    CASE WHEN coalesce(\"juicy\".\"sales_channel\",\"questionable\".\"sales_channel\") = 'STORE' THEN coalesce(\"juicy\".\"sales_order_id\",\"questionable\".\"sales_order_id\") ELSE NULL END as \"_virt_filter_order_id_5221868426357137\",
+    CASE WHEN coalesce(\"juicy\".\"sales_channel\",\"questionable\".\"sales_channel\") = 'WEB' THEN coalesce(\"juicy\".\"sales_order_id\",\"questionable\".\"sales_order_id\") ELSE NULL END as \"_virt_filter_order_id_4509973400283298\"
 FROM
     \"juicy\"
     FULL JOIN \"questionable\" on \"juicy\".\"sales_channel\" = \"questionable\".\"sales_channel\" AND \"juicy\".\"sales_item_sk\" = \"questionable\".\"sales_item_sk\" AND \"juicy\".\"sales_order_id\" = \"questionable\".\"sales_order_id\"
@@ -61,53 +79,66 @@ WHERE
     exists (select 1 from quizzical where quizzical.\"target_week_seqs\" is not distinct from \"sales_return_date_date\".\"D_WEEK_SEQ\")
 
 GROUP BY
-    1),
+    1,
+    2,
+    3,
+    4,
+    coalesce(\"juicy\".\"sales_order_id\",\"questionable\".\"sales_order_id\")),
 young as (
 SELECT
-    \"yummy\".\"cr_item_qty\" as \"cr_item_qty\",
-    \"yummy\".\"sales_item_id\" as \"item_id\",
-    \"yummy\".\"sr_item_qty\" as \"sr_item_qty\",
-    \"yummy\".\"wr_item_qty\" as \"wr_item_qty\",
-    ( ( \"yummy\".\"sr_item_qty\" + \"yummy\".\"cr_item_qty\" ) + \"yummy\".\"wr_item_qty\" ) / 3.0 as \"average\",
-    ( ( (\"yummy\".\"cr_item_qty\" * 1.0) / ( ( \"yummy\".\"sr_item_qty\" + \"yummy\".\"cr_item_qty\" ) + \"yummy\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"cr_dev\",
-    ( ( (\"yummy\".\"sr_item_qty\" * 1.0) / ( ( \"yummy\".\"sr_item_qty\" + \"yummy\".\"cr_item_qty\" ) + \"yummy\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"sr_dev\",
-    ( ( (\"yummy\".\"wr_item_qty\" * 1.0) / ( ( \"yummy\".\"sr_item_qty\" + \"yummy\".\"cr_item_qty\" ) + \"yummy\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"wr_dev\"
+    \"questionable\".\"sales_return_quantity\" as \"sales_return_quantity\",
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\",
+    coalesce(\"juicy\".\"sales_channel\",\"questionable\".\"sales_channel\") as \"sales_channel\"
 FROM
-    \"yummy\"),
+    \"juicy\"
+    FULL JOIN \"questionable\" on \"juicy\".\"sales_channel\" = \"questionable\".\"sales_channel\" AND \"juicy\".\"sales_item_sk\" = \"questionable\".\"sales_item_sk\" AND \"juicy\".\"sales_order_id\" = \"questionable\".\"sales_order_id\"
+    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_sk\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"juicy\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    exists (select 1 from quizzical where quizzical.\"target_week_seqs\" is not distinct from \"sales_return_date_date\".\"D_WEEK_SEQ\")
+
+GROUP BY
+    1,
+    2,
+    3,
+    coalesce(\"juicy\".\"sales_item_sk\",\"questionable\".\"sales_item_sk\",\"sales_item_items\".\"I_ITEM_SK\"),
+    coalesce(\"juicy\".\"sales_order_id\",\"questionable\".\"sales_order_id\")),
+scrawny as (
+SELECT
+    \"sweltering\".\"sales_item_id\" as \"sales_item_id\",
+    count(\"sweltering\".\"_virt_filter_order_id_4509973400283298\") as \"wr_item_present\",
+    count(\"sweltering\".\"_virt_filter_order_id_5221868426357137\") as \"sr_item_present\",
+    count(\"sweltering\".\"_virt_filter_order_id_9747092284480774\") as \"cr_item_present\"
+FROM
+    \"sweltering\"
+GROUP BY
+    1
+HAVING
+    \"sr_item_present\" > 0 and \"cr_item_present\" > 0 and \"wr_item_present\" > 0
+),
 sparkling as (
 SELECT
-    \"young\".\"average\" as \"average\",
-    \"young\".\"cr_dev\" as \"cr_dev\",
-    \"young\".\"cr_item_qty\" as \"cr_item_qty\",
-    \"young\".\"item_id\" as \"item_id\",
-    \"young\".\"sr_dev\" as \"sr_dev\",
-    \"young\".\"sr_item_qty\" as \"sr_item_qty\",
-    \"young\".\"wr_dev\" as \"wr_dev\",
-    \"young\".\"wr_item_qty\" as \"wr_item_qty\",
-    \"yummy\".\"cr_item_present\" as \"cr_item_present\",
-    \"yummy\".\"sr_item_present\" as \"sr_item_present\",
-    \"yummy\".\"wr_item_present\" as \"wr_item_present\"
+    \"young\".\"sales_item_id\" as \"sales_item_id\",
+    sum(CASE WHEN \"young\".\"sales_channel\" = 'CATALOG' THEN \"young\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
+    sum(CASE WHEN \"young\".\"sales_channel\" = 'STORE' THEN \"young\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
+    sum(CASE WHEN \"young\".\"sales_channel\" = 'WEB' THEN \"young\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\"
 FROM
     \"young\"
-    INNER JOIN \"yummy\" on \"young\".\"item_id\" = \"yummy\".\"sales_item_id\"
-WHERE
-    \"yummy\".\"sr_item_present\" > 0
-)
+GROUP BY
+    1)
 SELECT
-    \"sparkling\".\"item_id\" as \"item_id\",
+    \"sparkling\".\"sales_item_id\" as \"item_id\",
     \"sparkling\".\"sr_item_qty\" as \"sr_item_qty\",
-    \"sparkling\".\"sr_dev\" as \"sr_dev\",
+    ( ( (\"sparkling\".\"sr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"sr_dev\",
     \"sparkling\".\"cr_item_qty\" as \"cr_item_qty\",
-    \"sparkling\".\"cr_dev\" as \"cr_dev\",
+    ( ( (\"sparkling\".\"cr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"cr_dev\",
     \"sparkling\".\"wr_item_qty\" as \"wr_item_qty\",
-    \"sparkling\".\"wr_dev\" as \"wr_dev\",
-    \"sparkling\".\"average\" as \"average\"
+    ( ( (\"sparkling\".\"wr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"wr_dev\",
+    ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) / 3.0 as \"average\"
 FROM
-    \"sparkling\"
-WHERE
-    \"sparkling\".\"cr_item_present\" > 0 and \"sparkling\".\"wr_item_present\" > 0
-
+    \"scrawny\"
+    INNER JOIN \"sparkling\" on \"scrawny\".\"sales_item_id\" is not distinct from \"sparkling\".\"sales_item_id\"
 ORDER BY 
-    \"sparkling\".\"item_id\" asc nulls first,
+    \"item_id\" asc nulls first,
     \"sparkling\".\"sr_item_qty\" asc nulls first
 LIMIT (100)"""

@@ -1,6 +1,6 @@
 query_id = "37"
-generator = "v4"
-gen_length = 992
+generator = "v3"
+gen_length = 1461
 preql_size = 470
 comp_size = 592
 generated_sql = """
@@ -8,12 +8,26 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
-    \"inv_warehouse_inventory\".\"inv_item_sk\" as \"inv_item_ids\"
+    \"inv_warehouse_inventory\".\"inv_date_sk\" as \"inv_date_sk\",
+    \"inv_warehouse_inventory\".\"inv_item_sk\" as \"inv_item_sk\",
+    \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inv_quantity_on_hand\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"inv_warehouse_inventory\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500
+    \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500
+
+GROUP BY
+    1,
+    2,
+    3),
+thoughtful as (
+SELECT
+    CASE WHEN cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01' and \"wakeful\".\"inv_quantity_on_hand\" BETWEEN 100 AND 500 THEN \"wakeful\".\"inv_item_sk\" ELSE NULL END as \"inv_item_ids\"
+FROM
+    \"wakeful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"wakeful\".\"inv_date_sk\" = \"inv_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"inv_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-01' AND date '2000-04-01'
 
 GROUP BY
     1)
@@ -24,7 +38,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"items_items\"
 WHERE
-    \"items_items\".\"I_CURRENT_PRICE\" BETWEEN 68 AND 98 and \"items_items\".\"I_MANUFACT_ID\" in (677,940,694,808) and \"items_items\".\"I_ITEM_SK\" in (select wakeful.\"inv_item_ids\" from wakeful where wakeful.\"inv_item_ids\" is not null)
+    \"items_items\".\"I_CURRENT_PRICE\" BETWEEN 68 AND 98 and (\"items_items\".\"I_MANUFACT_ID\" is not null and \"items_items\".\"I_MANUFACT_ID\" in (677,940,694,808)) and exists (select 1 from thoughtful where thoughtful.\"inv_item_ids\" is not distinct from \"items_items\".\"I_ITEM_SK\")
 
 GROUP BY
     1,

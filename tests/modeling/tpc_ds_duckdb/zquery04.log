@@ -1,6 +1,6 @@
 query_id = "04"
-generator = "v4"
-gen_length = 6784
+generator = "v3"
+gen_length = 8738
 preql_size = 1825
 comp_size = 4661
 generated_sql = """
@@ -10,105 +10,108 @@ thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'CATALOG'  as \"sales_channel\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_catalog_sales_unified\".\"CS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_catalog_sales_unified\".\"CS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_catalog_sales_unified\".\"CS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
+    \"sales_catalog_sales_unified\".\"CS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
-
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_store_sales_unified\".\"SS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_store_sales_unified\".\"SS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_store_sales_unified\".\"SS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
+    \"sales_store_sales_unified\".\"SS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
-
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'WEB'  as \"sales_channel\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_web_sales_unified\".\"WS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
     \"sales_web_sales_unified\".\"WS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_web_sales_unified\".\"WS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
+    \"sales_web_sales_unified\".\"WS_EXT_WHOLESALE_COST\" as \"sales_ext_wholesale_cost\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
-),
-questionable as (
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+cooperative as (
 SELECT
-    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
-    sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"thoughtful\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"catalog_first_year\",
-    sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"thoughtful\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"catalog_second_year\",
-    sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"store_first_year\",
-    sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"store_second_year\",
-    sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"web_first_year\",
-    sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"web_second_year\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
 FROM
     \"thoughtful\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    (2001 is not distinct from \"sales_date_date\".\"D_YEAR\" or 2002 is not distinct from \"sales_date_date\".\"D_YEAR\")
+
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
+FROM
+    \"thoughtful\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
 GROUP BY
     1
 HAVING
-    \"store_first_year\" > 0
+    sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END) > 0 and sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END) > 0 and sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END) > 0 and ( CASE
+	WHEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END) > 0 THEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN 2 ELSE NULL END) / sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END)
+	ELSE null
+	END ) > ( CASE
+	WHEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END) > 0 THEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN 2 ELSE NULL END) / sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END) > 0 THEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN 2 ELSE NULL END) / sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END)
+	ELSE null
+	END ) > ( CASE
+	WHEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END) > 0 THEN sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN 2 ELSE NULL END) / sum((( ( \"thoughtful\".\"sales_ext_list_price\" - \"thoughtful\".\"sales_ext_wholesale_cost\" ) - \"thoughtful\".\"sales_ext_discount_amount\" ) + \"thoughtful\".\"sales_ext_sales_price\") / CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN 2 ELSE NULL END)
+	ELSE null
+	END )
 ),
-yummy as (
+abundant as (
 SELECT
-    \"questionable\".\"catalog_first_year\" as \"catalog_first_year\",
-    \"questionable\".\"catalog_second_year\" as \"catalog_second_year\",
-    \"questionable\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
-    \"questionable\".\"store_first_year\" as \"store_first_year\",
-    \"questionable\".\"store_second_year\" as \"store_second_year\",
-    \"questionable\".\"web_first_year\" as \"web_first_year\",
-    \"questionable\".\"web_second_year\" as \"web_second_year\",
+    \"cooperative\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
+    \"cooperative\".\"sales_date_year\" as \"sales_date_year\",
     \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
     \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
     \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\",
     \"sales_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_billing_customer_preferred_cust_flag\"
 FROM
-    \"questionable\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"questionable\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    \"cooperative\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"questionable\".\"store_first_year\" > 0
-)
-SELECT
-    \"yummy\".\"sales_billing_customer_id\" as \"customer_id\",
-    \"yummy\".\"sales_billing_customer_first_name\" as \"customer_first_name\",
-    \"yummy\".\"sales_billing_customer_last_name\" as \"customer_last_name\",
-    \"yummy\".\"sales_billing_customer_preferred_cust_flag\" as \"customer_preferred_cust_flag\"
-FROM
-    \"yummy\"
-WHERE
-    \"yummy\".\"catalog_first_year\" > 0 and \"yummy\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"yummy\".\"catalog_first_year\" > 0 THEN \"yummy\".\"catalog_second_year\" / \"yummy\".\"catalog_first_year\"
-	ELSE null
-	END ) > ( CASE
-	WHEN \"yummy\".\"store_first_year\" > 0 THEN \"yummy\".\"store_second_year\" / \"yummy\".\"store_first_year\"
-	ELSE null
-	END ) and ( CASE
-	WHEN \"yummy\".\"catalog_first_year\" > 0 THEN \"yummy\".\"catalog_second_year\" / \"yummy\".\"catalog_first_year\"
-	ELSE null
-	END ) > ( CASE
-	WHEN \"yummy\".\"web_first_year\" > 0 THEN \"yummy\".\"web_second_year\" / \"yummy\".\"web_first_year\"
-	ELSE null
-	END )
+    (2001 is not distinct from \"cooperative\".\"sales_date_year\" or 2002 is not distinct from \"cooperative\".\"sales_date_year\")
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6)
+SELECT
+    \"abundant\".\"sales_billing_customer_id\" as \"customer_id\",
+    \"abundant\".\"sales_billing_customer_first_name\" as \"customer_first_name\",
+    \"abundant\".\"sales_billing_customer_last_name\" as \"customer_last_name\",
+    \"abundant\".\"sales_billing_customer_preferred_cust_flag\" as \"customer_preferred_cust_flag\"
+FROM
+    \"abundant\"
+    INNER JOIN \"uneven\" on \"abundant\".\"sales_billing_customer_sk\" is not distinct from \"uneven\".\"sales_billing_customer_sk\"
+WHERE
+    (2001 is not distinct from \"abundant\".\"sales_date_year\" or 2002 is not distinct from \"abundant\".\"sales_date_year\")
+
+GROUP BY
+    1,
+    2,
+    3,
+    4
 ORDER BY 
     \"customer_id\" asc nulls first,
     \"customer_first_name\" asc nulls first,

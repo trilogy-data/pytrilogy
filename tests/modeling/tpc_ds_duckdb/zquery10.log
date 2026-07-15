@@ -1,7 +1,7 @@
 query_id = "10"
-generator = "v4"
-gen_length = 6404
-preql_size = 1997
+generator = "v3"
+gen_length = 6910
+preql_size = 2141
 comp_size = 1858
 generated_sql = """
 
@@ -42,7 +42,7 @@ FROM
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 2002 and (\"sales_date_date\".\"D_MOY\" is not null and \"sales_date_date\".\"D_MOY\" in (1,2,3,4))
 ),
-questionable as (
+thoughtful as (
 SELECT
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"cheerful\".\"sales_date_month_of_year\" as \"sales_date_month_of_year\",
@@ -50,48 +50,52 @@ SELECT
     \"cheerful\".\"sales_purchasing_customer_sk\" as \"sales_purchasing_customer_sk\"
 FROM
     \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_purchasing_customer_customers\" on \"cheerful\".\"sales_purchasing_customer_sk\" = \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\"),
-yummy as (
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+abundant as (
 SELECT
-    CASE WHEN \"questionable\".\"sales_channel\" = 'STORE' and \"questionable\".\"sales_date_year\" = 2002 and \"questionable\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"questionable\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"store_buyers\"
+    CASE WHEN (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG')) and \"thoughtful\".\"sales_date_year\" = 2002 and (\"thoughtful\".\"sales_date_month_of_year\" is not null and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4)) THEN \"thoughtful\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"webcat_buyers\"
 FROM
-    \"questionable\"
+    \"thoughtful\"
 WHERE
-    \"questionable\".\"sales_channel\" = 'STORE'
+    (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG'))
 
 GROUP BY
     1),
-abundant as (
+questionable as (
 SELECT
-    CASE WHEN \"questionable\".\"sales_channel\" in ('WEB','CATALOG') and \"questionable\".\"sales_date_year\" = 2002 and \"questionable\".\"sales_date_month_of_year\" in (1,2,3,4) THEN \"questionable\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"webcat_buyers\"
+    CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_year\" = 2002 and (\"thoughtful\".\"sales_date_month_of_year\" is not null and \"thoughtful\".\"sales_date_month_of_year\" in (1,2,3,4)) THEN \"thoughtful\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"store_buyers\"
 FROM
-    \"questionable\"
+    \"thoughtful\"
 WHERE
-    \"questionable\".\"sales_channel\" in ('WEB','CATALOG')
+    \"thoughtful\".\"sales_channel\" = 'STORE'
 
 GROUP BY
     1)
 SELECT
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_GENDER\" as \"sales_purchasing_customer_demographics_gender\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"sales_purchasing_customer_demographics_marital_status\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"sales_purchasing_customer_demographics_education_status\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_GENDER\" as \"sales_purchasing_customer_current_demographics_gender\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"sales_purchasing_customer_current_demographics_marital_status\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"sales_purchasing_customer_current_demographics_education_status\",
     count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt1\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" as \"sales_purchasing_customer_demographics_purchase_estimate\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" as \"sales_purchasing_customer_current_demographics_purchase_estimate\",
     count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt2\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"sales_purchasing_customer_demographics_credit_rating\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"sales_purchasing_customer_current_demographics_credit_rating\",
     count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt3\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COUNT\" as \"sales_purchasing_customer_demographics_dependent_count\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEP_COUNT\" as \"sales_purchasing_customer_current_demographics_dependent_count\",
     count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt4\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" as \"sales_purchasing_customer_demographics_employed_dependent_count\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" as \"sales_purchasing_customer_current_demographics_employed_dependent_count\",
     count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt5\",
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"sales_purchasing_customer_demographics_college_dependent_count\",
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"sales_purchasing_customer_current_demographics_college_dependent_count\",
     count(\"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") as \"cnt6\"
 FROM
     \"memory\".\"customer\" as \"sales_purchasing_customer_customers\"
-    INNER JOIN \"memory\".\"customer_address\" as \"sales_purchasing_customer_address_customer_address\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"sales_purchasing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"memory\".\"customer_demographics\" as \"sales_purchasing_customer_demographics_customer_demographics\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"sales_purchasing_customer_current_address_customer_address\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"sales_purchasing_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"sales_purchasing_customer_current_demographics_customer_demographics\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"sales_purchasing_customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_GENDER\" is not null and \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\" in (select yummy.\"store_buyers\" from yummy where yummy.\"store_buyers\" is not null) and \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"webcat_buyers\" from abundant where abundant.\"webcat_buyers\" is not null)
+    exists (select 1 from questionable where questionable.\"store_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and exists (select 1 from abundant where abundant.\"webcat_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and (\"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" is not null and \"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County')) and \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_GENDER\" is not null
 
 GROUP BY
     1,
@@ -103,11 +107,11 @@ GROUP BY
     11,
     13
 ORDER BY 
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_GENDER\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COUNT\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" asc,
-    \"sales_purchasing_customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" asc"""
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_GENDER\" asc,
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" asc,
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" asc,
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" asc,
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_CREDIT_RATING\" asc,
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEP_COUNT\" asc,
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" asc,
+    \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" asc"""

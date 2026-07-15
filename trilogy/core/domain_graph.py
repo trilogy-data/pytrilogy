@@ -418,6 +418,22 @@ class DomainGraph:
                     frontier.append(nxt)
         return False
 
+    def _declared_incomparable(self, left: str, right: str, rep: dict[str, str]) -> bool:
+        """A DECLARED ∦ edge directly between the two operands' ≡-classes."""
+        left_class, right_class = rep.get(left, left), rep.get(right, right)
+        for edge in self.edges:
+            if edge.relation is not DomainRelation.INCOMPARABLE:
+                continue
+            if edge.provenance is not EdgeProvenance.DECLARED:
+                continue
+            ends = {
+                rep.get(edge.source, edge.source),
+                rep.get(edge.target, edge.target),
+            }
+            if ends == {left_class, right_class}:
+                return True
+        return False
+
     def proven_subset(self, sub: str, sup: str) -> bool:
         """Directed ⊑ reachability between ≡-classes, ignoring ∦ declarations.
 
@@ -430,10 +446,22 @@ class DomainGraph:
         narrows where no proof exists. A same-class pair proves only through
         STRUCTURAL equality (identity images — containment by construction):
         declared EQUAL narrowing is trust-gated by config elsewhere, so a
-        class merged by a declared ≡ is not itself a proof."""
+        class merged by a declared ≡ is not itself a proof.
+
+        Directional evidence — a ⊑ edge path between DISTINCT classes — may
+        override a ∦ (rule B): the two populations reach one another only one
+        way. Same-class STRUCTURAL equality is symmetric and cannot: when the
+        author DECLARED the two operands ∦ (a `union`/`full` join of two
+        independent aggregates), an alias chain that transitively equates their
+        keys through a shared dimension column (`sales.item as k` and
+        `returns.item as k` both ≡ item) is exactly the same-column/different-
+        population coincidence the ∦ guards against — narrowing on it would drop
+        the rows present on only one side. Trust the declaration."""
         rep = self._equivalence_classes()
         sub_class, sup_class = rep.get(sub, sub), rep.get(sup, sup)
         if sub_class == sup_class:
+            if self._declared_incomparable(sub, sup, rep):
+                return False
             return self._structurally_equal(sub, sup)
         return self._subset_reachable(sub_class, sup_class, rep)
 

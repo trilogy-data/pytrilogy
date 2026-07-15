@@ -96,8 +96,15 @@ Available tools:
       `derived_value_scopes`: for every aggregate/window value — including
       ones inside rowsets consumed via membership or subqueries — the
       effective `input_row_filters` (conditions removing source rows BEFORE
-      this specific value is computed; `[]` means the UNRESTRICTED population),
-      `admitted_by`
+      this specific value is computed; `[]` means the UNRESTRICTED population,
+      and each condition is shown in its AUTHORED spelling), `scoped_joins`
+      (the query-scoped join equivalences in effect, e.g.
+      `union join a = b`) and `normalized_input_row_filters` (present ONLY when
+      a scoped join rewrote a WHERE endpoint to its group representative —
+      the effective predicate the planner uses; the authored equality is still
+      the one listed under `input_row_filters`, so a filter that appears to
+      reference a different column is the same restriction applied through a
+      join, NOT a dropped or altered filter), `admitted_by`
       (row-admission conditions comparing an already-computed value — NOT
       part of this value's source population), grouping/partitioning,
       `output_row_filters` (conditions removing completed aggregate/window

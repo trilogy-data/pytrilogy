@@ -39,6 +39,7 @@ from trilogy.core.enums import (
     Derivation,
     FunctionClass,
     FunctionType,
+    JoinType,
 )
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -83,6 +84,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import ListWrapper, TupleWrapper
 from trilogy.core.models.environment import Environment
+from trilogy.core.statements.author import SelectJoin
 from trilogy.core.where_scope_normalization import WHERE_SCOPE_SALT
 
 _WSCOPE_SUFFIX = f"_{WHERE_SCOPE_SALT}"
@@ -121,6 +123,15 @@ class DerivedValueScope:
     expression: str
     role: Role = "selected_output"
     input_row_filters: list[str] = field(default_factory=list)
+    # The planner's post-normalization spelling of `input_row_filters`, reported
+    # ONLY when it materially differs — e.g. a scoped-join equivalence group
+    # rewrites a WHERE endpoint to the group representative. Keeps the authored
+    # predicate authoritative while still showing the effective form.
+    normalized_input_row_filters: list[str] = field(default_factory=list)
+    # Scoped-join domain declarations in effect for this statement (`union join
+    # a = b`). Reported so a rewritten WHERE endpoint reads as a join equivalence,
+    # not a vanished/renamed business filter.
+    scoped_joins: list[str] = field(default_factory=list)
     # Conditions admitting rows using an already-computed cross-row value
     # (e.g. `total > 1.2 * benchmark` in WHERE). Kept apart from ordinary
     # input row filters so a recursive aggregate gate never reads as a
@@ -152,6 +163,10 @@ class DerivedValueScope:
         if self.input_values:
             out["input_values"] = self.input_values
         out["input_row_filters"] = self.input_row_filters
+        if self.normalized_input_row_filters:
+            out["normalized_input_row_filters"] = self.normalized_input_row_filters
+        if self.scoped_joins:
+            out["scoped_joins"] = self.scoped_joins
         if self.admitted_by:
             out["admitted_by"] = self.admitted_by
         if self.input_grain:
@@ -261,6 +276,30 @@ def render_scope_expr(expr: object, depth: int = 0) -> str:
     return str(expr)
 
 
+_JOIN_LABELS: dict[JoinType, str] = {
+    JoinType.INNER: "inner",
+    JoinType.LEFT_OUTER: "left",
+    JoinType.RIGHT_OUTER: "right",
+    JoinType.FULL: "full",
+    JoinType.CROSS: "cross",
+    JoinType.SUBSET: "subset",
+    JoinType.UNION: "union",
+}
+
+
+def _render_scoped_join(join: SelectJoin) -> str:
+    """Render a scoped join in its AUTHORED surface form. A subset join is stored
+    with operands swapped onto the superset anchor; undo that so the displayed
+    equality matches what the author wrote."""
+    authored = join.authored or join.join_type
+    if authored is JoinType.SUBSET:
+        left, right = join.target_address, join.source_address
+    else:
+        left, right = join.source_address, join.target_address
+    label = _JOIN_LABELS.get(authored, authored.value)
+    return f"{label} join {_short(left)} = {_short(right)}"
+
+
 def _conjuncts(expr: object) -> list:
     """Split a condition tree on top-level ANDs into reportable leaf conditions."""
     if (
@@ -319,11 +358,21 @@ class _Ctx:
     output_row_filters: tuple[str, ...]
     role: Role = "selected_output"
     admitted_by: tuple[str, ...] = ()
+    # Normalized (planner) spelling of the input row filters, set only when it
+    # diverges from the authored `input_row_filters`; None means no divergence.
+    normalized_input_row_filters: tuple[str, ...] | None = None
+    # Scoped-join declarations governing this computation's population.
+    scoped_joins: tuple[str, ...] = ()
 
 
 class _Extractor:
-    def __init__(self, environment: Environment | None = None) -> None:
+    def __init__(
+        self,
+        environment: Environment | None = None,
+        scoped_joins: list[SelectJoin] | None = None,
+    ) -> None:
         self.environment = environment
+        self.scoped_joins = scoped_joins or []
         self.records: dict[str, DerivedValueScope] = {}
         self.record_names: set[str] = set()
         self.visited: set[str] = set()
@@ -342,16 +391,41 @@ class _Extractor:
         where = statement.where_clause
         having = statement.having_clause
         where_conjuncts = _conjuncts(where.conditional) if where else []
+        # Scoped-join key canonicalization rewrites WHERE endpoints to their
+        # group representative in the build lineage; report the AUTHORED filter
+        # so a restriction never reads as a different business predicate. The
+        # build conjuncts still drive cross-row classification (they carry
+        # derivation) and pair 1:1 with the authored ones — normalization
+        # rewrites endpoints, it never splits or reorders the AND tree.
+        authored_where = (
+            statement.authored_where_clause
+            if isinstance(statement, BuildSelectLineage)
+            else None
+        )
+        authored_conjuncts = (
+            _conjuncts(authored_where.conditional)
+            if authored_where
+            else where_conjuncts
+        )
+        if len(authored_conjuncts) != len(where_conjuncts):
+            authored_conjuncts = where_conjuncts  # can't align — show normalized
+        scoped_join_strs = tuple(_render_scoped_join(j) for j in self.scoped_joins)
         # A WHERE conjunct comparing a cross-row computed value admits rows by
         # that value; it is not a plain source restriction of its peers.
-        row_filters = [
-            render_scope_expr(c)
-            for c in where_conjuncts
-            if not _references_cross_row(c)
-        ]
-        admission_filters = [
-            render_scope_expr(c) for c in where_conjuncts if _references_cross_row(c)
-        ]
+        row_filters: list[str] = []
+        normalized_row_filters: list[str] = []
+        admission_filters: list[str] = []
+        for authored_c, build_c in zip(authored_conjuncts, where_conjuncts):
+            if _references_cross_row(build_c):
+                admission_filters.append(render_scope_expr(authored_c))
+            else:
+                row_filters.append(render_scope_expr(authored_c))
+                normalized_row_filters.append(render_scope_expr(build_c))
+        normalized_input = (
+            tuple(normalized_row_filters)
+            if normalized_row_filters != row_filters
+            else None
+        )
         having_strs = (
             [render_scope_expr(c) for c in _conjuncts(having.conditional)]
             if having
@@ -381,6 +455,8 @@ class _Extractor:
             output_row_filters=tuple(having_strs),
             role="selected_output",
             admitted_by=tuple(admission_filters),
+            normalized_input_row_filters=normalized_input,
+            scoped_joins=scoped_join_strs,
         )
         for concept in statement.output_components:
             self.visit(concept, select_ctx)
@@ -427,6 +503,14 @@ class _Extractor:
                 self.visit(arg, ctx)
         # BuildMultiSelectLineage handles (union arms) are not walked in v1.
 
+    def _normalized_filters(self, ctx: _Ctx, addition_filters: list[str]) -> list[str]:
+        """The record's input filters in planner (normalized) spelling — the
+        divergent authored base plus the shared collected additions. Empty when
+        the base did not diverge (the authored form already tells the story)."""
+        if ctx.normalized_input_row_filters is None:
+            return []
+        return _dedup(list(ctx.normalized_input_row_filters) + addition_filters)
+
     def _add_record(self, key: str, scope: DerivedValueScope) -> None:
         # A rowset body expansion and a direct output reference can describe
         # the same computation; first record under a display name wins.
@@ -443,12 +527,13 @@ class _Extractor:
         ctx: _Ctx,
         display: str | None = None,
     ) -> None:
-        input_row_filters = list(ctx.input_row_filters)
+        addition_filters: list[str] = []
         input_values: list[str] = []
         input_grain: list[str] = []
         self._collect_inputs(
-            function.concept_arguments, input_values, input_grain, input_row_filters
+            function.concept_arguments, input_values, input_grain, addition_filters
         )
+        input_row_filters = list(ctx.input_row_filters) + addition_filters
         # For count/count-distinct the counted identity is load-bearing: report
         # the argument's OWN grain so it can be compared with the row identity
         # the question asks for. This is not the input relation's row grain
@@ -474,6 +559,10 @@ class _Extractor:
                 expression=render_scope_expr(function),
                 role=ctx.role,
                 input_row_filters=_dedup(input_row_filters),
+                normalized_input_row_filters=self._normalized_filters(
+                    ctx, addition_filters
+                ),
+                scoped_joins=list(ctx.scoped_joins),
                 admitted_by=_dedup(list(ctx.admitted_by)),
                 input_grain=_dedup(input_grain),
                 argument_grain=_dedup(argument_grain),
@@ -501,12 +590,13 @@ class _Extractor:
             ]
         else:
             content_concepts = list(window.arguments)
-        input_row_filters = list(ctx.input_row_filters)
+        addition_filters: list[str] = []
         input_values: list[str] = []
         input_grain: list[str] = []
         self._collect_inputs(
-            content_concepts, input_values, input_grain, input_row_filters
+            content_concepts, input_values, input_grain, addition_filters
         )
+        input_row_filters = list(ctx.input_row_filters) + addition_filters
         self._add_record(
             concept.address,
             DerivedValueScope(
@@ -515,6 +605,10 @@ class _Extractor:
                 expression=render_scope_expr(window),
                 role=ctx.role,
                 input_row_filters=_dedup(input_row_filters),
+                normalized_input_row_filters=self._normalized_filters(
+                    ctx, addition_filters
+                ),
+                scoped_joins=list(ctx.scoped_joins),
                 admitted_by=_dedup(list(ctx.admitted_by)),
                 input_grain=_dedup(input_grain),
                 partition_by=[_short(c.address) for c in window.over],
@@ -881,13 +975,17 @@ class _Extractor:
 def extract_derived_value_scopes(
     statement: Union[BuildSelectLineage, BuildMultiSelectLineage],
     environment: Environment | None = None,
+    scoped_joins: list[SelectJoin] | None = None,
 ) -> list[DerivedValueScope]:
     """Walk a built select's reachable concepts — including rowset membership
     and subquery dependencies — and report every unique aggregate/window
     computation's effective scope. Cycle-safe; deduplicates by planned
     computation identity. ``environment`` enables resolving cross-rowset
-    references (a rowset whose body consumes another rowset)."""
-    return _Extractor(environment).extract(statement)
+    references (a rowset whose body consumes another rowset). ``scoped_joins``
+    are the statement's authored query-scoped joins, reported so a WHERE
+    endpoint the planner rewrote to a join representative reads as a join
+    equivalence rather than a changed filter."""
+    return _Extractor(environment, scoped_joins).extract(statement)
 
 
 def render_derived_value_scopes(scopes: list[DerivedValueScope]) -> str:
@@ -906,6 +1004,13 @@ def render_derived_value_scopes(scopes: list[DerivedValueScope]) -> str:
             lines.append(f"  input row filters: {'; '.join(scope.input_row_filters)}")
         elif not scope.admitted_by:
             lines.append(f"  input row filters: {_UNRESTRICTED}")
+        if scope.normalized_input_row_filters:
+            lines.append(
+                "  normalized input row filters: "
+                f"{'; '.join(scope.normalized_input_row_filters)}"
+            )
+        if scope.scoped_joins:
+            lines.append(f"  scoped joins: {'; '.join(scope.scoped_joins)}")
         if scope.admitted_by:
             lines.append(f"  admitted by: {'; '.join(scope.admitted_by)}")
         if scope.input_grain:

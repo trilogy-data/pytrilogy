@@ -1,75 +1,92 @@
 query_id = "69"
-generator = "v4"
-gen_length = 4022
-preql_size = 1529
+generator = "v3"
+gen_length = 4746
+preql_size = 1617
 comp_size = 1435
 generated_sql = """
 
 WITH 
-late as (
+concerned as (
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"_web_buyers_web_cust_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and  'WEB'  = 'WEB'
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
-vacuous as (
+uneven as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"_store_buyers_store_cust_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and  'STORE'  = 'STORE'
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
-thoughtful as (
+cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"_catalog_buyers_cat_cust_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and  'CATALOG'  = 'CATALOG'
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
-divergent as (
+abhorrent as (
 SELECT
-    \"late\".\"_web_buyers_web_cust_id\" as \"web_buyers_web_cust_id\"
+    \"concerned\".\"_web_buyers_web_cust_id\" as \"web_buyers_web_cust_id\"
 FROM
-    \"late\"),
+    \"concerned\"),
+vacuous as (
+SELECT
+    \"uneven\".\"_store_buyers_store_cust_id\" as \"store_buyers_store_cust_id\"
+FROM
+    \"uneven\"),
+abundant as (
+SELECT
+    \"cheerful\".\"_catalog_buyers_cat_cust_id\" as \"catalog_buyers_cat_cust_id\"
+FROM
+    \"cheerful\"),
 sweltering as (
 SELECT
-    \"vacuous\".\"_store_buyers_store_cust_id\" as \"store_buyers_store_cust_id\"
-FROM
-    \"vacuous\"),
-juicy as (
-SELECT
-    \"thoughtful\".\"_catalog_buyers_cat_cust_id\" as \"catalog_buyers_cat_cust_id\"
-FROM
-    \"thoughtful\")
-SELECT
-    \"customer_demographics_customer_demographics\".\"CD_GENDER\" as \"customer_demographics_gender\",
-    \"customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"customer_demographics_marital_status\",
-    \"customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"customer_demographics_education_status\",
-    count(\"customer_customers\".\"C_CUSTOMER_SK\") as \"cnt1\",
-    \"customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" as \"customer_demographics_purchase_estimate\",
-    count(\"customer_customers\".\"C_CUSTOMER_SK\") as \"cnt2\",
-    \"customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"customer_demographics_credit_rating\",
-    count(\"customer_customers\".\"C_CUSTOMER_SK\") as \"cnt3\"
+    \"customer_current_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"customer_current_demographics_credit_rating\",
+    \"customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"customer_current_demographics_education_status\",
+    \"customer_current_demographics_customer_demographics\".\"CD_GENDER\" as \"customer_current_demographics_gender\",
+    \"customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"customer_current_demographics_marital_status\",
+    \"customer_current_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" as \"customer_current_demographics_purchase_estimate\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"customer_current_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"customer_address_customer_address\".\"CA_STATE\" in ('KY','GA','NM') and \"customer_customers\".\"C_CUSTOMER_SK\" in (select sweltering.\"store_buyers_store_cust_id\" from sweltering where sweltering.\"store_buyers_store_cust_id\" is not null) and \"customer_customers\".\"C_CUSTOMER_SK\" not in (select divergent.\"web_buyers_web_cust_id\" from divergent where divergent.\"web_buyers_web_cust_id\" is not null) and \"customer_customers\".\"C_CUSTOMER_SK\" not in (select juicy.\"catalog_buyers_cat_cust_id\" from juicy where juicy.\"catalog_buyers_cat_cust_id\" is not null)
+    (\"customer_current_address_customer_address\".\"CA_STATE\" is not null and \"customer_current_address_customer_address\".\"CA_STATE\" in ('KY','GA','NM')) and exists (select 1 from vacuous where vacuous.\"store_buyers_store_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") and not exists (select 1 from abhorrent where abhorrent.\"web_buyers_web_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") and not exists (select 1 from abundant where abundant.\"catalog_buyers_cat_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\")
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6)
+SELECT
+    \"sweltering\".\"customer_current_demographics_gender\" as \"customer_current_demographics_gender\",
+    \"sweltering\".\"customer_current_demographics_marital_status\" as \"customer_current_demographics_marital_status\",
+    \"sweltering\".\"customer_current_demographics_education_status\" as \"customer_current_demographics_education_status\",
+    count(\"sweltering\".\"customer_sk\") as \"cnt1\",
+    \"sweltering\".\"customer_current_demographics_purchase_estimate\" as \"customer_current_demographics_purchase_estimate\",
+    count(\"sweltering\".\"customer_sk\") as \"cnt2\",
+    \"sweltering\".\"customer_current_demographics_credit_rating\" as \"customer_current_demographics_credit_rating\",
+    count(\"sweltering\".\"customer_sk\") as \"cnt3\"
+FROM
+    \"sweltering\"
 GROUP BY
     1,
     2,
@@ -77,9 +94,9 @@ GROUP BY
     5,
     7
 ORDER BY 
-    \"customer_demographics_customer_demographics\".\"CD_GENDER\" asc,
-    \"customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" asc,
-    \"customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" asc,
-    \"customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\" asc,
-    \"customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" asc
+    \"sweltering\".\"customer_current_demographics_gender\" asc,
+    \"sweltering\".\"customer_current_demographics_marital_status\" asc,
+    \"sweltering\".\"customer_current_demographics_education_status\" asc,
+    \"sweltering\".\"customer_current_demographics_purchase_estimate\" asc,
+    \"sweltering\".\"customer_current_demographics_credit_rating\" asc
 LIMIT (100)"""

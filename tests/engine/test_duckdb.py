@@ -31,14 +31,12 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
 
 @mark.parametrize(
     "agg",
-    ["count(1)", "sum(1)", "count(1) by *"],
+    ["sum(1)"],
 )
 def test_global_literal_aggregate(agg):
-    """A global aggregate over a pure literal with no grain key (`count(1)`,
-    `sum(1)`, `count(1) by *` -- the documented global-scalar idiom) must build
+    """A global sum over a pure literal with no grain key must build
     and execute to a single constant row, not crash with an unguarded IndexError
-    (sourceless QueryDatasource has an empty `datasources` list) nor render an
-    empty-SELECT CTE (`by *` groups over a sourceless constant node)."""
+    (sourceless QueryDatasource has an empty `datasources` list)."""
     engine = Dialects.DUCK_DB.default_executor()
     text = f"""
 key id int;
@@ -51,15 +49,43 @@ select {agg} as c;
     assert results == [(1,)]
 
 
+@mark.parametrize(
+    "expression",
+    [
+        "count(1)",
+        "count(1) by *",
+        "count(1) by id",
+        "count(1 ? id > 0)",
+        "count((1) ? id > 0)",
+        "count(1 + 1)",
+    ],
+)
+def test_count_constant_recommends_grain(expression: str) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    text = f"""
+key id int;
+datasource t (id) grain (id)
+  query '''select 1 as id union all select 2''';
+
+select {expression} as c;
+"""
+    with raises(InvalidSyntaxException, match=r"count\(grain\(key1, key2\)\)"):
+        engine.parse_text(text)
+
+
+@mark.parametrize("declaration", ["const one <- 1;", "parameter one int default 1;"])
+def test_count_named_constant_recommends_grain(declaration: str) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    with raises(InvalidSyntaxException, match=r"does not identify rows"):
+        engine.parse_text(f"{declaration} select count(one) as c;")
+
+
 def test_filtered_constant_aggregate_counts_rows():
-    """`sum(1 ? cond)` / `count(1 ? cond)` must count matching ROWS, not collapse
-    to a single deduped constant. The `1 ? cond` filter's content is grainless,
-    but its CASE mask (`CASE WHEN cond THEN 1`) varies per row of the condition's
-    row-grain args, so the filter concept must carry that (key-descended) grain.
-    Otherwise the mask is treated as a single-row constant and deduped to one row,
-    collapsing the aggregate to 1 (silent wrong result — the q14 denominator).
-    Bare `sum(1)` with no filter is a genuinely grainless constant and stays 1
-    (the documented global-scalar idiom, see test_global_literal_aggregate)."""
+    """`sum(1 ? cond)` must sum matching row flags, not collapse to one.
+
+    COUNT rejects this shape because a constant does not identify row grain;
+    conditional counts use `count(grain(keys) ? cond)` instead.
+    """
     engine = Dialects.DUCK_DB.default_executor()
     engine.parse_text("""
 key id int;

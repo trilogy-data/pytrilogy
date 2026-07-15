@@ -38,9 +38,49 @@ address sales;
 """
 
 
+# Two/three fact tables whose customer keys can be joined into one scoped-join
+# equivalence group. Property names are globally distinct so no import
+# namespacing is needed.
+MULTI_FACT_MODEL = """
+key ss_id int;
+property ss_id.ss_customer int;
+property ss_id.ss_return_customer int;
+property ss_id.ss_item int;
+property ss_id.ss_year int;
+property ss_id.ss_qty int;
+datasource store_sales (
+    id: ss_id, cust: ss_customer, rcust: ss_return_customer,
+    itm: ss_item, yr: ss_year, qty: ss_qty,
+) grain (ss_id) address store_sales;
+
+key cs_id int;
+property cs_id.cs_billing_customer int;
+property cs_id.cs_item int;
+property cs_id.cs_year int;
+datasource catalog_sales (
+    id: cs_id, bcust: cs_billing_customer, itm: cs_item, yr: cs_year,
+) grain (cs_id) address catalog_sales;
+
+key ws_id int;
+property ws_id.ws_customer int;
+property ws_id.ws_year int;
+datasource web_sales (
+    id: ws_id, cust: ws_customer, yr: ws_year,
+) grain (ws_id) address web_sales;
+"""
+
+
 def _scopes(body: str) -> list[DerivedValueScope]:
     exec = Dialects.DUCK_DB.default_executor(environment=Environment())
     exec.parse_text(MODEL)
+    queries = [q for q in exec.parse_text(body) if isinstance(q, ProcessedQuery)]
+    assert queries, "body produced no ProcessedQuery"
+    return queries[-1].derived_value_scopes
+
+
+def _multi_scopes(body: str) -> list[DerivedValueScope]:
+    exec = Dialects.DUCK_DB.default_executor(environment=Environment())
+    exec.parse_text(MULTI_FACT_MODEL)
     queries = [q for q in exec.parse_text(body) if isinstance(q, ProcessedQuery)]
     assert queries, "body produced no ProcessedQuery"
     return queries[-1].derived_value_scopes
@@ -417,6 +457,96 @@ select
     assert total.argument_grain == []
     assert "argument_grain" not in total.to_dict()
     assert order_count.to_dict()["argument_grain"] == ["sale_id"]
+
+
+def test_scoped_join_preserves_authored_where_and_reports_join():
+    """q17 shape: a WHERE equality whose endpoint joins into a scoped-join
+    equivalence group keeps its AUTHORED spelling as the input row filter; the
+    canonicalized form and the join declarations are reported separately so the
+    rewritten endpoint never reads as a different business filter."""
+    scopes = _multi_scopes("""
+where
+    ss_year = 2001
+    and ss_return_customer = ss_customer
+    and cs_year in (2001, 2002)
+select
+    count(ss_qty) as store_qty_count
+union join ss_customer = cs_billing_customer
+union join ss_item = cs_item;
+""")
+    scope = _by_name(scopes, "store_qty_count")
+    # 1. authored equality remains visible, un-rewritten
+    assert "ss_return_customer = ss_customer" in scope.input_row_filters
+    assert "ss_return_customer = cs_billing_customer" not in scope.input_row_filters
+    # 2. scoped joins are distinguishable from row filters
+    assert scope.scoped_joins == [
+        "union join ss_customer = cs_billing_customer",
+        "union join ss_item = cs_item",
+    ]
+    assert not any("join" in f for f in scope.input_row_filters)
+    # 3. the normalized/effective form is exposed and matches the planner's
+    #    endpoint canonicalization
+    assert "ss_return_customer = cs_billing_customer" in (
+        scope.normalized_input_row_filters
+    )
+    payload = scope.to_dict()
+    assert payload["input_row_filters"] == scope.input_row_filters
+    assert payload["scoped_joins"] == scope.scoped_joins
+    assert payload["normalized_input_row_filters"] == (
+        scope.normalized_input_row_filters
+    )
+    block = render_derived_value_scopes(scopes)
+    assert "scoped joins: union join ss_customer = cs_billing_customer" in block
+    assert "input row filters: ss_year = 2001; ss_return_customer = ss_customer" in (
+        block
+    )
+
+
+def test_scoped_join_removed_restores_authored_presentation():
+    """4. removing the scoped join restores the plain authored-filter
+    presentation — no normalized twin, no scoped-join field."""
+    scopes = _multi_scopes("""
+where
+    ss_year = 2001
+    and ss_return_customer = ss_customer
+select
+    count(ss_qty) as store_qty_count;
+""")
+    scope = _by_name(scopes, "store_qty_count")
+    assert scope.input_row_filters == [
+        "ss_year = 2001",
+        "ss_return_customer = ss_customer",
+    ]
+    assert scope.normalized_input_row_filters == []
+    assert scope.scoped_joins == []
+    payload = scope.to_dict()
+    assert "normalized_input_row_filters" not in payload
+    assert "scoped_joins" not in payload
+
+
+def test_three_member_join_group_keeps_authored_predicate():
+    """5. a three-member join group must not change the displayed business
+    predicate based on which endpoint the planner picks as canonical."""
+    scopes = _multi_scopes("""
+where
+    ss_year = 2001
+    and ss_return_customer = ss_customer
+select
+    count(ss_qty) as store_qty_count
+union join ss_customer = cs_billing_customer = ws_customer;
+""")
+    scope = _by_name(scopes, "store_qty_count")
+    assert "ss_return_customer = ss_customer" in scope.input_row_filters
+    # whichever endpoint became canonical, the authored spelling is untouched
+    assert not any(
+        "ss_return_customer = cs_billing_customer" in f
+        or "ss_return_customer = ws_customer" in f
+        for f in scope.input_row_filters
+    )
+    assert scope.scoped_joins == [
+        "union join ss_customer = cs_billing_customer",
+        "union join cs_billing_customer = ws_customer",
+    ]
 
 
 def test_generated_sql_unchanged_by_diagnostics():

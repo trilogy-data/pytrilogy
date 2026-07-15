@@ -1,14 +1,14 @@
 query_id = "06"
 generator = "v3"
-gen_length = 2326
-preql_size = 609
+gen_length = 2390
+preql_size = 633
 comp_size = 654
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
-    \"store_sales_customer_address_customer_address\".\"CA_STATE\" as \"store_sales_customer_address_state\",
+    \"store_sales_customer_current_address_customer_address\".\"CA_STATE\" as \"store_sales_customer_current_address_state\",
     \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     1 as \"store_sales_row_counter\"
@@ -17,9 +17,9 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_current_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\" is not null
+    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"store_sales_customer_current_address_customer_address\".\"CA_ADDRESS_SK\" is not null
 ),
 questionable as (
 SELECT
@@ -33,7 +33,7 @@ WHERE
 GROUP BY
     1)
 SELECT
-    \"cooperative\".\"store_sales_customer_address_state\" as \"store_sales_customer_address_state\",
+    \"cooperative\".\"store_sales_customer_current_address_state\" as \"store_sales_customer_current_address_state\",
     sum(\"cooperative\".\"store_sales_row_counter\") as \"store_sales_line_item_count\"
 FROM
     \"cooperative\"
@@ -48,4 +48,4 @@ HAVING
 
 ORDER BY 
     \"store_sales_line_item_count\" asc nulls first,
-    \"cooperative\".\"store_sales_customer_address_state\" asc nulls first"""
+    \"cooperative\".\"store_sales_customer_current_address_state\" asc nulls first"""

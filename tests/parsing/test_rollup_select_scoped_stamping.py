@@ -13,6 +13,7 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import AggregateGroupingMode
+from trilogy.core.exceptions import UndefinedConceptException
 
 MODEL = """
 key id int;
@@ -105,3 +106,15 @@ def test_transitive_derived_measure_stamps_select_locally(executor):
     assert len(executor.execute_raw_sql(sql).fetchall()) == 4
     later = executor.generate_sql("select g1, g2, ratio;")[0]
     assert _rollups(later) == 0
+
+
+def test_rollup_undefined_ref_surfaces_undefined_not_found_none(executor):
+    """A rollup select referencing a rowset output WITHOUT its namespace must
+    report the undefined concept (naming the namespaced fix) — the grouping
+    passthrough check used to mask it with a generic 'found none'."""
+    query = "with rs as select g1, sum(v) as tv;\n" "select g1, tv by rollup (g1);"
+    with pytest.raises(UndefinedConceptException) as exc:
+        executor.generate_sql(query)
+    msg = str(exc.value)
+    assert "rs.tv" in msg
+    assert "requires at least one aggregate" not in msg

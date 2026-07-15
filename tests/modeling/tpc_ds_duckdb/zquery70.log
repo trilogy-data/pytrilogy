@@ -1,6 +1,6 @@
 query_id = "70"
-generator = "v4"
-gen_length = 2960
+generator = "v3"
+gen_length = 3333
 preql_size = 1204
 comp_size = 1258
 generated_sql = """
@@ -8,95 +8,100 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\",
-    \"ss_store_store\".\"S_COUNTY\" as \"ss_store_county\",
-    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
+    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\",
+    sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"state_total\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
-),
-thoughtful as (
-SELECT
-    \"cheerful\".\"ss_store_state\" as \"ss_store_state\",
-    sum(\"cheerful\".\"ss_net_profit\") as \"state_total\"
-FROM
-    \"cheerful\"
+
 GROUP BY
     1),
 cooperative as (
 SELECT
-    \"thoughtful\".\"ss_store_state\" as \"ss_store_state\",
-    rank() over (order by \"thoughtful\".\"state_total\" desc ) as \"state_rnk\"
+    \"cheerful\".\"ss_store_state\" as \"_top_states_ts_state\",
+    rank() over (order by \"cheerful\".\"state_total\" desc ) as \"state_rnk\"
 FROM
-    \"thoughtful\"),
+    \"cheerful\"),
 questionable as (
 SELECT
-    \"cooperative\".\"ss_store_state\" as \"_top_states_ts_state\",
-    \"cooperative\".\"state_rnk\" as \"state_rnk\"
+    \"cooperative\".\"_top_states_ts_state\" as \"_top_states_ts_state\"
 FROM
-    \"cooperative\"),
+    \"cooperative\"
+WHERE
+    \"cooperative\".\"state_rnk\" <= 5
+),
 abundant as (
 SELECT
-    \"questionable\".\"_top_states_ts_state\" as \"_top_states_ts_state\"
+    \"questionable\".\"_top_states_ts_state\" as \"top_states_ts_state\"
 FROM
-    \"questionable\"
-WHERE
-    \"questionable\".\"state_rnk\" <= 5
-),
+    \"questionable\"),
 uneven as (
 SELECT
-    \"abundant\".\"_top_states_ts_state\" as \"top_states_ts_state\"
+    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\",
+    \"ss_store_store\".\"S_COUNTY\" as \"ss_store_county\",
+    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
 FROM
-    \"abundant\"),
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+WHERE
+    \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and exists (select 1 from abundant where abundant.\"top_states_ts_state\" is not distinct from \"ss_store_store\".\"S_STATE\")
+
+GROUP BY
+    1,
+    2,
+    3,
+    \"ss_store_sales\".\"SS_ITEM_SK\",
+    \"ss_store_sales\".\"SS_STORE_SK\",
+    \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
 yummy as (
 SELECT
-    \"cheerful\".\"ss_net_profit\" as \"ss_net_profit\",
-    \"cheerful\".\"ss_store_county\" as \"ss_store_county\",
-    \"cheerful\".\"ss_store_state\" as \"ss_store_state\"
+    \"uneven\".\"ss_store_county\" as \"ss_store_county\",
+    \"uneven\".\"ss_store_state\" as \"ss_store_state\",
+    CASE
+	WHEN grouping(\"uneven\".\"ss_store_county\") = 0 THEN \"uneven\".\"ss_store_state\"
+	ELSE null
+	END as \"partition_state\",
+    grouping(\"uneven\".\"ss_store_state\") + grouping(\"uneven\".\"ss_store_county\") as \"lochierarchy\",
+    sum(\"uneven\".\"ss_net_profit\") as \"total_sum\"
 FROM
-    \"cheerful\"
-WHERE
-    \"cheerful\".\"ss_store_state\" in (select uneven.\"top_states_ts_state\" from uneven where uneven.\"top_states_ts_state\" is not null)
-),
-vacuous as (
-SELECT
-    \"yummy\".\"ss_store_county\" as \"ss_store_county\",
-    \"yummy\".\"ss_store_state\" as \"ss_store_state\",
-    grouping(\"yummy\".\"ss_store_county\") as \"g_county\",
-    grouping(\"yummy\".\"ss_store_state\") as \"g_state\",
-    sum(\"yummy\".\"ss_net_profit\") as \"total_sum\"
-FROM
-    \"yummy\"
+    \"uneven\"
 GROUP BY
     ROLLUP (2, 1)),
-concerned as (
+juicy as (
 SELECT
-    \"vacuous\".\"g_state\" + \"vacuous\".\"g_county\" as \"lochierarchy\",
-    \"vacuous\".\"ss_store_county\" as \"ss_store_county\",
-    \"vacuous\".\"ss_store_state\" as \"ss_store_state\",
+    \"yummy\".\"lochierarchy\" as \"lochierarchy\",
+    \"yummy\".\"partition_state\" as \"partition_state\",
+    \"yummy\".\"ss_store_county\" as \"ss_store_county\",
+    \"yummy\".\"ss_store_state\" as \"ss_store_state\",
+    \"yummy\".\"total_sum\" as \"total_sum\"
+FROM
+    \"yummy\"),
+vacuous as (
+SELECT
+    \"juicy\".\"lochierarchy\" as \"lochierarchy\",
+    \"juicy\".\"ss_store_county\" as \"ss_store_county\",
+    \"juicy\".\"ss_store_state\" as \"ss_store_state\",
+    \"juicy\".\"total_sum\" as \"total_sum\",
+    rank() over (partition by \"juicy\".\"lochierarchy\",\"juicy\".\"partition_state\" order by \"juicy\".\"total_sum\" desc ) as \"rank_within_parent\"
+FROM
+    \"juicy\")
+SELECT
     \"vacuous\".\"total_sum\" as \"total_sum\",
-    rank() over (partition by \"vacuous\".\"g_state\" + \"vacuous\".\"g_county\",CASE
-	WHEN \"vacuous\".\"g_county\" = 0 THEN \"vacuous\".\"ss_store_state\"
-	ELSE null
-	END order by \"vacuous\".\"total_sum\" desc ) as \"rank_within_parent\"
+    \"vacuous\".\"ss_store_state\" as \"s_state\",
+    \"vacuous\".\"ss_store_county\" as \"s_county\",
+    \"vacuous\".\"lochierarchy\" as \"lochierarchy\",
+    \"vacuous\".\"rank_within_parent\" as \"rank_within_parent\"
 FROM
-    \"vacuous\")
-SELECT
-    \"concerned\".\"total_sum\" as \"total_sum\",
-    \"concerned\".\"ss_store_state\" as \"s_state\",
-    \"concerned\".\"ss_store_county\" as \"s_county\",
-    \"concerned\".\"lochierarchy\" as \"lochierarchy\",
-    \"concerned\".\"rank_within_parent\" as \"rank_within_parent\"
-FROM
-    \"concerned\"
+    \"vacuous\"
 ORDER BY 
-    \"concerned\".\"lochierarchy\" desc nulls first,
+    \"vacuous\".\"lochierarchy\" desc nulls first,
     CASE
-	WHEN \"concerned\".\"lochierarchy\" = 0 THEN \"concerned\".\"ss_store_state\"
+	WHEN \"vacuous\".\"lochierarchy\" = 0 THEN \"vacuous\".\"ss_store_state\"
 	ELSE null
 	END asc nulls first,
-    \"concerned\".\"rank_within_parent\" asc nulls first
+    \"vacuous\".\"rank_within_parent\" asc nulls first
 LIMIT (100)"""

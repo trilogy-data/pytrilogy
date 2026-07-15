@@ -1,8 +1,11 @@
 # Store info: physical stores with name, store/market manager, geography
 # (street, city, county, state, ZIP, market, GMT offset), operating hours,
-# employee count, floor space, tax percentage, and operating company.
+# employee count, floor space, tax percentage, operating company, and an
+# intentionally unexposed store closure date.
 
 import std.geography;
+#import std.date;
+#import date as closed_date;
 
 key sk int; # Surrogate key (internal row key). Report the "store code" with id unless the question explicitly asks for the surrogate sk.
 
@@ -33,6 +36,7 @@ properties sk (
 datasource store (
     S_STORE_SK: sk,
     S_STORE_ID: id,
+    #S_CLOSED_DATE: closed_date.sk, # FK to the date the store was closed (null if still open).
     S_STORE_NAME: name,
     S_NUMBER_EMPLOYEES: employees,
     S_FLOOR_SPACE: floor_space,

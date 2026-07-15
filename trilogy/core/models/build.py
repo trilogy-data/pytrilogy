@@ -1979,6 +1979,10 @@ class BuildSelectLineage:
     grain: BuildGrain = field(default_factory=BuildGrain)
     where_clause: BuildWhereClause | None = field(default=None)
     having_clause: BuildHavingClause | None = field(default=None)
+    # Author-side WHERE retained for diagnostics only (never planning). Scoped-
+    # join key canonicalization rewrites `where_clause` endpoints to their group
+    # representative, so reporting authored row filters needs the original.
+    authored_where_clause: WhereClause | None = field(default=None)
 
     @property
     def output_components(self) -> List[BuildConcept]:
@@ -4088,6 +4092,7 @@ class Factory:
             ),
             # this uses a different grain factory
             where_clause=where_clause,
+            authored_where_clause=base.where_clause,
         )
 
     @_build_dispatch.register

@@ -114,6 +114,17 @@ ERROR_CODES: dict[int, str] = {
         "Both sides must be real fields or expressions - `...` is not a "
         "placeholder."
     ),
+    226: (
+        "Misplaced `subset|union join`. The key looks fine - the join is in the "
+        "wrong PLACE. A query-scoped join is part of a `select` statement, not a "
+        "standalone statement and not a pre-`where` clause. Put it right after "
+        "the select list (preferred, SQL-like): `where <filters> select <cols> "
+        "subset join a.key = b.key`. The clause order is `where` -> `select` "
+        "<cols> -> join(s) -> `having` -> `order by` -> `limit`; a join may also "
+        "sit between `where` and `select`, but never before `where` and never on "
+        "its own. Full reference: `trilogy agent-info syntax example "
+        "query-structure`."
+    ),
 }
 
 
@@ -321,6 +332,44 @@ def detect_join_missing_key(text: str, pos: int) -> int | None:
     if _SELECT_KW_RE.search(text, join.end(), pos):
         return None
     return join.start()
+
+
+_CLAUSE_BOUNDARY_RE = re.compile(
+    r"\b(?:where|select|having|order|group|limit)\b|;", re.IGNORECASE
+)
+_WHERE_KW_RE = re.compile(r"\bwhere\b", re.IGNORECASE)
+
+
+def misplaced_join_candidate(text: str, pos: int) -> tuple[int, str] | None:
+    """Locate a query-scoped join that sits in an INVALID grammatical position —
+    on its own as a standalone statement, or BEFORE the `where` — rather than
+    after the select list (preferred) or between `where` and `select`. The
+    grammar is `where? join_clause* select ... join_clause*`, so a join before
+    the `where` (or with no `select` at all) fails even when its key is perfectly
+    well-formed; without this it mis-reports as a malformed key (225).
+
+    Returns `(join_start, clause_text)` — the caller confirms `clause_text` is a
+    well-formed join in isolation via its own reparse probe before emitting 226;
+    a malformed key falls through to 225. Returns None when the join is absent or
+    already in a valid position. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    if not joins:
+        return None
+    join = joins[-1]
+    stmt_end = text.find(";", join.end())
+    if stmt_end == -1:
+        stmt_end = len(text)
+    select_after = _SELECT_KW_RE.search(text, join.end(), stmt_end)
+    standalone = _SELECT_KW_RE.search(text, stmt_start, stmt_end) is None
+    before_where = select_after is not None and bool(
+        _WHERE_KW_RE.search(text[join.end() : select_after.start()])
+    )
+    if not (standalone or before_where):
+        return None
+    boundary = _CLAUSE_BOUNDARY_RE.search(text, join.end())
+    clause_end = boundary.start() if boundary else stmt_end
+    return join.start(), text[join.start() : clause_end].strip()
 
 
 _ALIGN_RE = re.compile(r"\balign\b", re.IGNORECASE)

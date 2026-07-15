@@ -123,7 +123,7 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
 - **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
-- **Since there are no underlying tables, `sum(1)`/`count(1)` is only meaningful grouped by a grain field (e.g. `sum(1) by x as count`).
+- **`count(1)` is invalid because a constant does not identify rows.** Count a concept with the intended identity, or use `count(grain(key1, key2))`; for conditional counts use `count(grain(key1, key2) ? condition)`. `sum(1)` remains available when a numeric row flag is explicitly intended.
 - **Counting fact rows without a single unique row key: use `count(grain(<the fact's keys>))`** - e.g. `count(grain(fact.order_id, fact.item_id))`. (The older two-stage workaround - materialize a flag at the complete fact grain with `auto line_flag <- sum(case when fact.qualifies then 1 else 0 end) by fact.order_id, fact.item_id;` then `sum(line_flag)` - still works, but `grain()` says it directly.) Writing `sum(1)` only at the outer report grain does not preserve repeated fact lines.
 
 ### Fields and aliases

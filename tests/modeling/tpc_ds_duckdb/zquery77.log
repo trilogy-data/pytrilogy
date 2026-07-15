@@ -1,6 +1,6 @@
 query_id = "77"
 generator = "v3"
-gen_length = 9445
+gen_length = 9502
 preql_size = 3157
 comp_size = 3255
 generated_sql = """
@@ -138,7 +138,7 @@ SELECT
     coalesce(\"waggish\".\"ws_grouped_ws_wp_id\",\"yellow\".\"wr_grouped_wr_wp_id\") as \"___tvf_arm_2_u_id\"
 FROM
     \"waggish\"
-    LEFT OUTER JOIN \"yellow\" on \"waggish\".\"ws_grouped_ws_wp_id\" = \"yellow\".\"wr_grouped_wr_wp_id\"
+    LEFT OUTER JOIN \"yellow\" on \"waggish\".\"ws_grouped_ws_wp_id\" is not distinct from \"yellow\".\"wr_grouped_wr_wp_id\"
 WHERE
     \"waggish\".\"ws_grouped_ws_sales\" is not null
 ),
@@ -151,7 +151,7 @@ SELECT
     coalesce(\"kaput\".\"sr_grouped_sr_store_id\",\"sweltering\".\"ss_grouped_ss_store_id\") as \"___tvf_arm_1_u_id\"
 FROM
     \"sweltering\"
-    LEFT OUTER JOIN \"kaput\" on \"sweltering\".\"ss_grouped_ss_store_id\" = \"kaput\".\"sr_grouped_sr_store_id\"
+    LEFT OUTER JOIN \"kaput\" on \"sweltering\".\"ss_grouped_ss_store_id\" is not distinct from \"kaput\".\"sr_grouped_sr_store_id\"
 WHERE
     \"sweltering\".\"ss_grouped_ss_sales\" is not null
 ),
@@ -164,7 +164,7 @@ SELECT
     coalesce(\"cooperative\".\"cr_grouped_cr_cc_id\",\"yummy\".\"cs_grouped_cs_cc_id\") as \"___tvf_arm_0_u_id\"
 FROM
     \"yummy\"
-    LEFT OUTER JOIN \"cooperative\" on \"yummy\".\"cs_grouped_cs_cc_id\" = \"cooperative\".\"cr_grouped_cr_cc_id\"
+    LEFT OUTER JOIN \"cooperative\" on \"yummy\".\"cs_grouped_cs_cc_id\" is not distinct from \"cooperative\".\"cr_grouped_cr_cc_id\"
 WHERE
     \"yummy\".\"cs_grouped_cs_sales\" is not null
 ),

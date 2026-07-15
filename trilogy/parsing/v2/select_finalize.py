@@ -897,6 +897,31 @@ def _has_aggregate_or_window(lineage: Any, context: RuleContext) -> bool:
     )
 
 
+def _selection_has_undefined(select: SelectStatement, context: RuleContext) -> bool:
+    """True when any SELECT projection references an undefined concept, mirroring
+    the detection in ``finalize_select_statement``'s validation loop (a bare
+    ``UndefinedConcept`` item, an undefined function argument, or a bare ref that
+    resolves to nothing). Grouping-passthrough validation calls this to defer to
+    the downstream undefined-concept error — which names the missing address and
+    suggests the intended one (e.g. a rowset output referenced without its
+    namespace) — instead of masking it with a generic ``found none``."""
+    for item in select.selection:
+        if item.is_undefined:
+            return True
+        content = item.content
+        if isinstance(content, ConceptTransform):
+            for arg in content.function.concept_arguments:
+                if isinstance(
+                    arg, (UndefinedConcept, UndefinedConceptFull)
+                ) and _is_unresolved(context, arg.address):
+                    return True
+            continue
+        addr = item.concept.address
+        if select.local_concepts.get(addr) is None and _is_unresolved(context, addr):
+            return True
+    return False
+
+
 def _apply_grouping_to_passthroughs(
     select: SelectStatement, context: RuleContext, spec: Any, stamped: bool
 ) -> None:
@@ -917,7 +942,14 @@ def _apply_grouping_to_passthroughs(
     plain other-grain dims (join-back at leaf grain — NULL on subtotal rows is
     their defined semantics). When nothing was stamped, a measure that cannot
     be re-aggregated soundly (non-additive, or bare and un-aliased) would mean
-    silently dropping the clause — raise with the explicit-form fix instead."""
+    silently dropping the clause — raise with the explicit-form fix instead.
+
+    Skipped entirely when the selection references an undefined concept: the
+    'found none' raise below would otherwise mask the downstream undefined-concept
+    error, which names the missing address and its likely fix (e.g. a rowset
+    output referenced without its namespace)."""
+    if _selection_has_undefined(select, context):
+        return
     key_addresses = _grouping_spec_key_addresses(spec)
     clause = f"by {spec.mode.value.replace('_', ' ')}"
     wrapped = False

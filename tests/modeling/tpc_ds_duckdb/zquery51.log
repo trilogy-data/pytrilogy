@@ -1,6 +1,6 @@
 query_id = "51"
-generator = "v4"
-gen_length = 3697
+generator = "v3"
+gen_length = 3284
 preql_size = 1357
 comp_size = 1999
 generated_sql = """
@@ -28,93 +28,79 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null
 ),
-cooperative as (
+yummy as (
 SELECT
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"cheerful\".\"sales_item_sk\" as \"sales_item_sk\",
-    \"cheerful\".\"sales_sales_price\" as \"sales_sales_price\",
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
-),
-uneven as (
-SELECT
-    \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
-    \"cooperative\".\"sales_item_sk\" as \"sales_item_sk\",
-    sum(CASE WHEN \"cooperative\".\"sales_channel\" = 'STORE' THEN \"cooperative\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
-    sum(CASE WHEN \"cooperative\".\"sales_channel\" = 'WEB' THEN \"cooperative\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
-FROM
-    \"cooperative\"
-GROUP BY
-    1,
-    2),
-questionable as (
-SELECT
-    \"cooperative\".\"sales_channel\" as \"sales_channel\",
-    \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
-    \"cooperative\".\"sales_item_sk\" as \"sales_item_sk\"
-FROM
-    \"cooperative\"
+
 GROUP BY
     1,
     2,
     3),
-yummy as (
+cooperative as (
 SELECT
-    \"uneven\".\"sales_date_date\" as \"sales_date_date\",
-    \"uneven\".\"sales_item_sk\" as \"sales_item_sk\",
-    sum(\"uneven\".\"store_daily\") over (partition by \"uneven\".\"sales_item_sk\" order by \"uneven\".\"sales_date_date\" asc ) as \"store_cume\",
-    sum(\"uneven\".\"web_daily\") over (partition by \"uneven\".\"sales_item_sk\" order by \"uneven\".\"sales_date_date\" asc ) as \"web_cume\"
+    \"cheerful\".\"sales_item_sk\" as \"sales_item_sk\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    sum(CASE WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
+    sum(CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
 FROM
-    \"uneven\"),
-abundant as (
-SELECT
-    \"questionable\".\"sales_date_date\" as \"sales_date_date\",
-    \"questionable\".\"sales_item_sk\" as \"sales_item_sk\",
-    max(CASE
-	WHEN \"questionable\".\"sales_channel\" = 'STORE' THEN 1
-	ELSE 0
-	END) as \"store_has_row\",
-    max(CASE
-	WHEN \"questionable\".\"sales_channel\" = 'WEB' THEN 1
-	ELSE 0
-	END) as \"web_has_row\"
-FROM
-    \"questionable\"
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
+
 GROUP BY
     1,
     2),
 juicy as (
 SELECT
-    \"abundant\".\"sales_date_date\" as \"sales_date_date\",
-    \"abundant\".\"sales_item_sk\" as \"sales_item_sk\",
-    \"abundant\".\"store_has_row\" as \"store_has_row\",
-    \"abundant\".\"web_has_row\" as \"web_has_row\",
-    \"yummy\".\"store_cume\" as \"store_cume\",
-    \"yummy\".\"web_cume\" as \"web_cume\"
+    \"yummy\".\"sales_date_date\" as \"sales_date_date\",
+    \"yummy\".\"sales_item_sk\" as \"sales_item_sk\",
+    max(CASE
+	WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN 1
+	ELSE 0
+	END) as \"store_has_row\",
+    max(CASE
+	WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN 1
+	ELSE 0
+	END) as \"web_has_row\"
 FROM
     \"yummy\"
-    INNER JOIN \"abundant\" on \"yummy\".\"sales_date_date\" is not distinct from \"abundant\".\"sales_date_date\" AND \"yummy\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\")
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
+    \"cooperative\".\"sales_item_sk\" as \"sales_item_sk\",
+    sum(\"cooperative\".\"store_daily\") over (partition by \"cooperative\".\"sales_item_sk\" order by \"cooperative\".\"sales_date_date\" asc ) as \"store_cume\",
+    sum(\"cooperative\".\"web_daily\") over (partition by \"cooperative\".\"sales_item_sk\" order by \"cooperative\".\"sales_date_date\" asc ) as \"web_cume\"
+FROM
+    \"cooperative\")
 SELECT
     \"uneven\".\"sales_item_sk\" as \"item_sk\",
     \"uneven\".\"sales_date_date\" as \"d_date\",
     CASE
-	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"juicy\".\"web_cume\"
+	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"uneven\".\"web_cume\"
 	ELSE null
 	END as \"web_sales\",
     CASE
-	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"juicy\".\"store_cume\"
+	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"uneven\".\"store_cume\"
 	ELSE null
 	END as \"store_sales\",
-    \"juicy\".\"web_cume\" as \"web_cumulative\",
-    \"juicy\".\"store_cume\" as \"store_cumulative\"
+    \"uneven\".\"web_cume\" as \"web_cumulative\",
+    \"uneven\".\"store_cume\" as \"store_cumulative\"
 FROM
     \"juicy\"
+    INNER JOIN \"uneven\" on \"juicy\".\"sales_date_date\" is not distinct from \"uneven\".\"sales_date_date\" AND \"juicy\".\"sales_item_sk\" = \"uneven\".\"sales_item_sk\"
 WHERE
-    \"juicy\".\"web_cume\" > \"juicy\".\"store_cume\"
+    \"uneven\".\"web_cume\" > \"uneven\".\"store_cume\"
 
 ORDER BY 
     \"item_sk\" asc nulls first,

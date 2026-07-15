@@ -10,7 +10,7 @@ cooperative as (
 SELECT
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_sk\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    SUBSTRING(\"store_sales_store_store\".\"S_CITY\",1,30) as \"city_short\",
+    \"store_sales_store_store\".\"S_CITY\" as \"store_sales_store_city\",
     sum(\"store_sales_store_sales\".\"SS_COUPON_AMT\") as \"amt\",
     sum(\"store_sales_store_sales\".\"SS_NET_PROFIT\") as \"profit\"
 FROM
@@ -25,12 +25,11 @@ GROUP BY
     1,
     2,
     3,
-    \"store_sales_store_sales\".\"SS_ADDR_SK\",
-    \"store_sales_store_store\".\"S_CITY\")
+    \"store_sales_store_sales\".\"SS_ADDR_SK\")
 SELECT
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
-    \"cooperative\".\"city_short\" as \"city_short\",
+    SUBSTRING(\"cooperative\".\"store_sales_store_city\",1,30) as \"city_short\",
     \"cooperative\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
     \"cooperative\".\"amt\" as \"amt\",
     \"cooperative\".\"profit\" as \"profit\"
@@ -40,7 +39,7 @@ FROM
 ORDER BY 
     \"store_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
-    \"cooperative\".\"city_short\" asc nulls first,
+    \"city_short\" asc nulls first,
     \"cooperative\".\"profit\" asc nulls first,
     \"cooperative\".\"store_sales_ticket_number\" asc
 LIMIT (100)"""
