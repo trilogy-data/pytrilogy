@@ -1271,7 +1271,11 @@ def _consumer_required_input_grain(
     attrs: dict[str, GroupAttrs],
     gid: str,
 ) -> frozenset[str]:
-    grain: set[str] = set(attrs[gid].grain_components)
+    # A group's own derived output can be a grain component (a filter/rowset
+    # concept whose identity IS its grain). Parents can't supply it — requiring
+    # it as an input grain forces a parent to re-derive the concept (e.g. a
+    # filter's per-row CASE at a merge that lacks the aggregate arg). Drop it.
+    grain: set[str] = set(attrs[gid].grain_components) - set(attrs[gid].primary_members)
     for pred in group_graph.predecessors(gid):
         if pred == FINAL_NODE_ID or pred not in attrs:
             continue

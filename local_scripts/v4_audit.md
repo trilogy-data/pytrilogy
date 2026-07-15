@@ -1,34 +1,82 @@
-# v4 compatibility audit (last refreshed 2026-07-14, session 2)
+# v4 compatibility audit (last refreshed 2026-07-15, session 4)
 
 Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
 this file and in the project memory. Standing lessons from that era are kept
 below.
 
-## Current state (after 2026-07-14 session 2)
+## Current state (after 2026-07-15 session 4)
 
-**Full v4 sweep (post session 2, commit b285fc2d0): 59 failed / 5566
-passed**, 12 xpassed, 82 errors (all clickhouse-environmental, ignore).
-Log: `local_scripts/v4_sweep_0714_s2.log`. Verified against the 67-baseline:
-every failure maps to a pre-existing family, ZERO new. −8 net: union_reproject
-×6, rollup_scoped `two_key_subset_join_no_rollup_builds`, cograin
-`having_bare_max` sibling.
+**Expected ~48 failed** (52 − 4) pending the confirming full sweep
+(`local_scripts/v4_sweep_0715_s4.log`, running). Session 4 fixed 4 across two
+seams, verified regression-free in discovery + non-modeling message suites +
+TPC-DS battery (the pre-existing 6 only). Session-3 baseline was 52/5573
+(`v4_sweep_0714_s3.log`); session-3 fix (commit 6750520cd) cleared duckdb.py ×6
++ syntax_examples rollup and touched env_processor.py, strategy_builder.py,
+basic.py.
 
-**Open families by sweep count (59):** duckdb.py ×6 (**NEXT** —
-where_on_constant ×2, grouping-rollup builds ×3, filtered_constant_aggregate),
-TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder, or_membership,
-q64-correlated), filter_mixed_aggregate ×4, materialized_aggregate_bridge ×4,
-offset_join ×4, duckdb_rowset residual ×3 (order_by_measure q83 + composite
-stddev/variance keys-3 ×2), filter_bare_aggregate_content_grain ×3,
-rollup_scoped ×2 (three_key_executes, two_key_partial_builds),
+Session-4 fixes:
+1. **filter/materialized mixed-predicate grain leak** (+2:
+   `test_mixed_aggregate_and_row_predicate_filter`,
+   `test_mixed_filter_over_materialized_aggregate`) — see session-4 entry.
+2. **v4 disconnected-error message enrichment** (+2: disconnected_e2e
+   `test_message_includes_failing_statement_line`,
+   `test_message_suggests_connected_nested_equivalent`) — see session-4 entry.
+
+**Open families by sweep count (~48):** materialized_aggregate_bridge ×3
+(inline_equivalent, joins_cross_key_dimension, where_form_matches_filter_form —
+all the customer_summary cross-key/where-form shape), filter_mixed_aggregate ×3
+(**NEXT candidates** — optional_preserves_non_qualifying [needs row-preserving
+CASE over LEFT-joined agg], mixed_filter_matches_where_form [`1=1` cross join:
+customer-grain agg ↔ product-grain dim not bridged through the orders fact],
+sole_output_filter_has_no_null_group [semijoin-through-fact, content grain ≠ agg
+grain]), offset_join ×4, TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder,
+or_membership, q64-correlated), filter_bare_aggregate_content_grain ×3,
+duckdb_rowset residual ×3 (order_by_measure q83 + composite stddev/variance
+keys-3 ×2), rollup_scoped ×2 (three_key_executes, two_key_partial_builds),
 generation_matrix ×2, multi_partial_anchor ×2, expression_keys ×2,
-membership_existence ×2, pushdown_partitioned ×2,
-cross_rowset_join_rowset_as_set ×2, subquery ×2, disconnected_e2e messages
-×2, cograin ×1 (having_bare_max_matches_where), + singles (syntax_examples
-rollup, rowset_body_limit, scoped_derived exp_rows1,
-collapse_basic_into_group, union_bare_aggregate, setops,
-orderby_derived_expr, constant_def_macro, membership_having,
-twin_keeps_scalar_refs).
+membership_existence ×2, pushdown_partitioned ×2, cross_rowset_join_rowset_as_set
+×2, subquery ×2, + singles (rowset_body_limit, scoped_derived exp_rows1,
+collapse_basic_into_group, union_bare_aggregate, setops, orderby_derived_expr,
+constant_def_macro, membership_having, where_select_dual_scope, cograin
+having_bare_max_matches_where, twin_keeps_scalar_refs).
+
+**The where-form `1=1` cross join is the shared hard nut** across the two
+filter families: `select customer_id where count(...) by customer_id > 1 and
+product_name='Mouse'` joins the customer-grain aggregate CTE to the
+product-grain dim CTE `ON 1=1` (no bridge key found) — the join must route
+customer→order→product through the orders fact. Same root shape blocks
+`sole_output_filter_has_no_null_group` and the materialized cross-key tests.
+
+## ✅ 2026-07-15 (session 4) — mixed filter grain leak + disconnected-message enrichment (+4)
+
+Two independent v4-only fixes, both regression-checked (discovery −2 clean,
+non-modeling message suites clean, TPC-DS = pre-existing 6, mypy/ruff/black
+clean, v3 disconnected suites green).
+
+1. **Filter group's own output leaks into its input-grain contract**
+   (`_consumer_required_input_grain`, group_graph): a filter concept's grain IS
+   itself (`grp:filter:...:local.filtered` has grain_components `{filtered}`).
+   The seed grain therefore demanded `filtered` from parents; a parent merge
+   that joins the row dims but LACKS the aggregate arg then re-derived it as a
+   per-row CASE (`CASE WHEN order_id IS NOT NULL THEN 1 ELSE 0 END > 1` — always
+   false → all-NULL). Fix: subtract `attrs[gid].primary_members` from the seed
+   grain (a group can never source its own derived output from a parent). Aggregate
+   groups are unaffected (their grain is the grouping key, primary is the agg —
+   disjoint). Fixed `test_mixed_aggregate_and_row_predicate_filter` (semijoin:
+   bare content + WHERE over the joined `_virt_agg_count`) and
+   `test_mixed_filter_over_materialized_aggregate`.
+2. **v4 disconnected-error message dropped its enrichment args**
+   (`raise_if_disconnected_for`, discovery_utility): the function accepts
+   `environment`, `g`, `island_rowsets`, `line_number` but called
+   `format_disconnected_subgraphs_error(subgraphs)` with none of them — so v4's
+   pre-discovery gate always emitted the bare "missing a join or merge" form,
+   never the "(statement at line N)" locator or the "did you mean
+   `all_sales.date.year`" separate-import suggestion. v3 produces these via a
+   different post-discovery raise site (that's why the tests pass under v3).
+   Fix: forward all four. `raise_if_disconnected_for` is v4-only (both callers in
+   concept_strategies_v4 / query_processor), so v3 is untouched. Fixed the two
+   disconnected_e2e message tests; full disconnected_e2e 18/18.
 
 ## How to verify (the rules)
 
