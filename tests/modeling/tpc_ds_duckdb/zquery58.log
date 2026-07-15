@@ -26,7 +26,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_date_date\".\"D_WEEK_SEQ\")
 
 UNION ALL
 SELECT
@@ -38,7 +38,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_date_date\".\"D_WEEK_SEQ\")
 
 UNION ALL
 SELECT
@@ -50,7 +50,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_date_date\".\"D_WEEK_SEQ\")
 ),
 yummy as (
 SELECT

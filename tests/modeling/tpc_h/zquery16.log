@@ -17,7 +17,7 @@ FROM
     INNER JOIN \"memory\".\"part\" as \"part\" on \"partsupp\".\"ps_partkey\" = \"part\".\"p_partkey\"
     INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
 WHERE
-    \"part\".\"p_brand\" != 'Brand#45' and \"part\".\"p_type\" not like 'MEDIUM POLISHED%' and \"part\".\"p_size\" in (49,14,23,45,19,3,36,9) and coalesce((\"supplier_supplier\".\"s_comment\" like '%Customer%Complaints%'),False) = False
+    \"part\".\"p_brand\" != 'Brand#45' and \"part\".\"p_type\" not like 'MEDIUM POLISHED%' and (\"part\".\"p_size\" is not null and \"part\".\"p_size\" in (49,14,23,45,19,3,36,9)) and coalesce((\"supplier_supplier\".\"s_comment\" like '%Customer%Complaints%'),False) = False
 
 GROUP BY
     1,

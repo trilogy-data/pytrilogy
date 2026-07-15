@@ -1,6 +1,6 @@
 query_id = "64"
 generator = "v3"
-gen_length = 19941
+gen_length = 20019
 preql_size = 3780
 comp_size = 3783
 generated_sql = """
@@ -94,7 +94,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"ss_customer_demographics_customer_demographics\" on \"ss_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"ss_customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"ss_pos_customer_demographic_customer_demographics\" on \"ss_store_sales\".\"SS_CDEMO_SK\" = \"ss_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    coalesce(\"ss_item_items\".\"I_ITEM_SK\",\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\") in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 2000 and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74
+    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from coalesce(\"ss_item_items\".\"I_ITEM_SK\",\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\")) and \"ss_date_date\".\"D_YEAR\" = 2000 and (\"ss_item_items\".\"I_COLOR\" is not null and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium')) and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74
 ),
 protective as (
 SELECT
@@ -123,7 +123,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"ss_customer_first_shipto_date_date\" on \"ss_customer_customers\".\"C_FIRST_SHIPTO_DATE_SK\" = \"ss_customer_first_shipto_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on coalesce(\"ss_store_sales\".\"SS_ITEM_SK\", \"ss_store_returns\".\"SR_ITEM_SK\") = \"ss_item_items\".\"I_ITEM_SK\"
 WHERE
-    coalesce(\"ss_item_items\".\"I_ITEM_SK\",\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\") in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 1999 and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null
+    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from coalesce(\"ss_item_items\".\"I_ITEM_SK\",\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\")) and \"ss_date_date\".\"D_YEAR\" = 1999 and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) and (\"ss_item_items\".\"I_COLOR\" is not null and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium')) and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null
 ),
 macho as (
 SELECT
@@ -142,7 +142,7 @@ FROM
     \"late\"
     INNER JOIN \"sweltering\" on \"late\".\"ss_pos_address_sk\" is not distinct from \"sweltering\".\"ss_pos_address_sk\"
 WHERE
-    \"sweltering\".\"ss_item_sk\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"sweltering\".\"ss_date_year\" = 2000 and \"sweltering\".\"ss_item_color\" in ('purple','burlywood','indian','spring','floral','medium') and \"sweltering\".\"ss_item_current_price\" BETWEEN 65 AND 74 and \"sweltering\".\"ss_customer_sk\" is not null and \"sweltering\".\"ss_store_sk\" is not null and \"late\".\"_virt_presence_9866050310038537\" is not null
+    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from \"sweltering\".\"ss_item_sk\") and \"sweltering\".\"ss_date_year\" = 2000 and (\"sweltering\".\"ss_item_color\" is not null and \"sweltering\".\"ss_item_color\" in ('purple','burlywood','indian','spring','floral','medium')) and \"sweltering\".\"ss_item_current_price\" BETWEEN 65 AND 74 and \"sweltering\".\"ss_customer_sk\" is not null and \"sweltering\".\"ss_store_sk\" is not null and \"late\".\"_virt_presence_9866050310038537\" is not null
 ),
 puzzled as (
 SELECT

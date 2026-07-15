@@ -409,9 +409,9 @@ limit 100;
             "`with only_a as except((armA), (armB)) -> (o1, o2)` keeps the distinct "
             "rows of the FIRST arm that appear in NO later arm (SQL EXCEPT); "
             "`intersect(...)` keeps rows present in EVERY arm. PREFERRED over "
-            "multi-column `not in` for 'in A but not B' questions: whole ROWS are "
-            "compared (any column mix), output is deduplicated, and NULL matches "
-            "NULL - rows with missing values are matched, not dropped"
+            "multi-column `not in` for 'in A but not B' questions when you also "
+            "want the distinct combinations themselves: whole ROWS are compared "
+            "(any column mix) and the output is deduplicated"
         ),
         body="""\
 # `except(...)` and `intersect(...)` are relational table-valued functions with the
@@ -419,8 +419,8 @@ limit 100;
 # by COLUMN POSITION to the trailing `-> (...)` output list. They are SQL SET
 # operators, which differ from the union stack in three ways:
 #   - the output is DEDUPLICATED (distinct rows);
-#   - whole rows are compared with NULL-SAFE equality (NULL matches NULL - unlike
-#     `not in`, rows containing missing values participate instead of vanishing);
+#   - whole rows are compared with NULL-SAFE equality (NULL matches NULL - the
+#     same identity semantics as `in` / `not in` membership);
 #   - for `except(...)` ARM ORDER MATTERS: the FIRST arm is the base population and
 #     every later arm is subtracted from it, left to right.
 # Use `except` for "combinations in A that never appear in B (or C)" and
@@ -579,6 +579,11 @@ limit 100;
         body="""\
 # `in` / `not in` against another model's key is the semi-join / anti-join
 # idiom - no manual JOIN. Use it instead of `count(...) is null` hacks.
+# Membership is IDENTITY matching and total: NULL matches NULL, the result is
+# never NULL, and `not in` is the EXACT complement of `in` - a NULL in the set
+# does not empty an anti-join (no SQL NOT-IN footgun), and NULL-keyed rows land
+# in exactly one of the two sides. For strict SQL parity, filter NULLs
+# explicitly (`where key is not null and key in other.key`).
 import students as students;
 import enrollments as enroll;
 

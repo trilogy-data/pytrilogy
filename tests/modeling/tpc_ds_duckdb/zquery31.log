@@ -1,6 +1,6 @@
 query_id = "31"
 generator = "v3"
-gen_length = 5195
+gen_length = 5283
 preql_size = 1372
 comp_size = 1994
 generated_sql = """
@@ -17,7 +17,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_QOY\" in (1,2,3)
+    \"sales_date_date\".\"D_YEAR\" = 2000 and (\"sales_date_date\".\"D_QOY\" is not null and \"sales_date_date\".\"D_QOY\" in (1,2,3))
 
 UNION ALL
 SELECT
@@ -30,7 +30,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_QOY\" in (1,2,3)
+    \"sales_date_date\".\"D_YEAR\" = 2000 and (\"sales_date_date\".\"D_QOY\" is not null and \"sales_date_date\".\"D_QOY\" in (1,2,3))
 )
 SELECT
     \"sales_pos_bill_address_customer_address\".\"CA_COUNTY\" as \"sales_pos_bill_address_county\",

@@ -8,7 +8,7 @@ generated_sql = """
 WITH 
 highfalutin as (
 SELECT
-    avg(CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
+    avg(CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and (SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) is not null and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')) THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"),
 thoughtful as (

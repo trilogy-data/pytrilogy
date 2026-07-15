@@ -1765,20 +1765,113 @@ class BaseDialect:
         )
         return f"{prefix}exists (select 1 from {from_clause} where {pairs})"
 
-    def _render_expression_membership_subselect(
+    def _render_membership_exists(
         self,
+        left_sql: str,
+        member_sql: str,
+        from_clause: str,
+        operator: ComparisonOperator,
+    ) -> str:
+        """Scalar membership as a null-safe existence subquery: `exists (select
+        1 from f where member is not distinct from probe)` (`not exists` for
+        NOT IN). Membership is row *identity* matching and total (TRUE/FALSE,
+        never NULL): a NULL probe matches a NULL member, and NOT IN is the
+        exact complement of IN."""
+        if operator == ComparisonOperator.IN:
+            prefix = ""
+        elif operator == ComparisonOperator.NOT_IN:
+            prefix = "not "
+        else:
+            raise ValueError(f"membership only supports IN/NOT IN, got {operator}")
+        pred = self.NULL_WRAPPER(member_sql, left_sql, [Modifier.NULLABLE])
+        return f"{prefix}exists (select 1 from {from_clause} where {pred})"
+
+    def _render_value_list_membership(
+        self,
+        left: Any,
+        right: "ListWrapper[Any] | TupleWrapper[Any]",
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        raise_invalid: bool,
+        materialized_addresses: set[str] | None,
+    ) -> str:
+        """Value-list membership (`x in (1, 2, null)`) with identity semantics,
+        total (TRUE/FALSE, never NULL): a NULL probe matches iff the list
+        contains a NULL literal, and NOT IN is the exact complement. Pure
+        literal lists keep the flat `IN (…)` form (guarded for the NULL probe);
+        lists with expression elements expand to element-wise null-safe
+        equality."""
+        if operator == ComparisonOperator.IN:
+            is_in = True
+        elif operator == ComparisonOperator.NOT_IN:
+            is_in = False
+        else:
+            raise ValueError(f"membership only supports IN/NOT IN, got {operator}")
+        left_sql = self.render_expr(
+            left,
+            cte=cte,
+            cte_map=cte_map,
+            raise_invalid=raise_invalid,
+            materialized_addresses=materialized_addresses,
+        )
+
+        def is_null_literal(x: Any) -> bool:
+            return x is None or x is MagicConstants.NULL
+
+        # TupleWrapper carries its elements on .val; ListWrapper IS a list
+        elements = list(right.val) if isinstance(right, TupleWrapper) else list(right)
+        literal_types = (int, float, str, bool, date, datetime)
+        if all(isinstance(x, literal_types) or is_null_literal(x) for x in elements):
+            non_null = [
+                self.render_expr(x, cte=cte, cte_map=cte_map)
+                for x in elements
+                if not is_null_literal(x)
+            ]
+            has_null = len(non_null) != len(elements)
+            if not non_null:
+                return f"{left_sql} is null" if is_in else f"{left_sql} is not null"
+            value_list = f"({','.join(non_null)})"
+            if is_in:
+                if has_null:
+                    return f"({left_sql} is null or {left_sql} in {value_list})"
+                return f"({left_sql} is not null and {left_sql} in {value_list})"
+            if has_null:
+                return f"({left_sql} is not null and {left_sql} not in {value_list})"
+            return f"({left_sql} is null or {left_sql} not in {value_list})"
+        # expression elements: element-wise null-safe equality
+        pieces = " or ".join(
+            self.NULL_WRAPPER(
+                self.render_expr(
+                    x,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                ),
+                left_sql,
+                [Modifier.NULLABLE],
+            )
+            for x in elements
+        )
+        return f"({pieces})" if is_in else f"not ({pieces})"
+
+    def _render_expression_membership_exists(
+        self,
+        left_sql: str,
         right: BuildFunction,
+        operator: ComparisonOperator,
         cte: CTE | UnionCTE | None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]],
         raise_invalid: bool,
     ) -> str | None:
         """Render an expression-typed membership RHS (`... in (rs.col::string)`,
-        a concat of rowset columns, etc.) as a `(select <expr> from <cte> where
-        ...)` existence subquery. The single-BuildConcept path does this for a
-        bare RHS; an expression RHS otherwise emits its inner column refs against
-        a CTE that's never in a FROM (Binder: table not found). Returns None when
-        this isn't an existence membership, so the caller falls back to the
-        default inline rendering."""
+        a concat of rowset columns, etc.) as a null-safe existence subquery. The
+        single-BuildConcept path does this for a bare RHS; an expression RHS
+        otherwise emits its inner column refs against a CTE that's never in a
+        FROM (Binder: table not found). Returns None when this isn't an
+        existence membership, so the caller falls back to the default inline
+        rendering."""
         concepts = list(right.concept_arguments)
         if not concepts:
             return None
@@ -1793,9 +1886,8 @@ class BaseDialect:
         if any(c.address not in lookup_cte.existence_source_map for c in concepts):
             return None
         from_clauses: set[str] = set()
-        null_cols: list[str] = []
         for rc in concepts:
-            from_clause, col_ref = self._resolve_existence_column(
+            from_clause, _ = self._resolve_existence_column(
                 rc, cte, cte_map, raise_invalid
             )
             # inlined-parent physical-column form ("<base> as <target>"); the
@@ -1804,15 +1896,13 @@ class BaseDialect:
             if " as " in from_clause:
                 return None
             from_clauses.add(from_clause)
-            null_cols.append(col_ref)
         if len(from_clauses) != 1:
             return None
         from_clause = next(iter(from_clauses))
         inner = self.render_expr(
             right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
         )
-        not_null = " and ".join(f"{c} is not null" for c in null_cols)
-        return f"(select {inner} from {from_clause} where {not_null})"
+        return self._render_membership_exists(left_sql, inner, from_clause, operator)
 
     def render_expr(
         self,
@@ -1885,9 +1975,9 @@ class BaseDialect:
                 )
             if isinstance(right, BuildConcept):
                 # An array-valued RHS (e.g. `x in split(s, ',')`) holds a list per
-                # row; `x IN (select arr_col ...)` compares a scalar to an array and
-                # the DB rejects it. Unnest the array column so the subselect yields
-                # one scalar per element.
+                # row; comparing a scalar to an array directly is rejected by the
+                # DB. Unnest into a derived table so the identity predicate
+                # compares one scalar per element.
                 rhs_is_array = isinstance(right.datatype, ArrayType)
                 # we won't always have an existnce map
                 # so fall back to the normal map
@@ -1938,12 +2028,27 @@ class BaseDialect:
                             cte_map=cte_map,
                             raise_invalid=raise_invalid,
                         )
-                    sel_ref = f"unnest({col_ref})" if rhs_is_array else col_ref
-                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {sel_ref} from {new_base} as {target} where {col_ref} is not null)"
-                self.used_map[target].add(right.address)
-                col = f"{target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER}"
-                sel = f"unnest({col})" if rhs_is_array else col
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {sel} from {target} where {col} is not null)"
+                    from_clause = f"{new_base} as {target}"
+                else:
+                    self.used_map[target].add(right.address)
+                    col_ref = f"{target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER}"
+                    from_clause = target
+                if rhs_is_array:
+                    from_clause = (
+                        f"(select unnest({col_ref}) as unnest_member "
+                        f"from {from_clause}) as unnest_members"
+                    )
+                    col_ref = "unnest_member"
+                left_sql = self.render_expr(
+                    e.left,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                )
+                return self._render_membership_exists(
+                    left_sql, col_ref, from_clause, e.operator
+                )
             elif isinstance(right, BuildParamaterizedConceptReference):
                 if isinstance(right.concept.lineage, BuildFunction) and isinstance(
                     right.concept.lineage.arguments[0], ListWrapper
@@ -1957,23 +2062,39 @@ class BaseDialect:
                         raise_invalid=raise_invalid,
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-            elif isinstance(
-                right,
-                (ListWrapper, TupleWrapper, BuildParenthetical),
-            ):
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            elif isinstance(right, (ListWrapper, TupleWrapper)):
+                return self._render_value_list_membership(
+                    e.left,
+                    right,
+                    e.operator,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                )
 
             # An expression RHS over existence-sourced rowset columns
             # (`x::string in (rs.col::string)`, or a concat of several rs cols).
-            # The bare-BuildConcept path above wraps the referenced CTE in a
-            # `select ... from <cte>` subselect; an expression RHS must do the
-            # same, else its inner column refs dangle (Binder: table not found).
+            # The bare-BuildConcept path above wraps the referenced CTE in an
+            # existence subquery; an expression RHS must do the same, else its
+            # inner column refs dangle (Binder: table not found).
             if isinstance(right, BuildFunction):
-                subselect = self._render_expression_membership_subselect(
-                    right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                exists_sql = self._render_expression_membership_exists(
+                    self.render_expr(
+                        e.left,
+                        cte=cte,
+                        cte_map=cte_map,
+                        raise_invalid=raise_invalid,
+                        materialized_addresses=materialized_addresses,
+                    ),
+                    right,
+                    e.operator,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
                 )
-                if subselect is not None:
-                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {subselect}"
+                if exists_sql is not None:
+                    return exists_sql
 
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):

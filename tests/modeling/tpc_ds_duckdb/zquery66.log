@@ -23,7 +23,7 @@ FROM
     INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
     INNER JOIN \"memory\".\"warehouse\" as \"sales_warehouse_warehouse\" on \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" = \"sales_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638
+    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and (\"sales_ship_mode_ship_mode\".\"SM_CARRIER\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN')) and \"sales_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638
 
 UNION ALL
 SELECT
@@ -42,7 +42,7 @@ FROM
     INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
     INNER JOIN \"memory\".\"warehouse\" as \"sales_warehouse_warehouse\" on \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" = \"sales_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638
+    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and (\"sales_ship_mode_ship_mode\".\"SM_CARRIER\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN')) and \"sales_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638
 ),
 sparkling as (
 SELECT

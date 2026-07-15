@@ -1094,7 +1094,9 @@ def test_derived_membership_existence(query, expected):
     executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     executor.parse_text(_DERIVED_MEMBERSHIP_MODEL)
     sql = executor.generate_sql(query)[-1]
-    assert "in (select" in sql.lower(), f"membership not rendered as subquery:\n{sql}"
+    assert (
+        "exists (select" in sql.lower()
+    ), f"membership not rendered as subquery:\n{sql}"
     results = executor.execute_text(_DERIVED_MEMBERSHIP_MODEL + query)[-1].fetchall()
     assert [
         tuple(float(v) if isinstance(v, Decimal) else v for v in r) for r in results

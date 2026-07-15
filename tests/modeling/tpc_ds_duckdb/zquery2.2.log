@@ -13,7 +13,7 @@ FROM
     \"memory\".\"date_dim\" as \"catalog_sales_date_date\"
     INNER JOIN \"memory\".\"date_dim\" as \"date_date\" on \"catalog_sales_date_date\".\"D_DATE_SK\" = \"date_date\".\"D_DATE_SK\"
 WHERE
-    \"date_date\".\"D_YEAR\" in (2001,2002)
+    (\"date_date\".\"D_YEAR\" is not null and \"date_date\".\"D_YEAR\" in (2001,2002))
 
 GROUP BY
     1),

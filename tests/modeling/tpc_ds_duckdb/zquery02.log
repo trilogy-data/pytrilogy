@@ -12,7 +12,7 @@ SELECT
 FROM
     \"memory\".\"date_dim\" as \"sales_date_date\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
+    (\"sales_date_date\".\"D_YEAR\" is not null and \"sales_date_date\".\"D_YEAR\" in (2001,2002))
 
 GROUP BY
     1),

@@ -273,5 +273,6 @@ where
         process_query(test_environment, select, hooks=[DebuggingHook()])
     )
 
-    # check to make sure our subselect is well-formed
-    assert "`category_id` not in (select" in query, query
+    # check to make sure our subselect is well-formed (membership renders as a
+    # null-safe existence subquery)
+    assert "not exists (select 1 from" in query, query

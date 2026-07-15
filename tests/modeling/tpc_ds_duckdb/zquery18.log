@@ -19,7 +19,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"cs_billing_customer_address_customer_address\" on \"cs_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_pos_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
+    \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and (\"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2)) and \"cs_date_date\".\"D_YEAR\" = 1998 and (\"cs_billing_customer_address_customer_address\".\"CA_STATE\" is not null and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA'))
 ),
 questionable as (
 SELECT
@@ -42,7 +42,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"cs_billing_customer_address_customer_address\" on \"cs_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_pos_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
+    \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and (\"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2)) and \"cs_date_date\".\"D_YEAR\" = 1998 and (\"cs_billing_customer_address_customer_address\".\"CA_STATE\" is not null and \"cs_billing_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA'))
 ),
 yummy as (
 SELECT

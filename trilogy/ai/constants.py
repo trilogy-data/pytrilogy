@@ -66,7 +66,7 @@ Full example: trilogy agent-info syntax example union-stack-channels.
 
 except / intersect (set operations)
 
-except((armA), (armB), ...) -> (...) and intersect(...) share union's arm shape but are SQL SET operators: output rows are DISTINCT, whole rows compare null-safely (NULL matches NULL — rows with missing values match instead of vanishing, unlike `not in`), and except subtracts later arms from the FIRST, left to right (arm order matters). Prefer except over multi-column `not in` for "combinations in A that never appear in B"; aggregate the outputs directly for a distinct-combination count.
+except((armA), (armB), ...) -> (...) and intersect(...) share union's arm shape but are SQL SET operators: output rows are DISTINCT, whole rows compare null-safely (NULL matches NULL, same identity semantics as `in`/`not in` membership), and except subtracts later arms from the FIRST, left to right (arm order matters). Prefer except over multi-column `not in` when you also want the DISTINCT output rows ("combinations in A that never appear in B"); aggregate the outputs directly for a distinct-combination count.
 
 Full example: trilogy agent-info syntax example except-intersect-setops.
 
@@ -153,13 +153,19 @@ is often useful here.
 
 Semijoins are unique in that they do not require an explicit relationship to cross models, as the semijoin *is* a scoped intersection.
 
-Membership in a computed set (SQL IN (subquery)): define the set as a derived concept (filter with ?), then test in against that concept. 
+Membership in a computed set (SQL IN (subquery)): define the set as a derived concept (filter with ?), then test in against that concept.
 The right side is a concept or expression, not subselect. (in fact either side can be an expression) membership compares the left expression against every value of the right concept (a semi-join over a value set):
 ```
 auto big_zip <- student.zip ? (count(student.id ? student.honors = true) by student.zip) > 10;
 # schools whose 2-digit zip-prefix matches a high-honors-student zip:
 where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 ```
+
+Membership semantics (`in` / `not in`, scalar and tuple alike) are IDENTITY matching, not SQL three-valued logic:
+- NULL matches NULL: a NULL key is in a set that contains a NULL, and `x in (1, null)` is true for NULL x.
+- Total: membership is always TRUE or FALSE (never NULL), so it is safe as a projected boolean flag.
+- `not in` is the EXACT complement of `in` — every row lands in exactly one side. There is no SQL NOT-IN footgun (a NULL in the set does not empty the result), and NULL-keyed rows are never silently dropped from either side.
+- To reproduce strict SQL behavior, exclude NULLs explicitly: `where x is not null and x in some.set`.
 
  A fact model contains the full set of dimensional members (all students appear in `fact.students`), so:
 - No matching record (anti-join): `where students.id not in enroll.student_id` is typically a tautology — `enroll.student_id` references the student table and contains all students. Use e.g. `where enroll.id is null select enroll.student.id` instead.

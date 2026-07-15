@@ -16,7 +16,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_MOY\" in (1,2,3,4)
+    \"sales_date_date\".\"D_YEAR\" = 2002 and (\"sales_date_date\".\"D_MOY\" is not null and \"sales_date_date\".\"D_MOY\" in (1,2,3,4))
 
 UNION ALL
 SELECT
@@ -28,7 +28,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_MOY\" in (1,2,3,4)
+    \"sales_date_date\".\"D_YEAR\" = 2002 and (\"sales_date_date\".\"D_MOY\" is not null and \"sales_date_date\".\"D_MOY\" in (1,2,3,4))
 
 UNION ALL
 SELECT
@@ -40,7 +40,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_MOY\" in (1,2,3,4)
+    \"sales_date_date\".\"D_YEAR\" = 2002 and (\"sales_date_date\".\"D_MOY\" is not null and \"sales_date_date\".\"D_MOY\" in (1,2,3,4))
 ),
 questionable as (
 SELECT
