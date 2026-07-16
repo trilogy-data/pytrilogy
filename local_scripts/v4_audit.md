@@ -1,30 +1,28 @@
-# v4 compatibility audit (last refreshed 2026-07-15, session 6)
+# v4 compatibility audit (last refreshed 2026-07-16, session 7)
 
 Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
 this file and in the project memory. Standing lessons from that era are kept
 below.
 
-## Current state (after 2026-07-15 session 6)
+## Current state (after 2026-07-16 session 7)
 
-**Full v4 sweep (session 6): 43 failed / 5583 passed**, 14 xpassed, 82 errors
-(clickhouse-environmental, ignore). Log: `local_scripts/v4_sweep_0715_s6.log`.
-Diffed against the session-5 46-set: −3 net, ZERO new/regressions. Fixed exactly:
-`test_materialized_aggregate_joins_cross_key_dimension`,
-`test_inline_equivalent_of_materialized_aggregate` (test_materialized_aggregate_bridge_join.py)
-and `test_mixed_filter_matches_where_form` (test_filter_mixed_aggregate_row_predicate.py).
-materialized_aggregate_bridge is now ×1 (only `where_form_matches_filter_form`
-left). Session-5 baseline was 46/5580 (`v4_sweep_0715_s5.log`).
+**Full v4 sweep (session 7): 42 failed / 5584 passed**, 14 xpassed, 82 errors
+(clickhouse-environmental, ignore). Log: `local_scripts/v4_sweep_0716_s7b.log`.
+Diffed against the session-6 43-set: −1 net, ZERO new/regressions. Fixed exactly:
+`test_materialized_where_form_matches_filter_form`
+(test_materialized_aggregate_bridge_join.py) — the WHERE-form dual-scope bridge.
+**materialized_aggregate_bridge is now fully CLEARED (×0).** Session-6 baseline
+was 43/5583 (`v4_sweep_0715_s6.log`).
 
-Session-6 fix (single v4-only change, strategy_builder.py):
-1. **ROOT-contributor bridge join key kept by membership, not FD** (+3) — see
-   session-6 entry.
+Session-7 fix (single v4-only change, source_planning.py):
+1. **Bridge scan emits a datasource-materialized aggregate matched by canonical
+   address** (+1) — see session-7 entry.
 
-**Open families by sweep count (43):** materialized_aggregate_bridge ×1
-(where_form_matches_filter_form — the WHERE-form dual-scope nut, see below),
-offset_join ×4, TPC-DS ×6 (q14, q64-transitive, q81, q29-feeder, or_membership,
-q64-correlated), filter_bare_aggregate_content_grain ×3, duckdb_rowset residual
-×3 (order_by_measure q83 + composite stddev/variance keys-3 ×2), rollup_scoped ×2
+**Open families by sweep count (42):** offset_join ×4, TPC-DS ×6 (q14,
+q64-transitive, q81, q29-feeder, or_membership, q64-correlated),
+filter_bare_aggregate_content_grain ×3, duckdb_rowset residual ×3
+(order_by_measure q83 + composite stddev/variance keys-3 ×2), rollup_scoped ×2
 (three_key_executes, two_key_partial_builds), generation_matrix ×2,
 multi_partial_anchor ×2, expression_keys ×2, membership_existence ×2,
 pushdown_partitioned ×2, cross_rowset_join_rowset_as_set ×2, subquery ×2, +
@@ -33,21 +31,56 @@ union_bare_aggregate, setops, orderby_derived_expr, constant_def_macro,
 membership_having, where_select_dual_scope, cograin
 having_bare_max_matches_where, twin_keeps_scalar_refs).
 
-**The WHERE-form dual-scope is the remaining bridge nut** (NEXT candidate):
-`select customer_id where customer_order_count > 1 and product_name='Mouse'`
-(`test_materialized_where_form_matches_filter_form`). The plain-SELECT and FILTER
-forms of the same cross-key bridge now work (session 6). The WHERE form still
-fails because the two WHERE atoms need SEPARATE population scopes: v3 sources the
-materialized `customer_order_count > 1` STANDALONE (from customer_summary, at
-total-count population scope) and the `product_name='Mouse'` row atom through the
-orders fact bridge (`highfalutin` = orders GROUP BY customer_id, product_id ⋈
-products WHERE Mouse), then joins the two on customer_id. v4 instead pre-filters
-`product_name='Mouse'` into the orders scan and recomputes count over Mouse-only
-rows (wrong scope) — and drops order_id so the HAVING renders
-`count(INVALID_REFERENCE_BUG<...order_id>)`. This is #599 dual-scope + the
-materialized-bridge interaction (aggregate-condition population scope must not
-inherit a sibling row atom's filter); it is NOT the same `1=1` shape the
-plain/filter forms had (those are fixed). A proper standalone session.
+**NEXT candidate:** offset_join ×4 (`test_rowset_offset_join_contract.py`,
+2 tests × PEST/LARK) is the largest single-file cluster. Alternatively
+filter_bare_aggregate_content_grain ×3 or duckdb_rowset residual ×3.
+
+## ✅ 2026-07-16 (session 7) — bridge scan emits a datasource-materialized aggregate matched by canonical address (+1)
+
+Single v4-only change in `source_planning.py`
+(`_local_concept_nodes_for_datasource`). Sweep 43→42, ZERO regressions;
+materialized_aggregate_bridge 1→0 (family CLEARED); mypy/ruff/black clean; not in
+`v4_known_failing.py` (plain failure). This was session 6's NEXT nut.
+
+Shape: `select customer_id where customer_order_count > 1 and
+product_name = 'Mouse'` where `customer_order_count = count(order_id) by
+customer_id` is datasource-materialized in `customer_summary`. customer↔product
+many-to-many, bridged only through orders. v4 rendered
+`HAVING count(INVALID_REFERENCE_BUG<...order_id>)`.
+
+Root cause (SIMPLER than session 6's audit guessed — NOT a dual-scope planning
+gap): the bridge-root group's `gen_root`→`plan_source` correctly picked
+`customer_summary` for the WHERE arg `customer_order_count` and the merge claimed
+it as an output, but the built `customer_summary` SelectNode projected only
+`customer_id` — dropping the materialized `customer_order_count` column. The
+merge's WHERE then referenced a column the scan never emitted; the renderer fell
+back to the aggregate's lineage `count(order_id)` and order_id wasn't in scope.
+In `_local_concept_nodes_for_datasource` the aggregate reaches the scan under its
+`_virt_agg_*` CANONICAL node address (`canonical_concepts[virt] →
+customer_order_count`), but the membership test compared the raw virt address
+against `bridge_addresses` (which holds the real `local.customer_order_count`),
+so it missed. (`renders_derived_key` handled the same virt-vs-address mismatch,
+but only for `Derivation.BASIC` merge keys.)
+
+Fix: added `renders_materialized_canonical` — match when `canonical.address in
+bridge_addresses AND _datasource_can_output(datasource, canonical.address)`,
+restricted to `Derivation.AGGREGATE/WINDOW`. Two hard-won gates:
+- `_datasource_can_output` (column physically in `datasource.output_concepts`):
+  without it a fact scan (orders) reaching the aggregate via its reverse-lineage
+  edge (order_id→count) would emit+recompute it wrongly. Only the summary table
+  owning the column emits it.
+- AGGREGATE/WINDOW only: a plain root concept already matches via `address in
+  bridge_addresses` (its canonical IS its address); the unrestricted (any
+  derivation) first cut re-sourced presence-probe/filter members off the wrong
+  scan and broke gcat `decom_spine` (`test_environment_cleanup_multiselect`,
+  `test_extra_filter`) — caught by the full sweep, fixed same session.
+
+Result: v4 SQL now matches v3 exactly — `customer_summary WHERE count>1`
+(standalone total-count scope) ⋈ (orders GROUP BY customer,product ⋈ products
+WHERE Mouse) on customer_id → rows [(101,),(102,)]. Why the PLAIN-select form
+(session 6) didn't hit this: there customer_order_count is a mandatory OUTPUT,
+sourced through the materialized-agg-as-own-group path, never reaching
+`_local_concept_nodes_for_datasource` for customer_summary.
 
 ## ✅ 2026-07-15 (session 6) — ROOT-contributor bridge join key kept by membership (+3)
 

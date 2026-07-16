@@ -893,9 +893,31 @@ def _local_concept_nodes_for_datasource(
                 and canonical.address in bridge_addresses
                 and _datasource_renders_derived(datasource, canonical)
             )
+            # A datasource-materialized aggregate/window (`customer_order_count`
+            # in a summary table) is requested by its `.address` but reaches this
+            # scan under its `_virt_agg_*` canonical node -- match the canonical
+            # too, but only when the scan physically BINDS it as a column. Without
+            # the binding guard a fact scan would emit the aggregate via its
+            # reverse-lineage edge (order_id -> count) and recompute it wrongly;
+            # with it, only the summary table that owns the column emits it.
+            # Restricted to AGGREGATE/WINDOW: a plain root concept already matches
+            # via `address in bridge_addresses` (its canonical IS its address), and
+            # widening this to every derivation re-sources probe/filter members off
+            # the wrong scan (gcat decom_spine).
+            renders_materialized_canonical = (
+                canonical is not None
+                and canonical.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
+                and canonical.address in bridge_addresses
+                and datasource is not None
+                and _datasource_can_output(datasource, canonical.address)
+            )
             if (
                 canonical is not None
-                and (address in bridge_addresses or renders_derived_key)
+                and (
+                    address in bridge_addresses
+                    or renders_derived_key
+                    or renders_materialized_canonical
+                )
                 and _datasource_renders_probe(datasource, address, environment)
             ):
                 concepts.setdefault(address, neighbor)
